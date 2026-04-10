@@ -362,6 +362,127 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.metrics.scroll_frame_p95_ms).toBe(16);
+    expect(result.metrics.blank_gap_frames).toBe(0);
+  });
+
+  test("keeps waiting until the Pretable virtual window stabilizes before sampling", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="48" data-row-height="60">
+            <div data-pretable-cell="">row 48</div>
+          </div>
+          <div data-pretable-row="" data-row-index="49" data-row-height="60">
+            <div data-pretable-cell="">row 49</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    const viewport = root?.querySelector<HTMLElement>("[data-pretable-scroll-viewport]");
+    const rows = [...root!.querySelectorAll<HTMLElement>("[data-pretable-row]")];
+    const cells = [...root!.querySelectorAll<HTMLElement>("[data-pretable-cell]")];
+    const OriginalPerformanceObserver = globalThis.PerformanceObserver;
+    let animationFrameCount = 0;
+    let settledScrollTop = 0;
+
+    expect(root).toBeTruthy();
+    expect(viewport).toBeTruthy();
+    expect(rows).toHaveLength(2);
+    expect(cells).toHaveLength(2);
+
+    Object.defineProperties(viewport!, {
+      clientTop: { value: 1, configurable: true },
+      clientHeight: { value: 118, configurable: true },
+      scrollHeight: { value: 360, configurable: true },
+      scrollTop: {
+        configurable: true,
+        get() {
+          return Number(this.dataset.scrollTop ?? "0");
+        },
+        set(value: number) {
+          this.dataset.scrollTop = String(value);
+        },
+      },
+    });
+    viewport!.getBoundingClientRect = () =>
+      createRect({
+        top: 100,
+        bottom: 220,
+      });
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        animationFrameCount += 1;
+
+        if (animationFrameCount % 3 === 0) {
+          settledScrollTop = viewport!.scrollTop;
+        }
+
+        callback(animationFrameCount * 16);
+        return animationFrameCount;
+      },
+    });
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: class PerformanceObserver {
+        static supportedEntryTypes = ["longtask"];
+
+        observe() {}
+
+        disconnect() {}
+      },
+    });
+
+    rows[0]!.getBoundingClientRect = () => {
+      const settled = settledScrollTop === viewport!.scrollTop;
+
+      return createRect(
+        settled
+          ? {
+              top: 101,
+              bottom: 161,
+            }
+          : {
+              top: 101,
+              bottom: 141,
+            },
+      );
+    };
+    rows[1]!.getBoundingClientRect = () => {
+      const settled = settledScrollTop === viewport!.scrollTop;
+
+      return createRect(
+        settled
+          ? {
+              top: 161,
+              bottom: 221,
+            }
+          : {
+              top: 161,
+              bottom: 201,
+            },
+      );
+    };
+    Object.defineProperty(cells[0]!, "scrollHeight", {
+      configurable: true,
+      value: 60,
+    });
+    Object.defineProperty(cells[1]!, "scrollHeight", {
+      configurable: true,
+      value: 60,
+    });
+
+    const result = await measurePretableScrollRun(root!);
+
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: OriginalPerformanceObserver,
+    });
+
+    expect(result.status).toBe("completed");
     expect(result.metrics.blank_gap_frames).toBe(0);
   });
 

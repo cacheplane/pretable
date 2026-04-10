@@ -67,7 +67,7 @@ interface ScrollRuntimeProfile {
   viewportSelector: string;
   rowSelector: string;
   rowIndexAttribute: string;
-  settleFrames: number;
+  maxSettleFrames: number;
   measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
 }
 
@@ -76,14 +76,14 @@ const scrollRuntimeProfiles: Record<BenchQueryState["adapterId"], ScrollRuntimeP
     viewportSelector: ".ag-body-viewport",
     rowSelector: ".ag-row",
     rowIndexAttribute: "row-index",
-    settleFrames: 1,
+    maxSettleFrames: 1,
     measureRowHeightError: measureAgGridRowHeightError,
   },
   pretable: {
     viewportSelector: "[data-pretable-scroll-viewport]",
     rowSelector: "[data-pretable-row]",
     rowIndexAttribute: "data-row-index",
-    settleFrames: 2,
+    maxSettleFrames: 4,
     measureRowHeightError: measurePretableRowHeightError,
   },
 };
@@ -123,21 +123,36 @@ export async function measureBenchScrollRun(
   ];
 
   viewport.scrollTop = 0;
-  await waitForAnimationFrames(profile.settleFrames);
+  let initialFrameTimestamp = previousFrameTimestamp;
+
+  for await (const sample of waitForSettledScrollSample(viewport, profile)) {
+    if (initialFrameTimestamp !== null) {
+      frameDurations.push(sample.timestamp - initialFrameTimestamp);
+    }
+
+    initialFrameTimestamp = sample.timestamp;
+  }
+
+  previousFrameTimestamp = initialFrameTimestamp;
 
   for (const scrollTarget of scrollTargets) {
     viewport.scrollTop = scrollTarget;
-    const frameTimestamp = await waitForAnimationFrames(profile.settleFrames);
+    let settledSample = null;
 
-    if (previousFrameTimestamp !== null) {
-      frameDurations.push(frameTimestamp - previousFrameTimestamp);
+    for await (const sample of waitForSettledScrollSample(viewport, profile)) {
+      if (previousFrameTimestamp !== null) {
+        frameDurations.push(sample.timestamp - previousFrameTimestamp);
+      }
+
+      previousFrameTimestamp = sample.timestamp;
+      settledSample = sample;
     }
 
-    previousFrameTimestamp = frameTimestamp;
+    const visibleRows = settledSample?.visibleRows ?? sampleVisibleRows(viewport, profile);
+    const hasBlankGap = settledSample?.hasBlankGap ?? detectBlankGapFrame(viewport, profile.rowSelector);
     domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
-    const visibleRows = sampleVisibleRows(viewport, profile);
 
-    if (detectBlankGapFrame(viewport, profile.rowSelector)) {
+    if (hasBlankGap) {
       blankGapFrames += 1;
     }
 
@@ -258,16 +273,6 @@ function waitForAnimationFrame() {
   });
 }
 
-async function waitForAnimationFrames(count: number) {
-  let timestamp = 0;
-
-  for (let frame = 0; frame < count; frame += 1) {
-    timestamp = await waitForAnimationFrame();
-  }
-
-  return timestamp;
-}
-
 async function waitForScrollViewport(
   root: HTMLElement,
   selector: string,
@@ -294,6 +299,34 @@ function percentile(values: number[], ratio: number) {
   );
 
   return sorted[index] ?? 0;
+}
+
+async function* waitForSettledScrollSample(
+  viewport: HTMLElement,
+  profile: ScrollRuntimeProfile,
+) {
+  let latestSample = null;
+
+  for (let frame = 0; frame < profile.maxSettleFrames; frame += 1) {
+    const timestamp = await waitForAnimationFrame();
+    const visibleRows = sampleVisibleRows(viewport, profile);
+    const hasBlankGap = detectBlankGapFrame(viewport, profile.rowSelector);
+
+    latestSample = {
+      hasBlankGap,
+      timestamp,
+      visibleRows,
+    };
+    yield latestSample;
+
+    if (!hasBlankGap) {
+      return;
+    }
+  }
+
+  if (latestSample === null) {
+    return;
+  }
 }
 
 interface VisibleRowSample {
