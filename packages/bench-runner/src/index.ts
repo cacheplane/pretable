@@ -234,6 +234,12 @@ export function createBenchRunSummary(input: {
     };
   }
 
+  const support = validateSupportedP0aRequest(input.request);
+
+  if (!support.ok) {
+    throw new Error(`Unsupported P0a request: ${support.reason}`);
+  }
+
   if (!input.tracePath) {
     throw new Error("Completed, partial, and failed runs require a tracePath");
   }
@@ -276,15 +282,19 @@ export function createDashboardIndex(
   runs: readonly BenchRunSummary[],
 ): DashboardIndex {
   return {
-    runs: [...runs].sort((left, right) =>
-      left.timestamp.localeCompare(right.timestamp),
-    ),
+    runs: [...runs].sort(compareBenchRuns),
   };
 }
 
 function compactMetrics(
   metrics: Partial<Record<BenchMetricId, number>>,
 ): Partial<Record<BenchMetricId, number>> {
+  for (const [metricId, value] of Object.entries(metrics)) {
+    if (value !== undefined && !Number.isFinite(value)) {
+      throw new Error(`Metric must be finite: ${metricId}`);
+    }
+  }
+
   return Object.fromEntries(
     Object.entries(metrics).filter(([, value]) => value !== undefined),
   ) as Partial<Record<BenchMetricId, number>>;
@@ -320,5 +330,58 @@ function assertRequiredMetrics(
         throw new Error(`Missing required metric: ${metricId}`);
       }
     }
+  }
+}
+
+function compareBenchRuns(left: BenchRunSummary, right: BenchRunSummary): number {
+  const timestampDiff = left.timestamp.localeCompare(right.timestamp);
+
+  if (timestampDiff !== 0) {
+    return timestampDiff;
+  }
+
+  const stemDiff = createArtifactFileStem({
+    adapterId: left.adapterId,
+    profile: left.profile,
+    scenarioId: left.scenarioId,
+    scriptName: left.scriptName,
+    browserName: left.browserName,
+    browserVersion: left.browserVersion,
+    seed: left.seed,
+    viewport: left.viewport,
+    fontStack: left.fontStack,
+    deviceScaleFactor: left.deviceScaleFactor,
+  }).localeCompare(
+    createArtifactFileStem({
+      adapterId: right.adapterId,
+      profile: right.profile,
+      scenarioId: right.scenarioId,
+      scriptName: right.scriptName,
+      browserName: right.browserName,
+      browserVersion: right.browserVersion,
+      seed: right.seed,
+      viewport: right.viewport,
+      fontStack: right.fontStack,
+      deviceScaleFactor: right.deviceScaleFactor,
+    }),
+  );
+
+  if (stemDiff !== 0) {
+    return stemDiff;
+  }
+
+  return statusRank(left.status) - statusRank(right.status);
+}
+
+function statusRank(status: BenchRunSummary["status"]): number {
+  switch (status) {
+    case "completed":
+      return 0;
+    case "partial":
+      return 1;
+    case "failed":
+      return 2;
+    case "unsupported":
+      return 3;
   }
 }
