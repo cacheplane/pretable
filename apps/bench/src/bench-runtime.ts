@@ -67,6 +67,7 @@ interface ScrollRuntimeProfile {
   viewportSelector: string;
   rowSelector: string;
   rowIndexAttribute: string;
+  settleFrames: number;
   measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
 }
 
@@ -75,12 +76,14 @@ const scrollRuntimeProfiles: Record<BenchQueryState["adapterId"], ScrollRuntimeP
     viewportSelector: ".ag-body-viewport",
     rowSelector: ".ag-row",
     rowIndexAttribute: "row-index",
+    settleFrames: 1,
     measureRowHeightError: measureAgGridRowHeightError,
   },
   pretable: {
     viewportSelector: "[data-pretable-scroll-viewport]",
     rowSelector: "[data-pretable-row]",
     rowIndexAttribute: "data-row-index",
+    settleFrames: 2,
     measureRowHeightError: measurePretableRowHeightError,
   },
 };
@@ -120,11 +123,11 @@ export async function measureBenchScrollRun(
   ];
 
   viewport.scrollTop = 0;
-  await waitForAnimationFrame();
+  await waitForAnimationFrames(profile.settleFrames);
 
   for (const scrollTarget of scrollTargets) {
     viewport.scrollTop = scrollTarget;
-    const frameTimestamp = await waitForAnimationFrame();
+    const frameTimestamp = await waitForAnimationFrames(profile.settleFrames);
 
     if (previousFrameTimestamp !== null) {
       frameDurations.push(frameTimestamp - previousFrameTimestamp);
@@ -253,6 +256,16 @@ function waitForAnimationFrame() {
       resolve(timestamp);
     });
   });
+}
+
+async function waitForAnimationFrames(count: number) {
+  let timestamp = 0;
+
+  for (let frame = 0; frame < count; frame += 1) {
+    timestamp = await waitForAnimationFrame();
+  }
+
+  return timestamp;
 }
 
 async function waitForScrollViewport(
