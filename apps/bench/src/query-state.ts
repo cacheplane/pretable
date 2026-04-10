@@ -14,9 +14,11 @@ export function parseBenchQuery(input: string | URLSearchParams): BenchQueryStat
 
   return {
     adapterId:
-      searchParams.get("adapter") === "pretable"
-        ? "pretable"
-        : DEFAULT_QUERY_STATE.adapterId,
+      searchParams.get("adapter") === "gridalpha"
+        ? "gridalpha"
+        : searchParams.get("adapter") === "pretable"
+          ? "pretable"
+          : DEFAULT_QUERY_STATE.adapterId,
     scenarioId:
       searchParams.get("scenario") === "S2"
         ? "S2"

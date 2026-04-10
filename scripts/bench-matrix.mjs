@@ -3,18 +3,25 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+const DEFAULT_ADAPTERS = ["pretable", "gridalpha"];
 const DEFAULT_SCENARIOS = ["S1", "S2"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 
 export function parseBenchMatrixArgs(args) {
   const parsed = {
+    adapters: DEFAULT_ADAPTERS,
     scenarios: DEFAULT_SCENARIOS,
     scripts: DEFAULT_SCRIPTS,
     passthroughArgs: [],
   };
 
   for (const arg of args) {
+    if (arg.startsWith("--adapters=")) {
+      parsed.adapters = splitCsvArg(arg.slice("--adapters=".length));
+      continue;
+    }
+
     if (arg.startsWith("--scenarios=")) {
       parsed.scenarios = splitCsvArg(arg.slice("--scenarios=".length));
       continue;
@@ -32,11 +39,14 @@ export function parseBenchMatrixArgs(args) {
 }
 
 export function createBenchMatrixEntries(parsedArgs) {
-  return parsedArgs.scenarios.flatMap((scenarioId) =>
-    parsedArgs.scripts.map((scriptName) => ({
-      scenarioId,
-      scriptName,
-    })),
+  return parsedArgs.adapters.flatMap((adapterId) =>
+    parsedArgs.scenarios.flatMap((scenarioId) =>
+      parsedArgs.scripts.map((scriptName) => ({
+        adapterId,
+        scenarioId,
+        scriptName,
+      })),
+    ),
   );
 }
 
@@ -132,6 +142,7 @@ function spawnBenchRun(entry, passthroughArgs) {
       env: {
         ...process.env,
         PRETABLE_BENCH_BASE_URL: BENCH_BASE_URL,
+        PRETABLE_BENCH_ADAPTER: entry.adapterId,
         PRETABLE_BENCH_EXTERNAL_SERVER: "1",
         PRETABLE_BENCH_SCENARIO: entry.scenarioId,
         PRETABLE_BENCH_SCRIPT: entry.scriptName,
@@ -227,6 +238,7 @@ async function writeHypothesisReport(report) {
 
 function evaluateH1(runs) {
   const wrappedScrollRun = findLatestRun(runs, {
+    adapterId: "pretable",
     scenarioId: "S2",
     scriptName: "scroll",
   });
@@ -367,7 +379,9 @@ function findLatestRun(runs, matcher) {
   return runs
     .filter(
       (run) =>
-        run.scenarioId === matcher.scenarioId && run.scriptName === matcher.scriptName,
+        (matcher.adapterId === undefined || run.adapterId === matcher.adapterId) &&
+        run.scenarioId === matcher.scenarioId &&
+        run.scriptName === matcher.scriptName,
     )
     .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
     .at(-1);

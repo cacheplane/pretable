@@ -57,6 +57,14 @@ describe("bench-runner contract", () => {
 
   test("enforces the explicit P0a support matrix", () => {
     expect(validateSupportedP0aRequest(baseRequest)).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "gridalpha",
+        scenarioId: "S2",
+        scriptName: "scroll",
+      }),
+    ).toEqual({ ok: true });
 
     expect(
       validateSupportedP0aRequest({
@@ -92,13 +100,18 @@ describe("bench-runner contract", () => {
       createBenchRunSummary({
         request: {
           ...baseRequest,
-          scenarioId: "S4",
-          scriptName: "autosize",
+          adapterId: "gridgamma",
+          scenarioId: "S2",
+          scriptName: "scroll",
         },
         status: "completed",
         timestamp: "2026-04-10T13:00:00.000Z",
-        tracePath: "status/traces/pretable-s4-default-autosize.trace.zip",
+        tracePath: "status/traces/gridgamma-s2-default-scroll.trace.zip",
         metrics: {
+          scroll_frame_p95_ms: 18,
+          blank_gap_frames: 0,
+          long_tasks_count: 0,
+          long_tasks_ms: 0,
           dom_nodes_peak: 64,
         },
       }),

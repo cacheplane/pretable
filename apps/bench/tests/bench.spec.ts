@@ -8,8 +8,11 @@ import {
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
 
+const adapterId = process.env.PRETABLE_BENCH_ADAPTER ?? "pretable";
 const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
+const adapterLabel =
+  adapterId === "gridalpha" ? "Grid Alpha Community adapter" : "Pretable React adapter";
 
 test("writes benchmark artifacts for the selected Pretable run", async ({
   page,
@@ -19,7 +22,11 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     snapshots: true,
   });
 
-  await page.goto(`/?scenario=${scenarioId}&script=${scriptName}&autorun=1`);
+  await page.goto(
+    `/?adapter=${adapterId}&scenario=${scenarioId}&script=${scriptName}&autorun=1`,
+  );
+
+  await expect(page.getByText(adapterLabel)).toBeVisible();
 
   await page.waitForFunction(() => Boolean(window.__PRETABLE_BENCH_RESULT__));
 
@@ -27,7 +34,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
 
   expect(result).toMatchObject({
     status: "completed",
-    adapterId: "pretable",
+    adapterId,
     scenarioId,
     profile: "default",
     scriptName,
