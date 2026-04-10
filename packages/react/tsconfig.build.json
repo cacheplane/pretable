@@ -6,7 +6,8 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "paths": {
-      "@pretable/core": ["../core/dist/index.d.ts"]
+      "@pretable/core": ["../core/dist/index"],
+      "@pretable/core/*": ["../core/dist/*"]
     },
     "rootDir": "src"
   }
