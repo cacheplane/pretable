@@ -1,0 +1,158 @@
+:root {
+  color: #f7f4ea;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(214, 96, 36, 0.28),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(67, 126, 201, 0.24),
+      transparent 26%
+    ),
+    #0e1116;
+  font-family: "IBM Plex Sans", "Avenir Next", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.bench-shell {
+  margin: 0 auto;
+  max-width: 1200px;
+  padding: 48px 24px 64px;
+}
+
+.bench-hero {
+  max-width: 760px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #ffbc7d;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.bench-hero h1 {
+  margin: 0;
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  font-size: clamp(2.5rem, 5vw, 4.6rem);
+  letter-spacing: -0.04em;
+  line-height: 0.94;
+}
+
+.hero-copy {
+  max-width: 620px;
+  color: #d7d1c4;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.bench-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  margin-top: 36px;
+}
+
+.scenario-panel,
+.preview-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  background: rgba(17, 22, 30, 0.74);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  padding: 24px;
+}
+
+.panel-header {
+  margin-bottom: 18px;
+}
+
+.panel-header h2 {
+  margin: 0 0 6px;
+  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  font-size: 1.45rem;
+}
+
+.panel-header p,
+.scenario-card p,
+.status-note {
+  color: #cfc8bc;
+  line-height: 1.5;
+}
+
+.scenario-list {
+  display: grid;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scenario-card {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 16px;
+}
+
+.scenario-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.scenario-id {
+  border-radius: 999px;
+  background: rgba(255, 188, 125, 0.14);
+  color: #ffbc7d;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 4px 10px;
+}
+
+.scenario-card strong {
+  font-size: 1rem;
+}
+
+.scenario-card p {
+  margin: 0 0 8px;
+}
+
+.scenario-card small {
+  color: #8aa7cd;
+}
+
+.preview-panel section {
+  border: 1px dashed rgba(138, 167, 205, 0.35);
+  border-radius: 18px;
+  padding: 18px;
+  background: rgba(138, 167, 205, 0.06);
+}
+
+.preview-panel p {
+  margin: 0 0 10px;
+}
+
+.status-note {
+  margin-top: 18px;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 720px) {
+  .bench-shell {
+    padding: 28px 16px 48px;
+  }
+}

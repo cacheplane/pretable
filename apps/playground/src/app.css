@@ -1,0 +1,126 @@
+:root {
+  color: #102033;
+  background:
+    linear-gradient(135deg, rgba(255, 244, 198, 0.8), transparent 30%),
+    linear-gradient(220deg, rgba(105, 181, 165, 0.24), transparent 34%), #f4efe2;
+  font-family: "Avenir Next", "IBM Plex Sans", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.playground-shell {
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 36px 20px 56px;
+}
+
+.playground-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: #b45b24;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.playground-hero h1 {
+  margin: 0;
+  max-width: 720px;
+  font-family: "Space Grotesk", "Avenir Next", sans-serif;
+  font-size: clamp(2.2rem, 4.6vw, 4rem);
+  letter-spacing: -0.04em;
+  line-height: 0.98;
+}
+
+.hero-card {
+  min-width: 180px;
+  border-radius: 18px;
+  background: rgba(16, 32, 51, 0.9);
+  color: #f4efe2;
+  padding: 16px 18px;
+}
+
+.hero-card span {
+  display: block;
+  color: #f7c56f;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-card strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 1.05rem;
+}
+
+.playground-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  margin-top: 32px;
+}
+
+.workspace-panel,
+.notes-panel {
+  border: 1px solid rgba(16, 32, 51, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 18px 48px rgba(47, 67, 89, 0.12);
+  padding: 24px;
+}
+
+.workspace-panel section {
+  border: 1px dashed rgba(16, 32, 51, 0.18);
+  border-radius: 18px;
+  padding: 18px;
+  background: rgba(255, 250, 241, 0.8);
+}
+
+.workspace-panel p,
+.notes-panel p {
+  color: #415266;
+  line-height: 1.55;
+}
+
+.workspace-panel h2,
+.notes-panel h2 {
+  margin: 0 0 8px;
+  font-family: "Space Grotesk", "Avenir Next", sans-serif;
+  font-size: 1.35rem;
+}
+
+.notes-panel ol {
+  margin: 16px 0 0;
+  padding-left: 20px;
+}
+
+.notes-panel li {
+  margin-bottom: 14px;
+  color: #223043;
+  line-height: 1.5;
+}
+
+@media (max-width: 860px) {
+  .playground-hero {
+    flex-direction: column;
+  }
+
+  .playground-grid {
+    grid-template-columns: 1fr;
+  }
+}
