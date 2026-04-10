@@ -142,6 +142,78 @@ body {
   background: rgba(138, 167, 205, 0.06);
 }
 
+.active-scenario {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.active-scenario p {
+  margin: 6px 0 0;
+}
+
+.run-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.run-toolbar button {
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ffbc7d, #d66024);
+  color: #0e1116;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 10px 16px;
+}
+
+.viewport-card {
+  border: 1px dashed rgba(138, 167, 205, 0.35);
+  border-radius: 18px;
+  background: rgba(138, 167, 205, 0.06);
+  margin-bottom: 18px;
+  min-height: 180px;
+  padding: 18px;
+}
+
+.adapter-surface section {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 18px;
+}
+
+.result-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 18px;
+}
+
+.result-grid dt {
+  color: #8aa7cd;
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.result-grid dd {
+  margin: 0;
+}
+
+.result-json {
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.22);
+  color: #f7f4ea;
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
 .preview-panel p {
   margin: 0 0 10px;
 }
@@ -154,5 +226,9 @@ body {
 @media (max-width: 720px) {
   .bench-shell {
     padding: 28px 16px 48px;
+  }
+
+  .result-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
