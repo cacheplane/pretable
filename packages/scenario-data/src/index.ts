@@ -1,4 +1,5 @@
 export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6";
+export type ScenarioScale = "smoke" | "dev" | "hypothesis" | "target";
 
 export type RowHeightMode = "fixed" | "variable" | "mixed";
 
@@ -36,10 +37,51 @@ export type ScenarioRow = Record<string, string | number>;
 
 export interface ScenarioDataset {
   scenario: ScenarioDefinition;
+  scale: ScenarioScale;
   columns: readonly ScenarioColumn[];
   rows: readonly ScenarioRow[];
+  rowCount: number;
   seed: number;
 }
+
+const scenarioScaleRowCounts: Record<ScenarioId, Record<ScenarioScale, number>> = {
+  S1: {
+    smoke: 250,
+    dev: 2_000,
+    hypothesis: 10_000,
+    target: 100_000,
+  },
+  S2: {
+    smoke: 120,
+    dev: 750,
+    hypothesis: 3_000,
+    target: 50_000,
+  },
+  S3: {
+    smoke: 120,
+    dev: 500,
+    hypothesis: 2_500,
+    target: 10_000,
+  },
+  S4: {
+    smoke: 120,
+    dev: 750,
+    hypothesis: 3_000,
+    target: 25_000,
+  },
+  S5: {
+    smoke: 120,
+    dev: 750,
+    hypothesis: 3_000,
+    target: 20_000,
+  },
+  S6: {
+    smoke: 120,
+    dev: 750,
+    hypothesis: 3_000,
+    target: 10_000,
+  },
+};
 
 const scenarioDefinitions = [
   {
@@ -160,15 +202,21 @@ export function getScenarioById(id: ScenarioId): ScenarioDefinition {
   return scenario;
 }
 
-export function createScenarioDataset(id: ScenarioId): ScenarioDataset {
+export function createScenarioDataset(
+  id: ScenarioId,
+  options: { scale?: ScenarioScale } = {},
+): ScenarioDataset {
   const scenario = getScenarioById(id);
   const seed = scenarioSeeds[id];
-  const sampleSize = id === "S1" ? 24 : id === "S2" ? 18 : 12;
+  const scale = options.scale ?? "smoke";
+  const rowCount = scenarioScaleRowCounts[id][scale];
 
   return {
     scenario,
+    scale,
     columns: buildColumns(scenario),
-    rows: buildRows(scenario, seed, sampleSize),
+    rows: buildRows(scenario, seed, rowCount),
+    rowCount,
     seed,
   };
 }

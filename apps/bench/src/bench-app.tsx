@@ -52,7 +52,9 @@ function waitForNextAnimationFrame() {
 
 export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const query = parseBenchQuery(search);
-  const dataset = createScenarioDataset(query.scenarioId);
+  const dataset = createScenarioDataset(query.scenarioId, {
+    scale: query.scale,
+  });
   const adapterDefinition = adapterRegistry[query.adapterId];
   const AdapterSurface = adapterDefinition.render;
   const [runKey, setRunKey] = useState(0);
@@ -221,6 +223,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             <div>
               <dt>Profile</dt>
               <dd>{query.profile}</dd>
+            </div>
+            <div>
+              <dt>Scale</dt>
+              <dd>{query.scale}</dd>
             </div>
             <div>
               <dt>Script</dt>

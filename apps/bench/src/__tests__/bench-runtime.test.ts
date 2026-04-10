@@ -14,11 +14,12 @@ import type { BenchQueryState } from "../bench-types";
 
 describe("bench runtime", () => {
   test("creates a reproducible bench request from query state and scenario data", () => {
-    const dataset = createScenarioDataset("S1");
+    const dataset = createScenarioDataset("S1", { scale: "dev" });
     const query: BenchQueryState = {
       adapterId: "pretable",
       scenarioId: "S1",
       profile: "default",
+      scale: "dev",
       scriptName: "initial",
       autorun: false,
     };
@@ -27,10 +28,12 @@ describe("bench runtime", () => {
       adapterId: "pretable",
       scenarioId: "S1",
       profile: "default",
+      scale: "dev",
       scriptName: "initial",
       browserName: "chromium",
       browserVersion: "123.0",
       seed: 101,
+      rowCount: 2_000,
       viewport: {
         width: 1440,
         height: 900,
@@ -46,11 +49,13 @@ describe("bench runtime", () => {
       adapterId: "pretable" as const,
       scenarioId: "S4" as const,
       profile: "default" as const,
+      scale: "smoke" as const,
       scriptName: "autosize" as const,
       browserName: "chromium" as const,
       browserVersion: "123.0",
       timestamp: "2026-04-10T13:00:00.000Z",
       seed: 404,
+      rowCount: 120,
       viewport: {
         width: 1440,
         height: 900,
@@ -62,6 +67,7 @@ describe("bench runtime", () => {
         adapterId: "pretable" as const,
         scenarioId: "S4" as const,
         profile: "default" as const,
+        scale: "smoke" as const,
         scriptName: "autosize" as const,
         reason: "unsupported in P0a",
       },

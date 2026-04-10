@@ -4,6 +4,7 @@ const DEFAULT_QUERY_STATE: BenchQueryState = {
   adapterId: "pretable",
   scenarioId: "S1",
   profile: "default",
+  scale: "dev",
   scriptName: "initial",
   autorun: false,
 };
@@ -11,23 +12,28 @@ const DEFAULT_QUERY_STATE: BenchQueryState = {
 export function parseBenchQuery(input: string | URLSearchParams): BenchQueryState {
   const searchParams =
     typeof input === "string" ? new URLSearchParams(input) : input;
+  const adapter = searchParams.get("adapter");
+  const scenario = searchParams.get("scenario");
+  const scale = searchParams.get("scale");
+  const script = searchParams.get("script");
 
   return {
     adapterId:
-      searchParams.get("adapter") === "gridalpha"
+      adapter === "gridalpha"
         ? "gridalpha"
-        : searchParams.get("adapter") === "pretable"
+        : adapter === "pretable"
           ? "pretable"
           : DEFAULT_QUERY_STATE.adapterId,
-    scenarioId:
-      searchParams.get("scenario") === "S2"
-        ? "S2"
-        : DEFAULT_QUERY_STATE.scenarioId,
+    scenarioId: scenario === "S2" ? "S2" : DEFAULT_QUERY_STATE.scenarioId,
     profile: DEFAULT_QUERY_STATE.profile,
-    scriptName:
-      searchParams.get("script") === "scroll"
-        ? "scroll"
-        : DEFAULT_QUERY_STATE.scriptName,
+    scale:
+      scale === "smoke" ||
+      scale === "dev" ||
+      scale === "hypothesis" ||
+      scale === "target"
+        ? scale
+        : DEFAULT_QUERY_STATE.scale,
+    scriptName: script === "scroll" ? "scroll" : DEFAULT_QUERY_STATE.scriptName,
     autorun: searchParams.get("autorun") === "1",
   };
 }

@@ -14,10 +14,12 @@ const baseRequest = {
   adapterId: "pretable" as const,
   profile: "default" as const,
   scenarioId: "S1" as const,
+  scale: "dev" as const,
   scriptName: "initial" as const,
   browserName: "chromium" as const,
   browserVersion: "123.0",
   seed: 101,
+  rowCount: 2_000,
   viewport: { width: 1440, height: 900 },
   fontStack: '"IBM Plex Sans", system-ui, sans-serif',
   deviceScaleFactor: 1,
@@ -212,7 +214,7 @@ describe("bench-runner contract", () => {
     });
 
     expect(createArtifactFileStem(baseRequest)).toBe(
-      "chromium-pretable-default-s1-initial",
+      "chromium-pretable-default-s1-dev-initial",
     );
 
     expect(
@@ -220,7 +222,7 @@ describe("bench-runner contract", () => {
         ...baseRequest,
         timestamp: "2026-04-10T13:00:00.000Z",
       }),
-    ).toBe("chromium-pretable-default-s1-initial-2026-04-10t13-00-00-000z");
+    ).toBe("chromium-pretable-default-s1-dev-initial-2026-04-10t13-00-00-000z");
 
     const completed = createBenchRunSummary({
       request: baseRequest,
@@ -232,6 +234,11 @@ describe("bench-runner contract", () => {
         first_stable_viewport_ms: 18,
         dom_nodes_peak: 20,
       },
+    });
+
+    expect(completed).toMatchObject({
+      scale: "dev",
+      rowCount: 2_000,
     });
 
     const secondCompleted = createBenchRunSummary({
