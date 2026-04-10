@@ -1,3 +1,35 @@
 {
-  "files": []
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/react"
+    },
+    {
+      "path": "./packages/text-core"
+    },
+    {
+      "path": "./packages/layout-core"
+    },
+    {
+      "path": "./packages/grid-core"
+    },
+    {
+      "path": "./packages/renderer-dom"
+    },
+    {
+      "path": "./packages/scenario-data"
+    },
+    {
+      "path": "./packages/bench-runner"
+    },
+    {
+      "path": "./apps/bench"
+    },
+    {
+      "path": "./apps/playground"
+    }
+  ]
 }
