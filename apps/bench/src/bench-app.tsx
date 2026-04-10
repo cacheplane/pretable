@@ -13,7 +13,11 @@ import {
 } from "@pretable-internal/bench-runner";
 
 import type { BenchQueryState } from "./bench-types";
-import { createBenchRequest, publishBenchResult } from "./bench-runtime";
+import {
+  createBenchRequest,
+  measurePretableScrollRun,
+  publishBenchResult,
+} from "./bench-runtime";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
 
@@ -76,17 +80,20 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     })}.trace.zip`;
     const domNodesPeak = viewportRef.current?.querySelectorAll("*").length ?? 0;
 
-    const nextResult =
+    const scrollRun =
       scriptName === "scroll"
+        ? await measurePretableScrollRun(viewportRef.current ?? document.body)
+        : null;
+
+    const nextResult =
+      scriptName === "scroll" && scrollRun
         ? createBenchRunSummary({
             request,
-            status: "partial",
+            status: scrollRun.status,
             timestamp,
             tracePath,
-            notes: ["scroll observer metrics unavailable in current runtime"],
-            metrics: {
-              dom_nodes_peak: domNodesPeak,
-            },
+            notes: scrollRun.notes,
+            metrics: scrollRun.metrics,
           })
         : createBenchRunSummary({
             request,

@@ -1,6 +1,9 @@
 export interface PretableColumn {
   id: string;
   header?: string;
+  wrap?: boolean;
+  widthPx?: number;
+  pinned?: "left";
 }
 
 export type PretableRow = Record<string, unknown>;
