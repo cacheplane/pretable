@@ -1,4 +1,4 @@
-export { Pretable } from "./pretable";
+export { Pretable, measureRenderedRowHeight } from "./pretable";
 export { usePretable } from "./use-pretable";
 export type {
   PretableColumn,
