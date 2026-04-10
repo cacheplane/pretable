@@ -110,6 +110,8 @@ export async function measureBenchScrollRun(
   const frameDurations: number[] = [];
   const rowHeightErrors: number[] = [];
   const anchorShifts: number[] = [];
+  const forwardAnchorShifts: number[] = [];
+  const backwardAnchorShifts: number[] = [];
   let domNodesPeak = root.querySelectorAll("*").length;
   let blankGapFrames = 0;
   let previousFrameTimestamp: number | null = null;
@@ -167,6 +169,12 @@ export async function measureBenchScrollRun(
 
     if (anchorShift !== null) {
       anchorShifts.push(anchorShift);
+
+      if (viewport.scrollTop > previousScrollTop) {
+        forwardAnchorShifts.push(anchorShift);
+      } else if (viewport.scrollTop < previousScrollTop) {
+        backwardAnchorShifts.push(anchorShift);
+      }
     }
 
     previousVisibleRows = visibleRows;
@@ -197,6 +205,8 @@ export async function measureBenchScrollRun(
       dom_nodes_peak: domNodesPeak,
       row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
       scroll_anchor_shift_px: percentile(anchorShifts, 0.95),
+      scroll_anchor_shift_forward_p95_px: percentile(forwardAnchorShifts, 0.95),
+      scroll_anchor_shift_backward_p95_px: percentile(backwardAnchorShifts, 0.95),
     },
   };
 }
