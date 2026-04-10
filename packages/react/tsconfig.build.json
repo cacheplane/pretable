@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "composite": false,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "paths": {
+      "@pretable/core": ["../core/dist/index.d.ts"]
+    },
+    "rootDir": "src"
+  }
+}
