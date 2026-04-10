@@ -86,6 +86,22 @@ describe("bench-runner contract", () => {
       ok: false,
       reason: expect.stringContaining("script"),
     });
+
+    expect(() =>
+      createBenchRunSummary({
+        request: {
+          ...baseRequest,
+          scenarioId: "S4",
+          scriptName: "autosize",
+        },
+        status: "completed",
+        timestamp: "2026-04-10T13:00:00.000Z",
+        tracePath: "status/traces/pretable-s4-default-autosize.trace.zip",
+        metrics: {
+          dom_nodes_peak: 64,
+        },
+      }),
+    ).toThrow(/Unsupported/);
   });
 
   test("serializes unsupported, partial, and completed runs with stable fields", () => {
@@ -145,6 +161,20 @@ describe("bench-runner contract", () => {
         },
       }),
     ).toThrow(/first_stable_viewport_ms/);
+
+    expect(() =>
+      createBenchRunSummary({
+        request: baseRequest,
+        status: "completed",
+        timestamp: "2026-04-10T13:00:00.000Z",
+        tracePath: "status/traces/pretable-s1-default-initial.trace.zip",
+        metrics: {
+          mount_ms: Number.NaN,
+          first_stable_viewport_ms: 18,
+          dom_nodes_peak: 20,
+        },
+      }),
+    ).toThrow(/finite/);
   });
 
   test("serializes failed runs and aggregates dashboard entries deterministically", () => {
@@ -183,8 +213,23 @@ describe("bench-runner contract", () => {
       },
     });
 
-    expect(createDashboardIndex([failed, completed])).toMatchObject({
-      runs: [failed, completed],
+    const secondCompleted = createBenchRunSummary({
+      request: {
+        ...baseRequest,
+        scenarioId: "S2",
+      },
+      status: "completed",
+      timestamp: "2026-04-10T13:00:00.000Z",
+      tracePath: "status/traces/pretable-s2-default-initial.trace.zip",
+      metrics: {
+        mount_ms: 22,
+        first_stable_viewport_ms: 28,
+        dom_nodes_peak: 24,
+      },
+    });
+
+    expect(createDashboardIndex([secondCompleted, completed, failed])).toMatchObject({
+      runs: [completed, failed, secondCompleted],
     });
   });
 });
