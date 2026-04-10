@@ -237,7 +237,24 @@ describe("bench-runner contract", () => {
     });
 
     expect(createDashboardIndex([secondCompleted, completed, failed])).toMatchObject({
-      runs: [completed, failed, secondCompleted],
+      runs: [failed, secondCompleted],
+    });
+
+    const refreshedCompleted = createBenchRunSummary({
+      request: baseRequest,
+      status: "completed",
+      timestamp: "2026-04-10T13:05:00.000Z",
+      tracePath:
+        "status/traces/chromium-pretable-default-s1-initial-2026-04-10t13-05-00-000z.trace.zip",
+      metrics: {
+        mount_ms: 10,
+        first_stable_viewport_ms: 16,
+        dom_nodes_peak: 18,
+      },
+    });
+
+    expect(createDashboardIndex([completed, refreshedCompleted, secondCompleted])).toMatchObject({
+      runs: [secondCompleted, refreshedCompleted],
     });
   });
 });

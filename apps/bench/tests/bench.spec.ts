@@ -8,7 +8,10 @@ import {
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
 
-test("writes benchmark artifacts for the S1 initial Pretable run", async ({
+const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
+const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
+
+test("writes benchmark artifacts for the selected Pretable run", async ({
   page,
 }) => {
   await page.context().tracing.start({
@@ -16,18 +19,18 @@ test("writes benchmark artifacts for the S1 initial Pretable run", async ({
     snapshots: true,
   });
 
-  await page.goto("/?scenario=S1&script=initial&autorun=1");
+  await page.goto(`/?scenario=${scenarioId}&script=${scriptName}&autorun=1`);
 
   await page.waitForFunction(() => Boolean(window.__PRETABLE_BENCH_RESULT__));
 
   const result = await page.evaluate(() => window.__PRETABLE_BENCH_RESULT__);
 
   expect(result).toMatchObject({
-    status: "completed",
+    status: scriptName === "scroll" ? "partial" : "completed",
     adapterId: "pretable",
-    scenarioId: "S1",
+    scenarioId,
     profile: "default",
-    scriptName: "initial",
+    scriptName,
     tracePath: expect.stringContaining("status/traces/"),
   });
 

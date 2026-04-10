@@ -303,8 +303,30 @@ export function createRunArtifactFileStem(input: {
 export function createDashboardIndex(
   runs: readonly BenchRunSummary[],
 ): DashboardIndex {
+  const latestRunsByStem = new Map<string, BenchRunSummary>();
+
+  for (const run of runs) {
+    const stem = createArtifactFileStem({
+      adapterId: run.adapterId,
+      profile: run.profile,
+      scenarioId: run.scenarioId,
+      scriptName: run.scriptName,
+      browserName: run.browserName,
+      browserVersion: run.browserVersion,
+      seed: run.seed,
+      viewport: run.viewport,
+      fontStack: run.fontStack,
+      deviceScaleFactor: run.deviceScaleFactor,
+    });
+    const current = latestRunsByStem.get(stem);
+
+    if (!current || compareBenchRuns(current, run) < 0) {
+      latestRunsByStem.set(stem, run);
+    }
+  }
+
   return {
-    runs: [...runs].sort(compareBenchRuns),
+    runs: [...latestRunsByStem.values()].sort(compareBenchRuns),
   };
 }
 
