@@ -4,9 +4,9 @@ export type RowHeightMode = "fixed" | "variable" | "mixed";
 
 export interface ScenarioUpdateStream {
   mode: "batched";
-  batchEveryMs: number;
-  visibleUpdateRatePerSec: number;
-  offscreenUpdateRatePerSec: number;
+  batch_every_ms: number;
+  visible_update_rate_per_sec: number;
+  offscreen_update_rate_per_sec: number;
 }
 
 export interface ScenarioDefinition {
@@ -14,14 +14,14 @@ export interface ScenarioDefinition {
   name: string;
   rows: number;
   cols: number;
-  rowHeightMode: RowHeightMode;
-  wrappedColumns: number;
-  pinnedLeft: number;
+  row_height_mode: RowHeightMode;
+  wrapped_columns: number;
+  pinned_left: number;
   purpose: string;
   corpus?: "multilingual";
-  autosizeAllColumns?: boolean;
-  richCellsPercent?: number;
-  updateStream?: ScenarioUpdateStream;
+  autosize_all_columns?: boolean;
+  rich_cells_percent?: number;
+  update_stream: "none" | ScenarioUpdateStream;
 }
 
 export interface ScenarioColumn {
@@ -44,9 +44,10 @@ const scenarioDefinitions = [
     name: "fixed-dense-text",
     rows: 100_000,
     cols: 50,
-    rowHeightMode: "fixed",
-    wrappedColumns: 0,
-    pinnedLeft: 0,
+    row_height_mode: "fixed",
+    wrapped_columns: 0,
+    pinned_left: 0,
+    update_stream: "none",
     purpose: "Simple baseline before variable height enters.",
   },
   {
@@ -54,10 +55,11 @@ const scenarioDefinitions = [
     name: "wrap-auto-height",
     rows: 50_000,
     cols: 40,
-    rowHeightMode: "variable",
-    wrappedColumns: 3,
-    pinnedLeft: 1,
+    row_height_mode: "variable",
+    wrapped_columns: 3,
+    pinned_left: 1,
     corpus: "multilingual",
+    update_stream: "none",
     purpose: "Primary wedge benchmark.",
   },
   {
@@ -65,9 +67,10 @@ const scenarioDefinitions = [
     name: "many-columns",
     rows: 10_000,
     cols: 500,
-    rowHeightMode: "fixed",
-    wrappedColumns: 0,
-    pinnedLeft: 2,
+    row_height_mode: "fixed",
+    wrapped_columns: 0,
+    pinned_left: 2,
+    update_stream: "none",
     purpose: "Column virtualization and pinned-zone overhead.",
   },
   {
@@ -75,10 +78,11 @@ const scenarioDefinitions = [
     name: "offscreen-autosize",
     rows: 25_000,
     cols: 200,
-    rowHeightMode: "mixed",
-    wrappedColumns: 2,
-    pinnedLeft: 1,
-    autosizeAllColumns: true,
+    row_height_mode: "mixed",
+    wrapped_columns: 2,
+    pinned_left: 1,
+    autosize_all_columns: true,
+    update_stream: "none",
     purpose: "Directly test unseen-column sizing.",
   },
   {
@@ -86,15 +90,15 @@ const scenarioDefinitions = [
     name: "streaming-updates",
     rows: 20_000,
     cols: 30,
-    rowHeightMode: "fixed",
-    wrappedColumns: 1,
-    pinnedLeft: 1,
+    row_height_mode: "fixed",
+    wrapped_columns: 1,
+    pinned_left: 1,
     purpose: "Scheduler discipline and cache invalidation.",
-    updateStream: {
+    update_stream: {
       mode: "batched",
-      batchEveryMs: 50,
-      visibleUpdateRatePerSec: 200,
-      offscreenUpdateRatePerSec: 800,
+      batch_every_ms: 50,
+      visible_update_rate_per_sec: 200,
+      offscreen_update_rate_per_sec: 800,
     },
   },
   {
@@ -102,10 +106,11 @@ const scenarioDefinitions = [
     name: "light-rich-cells",
     rows: 10_000,
     cols: 25,
-    rowHeightMode: "fixed",
-    wrappedColumns: 0,
-    pinnedLeft: 1,
-    richCellsPercent: 10,
+    row_height_mode: "fixed",
+    wrapped_columns: 0,
+    pinned_left: 1,
+    rich_cells_percent: 10,
+    update_stream: "none",
     purpose: "Check whether richer content breaks the design too early.",
   },
 ] as const satisfies readonly ScenarioDefinition[];
