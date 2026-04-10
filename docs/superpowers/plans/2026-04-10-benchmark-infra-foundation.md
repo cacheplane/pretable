@@ -109,6 +109,8 @@ Write tests that prove:
 - the script-name union contains the full reserved script schema
 - the supported matrix enforces `pretable + default + chromium + S1/S2 + initial/scroll`
 - unsupported profiles, scenarios, and scripts fail explicitly for `P0a`
+- unsupported results include the rejected tuple and a reason string
+- failed results include a stable serialized error payload
 - required metrics are enforced per supported script
 - per-run summary creation omits unsupported metrics instead of fabricating values
 - artifact path helpers generate stable filenames from adapter/scenario/profile/browser/script
@@ -179,7 +181,7 @@ Write tests that prove:
 - invalid query params fall back to safe defaults
 - unsupported `P0a` combinations are rejected explicitly
 - `autorun=1` is the only path that auto-starts a run
-- `window.__PRETABLE_BENCH_RESULT__` only receives terminal `completed`, `failed`, or `unsupported` results
+- `window.__PRETABLE_BENCH_RESULT__` only receives terminal `completed`, `partial`, `failed`, or `unsupported` results
 - the runtime stores the latest summary on `window.__PRETABLE_BENCH_RESULT__`
 - the runtime can build a dashboard entry from a run summary
 
@@ -200,8 +202,9 @@ Implement:
 - bench shell UI that renders live scenario metadata from `scenario-data`
 - manual run button for `initial` and `scroll`
 - assignment of the latest result payload to `window.__PRETABLE_BENCH_RESULT__`
-- structured terminal results for `completed`, `failed`, and `unsupported`
+- structured terminal results for `completed`, `partial`, `failed`, and `unsupported`
 - explicit structured `unsupported` results for `S3` through `S6`
+- stable serialized error payloads for failed adapter runs
 
 Keep this slice honest: if a metric cannot be measured correctly yet, omit it and annotate the run summary instead.
 
