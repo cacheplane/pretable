@@ -1,0 +1,20 @@
+{
+  "name": "@pretable/app-playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "predev": "pnpm --filter @pretable/react build",
+    "dev": "vite",
+    "prebuild": "pnpm --filter @pretable/react build",
+    "build": "vite build",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run --environment jsdom --passWithNoTests",
+    "pretypecheck": "pnpm --filter @pretable/react build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pretable/react": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}
