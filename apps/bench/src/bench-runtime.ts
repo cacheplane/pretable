@@ -252,7 +252,7 @@ function sampleVisibleRows(viewport: HTMLElement): VisibleRowSample[] {
       return {
         rowIndex: Number(row.getAttribute("data-row-index")),
         top: rect.top - viewportBounds.top,
-        heightError: Math.abs(row.scrollHeight - rect.height),
+        heightError: measureRowHeightError(row, rect.height),
       } satisfies VisibleRowSample;
     })
     .filter((row): row is VisibleRowSample => row !== null);
@@ -294,4 +294,20 @@ function getViewportContentBounds(viewport: HTMLElement) {
     top,
     bottom,
   };
+}
+
+function measureRowHeightError(row: HTMLElement, renderedHeight: number) {
+  const style = getComputedStyle(row);
+  const verticalPadding =
+    parseFloat(style.paddingTop || "0") + parseFloat(style.paddingBottom || "0");
+  const borderHeight = parseFloat(style.borderBottomWidth || "0");
+  const contentHeight = Math.max(
+    0,
+    ...[...row.querySelectorAll<HTMLElement>("[data-pretable-cell]")]
+      .map((cell) => cell.scrollHeight)
+      .filter(Number.isFinite),
+  );
+  const expectedHeight = contentHeight + verticalPadding + borderHeight;
+
+  return Math.abs(expectedHeight - renderedHeight);
 }

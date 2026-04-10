@@ -3,7 +3,7 @@ import {
   type PretableColumn,
   type PretableRow,
 } from "@pretable/core";
-import { useMemo, useState } from "react";
+import { useEffectEvent, useMemo, useState } from "react";
 
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn[];
@@ -13,8 +13,11 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
 const VIEWPORT_HEIGHT = 320;
 const ROW_HEIGHT = 44;
 const OVERSCAN_ROWS = 6;
-const ROW_LINE_HEIGHT = 18;
+const ROW_LINE_HEIGHT = 22;
 const ROW_BLOCK_PADDING = 20;
+const HEADER_BLOCK_HEIGHT = 21;
+const ROW_BORDER_HEIGHT = 1;
+const ESTIMATED_CHARACTER_WIDTH = 10;
 
 export function Pretable<TRow extends PretableRow = PretableRow>({
   columns,
@@ -22,9 +25,14 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
 }: PretableProps<TRow>) {
   const grid = createGrid({ columns, rows });
   const [scrollTop, setScrollTop] = useState(0);
+  const [measuredHeights, setMeasuredHeights] = useState<Record<number, number>>({});
   const rowHeights = useMemo(
-    () => rows.map((row) => estimateRowHeight(row, columns)),
-    [columns, rows],
+    () =>
+      rows.map(
+        (row, rowIndex) =>
+          measuredHeights[rowIndex] ?? estimateRowHeight(row, columns),
+      ),
+    [columns, measuredHeights, rows],
   );
   const rowOffsets = useMemo(() => {
     return rowHeights
@@ -62,6 +70,30 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   const totalWidth = columns.reduce(
     (sum, column) => sum + getColumnWidth(column),
     0,
+  );
+  const captureMeasuredRow = useEffectEvent(
+    (rowIndex: number, node: HTMLDivElement | null) => {
+      if (!node) {
+        return;
+      }
+
+      const measuredHeight = measureRenderedRowHeight(node);
+
+      if (measuredHeight <= ROW_HEIGHT) {
+        return;
+      }
+
+      setMeasuredHeights((current) => {
+        if (current[rowIndex] === measuredHeight) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [rowIndex]: measuredHeight,
+        };
+      });
+    },
   );
 
   return (
@@ -120,6 +152,9 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
               data-row-height={height}
               data-row-index={rowIndex}
               data-testid="pretable-row"
+              ref={(node) => {
+                captureMeasuredRow(rowIndex, node);
+              }}
               style={{
                 alignItems: "start",
                 borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
@@ -137,11 +172,12 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
               }}
             >
               {columns.map((column) => (
-                <div key={column.id}>
+                <div key={column.id} data-pretable-cell="">
                   <strong
                     style={{
                       display: "block",
                       fontSize: 12,
+                      lineHeight: "16px",
                       marginBottom: 4,
                       opacity: 0.7,
                     }}
@@ -150,6 +186,8 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
                   </strong>
                   <span
                     style={{
+                      display: "block",
+                      lineHeight: `${ROW_LINE_HEIGHT}px`,
                       overflowWrap: column.wrap ? "anywhere" : "normal",
                       whiteSpace: column.wrap ? "pre-wrap" : "nowrap",
                     }}
@@ -177,12 +215,21 @@ function estimateRowHeight(row: PretableRow, columns: PretableColumn[]) {
     const content = String(row[column.id] ?? "");
     const lines = Math.max(
       1,
-      Math.ceil(content.length / Math.max(18, Math.floor(getColumnWidth(column) / 8))),
+      Math.ceil(
+        content.length /
+          Math.max(
+            16,
+            Math.floor(getColumnWidth(column) / ESTIMATED_CHARACTER_WIDTH),
+          ),
+      ),
     );
 
     estimatedHeight = Math.max(
       estimatedHeight,
-      lines * ROW_LINE_HEIGHT + ROW_BLOCK_PADDING + 6,
+      lines * ROW_LINE_HEIGHT +
+        HEADER_BLOCK_HEIGHT +
+        ROW_BLOCK_PADDING +
+        ROW_BORDER_HEIGHT,
     );
   }
 
@@ -220,4 +267,22 @@ function findRowIndexForOffset(
 
 function getColumnWidth(column: PretableColumn) {
   return column.widthPx ?? (column.wrap ? 220 : 140);
+}
+
+export function measureRenderedRowHeight(row: HTMLElement) {
+  const style = getComputedStyle(row);
+  const verticalPadding =
+    parseFloat(style.paddingTop || "0") + parseFloat(style.paddingBottom || "0");
+  const borderHeight = parseFloat(style.borderBottomWidth || "0");
+  const contentHeight = Math.max(
+    0,
+    ...[...row.querySelectorAll<HTMLElement>("[data-pretable-cell]")]
+      .map((cell) => cell.scrollHeight)
+      .filter(Number.isFinite),
+  );
+
+  return Math.max(
+    ROW_HEIGHT,
+    Math.ceil(contentHeight + verticalPadding + borderHeight),
+  );
 }

@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 
-import { Pretable } from "../index";
+import { Pretable, measureRenderedRowHeight } from "../index";
 
 afterEach(() => {
   cleanup();
@@ -82,4 +82,36 @@ it("renders variable row heights for wrapped benchmark-style data", () => {
 
   expect(new Set(rowHeights).size).toBeGreaterThan(1);
   expect(rowHeights.some((height) => height > 44)).toBe(true);
+  expect(Math.max(...rowHeights)).toBeGreaterThanOrEqual(140);
+});
+
+it("measures rendered row height from the tallest cell plus row chrome", () => {
+  const row = document.createElement("div");
+  row.innerHTML = `
+    <div data-pretable-cell=""></div>
+    <div data-pretable-cell=""></div>
+  `;
+  Object.defineProperty(row, "querySelectorAll", {
+    configurable: true,
+    value: () => [...row.children],
+  });
+  Object.defineProperty(row.children[0]!, "scrollHeight", {
+    configurable: true,
+    value: 84,
+  });
+  Object.defineProperty(row.children[1]!, "scrollHeight", {
+    configurable: true,
+    value: 120,
+  });
+  Object.defineProperty(window, "getComputedStyle", {
+    configurable: true,
+    value: () =>
+      ({
+        paddingTop: "10px",
+        paddingBottom: "10px",
+        borderBottomWidth: "1px",
+      }) satisfies Partial<CSSStyleDeclaration>,
+  });
+
+  expect(measureRenderedRowHeight(row)).toBe(141);
 });
