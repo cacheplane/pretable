@@ -94,6 +94,7 @@ This plan assumes the repository has already been initialized with `git init` du
 ## Task 1: Bootstrap the root workspace
 
 **Files:**
+
 - Create: `/Users/blove/repos/pretable/package.json`
 - Create: `/Users/blove/repos/pretable/pnpm-workspace.yaml`
 - Create: `/Users/blove/repos/pretable/.gitignore`
@@ -166,6 +167,7 @@ strict-peer-dependencies=false
 Write `.gitignore` with `node_modules`, `dist`, `coverage`, `playwright-report`, `test-results`, `.turbo`, `.DS_Store`, `status/changeset-status.json`, and generated tarballs under `status/snapshots/` so release smoke outputs stay untracked.
 
 Write `README.md` with:
+
 - workspace purpose
 - package layout summary
 - bootstrap command `pnpm install`
@@ -186,6 +188,7 @@ git commit -m "chore: bootstrap pnpm workspace"
 ## Task 2: Add shared TypeScript, lint, test, and release tooling
 
 **Files:**
+
 - Create: `/Users/blove/repos/pretable/tsconfig.base.json`
 - Create: `/Users/blove/repos/pretable/tsconfig.json`
 - Create: `/Users/blove/repos/pretable/eslint.config.js`
@@ -231,17 +234,18 @@ Write `eslint.config.js` using modern flat config with TypeScript and React supp
 Write `vitest.workspace.ts` to include package and app test projects, and make the React-facing test environment explicit:
 
 ```ts
-import { defineWorkspace } from 'vitest/config';
+import { defineWorkspace } from "vitest/config";
 
 export default defineWorkspace([
-  'packages/core',
-  'packages/react',
-  'apps/bench',
-  'apps/playground',
+  "packages/core",
+  "packages/react",
+  "apps/bench",
+  "apps/playground",
 ]);
 ```
 
 Add a Prettier-compatible formatting setup by:
+
 - relying on the root `format` and `format:write` scripts added in Task 1
 - keeping ESLint focused on correctness rather than formatting rules
 
@@ -272,6 +276,7 @@ git commit -m "chore: add shared monorepo tooling"
 ## Task 3: Scaffold the public packages
 
 **Files:**
+
 - Create: `/Users/blove/repos/pretable/packages/core/package.json`
 - Create: `/Users/blove/repos/pretable/packages/core/tsconfig.json`
 - Create: `/Users/blove/repos/pretable/packages/core/tsup.config.ts`
@@ -292,13 +297,13 @@ git commit -m "chore: add shared monorepo tooling"
 `packages/core/src/__tests__/create-grid.test.ts`:
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { createGrid } from '../create-grid';
+import { describe, expect, it } from "vitest";
+import { createGrid } from "../create-grid";
 
-describe('createGrid', () => {
-  it('returns a typed placeholder instance', () => {
+describe("createGrid", () => {
+  it("returns a typed placeholder instance", () => {
     const grid = createGrid({ columns: [], rows: [] });
-    expect(grid.kind).toBe('pretable-grid');
+    expect(grid.kind).toBe("pretable-grid");
   });
 });
 ```
@@ -306,14 +311,14 @@ describe('createGrid', () => {
 `packages/react/src/__tests__/pretable.test.tsx`:
 
 ```tsx
-import '@testing-library/jest-dom/vitest';
-import { it } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { Pretable } from '../pretable';
+import "@testing-library/jest-dom/vitest";
+import { it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { Pretable } from "../pretable";
 
-it('renders a placeholder label', () => {
+it("renders a placeholder label", () => {
   render(<Pretable rows={[]} columns={[]} />);
-  expect(screen.getByText('Pretable React adapter')).toBeInTheDocument();
+  expect(screen.getByText("Pretable React adapter")).toBeInTheDocument();
 });
 ```
 
@@ -322,6 +327,7 @@ it('renders a placeholder label', () => {
 First create minimal package manifests, `tsconfig.json`, and `tsup.config.ts` files for both public packages with scripts and dependency declarations, but do not create source files yet.
 
 `packages/core/package.json` must include:
+
 - `name: "@pretable/core"`
 - `version: "0.0.0"`
 - `type: "module"`
@@ -334,6 +340,7 @@ First create minimal package manifests, `tsconfig.json`, and `tsup.config.ts` fi
   - `typecheck: tsc -p tsconfig.json --noEmit`
 
 `packages/core/tsconfig.json` must:
+
 - extend `../../tsconfig.base.json`
 - set `rootDir: "src"` and `outDir: "dist"`
 - enable declaration emit
@@ -343,6 +350,7 @@ First create minimal package manifests, `tsconfig.json`, and `tsup.config.ts` fi
 `packages/core/tsup.config.ts` must build `src/index.ts` to ESM with declarations and cleaned output.
 
 `packages/react/package.json` must include:
+
 - `name: "@pretable/react"`
 - `version: "0.0.0"`
 - `type: "module"`
@@ -373,11 +381,11 @@ Expected: FAIL because test imports source files that still do not exist.
 Write `packages/core/src/create-grid.ts` with:
 
 ```ts
-import type { PretableGrid, PretableGridOptions } from './types';
+import type { PretableGrid, PretableGridOptions } from "./types";
 
 export function createGrid(options: PretableGridOptions): PretableGrid {
   return {
-    kind: 'pretable-grid',
+    kind: "pretable-grid",
     options,
   };
 }
@@ -423,6 +431,7 @@ git commit -m "feat: scaffold public packages"
 ## Task 4: Scaffold the internal packages
 
 **Files:**
+
 - Create: `/Users/blove/repos/pretable/packages/text-core/package.json`
 - Create: `/Users/blove/repos/pretable/packages/text-core/tsconfig.json`
 - Create: `/Users/blove/repos/pretable/packages/text-core/src/index.ts`
@@ -470,6 +479,7 @@ Each internal `package.json` should include:
 ```
 
 Use names:
+
 - `@pretable-internal/text-core`
 - `@pretable-internal/layout-core`
 - `@pretable-internal/grid-core`
@@ -478,16 +488,19 @@ Use names:
 - `@pretable-internal/bench-runner`
 
 Add matching workspace dependencies where package relationships exist:
+
 - `@pretable-internal/grid-core` depends on `@pretable-internal/text-core` and `@pretable-internal/layout-core`
 - `@pretable-internal/renderer-dom` depends on `@pretable-internal/grid-core`
 - `@pretable-internal/bench-runner` depends on `@pretable-internal/scenario-data`
 
 Each internal `tsconfig.json` must:
+
 - extend `../../tsconfig.base.json`
 - set `rootDir: "src"` and `outDir: "dist"`
 - include `src`
 
 Add package references where appropriate:
+
 - `grid-core` references `text-core` and `layout-core`
 - `renderer-dom` references `grid-core`
 - `bench-runner` references `scenario-data`
@@ -499,7 +512,7 @@ Use a single stable export per package so dependents can compile immediately.
 Example for `packages/bench-runner/src/index.ts`:
 
 ```ts
-export type BenchAdapterProfile = 'default' | 'tuned';
+export type BenchAdapterProfile = "default" | "tuned";
 
 export interface BenchAdapter {
   id: string;
@@ -538,6 +551,7 @@ git commit -m "feat: scaffold internal packages"
 ## Task 5: Scaffold the bench and playground apps
 
 **Files:**
+
 - Create: `/Users/blove/repos/pretable/apps/bench/package.json`
 - Create: `/Users/blove/repos/pretable/apps/bench/tsconfig.json`
 - Create: `/Users/blove/repos/pretable/apps/bench/vite.config.ts`
@@ -565,6 +579,7 @@ Expected: FAIL because the app files do not exist yet.
 Write a Vite React app named `@pretable/app-bench`.
 
 `apps/bench/package.json` must include:
+
 - `name: "@pretable/app-bench"`
 - `private: true`
 - scripts:
@@ -584,6 +599,7 @@ Write a Vite React app named `@pretable/app-bench`.
 `apps/bench/src/main.tsx` must render `<App />` using `ReactDOM.createRoot`.
 
 `apps/bench/src/app.tsx` should:
+
 - render a scenario list sourced from a local placeholder array
 - import `Pretable` from `@pretable/react`
 - explain that competitor routes and metrics wiring are pending
@@ -593,6 +609,7 @@ Write a Vite React app named `@pretable/app-bench`.
 Write a Vite React app named `@pretable/app-playground`.
 
 `apps/playground/package.json` must include:
+
 - `name: "@pretable/app-playground"`
 - `private: true`
 - scripts:
@@ -612,6 +629,7 @@ Write a Vite React app named `@pretable/app-playground`.
 `apps/playground/src/main.tsx` must render `<App />`.
 
 `apps/playground/src/app.tsx` should:
+
 - render a manual debugging page
 - import `Pretable` from `@pretable/react`
 - render sample rows and columns
@@ -643,6 +661,7 @@ git commit -m "feat: scaffold bench and playground apps"
 ## Task 6: Final integration and release verification
 
 **Files:**
+
 - Modify: `/Users/blove/repos/pretable/package.json`
 - Modify: `/Users/blove/repos/pretable/README.md`
 - Ensure directories exist: `/Users/blove/repos/pretable/docs/spec`, `/Users/blove/repos/pretable/docs/research`, `/Users/blove/repos/pretable/status/traces`, `/Users/blove/repos/pretable/status/snapshots`
@@ -653,6 +672,7 @@ Run: `mkdir -p docs/spec docs/research status/traces status/snapshots`
 Expected: directories exist for later benchmark outputs and documentation.
 
 Create tracked placeholder files:
+
 - `/Users/blove/repos/pretable/docs/spec/.gitkeep`
 - `/Users/blove/repos/pretable/docs/research/.gitkeep`
 - `/Users/blove/repos/pretable/status/traces/.gitkeep`

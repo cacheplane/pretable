@@ -2,6 +2,7 @@
   "name": "pretable",
   "private": true,
   "packageManager": "pnpm@10.12.1",
+  "type": "module",
   "scripts": {
     "build": "pnpm -r --filter './packages/*' build && pnpm -r --filter './apps/*' build",
     "dev:bench": "pnpm --filter @pretable/app-bench dev",

@@ -5,6 +5,7 @@
 ## Goal
 
 Create a modern `pnpm` monorepo for Pretable that supports:
+
 - two publishable npm packages from day one
 - internal engine and benchmark packages that can evolve without becoming part of the public contract
 - in-repo benchmark and playground apps aligned with the attached product spec and benchmark plan
@@ -16,12 +17,14 @@ This design covers repository structure, tooling, package boundaries, and initia
 ## Context
 
 The attached spec and benchmark plan define Pretable as a benchmark-driven grid project with:
+
 - a public framework-agnostic core
 - a separate React package
 - internal text, layout, renderer, and benchmark infrastructure
 - `bench` and `playground` apps living in the same repository
 
 The user clarified the following decisions during brainstorming:
+
 - use a modern `pnpm` monorepo instead of Nx
 - keep `bench` and `playground` in the same repo from day one
 - ship only the public data grid library initially
@@ -30,6 +33,7 @@ The user clarified the following decisions during brainstorming:
 - use the superpowers workflow for brainstorming, spec, and subagents
 
 Reference inputs:
+
 - `/Users/blove/Downloads/precomputed-grid-spec.md`
 - `/Users/blove/Downloads/benchmark-plan.yaml`
 
@@ -63,6 +67,7 @@ status/
 ## Tooling
 
 Use the following baseline stack:
+
 - `pnpm` workspaces for package management
 - TypeScript with project references across packages and apps
 - `tsup` for library builds in `@pretable/core` and `@pretable/react`
@@ -82,21 +87,25 @@ This stack keeps public library publishing straightforward while supporting the 
 #### `@pretable/core`
 
 Responsibility:
+
 - framework-agnostic public grid surface
 - stable exported types
 - top-level creation APIs and shared model interfaces
 
 Constraints:
+
 - may depend on internal workspace packages
 - defines the public contract that external users consume directly or indirectly
 
 #### `@pretable/react`
 
 Responsibility:
+
 - thin React adapter over `@pretable/core`
 - React components, hooks, and lifecycle glue
 
 Constraints:
+
 - depends on `@pretable/core`
 - should remain narrow and avoid owning engine logic
 
@@ -105,31 +114,37 @@ Constraints:
 #### `@pretable-internal/text-core`
 
 Responsibility:
+
 - text preparation and text layout experiments
 
 #### `@pretable-internal/layout-core`
 
 Responsibility:
+
 - range extraction, prefix-sum data structures, scroll math, stretch mapping
 
 #### `@pretable-internal/grid-core`
 
 Responsibility:
+
 - scheduler, state machine, cache invalidation, update pipeline
 
 #### `@pretable-internal/renderer-dom`
 
 Responsibility:
+
 - imperative pooled DOM rendering layer
 
 #### `@pretable-internal/scenario-data`
 
 Responsibility:
+
 - seeded datasets, corpora, and scenario fixtures
 
 #### `@pretable-internal/bench-runner`
 
 Responsibility:
+
 - benchmark adapter contract, metric collection, summaries, and trace helpers
 
 ### App ownership
@@ -137,16 +152,19 @@ Responsibility:
 #### `apps/bench`
 
 Responsibility:
+
 - benchmark harness UI
 - competitor routes
 - scenario execution and output wiring
 
 Implementation note:
+
 - use a Vite React app so the bench app and playground share the same modern frontend baseline initially
 
 #### `apps/playground`
 
 Responsibility:
+
 - manual debug surface
 - tiny repro pages for focused investigation
 
@@ -163,6 +181,7 @@ Responsibility:
 The initial scaffold should provide a working monorepo shell without implying that the real grid engine already exists.
 
 Include:
+
 - a fresh Git repository in the current empty workspace at `/Users/blove/repos/pretable`
 - `pnpm-workspace.yaml`
 - root `package.json` with shared scripts
@@ -178,6 +197,7 @@ Include:
 Publishing is a first-class requirement from day one.
 
 Requirements:
+
 - only `@pretable/core` and `@pretable/react` are publishable
 - packages include valid npm metadata, `exports`, and build outputs
 - Changesets manages versioning and release notes
@@ -186,6 +206,7 @@ Requirements:
 ## Non-goals
 
 The initial scaffold should not attempt to implement:
+
 - the real grid renderer
 - the real text engine
 - competitor benchmark adapters
@@ -201,6 +222,7 @@ The initial scaffold should not attempt to implement:
 ## Planning Readiness
 
 This design is ready to drive an implementation plan for the initial scaffold because it fixes:
+
 - the monorepo foundation
 - the package and app layout
 - the public versus internal package boundary
