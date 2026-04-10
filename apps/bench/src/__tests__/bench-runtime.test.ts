@@ -6,6 +6,7 @@ import {
   BENCH_RESULT_KEY,
   createBenchRequest,
   detectBlankGapFrame,
+  measurePretableScrollRun,
   publishBenchResult,
 } from "../bench-runtime";
 import type { BenchQueryState } from "../bench-types";
@@ -106,6 +107,133 @@ describe("bench runtime", () => {
       });
 
     expect(detectBlankGapFrame(viewport!)).toBe(true);
+  });
+
+  test("does not count viewport borders as blank gaps", () => {
+    document.body.innerHTML = `
+      <div data-testid="viewport">
+        <div data-pretable-row="" data-row-index="0"></div>
+      </div>
+    `;
+
+    const viewport = document.querySelector<HTMLElement>('[data-testid="viewport"]');
+    const row = document.querySelector<HTMLElement>("[data-pretable-row]");
+
+    expect(viewport).toBeTruthy();
+    expect(row).toBeTruthy();
+
+    Object.defineProperties(viewport!, {
+      clientTop: { value: 1, configurable: true },
+      clientHeight: { value: 318, configurable: true },
+    });
+    viewport!.getBoundingClientRect = () =>
+      createRect({
+        top: 100,
+        bottom: 420,
+      });
+    row!.getBoundingClientRect = () =>
+      createRect({
+        top: 101,
+        bottom: 419,
+      });
+
+    expect(detectBlankGapFrame(viewport!)).toBe(false);
+  });
+
+  test("measures scroll anchor shift and row-height error for a scroll viewport", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="0" data-row-height="60">
+            <div data-pretable-cell="">short</div>
+          </div>
+          <div data-pretable-row="" data-row-index="1" data-row-height="60">
+            <div data-pretable-cell="">a much longer row with more content</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    const viewport = root?.querySelector<HTMLElement>("[data-pretable-scroll-viewport]");
+    const rows = [...root!.querySelectorAll<HTMLElement>("[data-pretable-row]")];
+    const rafTimestamps = [0, 16, 32, 48, 64, 80];
+    let rafIndex = 0;
+    const OriginalPerformanceObserver = globalThis.PerformanceObserver;
+
+    expect(root).toBeTruthy();
+    expect(viewport).toBeTruthy();
+    expect(rows).toHaveLength(2);
+
+    Object.defineProperties(viewport!, {
+      clientTop: { value: 1, configurable: true },
+      clientHeight: { value: 118, configurable: true },
+      scrollHeight: { value: 180, configurable: true },
+      scrollTop: {
+        configurable: true,
+        get() {
+          return Number(this.dataset.scrollTop ?? "0");
+        },
+        set(value: number) {
+          this.dataset.scrollTop = String(value);
+        },
+      },
+    });
+    viewport!.getBoundingClientRect = () =>
+      createRect({
+        top: 100,
+        bottom: 220,
+      });
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        const timestamp = rafTimestamps[rafIndex] ?? rafTimestamps.at(-1) ?? 0;
+        rafIndex += 1;
+        callback(timestamp);
+        return rafIndex;
+      },
+    });
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: class PerformanceObserver {
+        static supportedEntryTypes = ["longtask"];
+
+        observe() {}
+
+        disconnect() {}
+      },
+    });
+
+    rows[0]!.getBoundingClientRect = () =>
+      createRect({
+        top: 101 - viewport!.scrollTop,
+        bottom: 161 - viewport!.scrollTop,
+      });
+    rows[1]!.getBoundingClientRect = () =>
+      createRect({
+        top: 161 - viewport!.scrollTop,
+        bottom: 221 - viewport!.scrollTop,
+      });
+    Object.defineProperty(rows[0]!, "scrollHeight", {
+      configurable: true,
+      value: 60,
+    });
+    Object.defineProperty(rows[1]!, "scrollHeight", {
+      configurable: true,
+      value: 84,
+    });
+
+    const result = await measurePretableScrollRun(root!);
+
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: OriginalPerformanceObserver,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.metrics.scroll_anchor_shift_px).toEqual(expect.any(Number));
+    expect(result.metrics.row_height_error_p95_px).toEqual(expect.any(Number));
+    expect(result.metrics.row_height_error_p95_px).toBeGreaterThan(0);
   });
 });
 

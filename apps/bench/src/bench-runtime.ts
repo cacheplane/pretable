@@ -79,17 +79,25 @@ export async function measurePretableScrollRun(
   const longTaskDurations: number[] = [];
   const observer = createLongTaskObserver(longTaskDurations);
   const frameDurations: number[] = [];
+  const rowHeightErrors: number[] = [];
+  const anchorShifts: number[] = [];
   let domNodesPeak = root.querySelectorAll("*").length;
   let blankGapFrames = 0;
   let previousFrameTimestamp: number | null = null;
+  let previousVisibleRows: VisibleRowSample[] = [];
+  let previousScrollTop = 0;
   const maxScrollTop = viewport.scrollHeight - viewport.clientHeight;
   const steps = 18;
+  const scrollTargets = [
+    ...Array.from({ length: steps }, (_, index) => ((index + 1) * maxScrollTop) / steps),
+    ...Array.from({ length: steps }, (_, index) => maxScrollTop - ((index + 1) * maxScrollTop) / steps),
+  ];
 
   viewport.scrollTop = 0;
   await waitForAnimationFrame();
 
-  for (let step = 1; step <= steps; step += 1) {
-    viewport.scrollTop = (maxScrollTop * step) / steps;
+  for (const scrollTarget of scrollTargets) {
+    viewport.scrollTop = scrollTarget;
     const frameTimestamp = await waitForAnimationFrame();
 
     if (previousFrameTimestamp !== null) {
@@ -98,10 +106,27 @@ export async function measurePretableScrollRun(
 
     previousFrameTimestamp = frameTimestamp;
     domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
+    const visibleRows = sampleVisibleRows(viewport);
 
     if (detectBlankGapFrame(viewport)) {
       blankGapFrames += 1;
     }
+
+    rowHeightErrors.push(...visibleRows.map((row) => row.heightError).filter((value) => value > 0));
+
+    const anchorShift = measureAnchorShift({
+      previousVisibleRows,
+      previousScrollTop,
+      nextVisibleRows: visibleRows,
+      nextScrollTop: viewport.scrollTop,
+    });
+
+    if (anchorShift !== null) {
+      anchorShifts.push(anchorShift);
+    }
+
+    previousVisibleRows = visibleRows;
+    previousScrollTop = viewport.scrollTop;
   }
 
   observer?.disconnect();
@@ -126,6 +151,8 @@ export async function measurePretableScrollRun(
       long_tasks_count: longTaskDurations.length,
       long_tasks_ms: longTaskDurations.reduce((total, duration) => total + duration, 0),
       dom_nodes_peak: domNodesPeak,
+      row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
+      scroll_anchor_shift_px: percentile(anchorShifts, 0.95),
     },
   };
 }
@@ -158,12 +185,12 @@ export function detectBlankGapFrame(viewport: HTMLElement) {
     return true;
   }
 
-  const viewportRect = viewport.getBoundingClientRect();
+  const viewportBounds = getViewportContentBounds(viewport);
   const clippedRows = rows
     .map((row) => row.getBoundingClientRect())
     .map((rect) => ({
-      top: Math.max(rect.top, viewportRect.top),
-      bottom: Math.min(rect.bottom, viewportRect.bottom),
+      top: Math.max(rect.top, viewportBounds.top),
+      bottom: Math.min(rect.bottom, viewportBounds.bottom),
     }))
     .filter((rect) => rect.bottom > rect.top)
     .sort((left, right) => left.top - right.top);
@@ -172,7 +199,7 @@ export function detectBlankGapFrame(viewport: HTMLElement) {
     return true;
   }
 
-  let cursor = viewportRect.top;
+  let cursor = viewportBounds.top;
 
   for (const rowRect of clippedRows) {
     if (rowRect.top > cursor + 1) {
@@ -182,7 +209,7 @@ export function detectBlankGapFrame(viewport: HTMLElement) {
     cursor = Math.max(cursor, rowRect.bottom);
   }
 
-  return cursor < viewportRect.bottom - 1;
+  return cursor < viewportBounds.bottom - 1;
 }
 
 function waitForAnimationFrame() {
@@ -201,4 +228,70 @@ function percentile(values: number[], ratio: number) {
   );
 
   return sorted[index] ?? 0;
+}
+
+interface VisibleRowSample {
+  rowIndex: number;
+  top: number;
+  heightError: number;
+}
+
+function sampleVisibleRows(viewport: HTMLElement): VisibleRowSample[] {
+  const viewportBounds = getViewportContentBounds(viewport);
+
+  return [...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]")]
+    .map((row) => {
+      const rect = row.getBoundingClientRect();
+      const clippedTop = Math.max(rect.top, viewportBounds.top);
+      const clippedBottom = Math.min(rect.bottom, viewportBounds.bottom);
+
+      if (clippedBottom <= clippedTop) {
+        return null;
+      }
+
+      return {
+        rowIndex: Number(row.getAttribute("data-row-index")),
+        top: rect.top - viewportBounds.top,
+        heightError: Math.abs(row.scrollHeight - rect.height),
+      } satisfies VisibleRowSample;
+    })
+    .filter((row): row is VisibleRowSample => row !== null);
+}
+
+function measureAnchorShift(input: {
+  previousVisibleRows: VisibleRowSample[];
+  previousScrollTop: number;
+  nextVisibleRows: VisibleRowSample[];
+  nextScrollTop: number;
+}) {
+  const previousByIndex = new Map(
+    input.previousVisibleRows.map((row) => [row.rowIndex, row]),
+  );
+  const nextMatch = input.nextVisibleRows.find((row) => previousByIndex.has(row.rowIndex));
+
+  if (!nextMatch) {
+    return null;
+  }
+
+  const previousMatch = previousByIndex.get(nextMatch.rowIndex);
+
+  if (!previousMatch) {
+    return null;
+  }
+
+  const expectedTop =
+    previousMatch.top - (input.nextScrollTop - input.previousScrollTop);
+
+  return Math.abs(nextMatch.top - expectedTop);
+}
+
+function getViewportContentBounds(viewport: HTMLElement) {
+  const rect = viewport.getBoundingClientRect();
+  const top = rect.top + viewport.clientTop;
+  const bottom = top + viewport.clientHeight;
+
+  return {
+    top,
+    bottom,
+  };
 }
