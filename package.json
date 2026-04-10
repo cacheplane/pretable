@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.12.1",
   "type": "module",
   "scripts": {
+    "bench:e2e": "node ./scripts/bench-e2e.mjs",
     "build": "pnpm -r --filter './packages/*' build && pnpm -r --filter './apps/*' build",
     "dev:bench": "pnpm --filter @pretable/app-bench dev",
     "dev:playground": "pnpm --filter @pretable/app-playground dev",

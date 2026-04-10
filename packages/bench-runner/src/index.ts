@@ -278,6 +278,28 @@ export function createArtifactFileStem(request: BenchRunRequest): string {
   ].join("-");
 }
 
+export function createRunArtifactFileStem(input: {
+  adapterId: BenchAdapterId;
+  profile: BenchAdapterProfile;
+  scenarioId: ScenarioId;
+  scriptName: BenchScriptName;
+  browserName: BenchBrowserName;
+  timestamp: string;
+}): string {
+  return `${createArtifactFileStem({
+    adapterId: input.adapterId,
+    profile: input.profile,
+    scenarioId: input.scenarioId,
+    scriptName: input.scriptName,
+    browserName: input.browserName,
+    browserVersion: "",
+    seed: 0,
+    viewport: { width: 0, height: 0 },
+    fontStack: "",
+    deviceScaleFactor: 1,
+  })}-${sanitizeTimestamp(input.timestamp)}`;
+}
+
 export function createDashboardIndex(
   runs: readonly BenchRunSummary[],
 ): DashboardIndex {
@@ -371,6 +393,10 @@ function compareBenchRuns(left: BenchRunSummary, right: BenchRunSummary): number
   }
 
   return statusRank(left.status) - statusRank(right.status);
+}
+
+function sanitizeTimestamp(timestamp: string): string {
+  return timestamp.toLowerCase().replaceAll(/[:.]/g, "-");
 }
 
 function statusRank(status: BenchRunSummary["status"]): number {

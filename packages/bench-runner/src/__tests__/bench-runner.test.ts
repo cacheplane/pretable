@@ -6,6 +6,7 @@ import {
   createArtifactFileStem,
   createBenchRunSummary,
   createDashboardIndex,
+  createRunArtifactFileStem,
   validateSupportedP0aRequest,
 } from "../index";
 
@@ -200,6 +201,13 @@ describe("bench-runner contract", () => {
     expect(createArtifactFileStem(baseRequest)).toBe(
       "chromium-pretable-default-s1-initial",
     );
+
+    expect(
+      createRunArtifactFileStem({
+        ...baseRequest,
+        timestamp: "2026-04-10T13:00:00.000Z",
+      }),
+    ).toBe("chromium-pretable-default-s1-initial-2026-04-10t13-00-00-000z");
 
     const completed = createBenchRunSummary({
       request: baseRequest,

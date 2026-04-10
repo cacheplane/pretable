@@ -1,10 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { BENCH_RESULT_KEY } from "../bench-runtime";
 import { BenchApp } from "../bench-app";
 
 describe("BenchApp", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test("renders selected scenario metadata and publishes a terminal result", async () => {
     render(<BenchApp search="?scenario=S2" browserVersion="123.0" />);
 
@@ -22,5 +26,35 @@ describe("BenchApp", () => {
         scriptName: "initial",
       });
     });
+  });
+
+  test("autorun completes without a lifecycle flushSync warning", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+
+    render(
+      <BenchApp
+        search="?scenario=S1&script=initial&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        status: "completed",
+        scenarioId: "S1",
+        scriptName: "initial",
+      });
+    });
+
+    expect(
+      consoleError.mock.calls.some((call) =>
+        call
+          .map((value) => String(value))
+          .join(" ")
+          .includes("flushSync was called from inside a lifecycle method"),
+      ),
+    ).toBe(false);
   });
 });
