@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const DEFAULT_ADAPTERS = ["pretable", "gridalpha"];
+const DEFAULT_REPEATS = 1;
 const DEFAULT_SCALE = "dev";
 const DEFAULT_SCENARIOS = ["S1", "S2"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
@@ -12,6 +13,7 @@ const BENCH_BASE_URL = "http://127.0.0.1:4173";
 export function parseBenchMatrixArgs(args) {
   const parsed = {
     adapters: DEFAULT_ADAPTERS,
+    repeats: DEFAULT_REPEATS,
     scale: DEFAULT_SCALE,
     scenarios: DEFAULT_SCENARIOS,
     scripts: DEFAULT_SCRIPTS,
@@ -21,6 +23,11 @@ export function parseBenchMatrixArgs(args) {
   for (const arg of args) {
     if (arg.startsWith("--adapters=")) {
       parsed.adapters = splitCsvArg(arg.slice("--adapters=".length));
+      continue;
+    }
+
+    if (arg.startsWith("--repeats=")) {
+      parsed.repeats = parsePositiveInteger(arg.slice("--repeats=".length), DEFAULT_REPEATS);
       continue;
     }
 
@@ -47,14 +54,17 @@ export function parseBenchMatrixArgs(args) {
 
 export function createBenchMatrixEntries(parsedArgs) {
   return parsedArgs.adapters.flatMap((adapterId) =>
-    parsedArgs.scenarios.flatMap((scenarioId) =>
-      parsedArgs.scripts.map((scriptName) => ({
-        adapterId,
-        scale: parsedArgs.scale,
-        scenarioId,
-        scriptName,
-      })),
-    ),
+    Array.from({ length: parsedArgs.repeats }, (_, repeatIndex) =>
+      parsedArgs.scenarios.flatMap((scenarioId) =>
+        parsedArgs.scripts.map((scriptName) => ({
+          adapterId,
+          repeatIndex,
+          scale: parsedArgs.scale,
+          scenarioId,
+          scriptName,
+        })),
+      ),
+    ).flat(),
   );
 }
 
@@ -134,7 +144,7 @@ async function runBenchEntry(entry, passthroughArgs) {
 
   if (!summaryPath) {
     throw new Error(
-      `bench:e2e did not write a summary for ${entry.scenarioId}/${entry.scriptName}`,
+      `bench:e2e did not write a summary for ${entry.adapterId}/${entry.scenarioId}/${entry.scriptName}#${entry.repeatIndex + 1}`,
     );
   }
 
@@ -152,6 +162,7 @@ function spawnBenchRun(entry, passthroughArgs) {
         PRETABLE_BENCH_BASE_URL: BENCH_BASE_URL,
         PRETABLE_BENCH_ADAPTER: entry.adapterId,
         PRETABLE_BENCH_EXTERNAL_SERVER: "1",
+        PRETABLE_BENCH_REPEAT_INDEX: String(entry.repeatIndex),
         PRETABLE_BENCH_SCALE: entry.scale,
         PRETABLE_BENCH_SCENARIO: entry.scenarioId,
         PRETABLE_BENCH_SCRIPT: entry.scriptName,
@@ -171,7 +182,11 @@ function spawnBenchRun(entry, passthroughArgs) {
         return;
       }
 
-      reject(new Error(`bench:e2e failed for ${entry.scenarioId}/${entry.scriptName}`));
+      reject(
+        new Error(
+          `bench:e2e failed for ${entry.adapterId}/${entry.scenarioId}/${entry.scriptName}#${entry.repeatIndex + 1}`,
+        ),
+      );
     });
   });
 }
@@ -181,6 +196,12 @@ function splitCsvArg(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value.trim(), 10);
+
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 async function waitForServer(url, server, timeoutMs = 30_000) {
@@ -246,31 +267,32 @@ async function writeHypothesisReport(report) {
 }
 
 function evaluateH1(runs) {
-  const wrappedScrollRun = findLatestRun(runs, {
+  const wrappedScrollSeries = findRunSeries(runs, {
     adapterId: "pretable",
     scenarioId: "S2",
     scriptName: "scroll",
   });
 
-  if (!wrappedScrollRun || wrappedScrollRun.status !== "completed") {
+  if (wrappedScrollSeries.length === 0) {
     return {
       id: "H1",
       status: "insufficient",
       summary:
         "Missing a completed S2 scroll run, so wrapped-text scroll evidence is not available yet.",
-      evidence: wrappedScrollRun ? [summarizeRunEvidence(wrappedScrollRun)] : [],
+      evidence: [],
     };
   }
 
-  const blankGapFrames = wrappedScrollRun.metrics?.blank_gap_frames ?? Number.NaN;
-  const longTasksCount = wrappedScrollRun.metrics?.long_tasks_count ?? Number.NaN;
-  const competitorRuns = runs.filter(
-    (run) =>
-      run.scenarioId === "S2" &&
-      run.scriptName === "scroll" &&
-      run.adapterId !== "pretable" &&
-      run.status === "completed" &&
-      run.metrics?.scroll_frame_p95_ms !== undefined,
+  const blankGapFrames = maxMetric(wrappedScrollSeries, "blank_gap_frames");
+  const longTasksCount = maxMetric(wrappedScrollSeries, "long_tasks_count");
+  const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
+  const competitorSeries = groupRunSeries(runs, {
+    scenarioId: "S2",
+    scriptName: "scroll",
+  }).filter(
+    (series) =>
+      series[0]?.adapterId !== "pretable" &&
+      medianMetric(series, "scroll_frame_p95_ms") !== undefined,
   );
 
   if (blankGapFrames > 0.09 || longTasksCount > 0) {
@@ -279,27 +301,29 @@ function evaluateH1(runs) {
       status: "failing",
       summary:
         "The wrapped-text scroll surface is measured, but it still shows blank gaps or long tasks beyond the current benchmark threshold.",
-      evidence: [summarizeRunEvidence(wrappedScrollRun)],
+      evidence: [pretableEvidence],
     };
   }
 
-  if (competitorRuns.length === 0) {
+  if (competitorSeries.length === 0) {
     return {
       id: "H1",
       status: "directional",
       summary:
         "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but the required relative win versus a DOM competitor is still unmeasured.",
-      evidence: [summarizeRunEvidence(wrappedScrollRun)],
+      evidence: [pretableEvidence],
     };
   }
 
-  const bestCompetitor = competitorRuns.reduce((best, current) =>
-    current.metrics.scroll_frame_p95_ms < best.metrics.scroll_frame_p95_ms
+  const bestCompetitorSeries = competitorSeries.reduce((best, current) =>
+    medianMetric(current, "scroll_frame_p95_ms") < medianMetric(best, "scroll_frame_p95_ms")
       ? current
       : best,
   );
+  const bestCompetitorEvidence = summarizeRunSeriesEvidence(bestCompetitorSeries);
   const relativeDelta =
-    wrappedScrollRun.metrics.scroll_frame_p95_ms / bestCompetitor.metrics.scroll_frame_p95_ms -
+    pretableEvidence.metrics.scroll_frame_p95_ms /
+      bestCompetitorEvidence.metrics.scroll_frame_p95_ms -
     1;
 
   return {
@@ -310,31 +334,32 @@ function evaluateH1(runs) {
         ? "Wrapped-text scrolling beats the best measured DOM comparator by at least 25% while keeping blank gaps and long tasks controlled."
         : "Wrapped-text scrolling is measured against a competitor, but it has not yet cleared the required 25% relative win.",
     evidence: [
-      summarizeRunEvidence(wrappedScrollRun),
-      summarizeRunEvidence(bestCompetitor),
+      pretableEvidence,
+      bestCompetitorEvidence,
     ],
   };
 }
 
 function evaluateH3(runs) {
-  const wrappedScrollRun = findLatestRun(runs, {
+  const wrappedScrollSeries = findRunSeries(runs, {
     adapterId: "pretable",
     scenarioId: "S2",
     scriptName: "scroll",
   });
 
-  if (!wrappedScrollRun || wrappedScrollRun.status !== "completed") {
+  if (wrappedScrollSeries.length === 0) {
     return {
       id: "H3",
       status: "insufficient",
       summary:
         "Missing a completed S2 scroll run, so variable-height stability cannot be evaluated yet.",
-      evidence: wrappedScrollRun ? [summarizeRunEvidence(wrappedScrollRun)] : [],
+      evidence: [],
     };
   }
 
-  const rowHeightError = wrappedScrollRun.metrics?.row_height_error_p95_px;
-  const anchorShift = wrappedScrollRun.metrics?.scroll_anchor_shift_px;
+  const rowHeightError = maxMetric(wrappedScrollSeries, "row_height_error_p95_px");
+  const anchorShift = maxMetric(wrappedScrollSeries, "scroll_anchor_shift_px");
+  const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
 
   if (rowHeightError === undefined || anchorShift === undefined) {
     return {
@@ -342,7 +367,7 @@ function evaluateH3(runs) {
       status: "insufficient",
       summary:
         "S2 scrolling is measured, but row-height error and scroll-anchor shift are still missing, so backward-scroll stability is not claim-ready.",
-      evidence: [summarizeRunEvidence(wrappedScrollRun)],
+      evidence: [pretableEvidence],
     };
   }
 
@@ -351,16 +376,16 @@ function evaluateH3(runs) {
     status:
       rowHeightError <= 4 &&
       anchorShift <= 16 &&
-      (wrappedScrollRun.metrics?.blank_gap_frames ?? Number.POSITIVE_INFINITY) === 0
+      maxMetric(wrappedScrollSeries, "blank_gap_frames") === 0
         ? "satisfied"
         : "failing",
     summary:
       rowHeightError <= 4 &&
       anchorShift <= 16 &&
-      (wrappedScrollRun.metrics?.blank_gap_frames ?? Number.POSITIVE_INFINITY) === 0
+      maxMetric(wrappedScrollSeries, "blank_gap_frames") === 0
         ? "Variable-height scrolling stays within the current row-height and anchor-shift thresholds."
         : "Variable-height scrolling is instrumented, but at least one stability threshold is still failing.",
-    evidence: [summarizeRunEvidence(wrappedScrollRun)],
+    evidence: [pretableEvidence],
   };
 }
 
@@ -380,31 +405,97 @@ function evaluateH5(entries, runs) {
     evidence: entries.map((entry) => ({
       scenarioId: entry.scenarioId,
       scriptName: entry.scriptName,
+      ...(entry.repeatIndex === undefined ? {} : { repeatIndex: entry.repeatIndex }),
       summaryPath: entry.summaryPath,
     })),
   };
 }
 
-function findLatestRun(runs, matcher) {
+function findRunSeries(runs, matcher) {
   return runs
     .filter(
       (run) =>
+        run.status === "completed" &&
         (matcher.adapterId === undefined || run.adapterId === matcher.adapterId) &&
         run.scenarioId === matcher.scenarioId &&
         run.scriptName === matcher.scriptName,
     )
-    .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
-    .at(-1);
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
 }
 
-function summarizeRunEvidence(run) {
+function groupRunSeries(runs, matcher) {
+  const groups = new Map();
+
+  for (const run of runs) {
+    if (
+      run.status !== "completed" ||
+      run.scenarioId !== matcher.scenarioId ||
+      run.scriptName !== matcher.scriptName
+    ) {
+      continue;
+    }
+
+    const key = `${run.adapterId}:${run.scenarioId}:${run.scriptName}`;
+    const series = groups.get(key) ?? [];
+    series.push(run);
+    groups.set(key, series);
+  }
+
+  return [...groups.values()].map((series) =>
+    series.sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
+  );
+}
+
+function summarizeRunSeriesEvidence(series) {
+  const latestRun = series.at(-1);
+  const metrics = summarizeMetrics(series);
+
   return {
-    adapterId: run.adapterId,
-    scenarioId: run.scenarioId,
-    scriptName: run.scriptName,
-    status: run.status,
-    metrics: run.metrics ?? {},
+    adapterId: latestRun.adapterId,
+    scenarioId: latestRun.scenarioId,
+    scriptName: latestRun.scriptName,
+    status: latestRun.status,
+    sampleCount: series.length,
+    metrics,
   };
+}
+
+function summarizeMetrics(series) {
+  const metricIds = new Set(
+    series.flatMap((run) => Object.keys(run.metrics ?? {})),
+  );
+  const metrics = {};
+
+  for (const metricId of metricIds) {
+    const medianValue = medianMetric(series, metricId);
+
+    if (medianValue !== undefined) {
+      metrics[metricId] = medianValue;
+    }
+  }
+
+  return metrics;
+}
+
+function medianMetric(series, metricId) {
+  const values = series
+    .map((run) => run.metrics?.[metricId])
+    .filter((value) => typeof value === "number")
+    .sort((left, right) => left - right);
+
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  return values[Math.floor(values.length / 2)];
+}
+
+function maxMetric(series, metricId) {
+  const values = series
+    .map((run) => run.metrics?.[metricId])
+    .filter((value) => typeof value === "number");
+
+  return values.length > 0 ? Math.max(...values) : undefined;
 }
 
 function sanitizeTimestamp(timestamp) {
