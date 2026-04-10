@@ -2,7 +2,12 @@ import { describe, expect, test } from "vitest";
 
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
 
-import { BENCH_RESULT_KEY, createBenchRequest, publishBenchResult } from "../bench-runtime";
+import {
+  BENCH_RESULT_KEY,
+  createBenchRequest,
+  detectBlankGapFrame,
+  publishBenchResult,
+} from "../bench-runtime";
 import type { BenchQueryState } from "../bench-types";
 
 describe("bench runtime", () => {
@@ -63,4 +68,57 @@ describe("bench runtime", () => {
     expect(publishBenchResult(result)).toBe(result);
     expect(window[BENCH_RESULT_KEY]).toBe(result);
   });
+
+  test("detects interior viewport gaps instead of only top and bottom misses", () => {
+    document.body.innerHTML = `
+      <div data-testid="viewport">
+        <div data-pretable-row="" data-row-index="0"></div>
+        <div data-pretable-row="" data-row-index="1"></div>
+        <div data-pretable-row="" data-row-index="2"></div>
+      </div>
+    `;
+
+    const viewport = document.querySelector<HTMLElement>('[data-testid="viewport"]');
+    const rows = [...document.querySelectorAll<HTMLElement>("[data-pretable-row]")];
+
+    expect(viewport).toBeTruthy();
+    expect(rows).toHaveLength(3);
+
+    viewport!.getBoundingClientRect = () =>
+      createRect({
+        top: 0,
+        bottom: 120,
+      });
+    rows[0]!.getBoundingClientRect = () =>
+      createRect({
+        top: 0,
+        bottom: 40,
+      });
+    rows[1]!.getBoundingClientRect = () =>
+      createRect({
+        top: 60,
+        bottom: 90,
+      });
+    rows[2]!.getBoundingClientRect = () =>
+      createRect({
+        top: 90,
+        bottom: 120,
+      });
+
+    expect(detectBlankGapFrame(viewport!)).toBe(true);
+  });
 });
+
+function createRect(input: { top: number; bottom: number }): DOMRect {
+  return {
+    x: 0,
+    y: input.top,
+    width: 100,
+    height: input.bottom - input.top,
+    top: input.top,
+    right: 100,
+    bottom: input.bottom,
+    left: 0,
+    toJSON: () => ({}),
+  };
+}

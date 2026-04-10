@@ -27,6 +27,9 @@ export interface ScenarioDefinition {
 export interface ScenarioColumn {
   id: string;
   header: string;
+  wrap: boolean;
+  widthPx: number;
+  pinned?: "left";
 }
 
 export type ScenarioRow = Record<string, string | number>;
@@ -115,13 +118,6 @@ const scenarioDefinitions = [
   },
 ] as const satisfies readonly ScenarioDefinition[];
 
-const scenarioColumns: readonly ScenarioColumn[] = [
-  { id: "message", header: "Message" },
-  { id: "owner", header: "Owner" },
-  { id: "status", header: "Status" },
-  { id: "score", header: "Score" },
-];
-
 const scenarioSeeds: Record<ScenarioId, number> = {
   S1: 101,
   S2: 202,
@@ -171,10 +167,20 @@ export function createScenarioDataset(id: ScenarioId): ScenarioDataset {
 
   return {
     scenario,
-    columns: scenarioColumns,
+    columns: buildColumns(scenario),
     rows: buildRows(scenario, seed, sampleSize),
     seed,
   };
+}
+
+function buildColumns(scenario: ScenarioDefinition): readonly ScenarioColumn[] {
+  return Array.from({ length: scenario.cols }, (_, index) => ({
+    id: `col_${index}`,
+    header: createColumnHeader(index),
+    wrap: index < scenario.wrapped_columns,
+    widthPx: index < scenario.wrapped_columns ? 220 : index % 4 === 3 ? 96 : 140,
+    pinned: index < scenario.pinned_left ? "left" : undefined,
+  }));
 }
 
 function buildRows(
@@ -183,15 +189,77 @@ function buildRows(
   count: number,
 ): readonly ScenarioRow[] {
   return Array.from({ length: count }, (_, index) => {
-    const messagePool =
-      scenario.corpus === "multilingual" ? multilingualMessages : englishMessages;
-
-    return {
+    const row = {
       id: `${scenario.id}-row-${index}`,
-      message: `${messagePool[index % messagePool.length]} #${seed + index}`,
-      owner: owners[(seed + index) % owners.length],
-      status: statuses[(seed + index) % statuses.length],
-      score: ((seed + index * 7) % 1000) / 10,
-    };
+    } as ScenarioRow;
+
+    for (let columnIndex = 0; columnIndex < scenario.cols; columnIndex += 1) {
+      row[`col_${columnIndex}`] = createCellValue({
+        scenario,
+        seed,
+        rowIndex: index,
+        columnIndex,
+      });
+    }
+
+    return row;
   });
+}
+
+function createColumnHeader(index: number) {
+  if (index % 4 === 0) {
+    return `Message ${Math.floor(index / 4) + 1}`;
+  }
+
+  if (index % 4 === 1) {
+    return `Owner ${Math.floor(index / 4) + 1}`;
+  }
+
+  if (index % 4 === 2) {
+    return `Status ${Math.floor(index / 4) + 1}`;
+  }
+
+  return `Score ${Math.floor(index / 4) + 1}`;
+}
+
+function createCellValue(input: {
+  scenario: ScenarioDefinition;
+  seed: number;
+  rowIndex: number;
+  columnIndex: number;
+}): string | number {
+  const { scenario, seed, rowIndex, columnIndex } = input;
+
+  if (columnIndex < scenario.wrapped_columns) {
+    return createWrappedTextValue(input);
+  }
+
+  switch (columnIndex % 4) {
+    case 1:
+      return owners[(seed + rowIndex + columnIndex) % owners.length];
+    case 2:
+      return statuses[(seed + rowIndex + columnIndex) % statuses.length];
+    case 3:
+      return ((seed + rowIndex * 7 + columnIndex * 13) % 1000) / 10;
+    default:
+      return `${englishMessages[(seed + rowIndex + columnIndex) % englishMessages.length]} ${seed + rowIndex + columnIndex}`;
+  }
+}
+
+function createWrappedTextValue(input: {
+  scenario: ScenarioDefinition;
+  seed: number;
+  rowIndex: number;
+  columnIndex: number;
+}) {
+  const { scenario, seed, rowIndex, columnIndex } = input;
+  const messagePool =
+    scenario.corpus === "multilingual" ? multilingualMessages : englishMessages;
+  const repeatCount = 1 + ((seed + rowIndex + columnIndex) % 4);
+  const message = messagePool[(rowIndex + columnIndex) % messagePool.length];
+
+  return Array.from({ length: repeatCount }, (_, repeatIndex) => {
+    const token = seed + rowIndex * 17 + columnIndex * 29 + repeatIndex;
+    return `${message} token-${token}`;
+  }).join(" ");
 }
