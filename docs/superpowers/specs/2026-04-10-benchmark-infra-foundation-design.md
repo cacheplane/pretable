@@ -245,7 +245,7 @@ The harness should standardize a JSON summary shape now so later adapters can dr
 - browser name
 - browser version when available
 - timestamp
-- status: `completed`, `failed`, or `unsupported`
+- status: `completed`, `partial`, `failed`, or `unsupported`
 - reproducibility seed
 - viewport size
 - font stack
@@ -253,6 +253,8 @@ The harness should standardize a JSON summary shape now so later adapters can dr
 - collected metrics
 - trace path
 - notes for skipped optional metrics
+- `unsupported` payload: rejected adapter/scenario/profile/script tuple plus reason string
+- `failed` payload: stable serialized error object with at least `name`, `message`, and optional `stack`
 
 The bench app should expose the latest summary on `window.__PRETABLE_BENCH_RESULT__` so Playwright can assert and persist it without scraping UI text.
 
@@ -283,7 +285,7 @@ Run lifecycle rules for `P0a`:
 - query params define desired adapter/scenario/profile/script
 - the app only auto-runs when an explicit `autorun=1` query param is present
 - without `autorun=1`, the app mounts idle and waits for manual execution
-- `window.__PRETABLE_BENCH_RESULT__` must only hold a terminal result object (`completed`, `failed`, or `unsupported`)
+- `window.__PRETABLE_BENCH_RESULT__` must only hold a terminal result object (`completed`, `partial`, `failed`, or `unsupported`)
 - adapter exceptions must be serialized into a terminal `failed` result with a stable error payload instead of leaking raw thrown values across the browser boundary
 
 The initial registered adapter set in `P0a` is:
