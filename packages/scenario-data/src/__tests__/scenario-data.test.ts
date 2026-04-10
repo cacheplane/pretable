@@ -22,20 +22,21 @@ describe("scenario-data registry", () => {
     expect(getScenarioById("S2")).toMatchObject({
       id: "S2",
       corpus: "multilingual",
-      rowHeightMode: "variable",
-      wrappedColumns: 3,
+      row_height_mode: "variable",
+      wrapped_columns: 3,
+      update_stream: "none",
     });
 
     expect(getScenarioById("S4")).toMatchObject({
       id: "S4",
-      autosizeAllColumns: true,
-      rowHeightMode: "mixed",
+      autosize_all_columns: true,
+      row_height_mode: "mixed",
     });
 
     expect(getScenarioById("S6")).toMatchObject({
       id: "S6",
-      richCellsPercent: 10,
-      pinnedLeft: 1,
+      rich_cells_percent: 10,
+      pinned_left: 1,
     });
   });
 
