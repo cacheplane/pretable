@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.react.json",
+  "files": ["src/index.ts"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.*", "src/**/__tests__/**"],
+  "references": [
+    {
+      "path": "../grid-core"
+    }
+  ]
+}

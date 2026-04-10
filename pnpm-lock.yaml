@@ -74,7 +74,24 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@25.6.0)(jsdom@29.0.2)(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7))
 
+  packages/bench-runner:
+    dependencies:
+      "@pretable-internal/scenario-data":
+        specifier: workspace:*
+        version: link:../scenario-data
+
   packages/core: {}
+
+  packages/grid-core:
+    dependencies:
+      "@pretable-internal/layout-core":
+        specifier: workspace:*
+        version: link:../layout-core
+      "@pretable-internal/text-core":
+        specifier: workspace:*
+        version: link:../text-core
+
+  packages/layout-core: {}
 
   packages/react:
     dependencies:
@@ -84,9 +101,16 @@ importers:
       react:
         specifier: ^19.0.0
         version: 19.2.5
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.5(react@19.2.5)
+
+  packages/renderer-dom:
+    dependencies:
+      "@pretable-internal/grid-core":
+        specifier: workspace:*
+        version: link:../grid-core
+
+  packages/scenario-data: {}
+
+  packages/text-core: {}
 
 packages:
   "@adobe/css-tools@4.4.4":
