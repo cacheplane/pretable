@@ -26,13 +26,24 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   const result = await page.evaluate(() => window.__PRETABLE_BENCH_RESULT__);
 
   expect(result).toMatchObject({
-    status: scriptName === "scroll" ? "partial" : "completed",
+    status: "completed",
     adapterId: "pretable",
     scenarioId,
     profile: "default",
     scriptName,
     tracePath: expect.stringContaining("status/traces/"),
   });
+
+  if (scriptName === "scroll") {
+    expect(result.metrics).toMatchObject({
+      scroll_frame_p95_ms: expect.any(Number),
+      blank_gap_frames: expect.any(Number),
+      long_tasks_count: expect.any(Number),
+      long_tasks_ms: expect.any(Number),
+      dom_nodes_peak: expect.any(Number),
+    });
+    expect(result.metrics.blank_gap_frames).toBeGreaterThanOrEqual(0);
+  }
 
   const cwd = process.cwd();
   const summaryPath = path.join(
