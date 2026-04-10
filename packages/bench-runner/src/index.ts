@@ -1,4 +1,4 @@
-import type { ScenarioId } from "@pretable-internal/scenario-data";
+import type { ScenarioId, ScenarioScale } from "@pretable-internal/scenario-data";
 
 export type BenchAdapterId =
   | "pretable"
@@ -46,10 +46,12 @@ export interface BenchRunRequest {
   adapterId: BenchAdapterId;
   profile: BenchAdapterProfile;
   scenarioId: ScenarioId;
+  scale: ScenarioScale;
   scriptName: BenchScriptName;
   browserName: BenchBrowserName;
   browserVersion: string;
   seed: number;
+  rowCount: number;
   viewport: BenchViewport;
   fontStack: string;
   deviceScaleFactor: number;
@@ -73,11 +75,13 @@ export interface BenchRunSummaryBase {
   adapterId: BenchAdapterId;
   profile: BenchAdapterProfile;
   scenarioId: ScenarioId;
+  scale: ScenarioScale;
   scriptName: BenchScriptName;
   browserName: BenchBrowserName;
   browserVersion: string;
   timestamp: string;
   seed: number;
+  rowCount: number;
   viewport: BenchViewport;
   fontStack: string;
   deviceScaleFactor: number;
@@ -205,11 +209,13 @@ export function createBenchRunSummary(input: {
     adapterId: input.request.adapterId,
     profile: input.request.profile,
     scenarioId: input.request.scenarioId,
+    scale: input.request.scale,
     scriptName: input.request.scriptName,
     browserName: input.request.browserName,
     browserVersion: input.request.browserVersion,
     timestamp: input.timestamp,
     seed: input.request.seed,
+    rowCount: input.request.rowCount,
     viewport: input.request.viewport,
     fontStack: input.request.fontStack,
     deviceScaleFactor: input.request.deviceScaleFactor,
@@ -274,6 +280,7 @@ export function createArtifactFileStem(request: BenchRunRequest): string {
     request.adapterId,
     request.profile,
     request.scenarioId.toLowerCase(),
+    request.scale,
     request.scriptName,
   ].join("-");
 }
@@ -282,6 +289,7 @@ export function createRunArtifactFileStem(input: {
   adapterId: BenchAdapterId;
   profile: BenchAdapterProfile;
   scenarioId: ScenarioId;
+  scale: ScenarioScale;
   scriptName: BenchScriptName;
   browserName: BenchBrowserName;
   timestamp: string;
@@ -290,10 +298,12 @@ export function createRunArtifactFileStem(input: {
     adapterId: input.adapterId,
     profile: input.profile,
     scenarioId: input.scenarioId,
+    scale: input.scale,
     scriptName: input.scriptName,
     browserName: input.browserName,
     browserVersion: "",
     seed: 0,
+    rowCount: 0,
     viewport: { width: 0, height: 0 },
     fontStack: "",
     deviceScaleFactor: 1,
@@ -310,10 +320,12 @@ export function createDashboardIndex(
       adapterId: run.adapterId,
       profile: run.profile,
       scenarioId: run.scenarioId,
+      scale: run.scale,
       scriptName: run.scriptName,
       browserName: run.browserName,
       browserVersion: run.browserVersion,
       seed: run.seed,
+      rowCount: run.rowCount,
       viewport: run.viewport,
       fontStack: run.fontStack,
       deviceScaleFactor: run.deviceScaleFactor,
@@ -388,10 +400,12 @@ function compareBenchRuns(left: BenchRunSummary, right: BenchRunSummary): number
     adapterId: left.adapterId,
     profile: left.profile,
     scenarioId: left.scenarioId,
+    scale: left.scale,
     scriptName: left.scriptName,
     browserName: left.browserName,
     browserVersion: left.browserVersion,
     seed: left.seed,
+    rowCount: left.rowCount,
     viewport: left.viewport,
     fontStack: left.fontStack,
     deviceScaleFactor: left.deviceScaleFactor,
@@ -400,10 +414,12 @@ function compareBenchRuns(left: BenchRunSummary, right: BenchRunSummary): number
       adapterId: right.adapterId,
       profile: right.profile,
       scenarioId: right.scenarioId,
+      scale: right.scale,
       scriptName: right.scriptName,
       browserName: right.browserName,
       browserVersion: right.browserVersion,
       seed: right.seed,
+      rowCount: right.rowCount,
       viewport: right.viewport,
       fontStack: right.fontStack,
       deviceScaleFactor: right.deviceScaleFactor,

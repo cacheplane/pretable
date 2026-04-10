@@ -46,8 +46,10 @@ describe("scenario-data registry", () => {
 
     expect(first).toEqual(second);
     expect(first.scenario.id).toBe("S1");
+    expect(first.scale).toBe("smoke");
     expect(first.columns).toHaveLength(50);
-    expect(first.rows).toHaveLength(24);
+    expect(first.rows).toHaveLength(250);
+    expect(first.rowCount).toBe(250);
     expect(first.seed).toBe(101);
     expect(first.rows[0]).toMatchObject({
       id: "S1-row-0",
@@ -55,6 +57,17 @@ describe("scenario-data registry", () => {
       col_1: expect.any(String),
       col_2: expect.any(String),
       col_3: expect.any(Number),
+    });
+  });
+
+  test("supports larger deterministic scales for benchmark-bearing runs", () => {
+    const dataset = createScenarioDataset("S2", { scale: "dev" });
+
+    expect(dataset.scale).toBe("dev");
+    expect(dataset.rowCount).toBe(750);
+    expect(dataset.rows).toHaveLength(750);
+    expect(dataset.rows[749]).toMatchObject({
+      id: "S2-row-749",
     });
   });
 

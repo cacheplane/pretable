@@ -30,6 +30,7 @@ describe("BenchApp", () => {
         adapterId: "pretable",
         scenarioId: "S2",
         profile: "default",
+        scale: "dev",
         scriptName: "initial",
       });
     });
@@ -51,6 +52,7 @@ describe("BenchApp", () => {
       expect(window[BENCH_RESULT_KEY]).toMatchObject({
         status: "completed",
         scenarioId: "S1",
+        scale: "dev",
         scriptName: "initial",
       });
     });

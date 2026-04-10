@@ -11,6 +11,7 @@ import {
 test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matrix", () => {
   assert.deepEqual(parseBenchMatrixArgs([]), {
     adapters: ["pretable", "ag-grid"],
+    scale: "dev",
     scenarios: ["S1", "S2"],
     scripts: ["initial", "scroll"],
     passthroughArgs: [],
@@ -21,12 +22,14 @@ test("parseBenchMatrixArgs accepts explicit adapter, scenario, script, and playw
   assert.deepEqual(
     parseBenchMatrixArgs([
       "--adapters=ag-grid",
+      "--scale=hypothesis",
       "--scenarios=S2",
       "--scripts=scroll",
       "--project=chromium",
     ]),
     {
       adapters: ["ag-grid"],
+      scale: "hypothesis",
       scenarios: ["S2"],
       scripts: ["scroll"],
       passthroughArgs: ["--project=chromium"],
@@ -38,19 +41,20 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
   assert.deepEqual(
     createBenchMatrixEntries({
       adapters: ["pretable", "ag-grid"],
+      scale: "dev",
       scenarios: ["S1", "S2"],
       scripts: ["initial", "scroll"],
       passthroughArgs: [],
     }),
     [
-      { adapterId: "pretable", scenarioId: "S1", scriptName: "initial" },
-      { adapterId: "pretable", scenarioId: "S1", scriptName: "scroll" },
-      { adapterId: "pretable", scenarioId: "S2", scriptName: "initial" },
-      { adapterId: "pretable", scenarioId: "S2", scriptName: "scroll" },
-      { adapterId: "ag-grid", scenarioId: "S1", scriptName: "initial" },
-      { adapterId: "ag-grid", scenarioId: "S1", scriptName: "scroll" },
-      { adapterId: "ag-grid", scenarioId: "S2", scriptName: "initial" },
-      { adapterId: "ag-grid", scenarioId: "S2", scriptName: "scroll" },
+      { adapterId: "pretable", scale: "dev", scenarioId: "S1", scriptName: "initial" },
+      { adapterId: "pretable", scale: "dev", scenarioId: "S1", scriptName: "scroll" },
+      { adapterId: "pretable", scale: "dev", scenarioId: "S2", scriptName: "initial" },
+      { adapterId: "pretable", scale: "dev", scenarioId: "S2", scriptName: "scroll" },
+      { adapterId: "ag-grid", scale: "dev", scenarioId: "S1", scriptName: "initial" },
+      { adapterId: "ag-grid", scale: "dev", scenarioId: "S1", scriptName: "scroll" },
+      { adapterId: "ag-grid", scale: "dev", scenarioId: "S2", scriptName: "initial" },
+      { adapterId: "ag-grid", scale: "dev", scenarioId: "S2", scriptName: "scroll" },
     ],
   );
 });

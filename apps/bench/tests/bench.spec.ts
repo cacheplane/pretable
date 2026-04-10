@@ -9,6 +9,7 @@ import {
 } from "@pretable-internal/bench-runner";
 
 const adapterId = process.env.PRETABLE_BENCH_ADAPTER ?? "pretable";
+const scale = process.env.PRETABLE_BENCH_SCALE ?? "dev";
 const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
 const adapterLabel =
@@ -23,7 +24,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   });
 
   await page.goto(
-    `/?adapter=${adapterId}&scenario=${scenarioId}&script=${scriptName}&autorun=1`,
+    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}&autorun=1`,
   );
 
   await expect(page.getByText(adapterLabel)).toBeVisible();
@@ -37,6 +38,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     adapterId,
     scenarioId,
     profile: "default",
+    scale,
     scriptName,
     tracePath: expect.stringContaining("status/traces/"),
   });
