@@ -1,5 +1,4 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 
 import {
   createScenarioDataset,
@@ -7,8 +6,8 @@ import {
   listScenarios,
 } from "@pretable-internal/scenario-data";
 import {
-  createArtifactFileStem,
   createBenchRunSummary,
+  createRunArtifactFileStem,
   validateSupportedP0aRequest,
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
@@ -24,6 +23,14 @@ export interface BenchAppProps {
 }
 
 const allScenarios = listScenarios();
+
+function waitForNextAnimationFrame() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      resolve();
+    });
+  });
+}
 
 export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const query = parseBenchQuery(search);
@@ -60,11 +67,13 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
 
     const startedAt = performance.now();
 
-    flushSync(() => {
-      setRunKey((current) => current + 1);
-    });
+    setRunKey((current) => current + 1);
+    await waitForNextAnimationFrame();
 
-    const tracePath = `status/traces/${createArtifactFileStem(request)}.trace.zip`;
+    const tracePath = `status/traces/${createRunArtifactFileStem({
+      ...request,
+      timestamp,
+    })}.trace.zip`;
     const domNodesPeak = viewportRef.current?.querySelectorAll("*").length ?? 0;
 
     const nextResult =

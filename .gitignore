@@ -7,4 +7,7 @@ test-results
 .turbo
 .DS_Store
 status/changeset-status.json
+status/*.summary.json
+status/dashboard.json
 status/snapshots/*.tgz
+status/traces/*.zip

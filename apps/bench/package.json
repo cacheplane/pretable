@@ -3,13 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @pretable/react build",
+    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable/react build",
+    "predev": "pnpm run prepare:deps",
     "dev": "vite",
-    "prebuild": "pnpm --filter @pretable/react build",
+    "prebuild": "pnpm run prepare:deps",
     "build": "vite build",
     "lint": "eslint src --ext .ts,.tsx",
+    "prepreview": "pnpm run build",
+    "preview": "vite preview",
+    "prepreview:bench": "pnpm run build",
+    "preview:bench": "vite preview --host 127.0.0.1 --port 4173",
+    "pretest": "pnpm run prepare:deps",
     "test": "vitest run --environment jsdom --passWithNoTests",
-    "pretypecheck": "pnpm --filter @pretable/react build",
+    "pretypecheck": "pnpm run prepare:deps",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
