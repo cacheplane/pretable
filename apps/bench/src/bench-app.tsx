@@ -74,6 +74,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     setRunKey((current) => current + 1);
     await waitForNextAnimationFrame();
 
+    if (scriptName === "scroll") {
+      await waitForNextAnimationFrame();
+    }
+
     const tracePath = `status/traces/${createRunArtifactFileStem({
       ...request,
       timestamp,
