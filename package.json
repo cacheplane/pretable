@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "bench:e2e": "node ./scripts/bench-e2e.mjs",
+    "bench:matrix": "node ./scripts/bench-matrix.mjs",
     "build": "pnpm -r --filter './packages/*' build && pnpm -r --filter './apps/*' build",
     "dev:bench": "pnpm --filter @pretable/app-bench dev",
     "dev:playground": "pnpm --filter @pretable/app-playground dev",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test",
+    "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs && pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
