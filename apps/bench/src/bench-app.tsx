@@ -15,7 +15,7 @@ import {
 import type { BenchQueryState } from "./bench-types";
 import {
   createBenchRequest,
-  measurePretableScrollRun,
+  measureBenchScrollRun,
   publishBenchResult,
 } from "./bench-runtime";
 import { GridAlphaAdapter } from "./gridalpha-adapter";
@@ -102,7 +102,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
 
     const scrollRun =
       scriptName === "scroll"
-        ? await measurePretableScrollRun(viewportRef.current ?? document.body)
+        ? await measureBenchScrollRun(
+            viewportRef.current ?? document.body,
+            query.adapterId,
+          )
         : null;
 
     const nextResult =

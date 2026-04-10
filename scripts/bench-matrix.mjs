@@ -309,6 +309,7 @@ function evaluateH1(runs) {
 
 function evaluateH3(runs) {
   const wrappedScrollRun = findLatestRun(runs, {
+    adapterId: "pretable",
     scenarioId: "S2",
     scriptName: "scroll",
   });

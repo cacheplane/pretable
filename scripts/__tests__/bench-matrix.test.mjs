@@ -150,6 +150,8 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
           long_tasks_count: 0,
           long_tasks_ms: 0,
           dom_nodes_peak: 684,
+          row_height_error_p95_px: 0.2,
+          scroll_anchor_shift_px: 8,
         },
       },
       {

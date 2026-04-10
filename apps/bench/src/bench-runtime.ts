@@ -61,15 +61,39 @@ export interface ScrollBenchRunResult {
   notes: string[];
 }
 
-export async function measurePretableScrollRun(
+interface ScrollRuntimeProfile {
+  viewportSelector: string;
+  rowSelector: string;
+  rowIndexAttribute: string;
+  measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
+}
+
+const scrollRuntimeProfiles: Record<BenchQueryState["adapterId"], ScrollRuntimeProfile> = {
+  "gridalpha": {
+    viewportSelector: ".ag-body-viewport",
+    rowSelector: ".ag-row",
+    rowIndexAttribute: "row-index",
+    measureRowHeightError: measureGridAlphaRowHeightError,
+  },
+  pretable: {
+    viewportSelector: "[data-pretable-scroll-viewport]",
+    rowSelector: "[data-pretable-row]",
+    rowIndexAttribute: "data-row-index",
+    measureRowHeightError: measurePretableRowHeightError,
+  },
+};
+
+export async function measureBenchScrollRun(
   root: HTMLElement,
+  adapterId: BenchQueryState["adapterId"],
 ): Promise<ScrollBenchRunResult> {
-  const viewport = root.querySelector<HTMLElement>("[data-pretable-scroll-viewport]");
+  const profile = scrollRuntimeProfiles[adapterId];
+  const viewport = await waitForScrollViewport(root, profile.viewportSelector);
 
   if (!viewport || viewport.scrollHeight <= viewport.clientHeight) {
     return {
       status: "partial",
-      notes: ["scroll viewport unavailable in current runtime"],
+      notes: [`scroll viewport unavailable for ${adapterId} in current runtime`],
       metrics: {
         dom_nodes_peak: root.querySelectorAll("*").length,
       },
@@ -106,9 +130,9 @@ export async function measurePretableScrollRun(
 
     previousFrameTimestamp = frameTimestamp;
     domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
-    const visibleRows = sampleVisibleRows(viewport);
+    const visibleRows = sampleVisibleRows(viewport, profile);
 
-    if (detectBlankGapFrame(viewport)) {
+    if (detectBlankGapFrame(viewport, profile.rowSelector)) {
       blankGapFrames += 1;
     }
 
@@ -157,6 +181,12 @@ export async function measurePretableScrollRun(
   };
 }
 
+export function measurePretableScrollRun(
+  root: HTMLElement,
+): Promise<ScrollBenchRunResult> {
+  return measureBenchScrollRun(root, "pretable");
+}
+
 function createLongTaskObserver(longTaskDurations: number[]) {
   if (
     typeof PerformanceObserver === "undefined" ||
@@ -178,8 +208,11 @@ function createLongTaskObserver(longTaskDurations: number[]) {
   return observer;
 }
 
-export function detectBlankGapFrame(viewport: HTMLElement) {
-  const rows = [...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]")];
+export function detectBlankGapFrame(
+  viewport: HTMLElement,
+  rowSelector = "[data-pretable-row]",
+) {
+  const rows = [...viewport.querySelectorAll<HTMLElement>(rowSelector)];
 
   if (rows.length === 0) {
     return true;
@@ -220,6 +253,24 @@ function waitForAnimationFrame() {
   });
 }
 
+async function waitForScrollViewport(
+  root: HTMLElement,
+  selector: string,
+  maxFrames = 12,
+) {
+  for (let frame = 0; frame < maxFrames; frame += 1) {
+    const viewport = root.querySelector<HTMLElement>(selector);
+
+    if (viewport) {
+      return viewport;
+    }
+
+    await waitForAnimationFrame();
+  }
+
+  return null;
+}
+
 function percentile(values: number[], ratio: number) {
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(
@@ -236,10 +287,13 @@ interface VisibleRowSample {
   heightError: number;
 }
 
-function sampleVisibleRows(viewport: HTMLElement): VisibleRowSample[] {
+function sampleVisibleRows(
+  viewport: HTMLElement,
+  profile: ScrollRuntimeProfile,
+): VisibleRowSample[] {
   const viewportBounds = getViewportContentBounds(viewport);
 
-  return [...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]")]
+  return [...viewport.querySelectorAll<HTMLElement>(profile.rowSelector)]
     .map((row) => {
       const rect = row.getBoundingClientRect();
       const clippedTop = Math.max(rect.top, viewportBounds.top);
@@ -250,9 +304,9 @@ function sampleVisibleRows(viewport: HTMLElement): VisibleRowSample[] {
       }
 
       return {
-        rowIndex: Number(row.getAttribute("data-row-index")),
+        rowIndex: Number(row.getAttribute(profile.rowIndexAttribute)),
         top: rect.top - viewportBounds.top,
-        heightError: measureRowHeightError(row, rect.height),
+        heightError: profile.measureRowHeightError(row, rect.height),
       } satisfies VisibleRowSample;
     })
     .filter((row): row is VisibleRowSample => row !== null);
@@ -296,7 +350,7 @@ function getViewportContentBounds(viewport: HTMLElement) {
   };
 }
 
-function measureRowHeightError(row: HTMLElement, renderedHeight: number) {
+function measurePretableRowHeightError(row: HTMLElement, renderedHeight: number) {
   const style = getComputedStyle(row);
   const verticalPadding =
     parseFloat(style.paddingTop || "0") + parseFloat(style.paddingBottom || "0");
@@ -308,6 +362,12 @@ function measureRowHeightError(row: HTMLElement, renderedHeight: number) {
       .filter(Number.isFinite),
   );
   const expectedHeight = contentHeight + verticalPadding + borderHeight;
+
+  return Math.abs(expectedHeight - renderedHeight);
+}
+
+function measureGridAlphaRowHeightError(row: HTMLElement, renderedHeight: number) {
+  const expectedHeight = parseFloat(row.style.height || getComputedStyle(row).height || "0");
 
   return Math.abs(expectedHeight - renderedHeight);
 }
