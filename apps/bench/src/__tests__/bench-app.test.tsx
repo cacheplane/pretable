@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { BENCH_RESULT_KEY } from "../bench-runtime";
@@ -6,6 +12,7 @@ import { BenchApp } from "../bench-app";
 
 describe("BenchApp", () => {
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
@@ -56,5 +63,13 @@ describe("BenchApp", () => {
           .includes("flushSync was called from inside a lifecycle method"),
       ),
     ).toBe(false);
+  });
+
+  test("renders the requested competitor surface instead of relabeling Pretable", async () => {
+    render(<BenchApp search="?adapter=ag-grid&scenario=S2" browserVersion="123.0" />);
+
+    expect(screen.getByText("AG Grid harness")).toBeTruthy();
+    expect(screen.getByText("AG Grid Community adapter")).toBeTruthy();
+    expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 });

@@ -19,6 +19,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "ag-grid-community": "^35.2.1",
+    "ag-grid-react": "^35.2.1",
     "@pretable-internal/bench-runner": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable/react": "workspace:*",

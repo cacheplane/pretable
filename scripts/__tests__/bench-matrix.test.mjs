@@ -10,20 +10,23 @@ import {
 
 test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matrix", () => {
   assert.deepEqual(parseBenchMatrixArgs([]), {
+    adapters: ["pretable", "ag-grid"],
     scenarios: ["S1", "S2"],
     scripts: ["initial", "scroll"],
     passthroughArgs: [],
   });
 });
 
-test("parseBenchMatrixArgs accepts explicit scenario, script, and playwright passthrough args", () => {
+test("parseBenchMatrixArgs accepts explicit adapter, scenario, script, and playwright passthrough args", () => {
   assert.deepEqual(
     parseBenchMatrixArgs([
+      "--adapters=ag-grid",
       "--scenarios=S2",
       "--scripts=scroll",
       "--project=chromium",
     ]),
     {
+      adapters: ["ag-grid"],
       scenarios: ["S2"],
       scripts: ["scroll"],
       passthroughArgs: ["--project=chromium"],
@@ -34,15 +37,20 @@ test("parseBenchMatrixArgs accepts explicit scenario, script, and playwright pas
 test("createBenchMatrixEntries expands scenarios and scripts in stable order", () => {
   assert.deepEqual(
     createBenchMatrixEntries({
+      adapters: ["pretable", "ag-grid"],
       scenarios: ["S1", "S2"],
       scripts: ["initial", "scroll"],
       passthroughArgs: [],
     }),
     [
-      { scenarioId: "S1", scriptName: "initial" },
-      { scenarioId: "S1", scriptName: "scroll" },
-      { scenarioId: "S2", scriptName: "initial" },
-      { scenarioId: "S2", scriptName: "scroll" },
+      { adapterId: "pretable", scenarioId: "S1", scriptName: "initial" },
+      { adapterId: "pretable", scenarioId: "S1", scriptName: "scroll" },
+      { adapterId: "pretable", scenarioId: "S2", scriptName: "initial" },
+      { adapterId: "pretable", scenarioId: "S2", scriptName: "scroll" },
+      { adapterId: "ag-grid", scenarioId: "S1", scriptName: "initial" },
+      { adapterId: "ag-grid", scenarioId: "S1", scriptName: "scroll" },
+      { adapterId: "ag-grid", scenarioId: "S2", scriptName: "initial" },
+      { adapterId: "ag-grid", scenarioId: "S2", scriptName: "scroll" },
     ],
   );
 });
@@ -55,6 +63,7 @@ test("createBenchRunsetManifest records the invoked matrix and produced summary 
       completedAt: "2026-04-10T14:02:00.000Z",
       entries: [
         {
+          adapterId: "pretable",
           scenarioId: "S1",
           scriptName: "initial",
           summaryPath: "status/chromium-pretable-default-s1-initial-2026-04-10t14-00-00-000z.summary.json",
@@ -67,6 +76,7 @@ test("createBenchRunsetManifest records the invoked matrix and produced summary 
       completedAt: "2026-04-10T14:02:00.000Z",
       entries: [
         {
+          adapterId: "pretable",
           scenarioId: "S1",
           scriptName: "initial",
           summaryPath:
@@ -83,12 +93,14 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
     generatedAt: "2026-04-10T14:02:00.000Z",
     entries: [
       {
+        adapterId: "pretable",
         scenarioId: "S1",
         scriptName: "initial",
         summaryPath:
           "status/chromium-pretable-default-s1-initial-2026-04-10t14-00-00-000z.summary.json",
       },
       {
+        adapterId: "pretable",
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
@@ -118,6 +130,29 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
         },
       },
       {
+        adapterId: "ag-grid",
+        profile: "default",
+        scenarioId: "S2",
+        scriptName: "scroll",
+        browserName: "chromium",
+        browserVersion: "123.0",
+        timestamp: "2026-04-10T14:01:35.000Z",
+        seed: 202,
+        viewport: { width: 1440, height: 900 },
+        fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+        deviceScaleFactor: 1,
+        notes: [],
+        status: "completed",
+        tracePath: "status/traces/chromium-ag-grid-default-s2-scroll.trace.zip",
+        metrics: {
+          scroll_frame_p95_ms: 26.2,
+          blank_gap_frames: 0,
+          long_tasks_count: 0,
+          long_tasks_ms: 0,
+          dom_nodes_peak: 684,
+        },
+      },
+      {
         adapterId: "pretable",
         profile: "default",
         scenarioId: "S2",
@@ -143,10 +178,10 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
     ],
   });
 
-  assert.equal(report.hypotheses.find((item) => item.id === "H1")?.status, "directional");
+  assert.equal(report.hypotheses.find((item) => item.id === "H1")?.status, "satisfied");
   assert.match(
     report.hypotheses.find((item) => item.id === "H1")?.summary ?? "",
-    /competitor/i,
+    /25%|relative/i,
   );
   assert.equal(report.hypotheses.find((item) => item.id === "H3")?.status, "insufficient");
   assert.equal(report.hypotheses.find((item) => item.id === "H5")?.status, "satisfied");

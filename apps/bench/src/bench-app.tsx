@@ -18,6 +18,7 @@ import {
   measurePretableScrollRun,
   publishBenchResult,
 } from "./bench-runtime";
+import { AGGridAdapter } from "./ag-grid-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
 
@@ -27,6 +28,19 @@ export interface BenchAppProps {
 }
 
 const allScenarios = listScenarios();
+const adapterRegistry = {
+  "ag-grid": {
+    heading: "AG Grid harness",
+    description:
+      "Community baseline using the vendor-documented wrapped-text and auto-height path.",
+    render: AGGridAdapter,
+  },
+  pretable: {
+    heading: "Pretable harness",
+    description: "Deterministic `P0a` run surface for the public React adapter.",
+    render: PretableAdapter,
+  },
+} as const;
 
 function waitForNextAnimationFrame() {
   return new Promise<void>((resolve) => {
@@ -39,6 +53,8 @@ function waitForNextAnimationFrame() {
 export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const query = parseBenchQuery(search);
   const dataset = createScenarioDataset(query.scenarioId);
+  const adapterDefinition = adapterRegistry[query.adapterId];
+  const AdapterSurface = adapterDefinition.render;
   const [runKey, setRunKey] = useState(0);
   const [result, setResult] = useState<BenchRunSummary | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -177,8 +193,8 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
 
         <article className="preview-panel">
           <header className="panel-header">
-            <h2>Pretable harness</h2>
-            <p>Deterministic `P0a` run surface for the public React adapter.</p>
+            <h2>{adapterDefinition.heading}</h2>
+            <p>{adapterDefinition.description}</p>
           </header>
 
           <div className="run-toolbar">
@@ -191,7 +207,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
           </div>
 
           <div ref={viewportRef} className="viewport-card">
-            <PretableAdapter dataset={dataset} runKey={runKey} />
+            <AdapterSurface dataset={dataset} runKey={runKey} />
           </div>
 
           <dl className="result-grid">

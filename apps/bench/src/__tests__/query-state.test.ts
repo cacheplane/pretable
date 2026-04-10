@@ -26,4 +26,14 @@ describe("parseBenchQuery", () => {
       autorun: true,
     });
   });
+
+  test("accepts a supported competitor adapter without relaxing other defaults", () => {
+    expect(parseBenchQuery("?adapter=ag-grid&scenario=S2&script=scroll")).toEqual({
+      adapterId: "ag-grid",
+      scenarioId: "S2",
+      profile: "default",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
 });
