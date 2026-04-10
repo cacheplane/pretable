@@ -358,8 +358,10 @@ function evaluateH3(runs) {
   }
 
   const rowHeightError = maxMetric(wrappedScrollSeries, "row_height_error_p95_px");
-  const anchorShift = maxMetric(wrappedScrollSeries, "scroll_anchor_shift_px");
   const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
+  const anchorShift =
+    maxMetric(wrappedScrollSeries, "scroll_anchor_shift_backward_p95_px") ??
+    maxMetric(wrappedScrollSeries, "scroll_anchor_shift_px");
 
   if (rowHeightError === undefined || anchorShift === undefined) {
     return {

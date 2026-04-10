@@ -404,12 +404,45 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   assert.equal(h1?.evidence[1]?.metrics.scroll_frame_p95_ms, 28.4);
 });
 
+test("createHypothesisReport treats backward anchor instability as an H3 failure when direction-specific metrics are present", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t16-00-00-000z",
+    generatedAt: "2026-04-10T16:01:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t16-00-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T16:00:00.000Z",
+        scroll_anchor_shift_px: undefined,
+        scroll_anchor_shift_backward_p95_px: 32,
+        scroll_anchor_shift_forward_p95_px: 0,
+      }),
+    ],
+  });
+
+  const h3 = report.hypotheses.find((item) => item.id === "H3");
+
+  assert.equal(h3?.status, "failing");
+  assert.equal(h3?.evidence[0]?.metrics.scroll_anchor_shift_backward_p95_px, 32);
+});
+
 function createScrollRun({
   adapterId,
   timestamp,
   scroll_frame_p95_ms,
   row_height_error_p95_px = 0,
   scroll_anchor_shift_px = 0,
+  scroll_anchor_shift_forward_p95_px = 0,
+  scroll_anchor_shift_backward_p95_px = 0,
 }) {
   return {
     adapterId,
@@ -433,7 +466,9 @@ function createScrollRun({
       long_tasks_ms: 0,
       dom_nodes_peak: adapterId === "pretable" ? 1823 : 657,
       row_height_error_p95_px,
-      scroll_anchor_shift_px,
+      ...(scroll_anchor_shift_px === undefined ? {} : { scroll_anchor_shift_px }),
+      scroll_anchor_shift_forward_p95_px,
+      scroll_anchor_shift_backward_p95_px,
     },
   };
 }

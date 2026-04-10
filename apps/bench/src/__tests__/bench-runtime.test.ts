@@ -241,6 +241,8 @@ describe("bench runtime", () => {
 
     expect(result.status).toBe("completed");
     expect(result.metrics.scroll_anchor_shift_px).toEqual(expect.any(Number));
+    expect(result.metrics.scroll_anchor_shift_forward_p95_px).toEqual(expect.any(Number));
+    expect(result.metrics.scroll_anchor_shift_backward_p95_px).toEqual(expect.any(Number));
     expect(result.metrics.row_height_error_p95_px).toEqual(expect.any(Number));
     expect(result.metrics.row_height_error_p95_px).toBeGreaterThanOrEqual(0);
   });

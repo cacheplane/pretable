@@ -44,6 +44,8 @@ describe("bench-runner contract", () => {
         "update_latency_p95_ms",
         "autosize_runtime_ms",
         "scroll_anchor_shift_px",
+        "scroll_anchor_shift_forward_p95_px",
+        "scroll_anchor_shift_backward_p95_px",
       ]),
     );
 
