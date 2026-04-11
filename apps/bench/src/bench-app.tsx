@@ -74,6 +74,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     const request = createBenchRequest(nextQuery, dataset, browserVersion);
     const support = validateSupportedP0aRequest(request);
     const timestamp = new Date().toISOString();
+    const tracePath = `status/traces/${createRunArtifactFileStem({
+      ...request,
+      timestamp,
+    })}.trace.zip`;
 
     if (!support.ok) {
       const unsupportedResult = createBenchRunSummary({
@@ -87,53 +91,62 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       return;
     }
 
-    const startedAt = performance.now();
+    try {
+      const startedAt = performance.now();
 
-    setRunKey((current) => current + 1);
-    await waitForNextAnimationFrame();
-
-    if (scriptName === "scroll") {
+      setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
+
+      if (scriptName === "scroll") {
+        await waitForNextAnimationFrame();
+      }
+
+      const domNodesPeak = viewportRef.current?.querySelectorAll("*").length ?? 0;
+
+      const scrollRun =
+        scriptName === "scroll"
+          ? await measureBenchScrollRun(
+              viewportRef.current ?? document.body,
+              query.adapterId,
+            )
+          : null;
+
+      const nextResult =
+        scriptName === "scroll" && scrollRun
+          ? createBenchRunSummary({
+              request,
+              status: scrollRun.status,
+              timestamp,
+              tracePath,
+              notes: scrollRun.notes,
+              metrics: scrollRun.metrics,
+            })
+          : createBenchRunSummary({
+              request,
+              status: "completed",
+              timestamp,
+              tracePath,
+              metrics: {
+                mount_ms: performance.now() - startedAt,
+                first_stable_viewport_ms: performance.now() - startedAt,
+                dom_nodes_peak: domNodesPeak,
+              },
+            });
+
+      setResult(nextResult);
+      publishBenchResult(nextResult);
+    } catch (error) {
+      const failedResult = createBenchRunSummary({
+        request,
+        status: "failed",
+        timestamp,
+        tracePath,
+        error: serializeBenchError(error),
+      });
+
+      setResult(failedResult);
+      publishBenchResult(failedResult);
     }
-
-    const tracePath = `status/traces/${createRunArtifactFileStem({
-      ...request,
-      timestamp,
-    })}.trace.zip`;
-    const domNodesPeak = viewportRef.current?.querySelectorAll("*").length ?? 0;
-
-    const scrollRun =
-      scriptName === "scroll"
-        ? await measureBenchScrollRun(
-            viewportRef.current ?? document.body,
-            query.adapterId,
-          )
-        : null;
-
-    const nextResult =
-      scriptName === "scroll" && scrollRun
-        ? createBenchRunSummary({
-            request,
-            status: scrollRun.status,
-            timestamp,
-            tracePath,
-            notes: scrollRun.notes,
-            metrics: scrollRun.metrics,
-          })
-        : createBenchRunSummary({
-            request,
-            status: "completed",
-            timestamp,
-            tracePath,
-            metrics: {
-              mount_ms: performance.now() - startedAt,
-              first_stable_viewport_ms: performance.now() - startedAt,
-              dom_nodes_peak: domNodesPeak,
-            },
-          });
-
-    setResult(nextResult);
-    publishBenchResult(nextResult);
   }
 
   const autorunScript = useEffectEvent(
@@ -252,4 +265,19 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       </section>
     </main>
   );
+}
+
+function serializeBenchError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    name: "UnknownError",
+    message: String(error),
+  };
 }
