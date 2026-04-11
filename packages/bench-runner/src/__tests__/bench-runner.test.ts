@@ -36,6 +36,8 @@ describe("bench-runner contract", () => {
         "long_tasks_count",
         "long_tasks_ms",
         "dom_nodes_peak",
+        "rendered_rows_peak",
+        "rendered_cells_peak",
         "heap_delta_mb",
         "ua_memory_mb",
         "interaction_latency_p95_ms",

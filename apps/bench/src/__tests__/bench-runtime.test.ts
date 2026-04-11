@@ -212,6 +212,12 @@ describe("bench runtime", () => {
         disconnect() {}
       },
     });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        overflowAnchor: "none",
+      }),
+    });
 
     rows[0]!.getBoundingClientRect = () =>
       createRect({
@@ -240,6 +246,9 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.metrics.rendered_rows_peak).toBeGreaterThanOrEqual(2);
+    expect(result.metrics.rendered_cells_peak).toBeGreaterThanOrEqual(2);
     expect(result.metrics.scroll_anchor_shift_px).toEqual(expect.any(Number));
     expect(result.metrics.scroll_anchor_shift_forward_p95_px).toEqual(expect.any(Number));
     expect(result.metrics.scroll_anchor_shift_backward_p95_px).toEqual(expect.any(Number));
@@ -316,6 +325,12 @@ describe("bench runtime", () => {
         disconnect() {}
       },
     });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        overflowAnchor: "none",
+      }),
+    });
 
     rows[0]!.getBoundingClientRect = () => {
       const settled = settledScrollTop === viewport!.scrollTop;
@@ -364,6 +379,7 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.notes).toContain("scroll anchoring: none");
     expect(result.metrics.scroll_frame_p95_ms).toBe(16);
     expect(result.metrics.blank_gap_frames).toBe(0);
   });
@@ -437,6 +453,12 @@ describe("bench runtime", () => {
         disconnect() {}
       },
     });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        overflowAnchor: "none",
+      }),
+    });
 
     rows[0]!.getBoundingClientRect = () => {
       const settled = settledScrollTop === viewport!.scrollTop;
@@ -485,19 +507,20 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.notes).toContain("scroll anchoring: none");
     expect(result.metrics.blank_gap_frames).toBe(0);
   });
 
   test("measures Grid Alpha scroll runs from the live viewport and row selectors", async () => {
     document.body.innerHTML = `
-      <div data-testid="root">
+        <div data-testid="root">
         <div aria-label="Grid Alpha Community adapter">
           <div class="ag-body-viewport">
             <div class="ag-row" row-index="0" style="height: 60px;">
-              <div>row 0</div>
+              <div class="ag-cell">row 0</div>
             </div>
             <div class="ag-row" row-index="1" style="height: 60px;">
-              <div>row 1</div>
+              <div class="ag-cell">row 1</div>
             </div>
           </div>
         </div>
@@ -553,6 +576,12 @@ describe("bench runtime", () => {
         disconnect() {}
       },
     });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        overflowAnchor: "none",
+      }),
+    });
 
     rows[0]!.getBoundingClientRect = () =>
       createRect({
@@ -573,6 +602,9 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.metrics.rendered_rows_peak).toBeGreaterThanOrEqual(2);
+    expect(result.metrics.rendered_cells_peak).toBeGreaterThanOrEqual(2);
     expect(result.metrics.scroll_frame_p95_ms).toEqual(expect.any(Number));
     expect(result.metrics.blank_gap_frames).toBeGreaterThanOrEqual(0);
     expect(result.metrics.dom_nodes_peak).toEqual(expect.any(Number));
