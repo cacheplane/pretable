@@ -45,6 +45,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
 
   if (scriptName === "scroll") {
     expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics).toMatchObject({
       scroll_frame_p95_ms: expect.any(Number),
       blank_gap_frames: expect.any(Number),

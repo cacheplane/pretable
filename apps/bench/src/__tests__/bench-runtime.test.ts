@@ -216,6 +216,7 @@ describe("bench runtime", () => {
       configurable: true,
       value: () => ({
         overflowAnchor: "none",
+        overscrollBehavior: "contain",
       }),
     });
 
@@ -247,6 +248,7 @@ describe("bench runtime", () => {
 
     expect(result.status).toBe("completed");
     expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.rendered_rows_peak).toBeGreaterThanOrEqual(2);
     expect(result.metrics.rendered_cells_peak).toBeGreaterThanOrEqual(2);
     expect(result.metrics.scroll_anchor_shift_px).toEqual(expect.any(Number));
@@ -329,6 +331,7 @@ describe("bench runtime", () => {
       configurable: true,
       value: () => ({
         overflowAnchor: "none",
+        overscrollBehavior: "contain",
       }),
     });
 
@@ -380,6 +383,7 @@ describe("bench runtime", () => {
 
     expect(result.status).toBe("completed");
     expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.scroll_frame_p95_ms).toBe(16);
     expect(result.metrics.blank_gap_frames).toBe(0);
   });
@@ -457,6 +461,7 @@ describe("bench runtime", () => {
       configurable: true,
       value: () => ({
         overflowAnchor: "none",
+        overscrollBehavior: "contain",
       }),
     });
 
@@ -508,6 +513,7 @@ describe("bench runtime", () => {
 
     expect(result.status).toBe("completed");
     expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.blank_gap_frames).toBe(0);
   });
 
@@ -580,6 +586,7 @@ describe("bench runtime", () => {
       configurable: true,
       value: () => ({
         overflowAnchor: "none",
+        overscrollBehavior: "contain",
       }),
     });
 
@@ -603,6 +610,7 @@ describe("bench runtime", () => {
 
     expect(result.status).toBe("completed");
     expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.rendered_rows_peak).toBeGreaterThanOrEqual(2);
     expect(result.metrics.rendered_cells_peak).toBeGreaterThanOrEqual(2);
     expect(result.metrics.scroll_frame_p95_ms).toEqual(expect.any(Number));

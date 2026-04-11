@@ -134,6 +134,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
           height: VIEWPORT_HEIGHT,
           overflow: "auto",
           overflowAnchor: "none",
+          overscrollBehavior: "contain",
           position: "relative",
         }}
       >

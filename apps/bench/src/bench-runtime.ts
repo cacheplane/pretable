@@ -112,7 +112,10 @@ export async function measureBenchScrollRun(
 
   const longTaskDurations: number[] = [];
   const observer = createLongTaskObserver(longTaskDurations);
-  const notes = [detectScrollAnchoringNote(viewport)];
+  const notes = [
+    detectScrollAnchoringNote(viewport),
+    detectOverscrollBehaviorNote(viewport),
+  ];
   const frameDurations: number[] = [];
   const rowHeightErrors: number[] = [];
   const anchorShifts: number[] = [];
@@ -309,6 +312,14 @@ function detectScrollAnchoringNote(viewport: HTMLElement) {
   }
 
   return `scroll anchoring: ${getComputedStyle(viewport).overflowAnchor || "unknown"}`;
+}
+
+function detectOverscrollBehaviorNote(viewport: HTMLElement) {
+  if (typeof getComputedStyle !== "function") {
+    return "overscroll behavior: unknown";
+  }
+
+  return `overscroll behavior: ${getComputedStyle(viewport).overscrollBehavior || "unknown"}`;
 }
 
 async function waitForScrollViewport(
