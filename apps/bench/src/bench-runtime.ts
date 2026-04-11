@@ -72,7 +72,10 @@ interface ScrollRuntimeProfile {
   measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
 }
 
-const scrollRuntimeProfiles: Record<BenchQueryState["adapterId"], ScrollRuntimeProfile> = {
+const scrollRuntimeProfiles: Record<
+  BenchQueryState["adapterId"],
+  ScrollRuntimeProfile
+> = {
   "ag-grid": {
     viewportSelector: ".ag-body-viewport",
     rowSelector: ".ag-row",
@@ -87,7 +90,25 @@ const scrollRuntimeProfiles: Record<BenchQueryState["adapterId"], ScrollRuntimeP
     cellSelector: "[data-pretable-cell]",
     rowIndexAttribute: "data-row-index",
     maxSettleFrames: 4,
-    measureRowHeightError: measurePretableRowHeightError,
+    measureRowHeightError: (row, renderedHeight) =>
+      measureWrappedCellRowHeightError(
+        row,
+        renderedHeight,
+        "[data-pretable-cell]",
+      ),
+  },
+  tanstack: {
+    viewportSelector: "[data-tanstack-scroll-viewport]",
+    rowSelector: "[data-tanstack-row]",
+    cellSelector: "[data-tanstack-cell]",
+    rowIndexAttribute: "data-row-index",
+    maxSettleFrames: 4,
+    measureRowHeightError: (row, renderedHeight) =>
+      measureWrappedCellRowHeightError(
+        row,
+        renderedHeight,
+        "[data-tanstack-cell]",
+      ),
   },
 };
 
@@ -97,7 +118,9 @@ export async function measureBenchScrollRun(
 ): Promise<ScrollBenchRunResult> {
   const profile = scrollRuntimeProfiles[adapterId];
   const viewport = await waitForScrollViewport(root, profile.viewportSelector);
-  const viewportPolicyNotes = viewport ? detectViewportPolicyNotes(viewport) : [];
+  const viewportPolicyNotes = viewport
+    ? detectViewportPolicyNotes(viewport)
+    : [];
 
   if (!viewport || viewport.scrollHeight <= viewport.clientHeight) {
     return {
@@ -108,7 +131,9 @@ export async function measureBenchScrollRun(
       ],
       metrics: {
         dom_nodes_peak: root.querySelectorAll("*").length,
-        scroll_viewport_nodes_peak: viewport ? countViewportSubtreeNodes(viewport) : 0,
+        scroll_viewport_nodes_peak: viewport
+          ? countViewportSubtreeNodes(viewport)
+          : 0,
         rendered_rows_peak: root.querySelectorAll(profile.rowSelector).length,
         rendered_cells_peak: root.querySelectorAll(profile.cellSelector).length,
       },
@@ -134,8 +159,14 @@ export async function measureBenchScrollRun(
   const maxScrollTop = viewport.scrollHeight - viewport.clientHeight;
   const steps = 18;
   const scrollTargets = [
-    ...Array.from({ length: steps }, (_, index) => ((index + 1) * maxScrollTop) / steps),
-    ...Array.from({ length: steps }, (_, index) => maxScrollTop - ((index + 1) * maxScrollTop) / steps),
+    ...Array.from(
+      { length: steps },
+      (_, index) => ((index + 1) * maxScrollTop) / steps,
+    ),
+    ...Array.from(
+      { length: steps },
+      (_, index) => maxScrollTop - ((index + 1) * maxScrollTop) / steps,
+    ),
   ];
 
   viewport.scrollTop = 0;
@@ -164,8 +195,11 @@ export async function measureBenchScrollRun(
       settledSample = sample;
     }
 
-    const visibleRows = settledSample?.visibleRows ?? sampleVisibleRows(viewport, profile);
-    const hasBlankGap = settledSample?.hasBlankGap ?? detectBlankGapFrame(viewport, profile.rowSelector);
+    const visibleRows =
+      settledSample?.visibleRows ?? sampleVisibleRows(viewport, profile);
+    const hasBlankGap =
+      settledSample?.hasBlankGap ??
+      detectBlankGapFrame(viewport, profile.rowSelector);
     domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
     scrollViewportNodesPeak = Math.max(
       scrollViewportNodesPeak,
@@ -184,7 +218,9 @@ export async function measureBenchScrollRun(
       blankGapFrames += 1;
     }
 
-    rowHeightErrors.push(...visibleRows.map((row) => row.heightError).filter((value) => value > 0));
+    rowHeightErrors.push(
+      ...visibleRows.map((row) => row.heightError).filter((value) => value > 0),
+    );
 
     const anchorShift = measureAnchorShift({
       previousVisibleRows,
@@ -230,7 +266,10 @@ export async function measureBenchScrollRun(
       scroll_frame_p95_ms: percentile(frameDurations, 0.95),
       blank_gap_frames: blankGapFrames,
       long_tasks_count: longTaskDurations.length,
-      long_tasks_ms: longTaskDurations.reduce((total, duration) => total + duration, 0),
+      long_tasks_ms: longTaskDurations.reduce(
+        (total, duration) => total + duration,
+        0,
+      ),
       dom_nodes_peak: domNodesPeak,
       scroll_viewport_nodes_peak: scrollViewportNodesPeak,
       rendered_rows_peak: renderedRowsPeak,
@@ -238,7 +277,10 @@ export async function measureBenchScrollRun(
       row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
       scroll_anchor_shift_px: percentile(anchorShifts, 0.95),
       scroll_anchor_shift_forward_p95_px: percentile(forwardAnchorShifts, 0.95),
-      scroll_anchor_shift_backward_p95_px: percentile(backwardAnchorShifts, 0.95),
+      scroll_anchor_shift_backward_p95_px: percentile(
+        backwardAnchorShifts,
+        0.95,
+      ),
     },
   };
 }
@@ -316,7 +358,11 @@ function waitForAnimationFrame() {
 }
 
 function detectScrollAnchoringNote(viewport: HTMLElement) {
-  return detectViewportStyleNote(viewport, "scroll anchoring", "overflowAnchor");
+  return detectViewportStyleNote(
+    viewport,
+    "scroll anchoring",
+    "overflowAnchor",
+  );
 }
 
 function detectOverscrollBehaviorNote(viewport: HTMLElement) {
@@ -474,7 +520,9 @@ function measureAnchorShift(input: {
   const previousByIndex = new Map(
     input.previousVisibleRows.map((row) => [row.rowIndex, row]),
   );
-  const nextMatch = input.nextVisibleRows.find((row) => previousByIndex.has(row.rowIndex));
+  const nextMatch = input.nextVisibleRows.find((row) =>
+    previousByIndex.has(row.rowIndex),
+  );
 
   if (!nextMatch) {
     return null;
@@ -503,14 +551,19 @@ function getViewportContentBounds(viewport: HTMLElement) {
   };
 }
 
-function measurePretableRowHeightError(row: HTMLElement, renderedHeight: number) {
+function measureWrappedCellRowHeightError(
+  row: HTMLElement,
+  renderedHeight: number,
+  cellSelector: string,
+) {
   const style = getComputedStyle(row);
   const verticalPadding =
-    parseFloat(style.paddingTop || "0") + parseFloat(style.paddingBottom || "0");
+    parseFloat(style.paddingTop || "0") +
+    parseFloat(style.paddingBottom || "0");
   const borderHeight = parseFloat(style.borderBottomWidth || "0");
   const contentHeight = Math.max(
     0,
-    ...[...row.querySelectorAll<HTMLElement>("[data-pretable-cell]")]
+    ...[...row.querySelectorAll<HTMLElement>(cellSelector)]
       .map((cell) => cell.scrollHeight)
       .filter(Number.isFinite),
   );
@@ -520,7 +573,9 @@ function measurePretableRowHeightError(row: HTMLElement, renderedHeight: number)
 }
 
 function measureAgGridRowHeightError(row: HTMLElement, renderedHeight: number) {
-  const expectedHeight = parseFloat(row.style.height || getComputedStyle(row).height || "0");
+  const expectedHeight = parseFloat(
+    row.style.height || getComputedStyle(row).height || "0",
+  );
 
   return Math.abs(expectedHeight - renderedHeight);
 }

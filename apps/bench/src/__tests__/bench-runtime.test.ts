@@ -86,8 +86,12 @@ describe("bench runtime", () => {
       </div>
     `;
 
-    const viewport = document.querySelector<HTMLElement>('[data-testid="viewport"]');
-    const rows = [...document.querySelectorAll<HTMLElement>("[data-pretable-row]")];
+    const viewport = document.querySelector<HTMLElement>(
+      '[data-testid="viewport"]',
+    );
+    const rows = [
+      ...document.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
 
     expect(viewport).toBeTruthy();
     expect(rows).toHaveLength(3);
@@ -123,7 +127,9 @@ describe("bench runtime", () => {
       </div>
     `;
 
-    const viewport = document.querySelector<HTMLElement>('[data-testid="viewport"]');
+    const viewport = document.querySelector<HTMLElement>(
+      '[data-testid="viewport"]',
+    );
     const row = document.querySelector<HTMLElement>("[data-pretable-row]");
 
     expect(viewport).toBeTruthy();
@@ -159,7 +165,9 @@ describe("bench runtime", () => {
     `;
 
     const root = document.querySelector<HTMLElement>('[data-testid="root"]');
-    const viewport = root?.querySelector<HTMLElement>("[data-pretable-scroll-viewport]");
+    const viewport = root?.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
 
     expect(root).toBeTruthy();
     expect(viewport).toBeTruthy();
@@ -182,7 +190,9 @@ describe("bench runtime", () => {
     const result = await measurePretableScrollRun(root!);
 
     expect(result.status).toBe("partial");
-    expect(result.notes).toContain("scroll viewport unavailable for pretable in current runtime");
+    expect(result.notes).toContain(
+      "scroll viewport unavailable for pretable in current runtime",
+    );
     expect(result.notes).toContain("contain: content");
     expect(result.notes).toContain("content visibility: auto");
     expect(result.notes).toContain("contain intrinsic size: auto 320px");
@@ -206,9 +216,15 @@ describe("bench runtime", () => {
     `;
 
     const root = document.querySelector<HTMLElement>('[data-testid="root"]');
-    const viewport = root?.querySelector<HTMLElement>("[data-pretable-scroll-viewport]");
-    const rows = [...root!.querySelectorAll<HTMLElement>("[data-pretable-row]")];
-    const cells = [...root!.querySelectorAll<HTMLElement>("[data-pretable-cell]")];
+    const viewport = root?.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+    const rows = [
+      ...root!.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const cells = [
+      ...root!.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
     const rafTimestamps = [0, 16, 32, 48, 64, 80];
     let rafIndex = 0;
     const OriginalPerformanceObserver = globalThis.PerformanceObserver;
@@ -303,8 +319,12 @@ describe("bench runtime", () => {
     expect(result.metrics.rendered_rows_peak).toBeGreaterThanOrEqual(2);
     expect(result.metrics.rendered_cells_peak).toBeGreaterThanOrEqual(2);
     expect(result.metrics.scroll_anchor_shift_px).toEqual(expect.any(Number));
-    expect(result.metrics.scroll_anchor_shift_forward_p95_px).toEqual(expect.any(Number));
-    expect(result.metrics.scroll_anchor_shift_backward_p95_px).toEqual(expect.any(Number));
+    expect(result.metrics.scroll_anchor_shift_forward_p95_px).toEqual(
+      expect.any(Number),
+    );
+    expect(result.metrics.scroll_anchor_shift_backward_p95_px).toEqual(
+      expect.any(Number),
+    );
     expect(result.metrics.row_height_error_p95_px).toEqual(expect.any(Number));
     expect(result.metrics.row_height_error_p95_px).toBeGreaterThanOrEqual(0);
   });
@@ -324,9 +344,15 @@ describe("bench runtime", () => {
     `;
 
     const root = document.querySelector<HTMLElement>('[data-testid="root"]');
-    const viewport = root?.querySelector<HTMLElement>("[data-pretable-scroll-viewport]");
-    const rows = [...root!.querySelectorAll<HTMLElement>("[data-pretable-row]")];
-    const cells = [...root!.querySelectorAll<HTMLElement>("[data-pretable-cell]")];
+    const viewport = root?.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+    const rows = [
+      ...root!.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const cells = [
+      ...root!.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
     const OriginalPerformanceObserver = globalThis.PerformanceObserver;
     let animationFrameCount = 0;
     let settledScrollTop = 0;
@@ -461,9 +487,15 @@ describe("bench runtime", () => {
     `;
 
     const root = document.querySelector<HTMLElement>('[data-testid="root"]');
-    const viewport = root?.querySelector<HTMLElement>("[data-pretable-scroll-viewport]");
-    const rows = [...root!.querySelectorAll<HTMLElement>("[data-pretable-row]")];
-    const cells = [...root!.querySelectorAll<HTMLElement>("[data-pretable-cell]")];
+    const viewport = root?.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+    const rows = [
+      ...root!.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const cells = [
+      ...root!.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
     const OriginalPerformanceObserver = globalThis.PerformanceObserver;
     let animationFrameCount = 0;
     let settledScrollTop = 0;
@@ -670,6 +702,129 @@ describe("bench runtime", () => {
       });
 
     const result = await measureBenchScrollRun(root!, "ag-grid");
+
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: OriginalPerformanceObserver,
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.notes).toContain("contain: none");
+    expect(result.notes).toContain("content visibility: visible");
+    expect(result.notes).toContain("contain intrinsic size: none");
+    expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.notes).toContain("overscroll behavior: contain");
+    expect(result.metrics.scroll_viewport_nodes_peak).toBeGreaterThanOrEqual(3);
+    expect(result.metrics.rendered_rows_peak).toBeGreaterThanOrEqual(2);
+    expect(result.metrics.rendered_cells_peak).toBeGreaterThanOrEqual(2);
+    expect(result.metrics.scroll_frame_p95_ms).toEqual(expect.any(Number));
+    expect(result.metrics.blank_gap_frames).toBeGreaterThanOrEqual(0);
+    expect(result.metrics.dom_nodes_peak).toEqual(expect.any(Number));
+  });
+
+  test("measures TanStack Virtual scroll runs from the live viewport and row selectors", async () => {
+    document.body.innerHTML = `
+        <div data-testid="root">
+          <div aria-label="TanStack Virtual adapter">
+            <div data-tanstack-scroll-viewport="">
+              <div data-tanstack-row="" data-row-index="0" data-row-height="60">
+                <div data-tanstack-cell="">row 0</div>
+              </div>
+              <div data-tanstack-row="" data-row-index="1" data-row-height="60">
+                <div data-tanstack-cell="">row 1 with longer content</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    const viewport = root?.querySelector<HTMLElement>(
+      "[data-tanstack-scroll-viewport]",
+    );
+    const rows = [
+      ...root!.querySelectorAll<HTMLElement>("[data-tanstack-row]"),
+    ];
+    const cells = [
+      ...root!.querySelectorAll<HTMLElement>("[data-tanstack-cell]"),
+    ];
+    const rafTimestamps = [0, 16, 32, 48, 64, 80];
+    let rafIndex = 0;
+    const OriginalPerformanceObserver = globalThis.PerformanceObserver;
+
+    expect(root).toBeTruthy();
+    expect(viewport).toBeTruthy();
+    expect(rows).toHaveLength(2);
+
+    Object.defineProperties(viewport!, {
+      clientTop: { value: 1, configurable: true },
+      clientHeight: { value: 118, configurable: true },
+      scrollHeight: { value: 180, configurable: true },
+      scrollTop: {
+        configurable: true,
+        get() {
+          return Number(this.dataset.scrollTop ?? "0");
+        },
+        set(value: number) {
+          this.dataset.scrollTop = String(value);
+        },
+      },
+    });
+    viewport!.getBoundingClientRect = () =>
+      createRect({
+        top: 100,
+        bottom: 220,
+      });
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        const timestamp = rafTimestamps[rafIndex] ?? rafTimestamps.at(-1) ?? 0;
+        rafIndex += 1;
+        callback(timestamp);
+        return rafIndex;
+      },
+    });
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: class PerformanceObserver {
+        static supportedEntryTypes = ["longtask"];
+
+        observe() {}
+
+        disconnect() {}
+      },
+    });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        contain: "none",
+        containIntrinsicSize: "none",
+        contentVisibility: "visible",
+        overflowAnchor: "none",
+        overscrollBehavior: "contain",
+      }),
+    });
+
+    rows[0]!.getBoundingClientRect = () =>
+      createRect({
+        top: 101 - viewport!.scrollTop,
+        bottom: 161 - viewport!.scrollTop,
+      });
+    rows[1]!.getBoundingClientRect = () =>
+      createRect({
+        top: 161 - viewport!.scrollTop,
+        bottom: 221 - viewport!.scrollTop,
+      });
+    Object.defineProperty(cells[0]!, "scrollHeight", {
+      configurable: true,
+      value: 60,
+    });
+    Object.defineProperty(cells[1]!, "scrollHeight", {
+      configurable: true,
+      value: 84,
+    });
+
+    const result = await measureBenchScrollRun(root!, "tanstack");
 
     Object.defineProperty(globalThis, "PerformanceObserver", {
       configurable: true,

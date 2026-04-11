@@ -1,5 +1,5 @@
 export interface BenchQueryState {
-  adapterId: "pretable" | "ag-grid";
+  adapterId: "pretable" | "ag-grid" | "tanstack";
   scenarioId: "S1" | "S2";
   profile: "default";
   scale: "smoke" | "dev" | "hypothesis" | "target";

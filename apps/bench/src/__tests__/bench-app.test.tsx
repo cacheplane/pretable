@@ -69,10 +69,25 @@ describe("BenchApp", () => {
   });
 
   test("renders the requested competitor surface instead of relabeling Pretable", async () => {
-    render(<BenchApp search="?adapter=ag-grid&scenario=S2" browserVersion="123.0" />);
+    render(
+      <BenchApp search="?adapter=ag-grid&scenario=S2" browserVersion="123.0" />,
+    );
 
     expect(screen.getByText("AG Grid harness")).toBeTruthy();
     expect(screen.getByText("AG Grid Community adapter")).toBeTruthy();
+    expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
+  });
+
+  test("renders the requested tanstack competitor surface", async () => {
+    render(
+      <BenchApp
+        search="?adapter=tanstack&scenario=S2"
+        browserVersion="123.0"
+      />,
+    );
+
+    expect(screen.getByText("TanStack Virtual harness")).toBeTruthy();
+    expect(screen.getByText("TanStack Virtual adapter")).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 

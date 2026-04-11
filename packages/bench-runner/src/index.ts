@@ -1,4 +1,7 @@
-import type { ScenarioId, ScenarioScale } from "@pretable-internal/scenario-data";
+import type {
+  ScenarioId,
+  ScenarioScale,
+} from "@pretable-internal/scenario-data";
 
 export type BenchAdapterId =
   | "pretable"
@@ -173,12 +176,18 @@ export const benchScriptNames: readonly BenchScriptName[] = [
 export function validateSupportedP0aRequest(
   request: BenchRunRequest,
 ): { ok: true } | { ok: false; reason: string } {
-  if (!["pretable", "ag-grid"].includes(request.adapterId)) {
-    return { ok: false, reason: `Unsupported adapter for P0a: ${request.adapterId}` };
+  if (!["pretable", "ag-grid", "tanstack"].includes(request.adapterId)) {
+    return {
+      ok: false,
+      reason: `Unsupported adapter for P0a: ${request.adapterId}`,
+    };
   }
 
   if (request.profile !== "default") {
-    return { ok: false, reason: `Unsupported profile for P0a: ${request.profile}` };
+    return {
+      ok: false,
+      reason: `Unsupported profile for P0a: ${request.profile}`,
+    };
   }
 
   if (request.browserName !== "chromium") {
@@ -399,7 +408,10 @@ function assertRequiredMetrics(
   }
 }
 
-function compareBenchRuns(left: BenchRunSummary, right: BenchRunSummary): number {
+function compareBenchRuns(
+  left: BenchRunSummary,
+  right: BenchRunSummary,
+): number {
   const timestampDiff = left.timestamp.localeCompare(right.timestamp);
 
   if (timestampDiff !== 0) {

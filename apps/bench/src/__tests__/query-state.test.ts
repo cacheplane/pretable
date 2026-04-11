@@ -31,9 +31,26 @@ describe("parseBenchQuery", () => {
 
   test("accepts a supported competitor adapter without relaxing other defaults", () => {
     expect(
-      parseBenchQuery("?adapter=ag-grid&scenario=S2&scale=hypothesis&script=scroll"),
+      parseBenchQuery(
+        "?adapter=ag-grid&scenario=S2&scale=hypothesis&script=scroll",
+      ),
     ).toEqual({
       adapterId: "ag-grid",
+      scenarioId: "S2",
+      profile: "default",
+      scale: "hypothesis",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
+
+  test("accepts the tanstack competitor adapter without relaxing other defaults", () => {
+    expect(
+      parseBenchQuery(
+        "?adapter=tanstack&scenario=S2&scale=hypothesis&script=scroll",
+      ),
+    ).toEqual({
+      adapterId: "tanstack",
       scenarioId: "S2",
       profile: "default",
       scale: "hypothesis",
