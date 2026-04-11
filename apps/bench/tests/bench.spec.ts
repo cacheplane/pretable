@@ -52,6 +52,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       long_tasks_count: expect.any(Number),
       long_tasks_ms: expect.any(Number),
       dom_nodes_peak: expect.any(Number),
+      scroll_viewport_nodes_peak: expect.any(Number),
       rendered_rows_peak: expect.any(Number),
       rendered_cells_peak: expect.any(Number),
     });

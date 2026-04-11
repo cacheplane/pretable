@@ -104,6 +104,7 @@ export async function measureBenchScrollRun(
       notes: [`scroll viewport unavailable for ${adapterId} in current runtime`],
       metrics: {
         dom_nodes_peak: root.querySelectorAll("*").length,
+        scroll_viewport_nodes_peak: viewport ? countViewportSubtreeNodes(viewport) : 0,
         rendered_rows_peak: root.querySelectorAll(profile.rowSelector).length,
         rendered_cells_peak: root.querySelectorAll(profile.cellSelector).length,
       },
@@ -122,6 +123,7 @@ export async function measureBenchScrollRun(
   const forwardAnchorShifts: number[] = [];
   const backwardAnchorShifts: number[] = [];
   let domNodesPeak = root.querySelectorAll("*").length;
+  let scrollViewportNodesPeak = countViewportSubtreeNodes(viewport);
   let renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
   let renderedCellsPeak = root.querySelectorAll(profile.cellSelector).length;
   let blankGapFrames = 0;
@@ -164,6 +166,10 @@ export async function measureBenchScrollRun(
     const visibleRows = settledSample?.visibleRows ?? sampleVisibleRows(viewport, profile);
     const hasBlankGap = settledSample?.hasBlankGap ?? detectBlankGapFrame(viewport, profile.rowSelector);
     domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
+    scrollViewportNodesPeak = Math.max(
+      scrollViewportNodesPeak,
+      countViewportSubtreeNodes(viewport),
+    );
     renderedRowsPeak = Math.max(
       renderedRowsPeak,
       root.querySelectorAll(profile.rowSelector).length,
@@ -208,6 +214,7 @@ export async function measureBenchScrollRun(
       notes,
       metrics: {
         dom_nodes_peak: domNodesPeak,
+        scroll_viewport_nodes_peak: scrollViewportNodesPeak,
         rendered_rows_peak: renderedRowsPeak,
         rendered_cells_peak: renderedCellsPeak,
         blank_gap_frames: blankGapFrames,
@@ -224,6 +231,7 @@ export async function measureBenchScrollRun(
       long_tasks_count: longTaskDurations.length,
       long_tasks_ms: longTaskDurations.reduce((total, duration) => total + duration, 0),
       dom_nodes_peak: domNodesPeak,
+      scroll_viewport_nodes_peak: scrollViewportNodesPeak,
       rendered_rows_peak: renderedRowsPeak,
       rendered_cells_peak: renderedCellsPeak,
       row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
@@ -320,6 +328,10 @@ function detectOverscrollBehaviorNote(viewport: HTMLElement) {
   }
 
   return `overscroll behavior: ${getComputedStyle(viewport).overscrollBehavior || "unknown"}`;
+}
+
+function countViewportSubtreeNodes(viewport: HTMLElement) {
+  return viewport.querySelectorAll("*").length + 1;
 }
 
 async function waitForScrollViewport(
