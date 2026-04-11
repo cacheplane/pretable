@@ -44,6 +44,9 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   });
 
   if (scriptName === "scroll") {
+    expect(result.notes).toContain("contain: none");
+    expect(result.notes).toContain("content visibility: visible");
+    expect(result.notes).toContain("contain intrinsic size: none");
     expect(result.notes).toContain("scroll anchoring: none");
     expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics).toMatchObject({

@@ -97,11 +97,15 @@ export async function measureBenchScrollRun(
 ): Promise<ScrollBenchRunResult> {
   const profile = scrollRuntimeProfiles[adapterId];
   const viewport = await waitForScrollViewport(root, profile.viewportSelector);
+  const viewportPolicyNotes = viewport ? detectViewportPolicyNotes(viewport) : [];
 
   if (!viewport || viewport.scrollHeight <= viewport.clientHeight) {
     return {
       status: "partial",
-      notes: [`scroll viewport unavailable for ${adapterId} in current runtime`],
+      notes: [
+        ...viewportPolicyNotes,
+        `scroll viewport unavailable for ${adapterId} in current runtime`,
+      ],
       metrics: {
         dom_nodes_peak: root.querySelectorAll("*").length,
         scroll_viewport_nodes_peak: viewport ? countViewportSubtreeNodes(viewport) : 0,
@@ -113,10 +117,7 @@ export async function measureBenchScrollRun(
 
   const longTaskDurations: number[] = [];
   const observer = createLongTaskObserver(longTaskDurations);
-  const notes = [
-    detectScrollAnchoringNote(viewport),
-    detectOverscrollBehaviorNote(viewport),
-  ];
+  const notes = viewportPolicyNotes;
   const frameDurations: number[] = [];
   const rowHeightErrors: number[] = [];
   const anchorShifts: number[] = [];
@@ -138,7 +139,7 @@ export async function measureBenchScrollRun(
   ];
 
   viewport.scrollTop = 0;
-  let initialFrameTimestamp = previousFrameTimestamp;
+  let initialFrameTimestamp: number | null = previousFrameTimestamp;
 
   for await (const sample of waitForSettledScrollSample(viewport, profile)) {
     if (initialFrameTimestamp !== null) {
@@ -315,19 +316,62 @@ function waitForAnimationFrame() {
 }
 
 function detectScrollAnchoringNote(viewport: HTMLElement) {
-  if (typeof getComputedStyle !== "function") {
-    return "scroll anchoring: unknown";
-  }
-
-  return `scroll anchoring: ${getComputedStyle(viewport).overflowAnchor || "unknown"}`;
+  return detectViewportStyleNote(viewport, "scroll anchoring", "overflowAnchor");
 }
 
 function detectOverscrollBehaviorNote(viewport: HTMLElement) {
+  return detectViewportStyleNote(
+    viewport,
+    "overscroll behavior",
+    "overscrollBehavior",
+  );
+}
+
+function detectContainmentNote(viewport: HTMLElement) {
+  return detectViewportStyleNote(viewport, "contain", "contain");
+}
+
+function detectContentVisibilityNote(viewport: HTMLElement) {
+  return detectViewportStyleNote(
+    viewport,
+    "content visibility",
+    "contentVisibility",
+  );
+}
+
+function detectContainIntrinsicSizeNote(viewport: HTMLElement) {
+  return detectViewportStyleNote(
+    viewport,
+    "contain intrinsic size",
+    "containIntrinsicSize",
+  );
+}
+
+function detectViewportPolicyNotes(viewport: HTMLElement) {
+  return [
+    detectContainmentNote(viewport),
+    detectContentVisibilityNote(viewport),
+    detectContainIntrinsicSizeNote(viewport),
+    detectScrollAnchoringNote(viewport),
+    detectOverscrollBehaviorNote(viewport),
+  ];
+}
+
+function detectViewportStyleNote(
+  viewport: HTMLElement,
+  label: string,
+  property:
+    | "contain"
+    | "containIntrinsicSize"
+    | "contentVisibility"
+    | "overflowAnchor"
+    | "overscrollBehavior",
+) {
   if (typeof getComputedStyle !== "function") {
-    return "overscroll behavior: unknown";
+    return `${label}: unknown`;
   }
 
-  return `overscroll behavior: ${getComputedStyle(viewport).overscrollBehavior || "unknown"}`;
+  return `${label}: ${getComputedStyle(viewport)[property] || "unknown"}`;
 }
 
 function countViewportSubtreeNodes(viewport: HTMLElement) {
