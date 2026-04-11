@@ -400,8 +400,85 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   assert.equal(h1?.status, "satisfied");
   assert.equal(h1?.evidence[0]?.sampleCount, 3);
   assert.equal(h1?.evidence[0]?.metrics.scroll_frame_p95_ms, 13.1);
+  assert.deepEqual(h1?.evidence[0]?.policyNotes.common, [
+    "contain: none",
+    "content visibility: visible",
+    "contain intrinsic size: none",
+    "scroll anchoring: none",
+    "overscroll behavior: contain",
+  ]);
+  assert.deepEqual(h1?.evidence[0]?.policyNotes.varying, {});
   assert.equal(h1?.evidence[1]?.sampleCount, 3);
   assert.equal(h1?.evidence[1]?.metrics.scroll_frame_p95_ms, 28.4);
+});
+
+test("createHypothesisReport records policy-note drift across repeated runs", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t15-30-00-000z",
+    generatedAt: "2026-04-10T15:33:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-30-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 1,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-31-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 2,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-32-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:30:00.000Z",
+        scroll_frame_p95_ms: 13.1,
+      }),
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:31:00.000Z",
+        scroll_frame_p95_ms: 13.4,
+      }),
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:32:00.000Z",
+        scroll_frame_p95_ms: 13.3,
+        notes: [
+          "contain: layout",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+        ],
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.deepEqual(h1?.evidence[0]?.policyNotes.common, [
+    "content visibility: visible",
+    "contain intrinsic size: none",
+    "scroll anchoring: none",
+    "overscroll behavior: contain",
+  ]);
+  assert.deepEqual(h1?.evidence[0]?.policyNotes.varying, {
+    contain: ["layout", "none"],
+  });
 });
 
 test("createHypothesisReport treats backward anchor instability as an H3 failure when direction-specific metrics are present", () => {
@@ -438,6 +515,13 @@ test("createHypothesisReport treats backward anchor instability as an H3 failure
 function createScrollRun({
   adapterId,
   timestamp,
+  notes = [
+    "contain: none",
+    "content visibility: visible",
+    "contain intrinsic size: none",
+    "scroll anchoring: none",
+    "overscroll behavior: contain",
+  ],
   scroll_frame_p95_ms,
   row_height_error_p95_px = 0,
   scroll_anchor_shift_px = 0,
@@ -456,7 +540,7 @@ function createScrollRun({
     viewport: { width: 1440, height: 900 },
     fontStack: '"IBM Plex Sans", system-ui, sans-serif',
     deviceScaleFactor: 1,
-    notes: [],
+    notes,
     status: "completed",
     tracePath: `status/traces/chromium-${adapterId}-default-s2-scroll.trace.zip`,
     metrics: {
