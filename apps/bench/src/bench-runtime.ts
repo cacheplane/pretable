@@ -66,6 +66,7 @@ export interface ScrollBenchRunResult {
 interface ScrollRuntimeProfile {
   viewportSelector: string;
   rowSelector: string;
+  cellSelector: string;
   rowIndexAttribute: string;
   maxSettleFrames: number;
   measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
@@ -75,6 +76,7 @@ const scrollRuntimeProfiles: Record<BenchQueryState["adapterId"], ScrollRuntimeP
   "ag-grid": {
     viewportSelector: ".ag-body-viewport",
     rowSelector: ".ag-row",
+    cellSelector: ".ag-cell",
     rowIndexAttribute: "row-index",
     maxSettleFrames: 1,
     measureRowHeightError: measureAgGridRowHeightError,
@@ -82,6 +84,7 @@ const scrollRuntimeProfiles: Record<BenchQueryState["adapterId"], ScrollRuntimeP
   pretable: {
     viewportSelector: "[data-pretable-scroll-viewport]",
     rowSelector: "[data-pretable-row]",
+    cellSelector: "[data-pretable-cell]",
     rowIndexAttribute: "data-row-index",
     maxSettleFrames: 4,
     measureRowHeightError: measurePretableRowHeightError,
@@ -101,18 +104,23 @@ export async function measureBenchScrollRun(
       notes: [`scroll viewport unavailable for ${adapterId} in current runtime`],
       metrics: {
         dom_nodes_peak: root.querySelectorAll("*").length,
+        rendered_rows_peak: root.querySelectorAll(profile.rowSelector).length,
+        rendered_cells_peak: root.querySelectorAll(profile.cellSelector).length,
       },
     };
   }
 
   const longTaskDurations: number[] = [];
   const observer = createLongTaskObserver(longTaskDurations);
+  const notes = [detectScrollAnchoringNote(viewport)];
   const frameDurations: number[] = [];
   const rowHeightErrors: number[] = [];
   const anchorShifts: number[] = [];
   const forwardAnchorShifts: number[] = [];
   const backwardAnchorShifts: number[] = [];
   let domNodesPeak = root.querySelectorAll("*").length;
+  let renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
+  let renderedCellsPeak = root.querySelectorAll(profile.cellSelector).length;
   let blankGapFrames = 0;
   let previousFrameTimestamp: number | null = null;
   let previousVisibleRows: VisibleRowSample[] = [];
@@ -153,6 +161,14 @@ export async function measureBenchScrollRun(
     const visibleRows = settledSample?.visibleRows ?? sampleVisibleRows(viewport, profile);
     const hasBlankGap = settledSample?.hasBlankGap ?? detectBlankGapFrame(viewport, profile.rowSelector);
     domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
+    renderedRowsPeak = Math.max(
+      renderedRowsPeak,
+      root.querySelectorAll(profile.rowSelector).length,
+    );
+    renderedCellsPeak = Math.max(
+      renderedCellsPeak,
+      root.querySelectorAll(profile.cellSelector).length,
+    );
 
     if (hasBlankGap) {
       blankGapFrames += 1;
@@ -186,9 +202,11 @@ export async function measureBenchScrollRun(
   if (!observer || frameDurations.length === 0) {
     return {
       status: "partial",
-      notes: ["scroll observers unavailable in current runtime"],
+      notes,
       metrics: {
         dom_nodes_peak: domNodesPeak,
+        rendered_rows_peak: renderedRowsPeak,
+        rendered_cells_peak: renderedCellsPeak,
         blank_gap_frames: blankGapFrames,
       },
     };
@@ -196,13 +214,15 @@ export async function measureBenchScrollRun(
 
   return {
     status: "completed",
-    notes: [],
+    notes,
     metrics: {
       scroll_frame_p95_ms: percentile(frameDurations, 0.95),
       blank_gap_frames: blankGapFrames,
       long_tasks_count: longTaskDurations.length,
       long_tasks_ms: longTaskDurations.reduce((total, duration) => total + duration, 0),
       dom_nodes_peak: domNodesPeak,
+      rendered_rows_peak: renderedRowsPeak,
+      rendered_cells_peak: renderedCellsPeak,
       row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
       scroll_anchor_shift_px: percentile(anchorShifts, 0.95),
       scroll_anchor_shift_forward_p95_px: percentile(forwardAnchorShifts, 0.95),
@@ -281,6 +301,14 @@ function waitForAnimationFrame() {
       resolve(timestamp);
     });
   });
+}
+
+function detectScrollAnchoringNote(viewport: HTMLElement) {
+  if (typeof getComputedStyle !== "function") {
+    return "scroll anchoring: unknown";
+  }
+
+  return `scroll anchoring: ${getComputedStyle(viewport).overflowAnchor || "unknown"}`;
 }
 
 async function waitForScrollViewport(

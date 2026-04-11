@@ -133,6 +133,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
           borderRadius: 16,
           height: VIEWPORT_HEIGHT,
           overflow: "auto",
+          overflowAnchor: "none",
           position: "relative",
         }}
       >

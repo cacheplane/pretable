@@ -44,12 +44,15 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   });
 
   if (scriptName === "scroll") {
+    expect(result.notes).toContain("scroll anchoring: none");
     expect(result.metrics).toMatchObject({
       scroll_frame_p95_ms: expect.any(Number),
       blank_gap_frames: expect.any(Number),
       long_tasks_count: expect.any(Number),
       long_tasks_ms: expect.any(Number),
       dom_nodes_peak: expect.any(Number),
+      rendered_rows_peak: expect.any(Number),
+      rendered_cells_peak: expect.any(Number),
     });
     expect(result.metrics.blank_gap_frames).toBeGreaterThanOrEqual(0);
   }
