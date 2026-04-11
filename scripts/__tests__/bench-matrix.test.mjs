@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  createBenchPreviewLaunch,
   createBenchRunsetManifest,
   createBenchMatrixEntries,
   createHypothesisReport,
@@ -197,6 +198,21 @@ test("createBenchRunsetManifest records the invoked matrix and produced summary 
       ],
     },
   );
+});
+
+test("createBenchPreviewLaunch builds explicitly and starts vite preview directly", () => {
+  const launch = createBenchPreviewLaunch("/repo/pretable");
+
+  assert.deepEqual(launch.build, {
+    command: "pnpm",
+    args: ["--filter", "@pretable/app-bench", "build"],
+    cwd: "/repo/pretable",
+  });
+  assert.deepEqual(launch.preview, {
+    command: "pnpm",
+    args: ["exec", "vite", "preview", "--host", "127.0.0.1", "--port", "4173"],
+    cwd: "/repo/pretable/apps/bench",
+  });
 });
 
 test("createHypothesisReport distinguishes directional evidence from missing proof", () => {
