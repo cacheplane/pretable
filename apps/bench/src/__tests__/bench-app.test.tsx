@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { BENCH_RESULT_KEY } from "../bench-runtime";
+import * as benchRuntime from "../bench-runtime";
 import { BenchApp } from "../bench-app";
 
 describe("BenchApp", () => {
@@ -73,5 +74,30 @@ describe("BenchApp", () => {
     expect(screen.getByText("Grid Alpha harness")).toBeTruthy();
     expect(screen.getByText("Grid Alpha Community adapter")).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
+  });
+
+  test("publishes a failed terminal result when scroll measurement throws", async () => {
+    vi.spyOn(benchRuntime, "measureBenchScrollRun").mockRejectedValueOnce(
+      new Error("scroll probe exploded"),
+    );
+
+    render(
+      <BenchApp search="?scenario=S2&script=scroll" browserVersion="123.0" />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run Scroll" }));
+
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        status: "failed",
+        adapterId: "pretable",
+        scenarioId: "S2",
+        scriptName: "scroll",
+        error: {
+          name: "Error",
+          message: "scroll probe exploded",
+        },
+      });
+    });
   });
 });
