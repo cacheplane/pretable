@@ -9,6 +9,7 @@ const DEFAULT_SCALE = "dev";
 const DEFAULT_SCENARIOS = ["S1", "S2"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
+const BENCH_APP_ID = "@pretable/app-bench";
 
 export function parseBenchMatrixArgs(args) {
   const parsed = {
@@ -78,6 +79,21 @@ export function createBenchRunsetManifest(input) {
   };
 }
 
+export function createBenchPreviewLaunch(workspaceDir) {
+  return {
+    build: {
+      command: "pnpm",
+      args: ["--filter", BENCH_APP_ID, "build"],
+      cwd: workspaceDir,
+    },
+    preview: {
+      command: "pnpm",
+      args: ["exec", "vite", "preview", "--host", "127.0.0.1", "--port", "4173"],
+      cwd: path.join(workspaceDir, "apps", "bench"),
+    },
+  };
+}
+
 export function createHypothesisReport(input) {
   return {
     runsetId: input.runsetId,
@@ -93,7 +109,10 @@ export function createHypothesisReport(input) {
 async function run() {
   const parsedArgs = parseBenchMatrixArgs(process.argv.slice(2));
   const runsetId = sanitizeTimestamp(new Date().toISOString());
-  const server = spawn("pnpm", ["--filter", "@pretable/app-bench", "preview:bench"], {
+  const previewLaunch = createBenchPreviewLaunch(process.cwd());
+  await runCommand(previewLaunch.build);
+  const server = spawn(previewLaunch.preview.command, previewLaunch.preview.args, {
+    cwd: previewLaunch.preview.cwd,
     env: process.env,
     stdio: "inherit",
     shell: process.platform === "win32",
@@ -130,6 +149,31 @@ async function run() {
   } finally {
     server.kill("SIGTERM");
   }
+}
+
+function runCommand(command) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command.command, command.args, {
+      cwd: command.cwd,
+      env: process.env,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    });
+
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        reject(new Error(`${command.command} exited with signal ${signal}`));
+        return;
+      }
+
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(`${command.command} exited with code ${code ?? 1}`));
+    });
+  });
 }
 
 async function runBenchEntry(entry, passthroughArgs) {
