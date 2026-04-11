@@ -3,7 +3,9 @@ import {
   type PretableColumn,
   type PretableRow,
 } from "@pretable/core";
-import { useEffectEvent, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+
+import { measureRenderedRowHeight } from "./row-height";
 
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn[];
@@ -71,30 +73,28 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
     (sum, column) => sum + getColumnWidth(column),
     0,
   );
-  const captureMeasuredRow = useEffectEvent(
-    (rowIndex: number, node: HTMLDivElement | null) => {
-      if (!node) {
-        return;
+  const captureMeasuredRow = (rowIndex: number, node: HTMLDivElement | null) => {
+    if (!node) {
+      return;
+    }
+
+    const measuredHeight = measureRenderedRowHeight(node);
+
+    if (measuredHeight <= ROW_HEIGHT) {
+      return;
+    }
+
+    setMeasuredHeights((current) => {
+      if (current[rowIndex] === measuredHeight) {
+        return current;
       }
 
-      const measuredHeight = measureRenderedRowHeight(node);
-
-      if (measuredHeight <= ROW_HEIGHT) {
-        return;
-      }
-
-      setMeasuredHeights((current) => {
-        if (current[rowIndex] === measuredHeight) {
-          return current;
-        }
-
-        return {
-          ...current,
-          [rowIndex]: measuredHeight,
-        };
-      });
-    },
-  );
+      return {
+        ...current,
+        [rowIndex]: measuredHeight,
+      };
+    });
+  };
 
   return (
     <section
@@ -269,22 +269,4 @@ function findRowIndexForOffset(
 
 function getColumnWidth(column: PretableColumn) {
   return column.widthPx ?? (column.wrap ? 220 : 140);
-}
-
-export function measureRenderedRowHeight(row: HTMLElement) {
-  const style = getComputedStyle(row);
-  const verticalPadding =
-    parseFloat(style.paddingTop || "0") + parseFloat(style.paddingBottom || "0");
-  const borderHeight = parseFloat(style.borderBottomWidth || "0");
-  const contentHeight = Math.max(
-    0,
-    ...[...row.querySelectorAll<HTMLElement>("[data-pretable-cell]")]
-      .map((cell) => cell.scrollHeight)
-      .filter(Number.isFinite),
-  );
-
-  return Math.max(
-    ROW_HEIGHT,
-    Math.ceil(contentHeight + verticalPadding + borderHeight),
-  );
 }
