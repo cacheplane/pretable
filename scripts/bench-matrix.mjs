@@ -310,7 +310,9 @@ function evaluateH1(runs) {
       id: "H1",
       status: "directional",
       summary:
-        "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but the required relative win versus a DOM competitor is still unmeasured.",
+        hasPolicyDrift(pretableEvidence)
+          ? "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but policy drift across repeats keeps the result directional rather than claim-ready."
+          : "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but the required relative win versus a DOM competitor is still unmeasured.",
       evidence: [pretableEvidence],
     };
   }
@@ -325,13 +327,22 @@ function evaluateH1(runs) {
     pretableEvidence.metrics.scroll_frame_p95_ms /
       bestCompetitorEvidence.metrics.scroll_frame_p95_ms -
     1;
+  const hasRelevantPolicyDrift =
+    hasPolicyDrift(pretableEvidence) || hasPolicyDrift(bestCompetitorEvidence);
 
   return {
     id: "H1",
-    status: relativeDelta <= -0.25 ? "satisfied" : "failing",
+    status:
+      relativeDelta <= -0.25
+        ? hasRelevantPolicyDrift
+          ? "directional"
+          : "satisfied"
+        : "failing",
     summary:
       relativeDelta <= -0.25
-        ? "Wrapped-text scrolling beats the best measured DOM comparator by at least 25% while keeping blank gaps and long tasks controlled."
+        ? hasRelevantPolicyDrift
+          ? "Wrapped-text scrolling beats the measured DOM comparator on current medians, but policy drift across repeats keeps the result directional rather than reproducible."
+          : "Wrapped-text scrolling beats the best measured DOM comparator by at least 25% while keeping blank gaps and long tasks controlled."
         : "Wrapped-text scrolling is measured against a competitor, but it has not yet cleared the required 25% relative win.",
     evidence: [
       pretableEvidence,
@@ -379,13 +390,17 @@ function evaluateH3(runs) {
       rowHeightError <= 4 &&
       anchorShift <= 16 &&
       maxMetric(wrappedScrollSeries, "blank_gap_frames") === 0
-        ? "satisfied"
+        ? hasPolicyDrift(pretableEvidence)
+          ? "directional"
+          : "satisfied"
         : "failing",
     summary:
       rowHeightError <= 4 &&
       anchorShift <= 16 &&
       maxMetric(wrappedScrollSeries, "blank_gap_frames") === 0
-        ? "Variable-height scrolling stays within the current row-height and anchor-shift thresholds."
+        ? hasPolicyDrift(pretableEvidence)
+          ? "Variable-height scrolling stays within the current thresholds on current medians, but policy drift across repeats keeps the stability claim directional rather than reproducible."
+          : "Variable-height scrolling stays within the current row-height and anchor-shift thresholds."
         : "Variable-height scrolling is instrumented, but at least one stability threshold is still failing.",
     evidence: [pretableEvidence],
   };
@@ -531,6 +546,10 @@ function summarizePolicyNotes(series) {
     union,
     varying,
   };
+}
+
+function hasPolicyDrift(evidence) {
+  return Object.keys(evidence.policyNotes?.varying ?? {}).length > 0;
 }
 
 function parsePolicyNote(note) {

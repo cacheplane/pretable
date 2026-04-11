@@ -470,6 +470,8 @@ test("createHypothesisReport records policy-note drift across repeated runs", ()
 
   const h1 = report.hypotheses.find((item) => item.id === "H1");
 
+  assert.equal(h1?.status, "directional");
+  assert.match(h1?.summary ?? "", /policy|drift|reproduc/i);
   assert.deepEqual(h1?.evidence[0]?.policyNotes.common, [
     "content visibility: visible",
     "contain intrinsic size: none",
@@ -478,6 +480,71 @@ test("createHypothesisReport records policy-note drift across repeated runs", ()
   ]);
   assert.deepEqual(h1?.evidence[0]?.policyNotes.varying, {
     contain: ["layout", "none"],
+  });
+});
+
+test("createHypothesisReport downgrades H3 when policy notes vary across repeats", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t15-45-00-000z",
+    generatedAt: "2026-04-10T15:48:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-45-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 1,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-46-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 2,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-47-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:45:00.000Z",
+        scroll_frame_p95_ms: 13.1,
+      }),
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:46:00.000Z",
+        scroll_frame_p95_ms: 13.2,
+      }),
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:47:00.000Z",
+        scroll_frame_p95_ms: 13.3,
+        notes: [
+          "contain: none",
+          "content visibility: auto",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+        ],
+      }),
+    ],
+  });
+
+  const h3 = report.hypotheses.find((item) => item.id === "H3");
+
+  assert.equal(h3?.status, "directional");
+  assert.match(h3?.summary ?? "", /policy|drift|reproduc/i);
+  assert.deepEqual(h3?.evidence[0]?.policyNotes.varying, {
+    "content visibility": ["auto", "visible"],
   });
 });
 
