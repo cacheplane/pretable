@@ -147,6 +147,50 @@ describe("bench runtime", () => {
     expect(detectBlankGapFrame(viewport!)).toBe(false);
   });
 
+  test("records viewport policy notes when a scroll viewport exists but is not scrollable", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="0" data-row-height="44">
+            <div data-pretable-cell="">row 0</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    const viewport = root?.querySelector<HTMLElement>("[data-pretable-scroll-viewport]");
+
+    expect(root).toBeTruthy();
+    expect(viewport).toBeTruthy();
+
+    Object.defineProperties(viewport!, {
+      clientHeight: { value: 320, configurable: true },
+      scrollHeight: { value: 320, configurable: true },
+    });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        contain: "content",
+        containIntrinsicSize: "auto 320px",
+        contentVisibility: "auto",
+        overflowAnchor: "none",
+        overscrollBehavior: "contain",
+      }),
+    });
+
+    const result = await measurePretableScrollRun(root!);
+
+    expect(result.status).toBe("partial");
+    expect(result.notes).toContain("scroll viewport unavailable for pretable in current runtime");
+    expect(result.notes).toContain("contain: content");
+    expect(result.notes).toContain("content visibility: auto");
+    expect(result.notes).toContain("contain intrinsic size: auto 320px");
+    expect(result.notes).toContain("scroll anchoring: none");
+    expect(result.notes).toContain("overscroll behavior: contain");
+    expect(result.metrics.scroll_viewport_nodes_peak).toBeGreaterThanOrEqual(3);
+  });
+
   test("measures scroll anchor shift and row-height error for a scroll viewport", async () => {
     document.body.innerHTML = `
       <div data-testid="root">
@@ -215,6 +259,9 @@ describe("bench runtime", () => {
     Object.defineProperty(globalThis, "getComputedStyle", {
       configurable: true,
       value: () => ({
+        contain: "none",
+        containIntrinsicSize: "none",
+        contentVisibility: "visible",
         overflowAnchor: "none",
         overscrollBehavior: "contain",
       }),
@@ -247,6 +294,9 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.notes).toContain("contain: none");
+    expect(result.notes).toContain("content visibility: visible");
+    expect(result.notes).toContain("contain intrinsic size: none");
     expect(result.notes).toContain("scroll anchoring: none");
     expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.scroll_viewport_nodes_peak).toBeGreaterThanOrEqual(3);
@@ -331,6 +381,9 @@ describe("bench runtime", () => {
     Object.defineProperty(globalThis, "getComputedStyle", {
       configurable: true,
       value: () => ({
+        contain: "none",
+        containIntrinsicSize: "none",
+        contentVisibility: "visible",
         overflowAnchor: "none",
         overscrollBehavior: "contain",
       }),
@@ -383,6 +436,9 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.notes).toContain("contain: none");
+    expect(result.notes).toContain("content visibility: visible");
+    expect(result.notes).toContain("contain intrinsic size: none");
     expect(result.notes).toContain("scroll anchoring: none");
     expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.scroll_viewport_nodes_peak).toBeGreaterThanOrEqual(3);
@@ -462,6 +518,9 @@ describe("bench runtime", () => {
     Object.defineProperty(globalThis, "getComputedStyle", {
       configurable: true,
       value: () => ({
+        contain: "none",
+        containIntrinsicSize: "none",
+        contentVisibility: "visible",
         overflowAnchor: "none",
         overscrollBehavior: "contain",
       }),
@@ -514,6 +573,9 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.notes).toContain("contain: none");
+    expect(result.notes).toContain("content visibility: visible");
+    expect(result.notes).toContain("contain intrinsic size: none");
     expect(result.notes).toContain("scroll anchoring: none");
     expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.scroll_viewport_nodes_peak).toBeGreaterThanOrEqual(3);
@@ -588,6 +650,9 @@ describe("bench runtime", () => {
     Object.defineProperty(globalThis, "getComputedStyle", {
       configurable: true,
       value: () => ({
+        contain: "none",
+        containIntrinsicSize: "none",
+        contentVisibility: "visible",
         overflowAnchor: "none",
         overscrollBehavior: "contain",
       }),
@@ -612,6 +677,9 @@ describe("bench runtime", () => {
     });
 
     expect(result.status).toBe("completed");
+    expect(result.notes).toContain("contain: none");
+    expect(result.notes).toContain("content visibility: visible");
+    expect(result.notes).toContain("contain intrinsic size: none");
     expect(result.notes).toContain("scroll anchoring: none");
     expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.scroll_viewport_nodes_peak).toBeGreaterThanOrEqual(3);
