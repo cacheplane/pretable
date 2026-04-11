@@ -458,6 +458,7 @@ function summarizeRunSeriesEvidence(series) {
     scriptName: latestRun.scriptName,
     status: latestRun.status,
     sampleCount: series.length,
+    policyNotes: summarizePolicyNotes(series),
     metrics,
   };
 }
@@ -498,6 +499,51 @@ function maxMetric(series, metricId) {
     .filter((value) => typeof value === "number");
 
   return values.length > 0 ? Math.max(...values) : undefined;
+}
+
+function summarizePolicyNotes(series) {
+  const noteSets = series.map((run) => new Set(run.notes ?? []));
+  const union = [...new Set(series.flatMap((run) => run.notes ?? []))];
+  const common = union.filter((note) => noteSets.every((notes) => notes.has(note)));
+  const valuesByKey = new Map();
+
+  for (const note of union) {
+    const parsed = parsePolicyNote(note);
+
+    if (!parsed) {
+      continue;
+    }
+
+    const values = valuesByKey.get(parsed.key) ?? new Set();
+    values.add(parsed.value);
+    valuesByKey.set(parsed.key, values);
+  }
+
+  const varying = Object.fromEntries(
+    [...valuesByKey.entries()]
+      .filter(([, values]) => values.size > 1)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, values]) => [key, [...values].sort()]),
+  );
+
+  return {
+    common,
+    union,
+    varying,
+  };
+}
+
+function parsePolicyNote(note) {
+  const separatorIndex = note.indexOf(":");
+
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  return {
+    key: note.slice(0, separatorIndex).trim(),
+    value: note.slice(separatorIndex + 1).trim(),
+  };
 }
 
 function sanitizeTimestamp(timestamp) {
