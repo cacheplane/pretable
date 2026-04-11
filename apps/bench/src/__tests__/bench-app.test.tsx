@@ -69,10 +69,25 @@ describe("BenchApp", () => {
   });
 
   test("renders the requested competitor surface instead of relabeling Pretable", async () => {
-    render(<BenchApp search="?adapter=gridalpha&scenario=S2" browserVersion="123.0" />);
+    render(
+      <BenchApp search="?adapter=gridalpha&scenario=S2" browserVersion="123.0" />,
+    );
 
     expect(screen.getByText("Grid Alpha harness")).toBeTruthy();
     expect(screen.getByText("Grid Alpha Community adapter")).toBeTruthy();
+    expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
+  });
+
+  test("renders the requested gridbeta competitor surface", async () => {
+    render(
+      <BenchApp
+        search="?adapter=gridbeta&scenario=S2"
+        browserVersion="123.0"
+      />,
+    );
+
+    expect(screen.getByText("GridBeta Virtual harness")).toBeTruthy();
+    expect(screen.getByText("GridBeta Virtual adapter")).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 

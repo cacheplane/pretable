@@ -21,6 +21,7 @@ import {
 import { GridAlphaAdapter } from "./gridalpha-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
+import { GridBetaAdapter } from "./gridbeta-adapter";
 
 export interface BenchAppProps {
   search: string;
@@ -37,8 +38,15 @@ const adapterRegistry = {
   },
   pretable: {
     heading: "Pretable harness",
-    description: "Deterministic `P0a` run surface for the public React adapter.",
+    description:
+      "Deterministic `P0a` run surface for the public React adapter.",
     render: PretableAdapter,
+  },
+  gridbeta: {
+    heading: "GridBeta Virtual harness",
+    description:
+      "Primitive virtualization baseline using GridBeta's measured dynamic-row path.",
+    render: GridBetaAdapter,
   },
 } as const;
 
@@ -101,7 +109,8 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         await waitForNextAnimationFrame();
       }
 
-      const domNodesPeak = viewportRef.current?.querySelectorAll("*").length ?? 0;
+      const domNodesPeak =
+        viewportRef.current?.querySelectorAll("*").length ?? 0;
 
       const scrollRun =
         scriptName === "scroll"
@@ -252,13 +261,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
           </dl>
 
           {result ? (
-            <pre className="result-json">
-              {JSON.stringify(result, null, 2)}
-            </pre>
+            <pre className="result-json">{JSON.stringify(result, null, 2)}</pre>
           ) : (
             <p className="status-note">
-              Run the selected scenario to publish a terminal benchmark result on
-              `window.__PRETABLE_BENCH_RESULT__`.
+              Run the selected scenario to publish a terminal benchmark result
+              on `window.__PRETABLE_BENCH_RESULT__`.
             </p>
           )}
         </article>

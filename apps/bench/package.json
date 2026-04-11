@@ -19,11 +19,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "gridalpha-community": "^35.2.1",
-    "gridalpha-react": "^35.2.1",
     "@pretable-internal/bench-runner": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable/react": "workspace:*",
+    "@gridbeta/react-virtual": "^3.13.23",
+    "gridalpha-community": "^35.2.1",
+    "gridalpha-react": "^35.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   }

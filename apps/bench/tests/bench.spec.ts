@@ -13,7 +13,11 @@ const scale = process.env.PRETABLE_BENCH_SCALE ?? "dev";
 const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
 const adapterLabel =
-  adapterId === "gridalpha" ? "Grid Alpha Community adapter" : "Pretable React adapter";
+  adapterId === "gridalpha"
+    ? "Grid Alpha Community adapter"
+    : adapterId === "gridbeta"
+      ? "GridBeta Virtual adapter"
+      : "Pretable React adapter";
 
 test("writes benchmark artifacts for the selected Pretable run", async ({
   page,
@@ -77,7 +81,10 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   await page.context().tracing.stop({ path: tracePath });
 
   const existingDashboard = await readDashboard(dashboardPath);
-  const nextDashboard = createDashboardIndex([...existingDashboard.runs, result]);
+  const nextDashboard = createDashboardIndex([
+    ...existingDashboard.runs,
+    result,
+  ]);
 
   await writeFile(dashboardPath, `${JSON.stringify(nextDashboard, null, 2)}\n`);
 });

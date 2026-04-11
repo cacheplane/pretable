@@ -72,6 +72,14 @@ describe("bench-runner contract", () => {
         scriptName: "scroll",
       }),
     ).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "gridbeta",
+        scenarioId: "S2",
+        scriptName: "scroll",
+      }),
+    ).toEqual({ ok: true });
 
     expect(
       validateSupportedP0aRequest({
@@ -261,7 +269,9 @@ describe("bench-runner contract", () => {
       },
     });
 
-    expect(createDashboardIndex([secondCompleted, completed, failed])).toMatchObject({
+    expect(
+      createDashboardIndex([secondCompleted, completed, failed]),
+    ).toMatchObject({
       runs: [failed, secondCompleted],
     });
 
@@ -278,7 +288,9 @@ describe("bench-runner contract", () => {
       },
     });
 
-    expect(createDashboardIndex([completed, refreshedCompleted, secondCompleted])).toMatchObject({
+    expect(
+      createDashboardIndex([completed, refreshedCompleted, secondCompleted]),
+    ).toMatchObject({
       runs: [secondCompleted, refreshedCompleted],
     });
   });

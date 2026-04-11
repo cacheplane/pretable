@@ -31,9 +31,26 @@ describe("parseBenchQuery", () => {
 
   test("accepts a supported competitor adapter without relaxing other defaults", () => {
     expect(
-      parseBenchQuery("?adapter=gridalpha&scenario=S2&scale=hypothesis&script=scroll"),
+      parseBenchQuery(
+        "?adapter=gridalpha&scenario=S2&scale=hypothesis&script=scroll",
+      ),
     ).toEqual({
       adapterId: "gridalpha",
+      scenarioId: "S2",
+      profile: "default",
+      scale: "hypothesis",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
+
+  test("accepts the gridbeta competitor adapter without relaxing other defaults", () => {
+    expect(
+      parseBenchQuery(
+        "?adapter=gridbeta&scenario=S2&scale=hypothesis&script=scroll",
+      ),
+    ).toEqual({
+      adapterId: "gridbeta",
       scenarioId: "S2",
       profile: "default",
       scale: "hypothesis",

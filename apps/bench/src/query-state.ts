@@ -9,7 +9,9 @@ const DEFAULT_QUERY_STATE: BenchQueryState = {
   autorun: false,
 };
 
-export function parseBenchQuery(input: string | URLSearchParams): BenchQueryState {
+export function parseBenchQuery(
+  input: string | URLSearchParams,
+): BenchQueryState {
   const searchParams =
     typeof input === "string" ? new URLSearchParams(input) : input;
   const adapter = searchParams.get("adapter");
@@ -21,9 +23,11 @@ export function parseBenchQuery(input: string | URLSearchParams): BenchQueryStat
     adapterId:
       adapter === "gridalpha"
         ? "gridalpha"
-        : adapter === "pretable"
-          ? "pretable"
-          : DEFAULT_QUERY_STATE.adapterId,
+        : adapter === "gridbeta"
+          ? "gridbeta"
+          : adapter === "pretable"
+            ? "pretable"
+            : DEFAULT_QUERY_STATE.adapterId,
     scenarioId: scenario === "S2" ? "S2" : DEFAULT_QUERY_STATE.scenarioId,
     profile: DEFAULT_QUERY_STATE.profile,
     scale:

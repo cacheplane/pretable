@@ -1,5 +1,5 @@
 export interface BenchQueryState {
-  adapterId: "pretable" | "gridalpha";
+  adapterId: "pretable" | "gridalpha" | "gridbeta";
   scenarioId: "S1" | "S2";
   profile: "default";
   scale: "smoke" | "dev" | "hypothesis" | "target";
