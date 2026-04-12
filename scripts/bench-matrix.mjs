@@ -110,6 +110,9 @@ export function createHypothesisReport(input) {
   return {
     runsetId: input.runsetId,
     generatedAt: input.generatedAt,
+    adapters: summarizeReportAdapters(input.entries, input.runs),
+    matrix: summarizeMatrixScope(input.entries, input.runs),
+    slices: summarizeReportSlices(input.entries, input.runs),
     hypotheses: [
       evaluateH1(input.runs),
       evaluateH3(input.runs),
@@ -579,6 +582,78 @@ function summarizeRunSeriesEvidence(series) {
   };
 }
 
+function summarizeReportAdapters(entries, runs) {
+  return uniqueInOrder([
+    ...entries.map((entry) => entry.adapterId),
+    ...runs.map((run) => run.adapterId),
+  ]).map((adapterId) => ({
+    adapterId,
+    adapterFamily: getAdapterFamily(adapterId),
+  }));
+}
+
+function summarizeMatrixScope(entries, runs) {
+  const adapters = uniqueInOrder([
+    ...entries.map((entry) => entry.adapterId),
+    ...runs.map((run) => run.adapterId),
+  ]);
+  const scenarios = uniqueInOrder([
+    ...entries.map((entry) => entry.scenarioId),
+    ...runs.map((run) => run.scenarioId),
+  ]);
+  const scripts = uniqueInOrder([
+    ...entries.map((entry) => entry.scriptName),
+    ...runs.map((run) => run.scriptName),
+  ]);
+  const repeats = Math.max(
+    1,
+    ...entries.map((entry) =>
+      entry.repeatIndex === undefined ? 1 : entry.repeatIndex + 1,
+    ),
+  );
+
+  return {
+    adapters,
+    scenarios,
+    scripts,
+    repeats,
+  };
+}
+
+function summarizeReportSlices(entries, runs) {
+  const sliceKeys = uniqueInOrder([
+    ...entries.map((entry) => `${entry.scenarioId}:${entry.scriptName}`),
+    ...runs.map((run) => `${run.scenarioId}:${run.scriptName}`),
+  ]);
+
+  return sliceKeys.map((sliceKey) => {
+    const [scenarioId, scriptName] = sliceKey.split(":");
+    const sliceEntries = entries.filter(
+      (entry) =>
+        entry.scenarioId === scenarioId && entry.scriptName === scriptName,
+    );
+    const sliceRuns = runs.filter(
+      (run) =>
+        run.status === "completed" &&
+        run.scenarioId === scenarioId &&
+        run.scriptName === scriptName,
+    );
+
+    return {
+      scenarioId,
+      scriptName,
+      adapterIds: uniqueInOrder([
+        ...sliceEntries.map((entry) => entry.adapterId),
+        ...sliceRuns.map((run) => run.adapterId),
+      ]),
+      policyNotes:
+        sliceRuns.length > 0
+          ? summarizePolicyNotes(sliceRuns)
+          : { common: [], union: [], varying: {} },
+    };
+  });
+}
+
 function summarizeMetrics(series) {
   const metricIds = new Set(
     series.flatMap((run) => Object.keys(run.metrics ?? {})),
@@ -686,6 +761,10 @@ function parsePolicyNote(note) {
 
 function sanitizeTimestamp(timestamp) {
   return timestamp.toLowerCase().replaceAll(/[:.]/g, "-");
+}
+
+function uniqueInOrder(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
