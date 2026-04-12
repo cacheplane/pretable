@@ -179,7 +179,8 @@ test("createBenchRunsetManifest records the invoked matrix and produced summary 
           adapterId: "pretable",
           scenarioId: "S1",
           scriptName: "initial",
-          summaryPath: "status/chromium-pretable-default-s1-initial-2026-04-10t14-00-00-000z.summary.json",
+          summaryPath:
+            "status/chromium-pretable-default-s1-initial-2026-04-10t14-00-00-000z.summary.json",
         },
       ],
     }),
@@ -250,7 +251,8 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
         deviceScaleFactor: 1,
         notes: [],
         status: "completed",
-        tracePath: "status/traces/chromium-pretable-default-s1-initial.trace.zip",
+        tracePath:
+          "status/traces/chromium-pretable-default-s1-initial.trace.zip",
         metrics: {
           mount_ms: 2.3,
           first_stable_viewport_ms: 2.3,
@@ -296,7 +298,8 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
         deviceScaleFactor: 1,
         notes: [],
         status: "completed",
-        tracePath: "status/traces/chromium-pretable-default-s2-scroll.trace.zip",
+        tracePath:
+          "status/traces/chromium-pretable-default-s2-scroll.trace.zip",
         metrics: {
           scroll_frame_p95_ms: 12.4,
           blank_gap_frames: 0,
@@ -308,13 +311,22 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
     ],
   });
 
-  assert.equal(report.hypotheses.find((item) => item.id === "H1")?.status, "satisfied");
+  assert.equal(
+    report.hypotheses.find((item) => item.id === "H1")?.status,
+    "satisfied",
+  );
   assert.match(
     report.hypotheses.find((item) => item.id === "H1")?.summary ?? "",
     /25%|relative/i,
   );
-  assert.equal(report.hypotheses.find((item) => item.id === "H3")?.status, "insufficient");
-  assert.equal(report.hypotheses.find((item) => item.id === "H5")?.status, "satisfied");
+  assert.equal(
+    report.hypotheses.find((item) => item.id === "H3")?.status,
+    "insufficient",
+  );
+  assert.equal(
+    report.hypotheses.find((item) => item.id === "H5")?.status,
+    "satisfied",
+  );
 });
 
 test("createHypothesisReport aggregates repeated runs by median instead of trusting the latest sample", () => {
@@ -426,6 +438,71 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   assert.deepEqual(h1?.evidence[0]?.policyNotes.varying, {});
   assert.equal(h1?.evidence[1]?.sampleCount, 3);
   assert.equal(h1?.evidence[1]?.metrics.scroll_frame_p95_ms, 28.4);
+});
+
+test("createHypothesisReport prefers the best full-grid comparator for H1 while keeping primitive comparators as context", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t15-15-00-000z",
+    generatedAt: "2026-04-10T15:18:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-15-00-000z.summary.json",
+      },
+      {
+        adapterId: "ag-grid",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-10t15-15-30-000z.summary.json",
+      },
+      {
+        adapterId: "tanstack",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-tanstack-default-s2-dev-scroll-2026-04-10t15-16-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:15:00.000Z",
+        scroll_frame_p95_ms: 12.4,
+      }),
+      createScrollRun({
+        adapterId: "ag-grid",
+        timestamp: "2026-04-10T15:15:30.000Z",
+        scroll_frame_p95_ms: 26.2,
+        row_height_error_p95_px: 0.2,
+        scroll_anchor_shift_px: 8,
+      }),
+      createScrollRun({
+        adapterId: "tanstack",
+        timestamp: "2026-04-10T15:16:00.000Z",
+        scroll_frame_p95_ms: 20.1,
+        scroll_anchor_shift_px: 96,
+        scroll_anchor_shift_forward_p95_px: 96,
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(h1?.status, "satisfied");
+  assert.match(h1?.summary ?? "", /full-grid/i);
+  assert.equal(h1?.evidence[0]?.adapterId, "pretable");
+  assert.equal(h1?.evidence[0]?.adapterFamily, "candidate");
+  assert.equal(h1?.evidence[1]?.adapterId, "ag-grid");
+  assert.equal(h1?.evidence[1]?.adapterFamily, "full-grid");
+  assert.equal(h1?.evidence[2]?.adapterId, "tanstack");
+  assert.equal(h1?.evidence[2]?.adapterFamily, "virtualization-primitive");
 });
 
 test("createHypothesisReport records policy-note drift across repeated runs", () => {
@@ -592,7 +669,10 @@ test("createHypothesisReport treats backward anchor instability as an H3 failure
   const h3 = report.hypotheses.find((item) => item.id === "H3");
 
   assert.equal(h3?.status, "failing");
-  assert.equal(h3?.evidence[0]?.metrics.scroll_anchor_shift_backward_p95_px, 32);
+  assert.equal(
+    h3?.evidence[0]?.metrics.scroll_anchor_shift_backward_p95_px,
+    32,
+  );
 });
 
 function createScrollRun({
@@ -633,7 +713,9 @@ function createScrollRun({
       long_tasks_ms: 0,
       dom_nodes_peak: adapterId === "pretable" ? 1823 : 657,
       row_height_error_p95_px,
-      ...(scroll_anchor_shift_px === undefined ? {} : { scroll_anchor_shift_px }),
+      ...(scroll_anchor_shift_px === undefined
+        ? {}
+        : { scroll_anchor_shift_px }),
       scroll_anchor_shift_forward_p95_px,
       scroll_anchor_shift_backward_p95_px,
     },
