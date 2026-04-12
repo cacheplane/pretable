@@ -10,6 +10,14 @@ const DEFAULT_SCENARIOS = ["S1", "S2"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 const BENCH_APP_ID = "@pretable/app-bench";
+const ADAPTER_FAMILIES = {
+  pretable: "candidate",
+  "gridalpha": "full-grid",
+  gridbeta: "virtualization-primitive",
+  gridgamma: "full-grid",
+  glide: "full-grid",
+  handsontable: "full-grid",
+};
 
 export function parseBenchMatrixArgs(args) {
   const parsed = {
@@ -28,7 +36,10 @@ export function parseBenchMatrixArgs(args) {
     }
 
     if (arg.startsWith("--repeats=")) {
-      parsed.repeats = parsePositiveInteger(arg.slice("--repeats=".length), DEFAULT_REPEATS);
+      parsed.repeats = parsePositiveInteger(
+        arg.slice("--repeats=".length),
+        DEFAULT_REPEATS,
+      );
       continue;
     }
 
@@ -88,7 +99,15 @@ export function createBenchPreviewLaunch(workspaceDir) {
     },
     preview: {
       command: "pnpm",
-      args: ["exec", "vite", "preview", "--host", "127.0.0.1", "--port", "4173"],
+      args: [
+        "exec",
+        "vite",
+        "preview",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4173",
+      ],
       cwd: path.join(workspaceDir, "apps", "bench"),
     },
   };
@@ -111,12 +130,16 @@ async function run() {
   const runsetId = sanitizeTimestamp(new Date().toISOString());
   const previewLaunch = createBenchPreviewLaunch(process.cwd());
   await runCommand(previewLaunch.build);
-  const server = spawn(previewLaunch.preview.command, previewLaunch.preview.args, {
-    cwd: previewLaunch.preview.cwd,
-    env: process.env,
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  });
+  const server = spawn(
+    previewLaunch.preview.command,
+    previewLaunch.preview.args,
+    {
+      cwd: previewLaunch.preview.cwd,
+      env: process.env,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    },
+  );
   const startedAt = new Date().toISOString();
   const runEntries = [];
 
@@ -253,7 +276,9 @@ async function waitForServer(url, server, timeoutMs = 30_000) {
 
   while (Date.now() < deadline) {
     if (server.exitCode !== null) {
-      throw new Error(`preview:bench exited early with code ${server.exitCode}`);
+      throw new Error(
+        `preview:bench exited early with code ${server.exitCode}`,
+      );
     }
 
     try {
@@ -286,7 +311,10 @@ async function collectSummaryFiles(statusDir) {
 async function readRunSummaries(entries) {
   return Promise.all(
     entries.map(async (entry) => {
-      const raw = await readFile(path.join(process.cwd(), entry.summaryPath), "utf8");
+      const raw = await readFile(
+        path.join(process.cwd(), entry.summaryPath),
+        "utf8",
+      );
       return JSON.parse(raw);
     }),
   );
@@ -302,7 +330,10 @@ async function writeRunsetManifest(manifest) {
 
 async function writeHypothesisReport(report) {
   const reportsDir = path.join(process.cwd(), "status", "runsets");
-  const reportPath = path.join(reportsDir, `${report.runsetId}.hypotheses.json`);
+  const reportPath = path.join(
+    reportsDir,
+    `${report.runsetId}.hypotheses.json`,
+  );
 
   await mkdir(reportsDir, { recursive: true });
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
@@ -353,20 +384,44 @@ function evaluateH1(runs) {
     return {
       id: "H1",
       status: "directional",
-      summary:
-        hasPolicyDrift(pretableEvidence)
-          ? "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but policy drift across repeats keeps the result directional rather than claim-ready."
-          : "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but the required relative win versus a DOM competitor is still unmeasured.",
+      summary: hasPolicyDrift(pretableEvidence)
+        ? "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but policy drift across repeats keeps the result directional rather than claim-ready."
+        : "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but the required relative win versus a DOM competitor is still unmeasured.",
       evidence: [pretableEvidence],
     };
   }
 
-  const bestCompetitorSeries = competitorSeries.reduce((best, current) =>
-    medianMetric(current, "scroll_frame_p95_ms") < medianMetric(best, "scroll_frame_p95_ms")
-      ? current
-      : best,
+  const fullGridCompetitorSeries = competitorSeries.filter(
+    (series) => getAdapterFamily(series[0]?.adapterId) === "full-grid",
   );
-  const bestCompetitorEvidence = summarizeRunSeriesEvidence(bestCompetitorSeries);
+  const primitiveCompetitorSeries = competitorSeries.filter(
+    (series) =>
+      getAdapterFamily(series[0]?.adapterId) === "virtualization-primitive",
+  );
+  const primaryCompetitorSeries =
+    fullGridCompetitorSeries.length > 0
+      ? fullGridCompetitorSeries
+      : competitorSeries;
+  const bestCompetitorSeries = primaryCompetitorSeries.reduce(
+    (best, current) =>
+      medianMetric(current, "scroll_frame_p95_ms") <
+      medianMetric(best, "scroll_frame_p95_ms")
+        ? current
+        : best,
+  );
+  const bestCompetitorEvidence =
+    summarizeRunSeriesEvidence(bestCompetitorSeries);
+  const bestPrimitiveEvidence =
+    fullGridCompetitorSeries.length > 0 && primitiveCompetitorSeries.length > 0
+      ? summarizeRunSeriesEvidence(
+          primitiveCompetitorSeries.reduce((best, current) =>
+            medianMetric(current, "scroll_frame_p95_ms") <
+            medianMetric(best, "scroll_frame_p95_ms")
+              ? current
+              : best,
+          ),
+        )
+      : null;
   const relativeDelta =
     pretableEvidence.metrics.scroll_frame_p95_ms /
       bestCompetitorEvidence.metrics.scroll_frame_p95_ms -
@@ -385,12 +440,13 @@ function evaluateH1(runs) {
     summary:
       relativeDelta <= -0.25
         ? hasRelevantPolicyDrift
-          ? "Wrapped-text scrolling beats the measured DOM comparator on current medians, but policy drift across repeats keeps the result directional rather than reproducible."
-          : "Wrapped-text scrolling beats the best measured DOM comparator by at least 25% while keeping blank gaps and long tasks controlled."
-        : "Wrapped-text scrolling is measured against a competitor, but it has not yet cleared the required 25% relative win.",
+          ? `Wrapped-text scrolling beats the measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator on current medians, but policy drift across repeats keeps the result directional rather than reproducible.`
+          : `Wrapped-text scrolling beats the best measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator by at least 25% while keeping blank gaps and long tasks controlled.`
+        : `Wrapped-text scrolling is measured against a ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator, but it has not yet cleared the required 25% relative win.`,
     evidence: [
       pretableEvidence,
       bestCompetitorEvidence,
+      ...(bestPrimitiveEvidence ? [bestPrimitiveEvidence] : []),
     ],
   };
 }
@@ -412,7 +468,10 @@ function evaluateH3(runs) {
     };
   }
 
-  const rowHeightError = maxMetric(wrappedScrollSeries, "row_height_error_p95_px");
+  const rowHeightError = maxMetric(
+    wrappedScrollSeries,
+    "row_height_error_p95_px",
+  );
   const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
   const anchorShift =
     maxMetric(wrappedScrollSeries, "scroll_anchor_shift_backward_p95_px") ??
@@ -451,7 +510,8 @@ function evaluateH3(runs) {
 }
 
 function evaluateH5(entries, runs) {
-  const hasSummaries = entries.length > 0 && entries.every((entry) => Boolean(entry.summaryPath));
+  const hasSummaries =
+    entries.length > 0 && entries.every((entry) => Boolean(entry.summaryPath));
   const hasTraces =
     runs.length > 0 &&
     runs.every((run) => run.status === "unsupported" || Boolean(run.tracePath));
@@ -466,7 +526,9 @@ function evaluateH5(entries, runs) {
     evidence: entries.map((entry) => ({
       scenarioId: entry.scenarioId,
       scriptName: entry.scriptName,
-      ...(entry.repeatIndex === undefined ? {} : { repeatIndex: entry.repeatIndex }),
+      ...(entry.repeatIndex === undefined
+        ? {}
+        : { repeatIndex: entry.repeatIndex }),
       summaryPath: entry.summaryPath,
     })),
   };
@@ -477,7 +539,8 @@ function findRunSeries(runs, matcher) {
     .filter(
       (run) =>
         run.status === "completed" &&
-        (matcher.adapterId === undefined || run.adapterId === matcher.adapterId) &&
+        (matcher.adapterId === undefined ||
+          run.adapterId === matcher.adapterId) &&
         run.scenarioId === matcher.scenarioId &&
         run.scriptName === matcher.scriptName,
     )
@@ -513,6 +576,7 @@ function summarizeRunSeriesEvidence(series) {
 
   return {
     adapterId: latestRun.adapterId,
+    adapterFamily: getAdapterFamily(latestRun.adapterId),
     scenarioId: latestRun.scenarioId,
     scriptName: latestRun.scriptName,
     status: latestRun.status,
@@ -563,7 +627,9 @@ function maxMetric(series, metricId) {
 function summarizePolicyNotes(series) {
   const noteSets = series.map((run) => new Set(run.notes ?? []));
   const union = [...new Set(series.flatMap((run) => run.notes ?? []))];
-  const common = union.filter((note) => noteSets.every((notes) => notes.has(note)));
+  const common = union.filter((note) =>
+    noteSets.every((notes) => notes.has(note)),
+  );
   const valuesByKey = new Map();
 
   for (const note of union) {
@@ -594,6 +660,22 @@ function summarizePolicyNotes(series) {
 
 function hasPolicyDrift(evidence) {
   return Object.keys(evidence.policyNotes?.varying ?? {}).length > 0;
+}
+
+function getAdapterFamily(adapterId) {
+  return ADAPTER_FAMILIES[adapterId] ?? "unknown";
+}
+
+function describeComparatorFamily(adapterFamily) {
+  if (adapterFamily === "full-grid") {
+    return "full-grid";
+  }
+
+  if (adapterFamily === "virtualization-primitive") {
+    return "virtualization-primitive";
+  }
+
+  return "DOM";
 }
 
 function parsePolicyNote(note) {
