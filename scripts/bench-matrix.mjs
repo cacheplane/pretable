@@ -568,7 +568,13 @@ function groupRunSeries(runs, matcher) {
 
 function summarizeRunSeriesEvidence(series) {
   const latestRun = series.at(-1);
-  const metrics = summarizeMetrics(series);
+  const metricSummary = summarizeMetricSummary(series);
+  const metrics = Object.fromEntries(
+    Object.entries(metricSummary).map(([metricId, summary]) => [
+      metricId,
+      summary.median,
+    ]),
+  );
 
   return {
     adapterId: latestRun.adapterId,
@@ -579,6 +585,7 @@ function summarizeRunSeriesEvidence(series) {
     sampleCount: series.length,
     policyNotes: summarizePolicyNotes(series),
     metrics,
+    metricSummary,
   };
 }
 
@@ -654,28 +661,29 @@ function summarizeReportSlices(entries, runs) {
   });
 }
 
-function summarizeMetrics(series) {
+function summarizeMetricSummary(series) {
   const metricIds = new Set(
     series.flatMap((run) => Object.keys(run.metrics ?? {})),
   );
-  const metrics = {};
+  const metricSummary = {};
 
   for (const metricId of metricIds) {
-    const medianValue = medianMetric(series, metricId);
+    const values = numericMetricValues(series, metricId);
 
-    if (medianValue !== undefined) {
-      metrics[metricId] = medianValue;
+    if (values.length > 0) {
+      metricSummary[metricId] = {
+        min: values[0],
+        median: values[Math.floor(values.length / 2)],
+        max: values.at(-1),
+      };
     }
   }
 
-  return metrics;
+  return metricSummary;
 }
 
 function medianMetric(series, metricId) {
-  const values = series
-    .map((run) => run.metrics?.[metricId])
-    .filter((value) => typeof value === "number")
-    .sort((left, right) => left - right);
+  const values = numericMetricValues(series, metricId);
 
   if (values.length === 0) {
     return undefined;
@@ -685,11 +693,16 @@ function medianMetric(series, metricId) {
 }
 
 function maxMetric(series, metricId) {
-  const values = series
-    .map((run) => run.metrics?.[metricId])
-    .filter((value) => typeof value === "number");
+  const values = numericMetricValues(series, metricId);
 
   return values.length > 0 ? Math.max(...values) : undefined;
+}
+
+function numericMetricValues(series, metricId) {
+  return series
+    .map((run) => run.metrics?.[metricId])
+    .filter((value) => typeof value === "number")
+    .sort((left, right) => left - right);
 }
 
 function summarizePolicyNotes(series) {
