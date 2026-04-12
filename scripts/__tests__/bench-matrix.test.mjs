@@ -515,6 +515,155 @@ test("createHypothesisReport prefers the best full-grid comparator for H1 while 
   assert.equal(h1?.evidence[2]?.adapterFamily, "virtualization-primitive");
 });
 
+test("createHypothesisReport surfaces top-level adapter families and matrix scope", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t15-20-00-000z",
+    generatedAt: "2026-04-10T15:21:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-20-00-000z.summary.json",
+      },
+      {
+        adapterId: "gridalpha",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-20-30-000z.summary.json",
+      },
+      {
+        adapterId: "gridbeta",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridbeta-default-s2-dev-scroll-2026-04-10t15-21-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:20:00.000Z",
+        scroll_frame_p95_ms: 12.4,
+      }),
+      createScrollRun({
+        adapterId: "gridalpha",
+        timestamp: "2026-04-10T15:20:30.000Z",
+        scroll_frame_p95_ms: 26.2,
+      }),
+      createScrollRun({
+        adapterId: "gridbeta",
+        timestamp: "2026-04-10T15:21:00.000Z",
+        scroll_frame_p95_ms: 20.1,
+      }),
+    ],
+  });
+
+  assert.deepEqual(report.adapters, [
+    { adapterId: "pretable", adapterFamily: "candidate" },
+    { adapterId: "gridalpha", adapterFamily: "full-grid" },
+    {
+      adapterId: "gridbeta",
+      adapterFamily: "virtualization-primitive",
+    },
+  ]);
+  assert.deepEqual(report.matrix, {
+    adapters: ["pretable", "gridalpha", "gridbeta"],
+    scenarios: ["S2"],
+    scripts: ["scroll"],
+    repeats: 1,
+  });
+});
+
+test("createHypothesisReport surfaces per-slice policy context across compared runs", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t15-25-00-000z",
+    generatedAt: "2026-04-10T15:26:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-25-00-000z.summary.json",
+      },
+      {
+        adapterId: "gridalpha",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-25-30-000z.summary.json",
+      },
+      {
+        adapterId: "gridbeta",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridbeta-default-s2-dev-scroll-2026-04-10t15-26-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:25:00.000Z",
+        scroll_frame_p95_ms: 12.4,
+      }),
+      createScrollRun({
+        adapterId: "gridalpha",
+        timestamp: "2026-04-10T15:25:30.000Z",
+        scroll_frame_p95_ms: 26.2,
+      }),
+      createScrollRun({
+        adapterId: "gridbeta",
+        timestamp: "2026-04-10T15:26:00.000Z",
+        scroll_frame_p95_ms: 20.1,
+        notes: [
+          "contain: layout",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+        ],
+      }),
+    ],
+  });
+
+  assert.deepEqual(report.slices, [
+    {
+      scenarioId: "S2",
+      scriptName: "scroll",
+      adapterIds: ["pretable", "gridalpha", "gridbeta"],
+      policyNotes: {
+        common: [
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+        ],
+        union: [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "contain: layout",
+        ],
+        varying: {
+          contain: ["layout", "none"],
+        },
+      },
+    },
+  ]);
+});
+
 test("createHypothesisReport records policy-note drift across repeated runs", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-10t15-30-00-000z",
