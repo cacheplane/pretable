@@ -431,6 +431,8 @@ function evaluateH1(runs) {
     1;
   const hasRelevantPolicyDrift =
     hasPolicyDrift(pretableEvidence) || hasPolicyDrift(bestCompetitorEvidence);
+  const hasRepeatedH1Evidence =
+    pretableEvidence.sampleCount > 1 && bestCompetitorEvidence.sampleCount > 1;
 
   return {
     id: "H1",
@@ -444,7 +446,9 @@ function evaluateH1(runs) {
       relativeDelta <= -0.25
         ? hasRelevantPolicyDrift
           ? `Wrapped-text scrolling beats the measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator on current medians, but policy drift across repeats keeps the result directional rather than reproducible.`
-          : `Wrapped-text scrolling beats the best measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator by at least 25% while keeping blank gaps and long tasks controlled.`
+          : hasRepeatedH1Evidence
+            ? `Wrapped-text scrolling beats the best measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator by at least 25% on current repeated-run medians while keeping blank gaps and long tasks controlled.`
+            : `Wrapped-text scrolling beats the best measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator by at least 25% on the current sample while keeping blank gaps and long tasks controlled.`
         : `Wrapped-text scrolling is measured against a ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator, but it has not yet cleared the required 25% relative win.`,
     evidence: [
       pretableEvidence,
@@ -506,7 +510,9 @@ function evaluateH3(runs) {
       maxMetric(wrappedScrollSeries, "blank_gap_frames") === 0
         ? hasPolicyDrift(pretableEvidence)
           ? "Variable-height scrolling stays within the current thresholds on current medians, but policy drift across repeats keeps the stability claim directional rather than reproducible."
-          : "Variable-height scrolling stays within the current row-height and anchor-shift thresholds."
+          : pretableEvidence.sampleCount > 1
+            ? "Variable-height scrolling stays within the current row-height and anchor-shift thresholds on current repeated-run medians."
+            : "Variable-height scrolling stays within the current row-height and anchor-shift thresholds on the current sample."
         : hasMedianStableButWorstCaseExceeded(pretableEvidence, {
               rowHeightErrorThreshold: 4,
               anchorShiftThreshold: 16,

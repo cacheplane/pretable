@@ -434,8 +434,10 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   });
 
   const h1 = report.hypotheses.find((item) => item.id === "H1");
+  const h3 = report.hypotheses.find((item) => item.id === "H3");
 
   assert.equal(h1?.status, "satisfied");
+  assert.match(h1?.summary ?? "", /median|repeat/i);
   assert.equal(h1?.evidence[0]?.sampleCount, 3);
   assert.equal(h1?.evidence[0]?.metrics.scroll_frame_p95_ms, 13.1);
   assert.deepEqual(h1?.evidence[0]?.metricSummary.scroll_frame_p95_ms, {
@@ -453,6 +455,8 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   assert.deepEqual(h1?.evidence[0]?.policyNotes.varying, {});
   assert.equal(h1?.evidence[1]?.sampleCount, 3);
   assert.equal(h1?.evidence[1]?.metrics.scroll_frame_p95_ms, 28.4);
+  assert.equal(h3?.status, "satisfied");
+  assert.match(h3?.summary ?? "", /median|repeat/i);
 });
 
 test("createHypothesisReport exposes worst-case H1 threshold metrics alongside medians", () => {
@@ -668,6 +672,37 @@ test("createHypothesisReport prefers the best full-grid comparator for H1 while 
   assert.equal(h1?.evidence[1]?.adapterFamily, "full-grid");
   assert.equal(h1?.evidence[2]?.adapterId, "tanstack");
   assert.equal(h1?.evidence[2]?.adapterFamily, "virtualization-primitive");
+});
+
+test("createHypothesisReport marks single-sample H3 claims as single-sample evidence", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t15-17-00-000z",
+    generatedAt: "2026-04-10T15:18:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-17-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:17:00.000Z",
+        scroll_frame_p95_ms: 12.4,
+        row_height_error_p95_px: 0,
+        scroll_anchor_shift_backward_p95_px: 0,
+      }),
+    ],
+  });
+
+  const h3 = report.hypotheses.find((item) => item.id === "H3");
+
+  assert.equal(h3?.status, "satisfied");
+  assert.match(h3?.summary ?? "", /single[- ]sample|single run|current sample/i);
 });
 
 test("createHypothesisReport surfaces top-level adapter families and matrix scope", () => {
