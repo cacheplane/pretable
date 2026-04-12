@@ -523,6 +523,8 @@ test("createHypothesisReport exposes worst-case H1 threshold metrics alongside m
   const h1 = report.hypotheses.find((item) => item.id === "H1");
 
   assert.equal(h1?.status, "failing");
+  assert.match(h1?.summary ?? "", /medians/i);
+  assert.match(h1?.summary ?? "", /worst-case|repeat/i);
   assert.equal(h1?.evidence[0]?.metrics.blank_gap_frames, 0);
   assert.deepEqual(h1?.evidence[0]?.metricSummary.blank_gap_frames, {
     min: 0,
@@ -586,6 +588,8 @@ test("createHypothesisReport exposes worst-case H3 threshold metrics alongside m
   const h3 = report.hypotheses.find((item) => item.id === "H3");
 
   assert.equal(h3?.status, "failing");
+  assert.match(h3?.summary ?? "", /medians/i);
+  assert.match(h3?.summary ?? "", /worst-case|repeat/i);
   assert.deepEqual(h3?.evidence[0]?.metricSummary.row_height_error_p95_px, {
     min: 0,
     median: 0,

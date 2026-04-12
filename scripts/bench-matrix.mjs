@@ -367,11 +367,18 @@ function evaluateH1(runs) {
   );
 
   if (blankGapFrames > 0.09 || longTasksCount > 0) {
+    const medianBlankGapFrames =
+      pretableEvidence.metricSummary?.blank_gap_frames?.median;
+    const medianLongTasksCount =
+      pretableEvidence.metricSummary?.long_tasks_count?.median;
+
     return {
       id: "H1",
       status: "failing",
       summary:
-        "The wrapped-text scroll surface is measured, but it still shows blank gaps or long tasks beyond the current benchmark threshold.",
+        medianBlankGapFrames <= 0.09 && medianLongTasksCount <= 0
+          ? "The wrapped-text scroll surface is measured and current medians stay controlled, but worst-case repeats still show blank gaps or long tasks beyond the current benchmark threshold."
+          : "The wrapped-text scroll surface is measured, but it still shows blank gaps or long tasks beyond the current benchmark threshold.",
       evidence: [pretableEvidence],
     };
   }
@@ -500,7 +507,13 @@ function evaluateH3(runs) {
         ? hasPolicyDrift(pretableEvidence)
           ? "Variable-height scrolling stays within the current thresholds on current medians, but policy drift across repeats keeps the stability claim directional rather than reproducible."
           : "Variable-height scrolling stays within the current row-height and anchor-shift thresholds."
-        : "Variable-height scrolling is instrumented, but at least one stability threshold is still failing.",
+        : hasMedianStableButWorstCaseExceeded(pretableEvidence, {
+              rowHeightErrorThreshold: 4,
+              anchorShiftThreshold: 16,
+              blankGapThreshold: 0,
+            })
+          ? "Variable-height scrolling is instrumented and current medians stay within thresholds, but worst-case repeats still exceed the row-height, anchor-shift, or blank-gap limits."
+          : "Variable-height scrolling is instrumented, but at least one stability threshold is still failing.",
     evidence: [pretableEvidence],
   };
 }
@@ -703,6 +716,25 @@ function numericMetricValues(series, metricId) {
     .map((run) => run.metrics?.[metricId])
     .filter((value) => typeof value === "number")
     .sort((left, right) => left - right);
+}
+
+function hasMedianStableButWorstCaseExceeded(
+  evidence,
+  { rowHeightErrorThreshold, anchorShiftThreshold, blankGapThreshold },
+) {
+  const rowHeight = evidence.metricSummary?.row_height_error_p95_px;
+  const anchorShift =
+    evidence.metricSummary?.scroll_anchor_shift_backward_p95_px ??
+    evidence.metricSummary?.scroll_anchor_shift_px;
+  const blankGap = evidence.metricSummary?.blank_gap_frames;
+
+  return (
+    rowHeight?.median <= rowHeightErrorThreshold &&
+    rowHeight?.max > rowHeightErrorThreshold &&
+    anchorShift?.median <= anchorShiftThreshold &&
+    anchorShift?.max > anchorShiftThreshold &&
+    blankGap?.median <= blankGapThreshold
+  );
 }
 
 function summarizePolicyNotes(series) {
