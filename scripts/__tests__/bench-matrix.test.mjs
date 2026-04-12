@@ -438,6 +438,11 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   assert.equal(h1?.status, "satisfied");
   assert.equal(h1?.evidence[0]?.sampleCount, 3);
   assert.equal(h1?.evidence[0]?.metrics.scroll_frame_p95_ms, 13.1);
+  assert.deepEqual(h1?.evidence[0]?.metricSummary.scroll_frame_p95_ms, {
+    min: 12.4,
+    median: 13.1,
+    max: 40.2,
+  });
   assert.deepEqual(h1?.evidence[0]?.policyNotes.common, [
     "contain: none",
     "content visibility: visible",
@@ -448,6 +453,152 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   assert.deepEqual(h1?.evidence[0]?.policyNotes.varying, {});
   assert.equal(h1?.evidence[1]?.sampleCount, 3);
   assert.equal(h1?.evidence[1]?.metrics.scroll_frame_p95_ms, 28.4);
+});
+
+test("createHypothesisReport exposes worst-case H1 threshold metrics alongside medians", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t15-10-00-000z",
+    generatedAt: "2026-04-10T15:13:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-10-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 1,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-11-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 2,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-12-00-000z.summary.json",
+      },
+      {
+        adapterId: "gridalpha",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-10-30-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:10:00.000Z",
+        scroll_frame_p95_ms: 12.8,
+        blank_gap_frames: 0,
+      }),
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:11:00.000Z",
+        scroll_frame_p95_ms: 13.1,
+        blank_gap_frames: 0,
+      }),
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:12:00.000Z",
+        scroll_frame_p95_ms: 13.4,
+        blank_gap_frames: 1,
+      }),
+      createScrollRun({
+        adapterId: "gridalpha",
+        timestamp: "2026-04-10T15:10:30.000Z",
+        scroll_frame_p95_ms: 28.4,
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(h1?.status, "failing");
+  assert.equal(h1?.evidence[0]?.metrics.blank_gap_frames, 0);
+  assert.deepEqual(h1?.evidence[0]?.metricSummary.blank_gap_frames, {
+    min: 0,
+    median: 0,
+    max: 1,
+  });
+});
+
+test("createHypothesisReport exposes worst-case H3 threshold metrics alongside medians", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-10t15-40-00-000z",
+    generatedAt: "2026-04-10T15:43:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-40-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 1,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-41-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 2,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-42-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:40:00.000Z",
+        row_height_error_p95_px: 0,
+        scroll_anchor_shift_backward_p95_px: 0,
+      }),
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:41:00.000Z",
+        row_height_error_p95_px: 0,
+        scroll_anchor_shift_backward_p95_px: 0,
+      }),
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-10T15:42:00.000Z",
+        row_height_error_p95_px: 6,
+        scroll_anchor_shift_backward_p95_px: 20,
+      }),
+    ],
+  });
+
+  const h3 = report.hypotheses.find((item) => item.id === "H3");
+
+  assert.equal(h3?.status, "failing");
+  assert.deepEqual(h3?.evidence[0]?.metricSummary.row_height_error_p95_px, {
+    min: 0,
+    median: 0,
+    max: 6,
+  });
+  assert.deepEqual(
+    h3?.evidence[0]?.metricSummary.scroll_anchor_shift_backward_p95_px,
+    {
+      min: 0,
+      median: 0,
+      max: 20,
+    },
+  );
 });
 
 test("createHypothesisReport prefers the best full-grid comparator for H1 while keeping primitive comparators as context", () => {
@@ -845,6 +996,8 @@ function createScrollRun({
     "overscroll behavior: contain",
   ],
   scroll_frame_p95_ms,
+  blank_gap_frames = 0,
+  long_tasks_count = 0,
   row_height_error_p95_px = 0,
   scroll_anchor_shift_px = 0,
   scroll_anchor_shift_forward_p95_px = 0,
@@ -867,8 +1020,8 @@ function createScrollRun({
     tracePath: `status/traces/chromium-${adapterId}-default-s2-scroll.trace.zip`,
     metrics: {
       scroll_frame_p95_ms,
-      blank_gap_frames: 0,
-      long_tasks_count: 0,
+      blank_gap_frames,
+      long_tasks_count,
       long_tasks_ms: 0,
       dom_nodes_peak: adapterId === "pretable" ? 1823 : 657,
       row_height_error_p95_px,
