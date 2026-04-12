@@ -216,6 +216,16 @@ test("createBenchPreviewLaunch builds explicitly and starts vite preview directl
   });
 });
 
+test("shared adapter-family source covers benchmark adapters", async () => {
+  const { benchAdapterFamilies, getBenchAdapterFamily } =
+    await import("../../shared/bench-adapter-families.js");
+
+  assert.equal(getBenchAdapterFamily("pretable"), "candidate");
+  assert.equal(getBenchAdapterFamily("gridalpha"), "full-grid");
+  assert.equal(getBenchAdapterFamily("gridbeta"), "virtualization-primitive");
+  assert.equal(benchAdapterFamilies.gridgamma, "full-grid");
+});
+
 test("createHypothesisReport distinguishes directional evidence from missing proof", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-10t14-00-00-000z",

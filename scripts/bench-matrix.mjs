@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { getBenchAdapterFamily } from "../shared/bench-adapter-families.js";
 
 const DEFAULT_ADAPTERS = ["pretable", "gridalpha"];
 const DEFAULT_REPEATS = 1;
@@ -10,14 +11,6 @@ const DEFAULT_SCENARIOS = ["S1", "S2"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 const BENCH_APP_ID = "@pretable/app-bench";
-const ADAPTER_FAMILIES = {
-  pretable: "candidate",
-  "gridalpha": "full-grid",
-  gridbeta: "virtualization-primitive",
-  gridgamma: "full-grid",
-  glide: "full-grid",
-  handsontable: "full-grid",
-};
 
 export function parseBenchMatrixArgs(args) {
   const parsed = {
@@ -663,7 +656,7 @@ function hasPolicyDrift(evidence) {
 }
 
 function getAdapterFamily(adapterId) {
-  return ADAPTER_FAMILIES[adapterId] ?? "unknown";
+  return getBenchAdapterFamily(adapterId);
 }
 
 function describeComparatorFamily(adapterFamily) {
