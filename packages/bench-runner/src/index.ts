@@ -2,6 +2,10 @@ import type {
   ScenarioId,
   ScenarioScale,
 } from "@pretable-internal/scenario-data";
+import {
+  benchAdapterFamilies as sharedBenchAdapterFamilies,
+  getBenchAdapterFamily as getSharedBenchAdapterFamily,
+} from "../../../shared/bench-adapter-families.js";
 
 export type BenchAdapterId =
   | "pretable"
@@ -154,14 +158,7 @@ export interface DashboardIndex {
 }
 
 export const benchAdapterFamilies: Record<BenchAdapterId, BenchAdapterFamily> =
-  {
-    pretable: "candidate",
-    "ag-grid": "full-grid",
-    tanstack: "virtualization-primitive",
-    mui: "full-grid",
-    glide: "full-grid",
-    handsontable: "full-grid",
-  };
+  sharedBenchAdapterFamilies;
 
 export const benchMetricIds: readonly BenchMetricId[] = [
   "mount_ms",
@@ -387,7 +384,7 @@ export function createDashboardIndex(
 export function getBenchAdapterFamily(
   adapterId: BenchAdapterId,
 ): BenchAdapterFamily {
-  return benchAdapterFamilies[adapterId] ?? "unknown";
+  return getSharedBenchAdapterFamily(adapterId);
 }
 
 function compactMetrics(
