@@ -11,6 +11,12 @@ export type BenchAdapterId =
   | "glide"
   | "handsontable";
 
+export type BenchAdapterFamily =
+  | "candidate"
+  | "full-grid"
+  | "virtualization-primitive"
+  | "unknown";
+
 export type BenchAdapterProfile = "default" | "tuned";
 
 export type BenchBrowserName = "chromium" | "firefox";
@@ -137,9 +143,25 @@ export interface BenchAdapter {
   mount(root: HTMLElement, request: BenchRunRequest): Promise<BenchHandle>;
 }
 
+export interface DashboardAdapterSummary {
+  adapterId: BenchAdapterId;
+  adapterFamily: BenchAdapterFamily;
+}
+
 export interface DashboardIndex {
+  adapters: readonly DashboardAdapterSummary[];
   runs: readonly BenchRunSummary[];
 }
+
+export const benchAdapterFamilies: Record<BenchAdapterId, BenchAdapterFamily> =
+  {
+    pretable: "candidate",
+    "gridalpha": "full-grid",
+    gridbeta: "virtualization-primitive",
+    gridgamma: "full-grid",
+    glide: "full-grid",
+    handsontable: "full-grid",
+  };
 
 export const benchMetricIds: readonly BenchMetricId[] = [
   "mount_ms",
@@ -357,8 +379,15 @@ export function createDashboardIndex(
   }
 
   return {
+    adapters: summarizeDashboardAdapters(latestRunsByStem.values()),
     runs: [...latestRunsByStem.values()].sort(compareBenchRuns),
   };
+}
+
+export function getBenchAdapterFamily(
+  adapterId: BenchAdapterId,
+): BenchAdapterFamily {
+  return benchAdapterFamilies[adapterId] ?? "unknown";
 }
 
 function compactMetrics(
@@ -453,6 +482,17 @@ function compareBenchRuns(
   }
 
   return statusRank(left.status) - statusRank(right.status);
+}
+
+function summarizeDashboardAdapters(
+  runs: Iterable<BenchRunSummary>,
+): readonly DashboardAdapterSummary[] {
+  return [...new Set([...runs].map((run) => run.adapterId))]
+    .sort((left, right) => left.localeCompare(right))
+    .map((adapterId) => ({
+      adapterId,
+      adapterFamily: getBenchAdapterFamily(adapterId),
+    }));
 }
 
 function sanitizeTimestamp(timestamp: string): string {

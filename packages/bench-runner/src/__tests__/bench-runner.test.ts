@@ -7,6 +7,7 @@ import {
   createBenchRunSummary,
   createDashboardIndex,
   createRunArtifactFileStem,
+  getBenchAdapterFamily,
   validateSupportedP0aRequest,
 } from "../index";
 
@@ -207,6 +208,11 @@ describe("bench-runner contract", () => {
   });
 
   test("serializes failed runs and aggregates dashboard entries deterministically", () => {
+    expect(getBenchAdapterFamily("pretable")).toBe("candidate");
+    expect(getBenchAdapterFamily("gridalpha")).toBe("full-grid");
+    expect(getBenchAdapterFamily("gridbeta")).toBe("virtualization-primitive");
+    expect(getBenchAdapterFamily("gridgamma")).toBe("full-grid");
+
     const failed = createBenchRunSummary({
       request: baseRequest,
       status: "failed",
@@ -272,6 +278,12 @@ describe("bench-runner contract", () => {
     expect(
       createDashboardIndex([secondCompleted, completed, failed]),
     ).toMatchObject({
+      adapters: [
+        {
+          adapterId: "pretable",
+          adapterFamily: "candidate",
+        },
+      ],
       runs: [failed, secondCompleted],
     });
 
@@ -291,7 +303,46 @@ describe("bench-runner contract", () => {
     expect(
       createDashboardIndex([completed, refreshedCompleted, secondCompleted]),
     ).toMatchObject({
+      adapters: [
+        {
+          adapterId: "pretable",
+          adapterFamily: "candidate",
+        },
+      ],
       runs: [secondCompleted, refreshedCompleted],
+    });
+
+    const gridAlphaCompleted = createBenchRunSummary({
+      request: {
+        ...baseRequest,
+        adapterId: "gridalpha",
+        scenarioId: "S2",
+      },
+      status: "completed",
+      timestamp: "2026-04-10T13:06:00.000Z",
+      tracePath:
+        "status/traces/chromium-gridalpha-default-s2-dev-initial-2026-04-10t13-06-00-000z.trace.zip",
+      metrics: {
+        mount_ms: 30,
+        first_stable_viewport_ms: 34,
+        dom_nodes_peak: 48,
+      },
+    });
+
+    expect(
+      createDashboardIndex([completed, refreshedCompleted, gridAlphaCompleted]),
+    ).toMatchObject({
+      adapters: [
+        {
+          adapterId: "gridalpha",
+          adapterFamily: "full-grid",
+        },
+        {
+          adapterId: "pretable",
+          adapterFamily: "candidate",
+        },
+      ],
+      runs: [refreshedCompleted, gridAlphaCompleted],
     });
   });
 });
