@@ -1,8 +1,15 @@
+import type { PretableColumn } from "@pretable/react";
 import {
-  type PretableColumn,
-  usePretableModel,
-} from "@pretable/react";
-import { useMemo } from "react";
+  PretableSurface,
+  type PretableSurfaceProps,
+} from "../../../packages/react/src/internal/pretable-surface";
+import {
+  type HTMLAttributes,
+  memo,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 type InspectionRow = {
   id: string;
@@ -105,24 +112,122 @@ const rows: InspectionRow[] = [
 ];
 
 const filterableColumnIds = ["timestamp", "severity", "source", "message"] as const;
-const getInspectionRowId = (row: InspectionRow) => row.id;
+
+const renderInspectionHeaderCell: NonNullable<
+  PretableSurfaceProps<InspectionRow>["renderHeaderCell"]
+> = ({ label, sortDirection }) => (
+  <>
+    <span>{label}</span>
+    <strong>
+      {sortDirection === "desc"
+        ? "Newest"
+        : sortDirection === "asc"
+          ? "Oldest"
+          : "Sort"}
+    </strong>
+  </>
+);
+
+const renderInspectionBodyCell: NonNullable<
+  PretableSurfaceProps<InspectionRow>["renderBodyCell"]
+> = ({ column, value }) => (
+  <>
+    <span className="inspection-cell-label">{column.header ?? column.id}</span>
+    <span className="inspection-cell-value">{formatInspectionValue(value)}</span>
+  </>
+);
+
+const getInspectionHeaderCellClassName: NonNullable<
+  PretableSurfaceProps<InspectionRow>["getHeaderCellClassName"]
+> = ({ column }) =>
+  ["inspection-header-cell", column.pinned === "left" ? "is-pinned" : null]
+    .filter(Boolean)
+    .join(" ");
+
+const getInspectionHeaderCellProps: NonNullable<
+  PretableSurfaceProps<InspectionRow>["getHeaderCellProps"]
+> = ({ column }) =>
+  column.pinned === "left"
+    ? ({
+        "data-pinned": "left",
+      } as HTMLAttributes<HTMLButtonElement>)
+    : undefined;
+
+const getInspectionBodyCellClassName: NonNullable<
+  PretableSurfaceProps<InspectionRow>["getBodyCellClassName"]
+> = ({ column }) =>
+  ["inspection-cell", column.pinned === "left" ? "is-pinned" : null]
+    .filter(Boolean)
+    .join(" ");
+
+const getInspectionBodyCellProps: NonNullable<
+  PretableSurfaceProps<InspectionRow>["getBodyCellProps"]
+> = ({ column }) =>
+  column.pinned === "left"
+    ? ({
+        "data-pinned": "left",
+      } as HTMLAttributes<HTMLDivElement>)
+    : undefined;
+
+const getInspectionRowClassName: NonNullable<
+  PretableSurfaceProps<InspectionRow>["getRowClassName"]
+> = () => "inspection-row";
+
+const getInspectionRowId: NonNullable<
+  PretableSurfaceProps<InspectionRow>["getRowId"]
+> = (row) => row.id;
+
+const InspectionGrid = memo(function InspectionGrid({
+  rows,
+}: {
+  rows: InspectionRow[];
+}) {
+  return (
+    <PretableSurface
+      ariaLabel="Inspection grid"
+      columns={columns}
+      getBodyCellClassName={getInspectionBodyCellClassName}
+      getBodyCellProps={getInspectionBodyCellProps}
+      getHeaderCellClassName={getInspectionHeaderCellClassName}
+      getHeaderCellProps={getInspectionHeaderCellProps}
+      getRowClassName={getInspectionRowClassName}
+      getRowId={getInspectionRowId}
+      overscan={OVERSCAN_ROWS}
+      renderBodyCell={renderInspectionBodyCell}
+      renderHeaderCell={renderInspectionHeaderCell}
+      rows={rows}
+      selectFocusedRowOnArrowKey
+      viewportHeight={VIEWPORT_HEIGHT}
+    />
+  );
+});
 
 export function InspectionDemo() {
-  const { grid, snapshot, renderSnapshot } = usePretableModel<InspectionRow>({
-    columns,
-    getRowId: getInspectionRowId,
-    rows,
-    viewportHeight: VIEWPORT_HEIGHT,
-    overscan: OVERSCAN_ROWS,
-  });
-  const selectedRow = useMemo(() => {
-    const selectedId = snapshot.selection.rowIds[0];
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
 
-    return rows.find((row) => row.id === selectedId) ?? null;
-  }, [snapshot.selection.rowIds]);
-  const pinnedOffsets = useMemo(
-    () => getPinnedOffsets(grid.options.columns),
-    [grid.options.columns],
+  const filteredRows = useMemo(
+    () =>
+      rows.filter((row) =>
+        filterableColumnIds.every((columnId) => {
+          const filter = filters[columnId]?.trim().toLowerCase();
+
+          if (!filter) {
+            return true;
+          }
+
+          return getInspectionFilterValue(row, columnId)
+            .toLowerCase()
+            .includes(filter);
+        }),
+      ),
+    [filters],
+  );
+
+  const selectedRow = useMemo(
+    () => rows.find((row) => row.id === selectedRowId) ?? null,
+    [selectedRowId],
   );
 
   return (
@@ -142,7 +247,7 @@ export function InspectionDemo() {
         <div className="inspection-status-card">
           <span>Current slice</span>
           <strong>Inspection workflow</strong>
-          <p>{snapshot.visibleRows.length} matching rows</p>
+          <p>{filteredRows.length} matching rows</p>
         </div>
       </div>
 
@@ -172,9 +277,12 @@ export function InspectionDemo() {
                   <span>{label}</span>
                   <input
                     aria-label={`Filter ${label}`}
-                    value={snapshot.filters[columnId] ?? ""}
+                    value={filters[columnId] ?? ""}
                     onChange={(event) => {
-                      grid.setFilter(columnId, event.currentTarget.value);
+                      setFilters((current) => ({
+                        ...current,
+                        [columnId]: event.currentTarget.value,
+                      }));
                     }}
                     placeholder={`Filter ${label.toLowerCase()}`}
                   />
@@ -184,137 +292,74 @@ export function InspectionDemo() {
           </div>
 
           <div
-            aria-label="Inspection grid"
-            className="inspection-viewport"
-            role="grid"
-            tabIndex={0}
+            className="inspection-grid-shell"
+            ref={shellRef}
+            onClick={(event) => {
+              const target = event.target as HTMLElement;
+              const rowElement = target.closest("[data-pretable-row]") as
+                | HTMLElement
+                | null;
+
+              if (rowElement?.dataset.rowId) {
+                setSelectedRowId(rowElement.dataset.rowId);
+              }
+            }}
             onKeyDown={(event) => {
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                grid.moveFocus(event.key === "ArrowDown" ? 1 : -1);
-                const nextRowId = grid.getSnapshot().focus.rowId;
+              if (
+                event.key !== "ArrowDown" &&
+                event.key !== "ArrowUp" &&
+                event.key !== "Enter" &&
+                event.key !== " "
+              ) {
+                return;
+              }
 
-                if (nextRowId) {
-                  grid.selectRow(nextRowId);
-                }
+              const renderedRowIds = Array.from(
+                shellRef.current?.querySelectorAll<HTMLElement>("[data-pretable-row]") ??
+                  [],
+              )
+                .map((row) => row.dataset.rowId)
+                .filter((rowId): rowId is string => rowId !== undefined);
 
-                event.preventDefault();
+              if (renderedRowIds.length === 0) {
                 return;
               }
 
               if (event.key === "Enter" || event.key === " ") {
-                const focusedRowId = grid.getSnapshot().focus.rowId;
+                const nextSelectedRowId =
+                  selectedRowId && renderedRowIds.includes(selectedRowId)
+                    ? selectedRowId
+                    : renderedRowIds[0];
 
-                if (focusedRowId) {
-                  grid.selectRow(focusedRowId);
-                  event.preventDefault();
+                if (nextSelectedRowId) {
+                  setSelectedRowId(nextSelectedRowId);
                 }
+
+                return;
+              }
+
+              const currentIndex = selectedRowId
+                ? renderedRowIds.indexOf(selectedRowId)
+                : -1;
+
+              const nextIndex =
+                currentIndex === -1
+                  ? event.key === "ArrowDown"
+                    ? 0
+                    : renderedRowIds.length - 1
+                  : clampIndex(
+                      currentIndex + (event.key === "ArrowDown" ? 1 : -1),
+                      renderedRowIds.length,
+                    );
+
+              const nextSelectedRowId = renderedRowIds[nextIndex];
+
+              if (nextSelectedRowId) {
+                setSelectedRowId(nextSelectedRowId);
               }
             }}
-            onScroll={(event) => {
-              grid.setViewport({
-                scrollTop: event.currentTarget.scrollTop,
-                height: VIEWPORT_HEIGHT,
-              });
-            }}
           >
-            <div
-              className="inspection-grid"
-              style={{
-                minWidth: `${renderSnapshot.totalWidth}px`,
-              }}
-            >
-              <div
-                className="inspection-header-row"
-                style={{
-                  gridTemplateColumns: grid.options.columns
-                    .map((column) => `${getColumnWidth(column)}px`)
-                    .join(" "),
-                }}
-              >
-                {grid.options.columns.map((column) => {
-                  const sortDirection =
-                    snapshot.sort.columnId === column.id
-                      ? snapshot.sort.direction
-                      : null;
-
-                  return (
-                    <button
-                      aria-label={`Sort ${column.header ?? column.id}`}
-                      className="inspection-header-cell"
-                      key={column.id}
-                      onClick={() => {
-                        grid.setSort(
-                          column.id,
-                          getNextSortDirection(sortDirection),
-                        );
-                      }}
-                      style={getPinnedCellStyle(column.id, pinnedOffsets)}
-                      type="button"
-                    >
-                      <span>{column.header ?? column.id}</span>
-                      <strong>
-                        {sortDirection === "desc"
-                          ? "Newest"
-                          : sortDirection === "asc"
-                            ? "Oldest"
-                            : "Sort"}
-                      </strong>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div
-                className="inspection-scroll-content"
-                style={{ height: `${renderSnapshot.totalHeight}px` }}
-              >
-                {renderSnapshot.rows.map((row) => {
-                  const isSelected = snapshot.selection.rowIds.includes(row.id);
-                  const isFocused = snapshot.focus.rowId === row.id;
-
-                  return (
-                    <div
-                      aria-selected={isSelected}
-                      className="inspection-row"
-                      data-row-id={row.id}
-                      data-testid="inspection-row"
-                      key={row.id}
-                      onClick={() => {
-                        grid.setFocus(row.id, "timestamp");
-                        grid.selectRow(row.id);
-                      }}
-                      style={{
-                        gridTemplateColumns: grid.options.columns
-                          .map((column) => `${getColumnWidth(column)}px`)
-                          .join(" "),
-                        top: `${row.top}px`,
-                        height: `${row.height}px`,
-                      }}
-                    >
-                      {grid.options.columns.map((column) => (
-                        <div
-                          className="inspection-cell"
-                          data-focused={isFocused ? "true" : "false"}
-                          data-pinned={
-                            column.pinned === "left" ? "left" : undefined
-                          }
-                          data-selected={isSelected ? "true" : "false"}
-                          key={`${row.id}:${column.id}`}
-                          style={getPinnedCellStyle(column.id, pinnedOffsets)}
-                        >
-                          <span className="inspection-cell-label">
-                            {column.header ?? column.id}
-                          </span>
-                          <span className="inspection-cell-value">
-                            {formatCellValue(row.row, column)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <InspectionGrid rows={filteredRows} />
           </div>
         </article>
 
@@ -371,65 +416,30 @@ export function InspectionDemo() {
   );
 }
 
-function getNextSortDirection(current: "asc" | "desc" | null) {
-  if (current === null) {
-    return "desc";
-  }
-
-  if (current === "desc") {
-    return "asc";
-  }
-
-  return null;
+function clampIndex(index: number, length: number) {
+  return Math.max(0, Math.min(index, length - 1));
 }
 
-function getColumnWidth(column: PretableColumn<InspectionRow>) {
-  return column.widthPx ?? (column.wrap ? 220 : 140);
-}
-
-function getPinnedOffsets(columns: PretableColumn<InspectionRow>[]) {
-  const offsets: Record<string, number> = {};
-  let left = 0;
-
-  for (const column of columns) {
-    if (column.pinned !== "left") {
-      continue;
-    }
-
-    offsets[column.id] = left;
-    left += getColumnWidth(column);
-  }
-
-  return offsets;
-}
-
-function getPinnedCellStyle(
-  columnId: string,
-  pinnedOffsets: Record<string, number>,
-) {
-  const left = pinnedOffsets[columnId];
-
-  if (left === undefined) {
-    return undefined;
-  }
-
-  return {
-    left: `${left}px`,
-    position: "sticky" as const,
-  };
-}
-
-function formatCellValue(
-  row: InspectionRow,
-  column: PretableColumn<InspectionRow>,
-) {
-  const value = column.getValue
-    ? column.getValue(row)
-    : row[column.id as keyof InspectionRow];
-
+function formatInspectionValue(value: unknown) {
   if (Array.isArray(value)) {
     return value.join(", ");
   }
 
   return String(value ?? "");
+}
+
+function getInspectionFilterValue(
+  row: InspectionRow,
+  columnId: (typeof filterableColumnIds)[number],
+) {
+  switch (columnId) {
+    case "timestamp":
+      return row.timestamp;
+    case "severity":
+      return row.severity;
+    case "source":
+      return row.source;
+    case "message":
+      return row.message;
+  }
 }
