@@ -51,6 +51,35 @@ it("exposes the benchmark viewport, content, row, and cell DOM markers", () => {
   expect(cells).toHaveLength(1);
 });
 
+it("preserves the benchmark viewport policy on the public wrapper path", () => {
+  const view = render(
+    <Pretable
+      columns={[
+        {
+          id: "message",
+          header: "Message",
+        },
+      ]}
+      rows={[
+        {
+          id: "row-0",
+          message: "Hello from Pretable",
+        },
+      ]}
+    />,
+  );
+
+  const viewport = view.getByRole("grid", { name: "Pretable React adapter" });
+
+  expect(viewport).toHaveStyle({
+    contain: "none",
+    contentVisibility: "visible",
+    containIntrinsicSize: "none",
+    overflowAnchor: "none",
+    overscrollBehavior: "contain",
+  });
+});
+
 it("renders accessor-driven values correctly through the public wrapper", () => {
   const view = render(
     <Pretable
