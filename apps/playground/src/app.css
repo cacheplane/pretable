@@ -165,6 +165,14 @@ input {
   margin-top: 18px;
 }
 
+.inspection-grid-shell {
+  margin-top: 18px;
+}
+
+.inspection-grid-shell [data-pretable-scroll-viewport] {
+  background: linear-gradient(180deg, rgba(18, 24, 31, 0.98), rgba(27, 36, 46, 0.96));
+}
+
 .filter-field {
   display: grid;
   gap: 8px;
@@ -221,9 +229,9 @@ input {
   align-items: start;
   min-height: 72px;
   border: 0;
-  border-right: 1px solid rgba(22, 33, 43, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   background: inherit;
-  color: #16212b;
+  color: #f5efdf;
   padding: 14px 12px;
   text-align: left;
   cursor: pointer;
@@ -231,7 +239,7 @@ input {
 }
 
 .inspection-header-cell strong {
-  color: #9a5521;
+  color: #f3cb75;
   font-size: 0.83rem;
 }
 
@@ -243,12 +251,12 @@ input {
   display: grid;
   position: absolute;
   inset-inline: 0;
-  border-bottom: 1px solid rgba(22, 33, 43, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   cursor: pointer;
 }
 
 .inspection-row:hover .inspection-cell {
-  background: rgba(249, 243, 231, 0.96);
+  background: rgba(34, 45, 57, 0.98);
 }
 
 .inspection-cell {
@@ -257,8 +265,9 @@ input {
   gap: 6px;
   min-height: 100%;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.84);
-  border-right: 1px solid rgba(22, 33, 43, 0.06);
+  background: rgba(29, 38, 49, 0.92);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  color: #f5f7fb;
 }
 
 .inspection-cell[data-pinned="left"] {
@@ -267,16 +276,16 @@ input {
 }
 
 .inspection-cell[data-selected="true"] {
-  background: rgba(247, 225, 182, 0.56);
+  background: rgba(245, 199, 104, 0.22);
 }
 
 .inspection-cell[data-focused="true"] {
-  outline: 1px solid rgba(56, 102, 186, 0.28);
+  outline: 1px solid rgba(115, 164, 255, 0.36);
   outline-offset: -1px;
 }
 
 .inspection-cell-label {
-  color: #687789;
+  color: #9ea9b8;
   font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -284,7 +293,7 @@ input {
 }
 
 .inspection-cell-value {
-  color: #1a2733;
+  color: #f5f7fb;
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
