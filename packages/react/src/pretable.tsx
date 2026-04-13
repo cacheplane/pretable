@@ -13,6 +13,13 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
 }
 
 const VIEWPORT_HEIGHT = 320;
+const BENCHMARK_VIEWPORT_STYLE = {
+  contain: "none",
+  containIntrinsicSize: "none",
+  contentVisibility: "visible",
+  overflowAnchor: "none",
+  overscrollBehavior: "contain",
+} as const;
 
 export function Pretable<TRow extends PretableRow = PretableRow>({
   columns,
@@ -102,6 +109,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
           </>
         )}
         rows={rows}
+        viewportStyle={BENCHMARK_VIEWPORT_STYLE}
         viewportHeight={VIEWPORT_HEIGHT}
       />
     </section>

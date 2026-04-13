@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type HTMLAttributes,
   type ReactNode,
   useMemo,
@@ -120,6 +121,7 @@ export interface PretableSurfaceProps<
   ) => ReactNode;
   rows: TRow[];
   selectFocusedRowOnArrowKey?: boolean;
+  viewportStyle?: CSSProperties;
   viewportHeight: number;
 }
 
@@ -138,6 +140,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   renderHeaderCell,
   rows,
   selectFocusedRowOnArrowKey = false,
+  viewportStyle,
   viewportHeight,
 }: PretableSurfaceProps<TRow>) {
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>(
@@ -219,7 +222,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           height: viewportHeight,
         });
       }}
-      style={getViewportStyle(viewportHeight)}
+      style={{
+        ...getViewportStyle(viewportHeight),
+        ...viewportStyle,
+      }}
     >
       <div style={getHeaderRowStyle(templateColumns)}>
         {columns.map((column) => {
