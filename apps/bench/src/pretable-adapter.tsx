@@ -12,7 +12,7 @@ function getScenarioRowId(row: ScenarioDataset["rows"][number]) {
 
 export function PretableAdapter({ dataset, runKey }: PretableAdapterProps) {
   return (
-    <div className="adapter-surface">
+    <div className="adapter-surface" data-benchmark-adapter="pretable">
       <Pretable
         key={runKey}
         columns={[...dataset.columns]}
