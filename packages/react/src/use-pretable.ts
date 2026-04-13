@@ -6,7 +6,7 @@ import {
 import { useMemo } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
-  columns: PretableColumn[];
+  columns: PretableColumn<TRow>[];
   rows: TRow[];
 }
 

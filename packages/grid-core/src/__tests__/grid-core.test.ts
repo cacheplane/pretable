@@ -101,4 +101,24 @@ describe("grid-core", () => {
       height: 320,
     });
   });
+
+  test("getSnapshot returns a stable reference until state changes", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    const first = grid.getSnapshot();
+    const second = grid.getSnapshot();
+
+    expect(second).toBe(first);
+
+    grid.setViewport({ scrollTop: 44, height: 320 });
+
+    const third = grid.getSnapshot();
+
+    expect(third).not.toBe(first);
+    expect(grid.getSnapshot()).toBe(third);
+  });
 });

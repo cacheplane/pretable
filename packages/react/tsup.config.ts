@@ -6,4 +6,5 @@ export default defineConfig({
   entry: ["src/index.ts"],
   external: ["react", "react-dom", "@pretable/core"],
   format: ["esm"],
+  noExternal: ["@pretable-internal/renderer-dom"],
 });

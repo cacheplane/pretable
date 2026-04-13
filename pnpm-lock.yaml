@@ -151,6 +151,12 @@ importers:
       '@pretable-internal/grid-core':
         specifier: workspace:*
         version: link:../grid-core
+      '@pretable-internal/layout-core':
+        specifier: workspace:*
+        version: link:../layout-core
+      '@pretable-internal/text-core':
+        specifier: workspace:*
+        version: link:../text-core
 
   packages/scenario-data: {}
 

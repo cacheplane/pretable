@@ -16,12 +16,14 @@
     }
   },
   "dependencies": {
-    "@pretable-internal/grid-core": "workspace:*"
+    "@pretable-internal/grid-core": "workspace:*",
+    "@pretable-internal/layout-core": "workspace:*",
+    "@pretable-internal/text-core": "workspace:*"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "pnpm --filter @pretable-internal/text-core build && pnpm --filter @pretable-internal/layout-core build && pnpm --filter @pretable-internal/grid-core build && tsc -b",
     "lint": "eslint src --ext .ts,.tsx",
-    "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc -b --pretty false"
+    "test": "pnpm --filter @pretable-internal/text-core build && pnpm --filter @pretable-internal/layout-core build && pnpm --filter @pretable-internal/grid-core build && vitest run --passWithNoTests",
+    "typecheck": "pnpm --filter @pretable-internal/text-core build && pnpm --filter @pretable-internal/layout-core build && pnpm --filter @pretable-internal/grid-core build && tsc -b --pretty false"
   }
 }

@@ -4,7 +4,8 @@
     "baseUrl": ".",
     "outDir": "dist",
     "paths": {
-      "@pretable/core": ["../core/src/index.ts"]
+      "@pretable/core": ["../core/src/index.ts"],
+      "@pretable-internal/renderer-dom": ["../renderer-dom/src/index.ts"]
     }
   },
   "include": ["src"],
