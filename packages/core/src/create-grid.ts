@@ -1,10 +1,23 @@
+import { createGridCore } from "@pretable-internal/grid-core";
+
 import type { PretableGrid, PretableGridOptions } from "./types";
 
 export function createGrid<TRow extends Record<string, unknown>>(
   options: PretableGridOptions<TRow>,
 ): PretableGrid<TRow> {
+  const gridCore = createGridCore(options);
+
   return {
     kind: "pretable-grid",
     options,
+    subscribe: gridCore.subscribe,
+    getSnapshot: gridCore.getSnapshot,
+    setSort: gridCore.setSort,
+    setFilter: gridCore.setFilter,
+    clearFilters: gridCore.clearFilters,
+    selectRow: gridCore.selectRow,
+    setFocus: gridCore.setFocus,
+    moveFocus: gridCore.moveFocus,
+    setViewport: gridCore.setViewport,
   };
 }
