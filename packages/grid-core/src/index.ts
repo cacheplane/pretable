@@ -1,7 +1,15 @@
-import type { LayoutSpan } from "@pretable-internal/layout-core";
-import type { PreparedTextRecord } from "@pretable-internal/text-core";
-
-export interface GridCoreFrame {
-  text: PreparedTextRecord;
-  layout: LayoutSpan;
-}
+export { createGridCore } from "./create-grid-core";
+export type {
+  GridCoreColumn,
+  GridCoreFocusState,
+  GridCoreFrame,
+  GridCoreOptions,
+  GridCoreRow,
+  GridCoreRowModel,
+  GridCoreSelectionState,
+  GridCoreSnapshot,
+  GridCoreSortDirection,
+  GridCoreSortState,
+  GridCoreStore,
+  GridCoreViewportState,
+} from "./types";
