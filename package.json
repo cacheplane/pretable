@@ -12,7 +12,7 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "pnpm -r lint",
-    "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs && pnpm -r test",
+    "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs && pnpm -r --filter './packages/*' test && pnpm -r --workspace-concurrency=1 --filter './apps/*' test",
     "typecheck": "pnpm -r --filter './packages/*' typecheck && pnpm -r --workspace-concurrency=1 --filter './apps/*' typecheck"
   },
   "devDependencies": {
