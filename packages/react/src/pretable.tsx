@@ -1,5 +1,6 @@
 import {
   type PretableColumn,
+  type PretableGridOptions,
   type PretableRow,
 } from "@pretable/core";
 import { useState } from "react";
@@ -9,6 +10,7 @@ import { usePretableModel } from "./use-pretable";
 
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
+  getRowId?: PretableGridOptions<TRow>["getRowId"];
   rows: TRow[];
 }
 
@@ -18,6 +20,7 @@ const OVERSCAN_ROWS = 6;
 
 export function Pretable<TRow extends PretableRow = PretableRow>({
   columns,
+  getRowId,
   rows,
 }: PretableProps<TRow>) {
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>(
@@ -25,6 +28,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   );
   const { grid, snapshot, renderSnapshot } = usePretableModel({
     columns,
+    getRowId,
     rows,
     viewportHeight: VIEWPORT_HEIGHT,
     overscan: OVERSCAN_ROWS,
@@ -111,6 +115,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
               key={id}
               aria-rowindex={rowIndex + 1}
               data-pretable-row=""
+              data-row-id={id}
               data-row-height={height}
               data-row-index={rowIndex}
               data-testid="pretable-row"

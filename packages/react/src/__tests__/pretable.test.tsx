@@ -90,6 +90,36 @@ it("renders variable row heights for wrapped benchmark-style data", () => {
   expect(Math.max(...rowHeights)).toBeGreaterThanOrEqual(140);
 });
 
+it("uses caller-provided row ids in the public component path", () => {
+  const rows = [
+    {
+      eventId: "evt-001",
+      message: "First message",
+    },
+    {
+      eventId: "evt-002",
+      message: "Second message",
+    },
+  ];
+  const view = render(
+    <Pretable
+      columns={[
+        {
+          id: "message",
+          header: "Message",
+        },
+      ]}
+      getRowId={(row) => row.eventId}
+      rows={rows}
+    />,
+  );
+
+  const renderedRows = view.getAllByTestId("pretable-row");
+
+  expect(renderedRows[0]).toHaveAttribute("data-row-id", "evt-001");
+  expect(renderedRows[1]).toHaveAttribute("data-row-id", "evt-002");
+});
+
 it("measures rendered row height from the tallest cell plus row chrome", () => {
   const row = document.createElement("div");
   row.innerHTML = `
