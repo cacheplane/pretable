@@ -18,3 +18,19 @@ it("resolves core declarations from explicit declaration files during the react 
     "@pretable/core/*": ["../core/dist/*.d.ts"],
   });
 });
+
+it("declares an internal package subpath for the shared renderer seam", async () => {
+  const [manifestRaw, tsupRaw] = await Promise.all([
+    readFile(path.join(process.cwd(), "package.json"), "utf8"),
+    readFile(path.join(process.cwd(), "tsup.config.ts"), "utf8"),
+  ]);
+  const manifest = JSON.parse(manifestRaw) as {
+    exports?: Record<string, { import?: string; types?: string }>;
+  };
+
+  expect(manifest.exports?.["./internal"]).toMatchObject({
+    import: "./dist/internal.js",
+    types: "./dist/internal.d.ts",
+  });
+  expect(tsupRaw).toContain('"src/internal.ts"');
+});
