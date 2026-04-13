@@ -61,9 +61,9 @@ It should accept:
 
 - a `PretableModel`
 - viewport configuration
-- optional measurement enablement or measurement strategy
+- optional measurement enablement
 - narrow render callbacks for header-cell and body-cell content
-- optional class/attribute hooks for styling
+- optional presentational hooks for extra class names and non-structural DOM attributes on header cells, rows, and body cells
 
 It should own:
 
@@ -80,11 +80,14 @@ It should own:
 
 ### Callback boundary
 
-Callbacks are allowed to control:
+The renderer should own its own measured-height state and pass that state into the render-model path itself. Wrappers must not keep separate measured-height maps after this extraction.
+
+Callbacks and hooks are allowed to control:
 
 - header-cell inner content
 - body-cell inner content
-- extra class names or non-structural DOM attributes
+- extra class names
+- non-structural DOM attributes on header cells, rows, and body cells
 
 Callbacks are not allowed to control:
 
@@ -107,12 +110,20 @@ The extracted renderer must preserve the existing Pretable benchmark contract:
 - row id attribute: `data-row-id`
 - row height attribute: `data-row-height`
 - row positioning and cell geometry readable from the row shell
+- viewport subtree shape remaining compatible with benchmark DOM-node counting
+- the effective scroll owner remaining the same element the harness targets
 
 It must also preserve current viewport policy behavior:
 
 - `overflow: auto`
 - `overflow-anchor: none`
 - `overscroll-behavior: contain`
+
+It must preserve the behavior that current benchmark notes and sampling rely on:
+
+- viewport-policy notes still readable from the real scrolling element
+- row geometry still sampled from the row shell
+- scroll-path smoke coverage run against the wrapped-text `S2` scroll scenario, not only initial render
 
 Any extraction that moves or renames those markers, or inserts a new effective scroller, changes benchmark semantics and is out of scope.
 
