@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 
 import {
@@ -11,12 +11,113 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 it("renders a placeholder label", () => {
   const view = render(<Pretable rows={[]} columns={[]} />);
 
   expect(view.getByText("Pretable React adapter")).toBeInTheDocument();
+});
+
+it("exposes the benchmark viewport, content, row, and cell DOM markers", () => {
+  const view = render(
+    <Pretable
+      columns={[
+        {
+          id: "message",
+          header: "Message",
+        },
+      ]}
+      rows={[
+        {
+          id: "row-0",
+          message: "Hello from Pretable",
+        },
+      ]}
+    />,
+  );
+
+  const viewport = view.container.querySelector("[data-pretable-scroll-viewport]");
+  const content = view.container.querySelector("[data-pretable-scroll-content]");
+  const row = view.container.querySelector("[data-pretable-row]");
+  const cells = row?.querySelectorAll("[data-pretable-cell]");
+
+  expect(viewport).toHaveAttribute("role", "grid");
+  expect(viewport).toHaveAttribute("tabindex", "0");
+  expect(content).toBeInTheDocument();
+  expect(view.getByRole("button", { name: "Sort Message" })).toBeInTheDocument();
+  expect(row).toHaveAttribute("data-row-index", "0");
+  expect(cells).toHaveLength(1);
+});
+
+it("renders accessor-driven values correctly through the public wrapper", () => {
+  const view = render(
+    <Pretable
+      columns={[
+        {
+          id: "fullName",
+          header: "Full name",
+          getValue: (row: { firstName: string; lastName: string }) =>
+            `${row.firstName} ${row.lastName}`,
+        },
+      ]}
+      rows={[
+        {
+          id: "person-0",
+          firstName: "Ada",
+          lastName: "Lovelace",
+        },
+      ]}
+    />,
+  );
+
+  expect(view.getByText("Ada Lovelace")).toBeInTheDocument();
+});
+
+it("measures wrapped rows and applies the measured height back to data-row-height", async () => {
+  vi.spyOn(window, "getComputedStyle").mockReturnValue({
+    borderBottomWidth: "1px",
+    paddingBottom: "10px",
+    paddingTop: "10px",
+  } as CSSStyleDeclaration);
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function scrollHeight() {
+      if (
+        this instanceof HTMLElement &&
+        this.dataset.pretableCell !== undefined &&
+        this.textContent?.includes("Tall measurement target")
+      ) {
+        return 180;
+      }
+
+      return 22;
+    },
+  );
+
+  const view = render(
+    <Pretable
+      columns={[
+        {
+          id: "message",
+          header: "Message",
+          wrap: true,
+        },
+      ]}
+      rows={[
+        {
+          id: "row-0",
+          message: "Tall measurement target",
+        },
+      ]}
+    />,
+  );
+
+  const row = view.getByTestId("pretable-row");
+
+  await waitFor(() => {
+    expect(row).toHaveAttribute("data-row-height", "201");
+  });
 });
 
 it("renders a scrollable viewport and virtualizes rows on scroll", () => {
@@ -49,45 +150,6 @@ it("renders a scrollable viewport and virtualizes rows on scroll", () => {
   });
 
   expect(view.getByText("Row 90")).toBeInTheDocument();
-});
-
-it("renders variable row heights for wrapped benchmark-style data", () => {
-  const columns = [
-    { id: "col_0", header: "Wrapped 0", wrap: true, widthPx: 220 },
-    { id: "col_1", header: "Wrapped 1", wrap: true, widthPx: 220 },
-    { id: "col_2", header: "Wrapped 2", wrap: true, widthPx: 220 },
-    { id: "col_3", header: "Status", widthPx: 140 },
-  ];
-  const rows = [
-    {
-      id: "row-0",
-      col_0: "Short row",
-      col_1: "Short row",
-      col_2: "Short row",
-      col_3: "ready",
-    },
-    {
-      id: "row-1",
-      col_0:
-        "A much longer multilingual row that should wrap across several lines in the benchmark renderer surface.",
-      col_1:
-        "Bonjour depuis Pretable with enough extra text to force the estimated height above the fixed baseline.",
-      col_2:
-        "Pretableからこんにちは and another clause to keep the row taller than the compact baseline.",
-      col_3: "running",
-    },
-  ];
-  const view = render(
-    <Pretable columns={columns} rows={rows} />,
-  );
-
-  const rowHeights = view
-    .getAllByTestId("pretable-row")
-    .map((row) => Number(row.getAttribute("data-row-height")));
-
-  expect(new Set(rowHeights).size).toBeGreaterThan(1);
-  expect(rowHeights.some((height) => height > 44)).toBe(true);
-  expect(Math.max(...rowHeights)).toBeGreaterThanOrEqual(140);
 });
 
 it("uses caller-provided row ids in the public component path", () => {
