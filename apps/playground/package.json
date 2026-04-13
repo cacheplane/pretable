@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/renderer-dom build",
+    "prepare:deps": "pnpm --filter @pretable/react build",
     "predev": "pnpm run prepare:deps",
     "dev": "vite",
     "prebuild": "pnpm run prepare:deps",
@@ -15,8 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pretable-internal/renderer-dom": "workspace:*",
-    "@pretable/core": "workspace:*",
+    "@pretable/react": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   }

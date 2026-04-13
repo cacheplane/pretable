@@ -104,12 +104,9 @@ importers:
 
   apps/playground:
     dependencies:
-      '@pretable-internal/renderer-dom':
+      '@pretable/react':
         specifier: workspace:*
-        version: link:../../packages/renderer-dom
-      '@pretable/core':
-        specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../../packages/react
       react:
         specifier: ^19.0.0
         version: 19.2.5

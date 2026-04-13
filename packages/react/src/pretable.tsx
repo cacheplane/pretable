@@ -2,11 +2,10 @@ import {
   type PretableColumn,
   type PretableRow,
 } from "@pretable/core";
-import { createDomRenderSnapshot } from "@pretable-internal/renderer-dom";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 
 import { measureRenderedRowHeight } from "./row-height";
-import { usePretable } from "./use-pretable";
+import { usePretableModel } from "./use-pretable";
 
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
@@ -21,27 +20,16 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   columns,
   rows,
 }: PretableProps<TRow>) {
-  const grid = usePretable({ columns, rows });
-  const snapshot = useSyncExternalStore(
-    grid.subscribe,
-    grid.getSnapshot,
-    grid.getSnapshot,
-  );
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>(
     {},
   );
-  const renderSnapshot = useMemo(
-    () =>
-      createDomRenderSnapshot({
-        columns: grid.options.columns,
-        snapshot,
-        scrollTop: snapshot.viewport.scrollTop,
-        viewportHeight: VIEWPORT_HEIGHT,
-        overscan: OVERSCAN_ROWS,
-        measuredHeights,
-      }),
-    [grid.options.columns, measuredHeights, snapshot],
-  );
+  const { grid, snapshot, renderSnapshot } = usePretableModel({
+    columns,
+    rows,
+    viewportHeight: VIEWPORT_HEIGHT,
+    overscan: OVERSCAN_ROWS,
+    measuredHeights,
+  });
   const captureMeasuredRow = (rowId: string, node: HTMLDivElement | null) => {
     if (!node) {
       return;
@@ -64,17 +52,6 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
       };
     });
   };
-
-  useEffect(() => {
-    if (snapshot.viewport.height === VIEWPORT_HEIGHT) {
-      return;
-    }
-
-    grid.setViewport({
-      scrollTop: snapshot.viewport.scrollTop,
-      height: VIEWPORT_HEIGHT,
-    });
-  }, [grid, snapshot.viewport.height, snapshot.viewport.scrollTop]);
 
   return (
     <section
