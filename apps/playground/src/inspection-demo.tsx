@@ -2,7 +2,7 @@ import type { PretableColumn } from "@pretable/react";
 import {
   PretableSurface,
   type PretableSurfaceProps,
-} from "../../../packages/react/src/internal/pretable-surface";
+} from "@pretable/react/internal";
 import {
   type HTMLAttributes,
   memo,
