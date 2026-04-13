@@ -36,6 +36,7 @@
 
 - Modify: `/Users/blove/.config/superpowers/worktrees/pretable/codex/pretable-monorepo-scaffold/apps/bench/src/pretable-adapter.tsx`
 - Modify: `/Users/blove/.config/superpowers/worktrees/pretable/codex/pretable-monorepo-scaffold/apps/bench/src/__tests__/bench-app.test.tsx`
+- Modify: `/Users/blove/.config/superpowers/worktrees/pretable/codex/pretable-monorepo-scaffold/apps/bench/src/__tests__/bench-runtime.test.ts`
 - Modify: `/Users/blove/.config/superpowers/worktrees/pretable/codex/pretable-monorepo-scaffold/apps/bench/tests/bench.spec.ts`
 
 ### Notes and memory
@@ -81,7 +82,15 @@ Create a renderer component and helpers that own:
 - cell shells with `data-pretable-cell`
 - sort-button event wiring
 - keyboard handling for focus movement and row selection
-- measurement callback plumbing keyed by row id
+- local measured-height state keyed by row id
+- the responsibility to pass measured heights into the render-model path
+
+Make the seam concrete in code and tests. The internal surface contract should expose narrow renderer-owned callbacks/hooks only for:
+
+- `renderHeaderCell`
+- `renderBodyCell`
+- optional extra class names
+- optional extra non-structural DOM attributes on header cells, rows, and body cells
 
 Keep callbacks narrow. Header/body callbacks may control inner content only.
 
@@ -233,6 +242,9 @@ Add or tighten tests that prove the Pretable benchmark path still:
 
 - renders the expected Pretable DOM markers
 - mounts the expected scroll viewport element
+- preserves viewport policy notes and the effective scroll owner
+- preserves row-shell geometry assumptions used by the harness
+- preserves viewport subtree compatibility for DOM-node counting
 - preserves row identity through `getRowId`
 - continues to behave correctly under `runKey` remounts
 
@@ -241,6 +253,7 @@ Add or tighten tests that prove the Pretable benchmark path still:
 Run:
 
 - `pnpm --filter @pretable/app-bench test -- --run src/__tests__/bench-app.test.tsx`
+- `pnpm --filter @pretable/app-bench test -- --run src/__tests__/bench-runtime.test.ts`
 
 Expected: FAIL if the shared renderer migration changed the DOM contract or benchmark assumptions.
 
@@ -253,12 +266,14 @@ Keep the Pretable benchmark path thin:
 - do not introduce benchmark-only renderer forks
 
 Only update test assumptions if the DOM contract is intentionally preserved but exposed differently in a harmless way. Do not weaken the benchmark contract.
+For this slice, marker placement, effective scroller ownership, viewport policy notes, row-shell geometry, and viewport subtree semantics are not harmless changes.
 
 - [ ] **Step 4: Run focused benchmark verification**
 
 Run:
 
 - `pnpm --filter @pretable/app-bench test -- --run src/__tests__/bench-app.test.tsx`
+- `pnpm --filter @pretable/app-bench test -- --run src/__tests__/bench-runtime.test.ts`
 - `pnpm --filter @pretable/app-bench test`
 
 Expected: PASS
@@ -267,9 +282,9 @@ Expected: PASS
 
 Run:
 
-- `pnpm bench:e2e -- --project=chromium`
+- `PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S2 PRETABLE_BENCH_SCRIPT=scroll pnpm bench:e2e -- --project=chromium`
 
-Expected: PASS with valid Pretable summary output and no missing Pretable selector failures.
+Expected: PASS with valid Pretable summary output, preserved viewport policy notes, and no missing Pretable selector failures on the wrapped-text scroll path.
 
 - [ ] **Step 6: Commit the benchmark-compatibility batch**
 
