@@ -91,6 +91,22 @@ describe("BenchApp", () => {
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 
+  test("keeps the Pretable benchmark wrapper distinct while exposing the shared renderer markers", async () => {
+    render(
+      <BenchApp search="?adapter=pretable&scenario=S2" browserVersion="123.0" />,
+    );
+
+    const adapter = screen.getByRole("grid", {
+      name: "Pretable React adapter",
+    }).closest("[data-benchmark-adapter]");
+
+    expect(adapter?.getAttribute("data-benchmark-adapter")).toBe("pretable");
+    expect(
+      adapter?.querySelector("[data-pretable-scroll-viewport]"),
+    ).toBeTruthy();
+    expect(adapter?.querySelector("[data-pretable-row]")).toBeTruthy();
+  });
+
   test("publishes a failed terminal result when scroll measurement throws", async () => {
     vi.spyOn(benchRuntime, "measureBenchScrollRun").mockRejectedValueOnce(
       new Error("scroll probe exploded"),
