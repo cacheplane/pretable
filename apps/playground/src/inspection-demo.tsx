@@ -1,9 +1,8 @@
-import { createDomRenderSnapshot } from "@pretable-internal/renderer-dom";
 import {
-  createGrid,
   type PretableColumn,
-} from "@pretable/core";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+  usePretableModel,
+} from "@pretable/react";
+import { useMemo } from "react";
 
 type InspectionRow = {
   id: string;
@@ -106,33 +105,16 @@ const rows: InspectionRow[] = [
 ];
 
 const filterableColumnIds = ["timestamp", "severity", "source", "message"] as const;
+const getInspectionRowId = (row: InspectionRow) => row.id;
 
 export function InspectionDemo() {
-  const grid = useMemo(
-    () =>
-      createGrid<InspectionRow>({
-        columns,
-        rows,
-        getRowId: (row) => row.id,
-      }),
-    [],
-  );
-  const snapshot = useSyncExternalStore(
-    grid.subscribe,
-    grid.getSnapshot,
-    grid.getSnapshot,
-  );
-  const renderSnapshot = useMemo(
-    () =>
-      createDomRenderSnapshot({
-        columns: grid.options.columns,
-        snapshot,
-        scrollTop: snapshot.viewport.scrollTop,
-        viewportHeight: VIEWPORT_HEIGHT,
-        overscan: OVERSCAN_ROWS,
-      }),
-    [grid.options.columns, snapshot],
-  );
+  const { grid, snapshot, renderSnapshot } = usePretableModel<InspectionRow>({
+    columns,
+    getRowId: getInspectionRowId,
+    rows,
+    viewportHeight: VIEWPORT_HEIGHT,
+    overscan: OVERSCAN_ROWS,
+  });
   const selectedRow = useMemo(() => {
     const selectedId = snapshot.selection.rowIds[0];
 
@@ -142,17 +124,6 @@ export function InspectionDemo() {
     () => getPinnedOffsets(grid.options.columns),
     [grid.options.columns],
   );
-
-  useEffect(() => {
-    if (snapshot.viewport.height === VIEWPORT_HEIGHT) {
-      return;
-    }
-
-    grid.setViewport({
-      scrollTop: snapshot.viewport.scrollTop,
-      height: VIEWPORT_HEIGHT,
-    });
-  }, [grid, snapshot.viewport.height, snapshot.viewport.scrollTop]);
 
   return (
     <section className="inspection-demo">

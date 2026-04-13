@@ -1,8 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
+import { useEffect } from "react";
 
-import { Pretable, measureRenderedRowHeight } from "../index";
+import {
+  Pretable,
+  measureRenderedRowHeight,
+  usePretableModel,
+} from "../index";
 
 afterEach(() => {
   cleanup();
@@ -114,4 +119,56 @@ it("measures rendered row height from the tallest cell plus row chrome", () => {
   });
 
   expect(measureRenderedRowHeight(row)).toBe(141);
+});
+
+it("exposes a public render model hook that reacts to grid viewport updates", () => {
+  const rows = Array.from({ length: 12 }, (_, index) => ({
+    id: `row-${index}`,
+    message: index === 0 ? "Short row" : `Row ${index}`,
+  }));
+  const columns = [
+    {
+      id: "message",
+      header: "Message",
+      wrap: true,
+      widthPx: 220,
+    },
+  ];
+  const getRowId = (row: { id: string }) => row.id;
+  const HookProbe = () => {
+    const model = usePretableModel({
+      columns,
+      getRowId,
+      rows,
+      viewportHeight: 88,
+      overscan: 0,
+    });
+
+    useEffect(() => {
+      model.grid.setViewport({ scrollTop: 44 * 6, height: 88 });
+    }, [model.grid]);
+
+    return (
+      <output
+        data-first-row-id={model.renderSnapshot.rows[0]?.id ?? ""}
+        data-rendered-row-ids={model.renderSnapshot.rows.map((row) => row.id).join(",")}
+        data-kind={model.grid.kind}
+        data-rendered-row-count={model.renderSnapshot.rows.length}
+        data-total-height={model.renderSnapshot.totalHeight}
+        data-total-width={model.renderSnapshot.totalWidth}
+        data-total-rows={model.snapshot.totalRowCount}
+      />
+    );
+  };
+
+  const view = render(<HookProbe />);
+  const output = view.container.querySelector("output");
+
+  expect(output).toHaveAttribute("data-kind", "pretable-grid");
+  expect(output).toHaveAttribute("data-total-rows", "12");
+  expect(output).toHaveAttribute("data-total-width", "220");
+  expect(output).toHaveAttribute("data-first-row-id", "row-4");
+  expect(output).toHaveAttribute("data-rendered-row-ids", "row-4,row-5");
+  expect(Number(output?.getAttribute("data-total-height"))).toBeGreaterThan(0);
+  expect(Number(output?.getAttribute("data-rendered-row-count"))).toBe(2);
 });
