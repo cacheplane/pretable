@@ -1,6 +1,6 @@
-import type { GridCoreFrame } from "@pretable-internal/grid-core";
-
-export interface DomRenderSnapshot {
-  frame: GridCoreFrame;
-  nodeCount: number;
-}
+export { createDomRenderSnapshot } from "./create-renderer";
+export type {
+  DomRenderInput,
+  DomRenderRow,
+  DomRenderSnapshot,
+} from "./types";

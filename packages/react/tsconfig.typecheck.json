@@ -1,7 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": ".."
+    "paths": {
+      "@pretable/core": ["../core/dist/index.d.ts"],
+      "@pretable/core/*": ["../core/dist/*.d.ts"],
+      "@pretable-internal/renderer-dom": ["../renderer-dom/dist/index.d.ts"],
+      "@pretable-internal/renderer-dom/*": ["../renderer-dom/dist/*.d.ts"]
+    },
+    "rootDir": "src"
   },
-  "include": ["src", "../core/src"]
+  "include": ["src"]
 }

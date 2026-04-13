@@ -19,6 +19,7 @@ export function createGridCore<TRow extends GridCoreRow>(
 ): GridCoreStore<TRow> {
   const listeners = new Set<() => void>();
   const sourceRows = createSourceRows(options);
+  let cachedSnapshot: GridCoreSnapshot<TRow> | null = null;
   let sort: GridCoreSortState = { columnId: null, direction: null };
   let filters: Record<string, string> = {};
   let selection: GridCoreSelectionState = { rowIds: [], anchorRowId: null };
@@ -104,6 +105,10 @@ export function createGridCore<TRow extends GridCoreRow>(
   };
 
   function getSnapshot(): GridCoreSnapshot<TRow> {
+    if (cachedSnapshot) {
+      return cachedSnapshot;
+    }
+
     const visibleRows = deriveVisibleRows({
       columns: options.columns,
       filters,
@@ -111,7 +116,7 @@ export function createGridCore<TRow extends GridCoreRow>(
       sort,
     });
 
-    return {
+    cachedSnapshot = {
       viewport,
       sort,
       filters: { ...filters },
@@ -127,9 +132,13 @@ export function createGridCore<TRow extends GridCoreRow>(
         end: visibleRows.length,
       },
     };
+
+    return cachedSnapshot;
   }
 
   function emit() {
+    cachedSnapshot = null;
+
     for (const listener of listeners) {
       listener();
     }
