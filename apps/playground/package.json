@@ -3,17 +3,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @pretable/react build",
+    "prepare:deps": "pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/renderer-dom build",
+    "predev": "pnpm run prepare:deps",
     "dev": "vite",
-    "prebuild": "pnpm --filter @pretable/react build",
+    "prebuild": "pnpm run prepare:deps",
     "build": "vite build",
     "lint": "eslint src --ext .ts,.tsx",
+    "pretest": "pnpm run prepare:deps",
     "test": "vitest run --environment jsdom --passWithNoTests",
-    "pretypecheck": "pnpm --filter @pretable/react build",
+    "pretypecheck": "pnpm run prepare:deps",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pretable/react": "workspace:*",
+    "@pretable-internal/renderer-dom": "workspace:*",
+    "@pretable/core": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   }
