@@ -4,44 +4,14 @@ import {
   inspectionColumns,
   inspectionDatasetScaleOptions,
   type InspectionDatasetScale,
-  type InspectionRow,
 } from "@pretable-internal/scenario-data";
 import {
-  LabeledGridSurface,
+  InspectionGrid,
 } from "@pretable/react/internal";
-import { memo, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 const VIEWPORT_HEIGHT = 420;
 const OVERSCAN_ROWS = 5;
-const inspectionGridColumns = [...inspectionColumns];
-
-const InspectionGrid = memo(function InspectionGrid({
-  onSelectedRowIdChange,
-  rows,
-}: {
-  onSelectedRowIdChange: (rowId: string | null) => void;
-  rows: InspectionRow[];
-}) {
-  return (
-    <LabeledGridSurface<InspectionRow>
-      ariaLabel="Inspection grid"
-      bodyCellClassName="inspection-cell"
-      columns={inspectionGridColumns}
-      formatValue={({ value }) => formatInspectionValue(value)}
-      getRowId={(row) => row.id}
-      headerCellClassName="inspection-header-cell"
-      labelClassName="inspection-cell-label"
-      overscan={OVERSCAN_ROWS}
-      onSelectedRowIdChange={onSelectedRowIdChange}
-      pinnedClassName="is-pinned"
-      rowClassName="inspection-row"
-      rows={rows}
-      selectFocusedRowOnArrowKey
-      valueClassName="inspection-cell-value"
-      viewportHeight={VIEWPORT_HEIGHT}
-    />
-  );
-});
 
 export function InspectionDemo() {
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -154,8 +124,12 @@ export function InspectionDemo() {
 
           <div className="inspection-grid-shell">
             <InspectionGrid
+              ariaLabel="Inspection grid"
+              filterableColumnIds={dataset.filterableColumnIds}
               onSelectedRowIdChange={setSelectedRowId}
+              overscan={OVERSCAN_ROWS}
               rows={filteredRows}
+              viewportHeight={VIEWPORT_HEIGHT}
             />
           </div>
         </article>
@@ -211,12 +185,4 @@ export function InspectionDemo() {
       </div>
     </section>
   );
-}
-
-function formatInspectionValue(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.join(", ");
-  }
-
-  return String(value ?? "");
 }

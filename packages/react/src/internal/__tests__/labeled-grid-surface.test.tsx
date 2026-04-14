@@ -52,7 +52,21 @@ describe("LabeledGridSurface", () => {
         ariaLabel="Inspection grid"
         bodyCellClassName="inspection-cell"
         columns={columns}
+        getBodyCellProps={({ column }) =>
+          column.id === "severity"
+            ? {
+                "data-filterable": "true",
+              }
+            : undefined
+        }
         getRowId={(row) => row.id}
+        getHeaderCellProps={({ column }) =>
+          column.id === "severity"
+            ? {
+                "data-filterable": "true",
+              }
+            : undefined
+        }
         headerCellClassName="inspection-header-cell"
         labelClassName="inspection-cell-label"
         overscan={0}
@@ -68,15 +82,19 @@ describe("LabeledGridSurface", () => {
     );
 
     const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
     const firstRow = view.getAllByTestId("pretable-row")[0]!;
     const pinnedCell = within(firstRow).getAllByText("Timestamp")[0]!.closest("[data-pretable-cell]");
+    const severityCell = within(firstRow).getAllByText("Severity")[0]!.closest("[data-pretable-cell]");
     const tagsCell = within(firstRow).getByText("tenant-a, cold-start").closest("[data-pretable-cell]");
 
     expect(timestampHeader).toHaveClass("inspection-header-cell", "is-pinned");
     expect(timestampHeader).toHaveAttribute("data-pinned", "left");
+    expect(severityHeader).toHaveAttribute("data-filterable", "true");
     expect(firstRow).toHaveClass("inspection-row");
     expect(pinnedCell).toHaveClass("inspection-cell", "is-pinned");
     expect(pinnedCell).toHaveAttribute("data-pinned", "left");
+    expect(severityCell).toHaveAttribute("data-filterable", "true");
     expect(within(firstRow).getAllByText("Timestamp")).toHaveLength(1);
     expect(within(firstRow).getByText("tenant-a, cold-start")).toHaveClass(
       "inspection-cell-value",

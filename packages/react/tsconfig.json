@@ -5,6 +5,7 @@
     "outDir": "dist",
     "paths": {
       "@pretable/core": ["../core/src/index.ts"],
+      "@pretable-internal/scenario-data": ["../scenario-data/src/index.ts"],
       "@pretable-internal/renderer-dom": ["../renderer-dom/src/index.ts"]
     }
   },
