@@ -4,6 +4,7 @@ import type {
   BenchRunRequest,
   BenchRunSummary,
 } from "@pretable-internal/bench-runner";
+import type { PretableTelemetry } from "@pretable/react/internal";
 
 import type { BenchQueryState } from "./bench-types";
 
@@ -39,6 +40,22 @@ export function createBenchRequest(
 export function publishBenchResult(result: BenchRunSummary): BenchRunSummary {
   window[BENCH_RESULT_KEY] = result;
   return result;
+}
+
+export function createPretableTelemetryNotes(
+  telemetry: PretableTelemetry | null,
+) {
+  if (!telemetry) {
+    return [];
+  }
+
+  return [
+    `internal telemetry rendered rows: ${telemetry.renderedRowCount}`,
+    `internal telemetry visible rows: ${telemetry.visibleRowCount}`,
+    `internal telemetry planned height: ${telemetry.totalHeight}`,
+    `internal telemetry viewport range: ${telemetry.visibleRowRange.start}-${telemetry.visibleRowRange.end}`,
+    `internal telemetry selected row: ${telemetry.selectedRowId ?? "none"}`,
+  ];
 }
 
 export function detectBrowserVersion(userAgent: string): string {

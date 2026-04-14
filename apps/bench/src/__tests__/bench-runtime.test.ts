@@ -4,6 +4,7 @@ import { createScenarioDataset } from "@pretable-internal/scenario-data";
 
 import {
   BENCH_RESULT_KEY,
+  createPretableTelemetryNotes,
   createBenchRequest,
   detectBlankGapFrame,
   measureBenchScrollRun,
@@ -75,6 +76,29 @@ describe("bench runtime", () => {
 
     expect(publishBenchResult(result)).toBe(result);
     expect(window[BENCH_RESULT_KEY]).toBe(result);
+  });
+
+  test("formats internal pretable telemetry as notes without changing benchmark metrics", () => {
+    expect(
+      createPretableTelemetryNotes({
+        renderedRowCount: 8,
+        selectedRowId: "evt-dev-0001",
+        totalHeight: 59010,
+        visibleRowCount: 6,
+        visibleRowRange: {
+          start: 0,
+          end: 6,
+        },
+      }),
+    ).toEqual([
+      "internal telemetry rendered rows: 8",
+      "internal telemetry visible rows: 6",
+      "internal telemetry planned height: 59010",
+      "internal telemetry viewport range: 0-6",
+      "internal telemetry selected row: evt-dev-0001",
+    ]);
+
+    expect(createPretableTelemetryNotes(null)).toEqual([]);
   });
 
   test("detects interior viewport gaps instead of only top and bottom misses", () => {

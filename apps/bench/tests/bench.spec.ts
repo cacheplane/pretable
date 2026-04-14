@@ -53,6 +53,19 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     expect(result.notes).toContain("contain intrinsic size: none");
     expect(result.notes).toContain("scroll anchoring: none");
     expect(result.notes).toContain("overscroll behavior: contain");
+    if (adapterId === "pretable") {
+      expect(result.notes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^internal telemetry rendered rows: \d+$/),
+          expect.stringMatching(/^internal telemetry visible rows: \d+$/),
+          expect.stringMatching(/^internal telemetry planned height: \d+$/),
+          expect.stringMatching(
+            /^internal telemetry viewport range: \d+-\d+$/,
+          ),
+          expect.stringMatching(/^internal telemetry selected row: .+$/),
+        ]),
+      );
+    }
     expect(result.metrics).toMatchObject({
       scroll_frame_p95_ms: expect.any(Number),
       blank_gap_frames: expect.any(Number),
