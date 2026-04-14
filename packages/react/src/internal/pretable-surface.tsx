@@ -113,6 +113,7 @@ export interface PretableSurfaceProps<
     input: PretableSurfaceRowAttributesInput<TRow>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   overscan?: number;
+  onSelectedRowIdChange?: (rowId: string | null) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellRenderInput<TRow>,
   ) => ReactNode;
@@ -136,6 +137,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   getRowId,
   getRowProps,
   overscan = 6,
+  onSelectedRowIdChange,
   renderBodyCell,
   renderHeaderCell,
   rows,
@@ -201,6 +203,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
           if (selectFocusedRowOnArrowKey && nextFocus.rowId) {
             grid.selectRow(nextFocus.rowId);
+            onSelectedRowIdChange?.(nextFocus.rowId);
           }
 
           event.preventDefault();
@@ -212,6 +215,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
           if (focusedRowId) {
             grid.selectRow(focusedRowId);
+            onSelectedRowIdChange?.(focusedRowId);
             event.preventDefault();
           }
         }
@@ -328,6 +332,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               onClick={() => {
                 grid.setFocus(id, columns[0]?.id ?? null);
                 grid.selectRow(id);
+                onSelectedRowIdChange?.(id);
               }}
               ref={(node) => {
                 captureMeasuredRow(id, node);

@@ -29,6 +29,7 @@ export interface LabeledGridSurfaceProps<
   headerCellClassName?: string;
   labelClassName?: string;
   overscan?: number;
+  onSelectedRowIdChange?: (rowId: string | null) => void;
   pinnedClassName?: string;
   rowClassName?: string;
   rows: TRow[];
@@ -46,6 +47,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   headerCellClassName,
   labelClassName,
   overscan,
+  onSelectedRowIdChange,
   pinnedClassName,
   rowClassName,
   rows,
@@ -89,6 +91,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
       overscan={overscan}
+      onSelectedRowIdChange={onSelectedRowIdChange}
       renderBodyCell={({ column, row, value }) => (
         <>
           <span className={labelClassName}>{column.header ?? column.id}</span>

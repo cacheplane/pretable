@@ -207,6 +207,30 @@ describe("PretableSurface", () => {
     expect(renderedRows[0]).toHaveAttribute("data-selected", "false");
   });
 
+  it("emits selected row id changes for click and keyboard-driven selection", () => {
+    const onSelectedRowIdChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onSelectedRowIdChange={onSelectedRowIdChange}
+        overscan={0}
+        rows={rows}
+        selectFocusedRowOnArrowKey
+        viewportHeight={132}
+      />,
+    );
+
+    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
+
+    const viewport = view.getByRole("grid", { name: "Inspection grid" });
+    fireEvent.keyDown(viewport, { key: "ArrowUp" });
+
+    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(1, "evt-002");
+    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(2, "evt-001");
+  });
+
   it("captures measured row heights from the row shell and feeds changed heights back into the render path", async () => {
     vi.spyOn(window, "getComputedStyle").mockImplementation(
       () =>

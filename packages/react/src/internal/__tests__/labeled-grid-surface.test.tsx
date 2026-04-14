@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LabeledGridSurface } from "../labeled-grid-surface";
 
@@ -86,5 +86,24 @@ describe("LabeledGridSurface", () => {
     fireEvent.click(timestampHeader);
 
     expect(timestampHeader).toHaveTextContent("Newest");
+  });
+
+  it("forwards selected row id changes from the shared surface", () => {
+    const onSelectedRowIdChange = vi.fn();
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onSelectedRowIdChange={onSelectedRowIdChange}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
+
+    expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-002");
   });
 });
