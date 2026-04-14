@@ -25,6 +25,15 @@ export interface LabeledGridSurfaceProps<
   bodyCellClassName?: string;
   columns: PretableColumn<TRow>[];
   formatValue?: (input: LabeledGridSurfaceFormatValueInput<TRow>) => string;
+  getBodyCellProps?: (
+    input: LabeledGridSurfaceFormatValueInput<TRow>,
+  ) => HTMLAttributes<HTMLDivElement> | undefined;
+  getHeaderCellProps?: (
+    input: {
+      column: PretableColumn<TRow>;
+      sortDirection: PretableSurfaceSortDirection;
+    },
+  ) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
   labelClassName?: string;
@@ -43,6 +52,8 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   bodyCellClassName,
   columns,
   formatValue,
+  getBodyCellProps,
+  getHeaderCellProps,
   getRowId,
   headerCellClassName,
   labelClassName,
@@ -71,22 +82,28 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       getBodyCellClassName={({ column }) =>
         joinClassNames(bodyCellClassName, getPinnedClassName(column))
       }
-      getBodyCellProps={({ column }) =>
-        column.pinned === "left"
-          ? ({
-              "data-pinned": "left",
-            } as HTMLAttributes<HTMLDivElement>)
-          : undefined
+      getBodyCellProps={(input) =>
+        mergeProps(
+          input.column.pinned === "left"
+            ? ({
+                "data-pinned": "left",
+              } as HTMLAttributes<HTMLDivElement>)
+            : undefined,
+          getBodyCellProps?.(input),
+        )
       }
       getHeaderCellClassName={({ column }) =>
         joinClassNames(headerCellClassName, getPinnedClassName(column))
       }
-      getHeaderCellProps={({ column }) =>
-        column.pinned === "left"
-          ? ({
-              "data-pinned": "left",
-            } as HTMLAttributes<HTMLButtonElement>)
-          : undefined
+      getHeaderCellProps={(input) =>
+        mergeProps(
+          input.column.pinned === "left"
+            ? ({
+                "data-pinned": "left",
+              } as HTMLAttributes<HTMLButtonElement>)
+            : undefined,
+          getHeaderCellProps?.(input),
+        )
       }
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
@@ -119,6 +136,24 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ") || undefined;
+}
+
+function mergeProps<T extends HTMLAttributes<HTMLElement>>(
+  base: T | undefined,
+  extra: T | undefined,
+) {
+  if (!base) {
+    return extra;
+  }
+
+  if (!extra) {
+    return base;
+  }
+
+  return {
+    ...base,
+    ...extra,
+  };
 }
 
 function getSortLabel(sortDirection: PretableSurfaceSortDirection) {

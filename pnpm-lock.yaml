@@ -145,6 +145,9 @@ importers:
       '@pretable-internal/renderer-dom':
         specifier: workspace:*
         version: link:../renderer-dom
+      '@pretable-internal/scenario-data':
+        specifier: workspace:*
+        version: link:../scenario-data
       '@pretable/core':
         specifier: workspace:*
         version: link:../core
