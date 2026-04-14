@@ -59,47 +59,8 @@ export function PretableAdapter({
         columns={[...dataset.columns]}
         getRowId={getScenarioRowId}
         onTelemetryChange={onTelemetryChange}
-        renderBodyCell={({ column, value }) => (
-          <>
-            <strong
-              style={{
-                display: "block",
-                fontSize: 12,
-                lineHeight: "16px",
-                marginBottom: 4,
-                opacity: 0.7,
-              }}
-            >
-              {column.header ?? column.id}
-            </strong>
-            <span
-              style={{
-                display: "block",
-                lineHeight: "22px",
-              }}
-            >
-              {String(value ?? "")}
-            </span>
-          </>
-        )}
-        renderHeaderCell={({ label, sortDirection }) => (
-          <>
-            <span>{label}</span>
-            <strong
-              style={{
-                fontSize: 12,
-                lineHeight: "16px",
-                opacity: 0.7,
-              }}
-            >
-              {sortDirection === "desc"
-                ? "Newest"
-                : sortDirection === "asc"
-                  ? "Oldest"
-                  : "Sort"}
-            </strong>
-          </>
-        )}
+        renderBodyCell={({ value }) => String(value ?? "")}
+        renderHeaderCell={({ label }) => label}
         rows={[...dataset.rows]}
         viewportHeight={VIEWPORT_HEIGHT}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
