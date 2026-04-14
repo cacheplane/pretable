@@ -2,7 +2,7 @@ import type { PretableColumn } from "@pretable/react";
 import {
   LabeledGridSurface,
 } from "@pretable/react/internal";
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 type InspectionRow = {
   id: string;
@@ -107,8 +107,10 @@ const rows: InspectionRow[] = [
 const filterableColumnIds = ["timestamp", "severity", "source", "message"] as const;
 
 const InspectionGrid = memo(function InspectionGrid({
+  onSelectedRowIdChange,
   rows,
 }: {
+  onSelectedRowIdChange: (rowId: string | null) => void;
   rows: InspectionRow[];
 }) {
   return (
@@ -121,6 +123,7 @@ const InspectionGrid = memo(function InspectionGrid({
       headerCellClassName="inspection-header-cell"
       labelClassName="inspection-cell-label"
       overscan={OVERSCAN_ROWS}
+      onSelectedRowIdChange={onSelectedRowIdChange}
       pinnedClassName="is-pinned"
       rowClassName="inspection-row"
       rows={rows}
@@ -134,7 +137,6 @@ const InspectionGrid = memo(function InspectionGrid({
 export function InspectionDemo() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-  const shellRef = useRef<HTMLDivElement>(null);
 
   const filteredRows = useMemo(
     () =>
@@ -208,9 +210,11 @@ export function InspectionDemo() {
                     aria-label={`Filter ${label}`}
                     value={filters[columnId] ?? ""}
                     onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
+
                       setFilters((current) => ({
                         ...current,
-                        [columnId]: event.currentTarget.value,
+                        [columnId]: nextValue,
                       }));
                     }}
                     placeholder={`Filter ${label.toLowerCase()}`}
@@ -220,75 +224,11 @@ export function InspectionDemo() {
             })}
           </div>
 
-          <div
-            className="inspection-grid-shell"
-            ref={shellRef}
-            onClick={(event) => {
-              const target = event.target as HTMLElement;
-              const rowElement = target.closest("[data-pretable-row]") as
-                | HTMLElement
-                | null;
-
-              if (rowElement?.dataset.rowId) {
-                setSelectedRowId(rowElement.dataset.rowId);
-              }
-            }}
-            onKeyDown={(event) => {
-              if (
-                event.key !== "ArrowDown" &&
-                event.key !== "ArrowUp" &&
-                event.key !== "Enter" &&
-                event.key !== " "
-              ) {
-                return;
-              }
-
-              const renderedRowIds = Array.from(
-                shellRef.current?.querySelectorAll<HTMLElement>("[data-pretable-row]") ??
-                  [],
-              )
-                .map((row) => row.dataset.rowId)
-                .filter((rowId): rowId is string => rowId !== undefined);
-
-              if (renderedRowIds.length === 0) {
-                return;
-              }
-
-              if (event.key === "Enter" || event.key === " ") {
-                const nextSelectedRowId =
-                  selectedRowId && renderedRowIds.includes(selectedRowId)
-                    ? selectedRowId
-                    : renderedRowIds[0];
-
-                if (nextSelectedRowId) {
-                  setSelectedRowId(nextSelectedRowId);
-                }
-
-                return;
-              }
-
-              const currentIndex = selectedRowId
-                ? renderedRowIds.indexOf(selectedRowId)
-                : -1;
-
-              const nextIndex =
-                currentIndex === -1
-                  ? event.key === "ArrowDown"
-                    ? 0
-                    : renderedRowIds.length - 1
-                  : clampIndex(
-                      currentIndex + (event.key === "ArrowDown" ? 1 : -1),
-                      renderedRowIds.length,
-                    );
-
-              const nextSelectedRowId = renderedRowIds[nextIndex];
-
-              if (nextSelectedRowId) {
-                setSelectedRowId(nextSelectedRowId);
-              }
-            }}
-          >
-            <InspectionGrid rows={filteredRows} />
+          <div className="inspection-grid-shell">
+            <InspectionGrid
+              onSelectedRowIdChange={setSelectedRowId}
+              rows={filteredRows}
+            />
           </div>
         </article>
 
@@ -343,10 +283,6 @@ export function InspectionDemo() {
       </div>
     </section>
   );
-}
-
-function clampIndex(index: number, length: number) {
-  return Math.max(0, Math.min(index, length - 1));
 }
 
 function formatInspectionValue(value: unknown) {

@@ -90,4 +90,19 @@ describe("playground inspection demo", () => {
       expect(within(detail).getByText("error")).toBeInTheDocument();
     });
   });
+
+  test("selection persists in the detail panel when filters hide the selected row", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getAllByTestId("pretable-row")[0]!);
+    fireEvent.change(screen.getByLabelText("Filter Severity"), {
+      target: { value: "error" },
+    });
+
+    const detail = screen.getByTestId("inspection-detail");
+
+    expect(within(detail).getByText("evt-001")).toBeInTheDocument();
+    expect(within(detail).getByText("info")).toBeInTheDocument();
+    expect(screen.getAllByTestId("pretable-row")).toHaveLength(2);
+  });
 });
