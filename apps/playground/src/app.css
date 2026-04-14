@@ -17,7 +17,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -161,7 +162,7 @@ input {
 .inspection-toolbar {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-top: 18px;
 }
 
@@ -186,7 +187,8 @@ input {
   text-transform: uppercase;
 }
 
-.filter-field input {
+.filter-field input,
+.filter-field select {
   border: 1px solid rgba(22, 33, 43, 0.12);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.92);

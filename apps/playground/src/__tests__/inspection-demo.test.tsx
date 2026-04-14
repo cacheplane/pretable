@@ -16,6 +16,27 @@ afterEach(() => {
 });
 
 describe("playground inspection demo", () => {
+  test("defaults to a large local-inspection dataset and lets the user switch scales", () => {
+    render(<App />);
+
+    const scaleSelect = screen.getByLabelText("Dataset scale");
+
+    expect(scaleSelect).toHaveValue("dev");
+    expect(screen.getByText("250 matching rows")).toBeInTheDocument();
+
+    fireEvent.change(scaleSelect, {
+      target: { value: "tiny" },
+    });
+
+    expect(screen.getByText("7 matching rows")).toBeInTheDocument();
+
+    fireEvent.change(scaleSelect, {
+      target: { value: "stress" },
+    });
+
+    expect(screen.getByText("2500 matching rows")).toBeInTheDocument();
+  });
+
   test("filters rows by column input without leaving the placeholder scaffold behind", () => {
     render(<App />);
 
@@ -35,10 +56,10 @@ describe("playground inspection demo", () => {
 
     const rows = screen.getAllByTestId("pretable-row");
 
-    expect(rows).toHaveLength(2);
-    expect(screen.getByText("2 matching rows")).toBeInTheDocument();
+    expect(rows).toHaveLength(7);
+    expect(screen.getByText("62 matching rows")).toBeInTheDocument();
     expect(screen.queryByText("Trace")).not.toBeInTheDocument();
-    expect(rows[0]).toHaveAttribute("data-row-id", "evt-002");
+    expect(rows[0]).toHaveAttribute("data-row-id", "evt-dev-0002");
     expect(rows[0]?.querySelector("[data-pretable-cell]")).toHaveAttribute(
       "data-pretable-cell",
       "",
@@ -58,12 +79,12 @@ describe("playground inspection demo", () => {
     fireEvent.click(timestampHeader);
 
     let rows = screen.getAllByTestId("pretable-row");
-    expect(rows[0]).toHaveAttribute("data-row-id", "evt-007");
+    expect(rows[0]).toHaveAttribute("data-row-id", "evt-dev-0249");
 
     fireEvent.click(timestampHeader);
 
     rows = screen.getAllByTestId("pretable-row");
-    expect(rows[0]).toHaveAttribute("data-row-id", "evt-001");
+    expect(rows[0]).toHaveAttribute("data-row-id", "evt-dev-0000");
   });
 
   test("row selection and arrow navigation update the detail panel", () => {
@@ -72,7 +93,7 @@ describe("playground inspection demo", () => {
     fireEvent.click(screen.getAllByTestId("pretable-row")[0]!);
 
     expect(screen.getByText("Selected event")).toBeInTheDocument();
-    expect(screen.getByText("evt-001")).toBeInTheDocument();
+    expect(screen.getByText("evt-dev-0000")).toBeInTheDocument();
 
     return waitFor(() => {
       const firstRow = screen.getAllByTestId("pretable-row")[0];
@@ -86,8 +107,8 @@ describe("playground inspection demo", () => {
 
       const detail = screen.getByTestId("inspection-detail");
 
-      expect(within(detail).getByText("evt-002")).toBeInTheDocument();
-      expect(within(detail).getByText("error")).toBeInTheDocument();
+      expect(within(detail).getByText("evt-dev-0001")).toBeInTheDocument();
+      expect(within(detail).getByText("warn")).toBeInTheDocument();
     });
   });
 
@@ -101,8 +122,8 @@ describe("playground inspection demo", () => {
 
     const detail = screen.getByTestId("inspection-detail");
 
-    expect(within(detail).getByText("evt-001")).toBeInTheDocument();
+    expect(within(detail).getByText("evt-dev-0000")).toBeInTheDocument();
     expect(within(detail).getByText("info")).toBeInTheDocument();
-    expect(screen.getAllByTestId("pretable-row")).toHaveLength(2);
+    expect(screen.getByText("62 matching rows")).toBeInTheDocument();
   });
 });

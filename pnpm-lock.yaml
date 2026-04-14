@@ -104,6 +104,9 @@ importers:
 
   apps/playground:
     dependencies:
+      '@pretable-internal/scenario-data':
+        specifier: workspace:*
+        version: link:../../packages/scenario-data
       '@pretable/react':
         specifier: workspace:*
         version: link:../../packages/react
