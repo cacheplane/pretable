@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Tighten the current Pretable inspection-table prototype so the playground, shared React internals, and benchmark path diverge less while exposing enough telemetry to judge prototype quality honestly.
+**Goal:** Tighten the current Pretable inspection-table prototype so the playground, shared React internals, and benchmark path diverge less, the playground supports serious local manual inspection on large datasets, and the shared path exposes enough telemetry to judge prototype quality honestly.
 
 **Architecture:** Keep the public npm surface unchanged. Move inspection-table-specific configuration and state composition onto internal seams, share more data/config between prototype and benchmark-facing code, and surface renderer/core telemetry through the existing internal React path rather than through ad hoc DOM inspection.
 
@@ -62,6 +62,8 @@ Add tests that prove:
 - the inspection profile exports schema-agnostic row data plus column definitions
 - the profile marks pinned columns and filterable columns explicitly
 - row ids remain stable and stringifiable
+- the profile supports multiple deterministic dataset scales such as `tiny`, `dev`, and `stress`
+- larger scales produce materially larger row counts and preserve the same column/filter semantics
 
 - [ ] **Step 2: Run the package test to verify RED**
 
@@ -73,16 +75,30 @@ Expected: FAIL because the shared inspection profile does not exist yet.
 Create a single internal module that exports:
 
 - the inspection demo row type
-- the inspection demo rows
+- deterministic inspection dataset factories for at least:
+  - `tiny`: current smoke-test-sized dataset
+  - `dev`: large enough for serious local manual inspection
+  - `stress`: substantially larger dataset for prototype pressure testing
 - the inspection demo columns
 - the filterable column id list
 - small helpers like `getInspectionFilterValue()`
 
+Requirements:
+
+- dataset generation must be deterministic and reproducible
+- wrapped text and row-height variation must scale with size
+- pinned columns and filterable metadata must stay identical across scales
+
 Keep benchmark scenario helpers separate. Do not force the benchmark app onto inspection data yet.
 
-- [ ] **Step 4: Move the playground to consume the shared profile**
+- [ ] **Step 4: Move the playground to consume the shared profile and switch scales locally**
 
-Update `/Users/blove/repos/pretable/apps/playground/src/inspection-demo.tsx` to import the rows, columns, and filterable column ids from `@pretable-internal/scenario-data` instead of owning that configuration locally.
+Update `/Users/blove/repos/pretable/apps/playground/src/inspection-demo.tsx` to:
+
+- import the rows, columns, and filterable column ids from `@pretable-internal/scenario-data`
+- expose a local dataset-scale switcher suitable for manual inspection
+- default to a meaningful local-inspection scale, not just the tiny smoke dataset
+- keep the tiny dataset available for quick debugging
 
 - [ ] **Step 5: Run GREEN verification for the affected area**
 
@@ -90,6 +106,7 @@ Run:
 
 - `pnpm --filter @pretable-internal/scenario-data test`
 - `pnpm --filter @pretable/app-playground test -- --run src/__tests__/inspection-demo.test.tsx`
+- `pnpm --filter @pretable/app-playground build`
 
 Expected: PASS
 
@@ -118,6 +135,7 @@ Add tests that prove:
 - the new internal `InspectionGrid` composes the labeled grid surface with inspection-specific class names and formatting
 - it accepts filterable column metadata and selection callbacks without making the playground own renderer details
 - it preserves the existing pinned-column and selection DOM contract
+- it works unchanged across the shared inspection dataset scales used by the playground
 
 - [ ] **Step 2: Run the focused React tests to verify RED**
 
@@ -138,6 +156,8 @@ It should still delegate the actual grid DOM contract to `LabeledGridSurface`.
 - [ ] **Step 4: Migrate the playground onto the new primitive**
 
 Update `/Users/blove/repos/pretable/apps/playground/src/inspection-demo.tsx` to use the new internal `InspectionGrid` wrapper so the playground keeps product chrome and sidebar logic, but no longer owns inspection-specific renderer composition details.
+
+Do not remove the local dataset-scale switcher added in Task 1.
 
 - [ ] **Step 5: Run GREEN verification for React and playground**
 
@@ -173,6 +193,7 @@ Add tests that prove:
 - `usePretableModel()` exposes renderer snapshot telemetry needed by the playground
 - `PretableSurface` can report selected row id, visible row count, total height, and rendered row count without requiring DOM scraping
 - the playground can render lightweight diagnostics from the shared telemetry path
+- diagnostics remain usable when switching between tiny, dev, and stress inspection datasets
 
 - [ ] **Step 2: Run the focused tests to verify RED**
 
@@ -197,6 +218,13 @@ Do not add a public API for this yet.
 - [ ] **Step 4: Render prototype diagnostics in the playground**
 
 Add a small diagnostics block in the inspection demo that consumes the shared telemetry rather than recomputing values from DOM state.
+
+That block should make local manual inspection easier, for example by showing:
+
+- active dataset scale
+- rendered row count
+- planned total height
+- selected row id
 
 - [ ] **Step 5: Run GREEN verification**
 
@@ -259,6 +287,7 @@ Document:
 
 - the tighter relationship between playground and benchmark surfaces
 - the remaining internal/public boundary
+- how to run the playground in a large local-inspection mode
 - the next open risks after this milestone
 
 - [ ] **Step 5: Run full repo verification**
