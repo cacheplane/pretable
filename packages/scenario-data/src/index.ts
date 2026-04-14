@@ -1,5 +1,20 @@
 export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6";
 export type ScenarioScale = "smoke" | "dev" | "hypothesis" | "target";
+export type {
+  InspectionColumn,
+  InspectionDataset,
+  InspectionDatasetScale,
+  InspectionFilterableColumnId,
+  InspectionRow,
+  InspectionSeverity,
+} from "./inspection-profile";
+export {
+  createInspectionDataset,
+  getInspectionFilterValue,
+  inspectionColumns,
+  inspectionDatasetScaleOptions,
+  inspectionFilterableColumnIds,
+} from "./inspection-profile";
 
 export type RowHeightMode = "fixed" | "variable" | "mixed";
 

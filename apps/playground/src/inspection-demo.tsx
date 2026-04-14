@@ -1,110 +1,19 @@
-import type { PretableColumn } from "@pretable/react";
+import {
+  createInspectionDataset,
+  getInspectionFilterValue,
+  inspectionColumns,
+  inspectionDatasetScaleOptions,
+  type InspectionDatasetScale,
+  type InspectionRow,
+} from "@pretable-internal/scenario-data";
 import {
   LabeledGridSurface,
 } from "@pretable/react/internal";
 import { memo, useMemo, useState } from "react";
 
-type InspectionRow = {
-  id: string;
-  timestamp: string;
-  severity: "trace" | "info" | "warn" | "error";
-  source: string;
-  owner: string;
-  tags: string[];
-  message: string;
-};
-
 const VIEWPORT_HEIGHT = 420;
 const OVERSCAN_ROWS = 5;
-
-const columns: PretableColumn<InspectionRow>[] = [
-  { id: "timestamp", header: "Timestamp", pinned: "left", widthPx: 188 },
-  { id: "severity", header: "Severity", pinned: "left", widthPx: 112 },
-  { id: "source", header: "Source", widthPx: 160 },
-  { id: "owner", header: "Owner", widthPx: 144 },
-  {
-    id: "tags",
-    header: "Tags",
-    widthPx: 200,
-    getValue: (row) => row.tags.join(" "),
-  },
-  { id: "message", header: "Message", wrap: true, widthPx: 480 },
-];
-
-const rows: InspectionRow[] = [
-  {
-    id: "evt-001",
-    timestamp: "2026-04-12T09:18:11Z",
-    severity: "info",
-    source: "gateway",
-    owner: "routing",
-    tags: ["cold-start", "tenant-a"],
-    message:
-      "Cold request path completed after a fresh worker spin-up while keeping trace stitching intact across two proxy hops.",
-  },
-  {
-    id: "evt-002",
-    timestamp: "2026-04-12T09:18:44Z",
-    severity: "error",
-    source: "retriever",
-    owner: "rag-pipeline",
-    tags: ["customer-facing", "timeout"],
-    message:
-      "Retrieval fan-out exceeded the budget after a region failover and the downstream answer stream stalled before the model could emit the first token.",
-  },
-  {
-    id: "evt-003",
-    timestamp: "2026-04-12T09:19:03Z",
-    severity: "warn",
-    source: "session-cache",
-    owner: "state",
-    tags: ["eviction", "burst"],
-    message:
-      "Session cache hit-rate fell below the burst target; the next compaction window should be widened before the afternoon replay job starts.",
-  },
-  {
-    id: "evt-004",
-    timestamp: "2026-04-12T09:19:19Z",
-    severity: "trace",
-    source: "planner",
-    owner: "agents",
-    tags: ["tool-call", "spec"],
-    message:
-      "Planner emitted a single-tool branch after confirming the benchmark matrix already had current repeated-run evidence for H1 and H3.",
-  },
-  {
-    id: "evt-005",
-    timestamp: "2026-04-12T09:19:57Z",
-    severity: "error",
-    source: "stream-router",
-    owner: "inference",
-    tags: ["backpressure", "sse"],
-    message:
-      "Stream router dropped a partial chunk when the client reconnected mid-flight; the replay cursor recovered, but the user saw a duplicate completion banner.",
-  },
-  {
-    id: "evt-006",
-    timestamp: "2026-04-12T09:20:21Z",
-    severity: "info",
-    source: "analytics",
-    owner: "benchmarks",
-    tags: ["runset", "median"],
-    message:
-      "Repeated-run medians stayed inside the current volatility envelope, with policy notes preserved in the runset summary and no blank-gap regressions.",
-  },
-  {
-    id: "evt-007",
-    timestamp: "2026-04-12T09:20:58Z",
-    severity: "warn",
-    source: "policy-audit",
-    owner: "safety",
-    tags: ["drift", "review"],
-    message:
-      "Policy-note drift was detected across two candidate runs, so the report downgraded the claim from satisfied to directional instead of over-claiming confidence.",
-  },
-];
-
-const filterableColumnIds = ["timestamp", "severity", "source", "message"] as const;
+const inspectionGridColumns = [...inspectionColumns];
 
 const InspectionGrid = memo(function InspectionGrid({
   onSelectedRowIdChange,
@@ -114,10 +23,10 @@ const InspectionGrid = memo(function InspectionGrid({
   rows: InspectionRow[];
 }) {
   return (
-    <LabeledGridSurface
+    <LabeledGridSurface<InspectionRow>
       ariaLabel="Inspection grid"
       bodyCellClassName="inspection-cell"
-      columns={columns}
+      columns={inspectionGridColumns}
       formatValue={({ value }) => formatInspectionValue(value)}
       getRowId={(row) => row.id}
       headerCellClassName="inspection-header-cell"
@@ -136,12 +45,14 @@ const InspectionGrid = memo(function InspectionGrid({
 
 export function InspectionDemo() {
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [scale, setScale] = useState<InspectionDatasetScale>("dev");
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const dataset = useMemo(() => createInspectionDataset(scale), [scale]);
 
   const filteredRows = useMemo(
     () =>
-      rows.filter((row) =>
-        filterableColumnIds.every((columnId) => {
+      dataset.rows.filter((row) =>
+        dataset.filterableColumnIds.every((columnId) => {
           const filter = filters[columnId]?.trim().toLowerCase();
 
           if (!filter) {
@@ -153,12 +64,12 @@ export function InspectionDemo() {
             .includes(filter);
         }),
       ),
-    [filters],
+    [dataset.filterableColumnIds, dataset.rows, filters],
   );
 
   const selectedRow = useMemo(
-    () => rows.find((row) => row.id === selectedRowId) ?? null,
-    [selectedRowId],
+    () => dataset.rows.find((row) => row.id === selectedRowId) ?? null,
+    [dataset.rows, selectedRowId],
   );
 
   return (
@@ -179,6 +90,7 @@ export function InspectionDemo() {
           <span>Current slice</span>
           <strong>Inspection workflow</strong>
           <p>{filteredRows.length} matching rows</p>
+          <p>Scale: {scale}</p>
         </div>
       </div>
 
@@ -199,8 +111,24 @@ export function InspectionDemo() {
           </header>
 
           <div className="inspection-toolbar">
-            {filterableColumnIds.map((columnId) => {
-              const column = columns.find((candidate) => candidate.id === columnId);
+            <label className="filter-field">
+              <span>Dataset scale</span>
+              <select
+                aria-label="Dataset scale"
+                value={scale}
+                onChange={(event) => {
+                  setScale(event.currentTarget.value as InspectionDatasetScale);
+                }}
+              >
+                {inspectionDatasetScaleOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {dataset.filterableColumnIds.map((columnId) => {
+              const column = inspectionColumns.find((candidate) => candidate.id === columnId);
               const label = column?.header ?? columnId;
 
               return (
@@ -291,20 +219,4 @@ function formatInspectionValue(value: unknown) {
   }
 
   return String(value ?? "");
-}
-
-function getInspectionFilterValue(
-  row: InspectionRow,
-  columnId: (typeof filterableColumnIds)[number],
-) {
-  switch (columnId) {
-    case "timestamp":
-      return row.timestamp;
-    case "severity":
-      return row.severity;
-    case "source":
-      return row.source;
-    case "message":
-      return row.message;
-  }
 }

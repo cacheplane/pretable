@@ -2,7 +2,10 @@ import { describe, expect, test } from "vitest";
 
 import {
   createScenarioDataset,
+  createInspectionDataset,
   getScenarioById,
+  inspectionColumns,
+  inspectionFilterableColumnIds,
   listScenarios,
 } from "../index";
 
@@ -86,5 +89,36 @@ describe("scenario-data registry", () => {
     expect(String(dataset.rows[0]?.col_0 ?? "")).not.toEqual(
       String(dataset.rows[1]?.col_0 ?? ""),
     );
+  });
+
+  test("creates deterministic inspection datasets across tiny, dev, and stress scales", () => {
+    const tiny = createInspectionDataset("tiny");
+    const dev = createInspectionDataset("dev");
+    const stress = createInspectionDataset("stress");
+
+    expect(createInspectionDataset("dev")).toEqual(dev);
+    expect(tiny.scale).toBe("tiny");
+    expect(dev.scale).toBe("dev");
+    expect(stress.scale).toBe("stress");
+    expect(tiny.rows).toHaveLength(7);
+    expect(dev.rows).toHaveLength(250);
+    expect(stress.rows).toHaveLength(2_500);
+    expect(tiny.columns).toEqual(inspectionColumns);
+    expect(dev.columns).toEqual(inspectionColumns);
+    expect(stress.columns).toEqual(inspectionColumns);
+    expect(inspectionFilterableColumnIds).toEqual([
+      "timestamp",
+      "severity",
+      "source",
+      "message",
+    ]);
+    expect(dev.rows[0]).toMatchObject({
+      id: "evt-dev-0000",
+      severity: expect.any(String),
+      message: expect.any(String),
+    });
+    expect(stress.rows[2_499]).toMatchObject({
+      id: "evt-stress-2499",
+    });
   });
 });
