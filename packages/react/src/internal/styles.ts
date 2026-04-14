@@ -37,7 +37,7 @@ export function getScrollContentStyle(
   totalWidth: number,
 ): CSSProperties {
   return {
-    height: Math.max(totalHeight + HEADER_HEIGHT, HEADER_HEIGHT),
+    height: Math.max(totalHeight, 0),
     minWidth: totalWidth,
     position: "relative",
   };
@@ -59,7 +59,7 @@ export function getRowStyle(
     insetInline: 0,
     padding: "10px 12px",
     position: "absolute",
-    top: HEADER_HEIGHT + top,
+    top,
   };
 }
 

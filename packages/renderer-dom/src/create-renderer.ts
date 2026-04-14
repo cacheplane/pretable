@@ -9,7 +9,7 @@ const WRAPPED_COLUMN_WIDTH = 220;
 const FIXED_COLUMN_WIDTH = 140;
 const ROW_LINE_HEIGHT = 22;
 const ROW_CHROME_HEIGHT = 42;
-const ESTIMATED_CHARACTER_WIDTH = 10;
+const ESTIMATED_CHARACTER_WIDTH = 7;
 const ESTIMATE_FONT_KEY = "Pretable Estimate 14";
 
 export function createDomRenderSnapshot<TRow extends GridCoreRow>(

@@ -119,6 +119,8 @@ describe("PretableSurface", () => {
       overflowAnchor: "none",
       overscrollBehavior: "contain",
     });
+    expect(scrollContent).toHaveStyle({ height: "192px" });
+    expect(renderedRows[0]).toHaveStyle({ top: "0px" });
     expect(firstPinnedCell).toHaveStyle({ position: "sticky", left: "0px" });
     expect(secondPinnedCell).toHaveStyle({ position: "sticky", left: "188px" });
     expect(headerButton).toHaveStyle({ position: "sticky", left: "0px" });
@@ -145,14 +147,14 @@ describe("PretableSurface", () => {
     expect(severityButton).toHaveTextContent("Newest");
     expect(
       view.getAllByTestId("pretable-row").map((row) => row.getAttribute("data-row-id")),
-    ).toEqual(["evt-001", "evt-003", "evt-002"]);
+    ).toEqual(["evt-001", "evt-003"]);
 
     fireEvent.click(severityButton);
 
     expect(severityButton).toHaveTextContent("Oldest");
     expect(
       view.getAllByTestId("pretable-row").map((row) => row.getAttribute("data-row-id")),
-    ).toEqual(["evt-002", "evt-003", "evt-001"]);
+    ).toEqual(["evt-002", "evt-003"]);
   });
 
   it("uses column accessors for body-cell content", () => {
@@ -306,6 +308,37 @@ describe("PretableSurface", () => {
         }),
       );
     });
+  });
+
+  it("uses the body viewport height for row planning and telemetry when the header is sticky", async () => {
+    const onTelemetryChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onTelemetryChange={onTelemetryChange}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onTelemetryChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          renderedRowCount: 2,
+          visibleRowCount: 2,
+          visibleRowRange: {
+            start: 0,
+            end: 2,
+          },
+        }),
+      );
+    });
+
+    expect(view.getAllByTestId("pretable-row")).toHaveLength(2);
+    expect(view.queryByText("Later row")).not.toBeInTheDocument();
   });
 
   it("captures measured row heights from the row shell and feeds changed heights back into the render path", async () => {

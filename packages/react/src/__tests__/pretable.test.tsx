@@ -293,3 +293,44 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
   expect(Number(output?.getAttribute("data-total-height"))).toBeGreaterThan(0);
   expect(Number(output?.getAttribute("data-rendered-row-count"))).toBe(2);
 });
+
+it("plans and reports visible rows from the provided body viewport height", () => {
+  const rows = Array.from({ length: 12 }, (_, index) => ({
+    id: `row-${index}`,
+    message: `Row ${index}`,
+  }));
+  const columns = [
+    {
+      id: "message",
+      header: "Message",
+    },
+  ];
+  const getRowId = (row: { id: string }) => row.id;
+
+  const HookProbe = () => {
+    const model = usePretableModel({
+      columns,
+      getRowId,
+      rows,
+      viewportHeight: 80,
+      overscan: 0,
+    });
+
+    return (
+      <output
+        data-first-row-id={model.renderSnapshot.rows[0]?.id ?? ""}
+        data-rendered-row-count={model.renderSnapshot.rows.length}
+        data-visible-row-count={model.telemetry.visibleRowCount}
+        data-visible-row-range={`${model.telemetry.visibleRowRange.start}:${model.telemetry.visibleRowRange.end}`}
+      />
+    );
+  };
+
+  const view = render(<HookProbe />);
+  const output = view.container.querySelector("output");
+
+  expect(output).toHaveAttribute("data-first-row-id", "row-0");
+  expect(output).toHaveAttribute("data-rendered-row-count", "2");
+  expect(output).toHaveAttribute("data-visible-row-count", "2");
+  expect(output).toHaveAttribute("data-visible-row-range", "0:2");
+});

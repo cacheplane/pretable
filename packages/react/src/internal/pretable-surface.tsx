@@ -16,6 +16,7 @@ import { measureRenderedRowHeight } from "../row-height";
 import { type PretableTelemetry, usePretableModel } from "../use-pretable";
 import {
   DEFAULT_ROW_HEIGHT,
+  HEADER_HEIGHT,
   formatCellValue,
   getColumnWidth,
   getNextSortDirection,
@@ -151,13 +152,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>(
     {},
   );
+  const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     columns,
     getRowId,
     measuredHeights,
     overscan,
     rows,
-    viewportHeight,
+    viewportHeight: bodyViewportHeight,
   });
   const pinnedOffsets = useMemo(() => getPinnedLeftOffsets(columns), [columns]);
   const templateColumns = useMemo(
@@ -230,7 +232,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       onScroll={(event) => {
         grid.setViewport({
           scrollTop: event.currentTarget.scrollTop,
-          height: viewportHeight,
+          height: bodyViewportHeight,
         });
       }}
       style={{

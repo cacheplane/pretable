@@ -58,4 +58,37 @@ describe("renderer-dom", () => {
     expect(render.rows.map((row) => row.rowIndex)).toEqual([3, 4, 5, 6, 7]);
     expect(render.rows.map((row) => row.top)).toEqual([132, 176, 220, 264, 308]);
   });
+
+  test("keeps the primary wrapped benchmark row-height estimate within the calibrated S2 envelope", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "col_0", header: "Message 1", wrap: true, widthPx: 220 },
+        { id: "col_1", header: "Owner 1", wrap: true, widthPx: 220 },
+        { id: "col_2", header: "Status 1", wrap: true, widthPx: 220 },
+        { id: "col_3", header: "Score 1", widthPx: 96 },
+      ],
+      rows: [
+        {
+          id: "S2-row-0",
+          col_0:
+            "Hola desde Pretable token-202 Hola desde Pretable token-203 Hola desde Pretable token-204",
+          col_1:
+            "Bonjour depuis Pretable token-231 Bonjour depuis Pretable token-232 Bonjour depuis Pretable token-233 Bonjour depuis Pretable token-234",
+          col_2: "Pretable says hello in English token-260",
+          col_3: "24.1",
+        },
+      ],
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 320,
+      overscan: 0,
+    });
+
+    expect(render.rows[0]?.height).toBe(174);
+  });
 });

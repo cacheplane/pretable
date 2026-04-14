@@ -47,9 +47,9 @@ describe("InspectionGrid", () => {
       "inspection-cell-value",
     );
 
-    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
+    fireEvent.click(view.getAllByTestId("pretable-row")[0]!);
 
-    expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-002");
+    expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-001");
   });
 
   it("preserves the shared row and cell DOM contract across inspection dataset scales", () => {
