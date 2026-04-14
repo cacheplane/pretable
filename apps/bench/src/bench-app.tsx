@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import type { PretableTelemetry } from "@pretable/react/internal";
 
 import {
   createScenarioDataset,
@@ -14,6 +15,7 @@ import {
 
 import type { BenchQueryState } from "./bench-types";
 import {
+  createPretableTelemetryNotes,
   createBenchRequest,
   measureBenchScrollRun,
   publishBenchResult,
@@ -69,9 +71,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const [result, setResult] = useState<BenchRunSummary | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const autorunRef = useRef(false);
+  const pretableTelemetryRef = useRef<PretableTelemetry | null>(null);
 
   useEffect(() => {
     autorunRef.current = false;
+    pretableTelemetryRef.current = null;
   }, [search]);
 
   async function executeRun(scriptName: BenchQueryState["scriptName"]) {
@@ -101,6 +105,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
 
     try {
       const startedAt = performance.now();
+      pretableTelemetryRef.current = null;
 
       setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
@@ -127,7 +132,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               status: scrollRun.status,
               timestamp,
               tracePath,
-              notes: scrollRun.notes,
+              notes: [
+                ...scrollRun.notes,
+                ...createPretableTelemetryNotes(pretableTelemetryRef.current),
+              ],
               metrics: scrollRun.metrics,
             })
           : createBenchRunSummary({
@@ -135,6 +143,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               status: "completed",
               timestamp,
               tracePath,
+              notes: createPretableTelemetryNotes(pretableTelemetryRef.current),
               metrics: {
                 mount_ms: performance.now() - startedAt,
                 first_stable_viewport_ms: performance.now() - startedAt,
@@ -234,7 +243,17 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
           </div>
 
           <div ref={viewportRef} className="viewport-card">
-            <AdapterSurface dataset={dataset} runKey={runKey} />
+            {query.adapterId === "pretable" ? (
+              <PretableAdapter
+                dataset={dataset}
+                onTelemetryChange={(telemetry) => {
+                  pretableTelemetryRef.current = telemetry;
+                }}
+                runKey={runKey}
+              />
+            ) : (
+              <AdapterSurface dataset={dataset} runKey={runKey} />
+            )}
           </div>
 
           <dl className="result-grid">
