@@ -1,15 +1,8 @@
 import type { PretableColumn } from "@pretable/react";
 import {
-  PretableSurface,
-  type PretableSurfaceProps,
+  LabeledGridSurface,
 } from "@pretable/react/internal";
-import {
-  type HTMLAttributes,
-  memo,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useMemo, useRef, useState } from "react";
 
 type InspectionRow = {
   id: string;
@@ -113,90 +106,26 @@ const rows: InspectionRow[] = [
 
 const filterableColumnIds = ["timestamp", "severity", "source", "message"] as const;
 
-const renderInspectionHeaderCell: NonNullable<
-  PretableSurfaceProps<InspectionRow>["renderHeaderCell"]
-> = ({ label, sortDirection }) => (
-  <>
-    <span>{label}</span>
-    <strong>
-      {sortDirection === "desc"
-        ? "Newest"
-        : sortDirection === "asc"
-          ? "Oldest"
-          : "Sort"}
-    </strong>
-  </>
-);
-
-const renderInspectionBodyCell: NonNullable<
-  PretableSurfaceProps<InspectionRow>["renderBodyCell"]
-> = ({ column, value }) => (
-  <>
-    <span className="inspection-cell-label">{column.header ?? column.id}</span>
-    <span className="inspection-cell-value">{formatInspectionValue(value)}</span>
-  </>
-);
-
-const getInspectionHeaderCellClassName: NonNullable<
-  PretableSurfaceProps<InspectionRow>["getHeaderCellClassName"]
-> = ({ column }) =>
-  ["inspection-header-cell", column.pinned === "left" ? "is-pinned" : null]
-    .filter(Boolean)
-    .join(" ");
-
-const getInspectionHeaderCellProps: NonNullable<
-  PretableSurfaceProps<InspectionRow>["getHeaderCellProps"]
-> = ({ column }) =>
-  column.pinned === "left"
-    ? ({
-        "data-pinned": "left",
-      } as HTMLAttributes<HTMLButtonElement>)
-    : undefined;
-
-const getInspectionBodyCellClassName: NonNullable<
-  PretableSurfaceProps<InspectionRow>["getBodyCellClassName"]
-> = ({ column }) =>
-  ["inspection-cell", column.pinned === "left" ? "is-pinned" : null]
-    .filter(Boolean)
-    .join(" ");
-
-const getInspectionBodyCellProps: NonNullable<
-  PretableSurfaceProps<InspectionRow>["getBodyCellProps"]
-> = ({ column }) =>
-  column.pinned === "left"
-    ? ({
-        "data-pinned": "left",
-      } as HTMLAttributes<HTMLDivElement>)
-    : undefined;
-
-const getInspectionRowClassName: NonNullable<
-  PretableSurfaceProps<InspectionRow>["getRowClassName"]
-> = () => "inspection-row";
-
-const getInspectionRowId: NonNullable<
-  PretableSurfaceProps<InspectionRow>["getRowId"]
-> = (row) => row.id;
-
 const InspectionGrid = memo(function InspectionGrid({
   rows,
 }: {
   rows: InspectionRow[];
 }) {
   return (
-    <PretableSurface
+    <LabeledGridSurface
       ariaLabel="Inspection grid"
+      bodyCellClassName="inspection-cell"
       columns={columns}
-      getBodyCellClassName={getInspectionBodyCellClassName}
-      getBodyCellProps={getInspectionBodyCellProps}
-      getHeaderCellClassName={getInspectionHeaderCellClassName}
-      getHeaderCellProps={getInspectionHeaderCellProps}
-      getRowClassName={getInspectionRowClassName}
-      getRowId={getInspectionRowId}
+      formatValue={({ value }) => formatInspectionValue(value)}
+      getRowId={(row) => row.id}
+      headerCellClassName="inspection-header-cell"
+      labelClassName="inspection-cell-label"
       overscan={OVERSCAN_ROWS}
-      renderBodyCell={renderInspectionBodyCell}
-      renderHeaderCell={renderInspectionHeaderCell}
+      pinnedClassName="is-pinned"
+      rowClassName="inspection-row"
       rows={rows}
       selectFocusedRowOnArrowKey
+      valueClassName="inspection-cell-value"
       viewportHeight={VIEWPORT_HEIGHT}
     />
   );
