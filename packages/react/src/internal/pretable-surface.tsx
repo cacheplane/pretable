@@ -368,6 +368,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     data-column-id={column.id}
                     data-focused={isFocused ? "true" : "false"}
                     data-pretable-cell=""
+                    data-pretable-wrap={column.wrap ? "true" : undefined}
                     data-selected={isSelected ? "true" : "false"}
                     key={`${id}:${column.id}`}
                     style={{

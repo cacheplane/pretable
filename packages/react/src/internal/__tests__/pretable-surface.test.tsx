@@ -174,6 +174,24 @@ describe("PretableSurface", () => {
     expect(within(firstRow).getByText("tenant-a / cold-start")).toBeInTheDocument();
   });
 
+  it("marks wrapped cells so row-height measurement can target them directly", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    const firstRow = view.getAllByTestId("pretable-row")[0];
+    const wrappedCell = firstRow?.querySelector('[data-column-id="message"]');
+
+    expect(wrappedCell).toHaveAttribute("data-pretable-wrap", "true");
+  });
+
   it("exposes focus and selection state and supports ArrowUp, ArrowDown, Enter, and Space keyboard navigation", () => {
     const view = render(
       <PretableSurface

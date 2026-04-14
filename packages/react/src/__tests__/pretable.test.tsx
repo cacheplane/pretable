@@ -242,6 +242,37 @@ it("measures rendered row height from the tallest cell plus row chrome", () => {
   expect(measureRenderedRowHeight(row)).toBe(141);
 });
 
+it("prefers wrapped cells when measuring rendered row height", () => {
+  const row = document.createElement("div");
+  row.innerHTML = `
+    <div data-pretable-cell="" data-pretable-wrap="true"></div>
+    <div data-pretable-cell=""></div>
+  `;
+  Object.defineProperty(row, "querySelectorAll", {
+    configurable: true,
+    value: row.querySelectorAll.bind(row),
+  });
+  Object.defineProperty(row.children[0]!, "scrollHeight", {
+    configurable: true,
+    value: 120,
+  });
+  Object.defineProperty(row.children[1]!, "scrollHeight", {
+    configurable: true,
+    value: 240,
+  });
+  Object.defineProperty(window, "getComputedStyle", {
+    configurable: true,
+    value: () =>
+      ({
+        paddingTop: "10px",
+        paddingBottom: "10px",
+        borderBottomWidth: "1px",
+      }) satisfies Partial<CSSStyleDeclaration>,
+  });
+
+  expect(measureRenderedRowHeight(row)).toBe(141);
+});
+
 it("exposes a public render model hook that reacts to grid viewport updates", () => {
   const rows = Array.from({ length: 12 }, (_, index) => ({
     id: `row-${index}`,

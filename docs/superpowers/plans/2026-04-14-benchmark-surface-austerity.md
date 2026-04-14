@@ -14,3 +14,6 @@
 
 5. Compare the new runset against the current baseline.
    Record whether the austerity cut materially improves Pretable's `H1` frame-time result without regressing `H3`.
+
+6. If Pretable still misses `H1`, measure the next hotspot rather than guessing.
+   Prefer renderer-local fixes that preserve the shared DOM contract, starting with row-estimate reuse and bounded benchmark-only overscan tuning before revisiting more invasive renderer changes.

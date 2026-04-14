@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
+import * as pretableReactInternal from "@pretable/react/internal";
 
 import { PretableAdapter } from "../pretable-adapter";
 
@@ -33,5 +34,31 @@ describe("PretableAdapter", () => {
     expect(within(firstRow).queryByText("Message 1")).not.toBeInTheDocument();
     expect(within(firstRow).queryByText("Owner 1")).not.toBeInTheDocument();
     expect(within(firstRow).getByText(firstRowValue)).toBeInTheDocument();
+  });
+
+  test("marks wrapped benchmark cells so row-height measurement can stay scoped", () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+
+    render(<PretableAdapter dataset={dataset} runKey={1} />);
+
+    const firstWrappedCell = screen
+      .getAllByTestId("pretable-row")[0]
+      ?.querySelector('[data-pretable-cell][data-pretable-wrap="true"]');
+
+    expect(firstWrappedCell).toBeTruthy();
+  });
+
+  test("uses a tighter benchmark overscan than the playground-oriented default", () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+    const surfaceSpy = vi.spyOn(pretableReactInternal, "PretableSurface");
+
+    render(<PretableAdapter dataset={dataset} runKey={1} />);
+
+    expect(surfaceSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        overscan: 4,
+      }),
+      undefined,
+    );
   });
 });
