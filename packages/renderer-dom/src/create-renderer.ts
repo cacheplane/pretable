@@ -11,6 +11,10 @@ const ROW_LINE_HEIGHT = 22;
 const ROW_CHROME_HEIGHT = 42;
 const ESTIMATED_CHARACTER_WIDTH = 7;
 const ESTIMATE_FONT_KEY = "Pretable Estimate 14";
+const estimatedRowHeightCache = new WeakMap<object, {
+  height: number;
+  signature: string;
+}>();
 
 export function createDomRenderSnapshot<TRow extends GridCoreRow>(
   input: DomRenderInput<TRow>,
@@ -72,6 +76,13 @@ function estimateRowHeight<TRow extends GridCoreRow>(
   row: TRow,
   columns: GridCoreColumn<TRow>[],
 ): number {
+  const signature = getEstimatedRowHeightSignature(row, columns);
+  const cached = estimatedRowHeightCache.get(row);
+
+  if (cached?.signature === signature) {
+    return cached.height;
+  }
+
   let estimatedHeight = DEFAULT_ROW_HEIGHT;
 
   for (const column of columns) {
@@ -95,7 +106,26 @@ function estimateRowHeight<TRow extends GridCoreRow>(
     );
   }
 
+  estimatedRowHeightCache.set(row, {
+    signature,
+    height: estimatedHeight,
+  });
+
   return estimatedHeight;
+}
+
+function getEstimatedRowHeightSignature<TRow extends GridCoreRow>(
+  row: TRow,
+  columns: GridCoreColumn<TRow>[],
+) {
+  return columns
+    .filter((column) => column.wrap)
+    .map((column) => {
+      const value = String(readCellValue(row, column) ?? "");
+
+      return `${column.id}:${getColumnWidth(column)}:${value}`;
+    })
+    .join("|");
 }
 
 function readCellValue<TRow extends GridCoreRow>(

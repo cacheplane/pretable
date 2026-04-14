@@ -59,6 +59,7 @@ export function PretableAdapter({
         columns={[...dataset.columns]}
         getRowId={getScenarioRowId}
         onTelemetryChange={onTelemetryChange}
+        overscan={4}
         renderBodyCell={({ value }) => String(value ?? "")}
         renderHeaderCell={({ label }) => label}
         rows={[...dataset.rows]}

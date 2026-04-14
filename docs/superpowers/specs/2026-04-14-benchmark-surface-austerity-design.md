@@ -25,6 +25,18 @@ The benchmark Pretable path should:
 
 The playground should remain on the richer labeled/inspection surfaces.
 
+## Follow-on Slice
+
+If the austerity cut reduces DOM pressure but does not clear `H1`, the next bounded experiments should stay renderer-local and keep the shared benchmark contract intact.
+
+The preferred order is:
+
+- scope row-height measurement reads to wrapped cells when wrapped cells are present
+- cache estimated row heights in `renderer-dom` so pure viewport scroll does not re-run wrapped text estimation for the full filtered dataset
+- tune benchmark-only overscan after renderer-local caching, using repeated-run evidence to verify that reduced row pressure does not reopen blank gaps or anchor drift
+
+The rejected path is a benchmark-only measurement opt-out. It can move `H1`, but it weakens the claim if it pushes `row_height_error_p95_px` above threshold. Only revisit it if the renderer-local path is exhausted and the benchmark report can state that tradeoff explicitly.
+
 ## Scope
 
 In scope:

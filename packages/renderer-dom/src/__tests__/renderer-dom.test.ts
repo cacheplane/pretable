@@ -1,6 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { createGridCore } from "@pretable-internal/grid-core";
+import * as textCore from "@pretable-internal/text-core";
 
 import { createDomRenderSnapshot } from "../index";
 
@@ -90,5 +91,37 @@ describe("renderer-dom", () => {
     });
 
     expect(render.rows[0]?.height).toBe(174);
+  });
+
+  test("reuses wrapped row-height estimates across pure viewport scroll updates", () => {
+    const prepareTextSpy = vi.spyOn(textCore, "prepareText");
+    const grid = createGridCore({
+      columns: [{ id: "message", header: "Message", wrap: true, widthPx: 220 }],
+      rows: Array.from({ length: 20 }, (_, index) => ({
+        id: `row-${index}`,
+        message: `Wrapped benchmark row ${index} with enough repeated multilingual text to trigger estimate work.`,
+      })),
+      getRowId: (row) => String(row.id),
+    });
+
+    createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 320,
+      overscan: 1,
+    });
+    const initialCallCount = prepareTextSpy.mock.calls.length;
+
+    grid.setViewport({ scrollTop: 44 * 4, height: 320 });
+    createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 44 * 4,
+      viewportHeight: 320,
+      overscan: 1,
+    });
+
+    expect(prepareTextSpy.mock.calls.length).toBe(initialCallCount);
   });
 });
