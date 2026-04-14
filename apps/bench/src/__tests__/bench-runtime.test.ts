@@ -177,6 +177,55 @@ describe("bench runtime", () => {
     expect(detectBlankGapFrame(viewport!)).toBe(false);
   });
 
+  test("does not count a sticky header as a blank gap before the first row", () => {
+    document.body.innerHTML = `
+      <div data-testid="viewport">
+        <div data-testid="sticky-header"></div>
+        <div data-pretable-row="" data-row-index="0"></div>
+      </div>
+    `;
+
+    const viewport = document.querySelector<HTMLElement>(
+      '[data-testid="viewport"]',
+    );
+    const stickyHeader = document.querySelector<HTMLElement>(
+      '[data-testid="sticky-header"]',
+    );
+    const row = document.querySelector<HTMLElement>("[data-pretable-row]");
+
+    expect(viewport).toBeTruthy();
+    expect(stickyHeader).toBeTruthy();
+    expect(row).toBeTruthy();
+
+    Object.defineProperties(viewport!, {
+      clientTop: { value: 0, configurable: true },
+      clientHeight: { value: 318, configurable: true },
+    });
+    viewport!.getBoundingClientRect = () =>
+      createRect({
+        top: 100,
+        bottom: 418,
+      });
+    stickyHeader!.getBoundingClientRect = () =>
+      createRect({
+        top: 100,
+        bottom: 152,
+      });
+    row!.getBoundingClientRect = () =>
+      createRect({
+        top: 152,
+        bottom: 418,
+      });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: (element: Element) => ({
+        position: element === stickyHeader ? "sticky" : "static",
+      }),
+    });
+
+    expect(detectBlankGapFrame(viewport!)).toBe(false);
+  });
+
   test("records viewport policy notes when a scroll viewport exists but is not scrollable", async () => {
     document.body.innerHTML = `
       <div data-testid="root">

@@ -340,8 +340,13 @@ export function detectBlankGapFrame(
   }
 
   const viewportBounds = getViewportContentBounds(viewport);
-  const clippedRows = rows
-    .map((row) => row.getBoundingClientRect())
+  const stickyOverlays = [...viewport.querySelectorAll<HTMLElement>("*")]
+    .filter((element) =>
+      !element.matches(rowSelector) && element.closest(rowSelector) === null,
+    )
+    .filter((element) => getComputedStyle(element).position === "sticky");
+  const clippedRects = [...rows, ...stickyOverlays]
+    .map((element) => element.getBoundingClientRect())
     .map((rect) => ({
       top: Math.max(rect.top, viewportBounds.top),
       bottom: Math.min(rect.bottom, viewportBounds.bottom),
@@ -349,18 +354,18 @@ export function detectBlankGapFrame(
     .filter((rect) => rect.bottom > rect.top)
     .sort((left, right) => left.top - right.top);
 
-  if (clippedRows.length === 0) {
+  if (clippedRects.length === 0) {
     return true;
   }
 
   let cursor = viewportBounds.top;
 
-  for (const rowRect of clippedRows) {
-    if (rowRect.top > cursor + 1) {
+  for (const rect of clippedRects) {
+    if (rect.top > cursor + 1) {
       return true;
     }
 
-    cursor = Math.max(cursor, rowRect.bottom);
+    cursor = Math.max(cursor, rect.bottom);
   }
 
   return cursor < viewportBounds.bottom - 1;
