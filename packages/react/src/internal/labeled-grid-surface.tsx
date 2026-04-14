@@ -4,6 +4,7 @@ import type {
   PretableRow,
 } from "@pretable/core";
 import type { HTMLAttributes } from "react";
+import type { PretableTelemetry } from "../use-pretable";
 
 import {
   type PretableSurfaceProps,
@@ -39,6 +40,7 @@ export interface LabeledGridSurfaceProps<
   labelClassName?: string;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   pinnedClassName?: string;
   rowClassName?: string;
   rows: TRow[];
@@ -59,6 +61,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   labelClassName,
   overscan,
   onSelectedRowIdChange,
+  onTelemetryChange,
   pinnedClassName,
   rowClassName,
   rows,
@@ -109,6 +112,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       getRowId={getRowId}
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
+      onTelemetryChange={onTelemetryChange}
       renderBodyCell={({ column, row, value }) => (
         <>
           <span className={labelClassName}>{column.header ?? column.id}</span>

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
+import { usePretableModel } from "../../use-pretable";
 
 afterEach(() => {
   cleanup();
@@ -52,8 +53,43 @@ const rows: DemoRow[] = [
     message: "Later row",
   },
 ];
+const getDemoRowId = (row: DemoRow) => row.id;
 
 describe("PretableSurface", () => {
+  it("exposes renderer telemetry from usePretableModel for internal consumers", () => {
+    function Harness() {
+      const model = usePretableModel({
+        columns,
+        getRowId: getDemoRowId,
+        overscan: 0,
+        rows,
+        viewportHeight: 132,
+      });
+
+      return (
+        <output data-testid="telemetry">
+          {JSON.stringify(model.telemetry)}
+        </output>
+      );
+    }
+
+    const view = render(<Harness />);
+    const telemetry = JSON.parse(
+      view.getByTestId("telemetry").textContent ?? "{}",
+    ) as Record<string, unknown>;
+
+    expect(telemetry).toMatchObject({
+      renderedRowCount: expect.any(Number),
+      selectedRowId: null,
+      totalHeight: expect.any(Number),
+      visibleRowCount: expect.any(Number),
+      visibleRowRange: {
+        end: expect.any(Number),
+        start: expect.any(Number),
+      },
+    });
+  });
+
   it("renders benchmark markers on the scrolling subtree, preserves viewport policy notes, and applies sticky pinned offsets", () => {
     const view = render(
       <PretableSurface
@@ -229,6 +265,47 @@ describe("PretableSurface", () => {
 
     expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(1, "evt-002");
     expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(2, "evt-001");
+  });
+
+  it("reports internal telemetry without forcing DOM scraping in the parent surface", async () => {
+    const onTelemetryChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onTelemetryChange={onTelemetryChange}
+        overscan={0}
+        rows={rows}
+        selectFocusedRowOnArrowKey
+        viewportHeight={132}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onTelemetryChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          renderedRowCount: expect.any(Number),
+          selectedRowId: null,
+          totalHeight: expect.any(Number),
+          visibleRowCount: expect.any(Number),
+          visibleRowRange: {
+            end: expect.any(Number),
+            start: expect.any(Number),
+          },
+        }),
+      );
+    });
+
+    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
+
+    await waitFor(() => {
+      expect(onTelemetryChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          selectedRowId: "evt-002",
+        }),
+      );
+    });
   });
 
   it("captures measured row heights from the row shell and feeds changed heights back into the render path", async () => {
