@@ -4,6 +4,7 @@ import {
   type InspectionRow,
 } from "@pretable-internal/scenario-data";
 import type { HTMLAttributes } from "react";
+import type { PretableTelemetry } from "../use-pretable";
 
 import { LabeledGridSurface } from "./labeled-grid-surface";
 
@@ -20,6 +21,7 @@ export interface InspectionGridProps {
   ariaLabel: string;
   filterableColumnIds: readonly InspectionFilterableColumnId[];
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   overscan?: number;
   rows: InspectionRow[];
   viewportHeight: number;
@@ -29,6 +31,7 @@ export function InspectionGrid({
   ariaLabel,
   filterableColumnIds,
   onSelectedRowIdChange,
+  onTelemetryChange,
   overscan,
   rows,
   viewportHeight,
@@ -52,6 +55,7 @@ export function InspectionGrid({
       labelClassName="inspection-cell-label"
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
+      onTelemetryChange={onTelemetryChange}
       pinnedClassName="is-pinned"
       rowClassName="inspection-row"
       rows={rows}

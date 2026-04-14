@@ -37,6 +37,26 @@ describe("playground inspection demo", () => {
     expect(screen.getByText("2500 matching rows")).toBeInTheDocument();
   });
 
+  test("renders shared diagnostics for local inspection without scraping the grid DOM", () => {
+    render(<App />);
+
+    const diagnostics = screen.getByTestId("inspection-diagnostics");
+
+    expect(within(diagnostics).getByText("Rendered rows")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("Selected row")).toBeInTheDocument();
+    expect(within(diagnostics).getByText("none")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByTestId("pretable-row")[0]!);
+
+    expect(within(diagnostics).getByText("evt-dev-0000")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Dataset scale"), {
+      target: { value: "stress" },
+    });
+
+    expect(within(diagnostics).getByText("stress")).toBeInTheDocument();
+  });
+
   test("filters rows by column input without leaving the placeholder scaffold behind", () => {
     render(<App />);
 
@@ -89,11 +109,12 @@ describe("playground inspection demo", () => {
 
   test("row selection and arrow navigation update the detail panel", () => {
     render(<App />);
+    const detail = screen.getByTestId("inspection-detail");
 
     fireEvent.click(screen.getAllByTestId("pretable-row")[0]!);
 
     expect(screen.getByText("Selected event")).toBeInTheDocument();
-    expect(screen.getByText("evt-dev-0000")).toBeInTheDocument();
+    expect(within(detail).getByText("evt-dev-0000")).toBeInTheDocument();
 
     return waitFor(() => {
       const firstRow = screen.getAllByTestId("pretable-row")[0];
@@ -104,8 +125,6 @@ describe("playground inspection demo", () => {
       const viewport = screen.getByRole("grid", { name: "Inspection grid" });
       viewport.focus();
       fireEvent.keyDown(viewport, { key: "ArrowDown" });
-
-      const detail = screen.getByTestId("inspection-detail");
 
       expect(within(detail).getByText("evt-dev-0001")).toBeInTheDocument();
       expect(within(detail).getByText("warn")).toBeInTheDocument();

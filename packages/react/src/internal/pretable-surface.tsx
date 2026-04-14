@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type ReactNode,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -12,7 +13,7 @@ import type {
 } from "@pretable/core";
 
 import { measureRenderedRowHeight } from "../row-height";
-import { usePretableModel } from "../use-pretable";
+import { type PretableTelemetry, usePretableModel } from "../use-pretable";
 import {
   DEFAULT_ROW_HEIGHT,
   formatCellValue,
@@ -114,6 +115,7 @@ export interface PretableSurfaceProps<
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellRenderInput<TRow>,
   ) => ReactNode;
@@ -138,6 +140,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   getRowProps,
   overscan = 6,
   onSelectedRowIdChange,
+  onTelemetryChange,
   renderBodyCell,
   renderHeaderCell,
   rows,
@@ -148,7 +151,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>(
     {},
   );
-  const { grid, snapshot, renderSnapshot } = usePretableModel({
+  const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     columns,
     getRowId,
     measuredHeights,
@@ -161,6 +164,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     () => columns.map((column) => `${getColumnWidth(column)}px`).join(" "),
     [columns],
   );
+
+  useEffect(() => {
+    onTelemetryChange?.(telemetry);
+  }, [onTelemetryChange, telemetry]);
 
   const captureMeasuredRow = (rowId: string, node: HTMLDivElement | null) => {
     if (!node) {

@@ -32,6 +32,17 @@ export interface PretableRenderSnapshot<
   totalWidth: number;
 }
 
+export interface PretableTelemetry {
+  renderedRowCount: number;
+  selectedRowId: string | null;
+  totalHeight: number;
+  visibleRowCount: number;
+  visibleRowRange: {
+    end: number;
+    start: number;
+  };
+}
+
 export interface UsePretableModelOptions<
   TRow extends PretableRow = PretableRow,
 > extends UsePretableOptions<TRow> {
@@ -44,6 +55,7 @@ export interface PretableModel<TRow extends PretableRow = PretableRow> {
   grid: PretableGrid<TRow>;
   snapshot: PretableGridSnapshot<TRow>;
   renderSnapshot: PretableRenderSnapshot<TRow>;
+  telemetry: PretableTelemetry;
 }
 
 export function usePretable<TRow extends PretableRow = PretableRow>({
@@ -101,10 +113,45 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
       viewportHeight,
     ],
   );
+  const telemetry = useMemo<PretableTelemetry>(() => {
+    const viewportBottom =
+      snapshot.viewport.scrollTop + Math.max(snapshot.viewport.height, viewportHeight);
+    const viewportRows = renderSnapshot.rows.filter((row) => {
+      const rowBottom = row.top + row.height;
+
+      return row.top < viewportBottom && rowBottom > snapshot.viewport.scrollTop;
+    });
+    const firstVisibleRow = viewportRows[0];
+    const lastVisibleRow = viewportRows[viewportRows.length - 1];
+
+    return {
+      renderedRowCount: renderSnapshot.rows.length,
+      selectedRowId: snapshot.selection.rowIds[0] ?? null,
+      totalHeight: renderSnapshot.totalHeight,
+      visibleRowCount: viewportRows.length,
+      visibleRowRange: firstVisibleRow && lastVisibleRow
+        ? {
+            start: firstVisibleRow.rowIndex,
+            end: lastVisibleRow.rowIndex + 1,
+          }
+        : {
+            start: 0,
+            end: 0,
+          },
+    };
+  }, [
+    renderSnapshot.rows,
+    renderSnapshot.totalHeight,
+    snapshot.selection.rowIds,
+    snapshot.viewport.height,
+    snapshot.viewport.scrollTop,
+    viewportHeight,
+  ]);
 
   return {
     grid,
     snapshot,
     renderSnapshot,
+    telemetry,
   };
 }

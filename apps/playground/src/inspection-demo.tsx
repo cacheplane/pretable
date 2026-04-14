@@ -7,6 +7,7 @@ import {
 } from "@pretable-internal/scenario-data";
 import {
   InspectionGrid,
+  type PretableTelemetry,
 } from "@pretable/react/internal";
 import { useMemo, useState } from "react";
 
@@ -17,6 +18,7 @@ export function InspectionDemo() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [scale, setScale] = useState<InspectionDatasetScale>("dev");
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [telemetry, setTelemetry] = useState<PretableTelemetry | null>(null);
   const dataset = useMemo(() => createInspectionDataset(scale), [scale]);
 
   const filteredRows = useMemo(
@@ -61,6 +63,36 @@ export function InspectionDemo() {
           <strong>Inspection workflow</strong>
           <p>{filteredRows.length} matching rows</p>
           <p>Scale: {scale}</p>
+          <dl data-testid="inspection-diagnostics">
+            <div>
+              <dt>Rendered rows</dt>
+              <dd>{telemetry?.renderedRowCount ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Visible rows</dt>
+              <dd>{telemetry?.visibleRowCount ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Planned height</dt>
+              <dd>{telemetry?.totalHeight ?? 0}</dd>
+            </div>
+            <div>
+              <dt>Viewport range</dt>
+              <dd>
+                {telemetry
+                  ? `${telemetry.visibleRowRange.start}-${telemetry.visibleRowRange.end}`
+                  : "0-0"}
+              </dd>
+            </div>
+            <div>
+              <dt>Selected row</dt>
+              <dd>{telemetry?.selectedRowId ?? "none"}</dd>
+            </div>
+            <div>
+              <dt>Scale</dt>
+              <dd>{scale}</dd>
+            </div>
+          </dl>
         </div>
       </div>
 
@@ -127,6 +159,7 @@ export function InspectionDemo() {
               ariaLabel="Inspection grid"
               filterableColumnIds={dataset.filterableColumnIds}
               onSelectedRowIdChange={setSelectedRowId}
+              onTelemetryChange={setTelemetry}
               overscan={OVERSCAN_ROWS}
               rows={filteredRows}
               viewportHeight={VIEWPORT_HEIGHT}

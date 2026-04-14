@@ -7,3 +7,4 @@ export type {
 } from "./internal/labeled-grid-surface";
 export type { InspectionGridProps } from "./internal/inspection-grid";
 export type { PretableSurfaceProps } from "./internal/pretable-surface";
+export type { PretableTelemetry } from "./use-pretable";
