@@ -65,12 +65,25 @@ pnpm dev:bench
 pnpm dev:playground
 ```
 
+The playground now defaults to the shared `dev` inspection dataset and exposes a local dataset-scale switcher plus diagnostics for rendered rows, visible rows, planned height, viewport range, and selected row. Use it for real manual inspection, not just smoke testing.
+
 ### Benchmark entry points
 
 ```bash
 pnpm bench:e2e -- --project=chromium
 pnpm bench:matrix -- --project=chromium --adapters=pretable,ag-grid,tanstack --scenarios=S2 --scripts=scroll --repeats=3
 ```
+
+For a focused Pretable scroll run that writes a real summary and trace:
+
+```bash
+PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S2 PRETABLE_BENCH_SCALE=dev PRETABLE_BENCH_SCRIPT=scroll pnpm bench:e2e -- --project=chromium
+```
+
+Pretable benchmark summaries now preserve two layers of evidence:
+
+- viewport-policy notes from the scroll surface
+- internal telemetry notes from the shared React path, such as rendered rows, visible rows, planned height, viewport range, and selected row
 
 ### Workspace verification
 
@@ -90,12 +103,14 @@ Run these sequentially in a single checkout. Heavy workspace commands can conten
 - Start in `apps/playground`.
 - Keep the playground on the same renderer/core path as the benchmarked React surface.
 - Avoid adding product chrome that bypasses the shared grid path.
+- Use the diagnostics block and dataset-scale switcher to inspect stability under `dev` and `stress`, not just `tiny`.
 
 ### If you are working on the wedge
 
 - Start in `apps/bench` and the internal engine packages.
 - Treat `S2` wrapped-text scroll behavior as the primary proving slice.
 - Keep claims tied to runset artifacts in `status/runsets/`.
+- Keep benchmark telemetry off-DOM. Notes and summary payloads are fine; changing the `data-pretable-*` scroll subtree is not.
 
 ### If you are changing public API
 
@@ -113,6 +128,18 @@ The current product direction is stable:
 - remote and streaming-compatible architecture, but no overclaiming that streaming is solved yet
 
 Off-screen autosize and streaming updates are intentionally deferred as first-class proving targets. The current priority is to make the shared engine path stronger and more honest.
+
+## Current Risks
+
+- Pretable benchmark evidence is still mixed at the current head. The latest repeated Chromium `S2/dev/scroll` runset at `status/runsets/2026-04-14t04-14-56-534z.hypotheses.json` marks both `H1` and `H3` as failing on the current prototype path.
+- The current repeated Pretable median in that runset is:
+  - `scroll_frame_p95_ms: 41.7`
+  - `blank_gap_frames: 1`
+- The latest comparator evidence in the same runset is better on the current head:
+  - AG Grid `scroll_frame_p95_ms: 33.1`, `blank_gap_frames: 0`
+  - TanStack `scroll_frame_p95_ms: 24.6`, `blank_gap_frames: 0`
+- The benchmark and playground are tighter now, but `@pretable/react/internal` is still an internal seam. It should keep absorbing prototype-specific composition until the public API is deliberate.
+- Streaming is still architectural intent, not implemented evidence.
 
 ## Recommended Reading
 

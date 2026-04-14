@@ -75,3 +75,45 @@
 
 - Keep the first prototype schema-agnostic.
 - Use a log / inspection-table shape as the first demo dataset and benchmark-facing use case, but do not bake a canonical log schema into the core model.
+
+## 2026-04-13
+
+### Shared inspection prototype path
+
+- The playground now runs on shared deterministic inspection datasets with `tiny`, `dev`, and `stress` scales.
+- The playground defaults to `dev` so local manual inspection happens on a materially sized dataset instead of a smoke-only sample.
+- Inspection-grid-specific renderer composition now lives under `@pretable/react/internal` instead of inside the playground surface.
+
+### Internal telemetry direction
+
+- Shared React telemetry is now computed once in `usePretableModel` and relayed through the internal surface chain.
+- Current telemetry fields are:
+  - `selectedRowId`
+  - `renderedRowCount`
+  - `visibleRowCount`
+  - `totalHeight`
+  - `visibleRowRange`
+- The playground diagnostics block should consume this telemetry directly instead of scraping the grid DOM.
+
+### Benchmark alignment
+
+- The Pretable benchmark path now records the same internal telemetry as summary notes without changing the existing benchmark DOM contract.
+- The benchmark guardrail remains:
+  - keep telemetry off-DOM
+  - preserve `data-pretable-scroll-viewport`
+  - preserve `data-pretable-scroll-content`
+  - preserve row/cell markers and viewport policy
+
+### Current honest status
+
+- A focused Chromium Pretable `S2/dev/scroll` run on 2026-04-14 wrote telemetry-bearing notes into [status/chromium-pretable-default-s2-dev-scroll-2026-04-14t04-13-15-339z.summary.json](/Users/blove/repos/pretable/status/chromium-pretable-default-s2-dev-scroll-2026-04-14t04-13-15-339z.summary.json).
+- That artifact is useful because it proves the tighter benchmark/playground telemetry link is real.
+- A repeated Chromium matrix run on 2026-04-14 wrote [status/runsets/2026-04-14t04-14-56-534z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-14t04-14-56-534z.hypotheses.json).
+- That runset is the more important checkpoint and it is also not flattering:
+  - `H1`: failing
+  - `H3`: failing
+  - Pretable median `scroll_frame_p95_ms: 41.7`
+  - Pretable median `blank_gap_frames: 1`
+  - AG Grid median `scroll_frame_p95_ms: 33.1`
+  - TanStack median `scroll_frame_p95_ms: 24.6`
+- Conclusion: the prototype path is more honest and more inspectable, but the current Pretable scroll result is measurably behind the current comparators on the repeated `S2/dev/scroll` slice.
