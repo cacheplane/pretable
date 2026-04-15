@@ -41,7 +41,7 @@
 - Modify: `/Users/blove/repos/pretable/README.md`
 - Modify: `/Users/blove/repos/pretable/docs/research/repo-memory.md`
 
-## Task 1: Reproduce And Bound The Sort Variance
+## Task 1: Reproduce And Profile The Shared Sort Variance
 
 **Files:**
 
@@ -50,31 +50,7 @@
 - Modify: `/Users/blove/repos/pretable/apps/bench/src/__tests__/bench-runtime.test.ts`
 - Modify: `/Users/blove/repos/pretable/scripts/__tests__/bench-matrix.test.mjs`
 
-- [ ] **Step 1: Write the failing regression tests for current sort variance assumptions**
-
-Add focused tests that prove the current code can distinguish:
-
-- median-within-threshold but worst-case-exceeded `H6`
-- sort interaction metrics that stay stable when the row model changes only once
-- the current `H6` summary wording for worst-case-repeat failure
-
-The tests should not invent new instrumentation yet. They should lock the current failure semantics before profiling changes begin.
-
-- [ ] **Step 2: Run the focused tests to verify RED**
-
-Run:
-
-```bash
-pnpm --filter @pretable/app-bench exec vitest run src/__tests__/bench-runtime.test.ts --environment jsdom --reporter verbose
-node --test /Users/blove/repos/pretable/scripts/__tests__/bench-matrix.test.mjs
-```
-
-Expected:
-
-- at least one new test fails for the intended reason
-- the failure should be about current sort variance semantics, not a typo or missing import
-
-- [ ] **Step 3: Capture a fresh focused reproduction for `S2/dev/sort`**
+- [ ] **Step 1: Capture a fresh focused reproduction for `S2/dev/sort`**
 
 Run:
 
@@ -89,7 +65,42 @@ Record:
 - `settle_duration_ms` min/median/max
 - whether the outlier remains in the same range as the current `74.6ms` spike
 
-- [ ] **Step 4: Commit the bounded-red-state tests if they are cleanly targeted**
+- [ ] **Step 2: Profile the shared Pretable sort path before writing code**
+
+Use the benchmark reproduction and the current shared path to determine which category spikes:
+
+- grid state mutation
+- render snapshot regeneration
+- row-height measurement churn
+- React surface rerender churn
+
+Write down the observed dominant category in task notes before creating any new regression tests.
+
+- [ ] **Step 3: Write the smallest failing regression tests now that the likely root cause is known**
+
+Add focused tests that prove the specific failure semantics you observed, for example:
+
+- current code distinguishes median-within-threshold but worst-case-exceeded `H6`
+- sort interaction metrics stay stable when the row model changes only once
+- the `H6` report wording for worst-case-repeat failure remains honest
+
+The tests should be narrowly tied to the profiled failure mode, not broad placeholders written before root-cause investigation.
+
+- [ ] **Step 4: Run the focused tests to verify RED**
+
+Run:
+
+```bash
+pnpm --filter @pretable/app-bench exec vitest run src/__tests__/bench-runtime.test.ts --environment jsdom --reporter verbose
+node --test /Users/blove/repos/pretable/scripts/__tests__/bench-matrix.test.mjs
+```
+
+Expected:
+
+- at least one new test fails for the intended sort-variance reason
+- the failure is about the profiled issue, not a typo or missing import
+
+- [ ] **Step 5: Commit the bounded-red-state tests if they are cleanly targeted**
 
 ```bash
 git add /Users/blove/repos/pretable/apps/bench/src/__tests__/bench-runtime.test.ts /Users/blove/repos/pretable/scripts/__tests__/bench-matrix.test.mjs
@@ -259,7 +270,17 @@ git commit -m "feat: stabilize dev interaction proof"
   - tests in `/Users/blove/repos/pretable/packages/bench-runner/src/__tests__/bench-runner.test.ts`
   - tests in `/Users/blove/repos/pretable/scripts/__tests__/bench-matrix.test.mjs`
 
-- [ ] **Step 1: Run the larger Chromium-only promotion pass**
+- [ ] **Step 1: Confirm the promotion gate is actually satisfied**
+
+Do not continue unless the latest repeated `dev` runset has:
+
+- `H6`: satisfied
+- `H7`: satisfied
+- `H8`: satisfied
+
+If any of these are not satisfied, stop here and return to Task 2 rather than running promotion.
+
+- [ ] **Step 2: Run the larger Chromium-only promotion pass**
 
 Run:
 
@@ -267,7 +288,7 @@ Run:
 pnpm bench:matrix -- --project=chromium --adapters=pretable --scenarios=S2 --scripts=sort,filter-metadata,filter-text --scale=hypothesis --repeats=3
 ```
 
-- [ ] **Step 2: Inspect the promotion runset**
+- [ ] **Step 3: Inspect the promotion runset**
 
 Record:
 
@@ -276,7 +297,7 @@ Record:
 - any new worst-case-repeat spikes
 - any metric that worsens materially from `dev`
 
-- [ ] **Step 3: Only change reporting if the new evidence shows a real honesty gap**
+- [ ] **Step 4: Only change reporting if the new evidence shows a real honesty gap**
 
 Examples of acceptable report-only work:
 
@@ -285,7 +306,7 @@ Examples of acceptable report-only work:
 
 Do not change thresholds here unless the user explicitly approves claim redefinition.
 
-- [ ] **Step 4: Commit any necessary honest-reporting adjustments**
+- [ ] **Step 5: Commit any necessary honest-reporting adjustments**
 
 ```bash
 git add /Users/blove/repos/pretable/packages/bench-runner /Users/blove/repos/pretable/scripts
@@ -330,20 +351,21 @@ git commit -m "docs: capture interaction promotion checkpoint"
 
 - No planned edits
 
-- [ ] **Step 1: Run full repo verification**
+- [ ] **Step 1: Run focused verification for the touched benchmark and shared-path code**
 
-Run sequentially:
+Run the smallest relevant command set based on the files actually changed during execution. At minimum, this should include the targeted unit/app tests for the profiled sort fix and the repeated benchmark command that supports the closing claim.
+
+Likely commands:
 
 ```bash
-pnpm lint
-pnpm test
-pnpm typecheck
-pnpm build
+pnpm --filter @pretable/app-bench exec vitest run src/__tests__/bench-runtime.test.ts --environment jsdom --reporter verbose
+pnpm --filter @pretable/app-bench exec vitest run src/__tests__/pretable-adapter.test.tsx --environment jsdom --reporter verbose
+pnpm --filter @pretable/react exec vitest run src/internal/__tests__/pretable-surface.test.tsx --environment jsdom --reporter verbose
 ```
 
 Expected:
 
-- all commands exit `0`
+- all focused verification commands exit `0`
 
 - [ ] **Step 2: Run the final benchmark proof command that supports the closing claim**
 
@@ -368,3 +390,6 @@ The final handoff must report:
 - whether promotion happened
 - what still remains unresolved, if anything
 
+- [ ] **Step 4: Only run repo-wide `pnpm lint`, `pnpm test`, `pnpm typecheck`, and `pnpm build` if the touched files and current repo policy make that the expected release gate**
+
+If you run the full repo gate, report it. If you do not, say explicitly that the closing claim is backed by focused verification plus the benchmark runset rather than the full workspace sweep.
