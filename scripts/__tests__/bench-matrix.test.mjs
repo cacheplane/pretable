@@ -339,6 +339,97 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
   );
 });
 
+test("createHypothesisReport emits H6 when sort interaction evidence exists", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-14t21-00-00-000z",
+    generatedAt: "2026-04-14T21:02:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "sort",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-sort-2026-04-14t21-00-00-000z.summary.json",
+      },
+      {
+        adapterId: "gridalpha",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "sort",
+        summaryPath:
+          "status/chromium-gridalpha-default-s2-dev-sort-2026-04-14t21-00-30-000z.summary.json",
+      },
+    ],
+    runs: [
+      {
+        adapterId: "pretable",
+        profile: "default",
+        scenarioId: "S2",
+        scale: "dev",
+        scriptName: "sort",
+        browserName: "chromium",
+        browserVersion: "123.0",
+        timestamp: "2026-04-14T21:00:30.000Z",
+        seed: 202,
+        rowCount: 750,
+        viewport: { width: 1440, height: 900 },
+        fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+        deviceScaleFactor: 1,
+        status: "completed",
+        notes: ["interaction mode: sort"],
+        tracePath: "status/traces/pretable-sort.trace.zip",
+        metrics: {
+          interaction_latency_ms: 24,
+          settle_duration_ms: 18,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 750,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 400,
+        },
+      },
+      {
+        adapterId: "gridalpha",
+        profile: "default",
+        scenarioId: "S2",
+        scale: "dev",
+        scriptName: "sort",
+        browserName: "chromium",
+        browserVersion: "123.0",
+        timestamp: "2026-04-14T21:00:45.000Z",
+        seed: 202,
+        rowCount: 750,
+        viewport: { width: 1440, height: 900 },
+        fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+        deviceScaleFactor: 1,
+        status: "completed",
+        notes: ["interaction mode: sort"],
+        tracePath: "status/traces/gridalpha-sort.trace.zip",
+        metrics: {
+          interaction_latency_ms: 31,
+          settle_duration_ms: 22,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 750,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 520,
+        },
+      },
+    ],
+  });
+
+  const h6 = report.hypotheses.find((hypothesis) => hypothesis.id === "H6");
+
+  assert.ok(h6);
+  assert.equal(h6.status, "satisfied");
+  assert.match(h6.summary, /sort/i);
+});
+
 test("createHypothesisReport aggregates repeated runs by median instead of trusting the latest sample", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-10t15-00-00-000z",

@@ -38,7 +38,14 @@ export type BenchMetricId =
   | "rendered_cells_peak"
   | "heap_delta_mb"
   | "ua_memory_mb"
-  | "interaction_latency_p95_ms"
+  | "interaction_latency_ms"
+  | "settle_duration_ms"
+  | "post_interaction_blank_gap_frames"
+  | "post_interaction_anchor_shift_px"
+  | "post_interaction_row_height_error_p95_px"
+  | "result_row_count"
+  | "selected_row_preserved"
+  | "focused_row_preserved"
   | "row_height_error_p95_px"
   | "autosize_error_p95_px"
   | "update_latency_p95_ms"
@@ -51,7 +58,8 @@ export type BenchScriptName =
   | "initial"
   | "scroll"
   | "sort"
-  | "filter"
+  | "filter-metadata"
+  | "filter-text"
   | "updates"
   | "autosize";
 
@@ -173,7 +181,14 @@ export const benchMetricIds: readonly BenchMetricId[] = [
   "rendered_cells_peak",
   "heap_delta_mb",
   "ua_memory_mb",
-  "interaction_latency_p95_ms",
+  "interaction_latency_ms",
+  "settle_duration_ms",
+  "post_interaction_blank_gap_frames",
+  "post_interaction_anchor_shift_px",
+  "post_interaction_row_height_error_p95_px",
+  "result_row_count",
+  "selected_row_preserved",
+  "focused_row_preserved",
   "row_height_error_p95_px",
   "autosize_error_p95_px",
   "update_latency_p95_ms",
@@ -187,7 +202,8 @@ export const benchScriptNames: readonly BenchScriptName[] = [
   "initial",
   "scroll",
   "sort",
-  "filter",
+  "filter-metadata",
+  "filter-text",
   "updates",
   "autosize",
 ];
@@ -223,7 +239,15 @@ export function validateSupportedP0aRequest(
     };
   }
 
-  if (!["initial", "scroll"].includes(request.scriptName)) {
+  if (
+    ![
+      "initial",
+      "scroll",
+      "sort",
+      "filter-metadata",
+      "filter-text",
+    ].includes(request.scriptName)
+  ) {
     return {
       ok: false,
       reason: `Unsupported script for P0a: ${request.scriptName}`,
@@ -426,6 +450,28 @@ function assertRequiredMetrics(
       "scroll_frame_p95_ms",
       "long_tasks_count",
       "long_tasks_ms",
+    ] satisfies readonly BenchMetricId[]) {
+      if (metrics[metricId] === undefined) {
+        throw new Error(`Missing required metric: ${metricId}`);
+      }
+    }
+  }
+
+  if (
+    status === "completed" &&
+    (scriptName === "sort" ||
+      scriptName === "filter-metadata" ||
+      scriptName === "filter-text")
+  ) {
+    for (const metricId of [
+      "interaction_latency_ms",
+      "settle_duration_ms",
+      "post_interaction_blank_gap_frames",
+      "post_interaction_anchor_shift_px",
+      "post_interaction_row_height_error_p95_px",
+      "result_row_count",
+      "selected_row_preserved",
+      "focused_row_preserved",
     ] satisfies readonly BenchMetricId[]) {
       if (metrics[metricId] === undefined) {
         throw new Error(`Missing required metric: ${metricId}`);
