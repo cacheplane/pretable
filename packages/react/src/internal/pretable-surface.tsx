@@ -4,6 +4,7 @@ import {
   type ReactNode,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -166,6 +167,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>(
     {},
   );
+  const measuredHeightsRef = useRef<Record<string, number>>({});
   const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     columns,
@@ -184,6 +186,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   useEffect(() => {
     onTelemetryChange?.(telemetry);
   }, [onTelemetryChange, telemetry]);
+
+  useEffect(() => {
+    measuredHeightsRef.current = measuredHeights;
+  }, [measuredHeights]);
 
   useEffect(() => {
     if (!interactionState) {
@@ -256,6 +262,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     if (measuredHeight <= DEFAULT_ROW_HEIGHT) {
       return;
     }
+
+    if (measuredHeightsRef.current[rowId] === measuredHeight) {
+      return;
+    }
+
+    measuredHeightsRef.current = {
+      ...measuredHeightsRef.current,
+      [rowId]: measuredHeight,
+    };
 
     setMeasuredHeights((current) => {
       if (current[rowId] === measuredHeight) {

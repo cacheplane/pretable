@@ -7,21 +7,14 @@ import type {
   ScenarioRow,
 } from "@pretable-internal/scenario-data";
 
-import type { BenchInteractionPlan } from "./interaction-plan";
-
 export interface GridBetaAdapterProps {
   dataset: ScenarioDataset;
-  interactionPlan?: BenchInteractionPlan | null;
   runKey: number;
 }
 
-export function GridBetaAdapter({
-  dataset,
-  interactionPlan,
-  runKey,
-}: GridBetaAdapterProps) {
+export function GridBetaAdapter({ dataset, runKey }: GridBetaAdapterProps) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const displayRows = interactionPlan?.rows ?? dataset.rows;
+  const displayRows = dataset.rows;
   const totalWidth = dataset.columns.reduce(
     (width, column) => width + column.widthPx,
     0,
@@ -44,25 +37,7 @@ export function GridBetaAdapter({
     <section
       aria-label="GridBeta Virtual adapter"
       data-benchmark-adapter="gridbeta"
-      data-bench-focused-row-preserved={
-        interactionPlan
-          ? String(
-              displayRows.some(
-                (row) => String(row.id ?? "") === interactionPlan.focusedRowId,
-              ),
-            )
-          : "false"
-      }
       data-bench-result-row-count={String(displayRows.length)}
-      data-bench-selected-row-preserved={
-        interactionPlan
-          ? String(
-              displayRows.some(
-                (row) => String(row.id ?? "") === interactionPlan.selectedRowId,
-              ),
-            )
-          : "false"
-      }
       style={{
         display: "grid",
         gap: 12,

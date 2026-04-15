@@ -60,6 +60,34 @@ export function createPretableTelemetryNotes(
   ];
 }
 
+export function createBenchInteractionStateFromTelemetry(
+  telemetry: PretableTelemetry | null,
+  fallbackRowCount: number,
+): BenchInteractionState {
+  if (!telemetry) {
+    return {
+      focusedRowId: null,
+      resultRowCount: fallbackRowCount,
+      selectedRowId: null,
+    };
+  }
+
+  return {
+    focusedRowId: telemetry.focusedRowId,
+    resultRowCount: telemetry.rowModelRowCount,
+    selectedRowId: telemetry.selectedRowId,
+  };
+}
+
+export function getMaxInteractionFrames(
+  maxSettleFrames: number,
+  mode: "sort" | "filter-metadata" | "filter-text",
+) {
+  const baseline = Math.max(maxSettleFrames + 12, 48);
+
+  return mode === "filter-text" ? Math.max(baseline, 96) : baseline;
+}
+
 export function detectBrowserVersion(userAgent: string): string {
   const chromeMatch = userAgent.match(/Chrome\/([\d.]+)/);
 
@@ -86,6 +114,12 @@ export interface InteractionBenchRunResult {
   status: "completed" | "partial";
   metrics: Partial<Record<BenchMetricId, number>>;
   notes: string[];
+}
+
+interface BenchInteractionState {
+  focusedRowId: string | null;
+  resultRowCount: number;
+  selectedRowId: string | null;
 }
 
 interface ScrollRuntimeProfile {
@@ -324,6 +358,12 @@ export async function measureBenchInteractionRun(
   root: HTMLElement,
   adapterId: BenchQueryState["adapterId"],
   mode: "sort" | "filter-metadata" | "filter-text",
+  interactionPlan: {
+    focusedRowId: string | null;
+    resultRowCount: number;
+    selectedRowId: string | null;
+  },
+  readInteractionStateOverride: (() => BenchInteractionState) | undefined,
   trigger: () => void,
 ): Promise<InteractionBenchRunResult> {
   const profile = scrollRuntimeProfiles[adapterId];
@@ -346,7 +386,7 @@ export async function measureBenchInteractionRun(
     };
   }
 
-  const baselineState = readBenchInteractionState(root);
+  const baselineState = readBenchInteractionState(root, readInteractionStateOverride);
   const baselineVisibleRows = sampleVisibleRows(viewport, profile);
   const baselineSignature = createVisibleRowSignature(
     baselineVisibleRows,
@@ -369,11 +409,18 @@ export async function measureBenchInteractionRun(
   let previousSignature = baselineSignature;
   let previousState = baselineState;
   let stableFrames = 0;
+  const maxInteractionFrames = getMaxInteractionFrames(
+    profile.maxSettleFrames,
+    mode,
+  );
 
-  for (let frame = 0; frame < profile.maxSettleFrames + 12; frame += 1) {
+  for (let frame = 0; frame < maxInteractionFrames; frame += 1) {
     const timestamp = await waitForAnimationFrame();
     const visibleRows = sampleVisibleRows(viewport, profile);
-    const interactionState = readBenchInteractionState(root);
+    const interactionState = readBenchInteractionState(
+      root,
+      readInteractionStateOverride,
+    );
     const signature = createVisibleRowSignature(
       visibleRows,
       interactionState.resultRowCount,
@@ -390,11 +437,12 @@ export async function measureBenchInteractionRun(
       root.querySelectorAll(profile.cellSelector).length,
     );
 
-    if (
+    const isFirstChangedFrame =
       firstChangedAt === null &&
       (signature !== baselineSignature ||
-        interactionState.resultRowCount !== baselineState.resultRowCount)
-    ) {
+        interactionState.resultRowCount !== baselineState.resultRowCount);
+
+    if (isFirstChangedFrame) {
       firstChangedAt = timestamp;
     }
 
@@ -403,6 +451,15 @@ export async function measureBenchInteractionRun(
       previousScrollTop = viewport.scrollTop;
       previousSignature = signature;
       previousState = interactionState;
+      continue;
+    }
+
+    if (isFirstChangedFrame) {
+      previousVisibleRows = visibleRows;
+      previousScrollTop = viewport.scrollTop;
+      previousSignature = signature;
+      previousState = interactionState;
+      stableFrames = 0;
       continue;
     }
 
@@ -428,8 +485,8 @@ export async function measureBenchInteractionRun(
     if (
       signature === previousSignature &&
       interactionState.resultRowCount === previousState.resultRowCount &&
-      interactionState.selectedRowPreserved === previousState.selectedRowPreserved &&
-      interactionState.focusedRowPreserved === previousState.focusedRowPreserved
+      interactionState.selectedRowId === previousState.selectedRowId &&
+      interactionState.focusedRowId === previousState.focusedRowId
     ) {
       stableFrames += 1;
     } else {
@@ -459,7 +516,7 @@ export async function measureBenchInteractionRun(
     };
   }
 
-  const finalState = readBenchInteractionState(root);
+  const finalState = readBenchInteractionState(root, readInteractionStateOverride);
 
   return {
     status: "completed",
@@ -471,8 +528,10 @@ export async function measureBenchInteractionRun(
       post_interaction_anchor_shift_px: percentile(anchorShifts, 0.95),
       post_interaction_row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
       result_row_count: finalState.resultRowCount,
-      selected_row_preserved: finalState.selectedRowPreserved ? 1 : 0,
-      focused_row_preserved: finalState.focusedRowPreserved ? 1 : 0,
+      selected_row_preserved:
+        finalState.selectedRowId === interactionPlan.selectedRowId ? 1 : 0,
+      focused_row_preserved:
+        finalState.focusedRowId === interactionPlan.focusedRowId ? 1 : 0,
       dom_nodes_peak: domNodesPeak,
       rendered_rows_peak: renderedRowsPeak,
       rendered_cells_peak: renderedCellsPeak,
@@ -758,15 +817,20 @@ function getRowIdentityFallback(
   return firstCell?.textContent?.trim() || `row-${rowIndex}`;
 }
 
-function readBenchInteractionState(root: HTMLElement) {
+function readBenchInteractionState(
+  root: HTMLElement,
+  readInteractionStateOverride?: () => BenchInteractionState,
+) {
+  if (readInteractionStateOverride) {
+    return readInteractionStateOverride();
+  }
+
   const adapter = root.querySelector<HTMLElement>("[data-benchmark-adapter]");
 
   return {
+    focusedRowId: adapter?.dataset.benchFocusedRowId ?? null,
     resultRowCount: Number(adapter?.dataset.benchResultRowCount ?? "0"),
-    selectedRowPreserved:
-      adapter?.dataset.benchSelectedRowPreserved === "true",
-    focusedRowPreserved:
-      adapter?.dataset.benchFocusedRowPreserved === "true",
+    selectedRowId: adapter?.dataset.benchSelectedRowId ?? null,
   };
 }
 

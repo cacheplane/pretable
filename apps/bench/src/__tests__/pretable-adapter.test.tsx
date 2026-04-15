@@ -1,10 +1,18 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
 import * as pretableReactInternal from "@pretable/react/internal";
 
+import { createBenchInteractionPlan } from "../interaction-plan";
 import { PretableAdapter } from "../pretable-adapter";
 
 describe("PretableAdapter", () => {
@@ -60,5 +68,121 @@ describe("PretableAdapter", () => {
       }),
       undefined,
     );
+  });
+
+  test("derives interaction preservation markers from actual telemetry instead of the requested plan", async () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+    const interactionPlan = createBenchInteractionPlan(dataset, "sort");
+    const surfaceSpy = vi
+      .spyOn(pretableReactInternal, "PretableSurface")
+      .mockImplementation((props) => {
+        function MockSurface() {
+          useEffect(() => {
+            props.onTelemetryChange?.({
+              focusedRowId: "different-row",
+              rowModelRowCount: 1,
+              renderedRowCount: 1,
+              selectedRowId: null,
+              totalRowCount: 1,
+              totalHeight: 48,
+              visibleRowCount: 1,
+              visibleRowRange: { start: 0, end: 0 },
+            });
+          }, []);
+
+          return (
+            <div
+              aria-label={props.ariaLabel}
+              data-pretable-scroll-viewport=""
+              role="grid"
+            >
+              <div data-pretable-row="" data-testid="pretable-row">
+                <div data-pretable-cell="" data-pretable-wrap="true">
+                  x
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        return <MockSurface />;
+      });
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        interactionPlan={interactionPlan}
+        runKey={1}
+      />,
+    );
+
+    const adapter = screen
+      .getByRole("grid", { name: "Pretable React adapter" })
+      .closest("[data-benchmark-adapter]");
+
+    await waitFor(() => {
+      expect(adapter).toHaveAttribute("data-bench-result-row-count", "1");
+    });
+
+    expect(adapter).toHaveAttribute("data-bench-selected-row-id", "");
+    expect(adapter).toHaveAttribute("data-bench-focused-row-id", "different-row");
+    expect(adapter).toHaveAttribute("data-bench-selected-row-preserved", "false");
+    expect(adapter).toHaveAttribute("data-bench-focused-row-preserved", "false");
+
+    surfaceSpy.mockRestore();
+  });
+
+  test("keeps row and column inputs stable across telemetry-driven rerenders", async () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+    const capturedRows: Array<typeof dataset.rows> = [];
+    const capturedColumns: Array<typeof dataset.columns> = [];
+    const surfaceSpy = vi
+      .spyOn(pretableReactInternal, "PretableSurface")
+      .mockImplementation((props) => {
+        capturedRows.push(props.rows as typeof dataset.rows);
+        capturedColumns.push(props.columns as typeof dataset.columns);
+
+        function MockSurface() {
+          useEffect(() => {
+            props.onTelemetryChange?.({
+              focusedRowId: "S2-row-1",
+              rowModelRowCount: 125,
+              renderedRowCount: 6,
+              selectedRowId: "S2-row-1",
+              totalRowCount: dataset.rows.length,
+              totalHeight: 20334,
+              visibleRowCount: 2,
+              visibleRowRange: { start: 0, end: 2 },
+            });
+          }, []);
+
+          return (
+            <div
+              aria-label={props.ariaLabel}
+              data-pretable-scroll-viewport=""
+              role="grid"
+            >
+              <div data-pretable-row="" data-testid="pretable-row">
+                <div data-pretable-cell="" data-pretable-wrap="true">
+                  x
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        return <MockSurface />;
+      });
+
+    render(<PretableAdapter dataset={dataset} runKey={1} />);
+
+    await waitFor(() => {
+      expect(surfaceSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    expect(capturedRows[0]).toBe(capturedRows[1]);
+    expect(capturedColumns[0]).toBe(capturedColumns[1]);
+
+    surfaceSpy.mockRestore();
   });
 });

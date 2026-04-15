@@ -103,16 +103,33 @@ describe("bench-runner contract", () => {
         adapterId: "gridalpha",
         scenarioId: "S2",
         scriptName: "filter-metadata",
-      }),
-    ).toEqual({ ok: true });
+        }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("adapter"),
+    });
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
         adapterId: "gridbeta",
         scenarioId: "S2",
         scriptName: "filter-text",
+        }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("adapter"),
+    });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "pretable",
+        scenarioId: "S1",
+        scriptName: "filter-text",
       }),
-    ).toEqual({ ok: true });
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
 
     expect(
       validateSupportedP0aRequest({

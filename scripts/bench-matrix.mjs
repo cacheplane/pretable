@@ -100,6 +100,7 @@ export function createBenchPreviewLaunch(workspaceDir) {
         "127.0.0.1",
         "--port",
         "4173",
+        "--strictPort",
       ],
       cwd: path.join(workspaceDir, "apps", "bench"),
     },
@@ -675,6 +676,16 @@ function evaluateInteractionHypothesis(
   const rowReductionSatisfied = requiresRowReduction
     ? baselineRowCount !== undefined && rowCount.median < baselineRowCount
     : true;
+  const worstCaseExceeded = hasInteractionMedianStableButWorstCaseExceeded(
+    candidateEvidence,
+    {
+      anchorShiftThreshold: 16,
+      blankGapThreshold: 0,
+      latencyThreshold,
+      rowHeightThreshold: 4,
+      settleThreshold,
+    },
+  );
   const passes =
     latency.median <= latencyThreshold &&
     settle.median <= settleThreshold &&
@@ -690,11 +701,15 @@ function evaluateInteractionHypothesis(
     status: passes
       ? hasPolicyDrift(candidateEvidence)
         ? "directional"
+        : worstCaseExceeded
+          ? "failing"
         : "satisfied"
       : "failing",
     summary: passes
       ? hasPolicyDrift(candidateEvidence)
         ? `${satisfiedSummary} Current medians are promising, but policy drift across repeats keeps the claim directional.`
+        : worstCaseExceeded
+          ? "The interaction is instrumented and current medians stay within thresholds, but worst-case repeats still exceed the current latency or stability limits."
         : candidateEvidence.sampleCount > 1
           ? `${satisfiedSummary} Evidence is based on current repeated-run medians.`
           : `${satisfiedSummary} Evidence is based on the current sample.`
@@ -899,6 +914,37 @@ function hasMedianStableButWorstCaseExceeded(
     anchorShift?.median <= anchorShiftThreshold &&
     anchorShift?.max > anchorShiftThreshold &&
     blankGap?.median <= blankGapThreshold
+  );
+}
+
+function hasInteractionMedianStableButWorstCaseExceeded(
+  evidence,
+  {
+    latencyThreshold,
+    settleThreshold,
+    anchorShiftThreshold,
+    rowHeightThreshold,
+    blankGapThreshold,
+  },
+) {
+  const latency = evidence.metricSummary?.interaction_latency_ms;
+  const settle = evidence.metricSummary?.settle_duration_ms;
+  const anchorShift = evidence.metricSummary?.post_interaction_anchor_shift_px;
+  const rowHeight =
+    evidence.metricSummary?.post_interaction_row_height_error_p95_px;
+  const blankGap = evidence.metricSummary?.post_interaction_blank_gap_frames;
+
+  return (
+    latency?.median <= latencyThreshold &&
+    settle?.median <= settleThreshold &&
+    anchorShift?.median <= anchorShiftThreshold &&
+    rowHeight?.median <= rowHeightThreshold &&
+    blankGap?.median <= blankGapThreshold &&
+    (latency?.max > latencyThreshold ||
+      settle?.max > settleThreshold ||
+      anchorShift?.max > anchorShiftThreshold ||
+      rowHeight?.max > rowHeightThreshold ||
+      blankGap?.max > blankGapThreshold)
   );
 }
 

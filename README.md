@@ -83,6 +83,12 @@ PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S2 PRETABLE_BENCH_SCALE=
 PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S2 PRETABLE_BENCH_SCALE=dev PRETABLE_BENCH_SCRIPT=filter-text pnpm bench:e2e -- --project=chromium
 ```
 
+For the repeated local interaction proof pass:
+
+```bash
+pnpm bench:matrix -- --project=chromium --adapters=pretable --scenarios=S2 --scripts=sort,filter-metadata,filter-text --repeats=3
+```
+
 Pretable benchmark summaries now preserve two layers of evidence:
 
 - viewport-policy notes from the scroll surface
@@ -135,11 +141,11 @@ Off-screen autosize and streaming updates are intentionally deferred as first-cl
 ## Current Risks
 
 - Scroll proof is now materially better than the earlier failing checkpoint. The latest repeated Chromium `S2/dev/scroll` runset at `status/runsets/2026-04-14t20-16-32-016z.hypotheses.json` satisfies both `H1` and `H3`, and the latest repeated Chromium `S2/hypothesis/scroll` runset at `status/runsets/2026-04-14t20-20-01-263z.hypotheses.json` also keeps both satisfied.
-- Interaction proof is mixed at the current head:
-  - the repeated Chromium `S2/dev` interaction runset at `status/runsets/2026-04-15t04-18-07-253z.hypotheses.json` satisfies `H6` (`sort`) and `H7` (`filter-metadata`)
-  - the same runset fails `H8` (`filter-text`) because text filtering still induces large post-filter anchor shifts
-  - the repeated Chromium `S2/hypothesis` interaction runset at `status/runsets/2026-04-15t04-19-10-257z.hypotheses.json` fails both `H6` and `H7` on current absolute thresholds
-- Current interaction evidence means the wedge is broader than passive scroll now, but it is not yet broad enough to claim robust large-scale interaction superiority.
+- Interaction proof is materially stronger on the current `dev` slice, but not uniformly clean:
+  - the repeated Chromium `S2/dev` interaction runset at `status/runsets/2026-04-15t06-03-15-343z.hypotheses.json` satisfies `H7` (`filter-metadata`) and `H8` (`filter-text`)
+  - the same runset leaves `H6` (`sort`) failing on worst-case repeats even though current medians stay inside the thresholds; one repeat hit `74.6ms` interaction latency
+  - the remaining gap is promotion and variance control, not basic instrumentation: the interaction hypotheses still need a fresh larger-scale `hypothesis` rerun after the current sort variance is understood
+- Current interaction evidence means the wedge now covers passive wrapped-text scroll and two local `S2` filter interactions on repeated Chromium `dev` runs. Sort is measured and generally favorable, but it is not yet stable enough to treat as proven under the current worst-case threshold discipline.
 - The benchmark and playground are tighter now, but `@pretable/react/internal` is still an internal seam. It should keep absorbing prototype-specific composition until the public API is deliberate.
 - Streaming is still architectural intent, not implemented evidence.
 

@@ -1,3 +1,5 @@
+import { useMemo, useState } from "react";
+
 import type { PretableTelemetry } from "@pretable/react/internal";
 import { PretableSurface } from "@pretable/react/internal";
 import type { ScenarioDataset } from "@pretable-internal/scenario-data";
@@ -30,22 +32,53 @@ export function PretableAdapter({
   onTelemetryChange,
   runKey,
 }: PretableAdapterProps) {
+  const [interactionMetrics, setInteractionMetrics] = useState(() => ({
+    focusedRowId: null as string | null,
+    resultRowCount: dataset.rows.length,
+    selectedRowId: null as string | null,
+  }));
+  const surfaceColumns = useMemo(() => [...dataset.columns], [dataset.columns]);
+  const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
+
+  const handleTelemetryChange = (telemetry: PretableTelemetry) => {
+    onTelemetryChange?.(telemetry);
+    setInteractionMetrics((current) => {
+      const next = {
+        focusedRowId: telemetry.focusedRowId,
+        resultRowCount: telemetry.rowModelRowCount,
+        selectedRowId: telemetry.selectedRowId,
+      };
+
+      return current.focusedRowId === next.focusedRowId &&
+        current.resultRowCount === next.resultRowCount &&
+        current.selectedRowId === next.selectedRowId
+        ? current
+        : next;
+    });
+  };
+
   return (
     <section
       aria-label="Pretable React adapter"
       className="adapter-surface"
       data-benchmark-adapter="pretable"
+      data-bench-focused-row-id={interactionMetrics.focusedRowId ?? ""}
       data-bench-focused-row-preserved={
         interactionPlan
-          ? String(Boolean(interactionPlan.focusedRowId))
+          ? String(interactionMetrics.focusedRowId === interactionPlan.focusedRowId)
           : "false"
       }
       data-bench-result-row-count={
-        interactionPlan ? String(interactionPlan.resultRowCount) : String(dataset.rows.length)
+        interactionPlan
+          ? String(interactionMetrics.resultRowCount)
+          : String(dataset.rows.length)
       }
+      data-bench-selected-row-id={interactionMetrics.selectedRowId ?? ""}
       data-bench-selected-row-preserved={
         interactionPlan
-          ? String(Boolean(interactionPlan.selectedRowId))
+          ? String(
+              interactionMetrics.selectedRowId === interactionPlan.selectedRowId,
+            )
           : "false"
       }
       key={runKey}
@@ -73,7 +106,7 @@ export function PretableAdapter({
 
       <PretableSurface
         ariaLabel="Pretable React adapter"
-        columns={[...dataset.columns]}
+        columns={surfaceColumns}
         getRowId={getScenarioRowId}
         interactionState={
           interactionPlan
@@ -85,11 +118,11 @@ export function PretableAdapter({
               }
             : null
         }
-        onTelemetryChange={onTelemetryChange}
+        onTelemetryChange={handleTelemetryChange}
         overscan={4}
         renderBodyCell={({ value }) => String(value ?? "")}
         renderHeaderCell={({ label }) => label}
-        rows={[...dataset.rows]}
+        rows={surfaceRows}
         viewportHeight={VIEWPORT_HEIGHT}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
       />

@@ -239,19 +239,30 @@ export function validateSupportedP0aRequest(
     };
   }
 
-  if (
-    ![
-      "initial",
-      "scroll",
-      "sort",
-      "filter-metadata",
-      "filter-text",
-    ].includes(request.scriptName)
-  ) {
+  const interactionScripts = ["sort", "filter-metadata", "filter-text"];
+  const supportedScripts = ["initial", "scroll", ...interactionScripts];
+
+  if (!supportedScripts.includes(request.scriptName)) {
     return {
       ok: false,
       reason: `Unsupported script for P0a: ${request.scriptName}`,
     };
+  }
+
+  if (interactionScripts.includes(request.scriptName)) {
+    if (request.adapterId !== "pretable") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for interaction script ${request.scriptName}: ${request.adapterId}`,
+      };
+    }
+
+    if (request.scenarioId !== "S2") {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for interaction script ${request.scriptName}: ${request.scenarioId}`,
+      };
+    }
   }
 
   return { ok: true };

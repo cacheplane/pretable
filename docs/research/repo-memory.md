@@ -148,3 +148,19 @@
 - Current conclusion:
   - Pretable now has broader proof than passive scroll alone
   - the next highest-value technical gap is interaction stability and threshold discipline at larger scale, especially wrapped-text filter anchor behavior
+
+## 2026-04-15
+
+### Interaction proof recovery
+
+- The local interaction path is materially stronger after two real fixes:
+  - the Pretable bench adapter no longer recreates `rows` and `columns` on telemetry-driven rerenders, which had been resetting the grid during `filter-text`
+  - post-interaction anchor metrics now reset their baseline on the first changed frame, so they measure instability after the mutation instead of counting the mutation itself as drift
+- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-15t06-03-15-343z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-15t06-03-15-343z.hypotheses.json) is stronger than the earlier failing checkpoint, but still mixed:
+  - `H6`: failing on worst-case repeat latency even though medians are within threshold
+  - `H7`: satisfied
+  - `H8`: satisfied
+- Current conclusion:
+  - Pretable now has repeated-run `dev` proof for wrapped-text metadata filtering and wrapped-text primary-column filtering on top of the earlier `S2` scroll proof
+  - local sort is instrumented and directionally favorable, but it still needs variance reduction before it is an honest repeated-run proof claim
+  - the next honest gaps are sort variance analysis and then promotion: rerun the interaction slice at larger `hypothesis` scale before claiming broad interaction superiority

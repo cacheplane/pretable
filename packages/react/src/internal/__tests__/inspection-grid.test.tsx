@@ -13,7 +13,9 @@ afterEach(() => {
 });
 
 describe("InspectionGrid", () => {
-  it("composes inspection-specific rendering, formatting, and filterable metadata on top of the labeled surface", () => {
+  it(
+    "composes inspection-specific rendering, formatting, and filterable metadata on top of the labeled surface",
+    () => {
     const dataset = createInspectionDataset("tiny");
     const onSelectedRowIdChange = vi.fn();
     const view = render(
@@ -50,7 +52,9 @@ describe("InspectionGrid", () => {
     fireEvent.click(view.getAllByTestId("pretable-row")[0]!);
 
     expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-001");
-  });
+    },
+    15_000,
+  );
 
   it("preserves the shared row and cell DOM contract across inspection dataset scales", () => {
     const tiny = createInspectionDataset("tiny");

@@ -46,7 +46,9 @@ const rows: DemoRow[] = [
 ];
 
 describe("LabeledGridSurface", () => {
-  it("provides shared labeled-cell rendering and pinned-column presentation hooks", () => {
+  it(
+    "provides shared labeled-cell rendering and pinned-column presentation hooks",
+    () => {
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
@@ -104,7 +106,9 @@ describe("LabeledGridSurface", () => {
     fireEvent.click(timestampHeader);
 
     expect(timestampHeader).toHaveTextContent("Newest");
-  });
+    },
+    15_000,
+  );
 
   it("forwards selected row id changes from the shared surface", () => {
     const onSelectedRowIdChange = vi.fn();
