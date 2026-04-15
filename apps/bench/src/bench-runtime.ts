@@ -52,9 +52,11 @@ export function createPretableTelemetryNotes(
   return [
     `internal telemetry rendered rows: ${telemetry.renderedRowCount}`,
     `internal telemetry visible rows: ${telemetry.visibleRowCount}`,
+    `internal telemetry total rows: ${telemetry.totalRowCount}`,
     `internal telemetry planned height: ${telemetry.totalHeight}`,
     `internal telemetry viewport range: ${telemetry.visibleRowRange.start}-${telemetry.visibleRowRange.end}`,
     `internal telemetry selected row: ${telemetry.selectedRowId ?? "none"}`,
+    `internal telemetry focused row: ${telemetry.focusedRowId ?? "none"}`,
   ];
 }
 
@@ -80,10 +82,17 @@ export interface ScrollBenchRunResult {
   notes: string[];
 }
 
+export interface InteractionBenchRunResult {
+  status: "completed" | "partial";
+  metrics: Partial<Record<BenchMetricId, number>>;
+  notes: string[];
+}
+
 interface ScrollRuntimeProfile {
   viewportSelector: string;
   rowSelector: string;
   cellSelector: string;
+  rowIdAttribute?: string;
   rowIndexAttribute: string;
   maxSettleFrames: number;
   measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
@@ -97,6 +106,7 @@ const scrollRuntimeProfiles: Record<
     viewportSelector: ".ag-body-viewport",
     rowSelector: ".ag-row",
     cellSelector: ".ag-cell",
+    rowIdAttribute: "row-id",
     rowIndexAttribute: "row-index",
     maxSettleFrames: 1,
     measureRowHeightError: measureAgGridRowHeightError,
@@ -105,6 +115,7 @@ const scrollRuntimeProfiles: Record<
     viewportSelector: "[data-pretable-scroll-viewport]",
     rowSelector: "[data-pretable-row]",
     cellSelector: "[data-pretable-cell]",
+    rowIdAttribute: "data-row-id",
     rowIndexAttribute: "data-row-index",
     maxSettleFrames: 4,
     measureRowHeightError: (row, renderedHeight) =>
@@ -118,6 +129,7 @@ const scrollRuntimeProfiles: Record<
     viewportSelector: "[data-tanstack-scroll-viewport]",
     rowSelector: "[data-tanstack-row]",
     cellSelector: "[data-tanstack-cell]",
+    rowIdAttribute: "data-row-id",
     rowIndexAttribute: "data-row-index",
     maxSettleFrames: 4,
     measureRowHeightError: (row, renderedHeight) =>
@@ -306,6 +318,166 @@ export function measurePretableScrollRun(
   root: HTMLElement,
 ): Promise<ScrollBenchRunResult> {
   return measureBenchScrollRun(root, "pretable");
+}
+
+export async function measureBenchInteractionRun(
+  root: HTMLElement,
+  adapterId: BenchQueryState["adapterId"],
+  mode: "sort" | "filter-metadata" | "filter-text",
+  trigger: () => void,
+): Promise<InteractionBenchRunResult> {
+  const profile = scrollRuntimeProfiles[adapterId];
+  const viewport = await waitForScrollViewport(root, profile.viewportSelector);
+  const viewportPolicyNotes = viewport
+    ? detectViewportPolicyNotes(viewport)
+    : [];
+
+  if (!viewport) {
+    return {
+      status: "partial",
+      notes: [
+        ...viewportPolicyNotes,
+        `interaction mode: ${mode}`,
+        `interaction viewport unavailable for ${adapterId} in current runtime`,
+      ],
+      metrics: {
+        dom_nodes_peak: root.querySelectorAll("*").length,
+      },
+    };
+  }
+
+  const baselineState = readBenchInteractionState(root);
+  const baselineVisibleRows = sampleVisibleRows(viewport, profile);
+  const baselineSignature = createVisibleRowSignature(
+    baselineVisibleRows,
+    baselineState.resultRowCount,
+  );
+  const startTimestamp = await waitForAnimationFrame();
+
+  trigger();
+
+  let domNodesPeak = root.querySelectorAll("*").length;
+  let renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
+  let renderedCellsPeak = root.querySelectorAll(profile.cellSelector).length;
+  let firstChangedAt: number | null = null;
+  let settledAt: number | null = null;
+  let blankGapFrames = 0;
+  const rowHeightErrors: number[] = [];
+  const anchorShifts: number[] = [];
+  let previousVisibleRows = baselineVisibleRows;
+  let previousScrollTop = viewport.scrollTop;
+  let previousSignature = baselineSignature;
+  let previousState = baselineState;
+  let stableFrames = 0;
+
+  for (let frame = 0; frame < profile.maxSettleFrames + 12; frame += 1) {
+    const timestamp = await waitForAnimationFrame();
+    const visibleRows = sampleVisibleRows(viewport, profile);
+    const interactionState = readBenchInteractionState(root);
+    const signature = createVisibleRowSignature(
+      visibleRows,
+      interactionState.resultRowCount,
+    );
+    const hasBlankGap = detectBlankGapFrame(viewport, profile.rowSelector);
+
+    domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
+    renderedRowsPeak = Math.max(
+      renderedRowsPeak,
+      root.querySelectorAll(profile.rowSelector).length,
+    );
+    renderedCellsPeak = Math.max(
+      renderedCellsPeak,
+      root.querySelectorAll(profile.cellSelector).length,
+    );
+
+    if (
+      firstChangedAt === null &&
+      (signature !== baselineSignature ||
+        interactionState.resultRowCount !== baselineState.resultRowCount)
+    ) {
+      firstChangedAt = timestamp;
+    }
+
+    if (firstChangedAt === null) {
+      previousVisibleRows = visibleRows;
+      previousScrollTop = viewport.scrollTop;
+      previousSignature = signature;
+      previousState = interactionState;
+      continue;
+    }
+
+    if (hasBlankGap) {
+      blankGapFrames += 1;
+    }
+
+    rowHeightErrors.push(
+      ...visibleRows.map((row) => row.heightError).filter((value) => value > 0),
+    );
+
+    const anchorShift = measureAnchorShift({
+      previousVisibleRows,
+      previousScrollTop,
+      nextVisibleRows: visibleRows,
+      nextScrollTop: viewport.scrollTop,
+    });
+
+    if (anchorShift !== null) {
+      anchorShifts.push(anchorShift);
+    }
+
+    if (
+      signature === previousSignature &&
+      interactionState.resultRowCount === previousState.resultRowCount &&
+      interactionState.selectedRowPreserved === previousState.selectedRowPreserved &&
+      interactionState.focusedRowPreserved === previousState.focusedRowPreserved
+    ) {
+      stableFrames += 1;
+    } else {
+      stableFrames = 0;
+    }
+
+    previousVisibleRows = visibleRows;
+    previousScrollTop = viewport.scrollTop;
+    previousSignature = signature;
+    previousState = interactionState;
+
+    if (stableFrames >= Math.max(0, profile.maxSettleFrames - 1)) {
+      settledAt = timestamp;
+      break;
+    }
+  }
+
+  if (firstChangedAt === null || settledAt === null) {
+    return {
+      status: "partial",
+      notes: [...viewportPolicyNotes, `interaction mode: ${mode}`],
+      metrics: {
+        dom_nodes_peak: domNodesPeak,
+        rendered_rows_peak: renderedRowsPeak,
+        rendered_cells_peak: renderedCellsPeak,
+      },
+    };
+  }
+
+  const finalState = readBenchInteractionState(root);
+
+  return {
+    status: "completed",
+    notes: [...viewportPolicyNotes, `interaction mode: ${mode}`],
+    metrics: {
+      interaction_latency_ms: firstChangedAt - startTimestamp,
+      settle_duration_ms: settledAt - firstChangedAt,
+      post_interaction_blank_gap_frames: blankGapFrames,
+      post_interaction_anchor_shift_px: percentile(anchorShifts, 0.95),
+      post_interaction_row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
+      result_row_count: finalState.resultRowCount,
+      selected_row_preserved: finalState.selectedRowPreserved ? 1 : 0,
+      focused_row_preserved: finalState.focusedRowPreserved ? 1 : 0,
+      dom_nodes_peak: domNodesPeak,
+      rendered_rows_peak: renderedRowsPeak,
+      rendered_cells_peak: renderedCellsPeak,
+    },
+  };
 }
 
 function createLongTaskObserver(longTaskDurations: number[]) {
@@ -503,6 +675,7 @@ async function* waitForSettledScrollSample(
 }
 
 interface VisibleRowSample {
+  rowId: string;
   rowIndex: number;
   top: number;
   heightError: number;
@@ -519,12 +692,16 @@ function sampleVisibleRows(
       const rect = row.getBoundingClientRect();
       const clippedTop = Math.max(rect.top, viewportBounds.top);
       const clippedBottom = Math.min(rect.bottom, viewportBounds.bottom);
+      const rowIndex = Number(row.getAttribute(profile.rowIndexAttribute));
 
       if (clippedBottom <= clippedTop) {
         return null;
       }
 
       return {
+        rowId:
+          row.getAttribute(profile.rowIdAttribute ?? "") ??
+          getRowIdentityFallback(row, profile.cellSelector, rowIndex),
         rowIndex: Number(row.getAttribute(profile.rowIndexAttribute)),
         top: rect.top - viewportBounds.top,
         heightError: profile.measureRowHeightError(row, rect.height),
@@ -540,17 +717,17 @@ function measureAnchorShift(input: {
   nextScrollTop: number;
 }) {
   const previousByIndex = new Map(
-    input.previousVisibleRows.map((row) => [row.rowIndex, row]),
+    input.previousVisibleRows.map((row) => [row.rowId, row]),
   );
   const nextMatch = input.nextVisibleRows.find((row) =>
-    previousByIndex.has(row.rowIndex),
+    previousByIndex.has(row.rowId),
   );
 
   if (!nextMatch) {
     return null;
   }
 
-  const previousMatch = previousByIndex.get(nextMatch.rowIndex);
+  const previousMatch = previousByIndex.get(nextMatch.rowId);
 
   if (!previousMatch) {
     return null;
@@ -560,6 +737,37 @@ function measureAnchorShift(input: {
     previousMatch.top - (input.nextScrollTop - input.previousScrollTop);
 
   return Math.abs(nextMatch.top - expectedTop);
+}
+
+function createVisibleRowSignature(
+  rows: VisibleRowSample[],
+  resultRowCount: number,
+) {
+  return `${resultRowCount}:${rows
+    .map((row) => `${row.rowId}@${Math.round(row.top)}`)
+    .join("|")}`;
+}
+
+function getRowIdentityFallback(
+  row: HTMLElement,
+  cellSelector: string,
+  rowIndex: number,
+) {
+  const firstCell = row.querySelector<HTMLElement>(cellSelector);
+
+  return firstCell?.textContent?.trim() || `row-${rowIndex}`;
+}
+
+function readBenchInteractionState(root: HTMLElement) {
+  const adapter = root.querySelector<HTMLElement>("[data-benchmark-adapter]");
+
+  return {
+    resultRowCount: Number(adapter?.dataset.benchResultRowCount ?? "0"),
+    selectedRowPreserved:
+      adapter?.dataset.benchSelectedRowPreserved === "true",
+    focusedRowPreserved:
+      adapter?.dataset.benchFocusedRowPreserved === "true",
+  };
 }
 
 function getViewportContentBounds(viewport: HTMLElement) {

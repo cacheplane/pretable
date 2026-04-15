@@ -33,8 +33,10 @@ export interface PretableRenderSnapshot<
 }
 
 export interface PretableTelemetry {
+  focusedRowId: string | null;
   renderedRowCount: number;
   selectedRowId: string | null;
+  totalRowCount: number;
   totalHeight: number;
   visibleRowCount: number;
   visibleRowRange: {
@@ -125,8 +127,10 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
     const lastVisibleRow = viewportRows[viewportRows.length - 1];
 
     return {
+      focusedRowId: snapshot.focus.rowId,
       renderedRowCount: renderSnapshot.rows.length,
       selectedRowId: snapshot.selection.rowIds[0] ?? null,
+      totalRowCount: snapshot.totalRowCount,
       totalHeight: renderSnapshot.totalHeight,
       visibleRowCount: viewportRows.length,
       visibleRowRange: firstVisibleRow && lastVisibleRow
@@ -142,7 +146,9 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
   }, [
     renderSnapshot.rows,
     renderSnapshot.totalHeight,
+    snapshot.focus.rowId,
     snapshot.selection.rowIds,
+    snapshot.totalRowCount,
     snapshot.viewport.height,
     snapshot.viewport.scrollTop,
     viewportHeight,
