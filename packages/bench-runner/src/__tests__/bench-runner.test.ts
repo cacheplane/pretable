@@ -42,7 +42,14 @@ describe("bench-runner contract", () => {
         "rendered_cells_peak",
         "heap_delta_mb",
         "ua_memory_mb",
-        "interaction_latency_p95_ms",
+        "interaction_latency_ms",
+        "settle_duration_ms",
+        "post_interaction_blank_gap_frames",
+        "post_interaction_anchor_shift_px",
+        "post_interaction_row_height_error_p95_px",
+        "result_row_count",
+        "selected_row_preserved",
+        "focused_row_preserved",
         "row_height_error_p95_px",
         "autosize_error_p95_px",
         "update_latency_p95_ms",
@@ -57,7 +64,8 @@ describe("bench-runner contract", () => {
       "initial",
       "scroll",
       "sort",
-      "filter",
+      "filter-metadata",
+      "filter-text",
       "updates",
       "autosize",
     ]);
@@ -79,6 +87,30 @@ describe("bench-runner contract", () => {
         adapterId: "tanstack",
         scenarioId: "S2",
         scriptName: "scroll",
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "pretable",
+        scenarioId: "S2",
+        scriptName: "sort",
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "ag-grid",
+        scenarioId: "S2",
+        scriptName: "filter-metadata",
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "tanstack",
+        scenarioId: "S2",
+        scriptName: "filter-text",
       }),
     ).toEqual({ ok: true });
 
@@ -132,6 +164,23 @@ describe("bench-runner contract", () => {
         },
       }),
     ).toThrow(/Unsupported/);
+
+    expect(() =>
+      createBenchRunSummary({
+        request: {
+          ...baseRequest,
+          scenarioId: "S2",
+          scriptName: "sort",
+        },
+        status: "completed",
+        timestamp: "2026-04-10T13:00:00.000Z",
+        tracePath: "status/traces/pretable-s2-default-sort.trace.zip",
+        metrics: {
+          interaction_latency_ms: 24,
+          dom_nodes_peak: 64,
+        },
+      }),
+    ).toThrow(/settle_duration_ms/);
   });
 
   test("serializes unsupported, partial, and completed runs with stable fields", () => {
