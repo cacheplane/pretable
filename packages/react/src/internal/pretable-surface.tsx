@@ -257,6 +257,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       return;
     }
 
+    const plannedHeight = Number(node.getAttribute("data-row-height"));
+    const cachedHeight = measuredHeightsRef.current[rowId];
+
+    if (
+      Number.isFinite(plannedHeight) &&
+      cachedHeight !== undefined &&
+      cachedHeight === plannedHeight
+    ) {
+      return;
+    }
+
     const measuredHeight = measureRenderedRowHeight(node);
 
     if (measuredHeight <= DEFAULT_ROW_HEIGHT) {
