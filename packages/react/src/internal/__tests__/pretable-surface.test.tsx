@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
+import * as rowHeight from "../../row-height";
 import { usePretableModel } from "../../use-pretable";
 
 afterEach(() => {
@@ -394,6 +395,66 @@ describe("PretableSurface", () => {
         .find((row) => row.getAttribute("data-row-id") === "evt-002");
 
       expect(tallRow).toHaveAttribute("data-row-height", "141");
+    });
+  });
+
+  it("does not remeasure a cached tall row height when a sort reorders the same rows", async () => {
+    const measureRenderedRowHeightSpy = vi.spyOn(
+      rowHeight,
+      "measureRenderedRowHeight",
+    );
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          paddingTop: "10px",
+          paddingBottom: "10px",
+          borderBottomWidth: "1px",
+        }) as CSSStyleDeclaration,
+    );
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+      function () {
+        if (this.textContent?.includes("Tall row")) {
+          return 120;
+        }
+
+        return 22;
+      },
+    );
+
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        overscan={0}
+        rows={rows}
+        viewportHeight={520}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(measureRenderedRowHeightSpy).toHaveBeenCalled();
+    });
+
+    const severityButton = view.container.querySelector(
+      'button[aria-label="Sort Severity"]',
+    );
+    expect(severityButton).not.toBeNull();
+    const tallRowMeasurementCount = () =>
+      measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
+        node.getAttribute("data-row-id") === "evt-002",
+      ).length;
+
+    await waitFor(() => {
+      expect(tallRowMeasurementCount()).toBeGreaterThanOrEqual(2);
+    });
+
+    const initialTallRowMeasurementCount = tallRowMeasurementCount();
+
+    fireEvent.click(severityButton!);
+
+    await waitFor(() => {
+      expect(tallRowMeasurementCount()).toBe(initialTallRowMeasurementCount);
     });
   });
 });
