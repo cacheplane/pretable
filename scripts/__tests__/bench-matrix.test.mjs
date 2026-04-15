@@ -211,7 +211,16 @@ test("createBenchPreviewLaunch builds explicitly and starts vite preview directl
   });
   assert.deepEqual(launch.preview, {
     command: "pnpm",
-    args: ["exec", "vite", "preview", "--host", "127.0.0.1", "--port", "4173"],
+    args: [
+      "exec",
+      "vite",
+      "preview",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "4173",
+      "--strictPort",
+    ],
     cwd: "/repo/pretable/apps/bench",
   });
 });
@@ -428,6 +437,134 @@ test("createHypothesisReport emits H6 when sort interaction evidence exists", ()
   assert.ok(h6);
   assert.equal(h6.status, "satisfied");
   assert.match(h6.summary, /sort/i);
+});
+
+test("createHypothesisReport does not satisfy H6 when worst-case repeats exceed interaction thresholds", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-14t21-10-00-000z",
+    generatedAt: "2026-04-14T21:12:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "sort",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-sort-2026-04-14t21-10-00-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 1,
+        scenarioId: "S2",
+        scriptName: "sort",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-sort-2026-04-14t21-10-10-000z.summary.json",
+      },
+      {
+        adapterId: "pretable",
+        repeatIndex: 2,
+        scenarioId: "S2",
+        scriptName: "sort",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-sort-2026-04-14t21-10-20-000z.summary.json",
+      },
+    ],
+    runs: [
+      {
+        adapterId: "pretable",
+        profile: "default",
+        scenarioId: "S2",
+        scale: "dev",
+        scriptName: "sort",
+        browserName: "chromium",
+        browserVersion: "123.0",
+        timestamp: "2026-04-14T21:10:00.000Z",
+        seed: 202,
+        rowCount: 750,
+        viewport: { width: 1440, height: 900 },
+        fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+        deviceScaleFactor: 1,
+        status: "completed",
+        notes: ["interaction mode: sort"],
+        tracePath: "status/traces/pretable-sort-0.trace.zip",
+        metrics: {
+          interaction_latency_ms: 20,
+          settle_duration_ms: 18,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 750,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 400,
+        },
+      },
+      {
+        adapterId: "pretable",
+        profile: "default",
+        scenarioId: "S2",
+        scale: "dev",
+        scriptName: "sort",
+        browserName: "chromium",
+        browserVersion: "123.0",
+        timestamp: "2026-04-14T21:10:10.000Z",
+        seed: 202,
+        rowCount: 750,
+        viewport: { width: 1440, height: 900 },
+        fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+        deviceScaleFactor: 1,
+        status: "completed",
+        notes: ["interaction mode: sort"],
+        tracePath: "status/traces/pretable-sort-1.trace.zip",
+        metrics: {
+          interaction_latency_ms: 24,
+          settle_duration_ms: 20,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 750,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 400,
+        },
+      },
+      {
+        adapterId: "pretable",
+        profile: "default",
+        scenarioId: "S2",
+        scale: "dev",
+        scriptName: "sort",
+        browserName: "chromium",
+        browserVersion: "123.0",
+        timestamp: "2026-04-14T21:10:20.000Z",
+        seed: 202,
+        rowCount: 750,
+        viewport: { width: 1440, height: 900 },
+        fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+        deviceScaleFactor: 1,
+        status: "completed",
+        notes: ["interaction mode: sort"],
+        tracePath: "status/traces/pretable-sort-2.trace.zip",
+        metrics: {
+          interaction_latency_ms: 120,
+          settle_duration_ms: 85,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 64,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 750,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 420,
+        },
+      },
+    ],
+  });
+
+  const h6 = report.hypotheses.find((hypothesis) => hypothesis.id === "H6");
+
+  assert.ok(h6);
+  assert.equal(h6.status, "failing");
+  assert.match(h6.summary, /worst-case|thresholds/i);
 });
 
 test("createHypothesisReport aggregates repeated runs by median instead of trusting the latest sample", () => {

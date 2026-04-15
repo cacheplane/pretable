@@ -34,6 +34,7 @@ export interface PretableRenderSnapshot<
 
 export interface PretableTelemetry {
   focusedRowId: string | null;
+  rowModelRowCount: number;
   renderedRowCount: number;
   selectedRowId: string | null;
   totalRowCount: number;
@@ -128,6 +129,7 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
 
     return {
       focusedRowId: snapshot.focus.rowId,
+      rowModelRowCount: snapshot.visibleRows.length,
       renderedRowCount: renderSnapshot.rows.length,
       selectedRowId: snapshot.selection.rowIds[0] ?? null,
       totalRowCount: snapshot.totalRowCount,
@@ -147,6 +149,7 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
     renderSnapshot.rows,
     renderSnapshot.totalHeight,
     snapshot.focus.rowId,
+    snapshot.visibleRows.length,
     snapshot.selection.rowIds,
     snapshot.totalRowCount,
     snapshot.viewport.height,

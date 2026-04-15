@@ -4,9 +4,12 @@ import { createScenarioDataset } from "@pretable-internal/scenario-data";
 
 import {
   BENCH_RESULT_KEY,
+  createBenchInteractionStateFromTelemetry,
+  getMaxInteractionFrames,
   createPretableTelemetryNotes,
   createBenchRequest,
   detectBlankGapFrame,
+  measureBenchInteractionRun,
   measureBenchScrollRun,
   measurePretableScrollRun,
   publishBenchResult,
@@ -82,6 +85,7 @@ describe("bench runtime", () => {
     expect(
       createPretableTelemetryNotes({
         focusedRowId: null,
+        rowModelRowCount: 750,
         renderedRowCount: 8,
         selectedRowId: "evt-dev-0001",
         totalRowCount: 750,
@@ -103,6 +107,155 @@ describe("bench runtime", () => {
     ]);
 
     expect(createPretableTelemetryNotes(null)).toEqual([]);
+  });
+
+  test("derives interaction state directly from pretable telemetry", () => {
+    expect(
+      createBenchInteractionStateFromTelemetry(
+        {
+          focusedRowId: "evt-002",
+          rowModelRowCount: 187,
+          renderedRowCount: 7,
+          selectedRowId: "evt-002",
+          totalRowCount: 750,
+          totalHeight: 24115,
+          visibleRowCount: 3,
+          visibleRowRange: {
+            start: 0,
+            end: 3,
+          },
+        },
+        750,
+      ),
+    ).toEqual({
+      focusedRowId: "evt-002",
+      resultRowCount: 187,
+      selectedRowId: "evt-002",
+    });
+
+    expect(createBenchInteractionStateFromTelemetry(null, 750)).toEqual({
+      focusedRowId: null,
+      resultRowCount: 750,
+      selectedRowId: null,
+    });
+  });
+
+  test("extends the interaction settle budget for wrapped-text filtering", () => {
+    expect(getMaxInteractionFrames(4, "sort")).toBe(48);
+    expect(getMaxInteractionFrames(4, "filter-metadata")).toBe(48);
+    expect(getMaxInteractionFrames(4, "filter-text")).toBe(96);
+  });
+
+  test("does not count the first intentional filter jump as post-interaction anchor drift", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <section data-benchmark-adapter="pretable">
+          <div data-pretable-scroll-viewport="">
+            <div data-pretable-row="" data-row-id="row-a" data-row-index="0">
+              <div data-pretable-cell="">row a</div>
+            </div>
+            <div data-pretable-row="" data-row-id="row-b" data-row-index="1">
+              <div data-pretable-cell="">row b</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    const viewport = root?.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+    const rows = [
+      ...root!.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const cells = [
+      ...root!.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
+    let phase: "baseline" | "filtered" = "baseline";
+    let frame = 0;
+
+    expect(root).toBeTruthy();
+    expect(viewport).toBeTruthy();
+    expect(rows).toHaveLength(2);
+    expect(cells).toHaveLength(2);
+
+    Object.defineProperties(viewport!, {
+      clientTop: { value: 0, configurable: true },
+      clientHeight: { value: 120, configurable: true },
+      scrollHeight: { value: 240, configurable: true },
+      scrollTop: {
+        configurable: true,
+        get() {
+          return 0;
+        },
+      },
+    });
+    viewport!.getBoundingClientRect = () =>
+      createRect({
+        top: 100,
+        bottom: 220,
+      });
+
+    rows[0]!.getBoundingClientRect = () =>
+      phase === "baseline"
+        ? createRect({ top: 100, bottom: 160 })
+        : createRect({ top: 0, bottom: 0 });
+    rows[1]!.getBoundingClientRect = () =>
+      phase === "baseline"
+        ? createRect({ top: 160, bottom: 220 })
+        : createRect({ top: 100, bottom: 160 });
+
+    for (const cell of cells) {
+      Object.defineProperty(cell, "scrollHeight", {
+        configurable: true,
+        value: 60,
+      });
+    }
+
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        frame += 1;
+        callback(frame * 16);
+        return frame;
+      },
+    });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        contain: "none",
+        containIntrinsicSize: "none",
+        contentVisibility: "visible",
+        overflowAnchor: "none",
+        overscrollBehavior: "contain",
+        paddingTop: "0",
+        paddingBottom: "0",
+        borderBottomWidth: "0",
+      }),
+    });
+
+    const result = await measureBenchInteractionRun(
+      root!,
+      "pretable",
+      "filter-text",
+      {
+        focusedRowId: "row-b",
+        resultRowCount: 1,
+        selectedRowId: "row-b",
+      },
+      () => ({
+        focusedRowId: "row-b",
+        resultRowCount: phase === "baseline" ? 2 : 1,
+        selectedRowId: "row-b",
+      }),
+      () => {
+        phase = "filtered";
+      },
+    );
+
+    expect(result.status).toBe("completed");
+    expect(result.metrics.post_interaction_anchor_shift_px).toBe(0);
   });
 
   test("detects interior viewport gaps instead of only top and bottom misses", () => {

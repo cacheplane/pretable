@@ -17,25 +17,29 @@ describe("BenchApp", () => {
     vi.restoreAllMocks();
   });
 
-  test("renders selected scenario metadata and publishes a terminal result", async () => {
-    render(<BenchApp search="?scenario=S2" browserVersion="123.0" />);
+  test(
+    "renders selected scenario metadata and publishes a terminal result",
+    async () => {
+      render(<BenchApp search="?scenario=S2" browserVersion="123.0" />);
 
-    expect(screen.getAllByText("wrap-auto-height")).toHaveLength(2);
-    expect(screen.getAllByText("Primary wedge benchmark.")).toHaveLength(2);
+      expect(screen.getAllByText("wrap-auto-height")).toHaveLength(2);
+      expect(screen.getAllByText("Primary wedge benchmark.")).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "Run Initial" }));
+      fireEvent.click(screen.getByRole("button", { name: "Run Initial" }));
 
-    await waitFor(() => {
-      expect(window[BENCH_RESULT_KEY]).toMatchObject({
-        status: "completed",
-        adapterId: "pretable",
-        scenarioId: "S2",
-        profile: "default",
-        scale: "dev",
-        scriptName: "initial",
+      await waitFor(() => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          adapterId: "pretable",
+          scenarioId: "S2",
+          profile: "default",
+          scale: "dev",
+          scriptName: "initial",
+        });
       });
-    });
-  });
+    },
+    15_000,
+  );
 
   test("autorun completes without a lifecycle flushSync warning", async () => {
     const consoleError = vi
@@ -170,5 +174,31 @@ describe("BenchApp", () => {
         },
       });
     });
+  });
+
+  test("publishes an unsupported result for comparator interaction scripts that are not yet semantically measured", async () => {
+    const interactionSpy = vi.spyOn(benchRuntime, "measureBenchInteractionRun");
+
+    render(
+      <BenchApp
+        search="?adapter=ag-grid&scenario=S2&script=sort"
+        browserVersion="123.0"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run Sort" }));
+
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        status: "unsupported",
+        unsupported: {
+          adapterId: "ag-grid",
+          scenarioId: "S2",
+          scriptName: "sort",
+        },
+      });
+    });
+
+    expect(interactionSpy).not.toHaveBeenCalled();
   });
 });

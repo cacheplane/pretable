@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { PretableTelemetry } from "@pretable/react/internal";
 
 import {
@@ -15,6 +15,7 @@ import {
 
 import type { BenchQueryState } from "./bench-types";
 import {
+  createBenchInteractionStateFromTelemetry,
   createPretableTelemetryNotes,
   createBenchRequest,
   measureBenchInteractionRun,
@@ -67,10 +68,6 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const dataset = createScenarioDataset(query.scenarioId, {
     scale: query.scale,
   });
-  const defaultInteractionPlan = useMemo(
-    () => createBenchInteractionPlan(dataset, query.scriptName),
-    [dataset, query.scriptName],
-  );
   const adapterDefinition = adapterRegistry[query.adapterId];
   const AdapterSurface = adapterDefinition.render;
   const [runKey, setRunKey] = useState(0);
@@ -85,7 +82,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const interactionPlan =
     interactionPlanOverride?.search === search
       ? interactionPlanOverride.plan
-      : defaultInteractionPlan;
+      : null;
 
   useEffect(() => {
     autorunRef.current = false;
@@ -146,17 +143,36 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         scriptName === "sort" ||
         scriptName === "filter-metadata" ||
         scriptName === "filter-text"
-          ? await measureBenchInteractionRun(
-              viewportRef.current ?? document.body,
-              query.adapterId,
-              scriptName,
-              () => {
-                setInteractionPlanOverride({
-                  plan: createBenchInteractionPlan(dataset, scriptName),
-                  search,
-                });
-              },
-            )
+          ? query.adapterId === "pretable"
+            ? await (() => {
+                const nextInteractionPlan = createBenchInteractionPlan(
+                  dataset,
+                  scriptName,
+                );
+
+                if (!nextInteractionPlan) {
+                  return null;
+                }
+
+                return measureBenchInteractionRun(
+                  viewportRef.current ?? document.body,
+                  query.adapterId,
+                  scriptName,
+                  nextInteractionPlan,
+                  () =>
+                    createBenchInteractionStateFromTelemetry(
+                      pretableTelemetryRef.current,
+                      dataset.rows.length,
+                    ),
+                  () => {
+                    setInteractionPlanOverride({
+                      plan: nextInteractionPlan,
+                      search,
+                    });
+                  },
+                );
+              })()
+          : null
           : null;
 
       const nextResult =
@@ -305,17 +321,14 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               <PretableAdapter
                 dataset={dataset}
                 interactionPlan={interactionPlan}
+                key={runKey}
                 onTelemetryChange={(telemetry) => {
                   pretableTelemetryRef.current = telemetry;
                 }}
                 runKey={runKey}
               />
             ) : (
-              <AdapterSurface
-                dataset={dataset}
-                interactionPlan={interactionPlan}
-                runKey={runKey}
-              />
+              <AdapterSurface dataset={dataset} key={runKey} runKey={runKey} />
             )}
           </div>
 

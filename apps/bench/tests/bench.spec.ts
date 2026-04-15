@@ -37,6 +37,25 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
 
   const result = await page.evaluate(() => window.__PRETABLE_BENCH_RESULT__);
 
+  const interactionScript =
+    scriptName === "sort" ||
+    scriptName === "filter-metadata" ||
+    scriptName === "filter-text";
+  const interactionSupported =
+    interactionScript && adapterId === "pretable" && scenarioId === "S2";
+
+  if (interactionScript && !interactionSupported) {
+    expect(result).toMatchObject({
+      status: "unsupported",
+      unsupported: {
+        adapterId,
+        scenarioId,
+        scriptName,
+      },
+    });
+    return;
+  }
+
   expect(result).toMatchObject({
     status: "completed",
     adapterId,
@@ -79,11 +98,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     expect(result.metrics.blank_gap_frames).toBeGreaterThanOrEqual(0);
   }
 
-  if (
-    scriptName === "sort" ||
-    scriptName === "filter-metadata" ||
-    scriptName === "filter-text"
-  ) {
+  if (interactionScript) {
     expect(result.notes).toContain(`interaction mode: ${scriptName}`);
     if (adapterId === "pretable") {
       expect(result.notes).toEqual(

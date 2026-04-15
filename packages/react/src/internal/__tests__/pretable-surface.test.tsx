@@ -79,6 +79,7 @@ describe("PretableSurface", () => {
     ) as Record<string, unknown>;
 
     expect(telemetry).toMatchObject({
+      rowModelRowCount: rows.length,
       renderedRowCount: expect.any(Number),
       selectedRowId: null,
       totalHeight: expect.any(Number),
