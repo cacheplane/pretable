@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
 import { usePretableModel } from "../../use-pretable";
+import * as rowHeight from "../../row-height";
 
 afterEach(() => {
   cleanup();
@@ -156,6 +157,43 @@ describe("PretableSurface", () => {
     expect(
       view.getAllByTestId("pretable-row").map((row) => row.getAttribute("data-row-id")),
     ).toEqual(["evt-002", "evt-003"]);
+  });
+
+  it("does not remeasure stable rows when sorting rerenders the surface", async () => {
+    const measureRenderedRowHeightSpy = vi
+      .spyOn(rowHeight, "measureRenderedRowHeight")
+      .mockReturnValue(44);
+
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={[
+          { id: "message", header: "Message" },
+        ]}
+        getRowId={(row: { id: string }) => row.id}
+        overscan={0}
+        rows={[
+          { id: "row-a", message: "B" },
+          { id: "row-b", message: "A" },
+        ]}
+        viewportHeight={132}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(measureRenderedRowHeightSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    measureRenderedRowHeightSpy.mockClear();
+
+    const sortButton = view.getByRole("button", { name: "Sort Message" });
+    fireEvent.click(sortButton);
+
+    await waitFor(() => {
+      expect(sortButton).toHaveTextContent("Newest");
+    });
+
+    expect(measureRenderedRowHeightSpy).toHaveBeenCalledTimes(0);
   });
 
   it("uses column accessors for body-cell content", () => {
