@@ -421,6 +421,7 @@ describe("PretableSurface", () => {
       },
     );
 
+    const expectedTallRowHeight = "141";
     const view = render(
       <PretableSurface
         ariaLabel="Inspection grid"
@@ -433,28 +434,33 @@ describe("PretableSurface", () => {
     );
 
     await waitFor(() => {
-      expect(measureRenderedRowHeightSpy).toHaveBeenCalled();
+      const tallRow = view
+        .getAllByTestId("pretable-row")
+        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+
+      expect(tallRow).toHaveAttribute("data-row-height", expectedTallRowHeight);
     });
+
+    measureRenderedRowHeightSpy.mockClear();
 
     const severityButton = view.container.querySelector(
       'button[aria-label="Sort Severity"]',
     );
     expect(severityButton).not.toBeNull();
-    const tallRowMeasurementCount = () =>
-      measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
-        node.getAttribute("data-row-id") === "evt-002",
-      ).length;
-
-    await waitFor(() => {
-      expect(tallRowMeasurementCount()).toBeGreaterThanOrEqual(2);
-    });
-
-    const initialTallRowMeasurementCount = tallRowMeasurementCount();
 
     fireEvent.click(severityButton!);
 
     await waitFor(() => {
-      expect(tallRowMeasurementCount()).toBe(initialTallRowMeasurementCount);
+      const tallRow = view
+        .getAllByTestId("pretable-row")
+        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+
+      expect(tallRow).toHaveAttribute("data-row-height", expectedTallRowHeight);
+      expect(
+        measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
+          node.getAttribute("data-row-id") === "evt-002",
+        ),
+      ).toHaveLength(0);
     });
   });
 });
