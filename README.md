@@ -74,16 +74,19 @@ pnpm bench:e2e -- --project=chromium
 pnpm bench:matrix -- --project=chromium --adapters=pretable,ag-grid,tanstack --scenarios=S2 --scripts=scroll --repeats=3
 ```
 
-For a focused Pretable scroll run that writes a real summary and trace:
+For focused runs that write real summaries and traces:
 
 ```bash
 PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S2 PRETABLE_BENCH_SCALE=dev PRETABLE_BENCH_SCRIPT=scroll pnpm bench:e2e -- --project=chromium
+PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S2 PRETABLE_BENCH_SCALE=dev PRETABLE_BENCH_SCRIPT=sort pnpm bench:e2e -- --project=chromium
+PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S2 PRETABLE_BENCH_SCALE=dev PRETABLE_BENCH_SCRIPT=filter-metadata pnpm bench:e2e -- --project=chromium
+PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S2 PRETABLE_BENCH_SCALE=dev PRETABLE_BENCH_SCRIPT=filter-text pnpm bench:e2e -- --project=chromium
 ```
 
 Pretable benchmark summaries now preserve two layers of evidence:
 
 - viewport-policy notes from the scroll surface
-- internal telemetry notes from the shared React path, such as rendered rows, visible rows, planned height, viewport range, and selected row
+- internal telemetry notes from the shared React path, such as rendered rows, visible rows, total rows, planned height, viewport range, selected row, and focused row
 
 ### Workspace verification
 
@@ -131,13 +134,12 @@ Off-screen autosize and streaming updates are intentionally deferred as first-cl
 
 ## Current Risks
 
-- Pretable benchmark evidence is still mixed at the current head. The latest repeated Chromium `S2/dev/scroll` runset at `status/runsets/2026-04-14t04-14-56-534z.hypotheses.json` marks both `H1` and `H3` as failing on the current prototype path.
-- The current repeated Pretable median in that runset is:
-  - `scroll_frame_p95_ms: 41.7`
-  - `blank_gap_frames: 1`
-- The latest comparator evidence in the same runset is better on the current head:
-  - AG Grid `scroll_frame_p95_ms: 33.1`, `blank_gap_frames: 0`
-  - TanStack `scroll_frame_p95_ms: 24.6`, `blank_gap_frames: 0`
+- Scroll proof is now materially better than the earlier failing checkpoint. The latest repeated Chromium `S2/dev/scroll` runset at `status/runsets/2026-04-14t20-16-32-016z.hypotheses.json` satisfies both `H1` and `H3`, and the latest repeated Chromium `S2/hypothesis/scroll` runset at `status/runsets/2026-04-14t20-20-01-263z.hypotheses.json` also keeps both satisfied.
+- Interaction proof is mixed at the current head:
+  - the repeated Chromium `S2/dev` interaction runset at `status/runsets/2026-04-15t04-18-07-253z.hypotheses.json` satisfies `H6` (`sort`) and `H7` (`filter-metadata`)
+  - the same runset fails `H8` (`filter-text`) because text filtering still induces large post-filter anchor shifts
+  - the repeated Chromium `S2/hypothesis` interaction runset at `status/runsets/2026-04-15t04-19-10-257z.hypotheses.json` fails both `H6` and `H7` on current absolute thresholds
+- Current interaction evidence means the wedge is broader than passive scroll now, but it is not yet broad enough to claim robust large-scale interaction superiority.
 - The benchmark and playground are tighter now, but `@pretable/react/internal` is still an internal seam. It should keep absorbing prototype-specific composition until the public API is deliberate.
 - Streaming is still architectural intent, not implemented evidence.
 
