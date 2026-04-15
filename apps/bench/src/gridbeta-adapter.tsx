@@ -7,13 +7,21 @@ import type {
   ScenarioRow,
 } from "@pretable-internal/scenario-data";
 
+import type { BenchInteractionPlan } from "./interaction-plan";
+
 export interface GridBetaAdapterProps {
   dataset: ScenarioDataset;
+  interactionPlan?: BenchInteractionPlan | null;
   runKey: number;
 }
 
-export function GridBetaAdapter({ dataset, runKey }: GridBetaAdapterProps) {
+export function GridBetaAdapter({
+  dataset,
+  interactionPlan,
+  runKey,
+}: GridBetaAdapterProps) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const displayRows = interactionPlan?.rows ?? dataset.rows;
   const totalWidth = dataset.columns.reduce(
     (width, column) => width + column.widthPx,
     0,
@@ -25,16 +33,36 @@ export function GridBetaAdapter({ dataset, runKey }: GridBetaAdapterProps) {
   // pass the returned functions through memoized boundaries.
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
-    count: dataset.rows.length,
+    count: displayRows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: (index) =>
-      estimateRowHeight(dataset.rows[index], dataset.columns),
+      estimateRowHeight(displayRows[index], dataset.columns),
     overscan: 4,
   });
 
   return (
     <section
       aria-label="GridBeta Virtual adapter"
+      data-benchmark-adapter="gridbeta"
+      data-bench-focused-row-preserved={
+        interactionPlan
+          ? String(
+              displayRows.some(
+                (row) => String(row.id ?? "") === interactionPlan.focusedRowId,
+              ),
+            )
+          : "false"
+      }
+      data-bench-result-row-count={String(displayRows.length)}
+      data-bench-selected-row-preserved={
+        interactionPlan
+          ? String(
+              displayRows.some(
+                (row) => String(row.id ?? "") === interactionPlan.selectedRowId,
+              ),
+            )
+          : "false"
+      }
       style={{
         display: "grid",
         gap: 12,
@@ -50,7 +78,7 @@ export function GridBetaAdapter({ dataset, runKey }: GridBetaAdapterProps) {
           GridBeta Virtual adapter
         </p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-          Rows: {dataset.rows.length}
+          Rows: {displayRows.length}
         </p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
           Columns: {dataset.columns.length}
@@ -80,7 +108,7 @@ export function GridBetaAdapter({ dataset, runKey }: GridBetaAdapterProps) {
           }}
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
-            const row = dataset.rows[virtualRow.index];
+            const row = displayRows[virtualRow.index];
 
             if (!row) {
               return null;
@@ -93,6 +121,7 @@ export function GridBetaAdapter({ dataset, runKey }: GridBetaAdapterProps) {
                 key={`${runKey}-${String(row.id ?? virtualRow.key)}`}
                 ref={virtualizer.measureElement}
                 data-index={virtualRow.index}
+                data-row-id={String(row.id ?? "")}
                 data-row-height={estimatedHeight}
                 data-row-index={virtualRow.index}
                 data-gridbeta-row=""

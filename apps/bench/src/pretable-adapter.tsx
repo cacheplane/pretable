@@ -2,8 +2,11 @@ import type { PretableTelemetry } from "@pretable/react/internal";
 import { PretableSurface } from "@pretable/react/internal";
 import type { ScenarioDataset } from "@pretable-internal/scenario-data";
 
+import type { BenchInteractionPlan } from "./interaction-plan";
+
 export interface PretableAdapterProps {
   dataset: ScenarioDataset;
+  interactionPlan?: BenchInteractionPlan | null;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   runKey: number;
 }
@@ -23,6 +26,7 @@ function getScenarioRowId(row: ScenarioDataset["rows"][number]) {
 
 export function PretableAdapter({
   dataset,
+  interactionPlan,
   onTelemetryChange,
   runKey,
 }: PretableAdapterProps) {
@@ -31,6 +35,19 @@ export function PretableAdapter({
       aria-label="Pretable React adapter"
       className="adapter-surface"
       data-benchmark-adapter="pretable"
+      data-bench-focused-row-preserved={
+        interactionPlan
+          ? String(Boolean(interactionPlan.focusedRowId))
+          : "false"
+      }
+      data-bench-result-row-count={
+        interactionPlan ? String(interactionPlan.resultRowCount) : String(dataset.rows.length)
+      }
+      data-bench-selected-row-preserved={
+        interactionPlan
+          ? String(Boolean(interactionPlan.selectedRowId))
+          : "false"
+      }
       key={runKey}
       style={{
         display: "grid",
@@ -58,6 +75,16 @@ export function PretableAdapter({
         ariaLabel="Pretable React adapter"
         columns={[...dataset.columns]}
         getRowId={getScenarioRowId}
+        interactionState={
+          interactionPlan
+            ? {
+                filters: interactionPlan.filters,
+                focusedRowId: interactionPlan.focusedRowId,
+                selectedRowId: interactionPlan.selectedRowId,
+                sort: interactionPlan.sort,
+              }
+            : null
+        }
         onTelemetryChange={onTelemetryChange}
         overscan={4}
         renderBodyCell={({ value }) => String(value ?? "")}

@@ -11,14 +11,25 @@ import {
 import "gridalpha-community/styles/gridalpha.css";
 import "gridalpha-community/styles/ag-theme-quartz.css";
 
+import type { BenchInteractionPlan } from "./interaction-plan";
+
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 export interface GridAlphaAdapterProps {
   dataset: ScenarioDataset;
+  interactionPlan?: BenchInteractionPlan | null;
   runKey: number;
 }
 
-export function GridAlphaAdapter({ dataset, runKey }: GridAlphaAdapterProps) {
+export function GridAlphaAdapter({
+  dataset,
+  interactionPlan,
+  runKey,
+}: GridAlphaAdapterProps) {
+  const rowData = useMemo(
+    () => (interactionPlan ? [...interactionPlan.rows] : [...dataset.rows]),
+    [dataset.rows, interactionPlan],
+  );
   const columnDefs = useMemo<ColDef[]>(
     () =>
       dataset.columns.map((column) => ({
@@ -31,7 +42,6 @@ export function GridAlphaAdapter({ dataset, runKey }: GridAlphaAdapterProps) {
       })),
     [dataset.columns],
   );
-  const rowData = useMemo(() => [...dataset.rows], [dataset.rows]);
   const defaultColDef = useMemo<ColDef>(
     () => ({
       sortable: false,
@@ -43,6 +53,26 @@ export function GridAlphaAdapter({ dataset, runKey }: GridAlphaAdapterProps) {
   return (
     <section
       aria-label="Grid Alpha Community adapter"
+      data-benchmark-adapter="gridalpha"
+      data-bench-focused-row-preserved={
+        interactionPlan
+          ? String(
+              rowData.some(
+                (row) => String(row.id ?? "") === interactionPlan.focusedRowId,
+              ),
+            )
+          : "false"
+      }
+      data-bench-result-row-count={String(rowData.length)}
+      data-bench-selected-row-preserved={
+        interactionPlan
+          ? String(
+              rowData.some(
+                (row) => String(row.id ?? "") === interactionPlan.selectedRowId,
+              ),
+            )
+          : "false"
+      }
       style={{
         display: "grid",
         gap: 12,

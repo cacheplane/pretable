@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { PretableTelemetry } from "@pretable/react/internal";
 
 import {
@@ -17,10 +17,12 @@ import type { BenchQueryState } from "./bench-types";
 import {
   createPretableTelemetryNotes,
   createBenchRequest,
+  measureBenchInteractionRun,
   measureBenchScrollRun,
   publishBenchResult,
 } from "./bench-runtime";
 import { GridAlphaAdapter } from "./gridalpha-adapter";
+import { createBenchInteractionPlan } from "./interaction-plan";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
 import { GridBetaAdapter } from "./gridbeta-adapter";
@@ -65,13 +67,25 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const dataset = createScenarioDataset(query.scenarioId, {
     scale: query.scale,
   });
+  const defaultInteractionPlan = useMemo(
+    () => createBenchInteractionPlan(dataset, query.scriptName),
+    [dataset, query.scriptName],
+  );
   const adapterDefinition = adapterRegistry[query.adapterId];
   const AdapterSurface = adapterDefinition.render;
   const [runKey, setRunKey] = useState(0);
+  const [interactionPlanOverride, setInteractionPlanOverride] = useState<{
+    plan: ReturnType<typeof createBenchInteractionPlan>;
+    search: string;
+  } | null>(null);
   const [result, setResult] = useState<BenchRunSummary | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const autorunRef = useRef(false);
   const pretableTelemetryRef = useRef<PretableTelemetry | null>(null);
+  const interactionPlan =
+    interactionPlanOverride?.search === search
+      ? interactionPlanOverride.plan
+      : defaultInteractionPlan;
 
   useEffect(() => {
     autorunRef.current = false;
@@ -106,6 +120,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     try {
       const startedAt = performance.now();
       pretableTelemetryRef.current = null;
+      setInteractionPlanOverride({
+        plan: null,
+        search,
+      });
 
       setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
@@ -124,6 +142,22 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               query.adapterId,
             )
           : null;
+      const interactionRun =
+        scriptName === "sort" ||
+        scriptName === "filter-metadata" ||
+        scriptName === "filter-text"
+          ? await measureBenchInteractionRun(
+              viewportRef.current ?? document.body,
+              query.adapterId,
+              scriptName,
+              () => {
+                setInteractionPlanOverride({
+                  plan: createBenchInteractionPlan(dataset, scriptName),
+                  search,
+                });
+              },
+            )
+          : null;
 
       const nextResult =
         scriptName === "scroll" && scrollRun
@@ -138,6 +172,18 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               ],
               metrics: scrollRun.metrics,
             })
+          : interactionRun
+            ? createBenchRunSummary({
+                request,
+                status: interactionRun.status,
+                timestamp,
+                tracePath,
+                notes: [
+                  ...interactionRun.notes,
+                  ...createPretableTelemetryNotes(pretableTelemetryRef.current),
+                ],
+                metrics: interactionRun.metrics,
+              })
           : createBenchRunSummary({
               request,
               status: "completed",
@@ -240,19 +286,36 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             <button type="button" onClick={() => void executeRun("scroll")}>
               Run Scroll
             </button>
+            <button type="button" onClick={() => void executeRun("sort")}>
+              Run Sort
+            </button>
+            <button
+              type="button"
+              onClick={() => void executeRun("filter-metadata")}
+            >
+              Run Metadata Filter
+            </button>
+            <button type="button" onClick={() => void executeRun("filter-text")}>
+              Run Text Filter
+            </button>
           </div>
 
           <div ref={viewportRef} className="viewport-card">
             {query.adapterId === "pretable" ? (
               <PretableAdapter
                 dataset={dataset}
+                interactionPlan={interactionPlan}
                 onTelemetryChange={(telemetry) => {
                   pretableTelemetryRef.current = telemetry;
                 }}
                 runKey={runKey}
               />
             ) : (
-              <AdapterSurface dataset={dataset} runKey={runKey} />
+              <AdapterSurface
+                dataset={dataset}
+                interactionPlan={interactionPlan}
+                runKey={runKey}
+              />
             )}
           </div>
 
