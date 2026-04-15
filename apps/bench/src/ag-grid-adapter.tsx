@@ -11,14 +11,25 @@ import {
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
+import type { BenchInteractionPlan } from "./interaction-plan";
+
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 export interface AGGridAdapterProps {
   dataset: ScenarioDataset;
+  interactionPlan?: BenchInteractionPlan | null;
   runKey: number;
 }
 
-export function AGGridAdapter({ dataset, runKey }: AGGridAdapterProps) {
+export function AGGridAdapter({
+  dataset,
+  interactionPlan,
+  runKey,
+}: AGGridAdapterProps) {
+  const rowData = useMemo(
+    () => (interactionPlan ? [...interactionPlan.rows] : [...dataset.rows]),
+    [dataset.rows, interactionPlan],
+  );
   const columnDefs = useMemo<ColDef[]>(
     () =>
       dataset.columns.map((column) => ({
@@ -31,7 +42,6 @@ export function AGGridAdapter({ dataset, runKey }: AGGridAdapterProps) {
       })),
     [dataset.columns],
   );
-  const rowData = useMemo(() => [...dataset.rows], [dataset.rows]);
   const defaultColDef = useMemo<ColDef>(
     () => ({
       sortable: false,
@@ -43,6 +53,26 @@ export function AGGridAdapter({ dataset, runKey }: AGGridAdapterProps) {
   return (
     <section
       aria-label="AG Grid Community adapter"
+      data-benchmark-adapter="ag-grid"
+      data-bench-focused-row-preserved={
+        interactionPlan
+          ? String(
+              rowData.some(
+                (row) => String(row.id ?? "") === interactionPlan.focusedRowId,
+              ),
+            )
+          : "false"
+      }
+      data-bench-result-row-count={String(rowData.length)}
+      data-bench-selected-row-preserved={
+        interactionPlan
+          ? String(
+              rowData.some(
+                (row) => String(row.id ?? "") === interactionPlan.selectedRowId,
+              ),
+            )
+          : "false"
+      }
       style={{
         display: "grid",
         gap: 12,

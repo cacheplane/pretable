@@ -58,4 +58,30 @@ describe("parseBenchQuery", () => {
       autorun: false,
     });
   });
+
+  test("accepts supported interaction scripts without collapsing back to initial", () => {
+    expect(
+      parseBenchQuery("?scenario=S2&scale=dev&script=sort"),
+    ).toMatchObject({
+      scenarioId: "S2",
+      scale: "dev",
+      scriptName: "sort",
+    });
+
+    expect(
+      parseBenchQuery("?scenario=S2&scale=dev&script=filter-metadata"),
+    ).toMatchObject({
+      scenarioId: "S2",
+      scale: "dev",
+      scriptName: "filter-metadata",
+    });
+
+    expect(
+      parseBenchQuery("?scenario=S2&scale=dev&script=filter-text"),
+    ).toMatchObject({
+      scenarioId: "S2",
+      scale: "dev",
+      scriptName: "filter-text",
+    });
+  });
 });

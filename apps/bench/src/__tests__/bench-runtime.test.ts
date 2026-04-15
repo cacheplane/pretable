@@ -81,8 +81,10 @@ describe("bench runtime", () => {
   test("formats internal pretable telemetry as notes without changing benchmark metrics", () => {
     expect(
       createPretableTelemetryNotes({
+        focusedRowId: null,
         renderedRowCount: 8,
         selectedRowId: "evt-dev-0001",
+        totalRowCount: 750,
         totalHeight: 59010,
         visibleRowCount: 6,
         visibleRowRange: {
@@ -93,9 +95,11 @@ describe("bench runtime", () => {
     ).toEqual([
       "internal telemetry rendered rows: 8",
       "internal telemetry visible rows: 6",
+      "internal telemetry total rows: 750",
       "internal telemetry planned height: 59010",
       "internal telemetry viewport range: 0-6",
       "internal telemetry selected row: evt-dev-0001",
+      "internal telemetry focused row: none",
     ]);
 
     expect(createPretableTelemetryNotes(null)).toEqual([]);

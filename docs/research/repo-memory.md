@@ -117,3 +117,34 @@
   - AG Grid median `scroll_frame_p95_ms: 33.1`
   - TanStack median `scroll_frame_p95_ms: 24.6`
 - Conclusion: the prototype path is more honest and more inspectable, but the current Pretable scroll result is measurably behind the current comparators on the repeated `S2/dev/scroll` slice.
+
+## 2026-04-14
+
+### Scroll proof recovery
+
+- The benchmarked Pretable scroll path recovered after flattening benchmark-only chrome, scoping row-height reads to wrapped cells, caching row-height estimates in the renderer, and tightening benchmark overscan.
+- Repeated Chromium `S2/dev/scroll` evidence in [status/runsets/2026-04-14t20-16-32-016z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-14t20-16-32-016z.hypotheses.json) satisfies both `H1` and `H3`.
+- Repeated Chromium `S2/hypothesis/scroll` evidence in [status/runsets/2026-04-14t20-20-01-263z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-14t20-20-01-263z.hypotheses.json) also satisfies both `H1` and `H3`.
+
+### Interaction proof expansion
+
+- The benchmark lab now has explicit local interaction scenarios for:
+  - `S2/sort`
+  - `S2/filter-metadata`
+  - `S2/filter-text`
+- The matrix now evaluates:
+  - `H6` for sort
+  - `H7` for metadata filtering
+  - `H8` for wrapped-text primary-column filtering
+- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-15t04-18-07-253z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-15t04-18-07-253z.hypotheses.json) is mixed but useful:
+  - `H6`: satisfied
+  - `H7`: satisfied
+  - `H8`: failing
+  - `H8` is failing because text filtering still produces large post-filter anchor shifts even when latency and blank-gap metrics stay controlled
+- Repeated Chromium `S2/hypothesis` interaction evidence in [status/runsets/2026-04-15t04-19-10-257z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-15t04-19-10-257z.hypotheses.json) is stricter and currently not flattering:
+  - `H6`: failing
+  - `H7`: failing
+  - `H8`: not run in that promotion pass
+- Current conclusion:
+  - Pretable now has broader proof than passive scroll alone
+  - the next highest-value technical gap is interaction stability and threshold discipline at larger scale, especially wrapped-text filter anchor behavior

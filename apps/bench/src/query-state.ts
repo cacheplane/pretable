@@ -37,7 +37,13 @@ export function parseBenchQuery(
       scale === "target"
         ? scale
         : DEFAULT_QUERY_STATE.scale,
-    scriptName: script === "scroll" ? "scroll" : DEFAULT_QUERY_STATE.scriptName,
+    scriptName:
+      script === "scroll" ||
+      script === "sort" ||
+      script === "filter-metadata" ||
+      script === "filter-text"
+        ? script
+        : DEFAULT_QUERY_STATE.scriptName,
     autorun: searchParams.get("autorun") === "1",
   };
 }

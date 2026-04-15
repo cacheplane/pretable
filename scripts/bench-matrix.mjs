@@ -116,6 +116,9 @@ export function createHypothesisReport(input) {
     hypotheses: [
       evaluateH1(input.runs),
       evaluateH3(input.runs),
+      evaluateH6(input.runs),
+      evaluateH7(input.runs),
+      evaluateH8(input.runs),
       evaluateH5(input.entries, input.runs),
     ],
   };
@@ -546,6 +549,162 @@ function evaluateH5(entries, runs) {
         : { repeatIndex: entry.repeatIndex }),
       summaryPath: entry.summaryPath,
     })),
+  };
+}
+
+function evaluateH6(runs) {
+  return evaluateInteractionHypothesis(runs, {
+    id: "H6",
+    scriptName: "sort",
+    latencyThreshold: 64,
+    settleThreshold: 48,
+    requiresRowReduction: false,
+    satisfiedSummary:
+      "Wrapped-text local sorting stays within the current interaction and settle thresholds while preserving post-sort stability.",
+    insufficientSummary:
+      "Missing a completed S2 sort run, so local sort interaction proof is not available yet.",
+  });
+}
+
+function evaluateH7(runs) {
+  return evaluateInteractionHypothesis(runs, {
+    id: "H7",
+    scriptName: "filter-metadata",
+    latencyThreshold: 64,
+    settleThreshold: 48,
+    requiresRowReduction: true,
+    satisfiedSummary:
+      "Metadata filtering stays within the current interaction and settle thresholds while reducing the row set without post-filter instability.",
+    insufficientSummary:
+      "Missing a completed S2 metadata-filter run, so metadata filter proof is not available yet.",
+  });
+}
+
+function evaluateH8(runs) {
+  return evaluateInteractionHypothesis(runs, {
+    id: "H8",
+    scriptName: "filter-text",
+    latencyThreshold: 96,
+    settleThreshold: 64,
+    requiresRowReduction: true,
+    satisfiedSummary:
+      "Wrapped-text primary-column filtering stays within the current interaction and settle thresholds while preserving post-filter stability.",
+    insufficientSummary:
+      "Missing a completed S2 text-filter run, so wrapped-text filter proof is not available yet.",
+  });
+}
+
+function evaluateInteractionHypothesis(
+  runs,
+  {
+    id,
+    scriptName,
+    latencyThreshold,
+    settleThreshold,
+    requiresRowReduction,
+    satisfiedSummary,
+    insufficientSummary,
+  },
+) {
+  const candidateSeries = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scriptName,
+  });
+
+  if (candidateSeries.length === 0) {
+    return {
+      id,
+      status: "insufficient",
+      summary: insufficientSummary,
+      evidence: [],
+    };
+  }
+
+  const candidateEvidence = summarizeRunSeriesEvidence(candidateSeries);
+  const latency = candidateEvidence.metricSummary?.interaction_latency_ms;
+  const settle = candidateEvidence.metricSummary?.settle_duration_ms;
+  const blankGap =
+    candidateEvidence.metricSummary?.post_interaction_blank_gap_frames;
+  const anchorShift =
+    candidateEvidence.metricSummary?.post_interaction_anchor_shift_px;
+  const rowHeight =
+    candidateEvidence.metricSummary?.post_interaction_row_height_error_p95_px;
+  const selectedPreserved =
+    candidateEvidence.metricSummary?.selected_row_preserved;
+  const focusedPreserved =
+    candidateEvidence.metricSummary?.focused_row_preserved;
+  const rowCount = candidateEvidence.metricSummary?.result_row_count;
+  const baselineRowCount = candidateSeries[0]?.rowCount;
+
+  if (
+    !latency ||
+    !settle ||
+    !blankGap ||
+    !anchorShift ||
+    !rowHeight ||
+    !selectedPreserved ||
+    !focusedPreserved ||
+    !rowCount
+  ) {
+    return {
+      id,
+      status: "insufficient",
+      summary:
+        "The interaction path is measured, but one or more required latency or stability metrics are still missing.",
+      evidence: [candidateEvidence],
+    };
+  }
+
+  const competitorSeries = groupRunSeries(runs, {
+    scenarioId: "S2",
+    scriptName,
+  }).filter((series) => series[0]?.adapterId !== "pretable");
+  const bestCompetitorSeries =
+    competitorSeries.length > 0
+      ? competitorSeries.reduce((best, current) =>
+          medianMetric(current, "interaction_latency_ms") <
+          medianMetric(best, "interaction_latency_ms")
+            ? current
+            : best,
+        )
+      : null;
+  const bestCompetitorEvidence = bestCompetitorSeries
+    ? summarizeRunSeriesEvidence(bestCompetitorSeries)
+    : null;
+  const rowReductionSatisfied = requiresRowReduction
+    ? baselineRowCount !== undefined && rowCount.median < baselineRowCount
+    : true;
+  const passes =
+    latency.median <= latencyThreshold &&
+    settle.median <= settleThreshold &&
+    blankGap.max === 0 &&
+    anchorShift.median <= 16 &&
+    rowHeight.median <= 4 &&
+    selectedPreserved.median >= 1 &&
+    focusedPreserved.median >= 1 &&
+    rowReductionSatisfied;
+
+  return {
+    id,
+    status: passes
+      ? hasPolicyDrift(candidateEvidence)
+        ? "directional"
+        : "satisfied"
+      : "failing",
+    summary: passes
+      ? hasPolicyDrift(candidateEvidence)
+        ? `${satisfiedSummary} Current medians are promising, but policy drift across repeats keeps the claim directional.`
+        : candidateEvidence.sampleCount > 1
+          ? `${satisfiedSummary} Evidence is based on current repeated-run medians.`
+          : `${satisfiedSummary} Evidence is based on the current sample.`
+      : requiresRowReduction && !rowReductionSatisfied
+        ? "The interaction is instrumented, but the filter does not materially reduce the row set yet."
+        : "The interaction is instrumented, but it still exceeds one or more current latency or stability thresholds.",
+    evidence: [
+      candidateEvidence,
+      ...(bestCompetitorEvidence ? [bestCompetitorEvidence] : []),
+    ],
   };
 }
 
