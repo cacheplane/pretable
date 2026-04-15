@@ -168,6 +168,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     {},
   );
   const measuredHeightsRef = useRef<Record<string, number>>({});
+  const measuredRowKeysRef = useRef<Record<string, string>>({});
   const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     columns,
@@ -252,18 +253,25 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     snapshot.sort.direction,
   ]);
 
-  const captureMeasuredRow = (rowId: string, node: HTMLDivElement | null) => {
+  const captureMeasuredRow = (
+    rowId: string,
+    row: TRow,
+    node: HTMLDivElement | null,
+  ) => {
     if (!node) {
       return;
     }
 
     const plannedHeight = Number(node.getAttribute("data-row-height"));
     const cachedHeight = measuredHeightsRef.current[rowId];
+    const currentRowKey = getRowMeasurementKey(row, columns, rowId);
+    const cachedRowKey = measuredRowKeysRef.current[rowId];
 
     if (
       Number.isFinite(plannedHeight) &&
       cachedHeight !== undefined &&
-      cachedHeight === plannedHeight
+      cachedHeight === plannedHeight &&
+      cachedRowKey === currentRowKey
     ) {
       return;
     }
@@ -281,6 +289,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     measuredHeightsRef.current = {
       ...measuredHeightsRef.current,
       [rowId]: measuredHeight,
+    };
+    measuredRowKeysRef.current = {
+      ...measuredRowKeysRef.current,
+      [rowId]: currentRowKey,
     };
 
     setMeasuredHeights((current) => {
@@ -445,7 +457,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 onSelectedRowIdChange?.(id);
               }}
               ref={(node) => {
-                captureMeasuredRow(id, node);
+                captureMeasuredRow(id, row, node);
               }}
               style={getRowStyle(templateColumns, top, height)}
             >
@@ -492,4 +504,25 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       </div>
     </div>
   );
+}
+
+function getRowMeasurementKey<TRow extends PretableRow = PretableRow>(
+  row: TRow,
+  columns: PretableColumn<TRow>[],
+  rowId: string,
+) {
+  const wrappedColumns = columns.filter((column) => column.wrap);
+
+  if (wrappedColumns.length === 0) {
+    return `row:${rowId}:no-wrapped-columns`;
+  }
+
+  return wrappedColumns
+    .map((column) => {
+      const cellValue = resolveCellValue(row, column);
+      const columnWidth = getColumnWidth(column);
+
+      return `${column.id}:${columnWidth}:${String(cellValue ?? "")}`;
+    })
+    .join("|");
 }

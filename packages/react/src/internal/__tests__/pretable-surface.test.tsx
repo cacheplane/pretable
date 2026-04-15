@@ -398,6 +398,90 @@ describe("PretableSurface", () => {
     });
   });
 
+  it("remeasures a cached tall row when its wrapped content changes", async () => {
+    const measureRenderedRowHeightSpy = vi.spyOn(
+      rowHeight,
+      "measureRenderedRowHeight",
+    );
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      () =>
+        ({
+          paddingTop: "10px",
+          paddingBottom: "10px",
+          borderBottomWidth: "1px",
+        }) as CSSStyleDeclaration,
+    );
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+      function () {
+        if (this.getAttribute("data-pretable-cell") === null) {
+          return 0;
+        }
+
+        if (this.textContent?.includes("Tall row v2")) {
+          return 150;
+        }
+
+        if (this.textContent?.includes("Tall row")) {
+          return 120;
+        }
+
+        return 22;
+      },
+    );
+
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        overscan={0}
+        rows={rows}
+        viewportHeight={520}
+      />,
+    );
+
+    await waitFor(() => {
+      const tallRow = view
+        .getAllByTestId("pretable-row")
+        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+
+      expect(tallRow).toHaveAttribute("data-row-height", "141");
+    });
+
+    measureRenderedRowHeightSpy.mockClear();
+
+    view.rerender(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        overscan={0}
+        rows={rows.map((row) =>
+          row.id === "evt-002"
+            ? {
+                ...row,
+                message: "Tall row v2",
+              }
+            : row,
+        )}
+        viewportHeight={520}
+      />,
+    );
+
+    await waitFor(() => {
+      const tallRow = view
+        .getAllByTestId("pretable-row")
+        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+
+      expect(tallRow).toHaveAttribute("data-row-height", "171");
+      expect(
+        measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
+          node.getAttribute("data-row-id") === "evt-002",
+        ),
+      ).not.toHaveLength(0);
+    });
+  });
+
   it("does not remeasure a cached tall row height when a sort reorders the same rows", async () => {
     const measureRenderedRowHeightSpy = vi.spyOn(
       rowHeight,
