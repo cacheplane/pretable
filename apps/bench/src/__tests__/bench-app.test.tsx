@@ -131,4 +131,44 @@ describe("BenchApp", () => {
       });
     });
   });
+
+  test("runs the sort script through the interaction probe instead of mount-only metrics", async () => {
+    vi.spyOn(benchRuntime, "measureBenchInteractionRun").mockResolvedValueOnce({
+      status: "completed",
+      notes: ["interaction mode: sort"],
+      metrics: {
+        interaction_latency_ms: 24,
+        settle_duration_ms: 18,
+        post_interaction_blank_gap_frames: 0,
+        post_interaction_anchor_shift_px: 0,
+        post_interaction_row_height_error_p95_px: 0,
+        result_row_count: 750,
+        selected_row_preserved: 1,
+        focused_row_preserved: 1,
+        dom_nodes_peak: 400,
+        rendered_rows_peak: 11,
+        rendered_cells_peak: 440,
+      },
+    });
+
+    render(
+      <BenchApp search="?scenario=S2&script=sort" browserVersion="123.0" />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run Sort" }));
+
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        status: "completed",
+        adapterId: "pretable",
+        scenarioId: "S2",
+        scriptName: "sort",
+        metrics: {
+          interaction_latency_ms: 24,
+          settle_duration_ms: 18,
+          result_row_count: 750,
+        },
+      });
+    });
+  });
 });

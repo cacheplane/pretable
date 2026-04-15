@@ -79,6 +79,42 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     expect(result.metrics.blank_gap_frames).toBeGreaterThanOrEqual(0);
   }
 
+  if (
+    scriptName === "sort" ||
+    scriptName === "filter-metadata" ||
+    scriptName === "filter-text"
+  ) {
+    expect(result.notes).toContain(`interaction mode: ${scriptName}`);
+    if (adapterId === "pretable") {
+      expect(result.notes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^internal telemetry rendered rows: \d+$/),
+          expect.stringMatching(/^internal telemetry visible rows: \d+$/),
+          expect.stringMatching(/^internal telemetry total rows: \d+$/),
+          expect.stringMatching(/^internal telemetry planned height: \d+$/),
+          expect.stringMatching(
+            /^internal telemetry viewport range: \d+-\d+$/,
+          ),
+          expect.stringMatching(/^internal telemetry selected row: .+$/),
+          expect.stringMatching(/^internal telemetry focused row: .+$/),
+        ]),
+      );
+    }
+    expect(result.metrics).toMatchObject({
+      interaction_latency_ms: expect.any(Number),
+      settle_duration_ms: expect.any(Number),
+      post_interaction_blank_gap_frames: expect.any(Number),
+      post_interaction_anchor_shift_px: expect.any(Number),
+      post_interaction_row_height_error_p95_px: expect.any(Number),
+      result_row_count: expect.any(Number),
+      selected_row_preserved: expect.any(Number),
+      focused_row_preserved: expect.any(Number),
+      dom_nodes_peak: expect.any(Number),
+      rendered_rows_peak: expect.any(Number),
+      rendered_cells_peak: expect.any(Number),
+    });
+  }
+
   const cwd = process.cwd();
   const summaryPath = path.join(
     cwd,

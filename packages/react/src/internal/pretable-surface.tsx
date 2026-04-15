@@ -90,6 +90,18 @@ interface PretableSurfaceRowAttributesInput<
   rowIndex: number;
 }
 
+interface PretableSurfaceInteractionState {
+  filters?: Record<string, string>;
+  focusedRowId?: string | null;
+  selectedRowId?: string | null;
+  sort?:
+    | {
+        columnId: string;
+        direction: "asc" | "desc";
+      }
+    | null;
+}
+
 export interface PretableSurfaceProps<
   TRow extends PretableRow = PretableRow,
 > {
@@ -114,6 +126,7 @@ export interface PretableSurfaceProps<
   getRowProps?: (
     input: PretableSurfaceRowAttributesInput<TRow>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
+  interactionState?: PretableSurfaceInteractionState | null;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
@@ -139,6 +152,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   getRowClassName,
   getRowId,
   getRowProps,
+  interactionState,
   overscan = 6,
   onSelectedRowIdChange,
   onTelemetryChange,
@@ -170,6 +184,67 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   useEffect(() => {
     onTelemetryChange?.(telemetry);
   }, [onTelemetryChange, telemetry]);
+
+  useEffect(() => {
+    if (!interactionState) {
+      return;
+    }
+
+    const nextSort = interactionState?.sort ?? null;
+    const nextFilters = interactionState?.filters ?? {};
+
+    if (
+      snapshot.sort.columnId !== (nextSort?.columnId ?? null) ||
+      snapshot.sort.direction !== (nextSort?.direction ?? null)
+    ) {
+      grid.setSort(nextSort?.columnId ?? null, nextSort?.direction ?? null);
+    }
+
+    const currentFilterEntries = Object.entries(snapshot.filters);
+    const nextFilterEntries = Object.entries(nextFilters);
+
+    if (
+      currentFilterEntries.length !== nextFilterEntries.length ||
+      currentFilterEntries.some(
+        ([columnId, value]) => nextFilters[columnId] !== value,
+      )
+    ) {
+      grid.clearFilters();
+      for (const [columnId, value] of nextFilterEntries) {
+        if (value) {
+          grid.setFilter(columnId, value);
+        }
+      }
+    }
+
+    if (interactionState?.focusedRowId !== undefined && columns[0]) {
+      const nextFocusedRowId = interactionState.focusedRowId;
+
+      if (snapshot.focus.rowId !== nextFocusedRowId) {
+        grid.setFocus(nextFocusedRowId, nextFocusedRowId ? columns[0].id : null);
+      }
+    }
+
+    if (interactionState?.selectedRowId !== undefined) {
+      const nextSelectedRowId = interactionState.selectedRowId;
+      const currentSelectedRowId = snapshot.selection.rowIds[0] ?? null;
+
+      if (currentSelectedRowId !== nextSelectedRowId) {
+        grid.selectRow(nextSelectedRowId);
+        onSelectedRowIdChange?.(nextSelectedRowId);
+      }
+    }
+  }, [
+    columns,
+    grid,
+    interactionState,
+    onSelectedRowIdChange,
+    snapshot.filters,
+    snapshot.focus.rowId,
+    snapshot.selection.rowIds,
+    snapshot.sort.columnId,
+    snapshot.sort.direction,
+  ]);
 
   const captureMeasuredRow = (rowId: string, node: HTMLDivElement | null) => {
     if (!node) {
@@ -368,6 +443,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     data-column-id={column.id}
                     data-focused={isFocused ? "true" : "false"}
                     data-pretable-cell=""
+                    data-pretable-wrap={column.wrap ? "true" : undefined}
                     data-selected={isSelected ? "true" : "false"}
                     key={`${id}:${column.id}`}
                     style={{
