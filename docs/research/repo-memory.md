@@ -164,3 +164,37 @@
   - Pretable now has repeated-run `dev` proof for wrapped-text metadata filtering and wrapped-text primary-column filtering on top of the earlier `S2` scroll proof
   - local sort is instrumented and directionally favorable, but it still needs variance reduction before it is an honest repeated-run proof claim
   - the next honest gaps are sort variance analysis and then promotion: rerun the interaction slice at larger `hypothesis` scale before claiming broad interaction superiority
+
+## 2026-04-16
+
+### Sort variance reduction
+
+- The dominant shared-path hotspot behind the earlier `H6` outlier was row-height measurement churn in the React surface during pure sort reorder.
+- The fix stayed in shared code under `packages/react/src/internal/pretable-surface.tsx`.
+- The final shape is:
+  - skip remeasurement for a reordered row only when the cached measured height is already applied and the wrapped-content measurement key is unchanged
+  - evict the cached measured height when the same row id later shrinks back to default-height content under a changed measurement key
+- The shared seam now has focused regressions for:
+  - no remeasurement on pure sort reorder of unchanged tall wrapped rows
+  - remeasurement when the same row id grows
+  - eviction of stale tall cache when the same row id shrinks
+
+### Current interaction checkpoint
+
+- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-16t00-08-02-085z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-16t00-08-02-085z.hypotheses.json) is now clean:
+  - `H6`: satisfied
+  - `H7`: satisfied
+  - `H8`: satisfied
+- Repeated Chromium `S2/hypothesis` interaction evidence in [status/runsets/2026-04-16t00-08-37-373z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-16t00-08-37-373z.hypotheses.json) is still mixed, but stronger than the first promotion attempt:
+  - `H6`: failing
+  - `H7`: satisfied
+  - `H8`: satisfied
+- The current larger-scale failure is a latency failure, not a stability failure:
+  - `H6` median interaction latency is about `65.3ms`
+  - blank gaps, anchor shift, and row-height error remain controlled
+
+### Next honest gap
+
+- The next highest-value work is not more hypothesis plumbing.
+- It is reducing larger-scale interaction latency for local sort.
+- `filter-metadata` and `filter-text` now survive the larger `hypothesis` promotion pass; sort is the remaining interaction gap that still needs proof at scale.
