@@ -41,6 +41,80 @@ function createInstrumentedGrid() {
   };
 }
 
+describe("grid-core derivation caching", () => {
+  test("focus change reuses the same visibleRows reference", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.setSort("name", "asc");
+    const before = grid.getSnapshot().visibleRows;
+
+    grid.setFocus("b", "name");
+
+    expect(grid.getSnapshot().visibleRows).toBe(before);
+  });
+
+  test("selection change reuses the same visibleRows reference", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.setFilter("status", "open");
+    const before = grid.getSnapshot().visibleRows;
+
+    grid.selectRow("a");
+
+    expect(grid.getSnapshot().visibleRows).toBe(before);
+  });
+
+  test("viewport scroll reuses the same visibleRows reference", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    const before = grid.getSnapshot().visibleRows;
+
+    grid.setViewport({ scrollTop: 250, height: 400 });
+
+    expect(grid.getSnapshot().visibleRows).toBe(before);
+  });
+
+  test("sort change produces a new visibleRows reference", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    const before = grid.getSnapshot().visibleRows;
+
+    grid.setSort("name", "asc");
+
+    expect(grid.getSnapshot().visibleRows).not.toBe(before);
+  });
+
+  test("filter change produces a new visibleRows reference", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    const before = grid.getSnapshot().visibleRows;
+
+    grid.setFilter("status", "open");
+
+    expect(grid.getSnapshot().visibleRows).not.toBe(before);
+  });
+});
+
 describe("grid-core emit behavior", () => {
   test("setSort with identical state does not emit", () => {
     const instrumented = createInstrumentedGrid();

@@ -6,6 +6,7 @@ import type {
   GridCoreFocusState,
   GridCoreOptions,
   GridCoreRow,
+  GridCoreRowModel,
   GridCoreSelectionState,
   GridCoreSnapshot,
   GridCoreSortDirection,
@@ -20,6 +21,9 @@ export function createGridCore<TRow extends GridCoreRow>(
   const listeners = new Set<() => void>();
   const sourceRows = createSourceRows(options);
   let cachedSnapshot: GridCoreSnapshot<TRow> | null = null;
+  let cachedVisibleRows: GridCoreRowModel<TRow>[] | null = null;
+  let cachedDerivedSort: GridCoreSortState | null = null;
+  let cachedDerivedFilters: Record<string, string> | null = null;
   let sort: GridCoreSortState = { columnId: null, direction: null };
   let filters: Record<string, string> = {};
   let selection: GridCoreSelectionState = { rowIds: [], anchorRowId: null };
@@ -161,12 +165,21 @@ export function createGridCore<TRow extends GridCoreRow>(
       return cachedSnapshot;
     }
 
-    const visibleRows = deriveVisibleRows({
-      columns: options.columns,
-      filters,
-      rows: sourceRows,
-      sort,
-    });
+    const visibleRows =
+      cachedVisibleRows !== null &&
+      cachedDerivedSort === sort &&
+      cachedDerivedFilters === filters
+        ? cachedVisibleRows
+        : deriveVisibleRows({
+            columns: options.columns,
+            filters,
+            rows: sourceRows,
+            sort,
+          });
+
+    cachedVisibleRows = visibleRows;
+    cachedDerivedSort = sort;
+    cachedDerivedFilters = filters;
 
     cachedSnapshot = {
       viewport,
