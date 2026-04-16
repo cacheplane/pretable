@@ -279,6 +279,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     const measuredHeight = measureRenderedRowHeight(node);
 
     if (measuredHeight <= DEFAULT_ROW_HEIGHT) {
+      if (cachedHeight !== undefined && cachedRowKey !== currentRowKey) {
+        const { [rowId]: _ignoredHeight, ...nextMeasuredHeights } =
+          measuredHeightsRef.current;
+        const { [rowId]: _ignoredKey, ...nextMeasuredRowKeys } =
+          measuredRowKeysRef.current;
+
+        measuredHeightsRef.current = nextMeasuredHeights;
+        measuredRowKeysRef.current = nextMeasuredRowKeys;
+
+        setMeasuredHeights((current) => {
+          if (current[rowId] === undefined) {
+            return current;
+          }
+
+          const { [rowId]: _removedHeight, ...nextCurrentHeights } = current;
+
+          return nextCurrentHeights;
+        });
+      }
+
       return;
     }
 
