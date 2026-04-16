@@ -207,22 +207,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       grid.setSort(nextSort?.columnId ?? null, nextSort?.direction ?? null);
     }
 
-    const currentFilterEntries = Object.entries(snapshot.filters);
-    const nextFilterEntries = Object.entries(nextFilters);
-
-    if (
-      currentFilterEntries.length !== nextFilterEntries.length ||
-      currentFilterEntries.some(
-        ([columnId, value]) => nextFilters[columnId] !== value,
-      )
-    ) {
-      grid.clearFilters();
-      for (const [columnId, value] of nextFilterEntries) {
-        if (value) {
-          grid.setFilter(columnId, value);
-        }
-      }
-    }
+    grid.replaceFilters(nextFilters);
 
     if (interactionState?.focusedRowId !== undefined && columns[0]) {
       const nextFocusedRowId = interactionState.focusedRowId;
