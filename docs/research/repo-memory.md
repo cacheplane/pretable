@@ -181,20 +181,23 @@
 
 ### Current interaction checkpoint
 
-- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-16t00-08-02-085z.hypotheses.json](../../status/runsets/2026-04-16t00-08-02-085z.hypotheses.json) is now clean:
+- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-16t00-16-36-271z.hypotheses.json](../../status/runsets/2026-04-16t00-16-36-271z.hypotheses.json) is now clean:
   - `H6`: satisfied
   - `H7`: satisfied
   - `H8`: satisfied
-- Repeated Chromium `S2/hypothesis` interaction evidence in [status/runsets/2026-04-16t00-08-37-373z.hypotheses.json](../../status/runsets/2026-04-16t00-08-37-373z.hypotheses.json) is still mixed, but stronger than the first promotion attempt:
+- Repeated Chromium `S2/hypothesis` interaction evidence in [status/runsets/2026-04-16t00-17-20-982z.hypotheses.json](../../status/runsets/2026-04-16t00-17-20-982z.hypotheses.json) is still mixed:
   - `H6`: failing
-  - `H7`: satisfied
+  - `H7`: failing
   - `H8`: satisfied
-- The current larger-scale failure is a latency failure, not a stability failure:
-  - `H6` median interaction latency is about `65.3ms`
+- The current larger-scale failures are latency failures, not stability failures:
+  - `H6` median interaction latency is about `66.7ms`
+  - `H7` median interaction latency is about `66.7ms`
   - blank gaps, anchor shift, and row-height error remain controlled
 
 ### Next honest gap
 
 - The next highest-value work is not more hypothesis plumbing.
-- It is reducing larger-scale interaction latency for local sort.
-- `filter-metadata` and `filter-text` now survive the larger `hypothesis` promotion pass; sort is the remaining interaction gap that still needs proof at scale.
+- It is reducing larger-scale interaction latency for:
+  - local sort
+  - metadata filtering
+- `filter-text` is currently the only interaction scenario that survives the larger `hypothesis` promotion pass on the latest rerun.
