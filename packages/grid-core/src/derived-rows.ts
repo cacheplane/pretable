@@ -28,8 +28,9 @@ export function deriveVisibleRows<TRow extends GridCoreRow>(input: {
   rows: SourceRow<TRow>[];
   sort: GridCoreSortState;
 }): GridCoreRowModel<TRow>[] {
+  const resolvedFilters = resolveFilters(input.columns, input.filters);
   const filtered = input.rows.filter((entry) =>
-    matchesFilters(entry.row, input.columns, input.filters),
+    matchesFilters(entry.row, resolvedFilters),
   );
   const sorted = sortRows(filtered, input.columns, input.sort);
 
@@ -40,24 +41,41 @@ export function deriveVisibleRows<TRow extends GridCoreRow>(input: {
   }));
 }
 
-function matchesFilters<TRow extends GridCoreRow>(
-  row: TRow,
+interface ResolvedFilter<TRow extends GridCoreRow> {
+  column: GridCoreColumn<TRow>;
+  needle: string;
+}
+
+function resolveFilters<TRow extends GridCoreRow>(
   columns: GridCoreColumn<TRow>[],
   filters: Record<string, string>,
-): boolean {
+): ResolvedFilter<TRow>[] {
+  const columnMap = new Map(columns.map((c) => [c.id, c]));
+  const resolved: ResolvedFilter<TRow>[] = [];
+
   for (const [columnId, rawNeedle] of Object.entries(filters)) {
     if (!rawNeedle) {
       continue;
     }
 
-    const column = columns.find((candidate) => candidate.id === columnId);
+    const column = columnMap.get(columnId);
 
     if (!column) {
       continue;
     }
 
+    resolved.push({ column, needle: rawNeedle.toLowerCase() });
+  }
+
+  return resolved;
+}
+
+function matchesFilters<TRow extends GridCoreRow>(
+  row: TRow,
+  resolvedFilters: ResolvedFilter<TRow>[],
+): boolean {
+  for (const { column, needle } of resolvedFilters) {
     const haystack = String(readCellValue(row, column)).toLowerCase();
-    const needle = rawNeedle.toLowerCase();
 
     if (!haystack.includes(needle)) {
       return false;
@@ -66,6 +84,11 @@ function matchesFilters<TRow extends GridCoreRow>(
 
   return true;
 }
+
+const collator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 
 function sortRows<TRow extends GridCoreRow>(
   rows: SourceRow<TRow>[],
@@ -109,8 +132,5 @@ function compareValues(left: unknown, right: unknown): number {
     return left - right;
   }
 
-  return String(left ?? "").localeCompare(String(right ?? ""), undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
+  return collator.compare(String(left ?? ""), String(right ?? ""));
 }

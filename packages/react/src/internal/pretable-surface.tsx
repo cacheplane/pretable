@@ -3,6 +3,7 @@ import {
   type HTMLAttributes,
   type ReactNode,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -173,6 +174,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     columns,
     getRowId,
+    interactionOverrides: interactionState ?? undefined,
     measuredHeights,
     overscan,
     rows,
@@ -184,7 +186,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     [columns],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onTelemetryChange?.(telemetry);
   }, [onTelemetryChange, telemetry]);
 
@@ -192,51 +194,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     measuredHeightsRef.current = measuredHeights;
   }, [measuredHeights]);
 
-  useEffect(() => {
-    if (!interactionState) {
+  useLayoutEffect(() => {
+    if (!interactionState?.selectedRowId) {
       return;
     }
 
-    const nextSort = interactionState?.sort ?? null;
-    const nextFilters = interactionState?.filters ?? {};
+    const currentSelectedRowId = snapshot.selection.rowIds[0] ?? null;
 
-    if (
-      snapshot.sort.columnId !== (nextSort?.columnId ?? null) ||
-      snapshot.sort.direction !== (nextSort?.direction ?? null)
-    ) {
-      grid.setSort(nextSort?.columnId ?? null, nextSort?.direction ?? null);
+    if (currentSelectedRowId !== interactionState.selectedRowId) {
+      onSelectedRowIdChange?.(interactionState.selectedRowId);
     }
-
-    grid.replaceFilters(nextFilters);
-
-    if (interactionState?.focusedRowId !== undefined && columns[0]) {
-      const nextFocusedRowId = interactionState.focusedRowId;
-
-      if (snapshot.focus.rowId !== nextFocusedRowId) {
-        grid.setFocus(nextFocusedRowId, nextFocusedRowId ? columns[0].id : null);
-      }
-    }
-
-    if (interactionState?.selectedRowId !== undefined) {
-      const nextSelectedRowId = interactionState.selectedRowId;
-      const currentSelectedRowId = snapshot.selection.rowIds[0] ?? null;
-
-      if (currentSelectedRowId !== nextSelectedRowId) {
-        grid.selectRow(nextSelectedRowId);
-        onSelectedRowIdChange?.(nextSelectedRowId);
-      }
-    }
-  }, [
-    columns,
-    grid,
-    interactionState,
-    onSelectedRowIdChange,
-    snapshot.filters,
-    snapshot.focus.rowId,
-    snapshot.selection.rowIds,
-    snapshot.sort.columnId,
-    snapshot.sort.direction,
-  ]);
+  }, [interactionState, onSelectedRowIdChange, snapshot.selection.rowIds]);
 
   const captureMeasuredRow = (
     rowId: string,
