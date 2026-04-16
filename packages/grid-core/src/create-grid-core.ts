@@ -6,6 +6,7 @@ import type {
   GridCoreFocusState,
   GridCoreOptions,
   GridCoreRow,
+  GridCoreRowModel,
   GridCoreSelectionState,
   GridCoreSnapshot,
   GridCoreSortDirection,
@@ -20,6 +21,9 @@ export function createGridCore<TRow extends GridCoreRow>(
   const listeners = new Set<() => void>();
   const sourceRows = createSourceRows(options);
   let cachedSnapshot: GridCoreSnapshot<TRow> | null = null;
+  let cachedVisibleRows: GridCoreRowModel<TRow>[] | null = null;
+  let cachedDerivedSort: GridCoreSortState | null = null;
+  let cachedDerivedFilters: Record<string, string> | null = null;
   let sort: GridCoreSortState = { columnId: null, direction: null };
   let filters: Record<string, string> = {};
   let selection: GridCoreSelectionState = { rowIds: [], anchorRowId: null };
@@ -37,33 +41,78 @@ export function createGridCore<TRow extends GridCoreRow>(
     },
     getSnapshot,
     setSort(columnId: string | null, direction: GridCoreSortDirection) {
+      if (sort.columnId === columnId && sort.direction === direction) {
+        return;
+      }
+
       sort = { columnId, direction };
       emit();
     },
     setFilter(columnId: string, value: string) {
-      const nextFilters = { ...filters };
       const trimmed = value.trim();
+      const currentValue = filters[columnId];
 
       if (trimmed) {
-        nextFilters[columnId] = trimmed;
+        if (currentValue === trimmed) {
+          return;
+        }
+
+        filters = { ...filters, [columnId]: trimmed };
       } else {
-        delete nextFilters[columnId];
+        if (currentValue === undefined) {
+          return;
+        }
+
+        const { [columnId]: _removed, ...rest } = filters;
+
+        filters = rest;
       }
 
-      filters = nextFilters;
       emit();
     },
     clearFilters() {
+      if (Object.keys(filters).length === 0) {
+        return;
+      }
+
       filters = {};
       emit();
     },
+    replaceFilters(nextFilters: Record<string, string>) {
+      const normalized: Record<string, string> = {};
+
+      for (const [columnId, value] of Object.entries(nextFilters)) {
+        const trimmed = value.trim();
+
+        if (trimmed) {
+          normalized[columnId] = trimmed;
+        }
+      }
+
+      if (filtersEqual(filters, normalized)) {
+        return;
+      }
+
+      filters = normalized;
+      emit();
+    },
     selectRow(rowId: string | null) {
+      const currentRowId = selection.rowIds[0] ?? null;
+
+      if (currentRowId === rowId && selection.anchorRowId === rowId) {
+        return;
+      }
+
       selection = rowId
         ? { rowIds: [rowId], anchorRowId: rowId }
         : { rowIds: [], anchorRowId: null };
       emit();
     },
     setFocus(rowId: string | null, columnId: string | null) {
+      if (focus.rowId === rowId && focus.columnId === columnId) {
+        return;
+      }
+
       focus = { rowId, columnId };
       emit();
     },
@@ -99,6 +148,13 @@ export function createGridCore<TRow extends GridCoreRow>(
       emit();
     },
     setViewport(nextViewport: GridCoreViewportState) {
+      if (
+        viewport.scrollTop === nextViewport.scrollTop &&
+        viewport.height === nextViewport.height
+      ) {
+        return;
+      }
+
       viewport = nextViewport;
       emit();
     },
@@ -109,12 +165,21 @@ export function createGridCore<TRow extends GridCoreRow>(
       return cachedSnapshot;
     }
 
-    const visibleRows = deriveVisibleRows({
-      columns: options.columns,
-      filters,
-      rows: sourceRows,
-      sort,
-    });
+    const visibleRows =
+      cachedVisibleRows !== null &&
+      cachedDerivedSort === sort &&
+      cachedDerivedFilters === filters
+        ? cachedVisibleRows
+        : deriveVisibleRows({
+            columns: options.columns,
+            filters,
+            rows: sourceRows,
+            sort,
+          });
+
+    cachedVisibleRows = visibleRows;
+    cachedDerivedSort = sort;
+    cachedDerivedFilters = filters;
 
     cachedSnapshot = {
       viewport,
@@ -147,4 +212,24 @@ export function createGridCore<TRow extends GridCoreRow>(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function filtersEqual(
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+
+  if (aKeys.length !== bKeys.length) {
+    return false;
+  }
+
+  for (const key of aKeys) {
+    if (a[key] !== b[key]) {
+      return false;
+    }
+  }
+
+  return true;
 }

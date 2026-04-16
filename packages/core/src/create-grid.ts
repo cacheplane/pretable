@@ -15,6 +15,7 @@ export function createGrid<TRow extends Record<string, unknown>>(
     setSort: gridCore.setSort,
     setFilter: gridCore.setFilter,
     clearFilters: gridCore.clearFilters,
+    replaceFilters: gridCore.replaceFilters,
     selectRow: gridCore.selectRow,
     setFocus: gridCore.setFocus,
     moveFocus: gridCore.moveFocus,
