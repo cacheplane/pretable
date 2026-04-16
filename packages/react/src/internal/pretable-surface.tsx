@@ -2,7 +2,7 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type ReactNode,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -168,10 +168,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     {},
   );
   const measuredHeightsRef = useRef<Record<string, number>>({});
+  const measuredRowKeysRef = useRef<Record<string, string>>({});
+  const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     columns,
     getRowId,
+    interactionOverrides: interactionState ?? undefined,
     measuredHeights,
     overscan,
     rows,
@@ -183,106 +186,77 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     [columns],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onTelemetryChange?.(telemetry);
   }, [onTelemetryChange, telemetry]);
 
-  useEffect(() => {
-    measuredHeightsRef.current = measuredHeights;
-  }, [measuredHeights]);
-
-  useEffect(() => {
-    if (!interactionState) {
+  useLayoutEffect(() => {
+    if (!interactionState?.selectedRowId) {
       return;
     }
 
-    const nextSort = interactionState?.sort ?? null;
-    const nextFilters = interactionState?.filters ?? {};
+    const currentSelectedRowId = snapshot.selection.rowIds[0] ?? null;
 
-    if (
-      snapshot.sort.columnId !== (nextSort?.columnId ?? null) ||
-      snapshot.sort.direction !== (nextSort?.direction ?? null)
-    ) {
-      grid.setSort(nextSort?.columnId ?? null, nextSort?.direction ?? null);
+    if (currentSelectedRowId !== interactionState.selectedRowId) {
+      onSelectedRowIdChange?.(interactionState.selectedRowId);
     }
+  }, [interactionState, onSelectedRowIdChange, snapshot.selection.rowIds]);
 
-    const currentFilterEntries = Object.entries(snapshot.filters);
-    const nextFilterEntries = Object.entries(nextFilters);
+  useLayoutEffect(() => {
+    let nextHeights = measuredHeightsRef.current;
+    let nextKeys = measuredRowKeysRef.current;
+    let changed = false;
 
-    if (
-      currentFilterEntries.length !== nextFilterEntries.length ||
-      currentFilterEntries.some(
-        ([columnId, value]) => nextFilters[columnId] !== value,
-      )
-    ) {
-      grid.clearFilters();
-      for (const [columnId, value] of nextFilterEntries) {
-        if (value) {
-          grid.setFilter(columnId, value);
+    for (const [rowId, node] of rowNodesRef.current) {
+      const plannedHeight = Number(node.getAttribute("data-row-height"));
+      const cachedHeight = nextHeights[rowId];
+      const currentRowKey = getRowMeasurementKey(node);
+      const cachedRowKey = nextKeys[rowId];
+
+      if (
+        Number.isFinite(plannedHeight) &&
+        cachedHeight !== undefined &&
+        cachedHeight === plannedHeight &&
+        cachedRowKey === currentRowKey
+      ) {
+        continue;
+      }
+
+      const measuredHeight = measureRenderedRowHeight(node);
+
+      if (measuredHeight <= DEFAULT_ROW_HEIGHT) {
+        if (cachedHeight !== undefined && cachedRowKey !== currentRowKey) {
+          const { [rowId]: _h, ...restHeights } = nextHeights;
+          const { [rowId]: _k, ...restKeys } = nextKeys;
+
+          nextHeights = restHeights;
+          nextKeys = restKeys;
+          changed = true;
         }
-      }
-    }
 
-    if (interactionState?.focusedRowId !== undefined && columns[0]) {
-      const nextFocusedRowId = interactionState.focusedRowId;
-
-      if (snapshot.focus.rowId !== nextFocusedRowId) {
-        grid.setFocus(nextFocusedRowId, nextFocusedRowId ? columns[0].id : null);
-      }
-    }
-
-    if (interactionState?.selectedRowId !== undefined) {
-      const nextSelectedRowId = interactionState.selectedRowId;
-      const currentSelectedRowId = snapshot.selection.rowIds[0] ?? null;
-
-      if (currentSelectedRowId !== nextSelectedRowId) {
-        grid.selectRow(nextSelectedRowId);
-        onSelectedRowIdChange?.(nextSelectedRowId);
-      }
-    }
-  }, [
-    columns,
-    grid,
-    interactionState,
-    onSelectedRowIdChange,
-    snapshot.filters,
-    snapshot.focus.rowId,
-    snapshot.selection.rowIds,
-    snapshot.sort.columnId,
-    snapshot.sort.direction,
-  ]);
-
-  const captureMeasuredRow = (rowId: string, node: HTMLDivElement | null) => {
-    if (!node) {
-      return;
-    }
-
-    const measuredHeight = measureRenderedRowHeight(node);
-
-    if (measuredHeight <= DEFAULT_ROW_HEIGHT) {
-      return;
-    }
-
-    if (measuredHeightsRef.current[rowId] === measuredHeight) {
-      return;
-    }
-
-    measuredHeightsRef.current = {
-      ...measuredHeightsRef.current,
-      [rowId]: measuredHeight,
-    };
-
-    setMeasuredHeights((current) => {
-      if (current[rowId] === measuredHeight) {
-        return current;
+        continue;
       }
 
-      return {
-        ...current,
-        [rowId]: measuredHeight,
-      };
-    });
-  };
+      if (nextHeights[rowId] === measuredHeight) {
+        if (cachedRowKey !== currentRowKey) {
+          nextKeys = { ...nextKeys, [rowId]: currentRowKey };
+        }
+
+        continue;
+      }
+
+      nextHeights = { ...nextHeights, [rowId]: measuredHeight };
+      nextKeys = { ...nextKeys, [rowId]: currentRowKey };
+      changed = true;
+    }
+
+    measuredHeightsRef.current = nextHeights;
+    measuredRowKeysRef.current = nextKeys;
+
+    if (changed) {
+      setMeasuredHeights(nextHeights);
+    }
+  });
 
   return (
     <div
@@ -434,7 +408,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 onSelectedRowIdChange?.(id);
               }}
               ref={(node) => {
-                captureMeasuredRow(id, node);
+                if (node) {
+                  rowNodesRef.current.set(id, node);
+                } else {
+                  rowNodesRef.current.delete(id);
+                }
               }}
               style={getRowStyle(templateColumns, top, height)}
             >
@@ -481,4 +459,39 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       </div>
     </div>
   );
+}
+
+function getRowMeasurementKey(rowNode: HTMLDivElement) {
+  const rowParts = [
+    rowNode.getAttribute("class") ?? "",
+    normalizeStyleSignature(rowNode.getAttribute("style") ?? ""),
+    rowNode.getAttribute("aria-selected") ?? "",
+    rowNode.getAttribute("data-focused") ?? "",
+    rowNode.getAttribute("data-selected") ?? "",
+  ];
+
+  const cellParts = [
+    ...rowNode.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+  ].map((cell) =>
+    [
+      cell.getAttribute("data-column-id") ?? "",
+      cell.getAttribute("class") ?? "",
+      cell.getAttribute("style") ?? "",
+      cell.getAttribute("data-pretable-wrap") ?? "",
+      cell.getAttribute("data-focused") ?? "",
+      cell.getAttribute("data-selected") ?? "",
+      cell.textContent ?? "",
+    ].join(":"),
+  );
+
+  return [...rowParts, ...cellParts].join("|");
+}
+
+function normalizeStyleSignature(styleValue: string) {
+  return styleValue
+    .split(";")
+    .map((declaration) => declaration.trim())
+    .filter(Boolean)
+    .filter((declaration) => !/^top\s*:/i.test(declaration))
+    .join(";");
 }

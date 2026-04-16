@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 import type { PretableTelemetry } from "@pretable/react/internal";
 import { PretableSurface } from "@pretable/react/internal";
@@ -32,55 +32,46 @@ export function PretableAdapter({
   onTelemetryChange,
   runKey,
 }: PretableAdapterProps) {
-  const [interactionMetrics, setInteractionMetrics] = useState(() => ({
-    focusedRowId: null as string | null,
-    resultRowCount: dataset.rows.length,
-    selectedRowId: null as string | null,
-  }));
+  const adapterRef = useRef<HTMLElement>(null);
   const surfaceColumns = useMemo(() => [...dataset.columns], [dataset.columns]);
   const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
 
-  const handleTelemetryChange = (telemetry: PretableTelemetry) => {
-    onTelemetryChange?.(telemetry);
-    setInteractionMetrics((current) => {
-      const next = {
-        focusedRowId: telemetry.focusedRowId,
-        resultRowCount: telemetry.rowModelRowCount,
-        selectedRowId: telemetry.selectedRowId,
-      };
+  const onTelemetryChangeRef = useRef(onTelemetryChange);
+  onTelemetryChangeRef.current = onTelemetryChange;
+  const interactionPlanRef = useRef(interactionPlan);
+  interactionPlanRef.current = interactionPlan;
+  const datasetRowCountRef = useRef(dataset.rows.length);
+  datasetRowCountRef.current = dataset.rows.length;
 
-      return current.focusedRowId === next.focusedRowId &&
-        current.resultRowCount === next.resultRowCount &&
-        current.selectedRowId === next.selectedRowId
-        ? current
-        : next;
-    });
-  };
+  const handleTelemetryChange = useCallback((telemetry: PretableTelemetry) => {
+    onTelemetryChangeRef.current?.(telemetry);
+    const el = adapterRef.current;
+    if (!el) return;
+    const plan = interactionPlanRef.current;
+    el.dataset.benchFocusedRowId = telemetry.focusedRowId ?? "";
+    el.dataset.benchResultRowCount = plan
+      ? String(telemetry.rowModelRowCount)
+      : String(datasetRowCountRef.current);
+    el.dataset.benchSelectedRowId = telemetry.selectedRowId ?? "";
+    el.dataset.benchFocusedRowPreserved = plan
+      ? String(telemetry.focusedRowId === plan.focusedRowId)
+      : "false";
+    el.dataset.benchSelectedRowPreserved = plan
+      ? String(telemetry.selectedRowId === plan.selectedRowId)
+      : "false";
+  }, []);
 
   return (
     <section
+      ref={adapterRef}
       aria-label="Pretable React adapter"
       className="adapter-surface"
       data-benchmark-adapter="pretable"
-      data-bench-focused-row-id={interactionMetrics.focusedRowId ?? ""}
-      data-bench-focused-row-preserved={
-        interactionPlan
-          ? String(interactionMetrics.focusedRowId === interactionPlan.focusedRowId)
-          : "false"
-      }
-      data-bench-result-row-count={
-        interactionPlan
-          ? String(interactionMetrics.resultRowCount)
-          : String(dataset.rows.length)
-      }
-      data-bench-selected-row-id={interactionMetrics.selectedRowId ?? ""}
-      data-bench-selected-row-preserved={
-        interactionPlan
-          ? String(
-              interactionMetrics.selectedRowId === interactionPlan.selectedRowId,
-            )
-          : "false"
-      }
+      data-bench-focused-row-id=""
+      data-bench-focused-row-preserved="false"
+      data-bench-result-row-count={String(dataset.rows.length)}
+      data-bench-selected-row-id=""
+      data-bench-selected-row-preserved="false"
       key={runKey}
       style={{
         display: "grid",

@@ -74,6 +74,7 @@ export interface GridCoreStore<
   setSort(columnId: string | null, direction: GridCoreSortDirection): void;
   setFilter(columnId: string, value: string): void;
   clearFilters(): void;
+  replaceFilters(nextFilters: Record<string, string>): void;
   selectRow(rowId: string | null): void;
   setFocus(rowId: string | null, columnId: string | null): void;
   moveFocus(delta: number): void;

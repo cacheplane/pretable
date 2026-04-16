@@ -5,9 +5,10 @@ import {
   type PretableGridOptions,
   type PretableGridSnapshot,
   type PretableRow,
+  type PretableSortDirection,
 } from "@pretable/core";
 import { createDomRenderSnapshot } from "@pretable-internal/renderer-dom";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
@@ -46,11 +47,19 @@ export interface PretableTelemetry {
   };
 }
 
+export interface PretableInteractionOverrides {
+  filters?: Record<string, string>;
+  focusedRowId?: string | null;
+  selectedRowId?: string | null;
+  sort?: { columnId: string; direction: PretableSortDirection } | null;
+}
+
 export interface UsePretableModelOptions<
   TRow extends PretableRow = PretableRow,
 > extends UsePretableOptions<TRow> {
   viewportHeight: number;
   overscan?: number;
+  interactionOverrides?: PretableInteractionOverrides | null;
   measuredHeights?: Record<string, number>;
 }
 
@@ -78,16 +87,38 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
   getRowId,
   viewportHeight,
   overscan = 6,
+  interactionOverrides,
   measuredHeights,
 }: UsePretableModelOptions<TRow>): PretableModel<TRow> {
   const grid = usePretable({ columns, rows, getRowId });
+
+  if (interactionOverrides) {
+    grid.setSort(
+      interactionOverrides.sort?.columnId ?? null,
+      interactionOverrides.sort?.direction ?? null,
+    );
+    grid.replaceFilters(interactionOverrides.filters ?? {});
+
+    if (interactionOverrides.focusedRowId !== undefined) {
+      const firstColumnId = columns[0]?.id ?? null;
+      grid.setFocus(
+        interactionOverrides.focusedRowId,
+        interactionOverrides.focusedRowId ? firstColumnId : null,
+      );
+    }
+
+    if (interactionOverrides.selectedRowId !== undefined) {
+      grid.selectRow(interactionOverrides.selectedRowId);
+    }
+  }
+
   const snapshot = useSyncExternalStore(
     grid.subscribe,
     grid.getSnapshot,
     grid.getSnapshot,
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (snapshot.viewport.height === viewportHeight) {
       return;
     }

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { PretableTelemetry } from "@pretable/react/internal";
 
 import {
@@ -64,10 +64,11 @@ function waitForNextAnimationFrame() {
 }
 
 export function BenchApp({ search, browserVersion }: BenchAppProps) {
-  const query = parseBenchQuery(search);
-  const dataset = createScenarioDataset(query.scenarioId, {
-    scale: query.scale,
-  });
+  const query = useMemo(() => parseBenchQuery(search), [search]);
+  const dataset = useMemo(
+    () => createScenarioDataset(query.scenarioId, { scale: query.scale }),
+    [query.scenarioId, query.scale],
+  );
   const adapterDefinition = adapterRegistry[query.adapterId];
   const AdapterSurface = adapterDefinition.render;
   const [runKey, setRunKey] = useState(0);
