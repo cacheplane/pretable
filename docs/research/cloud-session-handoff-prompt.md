@@ -92,13 +92,14 @@ Do not accidentally remove that coverage.
 
 ## Latest Verified Benchmark Checkpoint
 
-Freshest runset on `main` at the time of this handoff:
+Two runsets on `main` together cover the full hypothesis family at hypothesis scale. `bench:matrix` errors on unsupported competitor×interaction combinations, so the comparator scroll run and the Pretable-only interaction run are written separately.
 
-- [status/runsets/2026-04-16t04-32-37-851z.hypotheses.json](/status/runsets/2026-04-16t04-32-37-851z.hypotheses.json)
+- Competitor scroll baseline: [status/runsets/2026-04-16t16-52-55-622z.hypotheses.json](/status/runsets/2026-04-16t16-52-55-622z.hypotheses.json)
+- Pretable interaction family: [status/runsets/2026-04-16t04-32-37-851z.hypotheses.json](/status/runsets/2026-04-16t04-32-37-851z.hypotheses.json)
 
 Hypothesis family state:
 
-- `H1` (wrapped-text scroll win vs DOM competitor): **directional** — Pretable itself now has clean S2 scroll measurements (no blank gaps, no long tasks) at hypothesis scale, but the required relative win against a DOM competitor adapter is still unmeasured.
+- `H1` (wrapped-text scroll win vs DOM competitor): **satisfied** — Pretable `scroll_frame_p95_ms` 24.9ms vs AG Grid 41.6ms (~40% margin, past the 25% bar), TanStack 24.8ms. 0 blank gaps and 0 long tasks across all three.
 - `H3` (variable-height scrolling stability): **satisfied** at hypothesis scale.
 - `H5` (artifact pipeline): **satisfied**.
 - `H6` (wrapped-text local sorting): **satisfied** at hypothesis scale.
@@ -107,44 +108,31 @@ Hypothesis family state:
 
 ### Representative Current Metrics
 
-From the latest `hypothesis` run:
+From the latest `hypothesis` runs:
 
-- Scroll S2 (Pretable only): `scroll_frame_p95_ms` ~25ms, 0 blank gaps, 0 long tasks, 0 row-height error px.
+- Scroll S2 `scroll_frame_p95_ms` medians: Pretable 24.9ms, AG Grid 41.6ms, TanStack 24.8ms. 0 blank gaps, 0 long tasks for all three adapters.
+- DOM peak nodes: Pretable 540, TanStack 540, AG Grid 657.
 - Sort / filter-metadata / filter-text: `settle_duration_ms` medians ~17–18ms (threshold 48ms), 4x margin under threshold, 3000-row result set preserved.
 
-## Most Likely Remaining Work
+## What Is Actually Open
 
-The remaining open hypothesis is `H1`: comparative wrapped-text scroll performance versus a DOM competitor.
+The hypothesis family is green at hypothesis scale against the current comparator set. There is no single forced next slice from the hypothesis tracker.
 
-Pretable's own scroll evidence is clean at hypothesis scale. What is missing is a competitor baseline for a head-to-head claim. The bench already has `AGGridAdapter` and `TanStackAdapter`; the gap is running them through the same S2 hypothesis-scale scroll script and producing a comparable hypothesis artifact.
+Plausible next directions (each requires its own scoping):
 
-Main suspected areas to inspect if the comparison is not already parameterized:
-
-- [scripts/bench-matrix.mjs](/scripts/bench-matrix.mjs) — does it accept multi-adapter runs for scroll at `hypothesis` scale?
-- [packages/bench-runner/src/index.ts](/packages/bench-runner/src/index.ts) — hypothesis evaluation for H1 relative comparison.
-- [apps/bench/src/ag-grid-adapter.tsx](/apps/bench/src/ag-grid-adapter.tsx) and [apps/bench/src/tanstack-adapter.tsx](/apps/bench/src/tanstack-adapter.tsx) — competitor harness correctness at hypothesis scale.
-
-## Recommended Next Slice
-
-### Stage 1: Produce A Clean Competitor Baseline
-
-Run at least one competitor adapter (AG Grid or TanStack Virtual) through the S2 scroll script at `hypothesis` scale and capture the baseline metrics. Do not tune thresholds to make `H1` pass; just measure honestly and write the artifact.
-
-### Stage 2: Close Or Redefine H1
-
-Once a clean competitor baseline exists, either:
-
-- confirm `H1` is satisfied with the current Pretable metrics, or
-- document what is still blocking it and which dimension needs work (frame pacing, DOM node cost, settle behavior, etc.).
+- Broaden the H1 comparator set (other full-grid products) if you want a wider comparative claim.
+- Harden the bench-matrix so unsupported adapter×script pairs emit an `unsupported` summary instead of erroring, so a single command can produce one canonical artifact.
+- Begin work on the next hypothesis block (remote / streaming data, off-screen autosize, selection + keyboard cuts) following the existing spec cadence under `docs/superpowers/specs/`.
+- Pull the proven engine behavior into more playground-visible product surface.
 
 ## What To Avoid
 
-- Do not claim `H1` is proven without a fresh competitor artifact.
 - Do not trust only one rerun if results wobble.
 - Do not optimize only the benchmark adapter if the cause is in shared code.
 - Do not remove the current row-measurement cache regressions.
 - Do not break the current benchmark DOM contract.
 - Do not convert honest latency misses into threshold changes without explicit approval.
+- Do not reopen an already-satisfied hypothesis without a concrete reproducer.
 
 ## Verification Expectations
 
@@ -171,7 +159,7 @@ You are inheriting `main` where:
 - redundant grid-core emits are short-circuited
 - bench adapter telemetry no longer rerenders the surface
 - sort, metadata filter, and text filter are green at hypothesis scale
-- the remaining open question is the competitor comparison for wrapped-text scroll (`H1`)
+- the wrapped-text scroll comparison against AG Grid and TanStack is satisfied at hypothesis scale
 
 Continue from that point. Do not restart the investigation from zero.
 
@@ -179,4 +167,4 @@ Continue from that point. Do not restart the investigation from zero.
 
 Suggested first instruction to yourself after checkout:
 
-"Read the recomputation-reduction spec and the latest runset, then plan the smallest credible competitor-baseline bench run that would either close H1 or cleanly show what is still missing. Do not touch shared code before the baseline exists."
+"Read the two latest runsets and confirm the hypothesis family is still green. Then pick one of the open next directions with explicit scope before touching shared code."
