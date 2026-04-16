@@ -9,10 +9,8 @@ You are continuing active engineering work on the `pretable` repository.
 ## Repository And Branch
 
 - Repository: `cacheplane/pretable`
-- Primary branch to continue from: `codex/sort-variance-and-interaction-promotion`
-- The branch has already been pushed to `origin`
-- Remote branch URL for PR creation if needed later:
-  - [codex/sort-variance-and-interaction-promotion](https://github.com/cacheplane/pretable/pull/new/codex/sort-variance-and-interaction-promotion)
+- Primary branch to continue from: `main`
+- The sort-variance and interaction-recomputation work has been merged to `main`; there is no longer an active `codex/sort-variance-and-interaction-promotion` branch.
 
 ## Immediate Working Rules
 
@@ -50,178 +48,98 @@ This repo is already well beyond scaffolding.
 
 - The playground is a real inspection-table prototype, not a placeholder.
 - The benchmark lab is serious and writes hypothesis-bearing artifacts.
-- Wrapped-text scroll proof is already credible.
-- Local interaction proof on repeated Chromium `dev` is now green.
-- Larger `hypothesis`-scale interaction proof is still mixed.
+- Wrapped-text scroll stability is proven at hypothesis scale (H3).
+- Interaction proof (sort, metadata filter, text filter) is now green at hypothesis scale (H6, H7, H8).
+- The comparative scroll win vs a DOM competitor adapter (H1) is still directional, not satisfied.
 
 ## Most Important Current Docs To Read First
 
 Read these before changing code:
 
-1. [README.md](/Users/blove/repos/pretable/README.md)
-2. [docs/research/repo-memory.md](/Users/blove/repos/pretable/docs/research/repo-memory.md)
-3. [docs/superpowers/specs/2026-04-15-sort-variance-and-interaction-promotion-design.md](/Users/blove/repos/pretable/docs/superpowers/specs/2026-04-15-sort-variance-and-interaction-promotion-design.md)
-4. [docs/superpowers/specs/2026-04-15-interaction-recomputation-reduction-design.md](/Users/blove/repos/pretable/docs/superpowers/specs/2026-04-15-interaction-recomputation-reduction-design.md)
+1. [README.md](/README.md)
+2. [docs/research/repo-memory.md](/docs/research/repo-memory.md)
+3. [docs/superpowers/specs/2026-04-15-interaction-recomputation-reduction-design.md](/docs/superpowers/specs/2026-04-15-interaction-recomputation-reduction-design.md)
 
-## What Was Just Fixed On This Branch
+## What Was Just Fixed On Main
 
-The branch recently fixed a real shared React surface problem around row-height measurement churn during sort/filter interactions.
+The interaction-recomputation-reduction phase shipped to `main`. In summary:
 
-### Files Touched
-
-- [packages/react/src/internal/pretable-surface.tsx](/Users/blove/repos/pretable/packages/react/src/internal/pretable-surface.tsx)
-- [packages/react/src/internal/__tests__/pretable-surface.test.tsx](/Users/blove/repos/pretable/packages/react/src/internal/__tests__/pretable-surface.test.tsx)
-- [README.md](/Users/blove/repos/pretable/README.md)
-- [docs/research/repo-memory.md](/Users/blove/repos/pretable/docs/research/repo-memory.md)
-
-### Behavior That Exists Now
-
-The shared React surface now:
-
-- skips remeasurement when:
-  - the cached measured height is already applied
-  - and the rendered row DOM signature is unchanged
-- refreshes the cached measurement key when the row rerenders with the same measured height but a changed DOM signature
-- evicts stale tall cached heights when the same row later shrinks back to default-height content
+- `BenchApp` now memoizes `query` and the scenario dataset so telemetry-driven rerenders no longer rebuild 3000 row objects per interaction.
+- `estimateRowHeight` in `renderer-dom` has a `columnsRef` fast path on the WeakMap cache, avoiding signature recomputation on the common case.
+- `PretableAdapter` telemetry writes go through refs and direct `data-*` attrs so telemetry updates do not rerender the surface.
+- `PretableSurface` batch-measures rows once per commit in a single `useLayoutEffect` over a ref `Map`, instead of per-ref-callback.
+- `sortRows` specializes the all-numeric key path to avoid repeated `typeof` + `Intl.Collator` work.
+- Scroll `maxSettleFrames` tightened to 3 now that settle is stable.
 
 ### Regressions Already Covered
 
-The focused test file currently covers:
+Focused tests guard the shared-surface measurement behavior in:
+
+- [packages/react/src/internal/__tests__/pretable-surface.test.tsx](/packages/react/src/internal/__tests__/pretable-surface.test.tsx)
+
+Specifically:
 
 - no remeasurement on pure sort reorder of unchanged tall wrapped rows
 - remeasurement when the same row grows
 - eviction when the same row shrinks
 - same-height DOM-signature updates not causing permanent redundant remeasurement
 
+The bench adapter also asserts that telemetry updates do not rerender the surface:
+
+- [apps/bench/src/__tests__/pretable-adapter.test.tsx](/apps/bench/src/__tests__/pretable-adapter.test.tsx)
+
 Do not accidentally remove that coverage.
 
 ## Latest Verified Benchmark Checkpoint
 
-These were the latest fresh reruns on the branch when this handoff prompt was written.
+Freshest runset on `main` at the time of this handoff:
 
-### Repeated Chromium `dev` interaction family
+- [status/runsets/2026-04-16t04-32-37-851z.hypotheses.json](/status/runsets/2026-04-16t04-32-37-851z.hypotheses.json)
 
-Artifact:
+Hypothesis family state:
 
-- [status/runsets/2026-04-16t00-16-36-271z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-16t00-16-36-271z.hypotheses.json)
+- `H1` (wrapped-text scroll win vs DOM competitor): **directional** — Pretable itself now has clean S2 scroll measurements (no blank gaps, no long tasks) at hypothesis scale, but the required relative win against a DOM competitor adapter is still unmeasured.
+- `H3` (variable-height scrolling stability): **satisfied** at hypothesis scale.
+- `H5` (artifact pipeline): **satisfied**.
+- `H6` (wrapped-text local sorting): **satisfied** at hypothesis scale.
+- `H7` (metadata filtering): **satisfied** at hypothesis scale.
+- `H8` (wrapped-text primary-column filtering): **satisfied** at hypothesis scale.
 
-State:
+### Representative Current Metrics
 
-- `H6`: satisfied
-- `H7`: satisfied
-- `H8`: satisfied
+From the latest `hypothesis` run:
 
-Interpretation:
+- Scroll S2 (Pretable only): `scroll_frame_p95_ms` ~25ms, 0 blank gaps, 0 long tasks, 0 row-height error px.
+- Sort / filter-metadata / filter-text: `settle_duration_ms` medians ~17–18ms (threshold 48ms), 4x margin under threshold, 3000-row result set preserved.
 
-- local `dev` interaction proof is now clean
+## Most Likely Remaining Work
 
-### Repeated Chromium `hypothesis` interaction family
+The remaining open hypothesis is `H1`: comparative wrapped-text scroll performance versus a DOM competitor.
 
-Artifact:
+Pretable's own scroll evidence is clean at hypothesis scale. What is missing is a competitor baseline for a head-to-head claim. The bench already has `GridAlphaAdapter` and `GridBetaAdapter`; the gap is running them through the same S2 hypothesis-scale scroll script and producing a comparable hypothesis artifact.
 
-- [status/runsets/2026-04-16t00-17-20-982z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-16t00-17-20-982z.hypotheses.json)
+Main suspected areas to inspect if the comparison is not already parameterized:
 
-State:
-
-- `H6`: failing
-- `H7`: failing
-- `H8`: satisfied
-
-Important nuance:
-
-- these are latency misses, not stability failures
-- blank gaps remain controlled
-- anchor shift remains controlled
-- row-height error remains controlled
-- selection and focus preservation remain controlled
-
-### Representative Current Metrics From The Latest `hypothesis` Run
-
-From the latest current-HEAD rerun at [status/runsets/2026-04-16t00-17-20-982z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-16t00-17-20-982z.hypotheses.json):
-
-- `H6` sort:
-  - interaction latency median: about `66.7ms`
-  - result row count: `3000`
-  - blank gaps: `0`
-  - anchor shift: `0`
-  - row-height error: `0`
-- `H7` metadata filter:
-  - interaction latency median: about `66.7ms`
-  - result row count: `750`
-  - blank gaps: `0`
-  - anchor shift: `0`
-  - row-height error: `0`
-- `H8` wrapped-text primary-column filter:
-  - still satisfied under the current thresholds
-
-## Most Likely Remaining Root Cause
-
-The remaining issue does not currently look like a stability or measurement-correction bug.
-
-It most likely comes from shared synchronous row-model and render recomputation cost at larger scale.
-
-Main suspected areas:
-
-- [packages/grid-core/src/derived-rows.ts](/Users/blove/repos/pretable/packages/grid-core/src/derived-rows.ts)
-- [packages/grid-core/src/create-grid-core.ts](/Users/blove/repos/pretable/packages/grid-core/src/create-grid-core.ts)
-- [packages/react/src/use-pretable.ts](/Users/blove/repos/pretable/packages/react/src/use-pretable.ts)
-- [packages/react/src/internal/pretable-surface.tsx](/Users/blove/repos/pretable/packages/react/src/internal/pretable-surface.tsx)
-
-Working hypothesis:
-
-- `deriveVisibleRows()` does broad scan/filter/sort work on the whole source set
-- `usePretableModel()` rebuilds the render snapshot immediately from the resulting snapshot
-- sort and filter interactions may still produce redundant emits or duplicate recomputation
-- the filter synchronization path in `PretableSurface` may still be a duplicate-work source because it clears filters and reapplies them
+- [scripts/bench-matrix.mjs](/scripts/bench-matrix.mjs) — does it accept multi-adapter runs for scroll at `hypothesis` scale?
+- [packages/bench-runner/src/index.ts](/packages/bench-runner/src/index.ts) — hypothesis evaluation for H1 relative comparison.
+- [apps/bench/src/gridalpha-adapter.tsx](/apps/bench/src/gridalpha-adapter.tsx) and [apps/bench/src/gridbeta-adapter.tsx](/apps/bench/src/gridbeta-adapter.tsx) — competitor harness correctness at hypothesis scale.
 
 ## Recommended Next Slice
 
-Do not jump straight to a big row-model rewrite.
+### Stage 1: Produce A Clean Competitor Baseline
 
-Recommended next phase:
+Run at least one competitor adapter (Grid Alpha or GridBeta Virtual) through the S2 scroll script at `hypothesis` scale and capture the baseline metrics. Do not tune thresholds to make `H1` pass; just measure honestly and write the artifact.
 
-### Stage 1: Remove Redundant Interaction Transitions
+### Stage 2: Close Or Redefine H1
 
-Investigate and reduce duplicate state transitions or duplicate emits for:
+Once a clean competitor baseline exists, either:
 
-- sort
-- metadata filter
-
-Most likely places to inspect:
-
-- `packages/react/src/internal/pretable-surface.tsx`
-- `packages/grid-core/src/create-grid-core.ts`
-
-Questions to answer:
-
-- does one sort action cause more than one meaningful emit?
-- does one metadata filter action cause more than one meaningful emit?
-- does `clearFilters()` plus reapply create an avoidable extra recomputation path?
-- are equivalent sort/filter states being applied even when already current?
-
-### Stage 2: Narrow Broad Rebuild Work
-
-Only after duplicate transitions are removed:
-
-- inspect whether `usePretableModel()` and row derivation still do more work than necessary per interaction
-- then decide if deeper row-model optimization is justified
-
-## Current Design Spec For The Next Phase
-
-Read this spec before implementing the next slice:
-
-- [docs/superpowers/specs/2026-04-15-interaction-recomputation-reduction-design.md](/Users/blove/repos/pretable/docs/superpowers/specs/2026-04-15-interaction-recomputation-reduction-design.md)
-
-That spec already captures:
-
-- the current checkpoint
-- the remaining likely bottleneck
-- the recommended order of attack
-- what not to do
+- confirm `H1` is satisfied with the current Pretable metrics, or
+- document what is still blocking it and which dimension needs work (frame pacing, DOM node cost, settle behavior, etc.).
 
 ## What To Avoid
 
-- Do not claim the larger interaction family is proven.
+- Do not claim `H1` is proven without a fresh competitor artifact.
 - Do not trust only one rerun if results wobble.
 - Do not optimize only the benchmark adapter if the cause is in shared code.
 - Do not remove the current row-measurement cache regressions.
@@ -234,34 +152,26 @@ For the next slice, any meaningful change should at minimum rerun:
 
 ```bash
 pnpm --filter @pretable/react exec vitest run src/internal/__tests__/pretable-surface.test.tsx --environment jsdom
-pnpm bench:matrix -- --project=chromium --adapters=pretable --scenarios=S2 --scripts=sort,filter-metadata,filter-text --repeats=3
+pnpm bench:matrix -- --project=chromium --adapters=pretable,gridalpha,gridbeta --scenarios=S2 --scripts=scroll --scale=hypothesis --repeats=3
 pnpm bench:matrix -- --project=chromium --adapters=pretable --scenarios=S2 --scripts=sort,filter-metadata,filter-text --scale=hypothesis --repeats=3
 ```
 
 And any final summary should include:
 
 - exact runset path(s)
-- `H6` / `H7` / `H8` status
+- `H1` / `H3` / `H6` / `H7` / `H8` status
 - whether the latest result is a latency miss or a stability miss
 - what remains unresolved
 
-## If You Need A Good Starting Point
-
-Start with:
-
-1. read the recomputation-reduction spec
-2. inspect `PretableSurface` interaction synchronization and `create-grid-core` emit behavior
-3. add one narrowly targeted failing test for redundant sort/filter transition or duplicate emit behavior
-4. only then change production code
-
 ## Short Handoff Summary
 
-You are inheriting a branch where:
+You are inheriting `main` where:
 
-- row-height measurement churn was already fixed in shared code
-- `dev` interaction proof is green
-- `hypothesis` interaction proof still fails for sort and metadata filtering
-- the remaining likely problem is duplicate or overly broad shared recomputation, not viewport instability
+- row-height measurement churn is fixed in shared code
+- redundant grid-core emits are short-circuited
+- bench adapter telemetry no longer rerenders the surface
+- sort, metadata filter, and text filter are green at hypothesis scale
+- the remaining open question is the competitor comparison for wrapped-text scroll (`H1`)
 
 Continue from that point. Do not restart the investigation from zero.
 
@@ -269,4 +179,4 @@ Continue from that point. Do not restart the investigation from zero.
 
 Suggested first instruction to yourself after checkout:
 
-“Read the recomputation-reduction spec and inspect the shared sort/filter emit path before changing code. Then write one failing test that proves duplicate interaction recomputation or duplicate state application.”
+"Read the recomputation-reduction spec and the latest runset, then plan the smallest credible competitor-baseline bench run that would either close H1 or cleanly show what is still missing. Do not touch shared code before the baseline exists."
