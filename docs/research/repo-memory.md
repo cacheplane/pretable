@@ -106,9 +106,9 @@
 
 ### Current honest status
 
-- A focused Chromium Pretable `S2/dev/scroll` run on 2026-04-14 wrote telemetry-bearing notes into [status/chromium-pretable-default-s2-dev-scroll-2026-04-14t04-13-15-339z.summary.json](/Users/blove/repos/pretable/status/chromium-pretable-default-s2-dev-scroll-2026-04-14t04-13-15-339z.summary.json).
+- A focused Chromium Pretable `S2/dev/scroll` run on 2026-04-14 wrote telemetry-bearing notes into [status/chromium-pretable-default-s2-dev-scroll-2026-04-14t04-13-15-339z.summary.json](../../status/chromium-pretable-default-s2-dev-scroll-2026-04-14t04-13-15-339z.summary.json).
 - That artifact is useful because it proves the tighter benchmark/playground telemetry link is real.
-- A repeated Chromium matrix run on 2026-04-14 wrote [status/runsets/2026-04-14t04-14-56-534z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-14t04-14-56-534z.hypotheses.json).
+- A repeated Chromium matrix run on 2026-04-14 wrote [status/runsets/2026-04-14t04-14-56-534z.hypotheses.json](../../status/runsets/2026-04-14t04-14-56-534z.hypotheses.json).
 - That runset is the more important checkpoint and it is also not flattering:
   - `H1`: failing
   - `H3`: failing
@@ -123,8 +123,8 @@
 ### Scroll proof recovery
 
 - The benchmarked Pretable scroll path recovered after flattening benchmark-only chrome, scoping row-height reads to wrapped cells, caching row-height estimates in the renderer, and tightening benchmark overscan.
-- Repeated Chromium `S2/dev/scroll` evidence in [status/runsets/2026-04-14t20-16-32-016z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-14t20-16-32-016z.hypotheses.json) satisfies both `H1` and `H3`.
-- Repeated Chromium `S2/hypothesis/scroll` evidence in [status/runsets/2026-04-14t20-20-01-263z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-14t20-20-01-263z.hypotheses.json) also satisfies both `H1` and `H3`.
+- Repeated Chromium `S2/dev/scroll` evidence in [status/runsets/2026-04-14t20-16-32-016z.hypotheses.json](../../status/runsets/2026-04-14t20-16-32-016z.hypotheses.json) satisfies both `H1` and `H3`.
+- Repeated Chromium `S2/hypothesis/scroll` evidence in [status/runsets/2026-04-14t20-20-01-263z.hypotheses.json](../../status/runsets/2026-04-14t20-20-01-263z.hypotheses.json) also satisfies both `H1` and `H3`.
 
 ### Interaction proof expansion
 
@@ -136,12 +136,12 @@
   - `H6` for sort
   - `H7` for metadata filtering
   - `H8` for wrapped-text primary-column filtering
-- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-15t04-18-07-253z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-15t04-18-07-253z.hypotheses.json) is mixed but useful:
+- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-15t04-18-07-253z.hypotheses.json](../../status/runsets/2026-04-15t04-18-07-253z.hypotheses.json) is mixed but useful:
   - `H6`: satisfied
   - `H7`: satisfied
   - `H8`: failing
   - `H8` is failing because text filtering still produces large post-filter anchor shifts even when latency and blank-gap metrics stay controlled
-- Repeated Chromium `S2/hypothesis` interaction evidence in [status/runsets/2026-04-15t04-19-10-257z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-15t04-19-10-257z.hypotheses.json) is stricter and currently not flattering:
+- Repeated Chromium `S2/hypothesis` interaction evidence in [status/runsets/2026-04-15t04-19-10-257z.hypotheses.json](../../status/runsets/2026-04-15t04-19-10-257z.hypotheses.json) is stricter and currently not flattering:
   - `H6`: failing
   - `H7`: failing
   - `H8`: not run in that promotion pass
@@ -156,7 +156,7 @@
 - The local interaction path is materially stronger after two real fixes:
   - the Pretable bench adapter no longer recreates `rows` and `columns` on telemetry-driven rerenders, which had been resetting the grid during `filter-text`
   - post-interaction anchor metrics now reset their baseline on the first changed frame, so they measure instability after the mutation instead of counting the mutation itself as drift
-- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-15t06-03-15-343z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-15t06-03-15-343z.hypotheses.json) is stronger than the earlier failing checkpoint, but still mixed:
+- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-15t06-03-15-343z.hypotheses.json](../../status/runsets/2026-04-15t06-03-15-343z.hypotheses.json) is stronger than the earlier failing checkpoint, but still mixed:
   - `H6`: failing on worst-case repeat latency even though medians are within threshold
   - `H7`: satisfied
   - `H8`: satisfied
@@ -181,11 +181,11 @@
 
 ### Current interaction checkpoint
 
-- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-16t00-08-02-085z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-16t00-08-02-085z.hypotheses.json) is now clean:
+- Repeated Chromium `S2/dev` interaction evidence in [status/runsets/2026-04-16t00-08-02-085z.hypotheses.json](../../status/runsets/2026-04-16t00-08-02-085z.hypotheses.json) is now clean:
   - `H6`: satisfied
   - `H7`: satisfied
   - `H8`: satisfied
-- Repeated Chromium `S2/hypothesis` interaction evidence in [status/runsets/2026-04-16t00-08-37-373z.hypotheses.json](/Users/blove/repos/pretable/status/runsets/2026-04-16t00-08-37-373z.hypotheses.json) is still mixed, but stronger than the first promotion attempt:
+- Repeated Chromium `S2/hypothesis` interaction evidence in [status/runsets/2026-04-16t00-08-37-373z.hypotheses.json](../../status/runsets/2026-04-16t00-08-37-373z.hypotheses.json) is still mixed, but stronger than the first promotion attempt:
   - `H6`: failing
   - `H7`: satisfied
   - `H8`: satisfied
