@@ -132,16 +132,11 @@ describe("PretableAdapter", () => {
     surfaceSpy.mockRestore();
   });
 
-  test("keeps row and column inputs stable across telemetry-driven rerenders", async () => {
+  test("does not rerender the surface in response to telemetry changes", async () => {
     const dataset = createScenarioDataset("S2", { scale: "smoke" });
-    const capturedRows: Array<typeof dataset.rows> = [];
-    const capturedColumns: Array<typeof dataset.columns> = [];
     const surfaceSpy = vi
       .spyOn(pretableReactInternal, "PretableSurface")
       .mockImplementation((props) => {
-        capturedRows.push(props.rows as typeof dataset.rows);
-        capturedColumns.push(props.columns as typeof dataset.columns);
-
         function MockSurface() {
           useEffect(() => {
             props.onTelemetryChange?.({
@@ -177,11 +172,12 @@ describe("PretableAdapter", () => {
     render(<PretableAdapter dataset={dataset} runKey={1} />);
 
     await waitFor(() => {
-      expect(surfaceSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(surfaceSpy.mock.calls.length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(capturedRows[0]).toBe(capturedRows[1]);
-    expect(capturedColumns[0]).toBe(capturedColumns[1]);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(surfaceSpy.mock.calls.length).toBe(1);
 
     surfaceSpy.mockRestore();
   });
