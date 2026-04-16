@@ -2,7 +2,6 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type ReactNode,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -170,6 +169,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   );
   const measuredHeightsRef = useRef<Record<string, number>>({});
   const measuredRowKeysRef = useRef<Record<string, string>>({});
+  const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     columns,
@@ -190,10 +190,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     onTelemetryChange?.(telemetry);
   }, [onTelemetryChange, telemetry]);
 
-  useEffect(() => {
-    measuredHeightsRef.current = measuredHeights;
-  }, [measuredHeights]);
-
   useLayoutEffect(() => {
     if (!interactionState?.selectedRowId) {
       return;
@@ -206,85 +202,61 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     }
   }, [interactionState, onSelectedRowIdChange, snapshot.selection.rowIds]);
 
-  const captureMeasuredRow = (
-    rowId: string,
-    node: HTMLDivElement | null,
-  ) => {
-    if (!node) {
-      return;
-    }
+  useLayoutEffect(() => {
+    let nextHeights = measuredHeightsRef.current;
+    let nextKeys = measuredRowKeysRef.current;
+    let changed = false;
 
-    const plannedHeight = Number(node.getAttribute("data-row-height"));
-    const cachedHeight = measuredHeightsRef.current[rowId];
-    const currentRowKey = getRowMeasurementKey(node);
-    const cachedRowKey = measuredRowKeysRef.current[rowId];
+    for (const [rowId, node] of rowNodesRef.current) {
+      const plannedHeight = Number(node.getAttribute("data-row-height"));
+      const cachedHeight = nextHeights[rowId];
+      const currentRowKey = getRowMeasurementKey(node);
+      const cachedRowKey = nextKeys[rowId];
 
-    if (
-      Number.isFinite(plannedHeight) &&
-      cachedHeight !== undefined &&
-      cachedHeight === plannedHeight &&
-      cachedRowKey === currentRowKey
-    ) {
-      return;
-    }
-
-    const measuredHeight = measureRenderedRowHeight(node);
-
-    if (measuredHeight <= DEFAULT_ROW_HEIGHT) {
-      if (cachedHeight !== undefined && cachedRowKey !== currentRowKey) {
-        const { [rowId]: _ignoredHeight, ...nextMeasuredHeights } =
-          measuredHeightsRef.current;
-        const { [rowId]: _ignoredKey, ...nextMeasuredRowKeys } =
-          measuredRowKeysRef.current;
-
-        measuredHeightsRef.current = nextMeasuredHeights;
-        measuredRowKeysRef.current = nextMeasuredRowKeys;
-
-        setMeasuredHeights((current) => {
-          if (current[rowId] === undefined) {
-            return current;
-          }
-
-          const { [rowId]: _removedHeight, ...nextCurrentHeights } = current;
-
-          return nextCurrentHeights;
-        });
+      if (
+        Number.isFinite(plannedHeight) &&
+        cachedHeight !== undefined &&
+        cachedHeight === plannedHeight &&
+        cachedRowKey === currentRowKey
+      ) {
+        continue;
       }
 
-      return;
-    }
+      const measuredHeight = measureRenderedRowHeight(node);
 
-    if (measuredHeightsRef.current[rowId] === measuredHeight) {
-      if (cachedRowKey !== currentRowKey) {
-        measuredRowKeysRef.current = {
-          ...measuredRowKeysRef.current,
-          [rowId]: currentRowKey,
-        };
+      if (measuredHeight <= DEFAULT_ROW_HEIGHT) {
+        if (cachedHeight !== undefined && cachedRowKey !== currentRowKey) {
+          const { [rowId]: _h, ...restHeights } = nextHeights;
+          const { [rowId]: _k, ...restKeys } = nextKeys;
+
+          nextHeights = restHeights;
+          nextKeys = restKeys;
+          changed = true;
+        }
+
+        continue;
       }
 
-      return;
-    }
+      if (nextHeights[rowId] === measuredHeight) {
+        if (cachedRowKey !== currentRowKey) {
+          nextKeys = { ...nextKeys, [rowId]: currentRowKey };
+        }
 
-    measuredHeightsRef.current = {
-      ...measuredHeightsRef.current,
-      [rowId]: measuredHeight,
-    };
-    measuredRowKeysRef.current = {
-      ...measuredRowKeysRef.current,
-      [rowId]: currentRowKey,
-    };
-
-    setMeasuredHeights((current) => {
-      if (current[rowId] === measuredHeight) {
-        return current;
+        continue;
       }
 
-      return {
-        ...current,
-        [rowId]: measuredHeight,
-      };
-    });
-  };
+      nextHeights = { ...nextHeights, [rowId]: measuredHeight };
+      nextKeys = { ...nextKeys, [rowId]: currentRowKey };
+      changed = true;
+    }
+
+    measuredHeightsRef.current = nextHeights;
+    measuredRowKeysRef.current = nextKeys;
+
+    if (changed) {
+      setMeasuredHeights(nextHeights);
+    }
+  });
 
   return (
     <div
@@ -436,7 +408,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 onSelectedRowIdChange?.(id);
               }}
               ref={(node) => {
-                captureMeasuredRow(id, node);
+                if (node) {
+                  rowNodesRef.current.set(id, node);
+                } else {
+                  rowNodesRef.current.delete(id);
+                }
               }}
               style={getRowStyle(templateColumns, top, height)}
             >

@@ -14,6 +14,7 @@ const ESTIMATE_FONT_KEY = "Pretable Estimate 14";
 const estimatedRowHeightCache = new WeakMap<object, {
   height: number;
   signature: string;
+  columnsRef: unknown;
 }>();
 
 export function createDomRenderSnapshot<TRow extends GridCoreRow>(
@@ -76,10 +77,16 @@ function estimateRowHeight<TRow extends GridCoreRow>(
   row: TRow,
   columns: GridCoreColumn<TRow>[],
 ): number {
-  const signature = getEstimatedRowHeightSignature(row, columns);
   const cached = estimatedRowHeightCache.get(row);
 
+  if (cached && cached.columnsRef === columns) {
+    return cached.height;
+  }
+
+  const signature = getEstimatedRowHeightSignature(row, columns);
+
   if (cached?.signature === signature) {
+    cached.columnsRef = columns;
     return cached.height;
   }
 
@@ -109,6 +116,7 @@ function estimateRowHeight<TRow extends GridCoreRow>(
   estimatedRowHeightCache.set(row, {
     signature,
     height: estimatedHeight,
+    columnsRef: columns,
   });
 
   return estimatedHeight;

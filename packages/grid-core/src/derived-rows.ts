@@ -106,18 +106,30 @@ function sortRows<TRow extends GridCoreRow>(
   }
 
   const multiplier = sort.direction === "asc" ? 1 : -1;
+  const rawKeys = rows.map((entry) => readCellValue(entry.row, column));
+  const allNumeric = rawKeys.every((v) => typeof v === "number");
 
-  return [...rows].sort((left, right) => {
-    const leftValue = readCellValue(left.row, column);
-    const rightValue = readCellValue(right.row, column);
-    const comparison = compareValues(leftValue, rightValue);
+  if (allNumeric) {
+    const numKeys = rawKeys as number[];
+    const indexed = rows.map((_, i) => i);
 
-    if (comparison !== 0) {
-      return comparison * multiplier;
-    }
+    indexed.sort((a, b) => {
+      const diff = numKeys[a] - numKeys[b];
+      return diff !== 0 ? diff * multiplier : rows[a].sourceIndex - rows[b].sourceIndex;
+    });
 
-    return left.sourceIndex - right.sourceIndex;
+    return indexed.map((i) => rows[i]);
+  }
+
+  const strKeys = rawKeys.map((v) => String(v ?? ""));
+  const indexed = rows.map((_, i) => i);
+
+  indexed.sort((a, b) => {
+    const comparison = collator.compare(strKeys[a], strKeys[b]);
+    return comparison !== 0 ? comparison * multiplier : rows[a].sourceIndex - rows[b].sourceIndex;
   });
+
+  return indexed.map((i) => rows[i]);
 }
 
 function readCellValue<TRow extends GridCoreRow>(
