@@ -255,7 +255,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
   const captureMeasuredRow = (
     rowId: string,
-    row: TRow,
     node: HTMLDivElement | null,
   ) => {
     if (!node) {
@@ -264,7 +263,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
     const plannedHeight = Number(node.getAttribute("data-row-height"));
     const cachedHeight = measuredHeightsRef.current[rowId];
-    const currentRowKey = getRowMeasurementKey(row, columns, rowId);
+    const currentRowKey = getRowMeasurementKey(node);
     const cachedRowKey = measuredRowKeysRef.current[rowId];
 
     if (
@@ -303,6 +302,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     }
 
     if (measuredHeightsRef.current[rowId] === measuredHeight) {
+      if (cachedRowKey !== currentRowKey) {
+        measuredRowKeysRef.current = {
+          ...measuredRowKeysRef.current,
+          [rowId]: currentRowKey,
+        };
+      }
+
       return;
     }
 
@@ -477,7 +483,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 onSelectedRowIdChange?.(id);
               }}
               ref={(node) => {
-                captureMeasuredRow(id, row, node);
+                captureMeasuredRow(id, node);
               }}
               style={getRowStyle(templateColumns, top, height)}
             >
@@ -526,23 +532,37 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   );
 }
 
-function getRowMeasurementKey<TRow extends PretableRow = PretableRow>(
-  row: TRow,
-  columns: PretableColumn<TRow>[],
-  rowId: string,
-) {
-  const wrappedColumns = columns.filter((column) => column.wrap);
+function getRowMeasurementKey(rowNode: HTMLDivElement) {
+  const rowParts = [
+    rowNode.getAttribute("class") ?? "",
+    normalizeStyleSignature(rowNode.getAttribute("style") ?? ""),
+    rowNode.getAttribute("aria-selected") ?? "",
+    rowNode.getAttribute("data-focused") ?? "",
+    rowNode.getAttribute("data-selected") ?? "",
+  ];
 
-  if (wrappedColumns.length === 0) {
-    return `row:${rowId}:no-wrapped-columns`;
-  }
+  const cellParts = [
+    ...rowNode.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+  ].map((cell) =>
+    [
+      cell.getAttribute("data-column-id") ?? "",
+      cell.getAttribute("class") ?? "",
+      cell.getAttribute("style") ?? "",
+      cell.getAttribute("data-pretable-wrap") ?? "",
+      cell.getAttribute("data-focused") ?? "",
+      cell.getAttribute("data-selected") ?? "",
+      cell.textContent ?? "",
+    ].join(":"),
+  );
 
-  return wrappedColumns
-    .map((column) => {
-      const cellValue = resolveCellValue(row, column);
-      const columnWidth = getColumnWidth(column);
+  return [...rowParts, ...cellParts].join("|");
+}
 
-      return `${column.id}:${columnWidth}:${String(cellValue ?? "")}`;
-    })
-    .join("|");
+function normalizeStyleSignature(styleValue: string) {
+  return styleValue
+    .split(";")
+    .map((declaration) => declaration.trim())
+    .filter(Boolean)
+    .filter((declaration) => !/^top\s*:/i.test(declaration))
+    .join(";");
 }
