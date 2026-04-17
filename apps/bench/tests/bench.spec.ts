@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
@@ -53,6 +53,15 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
         scriptName,
       },
     });
+
+    const cwd = process.cwd();
+    const summaryPath = path.join(
+      cwd,
+      "status",
+      `${createRunArtifactFileStem(result)}.summary.json`,
+    );
+
+    await expect(stat(summaryPath)).resolves.toBeTruthy();
     return;
   }
 
