@@ -130,6 +130,7 @@ export interface PretableSurfaceProps<
   interactionState?: PretableSurfaceInteractionState | null;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onSortChange?: (sort: { columnId: string; direction: "asc" | "desc" } | null) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellRenderInput<TRow>,
@@ -156,6 +157,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   interactionState,
   overscan = 6,
   onSelectedRowIdChange,
+  onSortChange,
   onTelemetryChange,
   renderBodyCell,
   renderHeaderCell,
@@ -325,7 +327,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               })}
               key={column.id}
               onClick={() => {
-                grid.setSort(column.id, getNextSortDirection(sortDirection));
+                const nextDirection = getNextSortDirection(sortDirection);
+                grid.setSort(column.id, nextDirection);
+                if (nextDirection) {
+                  onSortChange?.({ columnId: column.id, direction: nextDirection });
+                } else {
+                  onSortChange?.(null);
+                }
               }}
               style={{
                 alignItems: "start",
