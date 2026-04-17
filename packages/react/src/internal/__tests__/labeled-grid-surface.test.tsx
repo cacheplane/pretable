@@ -128,4 +128,32 @@ describe("LabeledGridSurface", () => {
 
     expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-002");
   });
+
+  it("passes interactionState and onSortChange through to the underlying surface", () => {
+    const onSortChange = vi.fn();
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        interactionState={{
+          sort: { columnId: "timestamp", direction: "desc" },
+          filters: {},
+        }}
+        onSortChange={onSortChange}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+
+    fireEvent.click(severityHeader);
+
+    expect(onSortChange).toHaveBeenCalledWith({
+      columnId: "severity",
+      direction: "desc",
+    });
+  });
 });

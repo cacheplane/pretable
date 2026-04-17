@@ -37,9 +37,11 @@ export interface LabeledGridSurfaceProps<
   ) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
+  interactionState?: PretableSurfaceProps<TRow>["interactionState"];
   labelClassName?: string;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onSortChange?: PretableSurfaceProps<TRow>["onSortChange"];
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   pinnedClassName?: string;
   rowClassName?: string;
@@ -58,9 +60,11 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   getHeaderCellProps,
   getRowId,
   headerCellClassName,
+  interactionState,
   labelClassName,
   overscan,
   onSelectedRowIdChange,
+  onSortChange,
   onTelemetryChange,
   pinnedClassName,
   rowClassName,
@@ -110,8 +114,10 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       }
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
+      interactionState={interactionState}
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
+      onSortChange={onSortChange}
       onTelemetryChange={onTelemetryChange}
       renderBodyCell={({ column, row, value }) => (
         <>
