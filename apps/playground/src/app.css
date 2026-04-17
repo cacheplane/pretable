@@ -245,6 +245,16 @@ select {
   font-size: 0.83rem;
 }
 
+.inspection-header-cell.is-filtered {
+  border-bottom: 2px solid #f3cb75;
+}
+
+.sort-indicator {
+  color: #f3cb75;
+  font-size: 0.83rem;
+  opacity: 0.6;
+}
+
 .inspection-scroll-content {
   position: relative;
 }

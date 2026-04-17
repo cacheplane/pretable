@@ -170,6 +170,30 @@ describe("LabeledGridSurface", () => {
     expect(timestampHeader).toHaveTextContent("Timestamp▲");
   });
 
+  it("applies a filter-active class to header cells for filtered columns", () => {
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        headerCellClassName="inspection-header-cell"
+        interactionState={{
+          sort: null,
+          filters: { severity: "error" },
+        }}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+
+    expect(severityHeader).toHaveClass("is-filtered");
+    expect(timestampHeader).not.toHaveClass("is-filtered");
+  });
+
   it("passes interactionState and onSortChange through to the underlying surface", () => {
     const onSortChange = vi.fn();
     const view = render(

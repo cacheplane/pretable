@@ -75,6 +75,11 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
 }: LabeledGridSurfaceProps<TRow>) {
   const getPinnedClassName = (column: PretableColumn<TRow>) =>
     column.pinned === "left" && pinnedClassName ? pinnedClassName : undefined;
+  const activeFilterColumns = new Set(
+    Object.entries(interactionState?.filters ?? {})
+      .filter(([, value]) => value.trim() !== "")
+      .map(([columnId]) => columnId),
+  );
   const getFormattedValue = ({
     column,
     row,
@@ -100,7 +105,11 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
         )
       }
       getHeaderCellClassName={({ column }) =>
-        joinClassNames(headerCellClassName, getPinnedClassName(column))
+        joinClassNames(
+          headerCellClassName,
+          getPinnedClassName(column),
+          activeFilterColumns.has(column.id) ? "is-filtered" : undefined,
+        )
       }
       getHeaderCellProps={(input) =>
         mergeProps(
