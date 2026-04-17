@@ -1,6 +1,5 @@
 import {
   createInspectionDataset,
-  getInspectionFilterValue,
   inspectionColumns,
   inspectionDatasetScaleOptions,
   type InspectionDatasetScale,
@@ -14,34 +13,28 @@ import { useMemo, useState } from "react";
 const VIEWPORT_HEIGHT = 420;
 const OVERSCAN_ROWS = 5;
 
+interface InteractionState {
+  sort: { columnId: string; direction: "asc" | "desc" } | null;
+  filters: Record<string, string>;
+  selectedRowId: string | null;
+}
+
 export function InspectionDemo() {
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [interactionState, setInteractionState] = useState<InteractionState>({
+    sort: null,
+    filters: {},
+    selectedRowId: null,
+  });
   const [scale, setScale] = useState<InspectionDatasetScale>("dev");
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [telemetry, setTelemetry] = useState<PretableTelemetry | null>(null);
   const dataset = useMemo(() => createInspectionDataset(scale), [scale]);
-
-  const filteredRows = useMemo(
-    () =>
-      dataset.rows.filter((row) =>
-        dataset.filterableColumnIds.every((columnId) => {
-          const filter = filters[columnId]?.trim().toLowerCase();
-
-          if (!filter) {
-            return true;
-          }
-
-          return getInspectionFilterValue(row, columnId)
-            .toLowerCase()
-            .includes(filter);
-        }),
-      ),
-    [dataset.filterableColumnIds, dataset.rows, filters],
-  );
+  const rows = useMemo(() => [...dataset.rows], [dataset.rows]);
 
   const selectedRow = useMemo(
-    () => dataset.rows.find((row) => row.id === selectedRowId) ?? null,
-    [dataset.rows, selectedRowId],
+    () =>
+      dataset.rows.find((row) => row.id === interactionState.selectedRowId) ??
+      null,
+    [dataset.rows, interactionState.selectedRowId],
   );
 
   return (
@@ -61,7 +54,7 @@ export function InspectionDemo() {
         <div className="inspection-status-card">
           <span>Current slice</span>
           <strong>Inspection workflow</strong>
-          <p>{filteredRows.length} matching rows</p>
+          <p>{telemetry?.rowModelRowCount ?? dataset.rows.length} matching rows</p>
           <p>Scale: {scale}</p>
           <dl data-testid="inspection-diagnostics">
             <div>
@@ -130,7 +123,9 @@ export function InspectionDemo() {
               </select>
             </label>
             {dataset.filterableColumnIds.map((columnId) => {
-              const column = inspectionColumns.find((candidate) => candidate.id === columnId);
+              const column = inspectionColumns.find(
+                (candidate) => candidate.id === columnId,
+              );
               const label = column?.header ?? columnId;
 
               return (
@@ -138,13 +133,16 @@ export function InspectionDemo() {
                   <span>{label}</span>
                   <input
                     aria-label={`Filter ${label}`}
-                    value={filters[columnId] ?? ""}
+                    value={interactionState.filters[columnId] ?? ""}
                     onChange={(event) => {
                       const nextValue = event.currentTarget.value;
 
-                      setFilters((current) => ({
+                      setInteractionState((current) => ({
                         ...current,
-                        [columnId]: nextValue,
+                        filters: {
+                          ...current.filters,
+                          [columnId]: nextValue,
+                        },
                       }));
                     }}
                     placeholder={`Filter ${label.toLowerCase()}`}
@@ -158,10 +156,22 @@ export function InspectionDemo() {
             <InspectionGrid
               ariaLabel="Inspection grid"
               filterableColumnIds={dataset.filterableColumnIds}
-              onSelectedRowIdChange={setSelectedRowId}
+              interactionState={interactionState}
+              onSelectedRowIdChange={(rowId) => {
+                setInteractionState((current) => ({
+                  ...current,
+                  selectedRowId: rowId,
+                }));
+              }}
+              onSortChange={(sort) => {
+                setInteractionState((current) => ({
+                  ...current,
+                  sort,
+                }));
+              }}
               onTelemetryChange={setTelemetry}
               overscan={OVERSCAN_ROWS}
-              rows={filteredRows}
+              rows={rows}
               viewportHeight={VIEWPORT_HEIGHT}
             />
           </div>
