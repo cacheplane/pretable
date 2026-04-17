@@ -44,6 +44,16 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   const interactionSupported =
     interactionScript && adapterId === "pretable" && scenarioId === "S2";
 
+  const cwd = process.cwd();
+  const summaryPath = path.join(
+    cwd,
+    "status",
+    `${createRunArtifactFileStem(result)}.summary.json`,
+  );
+
+  await mkdir(path.dirname(summaryPath), { recursive: true });
+  await writeFile(summaryPath, `${JSON.stringify(result, null, 2)}\n`);
+
   if (interactionScript && !interactionSupported) {
     expect(result).toMatchObject({
       status: "unsupported",
@@ -54,13 +64,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       },
     });
 
-    const cwd = process.cwd();
-    const summaryPath = path.join(
-      cwd,
-      "status",
-      `${createRunArtifactFileStem(result)}.summary.json`,
-    );
-
+    await page.context().tracing.stop();
     await expect(stat(summaryPath)).resolves.toBeTruthy();
     return;
   }
@@ -139,18 +143,10 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     });
   }
 
-  const cwd = process.cwd();
-  const summaryPath = path.join(
-    cwd,
-    "status",
-    `${createRunArtifactFileStem(result)}.summary.json`,
-  );
   const dashboardPath = path.join(cwd, "status", "dashboard.json");
   const tracePath = path.join(cwd, result.tracePath);
 
-  await mkdir(path.dirname(summaryPath), { recursive: true });
   await mkdir(path.dirname(tracePath), { recursive: true });
-  await writeFile(summaryPath, `${JSON.stringify(result, null, 2)}\n`);
   await page.context().tracing.stop({ path: tracePath });
 
   const existingDashboard = await readDashboard(dashboardPath);
