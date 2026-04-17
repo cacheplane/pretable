@@ -56,6 +56,34 @@ describe("InspectionGrid", () => {
     15_000,
   );
 
+  it("threads interactionState and onSortChange to the underlying surface", () => {
+    const dataset = createInspectionDataset("tiny");
+    const onSortChange = vi.fn();
+    const view = render(
+      <InspectionGrid
+        ariaLabel="Inspection grid"
+        filterableColumnIds={inspectionFilterableColumnIds}
+        interactionState={{
+          sort: null,
+          filters: {},
+        }}
+        onSortChange={onSortChange}
+        overscan={0}
+        rows={[...dataset.rows]}
+        viewportHeight={132}
+      />,
+    );
+
+    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+
+    fireEvent.click(timestampHeader);
+
+    expect(onSortChange).toHaveBeenCalledWith({
+      columnId: "timestamp",
+      direction: "desc",
+    });
+  });
+
   it("preserves the shared row and cell DOM contract across inspection dataset scales", () => {
     const tiny = createInspectionDataset("tiny");
     const stress = createInspectionDataset("stress");

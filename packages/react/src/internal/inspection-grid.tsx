@@ -7,6 +7,7 @@ import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "../use-pretable";
 
 import { LabeledGridSurface } from "./labeled-grid-surface";
+import type { PretableSurfaceProps } from "./pretable-surface";
 
 const inspectionGridColumns = [...inspectionColumns];
 const getInspectionRowId = (row: InspectionRow) => row.id;
@@ -20,7 +21,9 @@ const filterableHeaderProps = {
 export interface InspectionGridProps {
   ariaLabel: string;
   filterableColumnIds: readonly InspectionFilterableColumnId[];
+  interactionState?: PretableSurfaceProps<InspectionRow>["interactionState"];
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onSortChange?: PretableSurfaceProps<InspectionRow>["onSortChange"];
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   overscan?: number;
   rows: InspectionRow[];
@@ -30,7 +33,9 @@ export interface InspectionGridProps {
 export function InspectionGrid({
   ariaLabel,
   filterableColumnIds,
+  interactionState,
   onSelectedRowIdChange,
+  onSortChange,
   onTelemetryChange,
   overscan,
   rows,
@@ -52,9 +57,11 @@ export function InspectionGrid({
       }
       getRowId={getInspectionRowId}
       headerCellClassName="inspection-header-cell"
+      interactionState={interactionState}
       labelClassName="inspection-cell-label"
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
+      onSortChange={onSortChange}
       onTelemetryChange={onTelemetryChange}
       pinnedClassName="is-pinned"
       rowClassName="inspection-row"
