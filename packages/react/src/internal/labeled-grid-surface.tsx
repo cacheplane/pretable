@@ -134,7 +134,11 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       renderHeaderCell={({ label, sortDirection }) => (
         <>
           <span>{label}</span>
-          <strong>{getSortLabel(sortDirection)}</strong>
+          {sortDirection ? (
+            <span className="sort-indicator">
+              {sortDirection === "desc" ? "▼" : "▲"}
+            </span>
+          ) : null}
         </>
       )}
       rows={rows}
@@ -164,18 +168,6 @@ function mergeProps<T extends HTMLAttributes<HTMLElement>>(
     ...base,
     ...extra,
   };
-}
-
-function getSortLabel(sortDirection: PretableSurfaceSortDirection) {
-  if (sortDirection === "desc") {
-    return "Newest";
-  }
-
-  if (sortDirection === "asc") {
-    return "Oldest";
-  }
-
-  return "Sort";
 }
 
 function formatDefaultValue(value: unknown) {

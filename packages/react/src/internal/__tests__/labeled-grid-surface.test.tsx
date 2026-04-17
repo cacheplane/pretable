@@ -105,7 +105,7 @@ describe("LabeledGridSurface", () => {
 
     fireEvent.click(timestampHeader);
 
-    expect(timestampHeader).toHaveTextContent("Newest");
+    expect(timestampHeader).toHaveTextContent("Timestamp▼");
     },
     15_000,
   );
@@ -127,6 +127,47 @@ describe("LabeledGridSurface", () => {
     fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
 
     expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-002");
+  });
+
+  it("shows sort direction glyphs in header cells", () => {
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        interactionState={{
+          sort: { columnId: "timestamp", direction: "desc" },
+          filters: {},
+        }}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+
+    expect(timestampHeader).toHaveTextContent("Timestamp▼");
+    expect(severityHeader).not.toHaveTextContent("▼");
+    expect(severityHeader).not.toHaveTextContent("▲");
+
+    view.rerender(
+      <LabeledGridSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        interactionState={{
+          sort: { columnId: "timestamp", direction: "asc" },
+          filters: {},
+        }}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    expect(timestampHeader).toHaveTextContent("Timestamp▲");
   });
 
   it("passes interactionState and onSortChange through to the underlying surface", () => {
