@@ -666,6 +666,41 @@ describe("PretableSurface", () => {
     });
   });
 
+  it("calls onSortChange when a column header is clicked", () => {
+    const onSortChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onSortChange={onSortChange}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+
+    fireEvent.click(timestampHeader);
+
+    expect(onSortChange).toHaveBeenCalledWith({
+      columnId: "timestamp",
+      direction: "desc",
+    });
+
+    fireEvent.click(timestampHeader);
+
+    expect(onSortChange).toHaveBeenCalledWith({
+      columnId: "timestamp",
+      direction: "asc",
+    });
+
+    fireEvent.click(timestampHeader);
+
+    expect(onSortChange).toHaveBeenCalledWith(null);
+  });
+
   it("does not remeasure a cached tall row height when a sort reorders the same rows", async () => {
     const measureRenderedRowHeightSpy = vi.spyOn(
       rowHeight,
