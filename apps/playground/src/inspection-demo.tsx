@@ -28,6 +28,8 @@ export function InspectionDemo() {
   const [scale, setScale] = useState<InspectionDatasetScale>("dev");
   const [telemetry, setTelemetry] = useState<PretableTelemetry | null>(null);
   const dataset = useMemo(() => createInspectionDataset(scale), [scale]);
+  // Shallow copy: dataset.rows is readonly; the engine needs a mutable array
+  // and a stable reference to avoid re-triggering interactionOverrides each render.
   const rows = useMemo(() => [...dataset.rows], [dataset.rows]);
 
   const selectedRow = useMemo(
