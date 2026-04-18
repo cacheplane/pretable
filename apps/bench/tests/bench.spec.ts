@@ -17,7 +17,9 @@ const adapterLabel =
     ? "AG Grid Community adapter"
     : adapterId === "tanstack"
       ? "TanStack Virtual adapter"
-      : "Pretable React adapter";
+      : adapterId === "mui"
+        ? "MUI Data Grid Community adapter"
+        : "Pretable React adapter";
 
 test("writes benchmark artifacts for the selected Pretable run", async ({
   page,
