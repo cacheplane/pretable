@@ -211,7 +211,7 @@ export const benchScriptNames: readonly BenchScriptName[] = [
 export function validateSupportedP0aRequest(
   request: BenchRunRequest,
 ): { ok: true } | { ok: false; reason: string } {
-  if (!["pretable", "gridalpha", "gridbeta"].includes(request.adapterId)) {
+  if (!["pretable", "gridalpha", "gridbeta", "gridgamma"].includes(request.adapterId)) {
     return {
       ok: false,
       reason: `Unsupported adapter for P0a: ${request.adapterId}`,
