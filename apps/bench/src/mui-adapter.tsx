@@ -11,9 +11,9 @@ export interface MuiAdapterProps {
 export function MuiAdapter({ dataset, runKey }: MuiAdapterProps) {
   const rows = useMemo(
     () =>
-      dataset.rows.map((row) => ({
+      dataset.rows.map((row, index) => ({
         ...row,
-        id: row.id ?? String(dataset.rows.indexOf(row)),
+        id: row.id ?? String(index),
       })),
     [dataset.rows],
   );

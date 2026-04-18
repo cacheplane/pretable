@@ -24,9 +24,9 @@ import {
 } from "./bench-runtime";
 import { AGGridAdapter } from "./ag-grid-adapter";
 import { createBenchInteractionPlan } from "./interaction-plan";
+import { MuiAdapter } from "./mui-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
-import { MuiAdapter } from "./mui-adapter";
 import { TanStackAdapter } from "./tanstack-adapter";
 
 export interface BenchAppProps {
