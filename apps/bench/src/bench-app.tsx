@@ -26,6 +26,7 @@ import { AGGridAdapter } from "./ag-grid-adapter";
 import { createBenchInteractionPlan } from "./interaction-plan";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
+import { MuiAdapter } from "./mui-adapter";
 import { TanStackAdapter } from "./tanstack-adapter";
 
 export interface BenchAppProps {
@@ -52,6 +53,12 @@ const adapterRegistry = {
     description:
       "Primitive virtualization baseline using TanStack's measured dynamic-row path.",
     render: TanStackAdapter,
+  },
+  mui: {
+    heading: "MUI Data Grid harness",
+    description:
+      "Community baseline using the vendor-documented auto-height row path.",
+    render: MuiAdapter,
   },
 } as const;
 
