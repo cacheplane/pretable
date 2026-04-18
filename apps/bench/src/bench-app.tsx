@@ -24,9 +24,9 @@ import {
 } from "./bench-runtime";
 import { GridAlphaAdapter } from "./gridalpha-adapter";
 import { createBenchInteractionPlan } from "./interaction-plan";
+import { GridGammaAdapter } from "./gridgamma-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
-import { GridGammaAdapter } from "./gridgamma-adapter";
 import { GridBetaAdapter } from "./gridbeta-adapter";
 
 export interface BenchAppProps {
