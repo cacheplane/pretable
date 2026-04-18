@@ -1,7 +1,7 @@
 import type { BenchScriptName } from "@pretable-internal/bench-runner";
 
 export interface BenchQueryState {
-  adapterId: "pretable" | "ag-grid" | "tanstack";
+  adapterId: "pretable" | "ag-grid" | "tanstack" | "mui";
   scenarioId: "S1" | "S2";
   profile: "default";
   scale: "smoke" | "dev" | "hypothesis" | "target";
