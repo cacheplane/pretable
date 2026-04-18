@@ -17,7 +17,9 @@ const adapterLabel =
     ? "Grid Alpha Community adapter"
     : adapterId === "gridbeta"
       ? "GridBeta Virtual adapter"
-      : "Pretable React adapter";
+      : adapterId === "gridgamma"
+        ? "GridGamma Data Grid Community adapter"
+        : "Pretable React adapter";
 
 test("writes benchmark artifacts for the selected Pretable run", async ({
   page,
