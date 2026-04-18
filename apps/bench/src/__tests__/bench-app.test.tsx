@@ -95,6 +95,19 @@ describe("BenchApp", () => {
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 
+  test("renders the requested gridgamma competitor surface", async () => {
+    render(
+      <BenchApp
+        search="?adapter=gridgamma&scenario=S2"
+        browserVersion="123.0"
+      />,
+    );
+
+    expect(screen.getByText("GridGamma Data Grid harness")).toBeTruthy();
+    expect(screen.getByText("GridGamma Data Grid Community adapter")).toBeTruthy();
+    expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
+  });
+
   test("keeps the Pretable benchmark wrapper distinct while exposing the shared renderer markers", async () => {
     render(
       <BenchApp search="?adapter=pretable&scenario=S2" browserVersion="123.0" />,

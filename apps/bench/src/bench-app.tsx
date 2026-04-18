@@ -26,6 +26,7 @@ import { GridAlphaAdapter } from "./gridalpha-adapter";
 import { createBenchInteractionPlan } from "./interaction-plan";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
+import { GridGammaAdapter } from "./gridgamma-adapter";
 import { GridBetaAdapter } from "./gridbeta-adapter";
 
 export interface BenchAppProps {
@@ -52,6 +53,12 @@ const adapterRegistry = {
     description:
       "Primitive virtualization baseline using GridBeta's measured dynamic-row path.",
     render: GridBetaAdapter,
+  },
+  gridgamma: {
+    heading: "GridGamma Data Grid harness",
+    description:
+      "Community baseline using the vendor-documented auto-height row path.",
+    render: GridGammaAdapter,
   },
 } as const;
 
