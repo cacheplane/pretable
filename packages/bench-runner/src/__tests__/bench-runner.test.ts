@@ -92,6 +92,14 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
+        adapterId: "mui",
+        scenarioId: "S2",
+        scriptName: "scroll",
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
         adapterId: "pretable",
         scenarioId: "S2",
         scriptName: "sort",
@@ -115,6 +123,17 @@ describe("bench-runner contract", () => {
         scenarioId: "S2",
         scriptName: "filter-text",
         }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("adapter"),
+    });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "mui",
+        scenarioId: "S2",
+        scriptName: "sort",
+      }),
     ).toEqual({
       ok: false,
       reason: expect.stringContaining("adapter"),
@@ -161,7 +180,7 @@ describe("bench-runner contract", () => {
       reason: expect.stringContaining("script"),
     });
 
-    expect(() =>
+    expect(
       createBenchRunSummary({
         request: {
           ...baseRequest,
@@ -180,7 +199,7 @@ describe("bench-runner contract", () => {
           dom_nodes_peak: 64,
         },
       }),
-    ).toThrow(/Unsupported/);
+    ).toMatchObject({ status: "completed", adapterId: "mui" });
 
     expect(() =>
       createBenchRunSummary({
