@@ -173,6 +173,20 @@ const scrollRuntimeProfiles: Record<
         "[data-tanstack-cell]",
       ),
   },
+  mui: {
+    viewportSelector: ".MuiDataGrid-virtualScroller",
+    rowSelector: ".MuiDataGrid-row",
+    cellSelector: ".MuiDataGrid-cell",
+    rowIdAttribute: "data-id",
+    rowIndexAttribute: "data-rowindex",
+    maxSettleFrames: 4,
+    measureRowHeightError: (row, renderedHeight) =>
+      measureWrappedCellRowHeightError(
+        row,
+        renderedHeight,
+        ".MuiDataGrid-cell",
+      ),
+  },
 };
 
 export async function measureBenchScrollRun(
