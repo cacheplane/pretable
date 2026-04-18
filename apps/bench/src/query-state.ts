@@ -25,9 +25,11 @@ export function parseBenchQuery(
         ? "gridalpha"
         : adapter === "gridbeta"
           ? "gridbeta"
-          : adapter === "pretable"
-            ? "pretable"
-            : DEFAULT_QUERY_STATE.adapterId,
+          : adapter === "gridgamma"
+            ? "gridgamma"
+            : adapter === "pretable"
+              ? "pretable"
+              : DEFAULT_QUERY_STATE.adapterId,
     scenarioId: scenario === "S2" ? "S2" : DEFAULT_QUERY_STATE.scenarioId,
     profile: DEFAULT_QUERY_STATE.profile,
     scale:

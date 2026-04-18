@@ -17,7 +17,7 @@ describe("parseBenchQuery", () => {
   test("falls back to safe defaults for unsupported params", () => {
     expect(
       parseBenchQuery(
-        "?adapter=gridgamma&scenario=S6&profile=tuned&script=autosize&autorun=1",
+        "?adapter=glide&scenario=S6&profile=tuned&script=autosize&autorun=1",
       ),
     ).toEqual({
       adapterId: "pretable",
@@ -51,6 +51,21 @@ describe("parseBenchQuery", () => {
       ),
     ).toEqual({
       adapterId: "gridbeta",
+      scenarioId: "S2",
+      profile: "default",
+      scale: "hypothesis",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
+
+  test("accepts the gridgamma competitor adapter without relaxing other defaults", () => {
+    expect(
+      parseBenchQuery(
+        "?adapter=gridgamma&scenario=S2&scale=hypothesis&script=scroll",
+      ),
+    ).toEqual({
+      adapterId: "gridgamma",
       scenarioId: "S2",
       profile: "default",
       scale: "hypothesis",
