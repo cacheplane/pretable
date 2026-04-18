@@ -173,6 +173,20 @@ const scrollRuntimeProfiles: Record<
         "[data-gridbeta-cell]",
       ),
   },
+  gridgamma: {
+    viewportSelector: ".GridGammaDataGrid-virtualScroller",
+    rowSelector: ".GridGammaDataGrid-row",
+    cellSelector: ".GridGammaDataGrid-cell",
+    rowIdAttribute: "data-id",
+    rowIndexAttribute: "data-rowindex",
+    maxSettleFrames: 4,
+    measureRowHeightError: (row, renderedHeight) =>
+      measureWrappedCellRowHeightError(
+        row,
+        renderedHeight,
+        ".GridGammaDataGrid-cell",
+      ),
+  },
 };
 
 export async function measureBenchScrollRun(
