@@ -127,7 +127,12 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
       scrollTop: snapshot.viewport.scrollTop,
       height: viewportHeight,
     });
-  }, [grid, snapshot.viewport.height, snapshot.viewport.scrollTop, viewportHeight]);
+  }, [
+    grid,
+    snapshot.viewport.height,
+    snapshot.viewport.scrollTop,
+    viewportHeight,
+  ]);
 
   const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
     () =>
@@ -139,21 +144,18 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
         overscan,
         measuredHeights,
       }),
-    [
-      grid.options.columns,
-      measuredHeights,
-      overscan,
-      snapshot,
-      viewportHeight,
-    ],
+    [grid.options.columns, measuredHeights, overscan, snapshot, viewportHeight],
   );
   const telemetry = useMemo<PretableTelemetry>(() => {
     const viewportBottom =
-      snapshot.viewport.scrollTop + Math.max(snapshot.viewport.height, viewportHeight);
+      snapshot.viewport.scrollTop +
+      Math.max(snapshot.viewport.height, viewportHeight);
     const viewportRows = renderSnapshot.rows.filter((row) => {
       const rowBottom = row.top + row.height;
 
-      return row.top < viewportBottom && rowBottom > snapshot.viewport.scrollTop;
+      return (
+        row.top < viewportBottom && rowBottom > snapshot.viewport.scrollTop
+      );
     });
     const firstVisibleRow = viewportRows[0];
     const lastVisibleRow = viewportRows[viewportRows.length - 1];
@@ -166,15 +168,16 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
       totalRowCount: snapshot.totalRowCount,
       totalHeight: renderSnapshot.totalHeight,
       visibleRowCount: viewportRows.length,
-      visibleRowRange: firstVisibleRow && lastVisibleRow
-        ? {
-            start: firstVisibleRow.rowIndex,
-            end: lastVisibleRow.rowIndex + 1,
-          }
-        : {
-            start: 0,
-            end: 0,
-          },
+      visibleRowRange:
+        firstVisibleRow && lastVisibleRow
+          ? {
+              start: firstVisibleRow.rowIndex,
+              end: lastVisibleRow.rowIndex + 1,
+            }
+          : {
+              start: 0,
+              end: 0,
+            },
     };
   }, [
     renderSnapshot.rows,

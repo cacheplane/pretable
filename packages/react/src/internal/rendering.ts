@@ -12,7 +12,10 @@ export const HEADER_HEIGHT = 52;
 export function getColumnWidth<TRow extends PretableRow = PretableRow>(
   column: PretableColumn<TRow>,
 ) {
-  return column.widthPx ?? (column.wrap ? DEFAULT_WRAPPED_COLUMN_WIDTH : DEFAULT_FIXED_COLUMN_WIDTH);
+  return (
+    column.widthPx ??
+    (column.wrap ? DEFAULT_WRAPPED_COLUMN_WIDTH : DEFAULT_FIXED_COLUMN_WIDTH)
+  );
 }
 
 export function getPinnedLeftOffsets<TRow extends PretableRow = PretableRow>(

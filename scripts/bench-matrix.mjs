@@ -360,8 +360,7 @@ function evaluateH1(runs) {
   const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
   const blankGapFrames = maxMetric(wrappedScrollSeries, "blank_gap_frames");
   const longTasksCount = maxMetric(wrappedScrollSeries, "long_tasks_count");
-  const rowHeightError =
-    pretableEvidence.metrics.row_height_error_p95_px;
+  const rowHeightError = pretableEvidence.metrics.row_height_error_p95_px;
   const anchorShift =
     pretableEvidence.metrics.scroll_anchor_shift_backward_p95_px ??
     pretableEvidence.metrics.scroll_anchor_shift_px;
@@ -442,12 +441,11 @@ function evaluateH1(runs) {
     };
   }
 
-  const bestFullGridSeries = fullGridCompetitorSeries.reduce(
-    (best, current) =>
-      medianMetric(current, "scroll_frame_p95_ms") <
-      medianMetric(best, "scroll_frame_p95_ms")
-        ? current
-        : best,
+  const bestFullGridSeries = fullGridCompetitorSeries.reduce((best, current) =>
+    medianMetric(current, "scroll_frame_p95_ms") <
+    medianMetric(best, "scroll_frame_p95_ms")
+      ? current
+      : best,
   );
   const bestFullGridEvidence = summarizeRunSeriesEvidence(bestFullGridSeries);
   const bestPrimitiveEvidence =
@@ -482,13 +480,14 @@ function evaluateH1(runs) {
     };
   }
 
-  const allFullGridCompetitorsPassQuality =
-    fullGridCompetitorSeries.every((series) => {
+  const allFullGridCompetitorsPassQuality = fullGridCompetitorSeries.every(
+    (series) => {
       const evidence = summarizeRunSeriesEvidence(series);
       const subCriteria = evaluateCompetitorSubCriteria(evidence);
 
       return Object.values(subCriteria).every(Boolean);
-    });
+    },
+  );
 
   if (allFullGridCompetitorsPassQuality) {
     return {
@@ -712,16 +711,16 @@ function evaluateInteractionHypothesis(
         ? "directional"
         : worstCaseExceeded
           ? "failing"
-        : "satisfied"
+          : "satisfied"
       : "failing",
     summary: passes
       ? hasPolicyDrift(candidateEvidence)
         ? `${satisfiedSummary} Current medians are promising, but policy drift across repeats keeps the claim directional.`
         : worstCaseExceeded
           ? "The interaction is instrumented and current medians stay within thresholds, but worst-case repeats still exceed the current latency or stability limits."
-        : candidateEvidence.sampleCount > 1
-          ? `${satisfiedSummary} Evidence is based on current repeated-run medians.`
-          : `${satisfiedSummary} Evidence is based on the current sample.`
+          : candidateEvidence.sampleCount > 1
+            ? `${satisfiedSummary} Evidence is based on current repeated-run medians.`
+            : `${satisfiedSummary} Evidence is based on the current sample.`
       : requiresRowReduction && !rowReductionSatisfied
         ? "The interaction is instrumented, but the filter does not materially reduce the row set yet."
         : "The interaction is instrumented, but it still exceeds one or more current latency or stability thresholds.",

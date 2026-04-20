@@ -59,7 +59,10 @@ export interface ScenarioDataset {
   seed: number;
 }
 
-const scenarioScaleRowCounts: Record<ScenarioId, Record<ScenarioScale, number>> = {
+const scenarioScaleRowCounts: Record<
+  ScenarioId,
+  Record<ScenarioScale, number>
+> = {
   S1: {
     smoke: 250,
     dev: 2_000,
@@ -241,7 +244,8 @@ function buildColumns(scenario: ScenarioDefinition): readonly ScenarioColumn[] {
     id: `col_${index}`,
     header: createColumnHeader(index),
     wrap: index < scenario.wrapped_columns,
-    widthPx: index < scenario.wrapped_columns ? 220 : index % 4 === 3 ? 96 : 140,
+    widthPx:
+      index < scenario.wrapped_columns ? 220 : index % 4 === 3 ? 96 : 140,
     pinned: index < scenario.pinned_left ? "left" : undefined,
   }));
 }

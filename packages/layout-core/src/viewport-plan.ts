@@ -22,7 +22,10 @@ export function planViewport(input: PlanViewportInput): ViewportPlan {
     };
   }
 
-  const clampedScrollTop = Math.max(0, Math.min(input.scrollTop, Math.max(0, totalHeight - 1)));
+  const clampedScrollTop = Math.max(
+    0,
+    Math.min(input.scrollTop, Math.max(0, totalHeight - 1)),
+  );
   const visibleStart = Math.min(
     rowCount - 1,
     input.rowMetrics.getIndexForOffset(clampedScrollTop),
@@ -37,7 +40,10 @@ export function planViewport(input: PlanViewportInput): ViewportPlan {
     ),
   );
   const start = Math.max(0, visibleStart - Math.max(0, input.overscan));
-  const end = Math.min(rowCount, visibleEndExclusive + Math.max(0, input.overscan));
+  const end = Math.min(
+    rowCount,
+    visibleEndExclusive + Math.max(0, input.overscan),
+  );
   const rows: PlannedRow[] = [];
 
   for (let index = start; index < end; index += 1) {

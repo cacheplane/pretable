@@ -20,6 +20,7 @@
 ### Task 1: Remove H3 from hypothesis array and delete evaluateH3
 
 **Files:**
+
 - Modify: `scripts/bench-matrix.mjs:117-124` (hypothesis array)
 - Modify: `scripts/bench-matrix.mjs:465-529` (evaluateH3 function)
 - Modify: `scripts/bench-matrix.mjs:901-918` (hasMedianStableButWorstCaseExceeded function)
@@ -114,6 +115,7 @@ H3's stability checks will be absorbed into composite H1 in the next task."
 ### Task 2: Replace evaluateH1 with composite implementation
 
 **Files:**
+
 - Modify: `scripts/bench-matrix.mjs:344-463` (evaluateH1 function)
 
 - [ ] **Step 1: Replace evaluateH1 with composite implementation**
@@ -141,8 +143,7 @@ function evaluateH1(runs) {
   const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
   const blankGapFrames = maxMetric(wrappedScrollSeries, "blank_gap_frames");
   const longTasksCount = maxMetric(wrappedScrollSeries, "long_tasks_count");
-  const rowHeightError =
-    pretableEvidence.metrics.row_height_error_p95_px;
+  const rowHeightError = pretableEvidence.metrics.row_height_error_p95_px;
   const anchorShift =
     pretableEvidence.metrics.scroll_anchor_shift_backward_p95_px ??
     pretableEvidence.metrics.scroll_anchor_shift_px;
@@ -223,12 +224,11 @@ function evaluateH1(runs) {
     };
   }
 
-  const bestFullGridSeries = fullGridCompetitorSeries.reduce(
-    (best, current) =>
-      medianMetric(current, "scroll_frame_p95_ms") <
-      medianMetric(best, "scroll_frame_p95_ms")
-        ? current
-        : best,
+  const bestFullGridSeries = fullGridCompetitorSeries.reduce((best, current) =>
+    medianMetric(current, "scroll_frame_p95_ms") <
+    medianMetric(best, "scroll_frame_p95_ms")
+      ? current
+      : best,
   );
   const bestFullGridEvidence = summarizeRunSeriesEvidence(bestFullGridSeries);
   const bestPrimitiveEvidence =
@@ -263,13 +263,14 @@ function evaluateH1(runs) {
     };
   }
 
-  const allFullGridCompetitorsPassQuality =
-    fullGridCompetitorSeries.every((series) => {
+  const allFullGridCompetitorsPassQuality = fullGridCompetitorSeries.every(
+    (series) => {
       const evidence = summarizeRunSeriesEvidence(series);
       const subCriteria = evaluateCompetitorSubCriteria(evidence);
 
       return Object.values(subCriteria).every(Boolean);
-    });
+    },
+  );
 
   if (allFullGridCompetitorsPassQuality) {
     return {
@@ -341,6 +342,7 @@ at least one full-grid competitor to fail at least one quality threshold."
 ### Task 3: Update existing H1 test assertions
 
 **Files:**
+
 - Modify: `scripts/__tests__/bench-matrix.test.mjs`
 
 - [ ] **Step 1: Update "distinguishes directional evidence from missing proof" test**
@@ -372,27 +374,27 @@ Update the gridalpha run's `row_height_error_p95_px` from `0.2` to `2` so it fai
 Update the H1 assertions (around lines 333-340) from:
 
 ```javascript
-  assert.equal(
-    report.hypotheses.find((item) => item.id === "H1")?.status,
-    "satisfied",
-  );
-  assert.match(
-    report.hypotheses.find((item) => item.id === "H1")?.summary ?? "",
-    /25%|relative/i,
-  );
+assert.equal(
+  report.hypotheses.find((item) => item.id === "H1")?.status,
+  "satisfied",
+);
+assert.match(
+  report.hypotheses.find((item) => item.id === "H1")?.summary ?? "",
+  /25%|relative/i,
+);
 ```
 
 to:
 
 ```javascript
-  assert.equal(
-    report.hypotheses.find((item) => item.id === "H1")?.status,
-    "satisfied",
-  );
-  assert.match(
-    report.hypotheses.find((item) => item.id === "H1")?.summary ?? "",
-    /zero-artifact|composite|quality/i,
-  );
+assert.equal(
+  report.hypotheses.find((item) => item.id === "H1")?.status,
+  "satisfied",
+);
+assert.match(
+  report.hypotheses.find((item) => item.id === "H1")?.summary ?? "",
+  /zero-artifact|composite|quality/i,
+);
 ```
 
 - [ ] **Step 2: Update "aggregates repeated runs by median" test**
@@ -402,13 +404,13 @@ The gridalpha runs in this test (around lines 641-660) have `row_height_error_p9
 Update the H1 summary assertion (around line 668) from:
 
 ```javascript
-  assert.match(h1?.summary ?? "", /median|repeat/i);
+assert.match(h1?.summary ?? "", /median|repeat/i);
 ```
 
 to:
 
 ```javascript
-  assert.match(h1?.summary ?? "", /repeated-run medians|current sample/i);
+assert.match(h1?.summary ?? "", /repeated-run medians|current sample/i);
 ```
 
 - [ ] **Step 3: Update "exposes worst-case H1 threshold metrics" test**
@@ -418,17 +420,17 @@ This test has pretable with `blank_gap_frames: 1` on the worst-case run. Under c
 Update the summary assertions (around lines 757-759) from:
 
 ```javascript
-  assert.equal(h1?.status, "failing");
-  assert.match(h1?.summary ?? "", /medians/i);
-  assert.match(h1?.summary ?? "", /worst-case|repeat/i);
+assert.equal(h1?.status, "failing");
+assert.match(h1?.summary ?? "", /medians/i);
+assert.match(h1?.summary ?? "", /worst-case|repeat/i);
 ```
 
 to:
 
 ```javascript
-  assert.equal(h1?.status, "failing");
-  assert.match(h1?.summary ?? "", /quality sub-criteria/i);
-  assert.match(h1?.summary ?? "", /blank gap frames/i);
+assert.equal(h1?.status, "failing");
+assert.match(h1?.summary ?? "", /quality sub-criteria/i);
+assert.match(h1?.summary ?? "", /blank gap frames/i);
 ```
 
 - [ ] **Step 4: Update "prefers the best full-grid comparator for H1" test**
@@ -444,13 +446,13 @@ Update the gridalpha run (around line 880) to have `row_height_error_p95_px: 2`:
 Update the summary assertion (around line 896) from:
 
 ```javascript
-  assert.match(h1?.summary ?? "", /full-grid/i);
+assert.match(h1?.summary ?? "", /full-grid/i);
 ```
 
 to:
 
 ```javascript
-  assert.match(h1?.summary ?? "", /zero-artifact|quality/i);
+assert.match(h1?.summary ?? "", /zero-artifact|quality/i);
 ```
 
 - [ ] **Step 5: Update "records policy-note drift across repeated runs" test**
@@ -478,6 +480,7 @@ which uses quality sub-criteria instead of 25% frame-time threshold."
 ### Task 4: Add new composite H1 test cases
 
 **Files:**
+
 - Modify: `scripts/__tests__/bench-matrix.test.mjs`
 
 - [ ] **Step 1: Add test — composite H1 fails when pretable exceeds absolute quality threshold**
@@ -769,6 +772,7 @@ Expected: Produces a `*.hypotheses.json` with 5 hypotheses, H1 present, H3 absen
 - [ ] **Step 3: Inspect the hypothesis report**
 
 Read the generated `*.hypotheses.json` in `status/runsets/`. Verify:
+
 - H1 has `status: "satisfied"` (pretable quality all zeros, GridGamma has 1.1px height error)
 - No H3 entry
 - 5 total hypotheses

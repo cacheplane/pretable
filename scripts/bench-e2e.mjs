@@ -12,7 +12,12 @@ export function normalizeBenchE2EArgs(args) {
 function run() {
   const child = spawn(
     "pnpm",
-    ["exec", "playwright", "test", ...normalizeBenchE2EArgs(process.argv.slice(2))],
+    [
+      "exec",
+      "playwright",
+      "test",
+      ...normalizeBenchE2EArgs(process.argv.slice(2)),
+    ],
     {
       stdio: "inherit",
       shell: process.platform === "win32",

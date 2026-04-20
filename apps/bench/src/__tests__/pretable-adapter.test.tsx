@@ -35,7 +35,9 @@ describe("PretableAdapter", () => {
     const firstRow = screen.getAllByTestId("pretable-row")[0];
 
     expect(adapter).toHaveAttribute("data-benchmark-adapter", "pretable");
-    expect(adapter?.querySelector("[data-pretable-scroll-viewport]")).toBeTruthy();
+    expect(
+      adapter?.querySelector("[data-pretable-scroll-viewport]"),
+    ).toBeTruthy();
     expect(adapter?.querySelector("[data-pretable-row]")).toBeTruthy();
     expect(headerButton).toHaveTextContent("Message 1");
     expect(headerButton).not.toHaveTextContent("Sort");
@@ -125,9 +127,18 @@ describe("PretableAdapter", () => {
     });
 
     expect(adapter).toHaveAttribute("data-bench-selected-row-id", "");
-    expect(adapter).toHaveAttribute("data-bench-focused-row-id", "different-row");
-    expect(adapter).toHaveAttribute("data-bench-selected-row-preserved", "false");
-    expect(adapter).toHaveAttribute("data-bench-focused-row-preserved", "false");
+    expect(adapter).toHaveAttribute(
+      "data-bench-focused-row-id",
+      "different-row",
+    );
+    expect(adapter).toHaveAttribute(
+      "data-bench-selected-row-preserved",
+      "false",
+    );
+    expect(adapter).toHaveAttribute(
+      "data-bench-focused-row-preserved",
+      "false",
+    );
 
     surfaceSpy.mockRestore();
   });

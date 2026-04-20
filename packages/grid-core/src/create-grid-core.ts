@@ -1,7 +1,4 @@
-import {
-  createSourceRows,
-  deriveVisibleRows,
-} from "./derived-rows";
+import { createSourceRows, deriveVisibleRows } from "./derived-rows";
 import type {
   GridCoreFocusState,
   GridCoreOptions,
@@ -133,11 +130,7 @@ export function createGridCore<TRow extends GridCoreRow>(
           ? delta >= 0
             ? 0
             : snapshot.visibleRows.length - 1
-          : clamp(
-              currentIndex + delta,
-              0,
-              snapshot.visibleRows.length - 1,
-            );
+          : clamp(currentIndex + delta, 0, snapshot.visibleRows.length - 1);
       const nextRow = snapshot.visibleRows[nextIndex];
 
       if (!nextRow) {

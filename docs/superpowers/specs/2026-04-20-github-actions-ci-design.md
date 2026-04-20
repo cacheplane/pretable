@@ -26,13 +26,13 @@ concurrency:
 
 ## Jobs
 
-| Job | Command | Purpose |
-|-----|---------|---------|
-| `test` | `pnpm test` | Unit tests (node:test for scripts, vitest for packages/apps) |
-| `typecheck` | `pnpm typecheck` | TypeScript type checking across all packages and apps |
-| `lint` | `pnpm lint` | ESLint across all packages |
-| `format` | `pnpm format` | Prettier formatting check |
-| `build` | `pnpm build` | Full build (packages then apps, including Vite bundling) |
+| Job         | Command          | Purpose                                                      |
+| ----------- | ---------------- | ------------------------------------------------------------ |
+| `test`      | `pnpm test`      | Unit tests (node:test for scripts, vitest for packages/apps) |
+| `typecheck` | `pnpm typecheck` | TypeScript type checking across all packages and apps        |
+| `lint`      | `pnpm lint`      | ESLint across all packages                                   |
+| `format`    | `pnpm format`    | Prettier formatting check                                    |
+| `build`     | `pnpm build`     | Full build (packages then apps, including Vite bundling)     |
 
 All five jobs run in parallel with no dependencies between them.
 

@@ -191,16 +191,16 @@ The adapter contract should stay close to the attached benchmark plan:
 
 ```ts
 type BenchAdapter = {
-  id: BenchAdapterId
-  label: string
-  mount(root: HTMLElement, request: BenchRunRequest): Promise<BenchHandle>
-}
+  id: BenchAdapterId;
+  label: string;
+  mount(root: HTMLElement, request: BenchRunRequest): Promise<BenchHandle>;
+};
 
 type BenchHandle = {
-  runScript(name: BenchScriptName): Promise<void>
-  getMetrics(): Promise<Partial<Record<BenchMetricId, number>>>
-  dispose(): Promise<void>
-}
+  runScript(name: BenchScriptName): Promise<void>;
+  getMetrics(): Promise<Partial<Record<BenchMetricId, number>>>;
+  dispose(): Promise<void>;
+};
 ```
 
 Reserve the full script-name union now so later adapters can slot in without changing the contract:
@@ -220,15 +220,15 @@ For this first batch, only `initial` and `scroll` are required to execute succes
 
 `P0a` should define an explicit supported matrix:
 
-| Dimension | Supported in `P0a` |
-| --- | --- |
-| Adapters | `pretable` |
-| Profiles | `default` |
-| Browsers | `chromium` |
-| Required runnable scenarios | `S1`, `S2` |
-| Declared but non-runnable scenarios | `S3`, `S4`, `S5`, `S6` |
-| Required runnable scripts | `initial`, `scroll` |
-| Declared but non-runnable scripts | `sort`, `filter`, `updates`, `autosize` |
+| Dimension                           | Supported in `P0a`                      |
+| ----------------------------------- | --------------------------------------- |
+| Adapters                            | `pretable`                              |
+| Profiles                            | `default`                               |
+| Browsers                            | `chromium`                              |
+| Required runnable scenarios         | `S1`, `S2`                              |
+| Declared but non-runnable scenarios | `S3`, `S4`, `S5`, `S6`                  |
+| Required runnable scripts           | `initial`, `scroll`                     |
+| Declared but non-runnable scripts   | `sort`, `filter`, `updates`, `autosize` |
 
 Unsupported combinations must fail fast with an explicit “unsupported in P0a” status rather than degrade silently.
 

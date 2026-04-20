@@ -1,8 +1,16 @@
 :root {
   color: #16212b;
   background:
-    radial-gradient(circle at top left, rgba(242, 197, 92, 0.24), transparent 28%),
-    radial-gradient(circle at 85% 12%, rgba(78, 130, 173, 0.18), transparent 24%),
+    radial-gradient(
+      circle at top left,
+      rgba(242, 197, 92, 0.24),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 85% 12%,
+      rgba(78, 130, 173, 0.18),
+      transparent 24%
+    ),
     linear-gradient(180deg, #f8f4ea 0%, #efe7d9 100%);
   font-family: "Avenir Next", "IBM Plex Sans", system-ui, sans-serif;
 }
@@ -93,8 +101,11 @@ select {
 .inspection-status-card {
   min-width: 240px;
   padding: 18px 20px;
-  background:
-    linear-gradient(180deg, rgba(19, 28, 36, 0.96), rgba(28, 42, 56, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(19, 28, 36, 0.96),
+    rgba(28, 42, 56, 0.94)
+  );
   color: #f7f1df;
 }
 
@@ -171,7 +182,11 @@ select {
 }
 
 .inspection-grid-shell [data-pretable-scroll-viewport] {
-  background: linear-gradient(180deg, rgba(18, 24, 31, 0.98), rgba(27, 36, 46, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(18, 24, 31, 0.98),
+    rgba(27, 36, 46, 0.96)
+  );
 }
 
 .filter-field {
@@ -200,7 +215,11 @@ select {
   margin-top: 18px;
   border: 1px solid rgba(22, 33, 43, 0.08);
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(250, 247, 240, 0.96), rgba(245, 240, 232, 0.94));
+  background: linear-gradient(
+    180deg,
+    rgba(250, 247, 240, 0.96),
+    rgba(245, 240, 232, 0.94)
+  );
   height: 492px;
   overflow: auto;
   outline: none;

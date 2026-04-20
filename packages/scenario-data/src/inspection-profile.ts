@@ -243,7 +243,8 @@ function createGeneratedInspectionRows(
     const tags = generatedTagSets[index % generatedTagSets.length]!;
     const timestamp = new Date(baseTimestamp + index * 17_000).toISOString();
     const id = `evt-${scale}-${String(index).padStart(4, "0")}`;
-    const messageTemplate = generatedMessages[index % generatedMessages.length]!;
+    const messageTemplate =
+      generatedMessages[index % generatedMessages.length]!;
     const repeatCount = 1 + (index % 4);
     const message = Array.from({ length: repeatCount }, (_, repeatIndex) => {
       const token = `${scale}-${index}-${repeatIndex}`;

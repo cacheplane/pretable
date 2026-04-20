@@ -115,7 +115,9 @@ function sortRows<TRow extends GridCoreRow>(
 
     indexed.sort((a, b) => {
       const diff = numKeys[a] - numKeys[b];
-      return diff !== 0 ? diff * multiplier : rows[a].sourceIndex - rows[b].sourceIndex;
+      return diff !== 0
+        ? diff * multiplier
+        : rows[a].sourceIndex - rows[b].sourceIndex;
     });
 
     return indexed.map((i) => rows[i]);
@@ -126,7 +128,9 @@ function sortRows<TRow extends GridCoreRow>(
 
   indexed.sort((a, b) => {
     const comparison = collator.compare(strKeys[a], strKeys[b]);
-    return comparison !== 0 ? comparison * multiplier : rows[a].sourceIndex - rows[b].sourceIndex;
+    return comparison !== 0
+      ? comparison * multiplier
+      : rows[a].sourceIndex - rows[b].sourceIndex;
   });
 
   return indexed.map((i) => rows[i]);

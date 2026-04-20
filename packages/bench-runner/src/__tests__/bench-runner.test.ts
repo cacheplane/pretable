@@ -111,7 +111,7 @@ describe("bench-runner contract", () => {
         adapterId: "gridalpha",
         scenarioId: "S2",
         scriptName: "filter-metadata",
-        }),
+      }),
     ).toEqual({
       ok: false,
       reason: expect.stringContaining("adapter"),
@@ -122,7 +122,7 @@ describe("bench-runner contract", () => {
         adapterId: "gridbeta",
         scenarioId: "S2",
         scriptName: "filter-text",
-        }),
+      }),
     ).toEqual({
       ok: false,
       reason: expect.stringContaining("adapter"),

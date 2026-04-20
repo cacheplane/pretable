@@ -5,9 +5,7 @@ import type {
   GridCoreSnapshot,
 } from "@pretable-internal/grid-core";
 
-export interface DomRenderInput<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface DomRenderInput<TRow extends GridCoreRow = GridCoreRow> {
   columns: GridCoreColumn<TRow>[];
   snapshot: GridCoreSnapshot<TRow>;
   scrollTop: number;
@@ -16,9 +14,7 @@ export interface DomRenderInput<
   measuredHeights?: Record<string, number>;
 }
 
-export interface DomRenderRow<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface DomRenderRow<TRow extends GridCoreRow = GridCoreRow> {
   id: string;
   row: TRow;
   rowIndex: number;
@@ -26,9 +22,7 @@ export interface DomRenderRow<
   height: number;
 }
 
-export interface DomRenderSnapshot<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface DomRenderSnapshot<TRow extends GridCoreRow = GridCoreRow> {
   frame: GridCoreFrame<TRow>;
   rows: DomRenderRow<TRow>[];
   nodeCount: number;

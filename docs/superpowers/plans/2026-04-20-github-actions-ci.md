@@ -19,6 +19,7 @@
 ### Task 1: Create CI workflow file
 
 **Files:**
+
 - Create: `.github/workflows/ci.yml`
 
 - [ ] **Step 1: Create the .github/workflows directory**

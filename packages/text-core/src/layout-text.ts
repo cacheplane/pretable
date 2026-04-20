@@ -27,7 +27,10 @@ export function layoutPreparedText(
     });
   }
 
-  const charsPerLine = Math.max(1, Math.floor(width / prepared.averageCharWidth));
+  const charsPerLine = Math.max(
+    1,
+    Math.floor(width / prepared.averageCharWidth),
+  );
   const { lineCount, maxLineChars } = wrapTokens(prepared.tokens, charsPerLine);
 
   return buildLayout({

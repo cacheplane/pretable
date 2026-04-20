@@ -98,6 +98,7 @@ Add dependencies:
 File: `apps/bench/src/__tests__/gridgamma-adapter.test.tsx`
 
 Render the GridGamma adapter with a tiny inspection dataset. Assert:
+
 - Section has `data-benchmark-adapter="gridgamma"`.
 - `data-bench-result-row-count` matches row count.
 - Adapter label "GridGamma Data Grid Community adapter" is visible.

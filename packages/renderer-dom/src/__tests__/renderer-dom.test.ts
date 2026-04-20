@@ -57,7 +57,9 @@ describe("renderer-dom", () => {
     });
 
     expect(render.rows.map((row) => row.rowIndex)).toEqual([3, 4, 5, 6, 7]);
-    expect(render.rows.map((row) => row.top)).toEqual([132, 176, 220, 264, 308]);
+    expect(render.rows.map((row) => row.top)).toEqual([
+      132, 176, 220, 264, 308,
+    ]);
   });
 
   test("keeps the primary wrapped benchmark row-height estimate within the calibrated S2 envelope", () => {

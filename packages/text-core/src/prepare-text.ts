@@ -1,4 +1,8 @@
-import type { PrepareTextInput, PreparedText, PreparedTextToken } from "./types";
+import type {
+  PrepareTextInput,
+  PreparedText,
+  PreparedTextToken,
+} from "./types";
 
 const DEFAULT_AVERAGE_CHAR_WIDTH = 7;
 

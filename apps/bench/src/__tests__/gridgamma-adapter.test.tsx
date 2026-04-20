@@ -23,11 +23,7 @@ describe("GridGammaAdapter", () => {
     expect(section?.getAttribute("data-bench-result-row-count")).toBe(
       String(dataset.rows.length),
     );
-    expect(
-      screen.getByText(`Rows: ${dataset.rows.length}`),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(`Columns: ${dataset.columns.length}`),
-    ).toBeTruthy();
+    expect(screen.getByText(`Rows: ${dataset.rows.length}`)).toBeTruthy();
+    expect(screen.getByText(`Columns: ${dataset.columns.length}`)).toBeTruthy();
   });
 });

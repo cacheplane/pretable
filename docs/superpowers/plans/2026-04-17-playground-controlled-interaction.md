@@ -13,6 +13,7 @@
 ### Task 1: Add `onSortChange` callback to `PretableSurface`
 
 **Files:**
+
 - Modify: `packages/react/src/internal/pretable-surface.tsx:106-144` (props interface)
 - Modify: `packages/react/src/internal/pretable-surface.tsx:146-166` (function signature)
 - Modify: `packages/react/src/internal/pretable-surface.tsx:327-329` (header click handler)
@@ -98,6 +99,7 @@ In `packages/react/src/internal/pretable-surface.tsx`:
 ```
 
 This replaces the existing onClick handler which is:
+
 ```typescript
               onClick={() => {
                 grid.setSort(column.id, getNextSortDirection(sortDirection));
@@ -128,6 +130,7 @@ git commit -m "feat(react): add onSortChange callback to PretableSurface"
 ### Task 2: Thread `interactionState` and `onSortChange` through `LabeledGridSurface`
 
 **Files:**
+
 - Modify: `packages/react/src/internal/labeled-grid-surface.tsx:22-50` (props interface)
 - Modify: `packages/react/src/internal/labeled-grid-surface.tsx:52-139` (component)
 - Test: `packages/react/src/internal/__tests__/labeled-grid-surface.test.tsx`
@@ -181,10 +184,7 @@ In `packages/react/src/internal/labeled-grid-surface.tsx`:
 1. Add the import for `PretableSurfaceProps` if not already imported (it's already imported on line 10-12):
 
 ```typescript
-import {
-  type PretableSurfaceProps,
-  PretableSurface,
-} from "./pretable-surface";
+import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 ```
 
 2. Add to `LabeledGridSurfaceProps` interface (after `getHeaderCellProps`, around line 38):
@@ -204,8 +204,8 @@ import {
 4. Pass them to `PretableSurface` (add after `getHeaderCellClassName` prop around line 100):
 
 ```typescript
-      interactionState={interactionState}
-      onSortChange={onSortChange}
+interactionState = { interactionState };
+onSortChange = { onSortChange };
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -226,6 +226,7 @@ git commit -m "feat(react): thread interactionState and onSortChange through Lab
 ### Task 3: Thread `interactionState` and `onSortChange` through `InspectionGrid`
 
 **Files:**
+
 - Modify: `packages/react/src/internal/inspection-grid.tsx:20-28` (props interface)
 - Modify: `packages/react/src/internal/inspection-grid.tsx:30-67` (component)
 - Test: `packages/react/src/internal/__tests__/inspection-grid.test.tsx`
@@ -297,8 +298,8 @@ import type { PretableSurfaceProps } from "./pretable-surface";
 4. Pass them to `LabeledGridSurface` (add after the `getHeaderCellProps` prop around line 51):
 
 ```typescript
-        interactionState={interactionState}
-        onSortChange={onSortChange}
+interactionState = { interactionState };
+onSortChange = { onSortChange };
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -325,6 +326,7 @@ git commit -m "feat(react): thread interactionState and onSortChange through Ins
 ### Task 4: Update sort indicator glyphs in `LabeledGridSurface`
 
 **Files:**
+
 - Modify: `packages/react/src/internal/labeled-grid-surface.tsx:128-133` (renderHeaderCell)
 - Modify: `packages/react/src/internal/labeled-grid-surface.tsx:163-173` (getSortLabel)
 - Test: `packages/react/src/internal/__tests__/labeled-grid-surface.test.tsx`
@@ -416,7 +418,7 @@ The existing test in `labeled-grid-surface.test.tsx` at line 108 asserts `expect
 Update line 108:
 
 ```typescript
-    expect(timestampHeader).toHaveTextContent("Timestamp▼");
+expect(timestampHeader).toHaveTextContent("Timestamp▼");
 ```
 
 - [ ] **Step 6: Run the full react package test suite**
@@ -437,6 +439,7 @@ git commit -m "feat(react): replace sort text labels with glyph indicators in La
 ### Task 5: Add filter indicator styling to `LabeledGridSurface` headers
 
 **Files:**
+
 - Modify: `packages/react/src/internal/labeled-grid-surface.tsx` (getHeaderCellClassName callback)
 - Modify: `apps/playground/src/app.css` (add filter indicator CSS)
 - Test: `packages/react/src/internal/__tests__/labeled-grid-surface.test.tsx`
@@ -486,11 +489,11 @@ In `packages/react/src/internal/labeled-grid-surface.tsx`:
 Add this line inside the component function body, after the existing `getFormattedValue` declaration:
 
 ```typescript
-  const activeFilterColumns = new Set(
-    Object.entries(interactionState?.filters ?? {})
-      .filter(([, value]) => value.trim() !== "")
-      .map(([columnId]) => columnId),
-  );
+const activeFilterColumns = new Set(
+  Object.entries(interactionState?.filters ?? {})
+    .filter(([, value]) => value.trim() !== "")
+    .map(([columnId]) => columnId),
+);
 ```
 
 2. Update the `getHeaderCellClassName` callback passed to `PretableSurface`. Replace the existing one (around line 98-100):
@@ -539,6 +542,7 @@ git commit -m "feat(react): add filter indicator class and sort glyph styling to
 ### Task 6: Migrate `inspection-demo.tsx` to controlled `interactionState`
 
 **Files:**
+
 - Modify: `apps/playground/src/inspection-demo.tsx` (full component rewrite of state management)
 - Test: `apps/playground/src/__tests__/inspection-demo.test.tsx`
 
@@ -786,6 +790,7 @@ export function InspectionDemo() {
 ```
 
 Key changes from the original:
+
 1. Removed `getInspectionFilterValue` import — engine handles filtering.
 2. Removed `filters` and `selectedRowId` as separate `useState` — consolidated into `interactionState`.
 3. Removed `filteredRows` memo — no more userland filtering. All rows passed directly.
@@ -811,10 +816,13 @@ If tests pass, proceed to Step 5. If any test fails, proceed to Step 4.
 If the "matching rows" count assertions fail due to telemetry timing (the initial render showing `dataset.rows.length` before the engine computes `visibleRowCount`), wrap the assertion in a `waitFor`:
 
 For example, if `"62 matching rows"` is not found immediately, change the filter test assertion from:
+
 ```typescript
 expect(screen.getByText("62 matching rows")).toBeInTheDocument();
 ```
+
 to:
+
 ```typescript
 await waitFor(() => {
   expect(screen.getByText("62 matching rows")).toBeInTheDocument();

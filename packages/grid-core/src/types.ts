@@ -3,9 +3,7 @@ import type { LayoutSpan } from "@pretable-internal/layout-core";
 export type GridCoreRow = Record<string, unknown>;
 export type GridCoreSortDirection = "asc" | "desc" | null;
 
-export interface GridCoreColumn<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface GridCoreColumn<TRow extends GridCoreRow = GridCoreRow> {
   id: string;
   header?: string;
   wrap?: boolean;
@@ -16,9 +14,7 @@ export interface GridCoreColumn<
   getValue?: (row: TRow) => unknown;
 }
 
-export interface GridCoreOptions<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface GridCoreOptions<TRow extends GridCoreRow = GridCoreRow> {
   columns: GridCoreColumn<TRow>[];
   rows: TRow[];
   getRowId?: (row: TRow, index: number) => string;
@@ -44,17 +40,13 @@ export interface GridCoreViewportState {
   height: number;
 }
 
-export interface GridCoreRowModel<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface GridCoreRowModel<TRow extends GridCoreRow = GridCoreRow> {
   id: string;
   row: TRow;
   sourceIndex: number;
 }
 
-export interface GridCoreSnapshot<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface GridCoreSnapshot<TRow extends GridCoreRow = GridCoreRow> {
   viewport: GridCoreViewportState;
   sort: GridCoreSortState;
   filters: Record<string, string>;
@@ -65,9 +57,7 @@ export interface GridCoreSnapshot<
   visibleRange: LayoutSpan;
 }
 
-export interface GridCoreStore<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface GridCoreStore<TRow extends GridCoreRow = GridCoreRow> {
   options: GridCoreOptions<TRow>;
   subscribe(listener: () => void): () => void;
   getSnapshot(): GridCoreSnapshot<TRow>;
@@ -81,8 +71,6 @@ export interface GridCoreStore<
   setViewport(viewport: GridCoreViewportState): void;
 }
 
-export interface GridCoreFrame<
-  TRow extends GridCoreRow = GridCoreRow,
-> {
+export interface GridCoreFrame<TRow extends GridCoreRow = GridCoreRow> {
   snapshot: GridCoreSnapshot<TRow>;
 }

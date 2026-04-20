@@ -6,10 +6,7 @@ import type {
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "../use-pretable";
 
-import {
-  type PretableSurfaceProps,
-  PretableSurface,
-} from "./pretable-surface";
+import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 
 export interface LabeledGridSurfaceFormatValueInput<
   TRow extends PretableRow = PretableRow,
@@ -29,12 +26,10 @@ export interface LabeledGridSurfaceProps<
   getBodyCellProps?: (
     input: LabeledGridSurfaceFormatValueInput<TRow>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
-  getHeaderCellProps?: (
-    input: {
-      column: PretableColumn<TRow>;
-      sortDirection: PretableSurfaceSortDirection;
-    },
-  ) => HTMLAttributes<HTMLButtonElement> | undefined;
+  getHeaderCellProps?: (input: {
+    column: PretableColumn<TRow>;
+    sortDirection: PretableSurfaceSortDirection;
+  }) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
   interactionState?: PretableSurfaceProps<TRow>["interactionState"];
@@ -85,7 +80,9 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
     row,
     value,
   }: LabeledGridSurfaceFormatValueInput<TRow>) =>
-    formatValue ? formatValue({ column, row, value }) : formatDefaultValue(value);
+    formatValue
+      ? formatValue({ column, row, value })
+      : formatDefaultValue(value);
 
   return (
     <PretableSurface
@@ -188,5 +185,7 @@ function formatDefaultValue(value: unknown) {
 }
 
 type PretableSurfaceSortDirection = NonNullable<
-  Parameters<NonNullable<PretableSurfaceProps["renderHeaderCell"]>>[0]["sortDirection"]
+  Parameters<
+    NonNullable<PretableSurfaceProps["renderHeaderCell"]>
+  >[0]["sortDirection"]
 > | null;

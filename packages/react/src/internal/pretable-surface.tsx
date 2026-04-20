@@ -95,17 +95,13 @@ interface PretableSurfaceInteractionState {
   filters?: Record<string, string>;
   focusedRowId?: string | null;
   selectedRowId?: string | null;
-  sort?:
-    | {
-        columnId: string;
-        direction: "asc" | "desc";
-      }
-    | null;
+  sort?: {
+    columnId: string;
+    direction: "asc" | "desc";
+  } | null;
 }
 
-export interface PretableSurfaceProps<
-  TRow extends PretableRow = PretableRow,
-> {
+export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   ariaLabel: string;
   columns: PretableColumn<TRow>[];
   getBodyCellClassName?: (
@@ -130,7 +126,9 @@ export interface PretableSurfaceProps<
   interactionState?: PretableSurfaceInteractionState | null;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
-  onSortChange?: (sort: { columnId: string; direction: "asc" | "desc" } | null) => void;
+  onSortChange?: (
+    sort: { columnId: string; direction: "asc" | "desc" } | null,
+  ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellRenderInput<TRow>,
@@ -166,9 +164,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   viewportStyle,
   viewportHeight,
 }: PretableSurfaceProps<TRow>) {
-  const [measuredHeights, setMeasuredHeights] = useState<Record<string, number>>(
-    {},
-  );
+  const [measuredHeights, setMeasuredHeights] = useState<
+    Record<string, number>
+  >({});
   const measuredHeightsRef = useRef<Record<string, number>>({});
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -285,7 +283,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           return;
         }
 
-        if (event.key === "Enter" || event.key === " " || event.key === "Space") {
+        if (
+          event.key === "Enter" ||
+          event.key === " " ||
+          event.key === "Space"
+        ) {
           const focusedRowId = grid.getSnapshot().focus.rowId;
 
           if (focusedRowId) {
@@ -310,7 +312,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         {columns.map((column) => {
           const label = column.header ?? column.id;
           const sortDirection =
-            snapshot.sort.columnId === column.id ? snapshot.sort.direction : null;
+            snapshot.sort.columnId === column.id
+              ? snapshot.sort.direction
+              : null;
           const headerProps =
             getHeaderCellProps?.({
               column,
@@ -330,7 +334,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 const nextDirection = getNextSortDirection(sortDirection);
                 grid.setSort(column.id, nextDirection);
                 if (nextDirection) {
-                  onSortChange?.({ columnId: column.id, direction: nextDirection });
+                  onSortChange?.({
+                    columnId: column.id,
+                    direction: nextDirection,
+                  });
                 } else {
                   onSortChange?.(null);
                 }
@@ -453,11 +460,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       ...getPinnedCellStyle(pinnedOffsets[column.id]),
                     }}
                   >
-                    {renderBodyCell ? (
-                      renderBodyCell(bodyInput)
-                    ) : (
-                      formatCellValue(value)
-                    )}
+                    {renderBodyCell
+                      ? renderBodyCell(bodyInput)
+                      : formatCellValue(value)}
                   </div>
                 );
               })}

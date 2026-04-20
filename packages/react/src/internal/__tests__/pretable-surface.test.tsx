@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
@@ -20,7 +26,12 @@ type DemoRow = {
 };
 
 const columns = [
-  { id: "timestamp", header: "Timestamp", pinned: "left" as const, widthPx: 188 },
+  {
+    id: "timestamp",
+    header: "Timestamp",
+    pinned: "left" as const,
+    widthPx: 188,
+  },
   { id: "severity", header: "Severity", pinned: "left" as const, widthPx: 112 },
   {
     id: "tags",
@@ -105,11 +116,17 @@ describe("PretableSurface", () => {
     );
 
     const viewport = view.getByRole("grid", { name: "Inspection grid" });
-    const scrollContent = viewport.querySelector("[data-pretable-scroll-content]");
+    const scrollContent = viewport.querySelector(
+      "[data-pretable-scroll-content]",
+    );
     const renderedRows = view.getAllByTestId("pretable-row");
     const headerButton = view.getByRole("button", { name: "Sort Timestamp" });
-    const firstPinnedCell = renderedRows[0]?.querySelectorAll("[data-pretable-cell]")[0];
-    const secondPinnedCell = renderedRows[0]?.querySelectorAll("[data-pretable-cell]")[1];
+    const firstPinnedCell = renderedRows[0]?.querySelectorAll(
+      "[data-pretable-cell]",
+    )[0];
+    const secondPinnedCell = renderedRows[0]?.querySelectorAll(
+      "[data-pretable-cell]",
+    )[1];
 
     expect(viewport).toHaveAttribute("data-pretable-scroll-viewport", "");
     expect(scrollContent).toBeTruthy();
@@ -148,14 +165,18 @@ describe("PretableSurface", () => {
 
     expect(severityButton).toHaveTextContent("Newest");
     expect(
-      view.getAllByTestId("pretable-row").map((row) => row.getAttribute("data-row-id")),
+      view
+        .getAllByTestId("pretable-row")
+        .map((row) => row.getAttribute("data-row-id")),
     ).toEqual(["evt-001", "evt-003"]);
 
     fireEvent.click(severityButton);
 
     expect(severityButton).toHaveTextContent("Oldest");
     expect(
-      view.getAllByTestId("pretable-row").map((row) => row.getAttribute("data-row-id")),
+      view
+        .getAllByTestId("pretable-row")
+        .map((row) => row.getAttribute("data-row-id")),
     ).toEqual(["evt-002", "evt-003"]);
   });
 
@@ -173,7 +194,9 @@ describe("PretableSurface", () => {
 
     const firstRow = view.getAllByTestId("pretable-row")[0];
 
-    expect(within(firstRow).getByText("tenant-a / cold-start")).toBeInTheDocument();
+    expect(
+      within(firstRow).getByText("tenant-a / cold-start"),
+    ).toBeInTheDocument();
   });
 
   it("marks wrapped cells so row-height measurement can target them directly", () => {
@@ -212,10 +235,9 @@ describe("PretableSurface", () => {
 
     let renderedRows = view.getAllByTestId("pretable-row");
     expect(renderedRows[0]).toHaveAttribute("data-focused", "true");
-    expect(renderedRows[0]?.querySelector("[data-pretable-cell]")).toHaveAttribute(
-      "data-focused",
-      "true",
-    );
+    expect(
+      renderedRows[0]?.querySelector("[data-pretable-cell]"),
+    ).toHaveAttribute("data-focused", "true");
 
     fireEvent.keyDown(viewport, { key: "Enter" });
 
@@ -370,13 +392,15 @@ describe("PretableSurface", () => {
           borderBottomWidth: "1px",
         }) as CSSStyleDeclaration,
     );
-    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function () {
-      if (this.getAttribute("data-pretable-cell") === null) {
-        return 0;
-      }
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+      function () {
+        if (this.getAttribute("data-pretable-cell") === null) {
+          return 0;
+        }
 
-      return this.textContent?.includes("Tall row") ? 120 : 22;
-    });
+        return this.textContent?.includes("Tall row") ? 120 : 22;
+      },
+    );
 
     const view = render(
       <PretableSurface
@@ -475,8 +499,8 @@ describe("PretableSurface", () => {
 
       expect(tallRow).toHaveAttribute("data-row-height", "171");
       expect(
-        measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
-          node.getAttribute("data-row-id") === "evt-002",
+        measureRenderedRowHeightSpy.mock.calls.filter(
+          ([node]) => node.getAttribute("data-row-id") === "evt-002",
         ),
       ).not.toHaveLength(0);
     });
@@ -556,8 +580,8 @@ describe("PretableSurface", () => {
 
       expect(shortRow).toHaveAttribute("data-row-height", "64");
       expect(
-        measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
-          node.getAttribute("data-row-id") === "evt-002",
+        measureRenderedRowHeightSpy.mock.calls.filter(
+          ([node]) => node.getAttribute("data-row-id") === "evt-002",
         ),
       ).not.toHaveLength(0);
     });
@@ -631,8 +655,8 @@ describe("PretableSurface", () => {
 
       expect(tallRow).toHaveAttribute("data-row-height", "141");
       expect(
-        measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
-          node.getAttribute("data-row-id") === "evt-002",
+        measureRenderedRowHeightSpy.mock.calls.filter(
+          ([node]) => node.getAttribute("data-row-id") === "evt-002",
         ),
       ).not.toHaveLength(0);
     });
@@ -659,8 +683,8 @@ describe("PretableSurface", () => {
 
       expect(tallRow).toHaveAttribute("data-row-height", "141");
       expect(
-        measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
-          node.getAttribute("data-row-id") === "evt-002",
+        measureRenderedRowHeightSpy.mock.calls.filter(
+          ([node]) => node.getAttribute("data-row-id") === "evt-002",
         ),
       ).toHaveLength(0);
     });
@@ -680,7 +704,9 @@ describe("PretableSurface", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const timestampHeader = view.getByRole("button", {
+      name: "Sort Timestamp",
+    });
 
     fireEvent.click(timestampHeader);
 
@@ -760,8 +786,8 @@ describe("PretableSurface", () => {
 
       expect(tallRow).toHaveAttribute("data-row-height", expectedTallRowHeight);
       expect(
-        measureRenderedRowHeightSpy.mock.calls.filter(([node]) =>
-          node.getAttribute("data-row-id") === "evt-002",
+        measureRenderedRowHeightSpy.mock.calls.filter(
+          ([node]) => node.getAttribute("data-row-id") === "evt-002",
         ),
       ).toHaveLength(0);
     });

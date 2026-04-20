@@ -93,7 +93,11 @@ class PrefixSumsRowMetricsIndex implements RowMetricsIndex {
 
     this.#heights[index] = nextHeight;
 
-    for (let startIndex = index + 1; startIndex < this.#starts.length; startIndex += 1) {
+    for (
+      let startIndex = index + 1;
+      startIndex < this.#starts.length;
+      startIndex += 1
+    ) {
       this.#starts[startIndex] = (this.#starts[startIndex] ?? 0) + delta;
     }
 

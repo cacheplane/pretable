@@ -13,6 +13,7 @@
 ### Task 1: Install GridGamma Dependencies
 
 **Files:**
+
 - Modify: `apps/bench/package.json`
 
 - [ ] **Step 1: Install GridGamma Data Grid and peer dependencies**
@@ -45,6 +46,7 @@ git commit -m "chore(bench): add GridGamma Data Grid Community dependencies"
 ### Task 2: Add `"gridgamma"` to Bench Types and Query State
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-types.ts:4`
 - Modify: `apps/bench/src/query-state.ts:24-30`
 - Modify: `apps/bench/src/__tests__/query-state.test.ts`
@@ -56,9 +58,7 @@ Add a new test to `apps/bench/src/__tests__/query-state.test.ts` after the GridB
 ```typescript
 test("accepts the gridgamma competitor adapter without relaxing other defaults", () => {
   expect(
-    parseBenchQuery(
-      "?adapter=gridgamma&scenario=S2&scale=hypothesis&script=scroll",
-    ),
+    parseBenchQuery("?adapter=gridgamma&scenario=S2&scale=hypothesis&script=scroll"),
   ).toEqual({
     adapterId: "gridgamma",
     scenarioId: "S2",
@@ -140,6 +140,7 @@ git commit -m "feat(bench): add gridgamma to adapter ID type and query parsing"
 ### Task 3: Add `"gridgamma"` to bench-runner Validation
 
 **Files:**
+
 - Modify: `packages/bench-runner/src/index.ts:214`
 - Modify: `packages/bench-runner/src/__tests__/bench-runner.test.ts`
 
@@ -148,30 +149,30 @@ git commit -m "feat(bench): add gridgamma to adapter ID type and query parsing"
 Add a new assertion inside the `"enforces the explicit P0a support matrix"` test in `packages/bench-runner/src/__tests__/bench-runner.test.ts`, after the GridBeta scroll assertion (around line 91):
 
 ```typescript
-    expect(
-      validateSupportedP0aRequest({
-        ...baseRequest,
-        adapterId: "gridgamma",
-        scenarioId: "S2",
-        scriptName: "scroll",
-      }),
-    ).toEqual({ ok: true });
+expect(
+  validateSupportedP0aRequest({
+    ...baseRequest,
+    adapterId: "gridgamma",
+    scenarioId: "S2",
+    scriptName: "scroll",
+  }),
+).toEqual({ ok: true });
 ```
 
 Also add an assertion that GridGamma interaction scripts are unsupported, after the GridBeta interaction assertion (around line 121):
 
 ```typescript
-    expect(
-      validateSupportedP0aRequest({
-        ...baseRequest,
-        adapterId: "gridgamma",
-        scenarioId: "S2",
-        scriptName: "sort",
-      }),
-    ).toEqual({
-      ok: false,
-      reason: expect.stringContaining("adapter"),
-    });
+expect(
+  validateSupportedP0aRequest({
+    ...baseRequest,
+    adapterId: "gridgamma",
+    scenarioId: "S2",
+    scriptName: "sort",
+  }),
+).toEqual({
+  ok: false,
+  reason: expect.stringContaining("adapter"),
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -206,6 +207,7 @@ git commit -m "feat(bench-runner): add gridgamma to supported P0a adapters"
 ### Task 4: Create GridGamma Adapter Component
 
 **Files:**
+
 - Create: `apps/bench/src/gridgamma-adapter.tsx`
 - Create: `apps/bench/src/__tests__/gridgamma-adapter.test.tsx`
 
@@ -322,9 +324,7 @@ export function GridGammaAdapter({ dataset, runKey }: GridGammaAdapterProps) {
         >
           GridGamma Data Grid Community adapter
         </p>
-        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-          Rows: {rows.length}
-        </p>
+        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>Rows: {rows.length}</p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
           Columns: {columns.length}
         </p>
@@ -377,6 +377,7 @@ git commit -m "feat(bench): add GridGamma Data Grid Community adapter component"
 ### Task 5: Register GridGamma Adapter in Bench App
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-app.tsx:26-56`
 - Modify: `apps/bench/src/__tests__/bench-app.test.tsx`
 
@@ -442,6 +443,7 @@ git commit -m "feat(bench): register GridGamma adapter in bench app"
 ### Task 6: Add GridGamma Scroll Runtime Profile
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-runtime.ts:135-176`
 
 - [ ] **Step 1: Add the GridGamma scroll runtime profile**
@@ -489,6 +491,7 @@ git commit -m "feat(bench): add GridGamma scroll runtime profile"
 ### Task 7: Update Bench Spec Adapter Label Chain
 
 **Files:**
+
 - Modify: `apps/bench/tests/bench.spec.ts:15-20`
 
 - [ ] **Step 1: Add `"gridgamma"` to the adapter label chain**
@@ -526,6 +529,7 @@ git commit -m "feat(bench): add GridGamma adapter label to bench spec"
 This task verifies that GridGamma's rendered DOM matches the selectors assumed in the scroll runtime profile. This requires a running browser (Playwright).
 
 **Files:**
+
 - Possibly modify: `apps/bench/src/bench-runtime.ts` (if selectors need adjustment)
 - Possibly modify: `apps/bench/src/gridgamma-adapter.tsx` (if `getRowHeight` API differs)
 

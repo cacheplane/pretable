@@ -400,7 +400,10 @@ export async function measureBenchInteractionRun(
     };
   }
 
-  const baselineState = readBenchInteractionState(root, readInteractionStateOverride);
+  const baselineState = readBenchInteractionState(
+    root,
+    readInteractionStateOverride,
+  );
   const baselineVisibleRows = sampleVisibleRows(viewport, profile);
   const baselineSignature = createVisibleRowSignature(
     baselineVisibleRows,
@@ -530,7 +533,10 @@ export async function measureBenchInteractionRun(
     };
   }
 
-  const finalState = readBenchInteractionState(root, readInteractionStateOverride);
+  const finalState = readBenchInteractionState(
+    root,
+    readInteractionStateOverride,
+  );
 
   return {
     status: "completed",
@@ -540,7 +546,10 @@ export async function measureBenchInteractionRun(
       settle_duration_ms: settledAt - firstChangedAt,
       post_interaction_blank_gap_frames: blankGapFrames,
       post_interaction_anchor_shift_px: percentile(anchorShifts, 0.95),
-      post_interaction_row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
+      post_interaction_row_height_error_p95_px: percentile(
+        rowHeightErrors,
+        0.95,
+      ),
       result_row_count: finalState.resultRowCount,
       selected_row_preserved:
         finalState.selectedRowId === interactionPlan.selectedRowId ? 1 : 0,
@@ -586,8 +595,9 @@ export function detectBlankGapFrame(
 
   const viewportBounds = getViewportContentBounds(viewport);
   const stickyOverlays = [...viewport.querySelectorAll<HTMLElement>("*")]
-    .filter((element) =>
-      !element.matches(rowSelector) && element.closest(rowSelector) === null,
+    .filter(
+      (element) =>
+        !element.matches(rowSelector) && element.closest(rowSelector) === null,
     )
     .filter((element) => getComputedStyle(element).position === "sticky");
   const clippedRects = [...rows, ...stickyOverlays]

@@ -1,4 +1,7 @@
-import type { ScenarioDataset, ScenarioRow } from "@pretable-internal/scenario-data";
+import type {
+  ScenarioDataset,
+  ScenarioRow,
+} from "@pretable-internal/scenario-data";
 
 import type { BenchQueryState } from "./bench-types";
 
@@ -10,12 +13,10 @@ export interface BenchInteractionPlan {
   resultRowCount: number;
   rows: readonly ScenarioRow[];
   selectedRowId: string | null;
-  sort:
-    | {
-        columnId: string;
-        direction: "asc" | "desc";
-      }
-    | null;
+  sort: {
+    columnId: string;
+    direction: "asc" | "desc";
+  } | null;
 }
 
 const SORT_COLUMN_ID = "col_3";
@@ -53,7 +54,11 @@ export function createBenchInteractionPlan(
   }
 
   if (scriptName === "filter-metadata") {
-    const rows = filterRows(dataset.rows, METADATA_FILTER.columnId, METADATA_FILTER.value);
+    const rows = filterRows(
+      dataset.rows,
+      METADATA_FILTER.columnId,
+      METADATA_FILTER.value,
+    );
     const probeRow = rows[Math.floor(rows.length / 2)] ?? rows[0];
     const probeRowId = probeRow ? String(probeRow.id ?? "") : null;
 
@@ -72,7 +77,11 @@ export function createBenchInteractionPlan(
   }
 
   if (scriptName === "filter-text") {
-    const rows = filterRows(dataset.rows, TEXT_FILTER.columnId, TEXT_FILTER.value);
+    const rows = filterRows(
+      dataset.rows,
+      TEXT_FILTER.columnId,
+      TEXT_FILTER.value,
+    );
     const probeRow = rows[Math.floor(rows.length / 2)] ?? rows[0];
     const probeRowId = probeRow ? String(probeRow.id ?? "") : null;
 
@@ -101,7 +110,9 @@ function filterRows(
   const normalizedNeedle = needle.trim().toLowerCase();
 
   return rows.filter((row) =>
-    String(row[columnId] ?? "").toLowerCase().includes(normalizedNeedle),
+    String(row[columnId] ?? "")
+      .toLowerCase()
+      .includes(normalizedNeedle),
   );
 }
 
