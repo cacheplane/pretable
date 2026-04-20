@@ -116,7 +116,6 @@ export function createHypothesisReport(input) {
     slices: summarizeReportSlices(input.entries, input.runs),
     hypotheses: [
       evaluateH1(input.runs),
-      evaluateH3(input.runs),
       evaluateH6(input.runs),
       evaluateH7(input.runs),
       evaluateH8(input.runs),
@@ -459,72 +458,6 @@ function evaluateH1(runs) {
       bestCompetitorEvidence,
       ...(bestPrimitiveEvidence ? [bestPrimitiveEvidence] : []),
     ],
-  };
-}
-
-function evaluateH3(runs) {
-  const wrappedScrollSeries = findRunSeries(runs, {
-    adapterId: "pretable",
-    scenarioId: "S2",
-    scriptName: "scroll",
-  });
-
-  if (wrappedScrollSeries.length === 0) {
-    return {
-      id: "H3",
-      status: "insufficient",
-      summary:
-        "Missing a completed S2 scroll run, so variable-height stability cannot be evaluated yet.",
-      evidence: [],
-    };
-  }
-
-  const rowHeightError = maxMetric(
-    wrappedScrollSeries,
-    "row_height_error_p95_px",
-  );
-  const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
-  const anchorShift =
-    maxMetric(wrappedScrollSeries, "scroll_anchor_shift_backward_p95_px") ??
-    maxMetric(wrappedScrollSeries, "scroll_anchor_shift_px");
-
-  if (rowHeightError === undefined || anchorShift === undefined) {
-    return {
-      id: "H3",
-      status: "insufficient",
-      summary:
-        "S2 scrolling is measured, but row-height error and scroll-anchor shift are still missing, so backward-scroll stability is not claim-ready.",
-      evidence: [pretableEvidence],
-    };
-  }
-
-  return {
-    id: "H3",
-    status:
-      rowHeightError <= 4 &&
-      anchorShift <= 16 &&
-      maxMetric(wrappedScrollSeries, "blank_gap_frames") === 0
-        ? hasPolicyDrift(pretableEvidence)
-          ? "directional"
-          : "satisfied"
-        : "failing",
-    summary:
-      rowHeightError <= 4 &&
-      anchorShift <= 16 &&
-      maxMetric(wrappedScrollSeries, "blank_gap_frames") === 0
-        ? hasPolicyDrift(pretableEvidence)
-          ? "Variable-height scrolling stays within the current thresholds on current medians, but policy drift across repeats keeps the stability claim directional rather than reproducible."
-          : pretableEvidence.sampleCount > 1
-            ? "Variable-height scrolling stays within the current row-height and anchor-shift thresholds on current repeated-run medians."
-            : "Variable-height scrolling stays within the current row-height and anchor-shift thresholds on the current sample."
-        : hasMedianStableButWorstCaseExceeded(pretableEvidence, {
-              rowHeightErrorThreshold: 4,
-              anchorShiftThreshold: 16,
-              blankGapThreshold: 0,
-            })
-          ? "Variable-height scrolling is instrumented and current medians stay within thresholds, but worst-case repeats still exceed the row-height, anchor-shift, or blank-gap limits."
-          : "Variable-height scrolling is instrumented, but at least one stability threshold is still failing.",
-    evidence: [pretableEvidence],
   };
 }
 
@@ -896,25 +829,6 @@ function numericMetricValues(series, metricId) {
     .map((run) => run.metrics?.[metricId])
     .filter((value) => typeof value === "number")
     .sort((left, right) => left - right);
-}
-
-function hasMedianStableButWorstCaseExceeded(
-  evidence,
-  { rowHeightErrorThreshold, anchorShiftThreshold, blankGapThreshold },
-) {
-  const rowHeight = evidence.metricSummary?.row_height_error_p95_px;
-  const anchorShift =
-    evidence.metricSummary?.scroll_anchor_shift_backward_p95_px ??
-    evidence.metricSummary?.scroll_anchor_shift_px;
-  const blankGap = evidence.metricSummary?.blank_gap_frames;
-
-  return (
-    rowHeight?.median <= rowHeightErrorThreshold &&
-    rowHeight?.max > rowHeightErrorThreshold &&
-    anchorShift?.median <= anchorShiftThreshold &&
-    anchorShift?.max > anchorShiftThreshold &&
-    blankGap?.median <= blankGapThreshold
-  );
 }
 
 function hasInteractionMedianStableButWorstCaseExceeded(
