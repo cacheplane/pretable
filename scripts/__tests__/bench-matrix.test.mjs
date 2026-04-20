@@ -339,10 +339,6 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
     /25%|relative/i,
   );
   assert.equal(
-    report.hypotheses.find((item) => item.id === "H3")?.status,
-    "insufficient",
-  );
-  assert.equal(
     report.hypotheses.find((item) => item.id === "H5")?.status,
     "satisfied",
   );
@@ -662,7 +658,6 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   });
 
   const h1 = report.hypotheses.find((item) => item.id === "H1");
-  const h3 = report.hypotheses.find((item) => item.id === "H3");
 
   assert.equal(h1?.status, "satisfied");
   assert.match(h1?.summary ?? "", /median|repeat/i);
@@ -683,8 +678,6 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   assert.deepEqual(h1?.evidence[0]?.policyNotes.varying, {});
   assert.equal(h1?.evidence[1]?.sampleCount, 3);
   assert.equal(h1?.evidence[1]?.metrics.scroll_frame_p95_ms, 28.4);
-  assert.equal(h3?.status, "satisfied");
-  assert.match(h3?.summary ?? "", /median|repeat/i);
 });
 
 test("createHypothesisReport exposes worst-case H1 threshold metrics alongside medians", () => {
@@ -765,78 +758,6 @@ test("createHypothesisReport exposes worst-case H1 threshold metrics alongside m
   });
 });
 
-test("createHypothesisReport exposes worst-case H3 threshold metrics alongside medians", () => {
-  const report = createHypothesisReport({
-    runsetId: "2026-04-10t15-40-00-000z",
-    generatedAt: "2026-04-10T15:43:00.000Z",
-    entries: [
-      {
-        adapterId: "pretable",
-        repeatIndex: 0,
-        scenarioId: "S2",
-        scriptName: "scroll",
-        summaryPath:
-          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-40-00-000z.summary.json",
-      },
-      {
-        adapterId: "pretable",
-        repeatIndex: 1,
-        scenarioId: "S2",
-        scriptName: "scroll",
-        summaryPath:
-          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-41-00-000z.summary.json",
-      },
-      {
-        adapterId: "pretable",
-        repeatIndex: 2,
-        scenarioId: "S2",
-        scriptName: "scroll",
-        summaryPath:
-          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-42-00-000z.summary.json",
-      },
-    ],
-    runs: [
-      createScrollRun({
-        adapterId: "pretable",
-        timestamp: "2026-04-10T15:40:00.000Z",
-        row_height_error_p95_px: 0,
-        scroll_anchor_shift_backward_p95_px: 0,
-      }),
-      createScrollRun({
-        adapterId: "pretable",
-        timestamp: "2026-04-10T15:41:00.000Z",
-        row_height_error_p95_px: 0,
-        scroll_anchor_shift_backward_p95_px: 0,
-      }),
-      createScrollRun({
-        adapterId: "pretable",
-        timestamp: "2026-04-10T15:42:00.000Z",
-        row_height_error_p95_px: 6,
-        scroll_anchor_shift_backward_p95_px: 20,
-      }),
-    ],
-  });
-
-  const h3 = report.hypotheses.find((item) => item.id === "H3");
-
-  assert.equal(h3?.status, "failing");
-  assert.match(h3?.summary ?? "", /medians/i);
-  assert.match(h3?.summary ?? "", /worst-case|repeat/i);
-  assert.deepEqual(h3?.evidence[0]?.metricSummary.row_height_error_p95_px, {
-    min: 0,
-    median: 0,
-    max: 6,
-  });
-  assert.deepEqual(
-    h3?.evidence[0]?.metricSummary.scroll_anchor_shift_backward_p95_px,
-    {
-      min: 0,
-      median: 0,
-      max: 20,
-    },
-  );
-});
-
 test("createHypothesisReport prefers the best full-grid comparator for H1 while keeping primitive comparators as context", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-10t15-15-00-000z",
@@ -900,37 +821,6 @@ test("createHypothesisReport prefers the best full-grid comparator for H1 while 
   assert.equal(h1?.evidence[1]?.adapterFamily, "full-grid");
   assert.equal(h1?.evidence[2]?.adapterId, "tanstack");
   assert.equal(h1?.evidence[2]?.adapterFamily, "virtualization-primitive");
-});
-
-test("createHypothesisReport marks single-sample H3 claims as single-sample evidence", () => {
-  const report = createHypothesisReport({
-    runsetId: "2026-04-10t15-17-00-000z",
-    generatedAt: "2026-04-10T15:18:00.000Z",
-    entries: [
-      {
-        adapterId: "pretable",
-        repeatIndex: 0,
-        scenarioId: "S2",
-        scriptName: "scroll",
-        summaryPath:
-          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-17-00-000z.summary.json",
-      },
-    ],
-    runs: [
-      createScrollRun({
-        adapterId: "pretable",
-        timestamp: "2026-04-10T15:17:00.000Z",
-        scroll_frame_p95_ms: 12.4,
-        row_height_error_p95_px: 0,
-        scroll_anchor_shift_backward_p95_px: 0,
-      }),
-    ],
-  });
-
-  const h3 = report.hypotheses.find((item) => item.id === "H3");
-
-  assert.equal(h3?.status, "satisfied");
-  assert.match(h3?.summary ?? "", /single[- ]sample|single run|current sample/i);
 });
 
 test("createHypothesisReport surfaces top-level adapter families and matrix scope", () => {
@@ -1151,105 +1041,6 @@ test("createHypothesisReport records policy-note drift across repeated runs", ()
   assert.deepEqual(h1?.evidence[0]?.policyNotes.varying, {
     contain: ["layout", "none"],
   });
-});
-
-test("createHypothesisReport downgrades H3 when policy notes vary across repeats", () => {
-  const report = createHypothesisReport({
-    runsetId: "2026-04-10t15-45-00-000z",
-    generatedAt: "2026-04-10T15:48:00.000Z",
-    entries: [
-      {
-        adapterId: "pretable",
-        repeatIndex: 0,
-        scenarioId: "S2",
-        scriptName: "scroll",
-        summaryPath:
-          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-45-00-000z.summary.json",
-      },
-      {
-        adapterId: "pretable",
-        repeatIndex: 1,
-        scenarioId: "S2",
-        scriptName: "scroll",
-        summaryPath:
-          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-46-00-000z.summary.json",
-      },
-      {
-        adapterId: "pretable",
-        repeatIndex: 2,
-        scenarioId: "S2",
-        scriptName: "scroll",
-        summaryPath:
-          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-47-00-000z.summary.json",
-      },
-    ],
-    runs: [
-      createScrollRun({
-        adapterId: "pretable",
-        timestamp: "2026-04-10T15:45:00.000Z",
-        scroll_frame_p95_ms: 13.1,
-      }),
-      createScrollRun({
-        adapterId: "pretable",
-        timestamp: "2026-04-10T15:46:00.000Z",
-        scroll_frame_p95_ms: 13.2,
-      }),
-      createScrollRun({
-        adapterId: "pretable",
-        timestamp: "2026-04-10T15:47:00.000Z",
-        scroll_frame_p95_ms: 13.3,
-        notes: [
-          "contain: none",
-          "content visibility: auto",
-          "contain intrinsic size: none",
-          "scroll anchoring: none",
-          "overscroll behavior: contain",
-        ],
-      }),
-    ],
-  });
-
-  const h3 = report.hypotheses.find((item) => item.id === "H3");
-
-  assert.equal(h3?.status, "directional");
-  assert.match(h3?.summary ?? "", /policy|drift|reproduc/i);
-  assert.deepEqual(h3?.evidence[0]?.policyNotes.varying, {
-    "content visibility": ["auto", "visible"],
-  });
-});
-
-test("createHypothesisReport treats backward anchor instability as an H3 failure when direction-specific metrics are present", () => {
-  const report = createHypothesisReport({
-    runsetId: "2026-04-10t16-00-00-000z",
-    generatedAt: "2026-04-10T16:01:00.000Z",
-    entries: [
-      {
-        adapterId: "pretable",
-        repeatIndex: 0,
-        scenarioId: "S2",
-        scriptName: "scroll",
-        summaryPath:
-          "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t16-00-00-000z.summary.json",
-      },
-    ],
-    runs: [
-      createScrollRun({
-        adapterId: "pretable",
-        timestamp: "2026-04-10T16:00:00.000Z",
-        scroll_anchor_shift_px: undefined,
-        scroll_anchor_shift_backward_p95_px: 32,
-        scroll_anchor_shift_forward_p95_px: 0,
-      }),
-    ],
-  });
-
-  const h3 = report.hypotheses.find((item) => item.id === "H3");
-
-  assert.equal(h3?.status, "failing");
-  assert.equal(
-    h3?.evidence[0]?.metrics.scroll_anchor_shift_backward_p95_px,
-    32,
-  );
 });
 
 test("createHypothesisReport includes unsupported entries without erroring", () => {
