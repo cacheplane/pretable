@@ -1,4 +1,4 @@
-export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6";
+export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6" | "S7";
 export type ScenarioScale = "smoke" | "dev" | "hypothesis" | "target";
 export type {
   InspectionColumn,
@@ -99,6 +99,12 @@ const scenarioScaleRowCounts: Record<
     hypothesis: 3_000,
     target: 10_000,
   },
+  S7: {
+    smoke: 120,
+    dev: 750,
+    hypothesis: 3_000,
+    target: 50_000,
+  },
 };
 
 const scenarioDefinitions = [
@@ -176,6 +182,18 @@ const scenarioDefinitions = [
     update_stream: "none",
     purpose: "Check whether richer content breaks the design too early.",
   },
+  {
+    id: "S7",
+    name: "pinned-inspection",
+    rows: 50_000,
+    cols: 40,
+    row_height_mode: "variable",
+    wrapped_columns: 3,
+    pinned_left: 3,
+    corpus: "multilingual",
+    update_stream: "none",
+    purpose: "Pinned-column overhead on variable-height inspection content.",
+  },
 ] as const satisfies readonly ScenarioDefinition[];
 
 const scenarioSeeds: Record<ScenarioId, number> = {
@@ -185,6 +203,7 @@ const scenarioSeeds: Record<ScenarioId, number> = {
   S4: 404,
   S5: 505,
   S6: 606,
+  S7: 707,
 };
 
 const englishMessages = [
