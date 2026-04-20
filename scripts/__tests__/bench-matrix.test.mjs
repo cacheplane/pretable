@@ -1361,6 +1361,237 @@ test("hypothesis array has 9 entries with H9-H12 for S7", () => {
   assert.ok(report.hypotheses.find((h) => h.id === "H12"));
 });
 
+test("H9 satisfied when S7 scroll quality passes all thresholds with failing competitor", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t11-00-00-000z",
+    generatedAt: "2026-04-20T11:01:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S7",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s7-dev-scroll-2026-04-20t11-00-00-000z.summary.json",
+      },
+      {
+        adapterId: "ag-grid",
+        repeatIndex: 0,
+        scenarioId: "S7",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-ag-grid-default-s7-dev-scroll-2026-04-20t11-00-30-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        scenarioId: "S7",
+        timestamp: "2026-04-20T11:00:00.000Z",
+        scroll_frame_p95_ms: 14,
+      }),
+      createScrollRun({
+        adapterId: "ag-grid",
+        scenarioId: "S7",
+        timestamp: "2026-04-20T11:00:30.000Z",
+        scroll_frame_p95_ms: 28,
+        row_height_error_p95_px: 2,
+      }),
+    ],
+  });
+
+  const h9 = report.hypotheses.find((h) => h.id === "H9");
+
+  assert.equal(h9?.status, "satisfied");
+  assert.match(h9?.summary ?? "", /zero-artifact|quality/i);
+});
+
+test("H9 fails when S7 pretable exceeds quality threshold", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t11-10-00-000z",
+    generatedAt: "2026-04-20T11:11:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S7",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s7-dev-scroll-2026-04-20t11-10-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        scenarioId: "S7",
+        timestamp: "2026-04-20T11:10:00.000Z",
+        scroll_frame_p95_ms: 14,
+        blank_gap_frames: 2,
+      }),
+    ],
+  });
+
+  const h9 = report.hypotheses.find((h) => h.id === "H9");
+
+  assert.equal(h9?.status, "failing");
+  assert.match(h9?.summary ?? "", /blank gap/i);
+});
+
+test("H9 insufficient when no S7 scroll data exists", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t11-20-00-000z",
+    generatedAt: "2026-04-20T11:21:00.000Z",
+    entries: [],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        scenarioId: "S2",
+        timestamp: "2026-04-20T11:20:00.000Z",
+        scroll_frame_p95_ms: 14,
+      }),
+    ],
+  });
+
+  const h9 = report.hypotheses.find((h) => h.id === "H9");
+
+  assert.equal(h9?.status, "insufficient");
+  assert.match(h9?.summary ?? "", /S7/i);
+});
+
+test("H10 satisfied when S7 sort interaction passes thresholds", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t11-30-00-000z",
+    generatedAt: "2026-04-20T11:31:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S7",
+        scriptName: "sort",
+        summaryPath:
+          "status/chromium-pretable-default-s7-dev-sort-2026-04-20t11-30-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      {
+        adapterId: "pretable",
+        profile: "default",
+        scenarioId: "S7",
+        scale: "dev",
+        scriptName: "sort",
+        browserName: "chromium",
+        browserVersion: "123.0",
+        timestamp: "2026-04-20T11:30:00.000Z",
+        seed: 707,
+        rowCount: 750,
+        viewport: { width: 1440, height: 900 },
+        fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+        deviceScaleFactor: 1,
+        status: "completed",
+        notes: ["interaction mode: sort"],
+        tracePath: "status/traces/pretable-s7-sort.trace.zip",
+        metrics: {
+          interaction_latency_ms: 28,
+          settle_duration_ms: 20,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 750,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 400,
+        },
+      },
+    ],
+  });
+
+  const h10 = report.hypotheses.find((h) => h.id === "H10");
+
+  assert.equal(h10?.status, "satisfied");
+  assert.match(h10?.summary ?? "", /sort/i);
+});
+
+test("H10 fails when S7 sort latency exceeds threshold", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t11-40-00-000z",
+    generatedAt: "2026-04-20T11:41:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S7",
+        scriptName: "sort",
+        summaryPath:
+          "status/chromium-pretable-default-s7-dev-sort-2026-04-20t11-40-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      {
+        adapterId: "pretable",
+        profile: "default",
+        scenarioId: "S7",
+        scale: "dev",
+        scriptName: "sort",
+        browserName: "chromium",
+        browserVersion: "123.0",
+        timestamp: "2026-04-20T11:40:00.000Z",
+        seed: 707,
+        rowCount: 750,
+        viewport: { width: 1440, height: 900 },
+        fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+        deviceScaleFactor: 1,
+        status: "completed",
+        notes: ["interaction mode: sort"],
+        tracePath: "status/traces/pretable-s7-sort.trace.zip",
+        metrics: {
+          interaction_latency_ms: 80,
+          settle_duration_ms: 55,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 750,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 420,
+        },
+      },
+    ],
+  });
+
+  const h10 = report.hypotheses.find((h) => h.id === "H10");
+
+  assert.equal(h10?.status, "failing");
+  assert.match(h10?.summary ?? "", /latency|thresholds/i);
+});
+
+test("H11 insufficient when no S7 filter-metadata data exists", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t11-50-00-000z",
+    generatedAt: "2026-04-20T11:51:00.000Z",
+    entries: [],
+    runs: [],
+  });
+
+  const h11 = report.hypotheses.find((h) => h.id === "H11");
+
+  assert.equal(h11?.status, "insufficient");
+  assert.match(h11?.summary ?? "", /S7/i);
+});
+
+test("H12 insufficient when no S7 filter-text data exists", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t12-00-00-000z",
+    generatedAt: "2026-04-20T12:01:00.000Z",
+    entries: [],
+    runs: [],
+  });
+
+  const h12 = report.hypotheses.find((h) => h.id === "H12");
+
+  assert.equal(h12?.status, "insufficient");
+  assert.match(h12?.summary ?? "", /S7/i);
+});
+
 function createScrollRun({
   adapterId,
   timestamp,
