@@ -23,6 +23,7 @@ Off-screen autosize, streaming updates, broader browser coverage, and public API
 **Existing spec:** `docs/superpowers/specs/2026-04-15-sort-variance-and-interaction-promotion-design.md`
 
 **Exit criteria:**
+
 - Repeated Chromium S2/dev/sort no longer violates H6 on worst-case repeat latency.
 - Fix lands in shared code (not benchmark-only).
 - H7 and H8 do not regress on S2/dev.
@@ -38,6 +39,7 @@ Off-screen autosize, streaming updates, broader browser coverage, and public API
 **Verification:** `pnpm bench:matrix -- --project=chromium --adapters=pretable --scenarios=S2 --scripts=sort,filter-metadata,filter-text --scale=hypothesis --repeats=3`
 
 **Exit criteria:**
+
 - H6, H7, H8 all satisfied on repeated Chromium S2/hypothesis.
 - The interaction family is promoted alongside the already-proven scroll family.
 
@@ -52,6 +54,7 @@ Off-screen autosize, streaming updates, broader browser coverage, and public API
 **Verification:** `pnpm bench:matrix -- --project=chromium --adapters=pretable,ag-grid,tanstack,mui --scenarios=S2 --scripts=scroll --scale=hypothesis --repeats=3`
 
 **Exit criteria:**
+
 - H1 and H3 satisfied on repeated Chromium S2/hypothesis with the post-sort-fix codebase.
 - README and repo memory updated to reflect the new honest checkpoint.
 
@@ -64,6 +67,7 @@ Off-screen autosize, streaming updates, broader browser coverage, and public API
 **Approach:** Add or select a scenario that exercises pinned-column overhead alongside wrapped text and variable-height rows. Run scroll + interaction proof at dev scale first, then hypothesis.
 
 **Exit criteria:**
+
 - Scroll and interaction hypotheses pass on the pinned-column scenario at hypothesis scale on Chromium.
 - The proof surface covers both the pure wrapped-text case and the pinned-column inspection case.
 
@@ -74,6 +78,7 @@ Off-screen autosize, streaming updates, broader browser coverage, and public API
 **Problem:** The internal composition surfaces (`InspectionGrid`, `LabeledGridSurface`, `PretableSurface`) are exported under `@pretable/react/internal` — used by the playground and bench but not stable for external consumers. The controlled `interactionState` + `onSortChange` pattern is proven but undocumented.
 
 **Approach:**
+
 - Audit internal surfaces: which props are stable, which are in flux.
 - Promote the controlled interaction pattern as the canonical public API.
 - Write API documentation for the public surface.
@@ -82,6 +87,7 @@ Off-screen autosize, streaming updates, broader browser coverage, and public API
 This project does not add new engine capabilities. Off-screen autosize and streaming updates remain deferred.
 
 **Exit criteria:**
+
 - `@pretable/react` has a documented, tested public API surface covering the inspection-table use case with controlled interaction state.
 - Internal surfaces that remain unstable stay under `/internal`.
 

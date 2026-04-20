@@ -55,9 +55,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
         >
           Pretable React adapter
         </p>
-        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-          Rows: {rows.length}
-        </p>
+        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>Rows: {rows.length}</p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
           Columns: {columns.length}
         </p>

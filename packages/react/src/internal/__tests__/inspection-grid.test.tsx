@@ -13,9 +13,7 @@ afterEach(() => {
 });
 
 describe("InspectionGrid", () => {
-  it(
-    "composes inspection-specific rendering, formatting, and filterable metadata on top of the labeled surface",
-    () => {
+  it("composes inspection-specific rendering, formatting, and filterable metadata on top of the labeled surface", () => {
     const dataset = createInspectionDataset("tiny");
     const onSelectedRowIdChange = vi.fn();
     const view = render(
@@ -29,7 +27,9 @@ describe("InspectionGrid", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const timestampHeader = view.getByRole("button", {
+      name: "Sort Timestamp",
+    });
     const firstRow = view.getAllByTestId("pretable-row")[0]!;
     const pinnedCell = within(firstRow)
       .getAllByText("Timestamp")[0]!
@@ -52,9 +52,7 @@ describe("InspectionGrid", () => {
     fireEvent.click(view.getAllByTestId("pretable-row")[0]!);
 
     expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-001");
-    },
-    15_000,
-  );
+  }, 15_000);
 
   it("threads interactionState and onSortChange to the underlying surface", () => {
     const dataset = createInspectionDataset("tiny");
@@ -74,7 +72,9 @@ describe("InspectionGrid", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const timestampHeader = view.getByRole("button", {
+      name: "Sort Timestamp",
+    });
 
     fireEvent.click(timestampHeader);
 
@@ -115,9 +115,8 @@ describe("InspectionGrid", () => {
     const firstStressRow = view.getAllByTestId("pretable-row")[0]!;
 
     expect(firstStressRow).toHaveAttribute("data-row-id", "evt-stress-0000");
-    expect(firstStressRow.querySelector("[data-pretable-cell]")).toHaveAttribute(
-      "data-pretable-cell",
-      "",
-    );
+    expect(
+      firstStressRow.querySelector("[data-pretable-cell]"),
+    ).toHaveAttribute("data-pretable-cell", "");
   });
 });

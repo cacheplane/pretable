@@ -13,6 +13,7 @@
 ### Task 1: Lock-in test for hypothesis aggregation with unsupported entries
 
 **Files:**
+
 - Modify: `scripts/__tests__/bench-matrix.test.mjs`
 
 This test locks in that `createHypothesisReport` already handles `status: "unsupported"` runs without throwing. It is not a red-green test — it should pass immediately — but it guards the aggregation path that the spec change depends on.
@@ -126,6 +127,7 @@ git commit -m "test: lock in hypothesis aggregation for unsupported entries"
 ### Task 2: Red test — bench spec must persist a summary on the unsupported path
 
 **Files:**
+
 - Modify: `apps/bench/tests/bench.spec.ts`
 
 Add a file-existence assertion on the unsupported branch. This must fail before the fix.
@@ -141,26 +143,26 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 Then, inside the `if (interactionScript && !interactionSupported)` block (lines 47-56), add a summary-path assertion and `return` AFTER the new assertion. Replace the block at lines 47-57:
 
 ```typescript
-  if (interactionScript && !interactionSupported) {
-    expect(result).toMatchObject({
-      status: "unsupported",
-      unsupported: {
-        adapterId,
-        scenarioId,
-        scriptName,
-      },
-    });
+if (interactionScript && !interactionSupported) {
+  expect(result).toMatchObject({
+    status: "unsupported",
+    unsupported: {
+      adapterId,
+      scenarioId,
+      scriptName,
+    },
+  });
 
-    const cwd = process.cwd();
-    const summaryPath = path.join(
-      cwd,
-      "status",
-      `${createRunArtifactFileStem(result)}.summary.json`,
-    );
+  const cwd = process.cwd();
+  const summaryPath = path.join(
+    cwd,
+    "status",
+    `${createRunArtifactFileStem(result)}.summary.json`,
+  );
 
-    await expect(stat(summaryPath)).resolves.toBeTruthy();
-    return;
-  }
+  await expect(stat(summaryPath)).resolves.toBeTruthy();
+  return;
+}
 ```
 
 - [ ] **Step 2: Run the spec against an unsupported combination to verify it fails (red)**
@@ -181,6 +183,7 @@ git commit -m "test(red): assert summary file exists on unsupported path"
 ### Task 3: Green — restructure bench.spec.ts to persist on both paths
 
 **Files:**
+
 - Modify: `apps/bench/tests/bench.spec.ts`
 
 Move the summary write and tracing stop above the unsupported/measured branch point. For unsupported runs: write the summary, stop tracing without saving, skip dashboard. For measured runs: write the summary, save the trace, update the dashboard.
@@ -283,9 +286,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
           expect.stringMatching(/^internal telemetry rendered rows: \d+$/),
           expect.stringMatching(/^internal telemetry visible rows: \d+$/),
           expect.stringMatching(/^internal telemetry planned height: \d+$/),
-          expect.stringMatching(
-            /^internal telemetry viewport range: \d+-\d+$/,
-          ),
+          expect.stringMatching(/^internal telemetry viewport range: \d+-\d+$/),
           expect.stringMatching(/^internal telemetry selected row: .+$/),
         ]),
       );
@@ -312,9 +313,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
           expect.stringMatching(/^internal telemetry visible rows: \d+$/),
           expect.stringMatching(/^internal telemetry total rows: \d+$/),
           expect.stringMatching(/^internal telemetry planned height: \d+$/),
-          expect.stringMatching(
-            /^internal telemetry viewport range: \d+-\d+$/,
-          ),
+          expect.stringMatching(/^internal telemetry viewport range: \d+-\d+$/),
           expect.stringMatching(/^internal telemetry selected row: .+$/),
           expect.stringMatching(/^internal telemetry focused row: .+$/),
         ]),
@@ -422,6 +421,7 @@ Expected: completes without error. Produces one `*.hypotheses.json` runset under
 - [ ] **Step 5: Inspect the hypothesis output**
 
 Run:
+
 ```bash
 node -e "
 const d=require('./' + require('child_process').execSync('ls -t status/runsets/*.hypotheses.json | head -1').toString().trim());
@@ -430,6 +430,7 @@ for (const h of d.hypotheses) console.log(h.id, h.status);
 ```
 
 Expected:
+
 ```
 H1 satisfied
 H3 satisfied

@@ -98,6 +98,7 @@ Add dependencies:
 File: `apps/bench/src/__tests__/mui-adapter.test.tsx`
 
 Render the MUI adapter with a tiny inspection dataset. Assert:
+
 - Section has `data-benchmark-adapter="mui"`.
 - `data-bench-result-row-count` matches row count.
 - Adapter label "MUI Data Grid Community adapter" is visible.

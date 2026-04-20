@@ -1,4 +1,7 @@
-import { createRowMetricsIndex, planViewport } from "@pretable-internal/layout-core";
+import {
+  createRowMetricsIndex,
+  planViewport,
+} from "@pretable-internal/layout-core";
 import type { GridCoreColumn, GridCoreRow } from "@pretable-internal/grid-core";
 import { layoutPreparedText, prepareText } from "@pretable-internal/text-core";
 
@@ -11,11 +14,14 @@ const ROW_LINE_HEIGHT = 22;
 const ROW_CHROME_HEIGHT = 42;
 const ESTIMATED_CHARACTER_WIDTH = 7;
 const ESTIMATE_FONT_KEY = "Pretable Estimate 14";
-const estimatedRowHeightCache = new WeakMap<object, {
-  height: number;
-  signature: string;
-  columnsRef: unknown;
-}>();
+const estimatedRowHeightCache = new WeakMap<
+  object,
+  {
+    height: number;
+    signature: string;
+    columnsRef: unknown;
+  }
+>();
 
 export function createDomRenderSnapshot<TRow extends GridCoreRow>(
   input: DomRenderInput<TRow>,
@@ -23,10 +29,7 @@ export function createDomRenderSnapshot<TRow extends GridCoreRow>(
   const rowHeights = input.snapshot.visibleRows.map((entry) => {
     const measuredHeight = input.measuredHeights?.[entry.id];
 
-    return (
-      measuredHeight ??
-      estimateRowHeight(entry.row, input.columns)
-    );
+    return measuredHeight ?? estimateRowHeight(entry.row, input.columns);
   });
   const rowMetrics = createRowMetricsIndex(rowHeights);
   const viewportPlan = planViewport({
@@ -146,5 +149,7 @@ function readCellValue<TRow extends GridCoreRow>(
 function getColumnWidth<TRow extends GridCoreRow>(
   column: GridCoreColumn<TRow>,
 ): number {
-  return column.widthPx ?? (column.wrap ? WRAPPED_COLUMN_WIDTH : FIXED_COLUMN_WIDTH);
+  return (
+    column.widthPx ?? (column.wrap ? WRAPPED_COLUMN_WIDTH : FIXED_COLUMN_WIDTH)
+  );
 }

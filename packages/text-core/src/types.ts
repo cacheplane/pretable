@@ -43,14 +43,12 @@ export interface ComparePreparedTextToDomTruthResult {
   ok: boolean;
   estimate: PreparedTextLayout;
   truth: DomTruthMeasurement;
-  error:
-    | null
-    | {
-        reason:
-          | "line-count-mismatch"
-          | "height-mismatch"
-          | "line-count-and-height-mismatch";
-        lineCountDelta: number;
-        heightDelta: number;
-      };
+  error: null | {
+    reason:
+      | "line-count-mismatch"
+      | "height-mismatch"
+      | "line-count-and-height-mismatch";
+    lineCountDelta: number;
+    heightDelta: number;
+  };
 }

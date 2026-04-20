@@ -16,13 +16,13 @@ H1 becomes a composite gate with five absolute sub-criteria and a uniqueness gat
 
 ### Sub-criteria (pretable must meet all five)
 
-| Sub-criterion | Metric | Threshold | Rationale |
-|---------------|--------|-----------|-----------|
-| Frame parity | `scroll_frame_p95_ms` | ≤ 110% of best full-grid competitor median | Competitive, not dominant — honest about MUI's strength |
-| Row height accuracy | `row_height_error_p95_px` | ≤ 1px | Sub-pixel accuracy; MUI fails at 1.1px, AG Grid at 153px |
-| Anchor stability | `scroll_anchor_shift_backward_p95_px` | ≤ 16px | Same threshold as former H3; TanStack fails at 259px |
-| Blank gap control | `blank_gap_frames` | = 0 (max across repeats) | No visible scroll tearing |
-| Long task control | `long_tasks_count` | = 0 (max across repeats) | No main-thread blocking during scroll |
+| Sub-criterion       | Metric                                | Threshold                                  | Rationale                                                |
+| ------------------- | ------------------------------------- | ------------------------------------------ | -------------------------------------------------------- |
+| Frame parity        | `scroll_frame_p95_ms`                 | ≤ 110% of best full-grid competitor median | Competitive, not dominant — honest about MUI's strength  |
+| Row height accuracy | `row_height_error_p95_px`             | ≤ 1px                                      | Sub-pixel accuracy; MUI fails at 1.1px, AG Grid at 153px |
+| Anchor stability    | `scroll_anchor_shift_backward_p95_px` | ≤ 16px                                     | Same threshold as former H3; TanStack fails at 259px     |
+| Blank gap control   | `blank_gap_frames`                    | = 0 (max across repeats)                   | No visible scroll tearing                                |
+| Long task control   | `long_tasks_count`                    | = 0 (max across repeats)                   | No main-thread blocking during scroll                    |
 
 ### Uniqueness gate
 
@@ -43,24 +43,31 @@ The composite H1 evaluates in stages, matching the existing hypothesis status vo
 ### Summary text
 
 **Satisfied:**
+
 > "Wrapped-text scrolling delivers zero-artifact quality (row height error ≤ 1px, anchor shift ≤ 16px, no blank gaps, no long tasks) with frame times within 10% of the best measured full-grid comparator. No measured full-grid competitor achieves the same combined quality. Evidence is based on current repeated-run medians."
 
 **Failing — absolute threshold breach:**
+
 > "Wrapped-text scrolling is measured, but [N] quality sub-criteria are not yet met: [list failing sub-criteria with actual values]."
 
 **Failing — frame parity breach:**
+
 > "Wrapped-text scrolling meets all quality thresholds, but frame p95 is [X]% above the best full-grid comparator ([adapter]: [value]ms vs pretable: [value]ms). The 10% parity threshold is not met."
 
 **Directional — no competitor data:**
+
 > "Wrapped-text scrolling meets all absolute quality thresholds, but the comparative uniqueness claim is unmeasured — no full-grid competitor data is available."
 
 **Directional — uniqueness not proven:**
+
 > "Wrapped-text scrolling meets all quality thresholds, but so does every measured full-grid competitor — the uniqueness claim is not yet supported."
 
 **Directional — policy drift:**
+
 > "Wrapped-text scrolling meets all quality and uniqueness thresholds on current medians, but policy drift across repeats keeps the result directional rather than reproducible."
 
 **Insufficient:**
+
 > "Missing a completed S2 scroll run, so composite scroll quality cannot be evaluated yet."
 
 ## Changes
@@ -106,7 +113,7 @@ The uniqueness gate checks whether any full-grid competitor has at least one `fa
 
 **No changes to any other function.** All helpers (`findRunSeries`, `groupRunSeries`, `summarizeRunSeriesEvidence`, `medianMetric`, `maxMetric`, `hasPolicyDrift`, `getAdapterFamily`, `describeComparatorFamily`, `hasInteractionMedianStableButWorstCaseExceeded`) remain as-is.
 
-### scripts/__tests__/bench-matrix.test.mjs
+### scripts/**tests**/bench-matrix.test.mjs
 
 **Tests to update:**
 

@@ -61,14 +61,15 @@ describe("playground inspection demo", () => {
     render(<App />);
 
     expect(
-      screen.queryByText("Manual debugging, tiny repros, and adapter smoke tests."),
+      screen.queryByText(
+        "Manual debugging, tiny repros, and adapter smoke tests.",
+      ),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Read-heavy inspection table")).toBeInTheDocument();
 
-    expect(screen.getByRole("grid", { name: "Inspection grid" })).toHaveAttribute(
-      "data-pretable-scroll-viewport",
-      "",
-    );
+    expect(
+      screen.getByRole("grid", { name: "Inspection grid" }),
+    ).toHaveAttribute("data-pretable-scroll-viewport", "");
 
     fireEvent.change(screen.getByLabelText("Filter Severity"), {
       target: { value: "error" },

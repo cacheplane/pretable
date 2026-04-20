@@ -17,7 +17,12 @@ type DemoRow = {
 };
 
 const columns = [
-  { id: "timestamp", header: "Timestamp", pinned: "left" as const, widthPx: 188 },
+  {
+    id: "timestamp",
+    header: "Timestamp",
+    pinned: "left" as const,
+    widthPx: 188,
+  },
   { id: "severity", header: "Severity", pinned: "left" as const, widthPx: 112 },
   {
     id: "tags",
@@ -46,9 +51,7 @@ const rows: DemoRow[] = [
 ];
 
 describe("LabeledGridSurface", () => {
-  it(
-    "provides shared labeled-cell rendering and pinned-column presentation hooks",
-    () => {
+  it("provides shared labeled-cell rendering and pinned-column presentation hooks", () => {
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
@@ -83,12 +86,20 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const timestampHeader = view.getByRole("button", {
+      name: "Sort Timestamp",
+    });
     const severityHeader = view.getByRole("button", { name: "Sort Severity" });
     const firstRow = view.getAllByTestId("pretable-row")[0]!;
-    const pinnedCell = within(firstRow).getAllByText("Timestamp")[0]!.closest("[data-pretable-cell]");
-    const severityCell = within(firstRow).getAllByText("Severity")[0]!.closest("[data-pretable-cell]");
-    const tagsCell = within(firstRow).getByText("tenant-a, cold-start").closest("[data-pretable-cell]");
+    const pinnedCell = within(firstRow)
+      .getAllByText("Timestamp")[0]!
+      .closest("[data-pretable-cell]");
+    const severityCell = within(firstRow)
+      .getAllByText("Severity")[0]!
+      .closest("[data-pretable-cell]");
+    const tagsCell = within(firstRow)
+      .getByText("tenant-a, cold-start")
+      .closest("[data-pretable-cell]");
 
     expect(timestampHeader).toHaveClass("inspection-header-cell", "is-pinned");
     expect(timestampHeader).toHaveAttribute("data-pinned", "left");
@@ -106,9 +117,7 @@ describe("LabeledGridSurface", () => {
     fireEvent.click(timestampHeader);
 
     expect(timestampHeader).toHaveTextContent("Timestamp▼");
-    },
-    15_000,
-  );
+  }, 15_000);
 
   it("forwards selected row id changes from the shared surface", () => {
     const onSelectedRowIdChange = vi.fn();
@@ -145,7 +154,9 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const timestampHeader = view.getByRole("button", {
+      name: "Sort Timestamp",
+    });
     const severityHeader = view.getByRole("button", { name: "Sort Severity" });
 
     expect(timestampHeader).toHaveTextContent("Timestamp▼");
@@ -188,7 +199,9 @@ describe("LabeledGridSurface", () => {
     );
 
     const severityHeader = view.getByRole("button", { name: "Sort Severity" });
-    const timestampHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const timestampHeader = view.getByRole("button", {
+      name: "Sort Timestamp",
+    });
 
     expect(severityHeader).toHaveClass("is-filtered");
     expect(timestampHeader).not.toHaveClass("is-filtered");

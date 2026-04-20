@@ -22,8 +22,9 @@ export type PretableColumn<TRow extends PretableRow = PretableRow> =
 export type PretableGridOptions<TRow extends PretableRow = PretableRow> =
   GridCoreOptions<TRow>;
 
-export interface PretableGrid<TRow extends PretableRow = PretableRow>
-  extends Omit<GridCoreStore<TRow>, "options"> {
+export interface PretableGrid<
+  TRow extends PretableRow = PretableRow,
+> extends Omit<GridCoreStore<TRow>, "options"> {
   kind: "pretable-grid";
   options: PretableGridOptions<TRow>;
   getSnapshot(): GridCoreSnapshot<TRow>;

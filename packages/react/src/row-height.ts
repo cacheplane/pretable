@@ -3,7 +3,8 @@ const MIN_ROW_HEIGHT = 44;
 export function measureRenderedRowHeight(row: HTMLElement) {
   const style = getComputedStyle(row);
   const verticalPadding =
-    parseFloat(style.paddingTop || "0") + parseFloat(style.paddingBottom || "0");
+    parseFloat(style.paddingTop || "0") +
+    parseFloat(style.paddingBottom || "0");
   const borderHeight = parseFloat(style.borderBottomWidth || "0");
   const wrappedCells = [
     ...row.querySelectorAll<HTMLElement>(

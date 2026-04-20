@@ -4,7 +4,10 @@ import path from "node:path";
 import { expect, it } from "vitest";
 
 it("resolves core declarations from explicit declaration files during the react declaration build", async () => {
-  const raw = await readFile(path.join(process.cwd(), "tsconfig.build.json"), "utf8");
+  const raw = await readFile(
+    path.join(process.cwd(), "tsconfig.build.json"),
+    "utf8",
+  );
   const config = JSON.parse(raw) as {
     compilerOptions?: {
       rootDir?: string;

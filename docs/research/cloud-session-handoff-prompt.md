@@ -75,7 +75,7 @@ The interaction-recomputation-reduction phase shipped to `main`. In summary:
 
 Focused tests guard the shared-surface measurement behavior in:
 
-- [packages/react/src/internal/__tests__/pretable-surface.test.tsx](/packages/react/src/internal/__tests__/pretable-surface.test.tsx)
+- [packages/react/src/internal/**tests**/pretable-surface.test.tsx](/packages/react/src/internal/__tests__/pretable-surface.test.tsx)
 
 Specifically:
 
@@ -86,7 +86,7 @@ Specifically:
 
 The bench adapter also asserts that telemetry updates do not rerender the surface:
 
-- [apps/bench/src/__tests__/pretable-adapter.test.tsx](/apps/bench/src/__tests__/pretable-adapter.test.tsx)
+- [apps/bench/src/**tests**/pretable-adapter.test.tsx](/apps/bench/src/__tests__/pretable-adapter.test.tsx)
 
 Do not accidentally remove that coverage.
 

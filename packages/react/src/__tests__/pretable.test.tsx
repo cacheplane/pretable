@@ -3,11 +3,7 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 
-import {
-  Pretable,
-  measureRenderedRowHeight,
-  usePretableModel,
-} from "../index";
+import { Pretable, measureRenderedRowHeight, usePretableModel } from "../index";
 
 afterEach(() => {
   cleanup();
@@ -38,15 +34,21 @@ it("exposes the benchmark viewport, content, row, and cell DOM markers", () => {
     />,
   );
 
-  const viewport = view.container.querySelector("[data-pretable-scroll-viewport]");
-  const content = view.container.querySelector("[data-pretable-scroll-content]");
+  const viewport = view.container.querySelector(
+    "[data-pretable-scroll-viewport]",
+  );
+  const content = view.container.querySelector(
+    "[data-pretable-scroll-content]",
+  );
   const row = view.container.querySelector("[data-pretable-row]");
   const cells = row?.querySelectorAll("[data-pretable-cell]");
 
   expect(viewport).toHaveAttribute("role", "grid");
   expect(viewport).toHaveAttribute("tabindex", "0");
   expect(content).toBeInTheDocument();
-  expect(view.getByRole("button", { name: "Sort Message" })).toBeInTheDocument();
+  expect(
+    view.getByRole("button", { name: "Sort Message" }),
+  ).toBeInTheDocument();
   expect(row).toHaveAttribute("data-row-index", "0");
   expect(cells).toHaveLength(1);
 });
@@ -303,7 +305,9 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
     return (
       <output
         data-first-row-id={model.renderSnapshot.rows[0]?.id ?? ""}
-        data-rendered-row-ids={model.renderSnapshot.rows.map((row) => row.id).join(",")}
+        data-rendered-row-ids={model.renderSnapshot.rows
+          .map((row) => row.id)
+          .join(",")}
         data-kind={model.grid.kind}
         data-rendered-row-count={model.renderSnapshot.rows.length}
         data-total-height={model.renderSnapshot.totalHeight}

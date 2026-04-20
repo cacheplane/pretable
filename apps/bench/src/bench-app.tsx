@@ -180,7 +180,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                   },
                 );
               })()
-          : null
+            : null
           : null;
 
       const nextResult =
@@ -208,18 +208,20 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 ],
                 metrics: interactionRun.metrics,
               })
-          : createBenchRunSummary({
-              request,
-              status: "completed",
-              timestamp,
-              tracePath,
-              notes: createPretableTelemetryNotes(pretableTelemetryRef.current),
-              metrics: {
-                mount_ms: performance.now() - startedAt,
-                first_stable_viewport_ms: performance.now() - startedAt,
-                dom_nodes_peak: domNodesPeak,
-              },
-            });
+            : createBenchRunSummary({
+                request,
+                status: "completed",
+                timestamp,
+                tracePath,
+                notes: createPretableTelemetryNotes(
+                  pretableTelemetryRef.current,
+                ),
+                metrics: {
+                  mount_ms: performance.now() - startedAt,
+                  first_stable_viewport_ms: performance.now() - startedAt,
+                  dom_nodes_peak: domNodesPeak,
+                },
+              });
 
       setResult(nextResult);
       publishBenchResult(nextResult);
@@ -319,7 +321,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             >
               Run Metadata Filter
             </button>
-            <button type="button" onClick={() => void executeRun("filter-text")}>
+            <button
+              type="button"
+              onClick={() => void executeRun("filter-text")}
+            >
               Run Text Filter
             </button>
           </div>

@@ -46,17 +46,18 @@ export function InspectionDemo() {
           <p className="eyebrow">Prototype playground</p>
           <h1>Read-heavy inspection table</h1>
           <p>
-            This surface is the first honest product wedge: wrapped text,
-            pinned metadata, local filtering, and stable keyboard/selection
-            behavior on the same core and renderer path used by the benchmark
-            work.
+            This surface is the first honest product wedge: wrapped text, pinned
+            metadata, local filtering, and stable keyboard/selection behavior on
+            the same core and renderer path used by the benchmark work.
           </p>
         </div>
 
         <div className="inspection-status-card">
           <span>Current slice</span>
           <strong>Inspection workflow</strong>
-          <p>{telemetry?.rowModelRowCount ?? dataset.rows.length} matching rows</p>
+          <p>
+            {telemetry?.rowModelRowCount ?? dataset.rows.length} matching rows
+          </p>
           <p>Scale: {scale}</p>
           <dl data-testid="inspection-diagnostics">
             <div>

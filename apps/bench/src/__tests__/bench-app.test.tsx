@@ -17,29 +17,25 @@ describe("BenchApp", () => {
     vi.restoreAllMocks();
   });
 
-  test(
-    "renders selected scenario metadata and publishes a terminal result",
-    async () => {
-      render(<BenchApp search="?scenario=S2" browserVersion="123.0" />);
+  test("renders selected scenario metadata and publishes a terminal result", async () => {
+    render(<BenchApp search="?scenario=S2" browserVersion="123.0" />);
 
-      expect(screen.getAllByText("wrap-auto-height")).toHaveLength(2);
-      expect(screen.getAllByText("Primary wedge benchmark.")).toHaveLength(2);
+    expect(screen.getAllByText("wrap-auto-height")).toHaveLength(2);
+    expect(screen.getAllByText("Primary wedge benchmark.")).toHaveLength(2);
 
-      fireEvent.click(screen.getByRole("button", { name: "Run Initial" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run Initial" }));
 
-      await waitFor(() => {
-        expect(window[BENCH_RESULT_KEY]).toMatchObject({
-          status: "completed",
-          adapterId: "pretable",
-          scenarioId: "S2",
-          profile: "default",
-          scale: "dev",
-          scriptName: "initial",
-        });
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        status: "completed",
+        adapterId: "pretable",
+        scenarioId: "S2",
+        profile: "default",
+        scale: "dev",
+        scriptName: "initial",
       });
-    },
-    15_000,
-  );
+    });
+  }, 15_000);
 
   test("autorun completes without a lifecycle flushSync warning", async () => {
     const consoleError = vi
@@ -97,10 +93,7 @@ describe("BenchApp", () => {
 
   test("renders the requested mui competitor surface", async () => {
     render(
-      <BenchApp
-        search="?adapter=mui&scenario=S2"
-        browserVersion="123.0"
-      />,
+      <BenchApp search="?adapter=mui&scenario=S2" browserVersion="123.0" />,
     );
 
     expect(screen.getByText("MUI Data Grid harness")).toBeTruthy();
@@ -110,12 +103,17 @@ describe("BenchApp", () => {
 
   test("keeps the Pretable benchmark wrapper distinct while exposing the shared renderer markers", async () => {
     render(
-      <BenchApp search="?adapter=pretable&scenario=S2" browserVersion="123.0" />,
+      <BenchApp
+        search="?adapter=pretable&scenario=S2"
+        browserVersion="123.0"
+      />,
     );
 
-    const adapter = screen.getByRole("grid", {
-      name: "Pretable React adapter",
-    }).closest("[data-benchmark-adapter]");
+    const adapter = screen
+      .getByRole("grid", {
+        name: "Pretable React adapter",
+      })
+      .closest("[data-benchmark-adapter]");
 
     expect(adapter?.getAttribute("data-benchmark-adapter")).toBe("pretable");
     expect(
