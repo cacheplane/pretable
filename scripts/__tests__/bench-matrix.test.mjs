@@ -299,7 +299,7 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
           long_tasks_count: 0,
           long_tasks_ms: 0,
           dom_nodes_peak: 684,
-          row_height_error_p95_px: 0.2,
+          row_height_error_p95_px: 2,
           scroll_anchor_shift_px: 8,
         },
       },
@@ -325,6 +325,10 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
           long_tasks_count: 0,
           long_tasks_ms: 0,
           dom_nodes_peak: 512,
+          row_height_error_p95_px: 0,
+          scroll_anchor_shift_px: 0,
+          scroll_anchor_shift_backward_p95_px: 0,
+          scroll_anchor_shift_forward_p95_px: 0,
         },
       },
     ],
@@ -336,7 +340,7 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
   );
   assert.match(
     report.hypotheses.find((item) => item.id === "H1")?.summary ?? "",
-    /25%|relative/i,
+    /zero-artifact|composite|quality/i,
   );
   assert.equal(
     report.hypotheses.find((item) => item.id === "H5")?.status,
@@ -660,7 +664,7 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
   const h1 = report.hypotheses.find((item) => item.id === "H1");
 
   assert.equal(h1?.status, "satisfied");
-  assert.match(h1?.summary ?? "", /median|repeat/i);
+  assert.match(h1?.summary ?? "", /repeated-run medians|current sample/i);
   assert.equal(h1?.evidence[0]?.sampleCount, 3);
   assert.equal(h1?.evidence[0]?.metrics.scroll_frame_p95_ms, 13.1);
   assert.deepEqual(h1?.evidence[0]?.metricSummary.scroll_frame_p95_ms, {
@@ -748,8 +752,8 @@ test("createHypothesisReport exposes worst-case H1 threshold metrics alongside m
   const h1 = report.hypotheses.find((item) => item.id === "H1");
 
   assert.equal(h1?.status, "failing");
-  assert.match(h1?.summary ?? "", /medians/i);
-  assert.match(h1?.summary ?? "", /worst-case|repeat/i);
+  assert.match(h1?.summary ?? "", /quality sub-criteria/i);
+  assert.match(h1?.summary ?? "", /blank gap frames/i);
   assert.equal(h1?.evidence[0]?.metrics.blank_gap_frames, 0);
   assert.deepEqual(h1?.evidence[0]?.metricSummary.blank_gap_frames, {
     min: 0,
@@ -798,7 +802,7 @@ test("createHypothesisReport prefers the best full-grid comparator for H1 while 
         adapterId: "ag-grid",
         timestamp: "2026-04-10T15:15:30.000Z",
         scroll_frame_p95_ms: 26.2,
-        row_height_error_p95_px: 0.2,
+        row_height_error_p95_px: 2,
         scroll_anchor_shift_px: 8,
       }),
       createScrollRun({
@@ -814,7 +818,7 @@ test("createHypothesisReport prefers the best full-grid comparator for H1 while 
   const h1 = report.hypotheses.find((item) => item.id === "H1");
 
   assert.equal(h1?.status, "satisfied");
-  assert.match(h1?.summary ?? "", /full-grid/i);
+  assert.match(h1?.summary ?? "", /zero-artifact|quality/i);
   assert.equal(h1?.evidence[0]?.adapterId, "pretable");
   assert.equal(h1?.evidence[0]?.adapterFamily, "candidate");
   assert.equal(h1?.evidence[1]?.adapterId, "ag-grid");
