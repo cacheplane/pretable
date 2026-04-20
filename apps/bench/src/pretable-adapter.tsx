@@ -37,10 +37,13 @@ export function PretableAdapter({
   const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
 
   const onTelemetryChangeRef = useRef(onTelemetryChange);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onTelemetryChangeRef.current = onTelemetryChange;
   const interactionPlanRef = useRef(interactionPlan);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   interactionPlanRef.current = interactionPlan;
   const datasetRowCountRef = useRef(dataset.rows.length);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   datasetRowCountRef.current = dataset.rows.length;
 
   const handleTelemetryChange = useCallback((telemetry: PretableTelemetry) => {

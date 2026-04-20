@@ -232,7 +232,7 @@ export function validateSupportedP0aRequest(
     };
   }
 
-  if (!["S1", "S2"].includes(request.scenarioId)) {
+  if (!["S1", "S2", "S7"].includes(request.scenarioId)) {
     return {
       ok: false,
       reason: `Unsupported scenario for P0a: ${request.scenarioId}`,
@@ -257,7 +257,7 @@ export function validateSupportedP0aRequest(
       };
     }
 
-    if (request.scenarioId !== "S2") {
+    if (!["S2", "S7"].includes(request.scenarioId)) {
       return {
         ok: false,
         reason: `Unsupported scenario for interaction script ${request.scriptName}: ${request.scenarioId}`,
