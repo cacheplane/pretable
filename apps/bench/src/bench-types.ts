@@ -2,7 +2,7 @@ import type { BenchScriptName } from "@pretable-internal/bench-runner";
 
 export interface BenchQueryState {
   adapterId: "pretable" | "gridalpha" | "gridbeta" | "gridgamma";
-  scenarioId: "S1" | "S2";
+  scenarioId: "S1" | "S2" | "S7";
   profile: "default";
   scale: "smoke" | "dev" | "hypothesis" | "target";
   scriptName: Extract<
