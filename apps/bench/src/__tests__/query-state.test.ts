@@ -75,9 +75,7 @@ describe("parseBenchQuery", () => {
   });
 
   test("accepts S7 pinned-inspection scenario", () => {
-    expect(
-      parseBenchQuery("?scenario=S7&scale=dev&script=scroll"),
-    ).toEqual({
+    expect(parseBenchQuery("?scenario=S7&scale=dev&script=scroll")).toEqual({
       adapterId: "pretable",
       scenarioId: "S7",
       profile: "default",

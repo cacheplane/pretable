@@ -355,8 +355,7 @@ function evaluateH1(runs, scenarioId) {
     return {
       id: "H1",
       status: "insufficient",
-      summary:
-        `Missing a completed ${scenarioId} scroll run, so composite scroll quality cannot be evaluated yet.`,
+      summary: `Missing a completed ${scenarioId} scroll run, so composite scroll quality cannot be evaluated yet.`,
       evidence: [],
     };
   }

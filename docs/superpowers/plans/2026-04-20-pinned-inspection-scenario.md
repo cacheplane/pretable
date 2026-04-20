@@ -27,6 +27,7 @@
 ### Task 1: Add S7 to scenario-data
 
 **Files:**
+
 - Modify: `packages/scenario-data/src/index.ts`
 - Test: `packages/scenario-data/src/__tests__/scenario-data.test.ts`
 
@@ -77,8 +78,12 @@ test("models pinned-inspection scenario with 3 pinned columns and variable-heigh
 test("supports all scale levels for S7 with same row counts as S2", () => {
   expect(createScenarioDataset("S7", { scale: "smoke" }).rowCount).toBe(120);
   expect(createScenarioDataset("S7", { scale: "dev" }).rowCount).toBe(750);
-  expect(createScenarioDataset("S7", { scale: "hypothesis" }).rowCount).toBe(3_000);
-  expect(createScenarioDataset("S7", { scale: "target" }).rowCount).toBe(50_000);
+  expect(createScenarioDataset("S7", { scale: "hypothesis" }).rowCount).toBe(
+    3_000,
+  );
+  expect(createScenarioDataset("S7", { scale: "target" }).rowCount).toBe(
+    50_000,
+  );
 });
 ```
 
@@ -160,11 +165,13 @@ widthPx:
 - [ ] **Step 4: Verify existing S2 test still passes**
 
 The `buildColumns` change affects S2 (which has `pinned_left: 1, wrapped_columns: 3`). Under the new logic:
+
 - S2 col 0: pinned=left, wrap=false (index < 1) — **different from before** (was wrap=true)
 
 This is a problem. S2 currently wraps columns 0-2 and pins column 0. With the new logic, column 0 would be pinned but NOT wrapped. Let me check if S2's column 0 was both pinned and wrapped before...
 
 Looking at the existing `buildColumns`:
+
 - `wrap: index < scenario.wrapped_columns` → S2 cols 0,1,2 are wrapped
 - `pinned: index < scenario.pinned_left ? "left" : undefined` → S2 col 0 is pinned
 
@@ -202,7 +209,7 @@ function buildColumns(scenario: ScenarioDefinition): readonly ScenarioColumn[] {
 
 But this breaks S2: S2 has `pinned_left: 1, wrapped_columns: 3` → wrappedStart=1, wrappedEnd=4. Columns 1,2,3 would wrap. Currently columns 0,1,2 wrap. That breaks the test.
 
-**Final approach:** Don't change `buildColumns` at all. The current logic already works for S7 if we accept that pinned columns CAN also be wrapped. But for S7 the design says pinned columns should be narrow metadata (not wrapped). 
+**Final approach:** Don't change `buildColumns` at all. The current logic already works for S7 if we accept that pinned columns CAN also be wrapped. But for S7 the design says pinned columns should be narrow metadata (not wrapped).
 
 The cleanest path: keep `buildColumns` unchanged and define S7 differently so the existing logic produces the right layout. With the current logic (`wrap: index < scenario.wrapped_columns`), S7 with `wrapped_columns: 3, pinned_left: 3` would make columns 0-2 both pinned AND wrapped. We don't want wrapped pinned columns.
 
@@ -249,6 +256,7 @@ In `packages/scenario-data/src/index.ts`:
 1. Update the `ScenarioId` type to add `"S7"`.
 
 2. Add to `scenarioScaleRowCounts`:
+
 ```typescript
 S7: {
   smoke: 120,
@@ -259,6 +267,7 @@ S7: {
 ```
 
 3. Add to `scenarioDefinitions` after S6:
+
 ```typescript
 {
   id: "S7",
@@ -275,6 +284,7 @@ S7: {
 ```
 
 4. Add to `scenarioSeeds`:
+
 ```typescript
 S7: 707,
 ```
@@ -352,6 +362,7 @@ Same row counts as S2. Exercises pinned-column layout overhead."
 ### Task 2: Wire S7 into the bench app
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-types.ts`
 - Modify: `apps/bench/src/query-state.ts`
 - Test: `apps/bench/src/__tests__/query-state.test.ts`
@@ -362,9 +373,7 @@ Add to `apps/bench/src/__tests__/query-state.test.ts`:
 
 ```typescript
 test("accepts S7 pinned-inspection scenario", () => {
-  expect(
-    parseBenchQuery("?scenario=S7&scale=dev&script=scroll"),
-  ).toEqual({
+  expect(parseBenchQuery("?scenario=S7&scale=dev&script=scroll")).toEqual({
     adapterId: "pretable",
     scenarioId: "S7",
     profile: "default",
@@ -426,6 +435,7 @@ git commit -m "feat(bench): wire S7 into query parsing and type system"
 ### Task 3: Allow S7 in bench-runner validation
 
 **Files:**
+
 - Modify: `packages/bench-runner/src/index.ts`
 - Test: `packages/bench-runner/src/__tests__/bench-runner.test.ts`
 
@@ -516,6 +526,7 @@ git commit -m "feat(bench-runner): allow S7 in P0a validation for scroll and int
 ### Task 4: Refactor hypothesis evaluation to accept scenarioId parameter
 
 **Files:**
+
 - Modify: `scripts/bench-matrix.mjs`
 - Modify: `scripts/__tests__/bench-matrix.test.mjs`
 
@@ -807,6 +818,7 @@ Add S7 to DEFAULT_SCENARIOS."
 ### Task 5: Add H9-H12 test coverage
 
 **Files:**
+
 - Modify: `scripts/__tests__/bench-matrix.test.mjs`
 
 - [ ] **Step 1: Add H9 satisfied test**
