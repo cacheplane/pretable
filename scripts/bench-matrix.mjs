@@ -7,7 +7,7 @@ import { getBenchAdapterFamily } from "../shared/bench-adapter-families.js";
 const DEFAULT_ADAPTERS = ["pretable", "ag-grid"];
 const DEFAULT_REPEATS = 1;
 const DEFAULT_SCALE = "dev";
-const DEFAULT_SCENARIOS = ["S1", "S2"];
+const DEFAULT_SCENARIOS = ["S1", "S2", "S7"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 const BENCH_APP_ID = "@pretable/app-bench";
@@ -115,11 +115,15 @@ export function createHypothesisReport(input) {
     matrix: summarizeMatrixScope(input.entries, input.runs),
     slices: summarizeReportSlices(input.entries, input.runs),
     hypotheses: [
-      evaluateH1(input.runs),
-      evaluateH6(input.runs),
-      evaluateH7(input.runs),
-      evaluateH8(input.runs),
+      evaluateH1(input.runs, "S2"),
+      evaluateH6(input.runs, "S2"),
+      evaluateH7(input.runs, "S2"),
+      evaluateH8(input.runs, "S2"),
       evaluateH5(input.entries, input.runs),
+      evaluateH9(input.runs),
+      evaluateH10(input.runs),
+      evaluateH11(input.runs),
+      evaluateH12(input.runs),
     ],
   };
 }
@@ -340,10 +344,10 @@ async function writeHypothesisReport(report) {
   return path.relative(process.cwd(), reportPath);
 }
 
-function evaluateH1(runs) {
+function evaluateH1(runs, scenarioId) {
   const wrappedScrollSeries = findRunSeries(runs, {
     adapterId: "pretable",
-    scenarioId: "S2",
+    scenarioId,
     scriptName: "scroll",
   });
 
@@ -352,7 +356,7 @@ function evaluateH1(runs) {
       id: "H1",
       status: "insufficient",
       summary:
-        "Missing a completed S2 scroll run, so composite scroll quality cannot be evaluated yet.",
+        `Missing a completed ${scenarioId} scroll run, so composite scroll quality cannot be evaluated yet.`,
       evidence: [],
     };
   }
@@ -401,7 +405,7 @@ function evaluateH1(runs) {
   }
 
   const competitorSeries = groupRunSeries(runs, {
-    scenarioId: "S2",
+    scenarioId,
     scriptName: "scroll",
   }).filter(
     (series) =>
@@ -561,8 +565,8 @@ function evaluateH5(entries, runs) {
   };
 }
 
-function evaluateH6(runs) {
-  return evaluateInteractionHypothesis(runs, {
+function evaluateH6(runs, scenarioId) {
+  return evaluateInteractionHypothesis(runs, scenarioId, {
     id: "H6",
     scriptName: "sort",
     latencyThreshold: 64,
@@ -570,13 +574,12 @@ function evaluateH6(runs) {
     requiresRowReduction: false,
     satisfiedSummary:
       "Wrapped-text local sorting stays within the current interaction and settle thresholds while preserving post-sort stability.",
-    insufficientSummary:
-      "Missing a completed S2 sort run, so local sort interaction proof is not available yet.",
+    insufficientSummary: `Missing a completed ${scenarioId} sort run, so local sort interaction proof is not available yet.`,
   });
 }
 
-function evaluateH7(runs) {
-  return evaluateInteractionHypothesis(runs, {
+function evaluateH7(runs, scenarioId) {
+  return evaluateInteractionHypothesis(runs, scenarioId, {
     id: "H7",
     scriptName: "filter-metadata",
     latencyThreshold: 64,
@@ -584,13 +587,12 @@ function evaluateH7(runs) {
     requiresRowReduction: true,
     satisfiedSummary:
       "Metadata filtering stays within the current interaction and settle thresholds while reducing the row set without post-filter instability.",
-    insufficientSummary:
-      "Missing a completed S2 metadata-filter run, so metadata filter proof is not available yet.",
+    insufficientSummary: `Missing a completed ${scenarioId} metadata-filter run, so metadata filter proof is not available yet.`,
   });
 }
 
-function evaluateH8(runs) {
-  return evaluateInteractionHypothesis(runs, {
+function evaluateH8(runs, scenarioId) {
+  return evaluateInteractionHypothesis(runs, scenarioId, {
     id: "H8",
     scriptName: "filter-text",
     latencyThreshold: 96,
@@ -598,13 +600,29 @@ function evaluateH8(runs) {
     requiresRowReduction: true,
     satisfiedSummary:
       "Wrapped-text primary-column filtering stays within the current interaction and settle thresholds while preserving post-filter stability.",
-    insufficientSummary:
-      "Missing a completed S2 text-filter run, so wrapped-text filter proof is not available yet.",
+    insufficientSummary: `Missing a completed ${scenarioId} text-filter run, so wrapped-text filter proof is not available yet.`,
   });
+}
+
+function evaluateH9(runs) {
+  return { ...evaluateH1(runs, "S7"), id: "H9" };
+}
+
+function evaluateH10(runs) {
+  return { ...evaluateH6(runs, "S7"), id: "H10" };
+}
+
+function evaluateH11(runs) {
+  return { ...evaluateH7(runs, "S7"), id: "H11" };
+}
+
+function evaluateH12(runs) {
+  return { ...evaluateH8(runs, "S7"), id: "H12" };
 }
 
 function evaluateInteractionHypothesis(
   runs,
+  scenarioId,
   {
     id,
     scriptName,
@@ -617,7 +635,7 @@ function evaluateInteractionHypothesis(
 ) {
   const candidateSeries = findRunSeries(runs, {
     adapterId: "pretable",
-    scenarioId: "S2",
+    scenarioId,
     scriptName,
   });
 
@@ -666,7 +684,7 @@ function evaluateInteractionHypothesis(
   }
 
   const competitorSeries = groupRunSeries(runs, {
-    scenarioId: "S2",
+    scenarioId,
     scriptName,
   }).filter((series) => series[0]?.adapterId !== "pretable");
   const bestCompetitorSeries =
