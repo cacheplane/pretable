@@ -142,11 +142,3 @@ function readCellValue<TRow extends GridCoreRow>(
 ): unknown {
   return column.getValue ? column.getValue(row) : row[column.id];
 }
-
-function compareValues(left: unknown, right: unknown): number {
-  if (typeof left === "number" && typeof right === "number") {
-    return left - right;
-  }
-
-  return collator.compare(String(left ?? ""), String(right ?? ""));
-}
