@@ -138,17 +138,17 @@ The current product direction is stable:
 
 Off-screen autosize and streaming updates are intentionally deferred as first-class proving targets. The current priority is to make the shared engine path stronger and more honest.
 
+## Current Proof Surface
+
+- Scroll proof: the latest repeated Chromium `S2/hypothesis/scroll` runset at `status/runsets/2026-04-20t23-48-22-840z.hypotheses.json` satisfies `H1` (composite scroll quality). No scroll regression from interaction work.
+- Interaction proof is now clean at both `dev` and `hypothesis` scale:
+  - the repeated `S2/dev` interaction runset at `status/runsets/2026-04-20t23-47-00-725z.hypotheses.json` satisfies `H6` (`sort`), `H7` (`filter-metadata`), and `H8` (`filter-text`) with max latency under 9ms
+  - the repeated `S2/hypothesis` interaction runset at `status/runsets/2026-04-20t23-47-43-474z.hypotheses.json` also satisfies `H6`, `H7`, and `H8` with max latency under 9ms
+  - the sort variance spike (~74.6ms) that originally motivated the interaction promotion roadmap is gone — likely resolved by earlier shared-path fixes (input recreation fix, post-mutation anchor accounting, row-height measurement churn reduction)
+- Pinned-column scenario (S7) with 3 pinned left columns and variable-height multilingual content is registered and runnable across all four adapters. H9-H12 hypotheses mirror the S2 proof surface.
+
 ## Current Risks
 
-- Scroll proof is now materially better than the earlier failing checkpoint. The latest repeated Chromium `S2/dev/scroll` runset at `status/runsets/2026-04-14t20-16-32-016z.hypotheses.json` satisfies both `H1` and `H3`, and the latest repeated Chromium `S2/hypothesis/scroll` runset at `status/runsets/2026-04-14t20-20-01-263z.hypotheses.json` also keeps both satisfied.
-- Interaction proof is now clean on the repeated Chromium `dev` slice:
-  - the repeated `S2/dev` interaction runset at `status/runsets/2026-04-16t00-16-36-271z.hypotheses.json` satisfies `H6` (`sort`), `H7` (`filter-metadata`), and `H8` (`filter-text`)
-  - the key shared-path fix was narrowing row-height remeasurement so cached wrapped rows do not churn again on pure sort reorder, while still evicting stale cached heights when wrapped content changes
-- The larger Chromium-only promotion pass is still mixed:
-  - the repeated `S2/hypothesis` interaction runset at `status/runsets/2026-04-16t00-17-20-982z.hypotheses.json` leaves `H6` (`sort`) and `H7` (`filter-metadata`) failing while `H8` (`filter-text`) remains satisfied
-  - `H6` (`sort`) is failing on larger-scale interaction latency at roughly `65.8–66.7ms`
-  - `H7` (`filter-metadata`) is failing on larger-scale interaction latency at roughly `58.3–67.6ms`
-- Current interaction evidence means the wedge now covers passive wrapped-text scroll and the full local `S2` interaction family on repeated Chromium `dev` runs. At the stricter `hypothesis` scale, only wrapped-text primary-column filtering currently holds consistently; sort and metadata filtering remain the honest latency gaps before any broader interaction superiority claim.
 - The benchmark and playground are tighter now, but `@pretable/react/internal` is still an internal seam. It should keep absorbing prototype-specific composition until the public API is deliberate.
 - Streaming is still architectural intent, not implemented evidence.
 
