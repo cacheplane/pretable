@@ -30,7 +30,12 @@ export function parseBenchQuery(
             : adapter === "pretable"
               ? "pretable"
               : DEFAULT_QUERY_STATE.adapterId,
-    scenarioId: scenario === "S2" ? "S2" : DEFAULT_QUERY_STATE.scenarioId,
+    scenarioId:
+      scenario === "S2"
+        ? "S2"
+        : scenario === "S7"
+          ? "S7"
+          : DEFAULT_QUERY_STATE.scenarioId,
     profile: DEFAULT_QUERY_STATE.profile,
     scale:
       scale === "smoke" ||
