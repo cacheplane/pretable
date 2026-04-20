@@ -201,3 +201,28 @@
   - local sort
   - metadata filtering
 - `filter-text` is currently the only interaction scenario that survives the larger `hypothesis` promotion pass on the latest rerun.
+
+## 2026-04-20
+
+### Pinned-column inspection scenario (S7)
+
+- Added S7 ("pinned-inspection"): 40 cols, 3 pinned left, 3 wrapped, variable-height, multilingual corpus, same row counts as S2.
+- H9-H12 hypotheses mirror H1/H6-H8 for the S7 scenario.
+- Existing evaluate functions refactored to accept explicit `scenarioId` parameter; H9-H12 are thin wrappers.
+- All four adapters (pretable, Grid Alpha, GridBeta, GridGamma) already support S7 through the existing `column.pinned` dataset interface.
+- Default bench matrix scenarios expanded from `["S1", "S2"]` to `["S1", "S2", "S7"]`.
+
+### Interaction proof promotion to hypothesis scale
+
+- The sort variance spike (~74.6ms on `H6`) that originally motivated the fix-then-expand roadmap is gone.
+- Fresh repeated Chromium `S2/dev` interaction runset at `status/runsets/2026-04-20t23-47-00-725z.hypotheses.json` satisfies `H6`, `H7`, `H8` with max latency under 9ms.
+- Fresh repeated Chromium `S2/hypothesis` interaction runset at `status/runsets/2026-04-20t23-47-43-474z.hypotheses.json` also satisfies `H6`, `H7`, `H8` with max latency under 9ms.
+- The earlier ~66.7ms hypothesis-scale failures are resolved without targeted sort-path intervention — the accumulated shared-path fixes from the 2026-04-15/2026-04-16 work (input recreation fix, post-mutation anchor accounting, row-height measurement churn reduction) appear to have eliminated the variance source.
+- Fresh repeated Chromium `S2/hypothesis/scroll` comparative runset at `status/runsets/2026-04-20t23-48-22-840z.hypotheses.json` satisfies `H1` — no scroll regression from the interaction work.
+
+### Current honest checkpoint
+
+- Scroll: `H1` satisfied at `S2/hypothesis` scale on Chromium.
+- Interaction: `H6`, `H7`, `H8` all satisfied at `S2/hypothesis` scale on Chromium.
+- The full `S2` proof surface (scroll + sort + filter-metadata + filter-text) is now clean at hypothesis scale.
+- Roadmap projects 1-4 are complete. The next highest-value work is Project 5 (Public API Stabilization) or the S3-S6 engine feature brainstorm.
