@@ -14,7 +14,7 @@ test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matr
     adapters: ["pretable", "gridalpha"],
     repeats: 1,
     scale: "dev",
-    scenarios: ["S1", "S2"],
+    scenarios: ["S1", "S2", "S7"],
     scripts: ["initial", "scroll"],
     passthroughArgs: [],
   });
@@ -1337,7 +1337,7 @@ test("composite H1 fails when pretable backward anchor shift exceeds threshold",
   assert.match(h1?.summary ?? "", /anchor shift/i);
 });
 
-test("hypothesis array has 5 entries after H3 removal", () => {
+test("hypothesis array has 9 entries with H9-H12 for S7", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-50-00-000z",
     generatedAt: "2026-04-20T10:51:00.000Z",
@@ -1345,7 +1345,7 @@ test("hypothesis array has 5 entries after H3 removal", () => {
     runs: [],
   });
 
-  assert.equal(report.hypotheses.length, 5);
+  assert.equal(report.hypotheses.length, 9);
   assert.ok(report.hypotheses.find((h) => h.id === "H1"));
   assert.equal(
     report.hypotheses.find((h) => h.id === "H3"),
@@ -1355,11 +1355,16 @@ test("hypothesis array has 5 entries after H3 removal", () => {
   assert.ok(report.hypotheses.find((h) => h.id === "H6"));
   assert.ok(report.hypotheses.find((h) => h.id === "H7"));
   assert.ok(report.hypotheses.find((h) => h.id === "H8"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H9"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H10"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H11"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H12"));
 });
 
 function createScrollRun({
   adapterId,
   timestamp,
+  scenarioId = "S2",
   notes = [
     "contain: none",
     "content visibility: visible",
@@ -1378,18 +1383,18 @@ function createScrollRun({
   return {
     adapterId,
     profile: "default",
-    scenarioId: "S2",
+    scenarioId,
     scriptName: "scroll",
     browserName: "chromium",
     browserVersion: "123.0",
     timestamp,
-    seed: 202,
+    seed: scenarioId === "S7" ? 707 : 202,
     viewport: { width: 1440, height: 900 },
     fontStack: '"IBM Plex Sans", system-ui, sans-serif',
     deviceScaleFactor: 1,
     notes,
     status: "completed",
-    tracePath: `status/traces/chromium-${adapterId}-default-s2-scroll.trace.zip`,
+    tracePath: `status/traces/chromium-${adapterId}-default-${scenarioId.toLowerCase()}-scroll.trace.zip`,
     metrics: {
       scroll_frame_p95_ms,
       blank_gap_frames,
