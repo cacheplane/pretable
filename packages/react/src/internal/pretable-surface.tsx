@@ -226,8 +226,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
       if (measuredHeight <= DEFAULT_ROW_HEIGHT) {
         if (cachedHeight !== undefined && cachedRowKey !== currentRowKey) {
-          const { [rowId]: _h, ...restHeights } = nextHeights;
-          const { [rowId]: _k, ...restKeys } = nextKeys;
+          const restHeights = { ...nextHeights };
+          delete restHeights[rowId];
+          const restKeys = { ...nextKeys };
+          delete restKeys[rowId];
 
           nextHeights = restHeights;
           nextKeys = restKeys;
@@ -254,6 +256,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     measuredRowKeysRef.current = nextKeys;
 
     if (changed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: measuring DOM in useLayoutEffect requires synchronous state update
       setMeasuredHeights(nextHeights);
     }
   });

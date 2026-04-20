@@ -219,6 +219,37 @@ describe("bench-runner contract", () => {
     ).toThrow(/settle_duration_ms/);
   });
 
+  test("accepts S7 for scroll and interaction scripts", () => {
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S7",
+        scriptName: "scroll",
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S7",
+        scriptName: "sort",
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S7",
+        scriptName: "filter-metadata",
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S7",
+        scriptName: "filter-text",
+      }),
+    ).toEqual({ ok: true });
+  });
+
   test("serializes unsupported, partial, and completed runs with stable fields", () => {
     expect(
       createBenchRunSummary({

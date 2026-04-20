@@ -60,9 +60,10 @@ export function createGridCore<TRow extends GridCoreRow>(
           return;
         }
 
-        const { [columnId]: _removed, ...rest } = filters;
+        const next = { ...filters };
+        delete next[columnId];
 
-        filters = rest;
+        filters = next;
       }
 
       emit();
