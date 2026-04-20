@@ -1132,6 +1132,231 @@ test("createHypothesisReport includes unsupported entries without erroring", () 
   assert.equal(h6.status, "satisfied");
 });
 
+test("composite H1 fails when pretable exceeds absolute quality threshold", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t10-00-00-000z",
+    generatedAt: "2026-04-20T10:01:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-00-00-000z.summary.json",
+      },
+      {
+        adapterId: "gridalpha",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-20t10-00-30-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-20T10:00:00.000Z",
+        scroll_frame_p95_ms: 24,
+        row_height_error_p95_px: 2,
+      }),
+      createScrollRun({
+        adapterId: "gridalpha",
+        timestamp: "2026-04-20T10:00:30.000Z",
+        scroll_frame_p95_ms: 28,
+        row_height_error_p95_px: 150,
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(h1?.status, "failing");
+  assert.match(h1?.summary ?? "", /quality sub-criteria/i);
+  assert.match(h1?.summary ?? "", /row height error/i);
+});
+
+test("composite H1 fails when pretable frame parity exceeds 110%", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t10-10-00-000z",
+    generatedAt: "2026-04-20T10:11:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-10-00-000z.summary.json",
+      },
+      {
+        adapterId: "gridgamma",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridgamma-default-s2-dev-scroll-2026-04-20t10-10-30-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-20T10:10:00.000Z",
+        scroll_frame_p95_ms: 30,
+      }),
+      createScrollRun({
+        adapterId: "gridgamma",
+        timestamp: "2026-04-20T10:10:30.000Z",
+        scroll_frame_p95_ms: 25,
+        row_height_error_p95_px: 1.1,
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(h1?.status, "failing");
+  assert.match(h1?.summary ?? "", /frame p95/i);
+  assert.match(h1?.summary ?? "", /parity/i);
+});
+
+test("composite H1 directional when all full-grid competitors also pass quality thresholds", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t10-20-00-000z",
+    generatedAt: "2026-04-20T10:21:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-20-00-000z.summary.json",
+      },
+      {
+        adapterId: "gridalpha",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-20t10-20-30-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-20T10:20:00.000Z",
+        scroll_frame_p95_ms: 24,
+      }),
+      createScrollRun({
+        adapterId: "gridalpha",
+        timestamp: "2026-04-20T10:20:30.000Z",
+        scroll_frame_p95_ms: 26,
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(h1?.status, "directional");
+  assert.match(h1?.summary ?? "", /uniqueness/i);
+});
+
+test("composite H1 satisfied with GridGamma-like competitor failing row height accuracy", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t10-30-00-000z",
+    generatedAt: "2026-04-20T10:31:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-30-00-000z.summary.json",
+      },
+      {
+        adapterId: "gridgamma",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-gridgamma-default-s2-dev-scroll-2026-04-20t10-30-30-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-20T10:30:00.000Z",
+        scroll_frame_p95_ms: 24,
+      }),
+      createScrollRun({
+        adapterId: "gridgamma",
+        timestamp: "2026-04-20T10:30:30.000Z",
+        scroll_frame_p95_ms: 25,
+        row_height_error_p95_px: 1.1,
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(h1?.status, "satisfied");
+  assert.match(h1?.summary ?? "", /zero-artifact|quality/i);
+});
+
+test("composite H1 fails when pretable backward anchor shift exceeds threshold", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t10-40-00-000z",
+    generatedAt: "2026-04-20T10:41:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-40-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-20T10:40:00.000Z",
+        scroll_frame_p95_ms: 24,
+        scroll_anchor_shift_px: undefined,
+        scroll_anchor_shift_backward_p95_px: 20,
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(h1?.status, "failing");
+  assert.match(h1?.summary ?? "", /anchor shift/i);
+});
+
+test("hypothesis array has 5 entries after H3 removal", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-20t10-50-00-000z",
+    generatedAt: "2026-04-20T10:51:00.000Z",
+    entries: [],
+    runs: [],
+  });
+
+  assert.equal(report.hypotheses.length, 5);
+  assert.ok(report.hypotheses.find((h) => h.id === "H1"));
+  assert.equal(
+    report.hypotheses.find((h) => h.id === "H3"),
+    undefined,
+  );
+  assert.ok(report.hypotheses.find((h) => h.id === "H5"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H6"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H7"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H8"));
+});
+
 function createScrollRun({
   adapterId,
   timestamp,
