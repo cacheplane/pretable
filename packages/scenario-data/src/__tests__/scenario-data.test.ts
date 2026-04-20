@@ -109,9 +109,18 @@ describe("scenario-data registry", () => {
     expect(dataset.columns[0]).toMatchObject({ pinned: "left", wrap: true });
     expect(dataset.columns[1]).toMatchObject({ pinned: "left", wrap: true });
     expect(dataset.columns[2]).toMatchObject({ pinned: "left", wrap: true });
-    expect(dataset.columns[3]).toMatchObject({ wrap: false, pinned: undefined });
-    expect(dataset.columns[4]).toMatchObject({ wrap: false, pinned: undefined });
-    expect(dataset.columns[5]).toMatchObject({ wrap: false, pinned: undefined });
+    expect(dataset.columns[3]).toMatchObject({
+      wrap: false,
+      pinned: undefined,
+    });
+    expect(dataset.columns[4]).toMatchObject({
+      wrap: false,
+      pinned: undefined,
+    });
+    expect(dataset.columns[5]).toMatchObject({
+      wrap: false,
+      pinned: undefined,
+    });
     expect(dataset.seed).toBe(707);
     expect(dataset.scale).toBe("smoke");
     expect(dataset.rowCount).toBe(120);
@@ -121,8 +130,12 @@ describe("scenario-data registry", () => {
   test("supports all scale levels for S7 with same row counts as S2", () => {
     expect(createScenarioDataset("S7", { scale: "smoke" }).rowCount).toBe(120);
     expect(createScenarioDataset("S7", { scale: "dev" }).rowCount).toBe(750);
-    expect(createScenarioDataset("S7", { scale: "hypothesis" }).rowCount).toBe(3_000);
-    expect(createScenarioDataset("S7", { scale: "target" }).rowCount).toBe(50_000);
+    expect(createScenarioDataset("S7", { scale: "hypothesis" }).rowCount).toBe(
+      3_000,
+    );
+    expect(createScenarioDataset("S7", { scale: "target" }).rowCount).toBe(
+      50_000,
+    );
   });
 
   test("creates deterministic inspection datasets across tiny, dev, and stress scales", () => {

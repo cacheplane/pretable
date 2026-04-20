@@ -16,27 +16,27 @@ S7 ("pinned-inspection") is runnable in the bench app with all four adapters. Fo
 
 ## Scenario Definition
 
-| Property | Value |
-|----------|-------|
-| id | S7 |
-| name | pinned-inspection |
-| rows | 50,000 |
-| cols | 40 |
-| row_height_mode | variable |
-| wrapped_columns | 3 |
-| pinned_left | 3 |
-| corpus | multilingual |
-| update_stream | none |
-| purpose | Pinned-column overhead on variable-height inspection content |
+| Property        | Value                                                        |
+| --------------- | ------------------------------------------------------------ |
+| id              | S7                                                           |
+| name            | pinned-inspection                                            |
+| rows            | 50,000                                                       |
+| cols            | 40                                                           |
+| row_height_mode | variable                                                     |
+| wrapped_columns | 3                                                            |
+| pinned_left     | 3                                                            |
+| corpus          | multilingual                                                 |
+| update_stream   | none                                                         |
+| purpose         | Pinned-column overhead on variable-height inspection content |
 
 Row count scales (identical to S2):
 
-| Scale | Rows |
-|-------|------|
-| smoke | 120 |
-| dev | 750 |
-| hypothesis | 3,000 |
-| target | 50,000 |
+| Scale      | Rows   |
+| ---------- | ------ |
+| smoke      | 120    |
+| dev        | 750    |
+| hypothesis | 3,000  |
+| target     | 50,000 |
 
 Column layout: The first 3 columns are pinned left with narrow widths (100-160px, not wrapped). Columns 3-5 are wrapped. The pinned zone shows compact metadata while the scrollable area has dense wrapped text.
 
@@ -76,12 +76,12 @@ All four adapters (pretable, Grid Alpha, GridBeta, GridGamma) already respect `c
 
 Four new hypotheses mirror their S2 counterparts:
 
-| Hypothesis | Mirrors | Scenario | Purpose |
-|------------|---------|----------|---------|
-| H9 | H1 (composite scroll quality) | S7 | Zero-artifact scroll with pinned-column overhead |
-| H10 | H6 (sort interaction) | S7 | Sort latency ≤ 64ms with 3 pinned columns |
-| H11 | H7 (metadata filter) | S7 | Filter-metadata latency ≤ 64ms with 3 pinned columns |
-| H12 | H8 (filter-text) | S7 | Filter-text latency ≤ 64ms with 3 pinned columns |
+| Hypothesis | Mirrors                       | Scenario | Purpose                                              |
+| ---------- | ----------------------------- | -------- | ---------------------------------------------------- |
+| H9         | H1 (composite scroll quality) | S7       | Zero-artifact scroll with pinned-column overhead     |
+| H10        | H6 (sort interaction)         | S7       | Sort latency ≤ 64ms with 3 pinned columns            |
+| H11        | H7 (metadata filter)          | S7       | Filter-metadata latency ≤ 64ms with 3 pinned columns |
+| H12        | H8 (filter-text)              | S7       | Filter-text latency ≤ 64ms with 3 pinned columns     |
 
 ### Implementation
 
@@ -115,7 +115,7 @@ hypotheses: [
   evaluateH10(runs),
   evaluateH11(runs),
   evaluateH12(runs),
-]
+];
 ```
 
 ### H9 thresholds (same as composite H1)
