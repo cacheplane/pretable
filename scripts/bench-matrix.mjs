@@ -352,14 +352,55 @@ function evaluateH1(runs) {
       id: "H1",
       status: "insufficient",
       summary:
-        "Missing a completed S2 scroll run, so wrapped-text scroll evidence is not available yet.",
+        "Missing a completed S2 scroll run, so composite scroll quality cannot be evaluated yet.",
       evidence: [],
     };
   }
 
+  const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
   const blankGapFrames = maxMetric(wrappedScrollSeries, "blank_gap_frames");
   const longTasksCount = maxMetric(wrappedScrollSeries, "long_tasks_count");
-  const pretableEvidence = summarizeRunSeriesEvidence(wrappedScrollSeries);
+  const rowHeightError =
+    pretableEvidence.metrics.row_height_error_p95_px;
+  const anchorShift =
+    pretableEvidence.metrics.scroll_anchor_shift_backward_p95_px ??
+    pretableEvidence.metrics.scroll_anchor_shift_px;
+
+  const failingSubCriteria = [];
+
+  if (rowHeightError === undefined || rowHeightError > 1) {
+    failingSubCriteria.push(
+      `row height error p95 is ${rowHeightError ?? "missing"}px (threshold: ≤ 1px)`,
+    );
+  }
+
+  if (anchorShift === undefined || anchorShift > 16) {
+    failingSubCriteria.push(
+      `anchor shift is ${anchorShift ?? "missing"}px (threshold: ≤ 16px)`,
+    );
+  }
+
+  if (blankGapFrames === undefined || blankGapFrames > 0) {
+    failingSubCriteria.push(
+      `blank gap frames is ${blankGapFrames ?? "missing"} (threshold: 0)`,
+    );
+  }
+
+  if (longTasksCount === undefined || longTasksCount > 0) {
+    failingSubCriteria.push(
+      `long tasks count is ${longTasksCount ?? "missing"} (threshold: 0)`,
+    );
+  }
+
+  if (failingSubCriteria.length > 0) {
+    return {
+      id: "H1",
+      status: "failing",
+      summary: `Wrapped-text scrolling is measured, but ${failingSubCriteria.length} quality sub-criteria are not yet met: ${failingSubCriteria.join("; ")}.`,
+      evidence: [pretableEvidence],
+    };
+  }
+
   const competitorSeries = groupRunSeries(runs, {
     scenarioId: "S2",
     scriptName: "scroll",
@@ -368,35 +409,6 @@ function evaluateH1(runs) {
       series[0]?.adapterId !== "pretable" &&
       medianMetric(series, "scroll_frame_p95_ms") !== undefined,
   );
-
-  if (blankGapFrames > 0.09 || longTasksCount > 0) {
-    const medianBlankGapFrames =
-      pretableEvidence.metricSummary?.blank_gap_frames?.median;
-    const medianLongTasksCount =
-      pretableEvidence.metricSummary?.long_tasks_count?.median;
-
-    return {
-      id: "H1",
-      status: "failing",
-      summary:
-        medianBlankGapFrames <= 0.09 && medianLongTasksCount <= 0
-          ? "The wrapped-text scroll surface is measured and current medians stay controlled, but worst-case repeats still show blank gaps or long tasks beyond the current benchmark threshold."
-          : "The wrapped-text scroll surface is measured, but it still shows blank gaps or long tasks beyond the current benchmark threshold.",
-      evidence: [pretableEvidence],
-    };
-  }
-
-  if (competitorSeries.length === 0) {
-    return {
-      id: "H1",
-      status: "directional",
-      summary: hasPolicyDrift(pretableEvidence)
-        ? "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but policy drift across repeats keeps the result directional rather than claim-ready."
-        : "Wrapped-text scrolling now has direct S2 measurements with no observed blank gaps or long tasks, but the required relative win versus a DOM competitor is still unmeasured.",
-      evidence: [pretableEvidence],
-    };
-  }
-
   const fullGridCompetitorSeries = competitorSeries.filter(
     (series) => getAdapterFamily(series[0]?.adapterId) === "full-grid",
   );
@@ -404,21 +416,42 @@ function evaluateH1(runs) {
     (series) =>
       getAdapterFamily(series[0]?.adapterId) === "virtualization-primitive",
   );
-  const primaryCompetitorSeries =
-    fullGridCompetitorSeries.length > 0
-      ? fullGridCompetitorSeries
-      : competitorSeries;
-  const bestCompetitorSeries = primaryCompetitorSeries.reduce(
+
+  if (fullGridCompetitorSeries.length === 0) {
+    return {
+      id: "H1",
+      status: "directional",
+      summary: hasPolicyDrift(pretableEvidence)
+        ? "Wrapped-text scrolling meets all absolute quality thresholds on current medians, but policy drift across repeats keeps the result directional rather than reproducible."
+        : "Wrapped-text scrolling meets all absolute quality thresholds, but the comparative uniqueness claim is unmeasured — no full-grid competitor data is available.",
+      evidence: [
+        pretableEvidence,
+        ...(primitiveCompetitorSeries.length > 0
+          ? [
+              summarizeRunSeriesEvidence(
+                primitiveCompetitorSeries.reduce((best, current) =>
+                  medianMetric(current, "scroll_frame_p95_ms") <
+                  medianMetric(best, "scroll_frame_p95_ms")
+                    ? current
+                    : best,
+                ),
+              ),
+            ]
+          : []),
+      ],
+    };
+  }
+
+  const bestFullGridSeries = fullGridCompetitorSeries.reduce(
     (best, current) =>
       medianMetric(current, "scroll_frame_p95_ms") <
       medianMetric(best, "scroll_frame_p95_ms")
         ? current
         : best,
   );
-  const bestCompetitorEvidence =
-    summarizeRunSeriesEvidence(bestCompetitorSeries);
+  const bestFullGridEvidence = summarizeRunSeriesEvidence(bestFullGridSeries);
   const bestPrimitiveEvidence =
-    fullGridCompetitorSeries.length > 0 && primitiveCompetitorSeries.length > 0
+    primitiveCompetitorSeries.length > 0
       ? summarizeRunSeriesEvidence(
           primitiveCompetitorSeries.reduce((best, current) =>
             medianMetric(current, "scroll_frame_p95_ms") <
@@ -428,36 +461,79 @@ function evaluateH1(runs) {
           ),
         )
       : null;
-  const relativeDelta =
+  const evidenceArray = [
+    pretableEvidence,
+    bestFullGridEvidence,
+    ...(bestPrimitiveEvidence ? [bestPrimitiveEvidence] : []),
+  ];
+
+  const frameParityRatio =
     pretableEvidence.metrics.scroll_frame_p95_ms /
-      bestCompetitorEvidence.metrics.scroll_frame_p95_ms -
-    1;
+    bestFullGridEvidence.metrics.scroll_frame_p95_ms;
+
+  if (frameParityRatio > 1.1) {
+    const percentAbove = Math.round((frameParityRatio - 1) * 100);
+
+    return {
+      id: "H1",
+      status: "failing",
+      summary: `Wrapped-text scrolling meets all quality thresholds, but frame p95 is ${percentAbove}% above the best full-grid comparator (${bestFullGridEvidence.adapterId}: ${bestFullGridEvidence.metrics.scroll_frame_p95_ms}ms vs pretable: ${pretableEvidence.metrics.scroll_frame_p95_ms}ms). The 10% parity threshold is not met.`,
+      evidence: evidenceArray,
+    };
+  }
+
+  const allFullGridCompetitorsPassQuality =
+    fullGridCompetitorSeries.every((series) => {
+      const evidence = summarizeRunSeriesEvidence(series);
+      const subCriteria = evaluateCompetitorSubCriteria(evidence);
+
+      return Object.values(subCriteria).every(Boolean);
+    });
+
+  if (allFullGridCompetitorsPassQuality) {
+    return {
+      id: "H1",
+      status: "directional",
+      summary:
+        "Wrapped-text scrolling meets all quality thresholds, but so does every measured full-grid competitor — the uniqueness claim is not yet supported.",
+      evidence: evidenceArray,
+    };
+  }
+
   const hasRelevantPolicyDrift =
-    hasPolicyDrift(pretableEvidence) || hasPolicyDrift(bestCompetitorEvidence);
-  const hasRepeatedH1Evidence =
-    pretableEvidence.sampleCount > 1 && bestCompetitorEvidence.sampleCount > 1;
+    hasPolicyDrift(pretableEvidence) || hasPolicyDrift(bestFullGridEvidence);
+
+  if (hasRelevantPolicyDrift) {
+    return {
+      id: "H1",
+      status: "directional",
+      summary:
+        "Wrapped-text scrolling meets all quality and uniqueness thresholds on current medians, but policy drift across repeats keeps the result directional rather than reproducible.",
+      evidence: evidenceArray,
+    };
+  }
+
+  const hasRepeatedEvidence =
+    pretableEvidence.sampleCount > 1 && bestFullGridEvidence.sampleCount > 1;
 
   return {
     id: "H1",
-    status:
-      relativeDelta <= -0.25
-        ? hasRelevantPolicyDrift
-          ? "directional"
-          : "satisfied"
-        : "failing",
-    summary:
-      relativeDelta <= -0.25
-        ? hasRelevantPolicyDrift
-          ? `Wrapped-text scrolling beats the measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator on current medians, but policy drift across repeats keeps the result directional rather than reproducible.`
-          : hasRepeatedH1Evidence
-            ? `Wrapped-text scrolling beats the best measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator by at least 25% on current repeated-run medians while keeping blank gaps and long tasks controlled.`
-            : `Wrapped-text scrolling beats the best measured ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator by at least 25% on the current sample while keeping blank gaps and long tasks controlled.`
-        : `Wrapped-text scrolling is measured against a ${describeComparatorFamily(bestCompetitorEvidence.adapterFamily)} comparator, but it has not yet cleared the required 25% relative win.`,
-    evidence: [
-      pretableEvidence,
-      bestCompetitorEvidence,
-      ...(bestPrimitiveEvidence ? [bestPrimitiveEvidence] : []),
-    ],
+    status: "satisfied",
+    summary: hasRepeatedEvidence
+      ? "Wrapped-text scrolling delivers zero-artifact quality (row height error ≤ 1px, anchor shift ≤ 16px, no blank gaps, no long tasks) with frame times within 10% of the best measured full-grid comparator. No measured full-grid competitor achieves the same combined quality. Evidence is based on current repeated-run medians."
+      : "Wrapped-text scrolling delivers zero-artifact quality (row height error ≤ 1px, anchor shift ≤ 16px, no blank gaps, no long tasks) with frame times within 10% of the best measured full-grid comparator. No measured full-grid competitor achieves the same combined quality. Evidence is based on the current sample.",
+    evidence: evidenceArray,
+  };
+}
+
+function evaluateCompetitorSubCriteria(evidence) {
+  return {
+    rowHeightAccuracy: evidence.metrics.row_height_error_p95_px <= 1,
+    anchorStability:
+      (evidence.metrics.scroll_anchor_shift_backward_p95_px ??
+        evidence.metrics.scroll_anchor_shift_px) <= 16,
+    blankGapControl: evidence.metrics.blank_gap_frames === 0,
+    longTaskControl: evidence.metrics.long_tasks_count === 0,
   };
 }
 
