@@ -562,6 +562,118 @@ export async function measureBenchInteractionRun(
   };
 }
 
+export interface UpdatesBenchRunResult {
+  status: "completed" | "partial";
+  metrics: Partial<Record<BenchMetricId, number>>;
+  notes: string[];
+}
+
+export async function measureBenchUpdatesRun(
+  root: HTMLElement,
+  grid: {
+    applyTransaction(transaction: { update?: Record<string, unknown>[] }): void;
+  },
+  dataset: {
+    rows: readonly Record<string, unknown>[];
+    columns: readonly { id: string }[];
+  },
+): Promise<UpdatesBenchRunResult> {
+  const profile = scrollRuntimeProfiles.pretable;
+  const viewport = await waitForScrollViewport(root, profile.viewportSelector);
+  const viewportPolicyNotes = viewport
+    ? detectViewportPolicyNotes(viewport)
+    : [];
+
+  if (!viewport) {
+    return {
+      status: "partial",
+      notes: [...viewportPolicyNotes, "updates viewport unavailable"],
+      metrics: {},
+    };
+  }
+
+  const BATCH_INTERVAL_MS = 50;
+  const DURATION_MS = 3_000;
+  const UPDATES_PER_TICK = 50;
+  const columnIds = dataset.columns.map((c) => c.id);
+
+  let totalUpdates = 0;
+  const longTaskDurations: number[] = [];
+  const observer = createLongTaskObserver(longTaskDurations);
+  const frameDurations: number[] = [];
+  let previousFrameTimestamp: number | null = null;
+
+  const rafHandle = { running: true, id: 0 };
+  const tickRaf = () => {
+    if (!rafHandle.running) return;
+    rafHandle.id = requestAnimationFrame((ts) => {
+      if (previousFrameTimestamp !== null) {
+        frameDurations.push(ts - previousFrameTimestamp);
+      }
+
+      previousFrameTimestamp = ts;
+      tickRaf();
+    });
+  };
+
+  tickRaf();
+
+  await new Promise<void>((resolve) => {
+    let elapsed = 0;
+
+    const interval = setInterval(() => {
+      elapsed += BATCH_INTERVAL_MS;
+
+      const patches: Record<string, unknown>[] = [];
+
+      for (let i = 0; i < UPDATES_PER_TICK; i += 1) {
+        const rowIndex = Math.floor(Math.random() * dataset.rows.length);
+        const row = dataset.rows[rowIndex];
+        const colIndex = Math.floor(Math.random() * columnIds.length);
+        const columnId = columnIds[colIndex];
+        const id = String((row as Record<string, unknown>).id ?? rowIndex);
+
+        patches.push({ id, [columnId]: `upd-${totalUpdates + i}` });
+      }
+
+      grid.applyTransaction({ update: patches });
+      totalUpdates += UPDATES_PER_TICK;
+
+      if (elapsed >= DURATION_MS) {
+        clearInterval(interval);
+        resolve();
+      }
+    }, BATCH_INTERVAL_MS);
+  });
+
+  rafHandle.running = false;
+  cancelAnimationFrame(rafHandle.id);
+  observer?.disconnect();
+
+  const domNodesPeak = root.querySelectorAll("*").length;
+  const renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
+  const renderedCellsPeak = root.querySelectorAll(profile.cellSelector).length;
+
+  return {
+    status: "completed",
+    notes: [
+      ...viewportPolicyNotes,
+      `updates total: ${totalUpdates}`,
+      `updates per tick: ${UPDATES_PER_TICK}`,
+      `batch interval ms: ${BATCH_INTERVAL_MS}`,
+      `duration ms: ${DURATION_MS}`,
+    ],
+    metrics: {
+      scroll_frame_p95_ms: percentile(frameDurations, 0.95),
+      long_tasks_count: longTaskDurations.length,
+      long_tasks_ms: longTaskDurations.reduce((t, d) => t + d, 0),
+      dom_nodes_peak: domNodesPeak,
+      rendered_rows_peak: renderedRowsPeak,
+      rendered_cells_peak: renderedCellsPeak,
+    },
+  };
+}
+
 function createLongTaskObserver(longTaskDurations: number[]) {
   if (
     typeof PerformanceObserver === "undefined" ||

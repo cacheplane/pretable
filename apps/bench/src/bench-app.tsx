@@ -1,10 +1,12 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import type { PretableGrid } from "@pretable/react";
 import type { PretableTelemetry } from "@pretable/react/internal";
 
 import {
   createScenarioDataset,
   getScenarioById,
   listScenarios,
+  type ScenarioRow,
 } from "@pretable-internal/scenario-data";
 import {
   createBenchRunSummary,
@@ -20,6 +22,7 @@ import {
   createBenchRequest,
   measureBenchInteractionRun,
   measureBenchScrollRun,
+  measureBenchUpdatesRun,
   publishBenchResult,
 } from "./bench-runtime";
 import { GridAlphaAdapter } from "./gridalpha-adapter";
@@ -87,6 +90,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const autorunRef = useRef(false);
   const pretableTelemetryRef = useRef<PretableTelemetry | null>(null);
+  const pretableGridRef = useRef<PretableGrid<ScenarioRow> | null>(null);
   const interactionPlan =
     interactionPlanOverride?.search === search
       ? interactionPlanOverride.plan
@@ -183,6 +187,15 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             : null
           : null;
 
+      const updatesRun =
+        scriptName === "updates" && pretableGridRef.current
+          ? await measureBenchUpdatesRun(
+              viewportRef.current ?? document.body,
+              pretableGridRef.current,
+              dataset,
+            )
+          : null;
+
       const nextResult =
         scriptName === "scroll" && scrollRun
           ? createBenchRunSummary({
@@ -196,32 +209,46 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               ],
               metrics: scrollRun.metrics,
             })
-          : interactionRun
+          : scriptName === "updates" && updatesRun
             ? createBenchRunSummary({
                 request,
-                status: interactionRun.status,
+                status: updatesRun.status,
                 timestamp,
                 tracePath,
                 notes: [
-                  ...interactionRun.notes,
+                  ...updatesRun.notes,
                   ...createPretableTelemetryNotes(pretableTelemetryRef.current),
                 ],
-                metrics: interactionRun.metrics,
+                metrics: updatesRun.metrics,
               })
-            : createBenchRunSummary({
-                request,
-                status: "completed",
-                timestamp,
-                tracePath,
-                notes: createPretableTelemetryNotes(
-                  pretableTelemetryRef.current,
-                ),
-                metrics: {
-                  mount_ms: performance.now() - startedAt,
-                  first_stable_viewport_ms: performance.now() - startedAt,
-                  dom_nodes_peak: domNodesPeak,
-                },
-              });
+            : interactionRun
+              ? createBenchRunSummary({
+                  request,
+                  status: interactionRun.status,
+                  timestamp,
+                  tracePath,
+                  notes: [
+                    ...interactionRun.notes,
+                    ...createPretableTelemetryNotes(
+                      pretableTelemetryRef.current,
+                    ),
+                  ],
+                  metrics: interactionRun.metrics,
+                })
+              : createBenchRunSummary({
+                  request,
+                  status: "completed",
+                  timestamp,
+                  tracePath,
+                  notes: createPretableTelemetryNotes(
+                    pretableTelemetryRef.current,
+                  ),
+                  metrics: {
+                    mount_ms: performance.now() - startedAt,
+                    first_stable_viewport_ms: performance.now() - startedAt,
+                    dom_nodes_peak: domNodesPeak,
+                  },
+                });
 
       setResult(nextResult);
       publishBenchResult(nextResult);
@@ -327,6 +354,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             >
               Run Text Filter
             </button>
+            <button type="button" onClick={() => void executeRun("updates")}>
+              Run Updates
+            </button>
           </div>
 
           <div ref={viewportRef} className="viewport-card">
@@ -335,6 +365,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 dataset={dataset}
                 interactionPlan={interactionPlan}
                 key={runKey}
+                onGridReady={(grid) => {
+                  pretableGridRef.current = grid;
+                }}
                 onTelemetryChange={(telemetry) => {
                   pretableTelemetryRef.current = telemetry;
                 }}
