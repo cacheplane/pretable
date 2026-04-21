@@ -7,7 +7,10 @@ import {
   type PretableRow,
   type PretableSortDirection,
 } from "@pretable/core";
-import { createDomRenderSnapshot } from "@pretable-internal/renderer-dom";
+import {
+  createDomRenderSnapshot,
+  type PlannedColumn,
+} from "@pretable-internal/renderer-dom";
 import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
@@ -27,6 +30,7 @@ export interface PretableRenderRow<TRow extends PretableRow = PretableRow> {
 export interface PretableRenderSnapshot<
   TRow extends PretableRow = PretableRow,
 > {
+  columns: PlannedColumn[];
   rows: PretableRenderRow<TRow>[];
   nodeCount: number;
   totalHeight: number;
@@ -58,6 +62,7 @@ export interface UsePretableModelOptions<
   TRow extends PretableRow = PretableRow,
 > extends UsePretableOptions<TRow> {
   viewportHeight: number;
+  viewportWidth?: number;
   overscan?: number;
   interactionOverrides?: PretableInteractionOverrides | null;
   measuredHeights?: Record<string, number>;
@@ -86,6 +91,7 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
   rows,
   getRowId,
   viewportHeight,
+  viewportWidth,
   overscan = 6,
   interactionOverrides,
   measuredHeights,
@@ -119,19 +125,27 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
   );
 
   useLayoutEffect(() => {
-    if (snapshot.viewport.height === viewportHeight) {
+    if (
+      snapshot.viewport.height === viewportHeight &&
+      snapshot.viewport.width === (viewportWidth ?? 0)
+    ) {
       return;
     }
 
     grid.setViewport({
       scrollTop: snapshot.viewport.scrollTop,
+      scrollLeft: snapshot.viewport.scrollLeft,
       height: viewportHeight,
+      width: viewportWidth ?? 0,
     });
   }, [
     grid,
     snapshot.viewport.height,
+    snapshot.viewport.width,
     snapshot.viewport.scrollTop,
+    snapshot.viewport.scrollLeft,
     viewportHeight,
+    viewportWidth,
   ]);
 
   const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
@@ -140,11 +154,20 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
         columns: grid.options.columns,
         snapshot,
         scrollTop: snapshot.viewport.scrollTop,
+        scrollLeft: snapshot.viewport.scrollLeft,
         viewportHeight,
+        viewportWidth,
         overscan,
         measuredHeights,
       }),
-    [grid.options.columns, measuredHeights, overscan, snapshot, viewportHeight],
+    [
+      grid.options.columns,
+      measuredHeights,
+      overscan,
+      snapshot,
+      viewportHeight,
+      viewportWidth,
+    ],
   );
   const telemetry = useMemo<PretableTelemetry>(() => {
     const viewportBottom =

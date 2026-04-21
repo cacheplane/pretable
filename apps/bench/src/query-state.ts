@@ -33,9 +33,11 @@ export function parseBenchQuery(
     scenarioId:
       scenario === "S2"
         ? "S2"
-        : scenario === "S7"
-          ? "S7"
-          : DEFAULT_QUERY_STATE.scenarioId,
+        : scenario === "S3"
+          ? "S3"
+          : scenario === "S7"
+            ? "S7"
+            : DEFAULT_QUERY_STATE.scenarioId,
     profile: DEFAULT_QUERY_STATE.profile,
     scale:
       scale === "smoke" ||

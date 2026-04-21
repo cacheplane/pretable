@@ -37,7 +37,9 @@ export interface GridCoreFocusState {
 
 export interface GridCoreViewportState {
   scrollTop: number;
+  scrollLeft: number;
   height: number;
+  width: number;
 }
 
 export interface GridCoreRowModel<TRow extends GridCoreRow = GridCoreRow> {

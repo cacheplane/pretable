@@ -95,6 +95,114 @@ describe("renderer-dom", () => {
     expect(render.rows[0]?.height).toBe(174);
   });
 
+  test("virtualizes columns when scrollLeft and viewportWidth are provided", () => {
+    const manyColumns = Array.from({ length: 50 }, (_, i) => ({
+      id: `col_${i}`,
+      header: `Column ${i}`,
+      widthPx: 140,
+    }));
+    const grid = createGridCore({
+      columns: manyColumns,
+      rows: [
+        {
+          id: "row-0",
+          ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])),
+        },
+        {
+          id: "row-1",
+          ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])),
+        },
+      ],
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      scrollLeft: 0,
+      viewportHeight: 320,
+      viewportWidth: 400,
+      overscan: 1,
+    });
+
+    expect(render.columns.length).toBeLessThan(50);
+    expect(render.columns.length).toBeGreaterThanOrEqual(3);
+    expect(render.totalWidth).toBe(50 * 140);
+    expect(render.nodeCount).toBe(render.rows.length * render.columns.length);
+  });
+
+  test("includes pinned columns in the column plan regardless of scrollLeft", () => {
+    const columnsWithPinned = [
+      {
+        id: "pinned_0",
+        header: "Pinned 0",
+        widthPx: 100,
+        pinned: "left" as const,
+      },
+      {
+        id: "pinned_1",
+        header: "Pinned 1",
+        widthPx: 120,
+        pinned: "left" as const,
+      },
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: `col_${i}`,
+        header: `Column ${i}`,
+        widthPx: 140,
+      })),
+    ];
+    const grid = createGridCore({
+      columns: columnsWithPinned,
+      rows: [
+        {
+          id: "row-0",
+          ...Object.fromEntries(columnsWithPinned.map((c) => [c.id, "v"])),
+        },
+      ],
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      scrollLeft: 2000,
+      viewportHeight: 320,
+      viewportWidth: 400,
+      overscan: 1,
+    });
+
+    const pinnedIds = render.columns
+      .filter((c) => c.pinned === "left")
+      .map((c) => c.id);
+
+    expect(pinnedIds).toEqual(["pinned_0", "pinned_1"]);
+  });
+
+  test("returns all columns when viewportWidth is not provided (backwards compatible)", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "a", header: "A", widthPx: 140 },
+        { id: "b", header: "B", widthPx: 140 },
+      ],
+      rows: [{ id: "row-0", a: "1", b: "2" }],
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 320,
+      overscan: 1,
+    });
+
+    expect(render.columns).toHaveLength(2);
+    expect(render.columns[0]).toMatchObject({ id: "a", left: 0, width: 140 });
+    expect(render.columns[1]).toMatchObject({ id: "b", left: 140, width: 140 });
+  });
+
   test("reuses wrapped row-height estimates across pure viewport scroll updates", () => {
     const prepareTextSpy = vi.spyOn(textCore, "prepareText");
     const grid = createGridCore({
@@ -115,7 +223,12 @@ describe("renderer-dom", () => {
     });
     const initialCallCount = prepareTextSpy.mock.calls.length;
 
-    grid.setViewport({ scrollTop: 44 * 4, height: 320 });
+    grid.setViewport({
+      scrollTop: 44 * 4,
+      scrollLeft: 0,
+      height: 320,
+      width: 0,
+    });
     createDomRenderSnapshot({
       columns: grid.options.columns,
       snapshot: grid.getSnapshot(),

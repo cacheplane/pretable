@@ -7,7 +7,7 @@ import { getBenchAdapterFamily } from "../shared/bench-adapter-families.js";
 const DEFAULT_ADAPTERS = ["pretable", "ag-grid"];
 const DEFAULT_REPEATS = 1;
 const DEFAULT_SCALE = "dev";
-const DEFAULT_SCENARIOS = ["S1", "S2", "S7"];
+const DEFAULT_SCENARIOS = ["S1", "S2", "S3", "S7"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 const BENCH_APP_ID = "@pretable/app-bench";

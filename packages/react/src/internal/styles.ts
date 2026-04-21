@@ -17,15 +17,14 @@ export function getViewportStyle(height: number): CSSProperties {
   };
 }
 
-export function getHeaderRowStyle(templateColumns: string): CSSProperties {
+export function getHeaderRowStyle(totalWidth: number): CSSProperties {
   return {
     backdropFilter: "blur(8px)",
     background: "rgba(18, 18, 18, 0.94)",
     borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-    display: "grid",
-    gridTemplateColumns: templateColumns,
     insetInline: 0,
     minHeight: HEADER_HEIGHT,
+    minWidth: totalWidth,
     position: "sticky",
     top: 0,
     zIndex: 3,
@@ -43,31 +42,40 @@ export function getScrollContentStyle(
   };
 }
 
-export function getRowStyle(
-  templateColumns: string,
-  top: number,
-  height: number,
-): CSSProperties {
+export function getRowStyle(top: number, height: number): CSSProperties {
   return {
-    alignItems: "start",
     borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
     boxSizing: "border-box",
-    display: "grid",
-    gap: 12,
-    gridTemplateColumns: templateColumns,
     height,
     insetInline: 0,
-    padding: "10px 12px",
     position: "absolute",
     top,
   };
 }
 
-export function getPinnedCellStyle(left?: number): CSSProperties | undefined {
-  if (left === undefined) {
-    return undefined;
-  }
+export function getCellStyle(left: number, width: number): CSSProperties {
+  return {
+    boxSizing: "border-box",
+    height: "100%",
+    left,
+    padding: "10px 12px",
+    position: "absolute",
+    width,
+  };
+}
 
+export function getHeaderCellStyle(left: number, width: number): CSSProperties {
+  return {
+    boxSizing: "border-box",
+    height: "100%",
+    left,
+    padding: "12px",
+    position: "absolute",
+    width,
+  };
+}
+
+export function getPinnedCellStyle(left: number): CSSProperties {
   return {
     background: "rgba(18, 18, 18, 0.96)",
     left,
