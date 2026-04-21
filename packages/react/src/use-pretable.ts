@@ -125,7 +125,9 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
 
     grid.setViewport({
       scrollTop: snapshot.viewport.scrollTop,
+      scrollLeft: 0,
       height: viewportHeight,
+      width: 0,
     });
   }, [
     grid,
