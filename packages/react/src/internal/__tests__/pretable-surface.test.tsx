@@ -165,7 +165,7 @@ describe("PretableSurface", () => {
     const absoluteHeader = view.getByRole("button", { name: "Sort Tags" });
 
     expect(headerRow).toHaveStyle({ display: "flex" });
-    expect(headerRow).toHaveStyle({ height: "72px" });
+    expect(headerRow).toHaveStyle({ height: "52px" });
 
     for (const button of allHeaderButtons) {
       expect(button).toHaveStyle({ top: "0px" });

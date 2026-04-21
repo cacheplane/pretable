@@ -22,8 +22,9 @@ export function getHeaderRowStyle(totalWidth: number): CSSProperties {
     backdropFilter: "blur(8px)",
     background: "rgba(18, 18, 18, 0.94)",
     borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+    display: "flex",
+    height: HEADER_HEIGHT,
     insetInline: 0,
-    minHeight: HEADER_HEIGHT,
     minWidth: totalWidth,
     position: "sticky",
     top: 0,
@@ -46,6 +47,7 @@ export function getRowStyle(top: number, height: number): CSSProperties {
   return {
     borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
     boxSizing: "border-box",
+    display: "flex",
     height,
     insetInline: 0,
     position: "absolute",
@@ -60,6 +62,7 @@ export function getCellStyle(left: number, width: number): CSSProperties {
     left,
     padding: "10px 12px",
     position: "absolute",
+    top: 0,
     width,
   };
 }
@@ -71,6 +74,7 @@ export function getHeaderCellStyle(left: number, width: number): CSSProperties {
     left,
     padding: "12px",
     position: "absolute",
+    top: 0,
     width,
   };
 }
@@ -80,6 +84,7 @@ export function getPinnedCellStyle(left: number): CSSProperties {
     background: "rgba(18, 18, 18, 0.96)",
     left,
     position: "sticky",
+    top: 0,
     zIndex: 1,
   };
 }
