@@ -19,12 +19,13 @@ import {
   DEFAULT_ROW_HEIGHT,
   HEADER_HEIGHT,
   formatCellValue,
-  getColumnWidth,
   getNextSortDirection,
   getPinnedLeftOffsets,
   resolveCellValue,
 } from "./rendering";
 import {
+  getCellStyle,
+  getHeaderCellStyle,
   getHeaderRowStyle,
   getPinnedCellStyle,
   getRowStyle,
@@ -167,9 +168,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const [measuredHeights, setMeasuredHeights] = useState<
     Record<string, number>
   >({});
+  const [viewportWidth, setViewportWidth] = useState(0);
   const measuredHeightsRef = useRef<Record<string, number>>({});
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const viewportRef = useRef<HTMLDivElement>(null);
   const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     columns,
@@ -179,12 +182,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     overscan,
     rows,
     viewportHeight: bodyViewportHeight,
+    viewportWidth: viewportWidth || undefined,
   });
   const pinnedOffsets = useMemo(() => getPinnedLeftOffsets(columns), [columns]);
-  const templateColumns = useMemo(
-    () => columns.map((column) => `${getColumnWidth(column)}px`).join(" "),
-    [columns],
-  );
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (el && viewportWidth === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: measuring DOM width in useLayoutEffect requires synchronous state update
+      setViewportWidth(el.clientWidth);
+    }
+  });
 
   useLayoutEffect(() => {
     onTelemetryChange?.(telemetry);
@@ -265,6 +273,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     <div
       aria-label={ariaLabel}
       data-pretable-scroll-viewport=""
+      ref={viewportRef}
       role="grid"
       tabIndex={0}
       onKeyDown={(event) => {
@@ -301,18 +310,30 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         }
       }}
       onScroll={(event) => {
+        const el = event.currentTarget;
         grid.setViewport({
-          scrollTop: event.currentTarget.scrollTop,
+          scrollTop: el.scrollTop,
+          scrollLeft: el.scrollLeft,
           height: bodyViewportHeight,
+          width: el.clientWidth,
         });
+        if (el.clientWidth !== viewportWidth) {
+          setViewportWidth(el.clientWidth);
+        }
       }}
       style={{
         ...getViewportStyle(viewportHeight),
         ...viewportStyle,
       }}
     >
-      <div style={getHeaderRowStyle(templateColumns)}>
-        {columns.map((column) => {
+      <div style={getHeaderRowStyle(renderSnapshot.totalWidth)}>
+        {renderSnapshot.columns.map((plannedCol) => {
+          const column = columns[plannedCol.index];
+
+          if (!column) {
+            return null;
+          }
+
           const label = column.header ?? column.id;
           const sortDirection =
             snapshot.sort.columnId === column.id
@@ -323,6 +344,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               column,
               sortDirection,
             }) ?? {};
+          const pinnedOffset = pinnedOffsets[column.id];
+          const positionStyle =
+            plannedCol.pinned === "left" && pinnedOffset !== undefined
+              ? {
+                  ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
+                  ...getPinnedCellStyle(pinnedOffset),
+                }
+              : getHeaderCellStyle(plannedCol.left, plannedCol.width);
 
           return (
             <button
@@ -352,9 +381,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 color: "inherit",
                 display: "grid",
                 gap: 4,
-                padding: "12px",
                 textAlign: "left",
-                ...getPinnedCellStyle(pinnedOffsets[column.id]),
+                ...positionStyle,
               }}
               type="button"
             >
@@ -432,9 +460,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   rowNodesRef.current.delete(id);
                 }
               }}
-              style={getRowStyle(templateColumns, top, height)}
+              style={getRowStyle(top, height)}
             >
-              {columns.map((column) => {
+              {renderSnapshot.columns.map((plannedCol) => {
+                const column = columns[plannedCol.index];
+
+                if (!column) {
+                  return null;
+                }
+
                 const value = resolveCellValue(row, column);
                 const bodyInput = {
                   column,
@@ -446,6 +480,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   value,
                 } satisfies PretableSurfaceBodyCellRenderInput<TRow>;
                 const bodyProps = getBodyCellProps?.(bodyInput) ?? {};
+                const pinnedOffset = pinnedOffsets[column.id];
+                const positionStyle =
+                  plannedCol.pinned === "left" && pinnedOffset !== undefined
+                    ? {
+                        ...getCellStyle(plannedCol.left, plannedCol.width),
+                        ...getPinnedCellStyle(pinnedOffset),
+                      }
+                    : getCellStyle(plannedCol.left, plannedCol.width);
 
                 return (
                   <div
@@ -460,7 +502,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     style={{
                       overflowWrap: column.wrap ? "anywhere" : "normal",
                       whiteSpace: column.wrap ? "pre-wrap" : "nowrap",
-                      ...getPinnedCellStyle(pinnedOffsets[column.id]),
+                      ...positionStyle,
                     }}
                   >
                     {renderBodyCell

@@ -690,6 +690,95 @@ describe("PretableSurface", () => {
     });
   });
 
+  it("renders fewer cells than total columns when column count exceeds viewport width", () => {
+    // Mock clientWidth for the viewport element since jsdom returns 0
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return 1024;
+      },
+    });
+
+    const manyColumns = Array.from({ length: 50 }, (_, i) => ({
+      id: `col_${i}`,
+      header: `Column ${i}`,
+      widthPx: 140,
+    }));
+    const manyRows = [
+      {
+        id: "row-0",
+        ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])),
+      },
+    ] as DemoRow[];
+
+    const view = render(
+      <PretableSurface
+        ariaLabel="Wide grid"
+        columns={manyColumns}
+        getRowId={(row) => row.id}
+        overscan={2}
+        rows={manyRows}
+        viewportHeight={132}
+      />,
+    );
+
+    const renderedCells = view.container.querySelectorAll(
+      "[data-pretable-cell]",
+    );
+
+    // 50 columns at 140px = 7000px total. With a default viewport, far fewer should render.
+    expect(renderedCells.length).toBeLessThan(50);
+    expect(renderedCells.length).toBeGreaterThan(0);
+  });
+
+  it("always renders pinned column cells even with column virtualization", () => {
+    // Mock clientWidth for the viewport element since jsdom returns 0
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return 1024;
+      },
+    });
+
+    const wideColumns = [
+      {
+        id: "pinned_ts",
+        header: "Timestamp",
+        pinned: "left" as const,
+        widthPx: 188,
+      },
+      ...Array.from({ length: 49 }, (_, i) => ({
+        id: `col_${i}`,
+        header: `Column ${i}`,
+        widthPx: 140,
+      })),
+    ];
+    const wideRows = [
+      {
+        id: "row-0",
+        ...Object.fromEntries(wideColumns.map((c) => [c.id, "val"])),
+      },
+    ] as DemoRow[];
+
+    const view = render(
+      <PretableSurface
+        ariaLabel="Wide grid"
+        columns={wideColumns}
+        getRowId={(row) => row.id}
+        overscan={2}
+        rows={wideRows}
+        viewportHeight={132}
+      />,
+    );
+
+    const pinnedCells = view.container.querySelectorAll(
+      '[data-column-id="pinned_ts"]',
+    );
+
+    // Should have at least 1 pinned cell (in the body) + 1 header
+    expect(pinnedCells.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("calls onSortChange when a column header is clicked", () => {
     const onSortChange = vi.fn();
     const view = render(
