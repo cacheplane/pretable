@@ -1,0 +1,32 @@
+{
+  "name": "@pretable/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./tokens.css": "./dist/tokens.css",
+    "./components.css": "./dist/components.css"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "dependencies": {
+    "@fontsource-variable/fraunces": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest run --environment jsdom",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
+  }
+}
