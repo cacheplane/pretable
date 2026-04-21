@@ -259,3 +259,51 @@
 .pt-nav-cta:hover {
   background: #0a0806;
 }
+
+/* ------------------------------------------------------------- */
+/* Footer — one-line monospace                                   */
+/* ------------------------------------------------------------- */
+.pt-footer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 22px 36px;
+  background: var(--pt-cream);
+  border-top: 1px solid var(--pt-cream-rule);
+  font-family: var(--pt-font-mono);
+  font-size: 11px;
+  color: var(--pt-ink-dim);
+}
+.pt-footer-left {
+  display: flex;
+  gap: 18px;
+}
+.pt-footer-left b {
+  color: var(--pt-ink);
+  font-weight: 600;
+}
+.pt-footer-right {
+  display: flex;
+  gap: 18px;
+}
+.pt-footer-right a {
+  color: var(--pt-ink-dim);
+  text-decoration: none;
+}
+.pt-footer-right a:hover {
+  color: var(--pt-ink);
+}
+.pt-footer-ci {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 1;
+}
+.pt-footer-ci-green {
+  color: var(--pt-sev-ok);
+}
+.pt-footer-ci-amber {
+  color: var(--pt-sev-warn);
+}
+.pt-footer-ci-red {
+  color: var(--pt-sev-err);
+}
