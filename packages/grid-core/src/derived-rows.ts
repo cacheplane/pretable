@@ -6,7 +6,7 @@ import type {
   GridCoreSortState,
 } from "./types";
 
-interface SourceRow<TRow extends GridCoreRow> {
+export interface SourceRow<TRow extends GridCoreRow> {
   id: string;
   row: TRow;
   sourceIndex: number;
