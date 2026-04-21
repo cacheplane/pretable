@@ -115,7 +115,7 @@ describe("renderer-dom", () => {
     });
     const initialCallCount = prepareTextSpy.mock.calls.length;
 
-    grid.setViewport({ scrollTop: 44 * 4, height: 320 });
+    grid.setViewport({ scrollTop: 44 * 4, scrollLeft: 0, height: 320, width: 0 });
     createDomRenderSnapshot({
       columns: grid.options.columns,
       snapshot: grid.getSnapshot(),

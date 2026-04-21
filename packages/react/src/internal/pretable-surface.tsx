@@ -303,7 +303,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       onScroll={(event) => {
         grid.setViewport({
           scrollTop: event.currentTarget.scrollTop,
+          scrollLeft: 0,
           height: bodyViewportHeight,
+          width: 0,
         });
       }}
       style={{
