@@ -31,7 +31,7 @@ export function Footer({
         <span>© {year} · MIT</span>
         <span>
           ci:{" "}
-          <span className={dotClass} aria-label={`ci ${ciStatus}`}>
+          <span className={dotClass} aria-hidden="true">
             ●
           </span>{" "}
           {ciStatus}
