@@ -14,6 +14,7 @@
   --pt-cream-lo: #e0d6bf;
   --pt-cream-rule: #cdc3aa;
   --pt-ink: #1a1815;
+  --pt-ink-hover: #0a0806;
   --pt-ink-dim: #4a443b;
   --pt-ink-softer: #7a7468;
   --pt-amber-ink: #8a5d0f;
@@ -24,6 +25,7 @@
   /* Terminal — grid surface, bench, code blocks */
   --pt-dark: #0f0e0c;
   --pt-grid-bg: #0b0a09;
+  --pt-grid-head: #0d0c0a;
   --pt-grid-raised: #151310;
   --pt-grid-rule: #1f1c18;
   --pt-grid-text: #d8d2c3;

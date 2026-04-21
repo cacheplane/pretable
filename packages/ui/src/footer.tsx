@@ -39,7 +39,7 @@ export function Footer({
       </div>
       <div className="pt-footer-right">
         {links.map((link) => (
-          <a key={link.label} href={link.href}>
+          <a key={link.href} href={link.href}>
             {link.label}
           </a>
         ))}

@@ -9,19 +9,26 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./tokens.css": "./dist/tokens.css",
-    "./components.css": "./dist/components.css"
+    "./components.css": "./dist/components.css",
+    "./package.json": "./package.json"
   },
   "peerDependencies": {
+    "@fontsource-variable/fraunces": "^5.0.0",
     "react": "^19.0.0"
   },
-  "dependencies": {
-    "@fontsource-variable/fraunces": "^5.0.0"
+  "peerDependenciesMeta": {
+    "@fontsource-variable/fraunces": {
+      "optional": true
+    }
   },
   "scripts": {
     "build": "tsup && tsc -p tsconfig.build.json",
