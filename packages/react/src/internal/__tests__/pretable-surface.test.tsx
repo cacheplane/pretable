@@ -145,6 +145,47 @@ describe("PretableSurface", () => {
     expect(headerButton).toHaveStyle({ position: "sticky", left: "0px" });
   });
 
+  it("does not stack pinned and absolute header cells vertically (regression: backdrop-over-body)", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    const pinnedHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const headerRow = pinnedHeader.parentElement!;
+    const allHeaderButtons = view.getAllByRole("button", {
+      name: /^Sort /,
+    });
+    const absoluteHeader = view.getByRole("button", { name: "Sort Tags" });
+
+    expect(headerRow).toHaveStyle({ display: "flex" });
+    expect(headerRow).toHaveStyle({ height: "52px" });
+
+    for (const button of allHeaderButtons) {
+      expect(button).toHaveStyle({ top: "0px" });
+    }
+
+    expect(pinnedHeader).toHaveStyle({ position: "sticky", left: "0px" });
+    expect(absoluteHeader).toHaveStyle({ position: "absolute", top: "0px" });
+
+    const firstRow = view.getAllByTestId("pretable-row")[0]!;
+    expect(firstRow).toHaveStyle({ display: "flex" });
+    const bodyCells = firstRow.querySelectorAll("[data-pretable-cell]");
+    for (const cell of bodyCells) {
+      expect(cell).toHaveStyle({ top: "0px" });
+    }
+    const pinnedBodyCell = bodyCells[0]!;
+    const absoluteBodyCell = bodyCells[bodyCells.length - 1]!;
+    expect(pinnedBodyCell).toHaveStyle({ position: "sticky" });
+    expect(absoluteBodyCell).toHaveStyle({ position: "absolute" });
+  });
+
   it("renders sort buttons that reflect sort state and dispatch sort changes", () => {
     const view = render(
       <PretableSurface
