@@ -14,3 +14,38 @@
   vertical-align: 2px;
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------------- */
+/* Callout — cream-hi panel with accented left border            */
+/* ------------------------------------------------------------- */
+.pt-callout {
+  background: var(--pt-cream-hi);
+  border-left: 3px solid var(--pt-amber-ink);
+  border-radius: 0 6px 6px 0;
+  padding: 14px 18px;
+  margin: 22px 0;
+  max-width: 720px;
+  font-family: var(--pt-font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--pt-ink-dim);
+}
+.pt-callout-warn {
+  border-left-color: var(--pt-sev-warn);
+}
+.pt-callout-tag {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--pt-ink);
+  font-family: var(--pt-font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.pt-callout-warn .pt-callout-tag {
+  color: #7d4f0a;
+}
+.pt-callout-body {
+  display: block;
+}
