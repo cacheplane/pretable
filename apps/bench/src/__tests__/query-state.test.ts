@@ -85,6 +85,17 @@ describe("parseBenchQuery", () => {
     });
   });
 
+  test("accepts S3 many-columns scenario", () => {
+    expect(parseBenchQuery("?scenario=S3&scale=dev&script=scroll")).toEqual({
+      adapterId: "pretable",
+      scenarioId: "S3",
+      profile: "default",
+      scale: "dev",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
+
   test("accepts supported interaction scripts without collapsing back to initial", () => {
     expect(parseBenchQuery("?scenario=S2&scale=dev&script=sort")).toMatchObject(
       {
