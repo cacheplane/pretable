@@ -229,7 +229,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                   tracePath,
                   notes: [
                     ...interactionRun.notes,
-                    ...createPretableTelemetryNotes(pretableTelemetryRef.current),
+                    ...createPretableTelemetryNotes(
+                      pretableTelemetryRef.current,
+                    ),
                   ],
                   metrics: interactionRun.metrics,
                 })

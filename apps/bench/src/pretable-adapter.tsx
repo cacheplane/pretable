@@ -3,7 +3,10 @@ import { useCallback, useMemo, useRef } from "react";
 import type { PretableGrid } from "@pretable/react";
 import type { PretableTelemetry } from "@pretable/react/internal";
 import { PretableSurface } from "@pretable/react/internal";
-import type { ScenarioDataset, ScenarioRow } from "@pretable-internal/scenario-data";
+import type {
+  ScenarioDataset,
+  ScenarioRow,
+} from "@pretable-internal/scenario-data";
 
 import type { BenchInteractionPlan } from "./interaction-plan";
 

@@ -570,8 +570,13 @@ export interface UpdatesBenchRunResult {
 
 export async function measureBenchUpdatesRun(
   root: HTMLElement,
-  grid: { applyTransaction(transaction: { update?: Record<string, unknown>[] }): void },
-  dataset: { rows: readonly Record<string, unknown>[]; columns: readonly { id: string }[] },
+  grid: {
+    applyTransaction(transaction: { update?: Record<string, unknown>[] }): void;
+  },
+  dataset: {
+    rows: readonly Record<string, unknown>[];
+    columns: readonly { id: string }[];
+  },
 ): Promise<UpdatesBenchRunResult> {
   const profile = scrollRuntimeProfiles.pretable;
   const viewport = await waitForScrollViewport(root, profile.viewportSelector);
@@ -582,10 +587,7 @@ export async function measureBenchUpdatesRun(
   if (!viewport) {
     return {
       status: "partial",
-      notes: [
-        ...viewportPolicyNotes,
-        "updates viewport unavailable",
-      ],
+      notes: [...viewportPolicyNotes, "updates viewport unavailable"],
       metrics: {},
     };
   }
