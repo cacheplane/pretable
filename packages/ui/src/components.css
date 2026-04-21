@@ -44,7 +44,7 @@
   text-transform: uppercase;
 }
 .pt-callout-warn .pt-callout-tag {
-  color: #7d4f0a;
+  color: var(--pt-amber-ink-dark);
 }
 .pt-callout-body {
   display: block;
