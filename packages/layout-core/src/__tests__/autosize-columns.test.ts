@@ -4,9 +4,19 @@ import { autosizeColumns } from "../index";
 
 describe("autosizeColumns", () => {
   const rows = [
-    { id: "1", name: "Alice", status: "ok", description: "A longer description that should make the column wider" },
+    {
+      id: "1",
+      name: "Alice",
+      status: "ok",
+      description: "A longer description that should make the column wider",
+    },
     { id: "2", name: "Bob", status: "pending", description: "Short" },
-    { id: "3", name: "Charlie Brown", status: "ok", description: "Medium length text" },
+    {
+      id: "3",
+      name: "Charlie Brown",
+      status: "ok",
+      description: "Medium length text",
+    },
   ];
 
   test("computes widths based on content length", () => {
@@ -110,7 +120,11 @@ describe("autosizeColumns", () => {
   test("handles null and undefined cell values", () => {
     const result = autosizeColumns({
       columns: [{ id: "missing", header: "Missing" }],
-      rows: [{ id: "1" }, { id: "2", missing: null }, { id: "3", missing: undefined }],
+      rows: [
+        { id: "1" },
+        { id: "2", missing: null },
+        { id: "3", missing: undefined },
+      ],
     });
 
     expect(result.widths.get("missing")!).toBeGreaterThanOrEqual(60);

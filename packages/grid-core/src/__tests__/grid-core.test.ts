@@ -147,7 +147,12 @@ describe("grid-core", () => {
         { id: "fixed", header: "Fixed", widthPx: 200 },
       ],
       rows: [
-        { id: "1", short: "A", long: "A much longer text value that should produce a wider column", fixed: "x" },
+        {
+          id: "1",
+          short: "A",
+          long: "A much longer text value that should produce a wider column",
+          fixed: "x",
+        },
         { id: "2", short: "B", long: "Short", fixed: "y" },
       ],
       getRowId: (row) => String(row.id),
@@ -169,9 +174,7 @@ describe("grid-core", () => {
 
   test("declarative autosize accepts custom options", () => {
     const grid = createGridCore({
-      columns: [
-        { id: "name", header: "Name" },
-      ],
+      columns: [{ id: "name", header: "Name" }],
       rows: [
         { id: "1", name: "A very long name that would exceed a low max width" },
       ],
@@ -187,12 +190,8 @@ describe("grid-core", () => {
 
   test("imperative autosizeColumns recomputes widths and notifies subscribers", () => {
     const grid = createGridCore({
-      columns: [
-        { id: "name", header: "Name" },
-      ],
-      rows: [
-        { id: "1", name: "Short" },
-      ],
+      columns: [{ id: "name", header: "Name" }],
+      rows: [{ id: "1", name: "Short" }],
       getRowId: (row) => String(row.id),
     });
 

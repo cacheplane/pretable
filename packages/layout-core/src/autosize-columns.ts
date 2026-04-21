@@ -1,7 +1,4 @@
-import type {
-  AutosizeColumnsInput,
-  AutosizeResult,
-} from "./types";
+import type { AutosizeColumnsInput, AutosizeResult } from "./types";
 
 const DEFAULT_MAX_WIDTH_PX = 400;
 const DEFAULT_MIN_WIDTH_PX = 60;
@@ -32,9 +29,7 @@ export function autosizeColumns<
     }
 
     for (const row of input.rows) {
-      const rawValue = column.getValue
-        ? column.getValue(row)
-        : row[column.id];
+      const rawValue = column.getValue ? column.getValue(row) : row[column.id];
       const text = String(rawValue ?? "");
 
       if (text.length === 0) {

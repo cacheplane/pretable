@@ -1,4 +1,7 @@
-import type { AutosizeOptions, LayoutSpan } from "@pretable-internal/layout-core";
+import type {
+  AutosizeOptions,
+  LayoutSpan,
+} from "@pretable-internal/layout-core";
 
 export type GridCoreRow = Record<string, unknown>;
 export type GridCoreSortDirection = "asc" | "desc" | null;
