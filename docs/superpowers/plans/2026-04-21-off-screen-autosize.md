@@ -14,27 +14,26 @@
 
 ## File Structure
 
-| Action | File                                                          | Responsibility                                                            |
-| ------ | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Create | `packages/layout-core/src/autosize-columns.ts`                | Pure `autosizeColumns()` function and types                               |
-| Create | `packages/layout-core/src/__tests__/autosize-columns.test.ts` | Tests for the autosize function                                           |
-| Modify | `packages/layout-core/src/index.ts`                           | Export `autosizeColumns` and its types                                    |
-| Modify | `packages/layout-core/src/types.ts`                           | Add autosize-related type definitions                                     |
-| Modify | `packages/grid-core/src/types.ts`                             | Add `autosize` to `GridCoreOptions`, `autosizeColumns` to `GridCoreStore` |
-| Modify | `packages/grid-core/src/create-grid-core.ts`                  | Call `autosizeColumns` on init and expose imperative method               |
-| Modify | `packages/grid-core/src/__tests__/grid-core.test.ts`          | Tests for declarative and imperative autosize in grid-core                |
-| Modify | `packages/core/src/types.ts`                                  | Re-export `AutosizeOptions` from grid-core                                |
-| Modify | `packages/core/src/create-grid.ts`                            | Wire `autosizeColumns` method through                                     |
-| Modify | `packages/core/src/index.ts`                                  | Export `AutosizeOptions`                                                  |
-| Modify | `packages/scenario-data/src/index.ts`                         | Make `widthPx` optional on `ScenarioColumn`, omit for S4                  |
-| Modify | `apps/bench/src/pretable-adapter.tsx`                         | Pass `autosize: true` for S4 datasets                                     |
+| Action | File | Responsibility |
+|--------|------|---------------|
+| Create | `packages/layout-core/src/autosize-columns.ts` | Pure `autosizeColumns()` function and types |
+| Create | `packages/layout-core/src/__tests__/autosize-columns.test.ts` | Tests for the autosize function |
+| Modify | `packages/layout-core/src/index.ts` | Export `autosizeColumns` and its types |
+| Modify | `packages/layout-core/src/types.ts` | Add autosize-related type definitions |
+| Modify | `packages/grid-core/src/types.ts` | Add `autosize` to `GridCoreOptions`, `autosizeColumns` to `GridCoreStore` |
+| Modify | `packages/grid-core/src/create-grid-core.ts` | Call `autosizeColumns` on init and expose imperative method |
+| Modify | `packages/grid-core/src/__tests__/grid-core.test.ts` | Tests for declarative and imperative autosize in grid-core |
+| Modify | `packages/core/src/types.ts` | Re-export `AutosizeOptions` from grid-core |
+| Modify | `packages/core/src/create-grid.ts` | Wire `autosizeColumns` method through |
+| Modify | `packages/core/src/index.ts` | Export `AutosizeOptions` |
+| Modify | `packages/scenario-data/src/index.ts` | Make `widthPx` optional on `ScenarioColumn`, omit for S4 |
+| Modify | `apps/bench/src/pretable-adapter.tsx` | Pass `autosize: true` for S4 datasets |
 
 ---
 
 ### Task 1: Pure `autosizeColumns` function in layout-core
 
 **Files:**
-
 - Create: `packages/layout-core/src/autosize-columns.ts`
 - Create: `packages/layout-core/src/__tests__/autosize-columns.test.ts`
 - Modify: `packages/layout-core/src/types.ts`
@@ -86,19 +85,9 @@ import { autosizeColumns } from "../index";
 
 describe("autosizeColumns", () => {
   const rows = [
-    {
-      id: "1",
-      name: "Alice",
-      status: "ok",
-      description: "A longer description that should make the column wider",
-    },
+    { id: "1", name: "Alice", status: "ok", description: "A longer description that should make the column wider" },
     { id: "2", name: "Bob", status: "pending", description: "Short" },
-    {
-      id: "3",
-      name: "Charlie Brown",
-      status: "ok",
-      description: "Medium length text",
-    },
+    { id: "3", name: "Charlie Brown", status: "ok", description: "Medium length text" },
   ];
 
   test("computes widths based on content length", () => {
@@ -211,11 +200,7 @@ describe("autosizeColumns", () => {
   test("handles null and undefined cell values", () => {
     const result = autosizeColumns({
       columns: [{ id: "missing", header: "Missing" }],
-      rows: [
-        { id: "1" },
-        { id: "2", missing: null },
-        { id: "3", missing: undefined },
-      ],
+      rows: [{ id: "1" }, { id: "2", missing: null }, { id: "3", missing: undefined }],
     });
 
     // All values coerce to "" — header "Missing" (7 chars) at 7px + 16px = 65px
@@ -245,7 +230,10 @@ Expected: FAIL — `autosizeColumns` is not exported from `../index`
 Create `packages/layout-core/src/autosize-columns.ts`:
 
 ```typescript
-import type { AutosizeColumnsInput, AutosizeResult } from "./types";
+import type {
+  AutosizeColumnsInput,
+  AutosizeResult,
+} from "./types";
 
 const DEFAULT_MAX_WIDTH_PX = 400;
 const DEFAULT_MIN_WIDTH_PX = 60;
@@ -278,7 +266,9 @@ export function autosizeColumns<
 
     // Scan all rows for widest content
     for (const row of input.rows) {
-      const rawValue = column.getValue ? column.getValue(row) : row[column.id];
+      const rawValue = column.getValue
+        ? column.getValue(row)
+        : row[column.id];
       const text = String(rawValue ?? "");
 
       if (text.length === 0) {
@@ -347,7 +337,6 @@ Includes header text in width calculation."
 ### Task 2: Grid-core store integration — declarative and imperative autosize
 
 **Files:**
-
 - Modify: `packages/grid-core/src/types.ts:6-21,17-21,62-74`
 - Modify: `packages/grid-core/src/create-grid-core.ts:1-17,15-162`
 - Modify: `packages/grid-core/src/__tests__/grid-core.test.ts`
@@ -357,10 +346,7 @@ Includes header text in width calculation."
 In `packages/grid-core/src/types.ts`, add the import at the top:
 
 ```typescript
-import type {
-  AutosizeOptions,
-  LayoutSpan,
-} from "@pretable-internal/layout-core";
+import type { AutosizeOptions, LayoutSpan } from "@pretable-internal/layout-core";
 ```
 
 Replace the existing `import type { LayoutSpan }` line.
@@ -408,12 +394,7 @@ test("declarative autosize computes widthPx for columns without explicit widths"
       { id: "fixed", header: "Fixed", widthPx: 200 },
     ],
     rows: [
-      {
-        id: "1",
-        short: "A",
-        long: "A much longer text value that should produce a wider column",
-        fixed: "x",
-      },
+      { id: "1", short: "A", long: "A much longer text value that should produce a wider column", fixed: "x" },
       { id: "2", short: "B", long: "Short", fixed: "y" },
     ],
     getRowId: (row) => String(row.id),
@@ -443,7 +424,9 @@ test("declarative autosize computes widthPx for columns without explicit widths"
 
 test("declarative autosize accepts custom options", () => {
   const grid = createGridCore({
-    columns: [{ id: "name", header: "Name" }],
+    columns: [
+      { id: "name", header: "Name" },
+    ],
     rows: [
       { id: "1", name: "A very long name that would exceed a low max width" },
     ],
@@ -459,8 +442,12 @@ test("declarative autosize accepts custom options", () => {
 
 test("imperative autosizeColumns recomputes widths and notifies subscribers", () => {
   const grid = createGridCore({
-    columns: [{ id: "name", header: "Name" }],
-    rows: [{ id: "1", name: "Short" }],
+    columns: [
+      { id: "name", header: "Name" },
+    ],
+    rows: [
+      { id: "1", name: "Short" },
+    ],
     getRowId: (row) => String(row.id),
   });
 
@@ -589,7 +576,6 @@ widths as new column objects (no mutation of originals)."
 ### Task 3: Public API surface — core package re-exports
 
 **Files:**
-
 - Modify: `packages/core/src/types.ts`
 - Modify: `packages/core/src/create-grid.ts`
 - Modify: `packages/core/src/index.ts`
@@ -721,7 +707,6 @@ available through @pretable/core."
 ### Task 4: Scenario-data — make S4 columns omit `widthPx` for autosize
 
 **Files:**
-
 - Modify: `packages/scenario-data/src/index.ts:43-49,261-269`
 
 - [ ] **Step 1: Make `widthPx` optional on `ScenarioColumn`**
@@ -789,7 +774,6 @@ widths from content. Other scenarios keep explicit widths."
 ### Task 5: Bench adapter — enable autosize for S4 datasets
 
 **Files:**
-
 - Modify: `apps/bench/src/pretable-adapter.tsx`
 - Modify: `packages/react/src/internal/pretable-surface.tsx`
 - Modify: `packages/react/src/use-pretable.ts`
@@ -943,7 +927,6 @@ to createGrid. Bench adapter enables autosize for S4 datasets."
 ### Task 6: Playground — enable autosize for S4 scenario
 
 **Files:**
-
 - Explore: `apps/playground/src/**/*` to find where the scenario/dataset is configured
 - Modify: the playground component that creates the grid, passing `autosize` when the active scenario has `autosize_all_columns`
 
@@ -965,7 +948,6 @@ Expected: PASS
 Run: `pnpm dev:playground`
 
 Verify:
-
 - Switch to S4 scenario
 - Columns should have varying widths (not all 140px)
 - Narrow-data columns (scores, statuses) should be visibly narrower
@@ -987,7 +969,6 @@ active scenario has autosize_all_columns enabled."
 ### Task 7: Verification and benchmark proof
 
 **Files:**
-
 - No new files — this task runs benchmarks and verifies the implementation
 
 - [ ] **Step 1: Run full workspace verification**
@@ -1008,7 +989,6 @@ PRETABLE_BENCH_ADAPTER=pretable PRETABLE_BENCH_SCENARIO=S4 PRETABLE_BENCH_SCALE=
 ```
 
 Verify:
-
 - Benchmark completes without errors
 - Scroll quality metrics in the summary show reasonable behavior
 - Column widths in the rendered grid vary (not uniform)
