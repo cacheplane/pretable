@@ -1,2 +1,1 @@
-// Barrel export. Components are added in subsequent tasks.
-export {};
+export { Receipt, type ReceiptProps } from "./receipt";

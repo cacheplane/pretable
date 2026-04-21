@@ -1,0 +1,16 @@
+/* ------------------------------------------------------------- */
+/* Receipt — inline numeric tag in body copy                     */
+/* ------------------------------------------------------------- */
+.pt-receipt {
+  display: inline-block;
+  padding: 2px 7px;
+  margin: 0 1px;
+  border-radius: 3px;
+  background: var(--pt-ink);
+  color: var(--pt-cream);
+  font-family: var(--pt-font-mono);
+  font-size: 0.88em;
+  letter-spacing: 0.01em;
+  vertical-align: 2px;
+  white-space: nowrap;
+}
