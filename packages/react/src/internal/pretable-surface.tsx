@@ -19,12 +19,13 @@ import {
   DEFAULT_ROW_HEIGHT,
   HEADER_HEIGHT,
   formatCellValue,
-  getColumnWidth,
   getNextSortDirection,
   getPinnedLeftOffsets,
   resolveCellValue,
 } from "./rendering";
 import {
+  getCellStyle,
+  getHeaderCellStyle,
   getHeaderRowStyle,
   getPinnedCellStyle,
   getRowStyle,
@@ -181,10 +182,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     viewportHeight: bodyViewportHeight,
   });
   const pinnedOffsets = useMemo(() => getPinnedLeftOffsets(columns), [columns]);
-  const templateColumns = useMemo(
-    () => columns.map((column) => `${getColumnWidth(column)}px`).join(" "),
-    [columns],
-  );
 
   useLayoutEffect(() => {
     onTelemetryChange?.(telemetry);
@@ -313,8 +310,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         ...viewportStyle,
       }}
     >
-      <div style={getHeaderRowStyle(templateColumns)}>
-        {columns.map((column) => {
+      <div style={getHeaderRowStyle(renderSnapshot.totalWidth)}>
+        {renderSnapshot.columns.map((plannedCol) => {
+          const column = columns[plannedCol.index];
+
+          if (!column) {
+            return null;
+          }
+
           const label = column.header ?? column.id;
           const sortDirection =
             snapshot.sort.columnId === column.id
@@ -325,6 +328,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               column,
               sortDirection,
             }) ?? {};
+          const pinnedOffset = pinnedOffsets[column.id];
+          const positionStyle =
+            plannedCol.pinned === "left" && pinnedOffset !== undefined
+              ? {
+                  ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
+                  ...getPinnedCellStyle(pinnedOffset),
+                }
+              : getHeaderCellStyle(plannedCol.left, plannedCol.width);
 
           return (
             <button
@@ -354,9 +365,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 color: "inherit",
                 display: "grid",
                 gap: 4,
-                padding: "12px",
                 textAlign: "left",
-                ...getPinnedCellStyle(pinnedOffsets[column.id]),
+                ...positionStyle,
               }}
               type="button"
             >
@@ -434,9 +444,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   rowNodesRef.current.delete(id);
                 }
               }}
-              style={getRowStyle(templateColumns, top, height)}
+              style={getRowStyle(top, height)}
             >
-              {columns.map((column) => {
+              {renderSnapshot.columns.map((plannedCol) => {
+                const column = columns[plannedCol.index];
+
+                if (!column) {
+                  return null;
+                }
+
                 const value = resolveCellValue(row, column);
                 const bodyInput = {
                   column,
@@ -448,6 +464,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   value,
                 } satisfies PretableSurfaceBodyCellRenderInput<TRow>;
                 const bodyProps = getBodyCellProps?.(bodyInput) ?? {};
+                const pinnedOffset = pinnedOffsets[column.id];
+                const positionStyle =
+                  plannedCol.pinned === "left" && pinnedOffset !== undefined
+                    ? {
+                        ...getCellStyle(plannedCol.left, plannedCol.width),
+                        ...getPinnedCellStyle(pinnedOffset),
+                      }
+                    : getCellStyle(plannedCol.left, plannedCol.width);
 
                 return (
                   <div
@@ -462,7 +486,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     style={{
                       overflowWrap: column.wrap ? "anywhere" : "normal",
                       whiteSpace: column.wrap ? "pre-wrap" : "nowrap",
-                      ...getPinnedCellStyle(pinnedOffsets[column.id]),
+                      ...positionStyle,
                     }}
                   >
                     {renderBodyCell

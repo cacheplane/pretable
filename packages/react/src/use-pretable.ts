@@ -7,7 +7,10 @@ import {
   type PretableRow,
   type PretableSortDirection,
 } from "@pretable/core";
-import { createDomRenderSnapshot } from "@pretable-internal/renderer-dom";
+import {
+  createDomRenderSnapshot,
+  type PlannedColumn,
+} from "@pretable-internal/renderer-dom";
 import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
@@ -27,6 +30,7 @@ export interface PretableRenderRow<TRow extends PretableRow = PretableRow> {
 export interface PretableRenderSnapshot<
   TRow extends PretableRow = PretableRow,
 > {
+  columns: PlannedColumn[];
   rows: PretableRenderRow<TRow>[];
   nodeCount: number;
   totalHeight: number;
