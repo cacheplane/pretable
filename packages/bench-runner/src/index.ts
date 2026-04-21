@@ -232,7 +232,7 @@ export function validateSupportedP0aRequest(
     };
   }
 
-  if (!["S1", "S2", "S3", "S7"].includes(request.scenarioId)) {
+  if (!["S1", "S2", "S3", "S4", "S7"].includes(request.scenarioId)) {
     return {
       ok: false,
       reason: `Unsupported scenario for P0a: ${request.scenarioId}`,
