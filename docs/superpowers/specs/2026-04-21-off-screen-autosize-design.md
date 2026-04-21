@@ -6,16 +6,16 @@ Add automatic column width computation to pretable. Columns without explicit `wi
 
 ## Design Decisions
 
-| #   | Decision                     | Choice                                                      | Rationale                                                                                                  |
-| --- | ---------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| 1   | Optimization target          | Content-fit with cap                                        | Pairs with wrapped-text support; capped widths keep total scrollable area reasonable                       |
-| 2   | Estimation method            | Estimate-only (pure math, no DOM)                           | text-core heuristic is proven adequate for row heights; column widths are less sensitive; no layout shifts |
-| 3   | Timing                       | Eager on dataset load                                       | `planColumns()` needs all widths upfront for binary search; one-time cost is predictable                   |
-| 4   | Package location             | layout-core (pure function) + grid-core (store integration) | layout-core owns column geometry; grid-core stays focused on state; two layers serve different consumers   |
-| 5   | Explicit widthPx interaction | Skip columns with explicit `widthPx`                        | Zero new API surface; `widthPx` presence/absence is the opt-out signal                                     |
-| 6   | Width cap                    | Fixed default 400px, configurable                           | No viewport-width timing dependency; simple to reason about                                                |
-| 7   | Header text                  | Included in width calculation                               | Truncated headers look broken; trivial cost (one multiply per column)                                      |
-| 8   | Minimum width                | 60px default, configurable                                  | Prevents collapse on empty/single-char data; matches industry norms                                        |
+| # | Decision | Choice | Rationale |
+|---|----------|--------|-----------|
+| 1 | Optimization target | Content-fit with cap | Pairs with wrapped-text support; capped widths keep total scrollable area reasonable |
+| 2 | Estimation method | Estimate-only (pure math, no DOM) | text-core heuristic is proven adequate for row heights; column widths are less sensitive; no layout shifts |
+| 3 | Timing | Eager on dataset load | `planColumns()` needs all widths upfront for binary search; one-time cost is predictable |
+| 4 | Package location | layout-core (pure function) + grid-core (store integration) | layout-core owns column geometry; grid-core stays focused on state; two layers serve different consumers |
+| 5 | Explicit widthPx interaction | Skip columns with explicit `widthPx` | Zero new API surface; `widthPx` presence/absence is the opt-out signal |
+| 6 | Width cap | Fixed default 400px, configurable | No viewport-width timing dependency; simple to reason about |
+| 7 | Header text | Included in width calculation | Truncated headers look broken; trivial cost (one multiply per column) |
+| 8 | Minimum width | 60px default, configurable | Prevents collapse on empty/single-char data; matches industry norms |
 
 ## API Surface — Three Layers
 
@@ -39,10 +39,10 @@ export interface AutosizeColumnDef<TRow extends Record<string, unknown>> {
 }
 
 export interface AutosizeOptions {
-  maxWidthPx?: number; // default 400
-  minWidthPx?: number; // default 60
+  maxWidthPx?: number;       // default 400
+  minWidthPx?: number;       // default 60
   averageCharWidth?: number; // default 7
-  cellPaddingPx?: number; // default 16
+  cellPaddingPx?: number;    // default 16
 }
 
 export interface AutosizeResult {
@@ -180,15 +180,12 @@ S1, S2, S3, S7 benchmarks must remain green. Autosize changes are additive — t
 ### Exported from `@pretable/core`
 
 **Types:**
-
 - `AutosizeOptions` — configuration for autosize behavior (`maxWidthPx`, `minWidthPx`, `averageCharWidth`, `cellPaddingPx`)
 
 **Options:**
-
 - `GridCoreOptions.autosize` — `boolean | AutosizeOptions` — enables automatic column width computation on grid creation
 
 **Store method:**
-
 - `GridCoreStore.autosizeColumns(options?)` — imperatively re-computes column widths from current data
 
 ### Exported from `@pretable-internal/layout-core` (internal for now)
