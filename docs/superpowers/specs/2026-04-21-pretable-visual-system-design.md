@@ -17,11 +17,11 @@ The goal is not a full corporate brand. It is a visual identity distinctive enou
 
 From competitor research conducted 2026-04-21 (see `/private/tmp/claude-501/.../a5739ef0321dde6ab.output` for the raw report — will be cited in PR, not committed):
 
-| Competitor | Visual posture | The opening they leave us |
-| --- | --- | --- |
-| **AG Grid** (`ag-grid.com`) | Corporate, feature-matrix, `/performance` page returned 404 on fetch | Looks tired. Removed their own benchmark page. "Best in the world" without adjacent proof. |
-| **TanStack Table** (`tanstack.com/table`) | Dark, cyan `#05BDBA`, sponsor-wall, no live product | Headless — nothing to see on landing. Reads as "solo project scaled up." |
-| **MUI X DataGrid** (`mui.com/x/react-data-grid`) | Docs-shell, Material blue, version pill `v9.0.2` | Reads as reference page, not pitch. No independent identity. |
+| Competitor                                       | Visual posture                                                       | The opening they leave us                                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **AG Grid** (`ag-grid.com`)                      | Corporate, feature-matrix, `/performance` page returned 404 on fetch | Looks tired. Removed their own benchmark page. "Best in the world" without adjacent proof. |
+| **TanStack Table** (`tanstack.com/table`)        | Dark, cyan `#05BDBA`, sponsor-wall, no live product                  | Headless — nothing to see on landing. Reads as "solo project scaled up."                   |
+| **MUI X DataGrid** (`mui.com/x/react-data-grid`) | Docs-shell, Material blue, version pill `v9.0.2`                     | Reads as reference page, not pitch. No independent identity.                               |
 
 **Gaps worth owning, concretely:**
 
@@ -37,46 +37,46 @@ From competitor research conducted 2026-04-21 (see `/private/tmp/claude-501/.../
 
 ```css
 /* editorial — marketing / playground chrome / docs prose */
---cream:       #ede5d4;  /* chrome, receipts band */
---cream-hi:    #f5eedd;  /* raised surface, callouts */
---cream-rule:  #cdc3aa;  /* hairline dividers */
---ink:         #1a1815;  /* primary text, CTA fill */
---ink-dim:     #4a443b;  /* secondary text */
---ink-softer:  #7a7468;  /* tertiary text */
---amber-ink:   #8a5d0f;  /* accent on cream surfaces */
---amber:       #c68a1e;  /* accent on dark surfaces */
---amber-soft:  #f5e8ca;  /* search match, NEW pill fill */
+--cream: #ede5d4; /* chrome, receipts band */
+--cream-hi: #f5eedd; /* raised surface, callouts */
+--cream-rule: #cdc3aa; /* hairline dividers */
+--ink: #1a1815; /* primary text, CTA fill */
+--ink-dim: #4a443b; /* secondary text */
+--ink-softer: #7a7468; /* tertiary text */
+--amber-ink: #8a5d0f; /* accent on cream surfaces */
+--amber: #c68a1e; /* accent on dark surfaces */
+--amber-soft: #f5e8ca; /* search match, NEW pill fill */
 
 /* terminal — grid surface, bench, code blocks */
---dark:        #0f0e0c;  /* page background under grid */
---grid-bg:     #0b0a09;  /* table surface, code block bg */
---grid-raised: #151310;  /* focus / sticky elevated */
---grid-rule:   #1f1c18;  /* cell dividers */
---grid-text:   #d8d2c3;  /* cell text */
---grid-dim:    #8f8a7d;  /* column headers, labels */
+--dark: #0f0e0c; /* page background under grid */
+--grid-bg: #0b0a09; /* table surface, code block bg */
+--grid-raised: #151310; /* focus / sticky elevated */
+--grid-rule: #1f1c18; /* cell dividers */
+--grid-text: #d8d2c3; /* cell text */
+--grid-dim: #8f8a7d; /* column headers, labels */
 
 /* severity — only saturated color in the system */
---sev-info:    #6fa9c9;  /* desaturated blue */
---sev-warn:    #d9a44f;  /* amber family */
---sev-err:     #d3615a;  /* muted red */
---sev-ok:      #7ea86f;  /* moss green */
+--sev-info: #6fa9c9; /* desaturated blue */
+--sev-warn: #d9a44f; /* amber family */
+--sev-err: #d3615a; /* muted red */
+--sev-ok: #7ea86f; /* moss green */
 ```
 
 ### Contrast audit (WCAG)
 
 All pairings target AA minimum (4.5:1 body, 3:1 large text). AAA where cheap.
 
-| Pair | Ratio | Grade |
-|---|---|---|
-| ink on cream | 14.1:1 | AAA |
-| ink-dim on cream | 7.8:1 | AAA |
-| amber-ink on cream | 5.1:1 | AA |
-| grid-text on grid-bg | 11.9:1 | AAA |
-| grid-dim on grid-bg | 5.8:1 | AA |
-| amber on grid-bg | 6.6:1 | AAA |
-| sev-info on grid-bg | 7.3:1 | AAA |
-| sev-warn on grid-bg | 9.8:1 | AAA |
-| sev-err on grid-bg | 5.4:1 | AA |
+| Pair                 | Ratio  | Grade |
+| -------------------- | ------ | ----- |
+| ink on cream         | 14.1:1 | AAA   |
+| ink-dim on cream     | 7.8:1  | AAA   |
+| amber-ink on cream   | 5.1:1  | AA    |
+| grid-text on grid-bg | 11.9:1 | AAA   |
+| grid-dim on grid-bg  | 5.8:1  | AA    |
+| amber on grid-bg     | 6.6:1  | AAA   |
+| sev-info on grid-bg  | 7.3:1  | AAA   |
+| sev-warn on grid-bg  | 9.8:1  | AAA   |
+| sev-err on grid-bg   | 5.4:1  | AA    |
 
 No AAA strict requirement; the one AA-not-AAA pair (sev-err) is consciously accepted — darkening red reduces severity readability at the small mono size we use.
 
@@ -93,16 +93,16 @@ Single web-font download (~35KB gzipped):
 
 ### Type scale (name · stack · size/line-height · usage)
 
-| Name | Stack | Size/LH | Tracking | Used for |
-|---|---|---|---|---|
-| display-xl | Fraunces 400 | 60/60 | -2.5% | playground hero |
-| display-lg | Fraunces 500 | 32/36 | -2% | section heads |
-| display-md | Fraunces 400 | 44/46 | -2.5% | bench + docs titles |
-| dek | Fraunces 400 | 18/26 | — | hero subhead |
-| body | system sans | 15/24 | — | long-form prose |
-| ui | system sans 500 | 13.5/20 | — | buttons, labels |
-| eyebrow | system mono | 11/16 | +12% UPPER | category labels |
-| data | system mono | 12.5/19 | — | grid cells, code |
+| Name       | Stack           | Size/LH | Tracking   | Used for            |
+| ---------- | --------------- | ------- | ---------- | ------------------- |
+| display-xl | Fraunces 400    | 60/60   | -2.5%      | playground hero     |
+| display-lg | Fraunces 500    | 32/36   | -2%        | section heads       |
+| display-md | Fraunces 400    | 44/46   | -2.5%      | bench + docs titles |
+| dek        | Fraunces 400    | 18/26   | —          | hero subhead        |
+| body       | system sans     | 15/24   | —          | long-form prose     |
+| ui         | system sans 500 | 13.5/20 | —          | buttons, labels     |
+| eyebrow    | system mono     | 11/16   | +12% UPPER | category labels     |
+| data       | system mono     | 12.5/19 | —          | grid cells, code    |
 
 Italics in Fraunces carry the accent: **headline emphasis** (italic amber on cream) and **bench `FASTEST` badge wordmark** (italic amber on dark).
 
@@ -122,11 +122,13 @@ Hero → grid → receipts    4-col compare →           Mintlify-layout:
 ```
 
 Cross-links:
+
 - Playground receipts → Bench permalink
 - Docs bottom nav → Playground ("see it live") and Bench ("see it measured")
 - Bench methodology → Docs (how we measure is also in docs)
 
 Shared across all three surfaces:
+
 - Nav (60px, wordmark + links + version pill + status dot)
 - Footer (monospaced, one line, CI status visible)
 - Cmd+K search (v1 only in docs; v2 in all surfaces)
@@ -140,10 +142,11 @@ Shared across all three surfaces:
 1. **Nav** — shared, `playground` active.
 2. **Hero (cream)** — 64px padding top/bottom. Eyebrow (`$ pretable — read-heavy wedge · vol. 1 · no. 4`), Fraunces headline with italic amber emphasis, Fraunces dek with inline `<receipt>60fps</receipt>` tags, two CTAs (primary "Try the live playground ↓", ghost monospace `$ npm i @pretable/react`).
 3. **Live grid (terminal, full-bleed)** — edge-to-edge under hero. Chrome strip on top with file-tab label + scale selector (`tiny`/`dev`/`stress`) + live telemetry (`rendered 8 · frame 2.4ms · sel evt-001`). Inline filter row below. 52px header row (single line, no more backdrop bug). 7+ wrapped body rows with severity color. Selected row highlighted with amber timestamp.
-4. **Receipts band (cream)** — 52px padding. "*Receipts*, not claims." H2 with italic amber. 4-column grid of big Fraunces numbers (`500k`, `2.4ms`, `0`, `4.1× ag-grid`) with top hairline rules + caption ("on S7 stress scenario, 2 pinned"). Link to bench: "See them re-run in the bench →".
+4. **Receipts band (cream)** — 52px padding. "_Receipts_, not claims." H2 with italic amber. 4-column grid of big Fraunces numbers (`500k`, `2.4ms`, `0`, `4.1× ag-grid`) with top hairline rules + caption ("on S7 stress scenario, 2 pinned"). Link to bench: "See them re-run in the bench →".
 5. **Footer** — shared.
 
 **Notable design decisions:**
+
 - Grid is full-bleed under the hero — no card chrome around it. Signals "the grid IS the page."
 - Headline ends with period (editorial voice). Italic amber `scroll` in `treats scroll as a first-class feature`.
 - Periodical framing: `vol. 1 · no. 4 · april`. Each release is an "issue." This is pretable's voice.
@@ -155,7 +158,7 @@ Shared across all three surfaces:
 **Scroll sections:**
 
 1. **Nav** — shared, `bench` active.
-2. **Compact hero (cream, 40px padding)** — "*Receipts*, reproducible." + methodology one-liner. Smaller than playground's hero (40px vs 64px) — signals tool over pitch.
+2. **Compact hero (cream, 40px padding)** — "_Receipts_, reproducible." + methodology one-liner. Smaller than playground's hero (40px vs 64px) — signals tool over pitch.
 3. **Control strip (cream-hi)** — segmented pills for scenario (`S1` / `S2` / `S7`), scale (`tiny` / `dev` / `stress`), adapters (multi-select: `pretable` / `ag-grid` / `tanstack` / `mui-x`). Amber-fill on active state. Live permalink `/bench?s=S2&v=all&scale=dev` auto-updates as you click. Run button right-aligned with green status dot.
 4. **Adversarial 4-column grid (terminal)** — one column per selected adapter, border-right between columns. Each column:
    - Col head: Fraunces adapter name, version pill. Winner (pretable) gets an italicized name + amber `FASTEST` badge + subtle top-gradient.
@@ -163,7 +166,7 @@ Shared across all three surfaces:
    - Mini-grid snapshot: same 4 rows of data rendered through each adapter. Only pretable lights up severity color; others render plain monochrome — visual signal of the "craft object" gap.
 5. **Scorecard table (cream-hi)** — monospace table: metric × adapter matrix. pretable column heading amber-ink filled. Each cell green if won, ink-dim if lost, n/a for untestable. Final column shows the pass/fail budget (`≤4ms`, `≤16ms`, `≤32ms`, `0 target`).
 6. **CI history chart (dark)** — 30-bar chart (one bar per CI run over last 30 days), color-coded by budget status (`<sev-ok>` / `<sev-warn>` / `<sev-err>`). Clickable: each bar links to the commit + flame graph.
-7. **Methodology (cream)** — 2-column: editorial prose on left ("*How* we measure."), dark reproduce-locally code block on right with real `pnpm bench:matrix` command.
+7. **Methodology (cream)** — 2-column: editorial prose on left ("_How_ we measure."), dark reproduce-locally code block on right with real `pnpm bench:matrix` command.
 8. **Footer** — shared.
 
 **Permalink as conversion vector:** `/bench?s=S7&v=pretable,ag-grid&scale=stress` — senior engineer pastes into Slack, team clicks, they see the exact result. This is the "staff eng shares with VP" moment.
@@ -174,31 +177,34 @@ Shared across all three surfaces:
 
 ### Layout tokens (Mintlify-standard, pretable-themed)
 
-| Token | Value | Note |
-|---|---|---|
-| page max width | 1440px | center on ultrawide |
-| header height | 60px | sticky |
-| left sidebar | 260px | fixed; hamburger below `md` |
-| right TOC | 224px | sticky scrollspy; hidden below `lg` and on API-ref pages |
-| main prose max | 720px | readable line length |
-| code/demo max | 900px | breaks out of prose column |
-| API-ref split | 50/50 | right pane sticky; no TOC |
-| search modal | 560px wide, `Cmd+K` | keyboard navigable |
+| Token          | Value               | Note                                                     |
+| -------------- | ------------------- | -------------------------------------------------------- |
+| page max width | 1440px              | center on ultrawide                                      |
+| header height  | 60px                | sticky                                                   |
+| left sidebar   | 260px               | fixed; hamburger below `md`                              |
+| right TOC      | 224px               | sticky scrollspy; hidden below `lg` and on API-ref pages |
+| main prose max | 720px               | readable line length                                     |
+| code/demo max  | 900px               | breaks out of prose column                               |
+| API-ref split  | 50/50               | right pane sticky; no TOC                                |
+| search modal   | 560px wide, `Cmd+K` | keyboard navigable                                       |
 
 ### Chrome elements
 
 **Header (60px, sticky)**
+
 - Left (260px region): `pretable.` wordmark + amber period + `v0.4` pill (MUI-style)
 - Center (flex): search bar with `⌘K` kbd, ~520px max-width, cream-hi background, border outline
 - Right: GitHub star counter pill (`★ 1.2k`), theme toggle (`☾`), amber "Try playground →" CTA
 
 **Sidebar (260px)**
+
 - Collapsible groups: Getting Started, Concepts, Recipes, API reference, Changelog
 - Active item: 2px amber-ink left border + weight-bump + `cream-hi` fill — no saturated background
 - Badges: `NEW` (solid amber), `SOON` (outline only). Both monospace 9px +8% tracking UPPER.
 - Group heads: mono eyebrow with collapsible chevron.
 
 **Main (720px prose, 900px breakout)**
+
 - Breadcrumb row (mono, amber emphasis on terminal crumb)
 - Page title: Fraunces 44px with italic amber emphasis
 - Dek: Fraunces 18px
@@ -210,12 +216,14 @@ Shared across all three surfaces:
 - Bottom: "Was this page helpful?" thumbs + "Edit on GitHub ↗" link + prev/next cards
 
 **Right TOC (224px)**
+
 - Mono eyebrow "On this page"
 - Scrollspy with 2px amber left border on active
 - Nested items indented 14px
 - Bottom stub: `<a>Edit on GitHub ↗</a>` for convenience
 
 **Search modal (`Cmd+K`)**
+
 - 560px wide, 80px from top when open
 - Cream fill + shadow over `rgba(26,24,21,0.55)` backdrop with `blur(3px)`
 - Input row: search icon + input + blinking amber caret
@@ -237,6 +245,7 @@ No right TOC on API reference pages — the split pane IS the "at a glance" surf
 ### Content plan (v1 vs later)
 
 **v1 populated:**
+
 - `/docs` → redirect to `/docs/getting-started/quickstart`
 - `/docs/getting-started/quickstart` — full page (the mockup)
 - `/docs/getting-started/install` — minimal, absorbed into quickstart but routed
@@ -244,12 +253,14 @@ No right TOC on API reference pages — the split pane IS the "at a glance" surf
 - `/docs/api-reference/inspection-grid` — populated split-pane page for `<InspectionGrid />`
 
 **v1 stubbed** (present in sidebar with `SOON` badge, 404-equivalent content that matches the design system):
+
 - Concepts (all sub-pages)
 - Recipes (all sub-pages)
 - API reference — other components
 - Changelog
 
 **Explicitly cut from v1:**
+
 - Multi-framework switching (React-only for now; adding Vue later is a pure sidebar change, not a layout change)
 - Dark-mode toggle on docs (theme is a follow-up; the design system is dark-in-places-already)
 - OpenAPI-driven API reference (manual TypeScript prop tables for now)
@@ -271,18 +282,21 @@ Shared design-system primitives. Exports:
 ### Modified apps
 
 **`apps/playground`**
+
 - Replace current cream-light theme with new system
 - Restructure into hero + full-bleed grid + receipts band + footer per Section 5
 - Pull in `<Nav />` + `<Footer />` from `packages/ui`
 - Remove the existing gradient-heavy `:root` background; replace with cream solid
 
 **`apps/bench`**
+
 - Replace current dark-gradient theme with new system (keep dark where grid content lives, use cream chrome for hero/scorecard/methodology)
 - Build new 4-column comparison layout and control strip per Section 6
 - Permalink handling: parse URL query params on load, update on interaction (via `history.replaceState` so no reload)
 - CI history chart: read from `status/runsets/*.json` (already produced by `pnpm bench:matrix`)
 
 **`apps/docs` — new**
+
 - Vite + React app matching the other two
 - File-based routing via `@generouted/react-router` or simple manual `react-router-dom` setup
 - MDX support for content pages
