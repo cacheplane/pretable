@@ -1,5 +1,6 @@
 import {
   createRowMetricsIndex,
+  planColumns,
   planViewport,
 } from "@pretable-internal/layout-core";
 import type { GridCoreColumn, GridCoreRow } from "@pretable-internal/grid-core";
@@ -62,17 +63,46 @@ export function createDomRenderSnapshot<TRow extends GridCoreRow>(
     ];
   });
 
+  const WRAPPED_COLUMN_WIDTH_FOR_PLAN = 220;
+  const FIXED_COLUMN_WIDTH_FOR_PLAN = 140;
+
+  const columnInputs = input.columns.map((col) => ({
+    id: col.id,
+    width: col.widthPx ?? (col.wrap ? WRAPPED_COLUMN_WIDTH_FOR_PLAN : FIXED_COLUMN_WIDTH_FOR_PLAN),
+    pinned: col.pinned,
+  }));
+
+  const columnPlan =
+    input.viewportWidth !== undefined
+      ? planColumns({
+          columns: columnInputs,
+          scrollLeft: input.scrollLeft ?? 0,
+          viewportWidth: input.viewportWidth,
+          overscan: input.overscan,
+        })
+      : {
+          columns: columnInputs.map((col, index) => {
+            let left = 0;
+            for (let i = 0; i < index; i++) {
+              left += columnInputs[i].width;
+            }
+            return { index, id: col.id, left, width: col.width, pinned: col.pinned };
+          }),
+          totalWidth: columnInputs.reduce((sum, col) => sum + col.width, 0),
+          pinnedLeftWidth: columnInputs
+            .filter((col) => col.pinned === "left")
+            .reduce((sum, col) => sum + col.width, 0),
+        };
+
   return {
     frame: {
       snapshot: input.snapshot,
     },
     rows,
-    nodeCount: rows.length * input.columns.length,
+    columns: columnPlan.columns,
+    nodeCount: rows.length * columnPlan.columns.length,
     totalHeight: viewportPlan.totalHeight,
-    totalWidth: input.columns.reduce(
-      (sum, column) => sum + getColumnWidth(column),
-      0,
-    ),
+    totalWidth: columnPlan.totalWidth,
   };
 }
 
