@@ -49,3 +49,82 @@
 .pt-callout-body {
   display: block;
 }
+
+/* ------------------------------------------------------------- */
+/* CodeBlock — terminal surface with tabs + copy                 */
+/* ------------------------------------------------------------- */
+.pt-code-block {
+  max-width: var(--pt-code-max);
+  margin: 18px 0 22px;
+  background: var(--pt-grid-bg);
+  color: var(--pt-grid-text);
+  border: 1px solid var(--pt-grid-rule);
+  border-radius: 8px;
+  overflow: hidden;
+  font-family: var(--pt-font-mono);
+  font-size: 13px;
+  line-height: 1.62;
+}
+.pt-code-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #0d0c0a;
+  border-bottom: 1px solid var(--pt-grid-rule);
+  padding: 0 6px 0 0;
+}
+.pt-code-tabs {
+  display: flex;
+}
+.pt-code-tab {
+  padding: 9px 14px;
+  font-family: var(--pt-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--pt-grid-dim);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--pt-grid-rule);
+  cursor: pointer;
+}
+.pt-code-tab.active {
+  color: var(--pt-amber);
+  background: var(--pt-grid-bg);
+}
+.pt-code-copy {
+  font-family: var(--pt-font-mono);
+  font-size: 10.5px;
+  color: var(--pt-grid-dim);
+  background: transparent;
+  border: 1px solid var(--pt-grid-rule);
+  border-radius: 3px;
+  padding: 4px 9px;
+  margin: 6px 10px;
+  cursor: pointer;
+}
+.pt-code-copy:hover {
+  color: var(--pt-amber);
+}
+.pt-code-body {
+  padding: 16px 20px;
+  margin: 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+/* Syntax highlighting classes — consumers apply these to spans inside the body. */
+.pt-code-key {
+  color: var(--pt-code-key);
+}
+.pt-code-str {
+  color: var(--pt-code-str);
+}
+.pt-code-fn {
+  color: var(--pt-code-fn);
+}
+.pt-code-com {
+  color: var(--pt-code-com);
+  font-style: italic;
+}
+.pt-code-prop {
+  color: var(--pt-code-prop);
+}
