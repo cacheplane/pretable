@@ -63,12 +63,9 @@ export function createDomRenderSnapshot<TRow extends GridCoreRow>(
     ];
   });
 
-  const WRAPPED_COLUMN_WIDTH_FOR_PLAN = 220;
-  const FIXED_COLUMN_WIDTH_FOR_PLAN = 140;
-
   const columnInputs = input.columns.map((col) => ({
     id: col.id,
-    width: col.widthPx ?? (col.wrap ? WRAPPED_COLUMN_WIDTH_FOR_PLAN : FIXED_COLUMN_WIDTH_FOR_PLAN),
+    width: getColumnWidth(col),
     pinned: col.pinned,
   }));
 
@@ -81,13 +78,14 @@ export function createDomRenderSnapshot<TRow extends GridCoreRow>(
           overscan: input.overscan,
         })
       : {
-          columns: columnInputs.map((col, index) => {
+          columns: (() => {
             let left = 0;
-            for (let i = 0; i < index; i++) {
-              left += columnInputs[i].width;
-            }
-            return { index, id: col.id, left, width: col.width, pinned: col.pinned };
-          }),
+            return columnInputs.map((col, index) => {
+              const entry = { index, id: col.id, left, width: col.width, pinned: col.pinned };
+              left += col.width;
+              return entry;
+            });
+          })(),
           totalWidth: columnInputs.reduce((sum, col) => sum + col.width, 0),
           pinnedLeftWidth: columnInputs
             .filter((col) => col.pinned === "left")
