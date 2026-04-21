@@ -232,7 +232,7 @@ export function validateSupportedP0aRequest(
     };
   }
 
-  if (!["S1", "S2", "S3", "S4", "S7"].includes(request.scenarioId)) {
+  if (!["S1", "S2", "S3", "S4", "S5", "S7"].includes(request.scenarioId)) {
     return {
       ok: false,
       reason: `Unsupported scenario for P0a: ${request.scenarioId}`,
@@ -240,7 +240,7 @@ export function validateSupportedP0aRequest(
   }
 
   const interactionScripts = ["sort", "filter-metadata", "filter-text"];
-  const supportedScripts = ["initial", "scroll", ...interactionScripts];
+  const supportedScripts = ["initial", "scroll", "updates", ...interactionScripts];
 
   if (!supportedScripts.includes(request.scriptName)) {
     return {
