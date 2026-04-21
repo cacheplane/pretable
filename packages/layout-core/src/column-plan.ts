@@ -43,7 +43,7 @@ export function planColumns(input: PlanColumnsInput): ColumnPlan {
   // Binary search for the first scrollable column visible at scrollLeft
   let low = 0;
   let high = scrollable.length - 1;
-  let visibleStart = 0;
+  let visibleStart = scrollable.length;
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
