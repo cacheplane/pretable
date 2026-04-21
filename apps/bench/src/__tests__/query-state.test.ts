@@ -107,6 +107,27 @@ describe("parseBenchQuery", () => {
     });
   });
 
+  test("accepts S5 streaming-updates scenario", () => {
+    expect(parseBenchQuery("?scenario=S5&scale=dev&script=scroll")).toEqual({
+      adapterId: "pretable",
+      scenarioId: "S5",
+      profile: "default",
+      scale: "dev",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
+
+  test("accepts updates script", () => {
+    expect(
+      parseBenchQuery("?scenario=S5&scale=dev&script=updates"),
+    ).toMatchObject({
+      scenarioId: "S5",
+      scale: "dev",
+      scriptName: "updates",
+    });
+  });
+
   test("accepts supported interaction scripts without collapsing back to initial", () => {
     expect(parseBenchQuery("?scenario=S2&scale=dev&script=sort")).toMatchObject(
       {
