@@ -46,6 +46,12 @@ export interface GridCoreViewportState {
   width: number;
 }
 
+export interface GridCoreTransaction<TRow extends GridCoreRow = GridCoreRow> {
+  add?: TRow[];
+  update?: Partial<TRow>[];
+  remove?: string[];
+}
+
 export interface GridCoreRowModel<TRow extends GridCoreRow = GridCoreRow> {
   id: string;
   row: TRow;
@@ -76,6 +82,7 @@ export interface GridCoreStore<TRow extends GridCoreRow = GridCoreRow> {
   moveFocus(delta: number): void;
   setViewport(viewport: GridCoreViewportState): void;
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
+  applyTransaction(transaction: GridCoreTransaction<TRow>): void;
 }
 
 export interface GridCoreFrame<TRow extends GridCoreRow = GridCoreRow> {

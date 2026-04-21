@@ -173,6 +173,51 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
+        scenarioId: "S5",
+        scriptName: "updates",
+      }),
+    ).toEqual({ ok: true });
+
+    // S5 does NOT support interaction scripts
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S5",
+        scriptName: "sort",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+
+    // updates script is pretable-only
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "ag-grid",
+        scenarioId: "S5",
+        scriptName: "updates",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("adapter"),
+    });
+
+    // updates script is S5-only
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S2",
+        scriptName: "updates",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
         profile: "tuned",
       }),
     ).toEqual({

@@ -2,12 +2,17 @@ import type { BenchScriptName } from "@pretable-internal/bench-runner";
 
 export interface BenchQueryState {
   adapterId: "pretable" | "ag-grid" | "tanstack" | "mui";
-  scenarioId: "S1" | "S2" | "S3" | "S4" | "S7";
+  scenarioId: "S1" | "S2" | "S3" | "S4" | "S5" | "S7";
   profile: "default";
   scale: "smoke" | "dev" | "hypothesis" | "target";
   scriptName: Extract<
     BenchScriptName,
-    "initial" | "scroll" | "sort" | "filter-metadata" | "filter-text"
+    | "initial"
+    | "scroll"
+    | "sort"
+    | "filter-metadata"
+    | "filter-text"
+    | "updates"
   >;
   autorun: boolean;
 }

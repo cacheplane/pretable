@@ -232,7 +232,7 @@ export function validateSupportedP0aRequest(
     };
   }
 
-  if (!["S1", "S2", "S3", "S4", "S7"].includes(request.scenarioId)) {
+  if (!["S1", "S2", "S3", "S4", "S5", "S7"].includes(request.scenarioId)) {
     return {
       ok: false,
       reason: `Unsupported scenario for P0a: ${request.scenarioId}`,
@@ -240,13 +240,34 @@ export function validateSupportedP0aRequest(
   }
 
   const interactionScripts = ["sort", "filter-metadata", "filter-text"];
-  const supportedScripts = ["initial", "scroll", ...interactionScripts];
+  const supportedScripts = [
+    "initial",
+    "scroll",
+    "updates",
+    ...interactionScripts,
+  ];
 
   if (!supportedScripts.includes(request.scriptName)) {
     return {
       ok: false,
       reason: `Unsupported script for P0a: ${request.scriptName}`,
     };
+  }
+
+  if (request.scriptName === "updates") {
+    if (request.adapterId !== "pretable") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for updates script: ${request.adapterId}`,
+      };
+    }
+
+    if (request.scenarioId !== "S5") {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for updates script: ${request.scenarioId}`,
+      };
+    }
   }
 
   if (interactionScripts.includes(request.scriptName)) {
