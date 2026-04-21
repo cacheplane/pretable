@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { createRowMetricsIndex, planViewport } from "../index";
+import { createRowMetricsIndex, planColumns, planViewport } from "../index";
 
 describe("layout-core", () => {
   test("row-height prefix sums map row index to offset and offset to row index", () => {
@@ -72,5 +72,119 @@ describe("layout-core", () => {
       { columnId: "owner", side: "right", start: 0, end: 140, width: 140 },
     ]);
     expect(rowMetrics.getOffsetForIndex(2)).toBe(offsetBefore);
+  });
+});
+
+describe("planColumns", () => {
+  const columns = Array.from({ length: 20 }, (_, i) => ({
+    id: `col_${i}`,
+    width: 140,
+  }));
+
+  test("returns only the columns visible in the viewport plus overscan", () => {
+    const plan = planColumns({
+      columns,
+      scrollLeft: 0,
+      viewportWidth: 400,
+      overscan: 1,
+    });
+
+    // 400px viewport / 140px cols = ~3 visible columns, +1 overscan on right
+    expect(plan.columns.length).toBeLessThan(20);
+    expect(plan.columns.length).toBeGreaterThanOrEqual(3);
+    expect(plan.columns.every((c) => c.left >= 0)).toBe(true);
+    expect(plan.totalWidth).toBe(20 * 140);
+    expect(plan.pinnedLeftWidth).toBe(0);
+  });
+
+  test("includes pinned columns regardless of scrollLeft", () => {
+    const columnsWithPinned = [
+      { id: "pinned_0", width: 100, pinned: "left" as const },
+      { id: "pinned_1", width: 120, pinned: "left" as const },
+      ...columns,
+    ];
+
+    const plan = planColumns({
+      columns: columnsWithPinned,
+      scrollLeft: 2000,
+      viewportWidth: 400,
+      overscan: 1,
+    });
+
+    const pinnedIds = plan.columns
+      .filter((c) => c.pinned === "left")
+      .map((c) => c.id);
+
+    expect(pinnedIds).toEqual(["pinned_0", "pinned_1"]);
+    expect(plan.pinnedLeftWidth).toBe(220);
+  });
+
+  test("returns correct absolute left offsets for visible columns", () => {
+    const plan = planColumns({
+      columns,
+      scrollLeft: 280,
+      viewportWidth: 400,
+      overscan: 0,
+    });
+
+    for (const col of plan.columns) {
+      expect(col.left).toBe(col.index * 140);
+    }
+  });
+
+  test("handles scrollLeft at the rightmost edge", () => {
+    const totalWidth = 20 * 140;
+    const plan = planColumns({
+      columns,
+      scrollLeft: totalWidth - 400,
+      viewportWidth: 400,
+      overscan: 1,
+    });
+
+    const lastCol = plan.columns[plan.columns.length - 1];
+    expect(lastCol?.id).toBe("col_19");
+    expect(plan.columns.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("returns all columns when they fit within the viewport", () => {
+    const smallColumns = [
+      { id: "a", width: 100 },
+      { id: "b", width: 100 },
+      { id: "c", width: 100 },
+    ];
+
+    const plan = planColumns({
+      columns: smallColumns,
+      scrollLeft: 0,
+      viewportWidth: 1440,
+      overscan: 6,
+    });
+
+    expect(plan.columns).toHaveLength(3);
+    expect(plan.totalWidth).toBe(300);
+  });
+
+  test("returns empty columns for an empty input", () => {
+    const plan = planColumns({
+      columns: [],
+      scrollLeft: 0,
+      viewportWidth: 400,
+      overscan: 6,
+    });
+
+    expect(plan.columns).toHaveLength(0);
+    expect(plan.totalWidth).toBe(0);
+    expect(plan.pinnedLeftWidth).toBe(0);
+  });
+
+  test("clamps overscan to array bounds", () => {
+    const plan = planColumns({
+      columns: columns.slice(0, 5),
+      scrollLeft: 280,
+      viewportWidth: 280,
+      overscan: 10,
+    });
+
+    expect(plan.columns).toHaveLength(5);
   });
 });
