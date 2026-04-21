@@ -47,3 +47,30 @@ export interface ViewportPlan {
     right: PlannedPinnedColumn[];
   };
 }
+
+export interface PlanColumnsInput {
+  columns: readonly PlanColumnsColumnInput[];
+  scrollLeft: number;
+  viewportWidth: number;
+  overscan: number;
+}
+
+export interface PlanColumnsColumnInput {
+  id: string;
+  width: number;
+  pinned?: "left";
+}
+
+export interface PlannedColumn {
+  index: number;
+  id: string;
+  left: number;
+  width: number;
+  pinned?: "left";
+}
+
+export interface ColumnPlan {
+  columns: PlannedColumn[];
+  totalWidth: number;
+  pinnedLeftWidth: number;
+}
