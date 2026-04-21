@@ -9,7 +9,9 @@ export function createGrid<TRow extends Record<string, unknown>>(
 
   return {
     kind: "pretable-grid",
-    options,
+    get options() {
+      return gridCore.options;
+    },
     subscribe: gridCore.subscribe,
     getSnapshot: gridCore.getSnapshot,
     setSort: gridCore.setSort,
@@ -20,5 +22,6 @@ export function createGrid<TRow extends Record<string, unknown>>(
     setFocus: gridCore.setFocus,
     moveFocus: gridCore.moveFocus,
     setViewport: gridCore.setViewport,
+    autosizeColumns: gridCore.autosizeColumns,
   };
 }

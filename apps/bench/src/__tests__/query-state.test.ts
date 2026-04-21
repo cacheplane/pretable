@@ -85,6 +85,17 @@ describe("parseBenchQuery", () => {
     });
   });
 
+  test("accepts S4 offscreen-autosize scenario", () => {
+    expect(parseBenchQuery("?scenario=S4&scale=dev&script=scroll")).toEqual({
+      adapterId: "pretable",
+      scenarioId: "S4",
+      profile: "default",
+      scale: "dev",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
+
   test("accepts S3 many-columns scenario", () => {
     expect(parseBenchQuery("?scenario=S3&scale=dev&script=scroll")).toEqual({
       adapterId: "pretable",

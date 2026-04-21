@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type {
+  AutosizeOptions,
   PretableColumn,
   PretableGridOptions,
   PretableRow,
@@ -104,6 +105,7 @@ interface PretableSurfaceInteractionState {
 
 export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   ariaLabel: string;
+  autosize?: boolean | AutosizeOptions;
   columns: PretableColumn<TRow>[];
   getBodyCellClassName?: (
     input: PretableSurfaceBodyCellClassNameInput<TRow>,
@@ -145,6 +147,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,
+  autosize,
   columns,
   getBodyCellClassName,
   getBodyCellProps,
@@ -175,6 +178,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const viewportRef = useRef<HTMLDivElement>(null);
   const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
+    autosize,
     columns,
     getRowId,
     interactionOverrides: interactionState ?? undefined,

@@ -16,11 +16,11 @@ export function GridBetaAdapter({ dataset, runKey }: GridBetaAdapterProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const displayRows = dataset.rows;
   const totalWidth = dataset.columns.reduce(
-    (width, column) => width + column.widthPx,
+    (width, column) => width + (column.widthPx ?? 140),
     0,
   );
   const gridTemplateColumns = dataset.columns
-    .map((column) => `${column.widthPx}px`)
+    .map((column) => `${column.widthPx ?? 140}px`)
     .join(" ");
   // Bench-only adapter: this hook owns virtualization locally and does not
   // pass the returned functions through memoized boundaries.

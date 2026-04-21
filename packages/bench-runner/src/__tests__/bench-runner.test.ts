@@ -183,7 +183,7 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
-        scenarioId: "S4",
+        scenarioId: "S6",
       }),
     ).toEqual({
       ok: false,
