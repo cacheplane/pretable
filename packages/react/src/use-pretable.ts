@@ -1,4 +1,5 @@
 import {
+  type AutosizeOptions,
   createGrid,
   type PretableColumn,
   type PretableGrid,
@@ -14,6 +15,7 @@ import {
 import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
+  autosize?: boolean | AutosizeOptions;
   columns: PretableColumn<TRow>[];
   rows: TRow[];
   getRowId?: PretableGridOptions<TRow>["getRowId"];
@@ -76,17 +78,19 @@ export interface PretableModel<TRow extends PretableRow = PretableRow> {
 }
 
 export function usePretable<TRow extends PretableRow = PretableRow>({
+  autosize,
   columns,
   rows,
   getRowId,
 }: UsePretableOptions<TRow>) {
   return useMemo(
-    () => createGrid({ columns, rows, getRowId }),
-    [columns, getRowId, rows],
+    () => createGrid({ columns, rows, getRowId, autosize }),
+    [autosize, columns, getRowId, rows],
   );
 }
 
 export function usePretableModel<TRow extends PretableRow = PretableRow>({
+  autosize,
   columns,
   rows,
   getRowId,
@@ -96,7 +100,7 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
   interactionOverrides,
   measuredHeights,
 }: UsePretableModelOptions<TRow>): PretableModel<TRow> {
-  const grid = usePretable({ columns, rows, getRowId });
+  const grid = usePretable({ autosize, columns, rows, getRowId });
 
   if (interactionOverrides) {
     grid.setSort(
