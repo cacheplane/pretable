@@ -240,7 +240,12 @@ export function validateSupportedP0aRequest(
   }
 
   const interactionScripts = ["sort", "filter-metadata", "filter-text"];
-  const supportedScripts = ["initial", "scroll", "updates", ...interactionScripts];
+  const supportedScripts = [
+    "initial",
+    "scroll",
+    "updates",
+    ...interactionScripts,
+  ];
 
   if (!supportedScripts.includes(request.scriptName)) {
     return {

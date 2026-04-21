@@ -1,6 +1,10 @@
 import { autosizeColumns } from "@pretable-internal/layout-core";
 import type { AutosizeOptions } from "@pretable-internal/layout-core";
-import { createSourceRows, deriveVisibleRows, type SourceRow } from "./derived-rows";
+import {
+  createSourceRows,
+  deriveVisibleRows,
+  type SourceRow,
+} from "./derived-rows";
 import type {
   GridCoreFocusState,
   GridCoreOptions,

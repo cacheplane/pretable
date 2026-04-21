@@ -7,7 +7,12 @@ export interface BenchQueryState {
   scale: "smoke" | "dev" | "hypothesis" | "target";
   scriptName: Extract<
     BenchScriptName,
-    "initial" | "scroll" | "sort" | "filter-metadata" | "filter-text" | "updates"
+    | "initial"
+    | "scroll"
+    | "sort"
+    | "filter-metadata"
+    | "filter-text"
+    | "updates"
   >;
   autorun: boolean;
 }

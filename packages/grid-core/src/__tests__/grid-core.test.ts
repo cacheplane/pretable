@@ -316,9 +316,9 @@ describe("grid-core", () => {
       expect.arrayContaining(["a", "b", "d"]),
     );
     expect(snapshot.visibleRows.map((r) => r.id)).not.toContain("c");
-    expect(
-      snapshot.visibleRows.find((r) => r.id === "a")?.row,
-    ).toMatchObject({ name: "Updated" });
+    expect(snapshot.visibleRows.find((r) => r.id === "a")?.row).toMatchObject({
+      name: "Updated",
+    });
   });
 
   test("applyTransaction emits exactly one notification", () => {
@@ -398,9 +398,7 @@ describe("grid-core", () => {
     });
 
     const snapshot = grid.getSnapshot();
-    const names = snapshot.visibleRows.map(
-      (r) => (r.row as DemoRow).name,
-    );
+    const names = snapshot.visibleRows.map((r) => (r.row as DemoRow).name);
 
     expect(names).toEqual(["Alpha", "Bravo", "Charlie", "Zulu"]);
   });
