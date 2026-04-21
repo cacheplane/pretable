@@ -91,9 +91,19 @@ describe("grid-core", () => {
       notifications += 1;
     });
 
-    grid.setViewport({ scrollTop: 240, scrollLeft: 0, height: 320, width: 1440 });
+    grid.setViewport({
+      scrollTop: 240,
+      scrollLeft: 0,
+      height: 320,
+      width: 1440,
+    });
     unsubscribe();
-    grid.setViewport({ scrollTop: 480, scrollLeft: 100, height: 320, width: 1440 });
+    grid.setViewport({
+      scrollTop: 480,
+      scrollLeft: 100,
+      height: 320,
+      width: 1440,
+    });
 
     expect(notifications).toBe(1);
     expect(grid.getSnapshot().viewport).toEqual({
@@ -116,7 +126,12 @@ describe("grid-core", () => {
 
     expect(second).toBe(first);
 
-    grid.setViewport({ scrollTop: 44, scrollLeft: 0, height: 320, width: 1440 });
+    grid.setViewport({
+      scrollTop: 44,
+      scrollLeft: 0,
+      height: 320,
+      width: 1440,
+    });
 
     const third = grid.getSnapshot();
 
@@ -146,7 +161,12 @@ describe("grid-core", () => {
     expect(notifications).toBe(1);
 
     // scrollLeft changed — should emit
-    grid.setViewport({ scrollTop: 0, scrollLeft: 200, height: 320, width: 1440 });
+    grid.setViewport({
+      scrollTop: 0,
+      scrollLeft: 200,
+      height: 320,
+      width: 1440,
+    });
 
     expect(notifications).toBe(2);
   });

@@ -81,7 +81,13 @@ export function createDomRenderSnapshot<TRow extends GridCoreRow>(
           columns: (() => {
             let left = 0;
             return columnInputs.map((col, index) => {
-              const entry = { index, id: col.id, left, width: col.width, pinned: col.pinned };
+              const entry = {
+                index,
+                id: col.id,
+                left,
+                width: col.width,
+                pinned: col.pinned,
+              };
               left += col.width;
               return entry;
             });

@@ -25,7 +25,12 @@ export function createGridCore<TRow extends GridCoreRow>(
   let filters: Record<string, string> = {};
   let selection: GridCoreSelectionState = { rowIds: [], anchorRowId: null };
   let focus: GridCoreFocusState = { rowId: null, columnId: null };
-  let viewport: GridCoreViewportState = { scrollTop: 0, scrollLeft: 0, height: 0, width: 0 };
+  let viewport: GridCoreViewportState = {
+    scrollTop: 0,
+    scrollLeft: 0,
+    height: 0,
+    width: 0,
+  };
 
   return {
     options,
