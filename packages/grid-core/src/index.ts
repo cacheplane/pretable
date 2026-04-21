@@ -13,3 +13,4 @@ export type {
   GridCoreStore,
   GridCoreViewportState,
 } from "./types";
+export type { AutosizeOptions } from "@pretable-internal/layout-core";

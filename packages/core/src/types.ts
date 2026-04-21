@@ -9,6 +9,7 @@ export type {
   GridCoreViewportState as PretableViewportState,
 } from "@pretable-internal/grid-core";
 import type {
+  AutosizeOptions,
   GridCoreColumn,
   GridCoreOptions,
   GridCoreSnapshot,
@@ -29,4 +30,5 @@ export interface PretableGrid<
   options: PretableGridOptions<TRow>;
   getSnapshot(): GridCoreSnapshot<TRow>;
   setSort(columnId: string | null, direction: GridCoreSortDirection): void;
+  autosizeColumns(options?: AutosizeOptions): void;
 }
