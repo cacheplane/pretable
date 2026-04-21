@@ -1,3 +1,5 @@
+import { autosizeColumns } from "@pretable-internal/layout-core";
+import type { AutosizeOptions } from "@pretable-internal/layout-core";
 import { createSourceRows, deriveVisibleRows } from "./derived-rows";
 import type {
   GridCoreFocusState,
@@ -12,10 +14,45 @@ import type {
   GridCoreViewportState,
 } from "./types";
 
-export function createGridCore<TRow extends GridCoreRow>(
+function applyAutosize<TRow extends GridCoreRow>(
   options: GridCoreOptions<TRow>,
+  autosizeOptions?: AutosizeOptions,
+): GridCoreOptions<TRow> {
+  const result = autosizeColumns({
+    columns: options.columns,
+    rows: options.rows,
+    options: autosizeOptions,
+  });
+
+  if (result.widths.size === 0) {
+    return options;
+  }
+
+  const nextColumns = options.columns.map((column) => {
+    const computedWidth = result.widths.get(column.id);
+
+    if (computedWidth === undefined) {
+      return column;
+    }
+
+    return { ...column, widthPx: computedWidth };
+  });
+
+  return { ...options, columns: nextColumns };
+}
+
+export function createGridCore<TRow extends GridCoreRow>(
+  inputOptions: GridCoreOptions<TRow>,
 ): GridCoreStore<TRow> {
   const listeners = new Set<() => void>();
+  let options = inputOptions.autosize
+    ? applyAutosize(
+        inputOptions,
+        typeof inputOptions.autosize === "object"
+          ? inputOptions.autosize
+          : undefined,
+      )
+    : inputOptions;
   const sourceRows = createSourceRows(options);
   let cachedSnapshot: GridCoreSnapshot<TRow> | null = null;
   let cachedVisibleRows: GridCoreRowModel<TRow>[] | null = null;
@@ -32,9 +69,11 @@ export function createGridCore<TRow extends GridCoreRow>(
     width: 0,
   };
 
-  return {
-    options,
-    subscribe(listener) {
+  const store = {
+    get options() {
+      return options;
+    },
+    subscribe(listener: () => void) {
       listeners.add(listener);
 
       return () => {
@@ -159,7 +198,19 @@ export function createGridCore<TRow extends GridCoreRow>(
       viewport = nextViewport;
       emit();
     },
+    autosizeColumns(autosizeOptions?: AutosizeOptions) {
+      const nextOptions = applyAutosize(options, autosizeOptions);
+
+      if (nextOptions === options) {
+        return;
+      }
+
+      options = nextOptions;
+      emit();
+    },
   };
+
+  return store;
 
   function getSnapshot(): GridCoreSnapshot<TRow> {
     if (cachedSnapshot) {

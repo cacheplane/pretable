@@ -139,6 +139,78 @@ describe("grid-core", () => {
     expect(grid.getSnapshot()).toBe(third);
   });
 
+  test("declarative autosize computes widthPx for columns without explicit widths", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "short", header: "ID" },
+        { id: "long", header: "Description" },
+        { id: "fixed", header: "Fixed", widthPx: 200 },
+      ],
+      rows: [
+        { id: "1", short: "A", long: "A much longer text value that should produce a wider column", fixed: "x" },
+        { id: "2", short: "B", long: "Short", fixed: "y" },
+      ],
+      getRowId: (row) => String(row.id),
+      autosize: true,
+    });
+
+    const shortCol = grid.options.columns.find((c) => c.id === "short")!;
+    const longCol = grid.options.columns.find((c) => c.id === "long")!;
+    const fixedCol = grid.options.columns.find((c) => c.id === "fixed")!;
+
+    expect(shortCol.widthPx).toBeDefined();
+    expect(shortCol.widthPx).toBeGreaterThanOrEqual(60);
+    expect(shortCol.widthPx).toBeLessThanOrEqual(400);
+    expect(longCol.widthPx).toBeDefined();
+    expect(longCol.widthPx!).toBeGreaterThan(shortCol.widthPx!);
+    expect(fixedCol.widthPx).toBe(200);
+    expect(grid.getSnapshot().totalRowCount).toBe(2);
+  });
+
+  test("declarative autosize accepts custom options", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "name", header: "Name" },
+      ],
+      rows: [
+        { id: "1", name: "A very long name that would exceed a low max width" },
+      ],
+      getRowId: (row) => String(row.id),
+      autosize: { maxWidthPx: 100 },
+    });
+
+    const nameCol = grid.options.columns.find((c) => c.id === "name")!;
+
+    expect(nameCol.widthPx).toBeDefined();
+    expect(nameCol.widthPx!).toBeLessThanOrEqual(100);
+  });
+
+  test("imperative autosizeColumns recomputes widths and notifies subscribers", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "name", header: "Name" },
+      ],
+      rows: [
+        { id: "1", name: "Short" },
+      ],
+      getRowId: (row) => String(row.id),
+    });
+
+    let notifications = 0;
+    grid.subscribe(() => {
+      notifications += 1;
+    });
+
+    grid.autosizeColumns();
+
+    expect(notifications).toBe(1);
+
+    const nameCol = grid.options.columns.find((c) => c.id === "name")!;
+
+    expect(nameCol.widthPx).toBeDefined();
+    expect(nameCol.widthPx).toBeGreaterThanOrEqual(60);
+  });
+
   test("setViewport emits when scrollLeft changes and suppresses when unchanged", () => {
     const grid = createGridCore({
       columns: [...columns],

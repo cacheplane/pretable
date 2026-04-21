@@ -20,5 +20,6 @@ export function createGrid<TRow extends Record<string, unknown>>(
     setFocus: gridCore.setFocus,
     moveFocus: gridCore.moveFocus,
     setViewport: gridCore.setViewport,
+    autosizeColumns: gridCore.autosizeColumns,
   };
 }
