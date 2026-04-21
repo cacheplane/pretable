@@ -190,6 +190,31 @@ describe("bench-runner contract", () => {
       reason: expect.stringContaining("scenario"),
     });
 
+    // updates script is pretable-only
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "gridalpha",
+        scenarioId: "S5",
+        scriptName: "updates",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("adapter"),
+    });
+
+    // updates script is S5-only
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S2",
+        scriptName: "updates",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,

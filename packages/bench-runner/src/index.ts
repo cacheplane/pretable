@@ -254,6 +254,22 @@ export function validateSupportedP0aRequest(
     };
   }
 
+  if (request.scriptName === "updates") {
+    if (request.adapterId !== "pretable") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for updates script: ${request.adapterId}`,
+      };
+    }
+
+    if (request.scenarioId !== "S5") {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for updates script: ${request.scenarioId}`,
+      };
+    }
+  }
+
   if (interactionScripts.includes(request.scriptName)) {
     if (request.adapterId !== "pretable") {
       return {
