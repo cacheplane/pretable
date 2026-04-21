@@ -74,3 +74,32 @@ export interface ColumnPlan {
   totalWidth: number;
   pinnedLeftWidth: number;
 }
+
+export interface AutosizeColumnDef<
+  TRow extends Record<string, unknown> = Record<string, unknown>,
+> {
+  id: string;
+  header?: string;
+  widthPx?: number;
+  wrap?: boolean;
+  getValue?: (row: TRow) => unknown;
+}
+
+export interface AutosizeOptions {
+  maxWidthPx?: number;
+  minWidthPx?: number;
+  averageCharWidth?: number;
+  cellPaddingPx?: number;
+}
+
+export interface AutosizeColumnsInput<
+  TRow extends Record<string, unknown> = Record<string, unknown>,
+> {
+  columns: AutosizeColumnDef<TRow>[];
+  rows: TRow[];
+  options?: AutosizeOptions;
+}
+
+export interface AutosizeResult {
+  widths: Map<string, number>;
+}
