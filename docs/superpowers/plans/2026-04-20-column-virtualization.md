@@ -1524,3 +1524,11 @@ Record:
 - S1/S2/S7 H1 status
 - S3 run status and key metrics (nodeCount, rendered cells, scroll quality)
 - Any regressions or unexpected behavior
+
+---
+
+## Errata (2026-04-21)
+
+The `getCellStyle`, `getHeaderCellStyle`, and `getPinnedCellStyle` examples in Task 4, Step 1 of this plan were missing `top: 0`. The `getHeaderRowStyle` and `getRowStyle` examples were also missing a layout context (`display: "flex"`) for in-flow sticky pinned children. Those omissions shipped to production and caused the inspection grid's header backdrop to cover the body grid — sticky pinned cells stacked vertically in block flow, inflating the header row and shifting the static position of absolute siblings.
+
+Fix plan: [`2026-04-21-inspection-grid-layout-fix.md`](./2026-04-21-inspection-grid-layout-fix.md). The fix preserves `position: sticky` for pinned cells as the design spec requires (see [column-virtualization-design.md:106](../specs/2026-04-20-column-virtualization-design.md)).
