@@ -153,6 +153,26 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
+        scenarioId: "S3",
+        scriptName: "scroll",
+      }),
+    ).toEqual({ ok: true });
+
+    // S3 does NOT support interaction scripts
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S3",
+        scriptName: "sort",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
         profile: "tuned",
       }),
     ).toEqual({

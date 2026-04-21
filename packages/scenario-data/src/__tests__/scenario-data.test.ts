@@ -127,6 +127,27 @@ describe("scenario-data registry", () => {
     expect(dataset.rows).toHaveLength(120);
   });
 
+  test("models many-columns scenario S3 with 500 columns and 2 pinned", () => {
+    const dataset = createScenarioDataset("S3");
+
+    expect(getScenarioById("S3")).toMatchObject({
+      id: "S3",
+      name: "many-columns",
+      cols: 500,
+      row_height_mode: "fixed",
+      wrapped_columns: 0,
+      pinned_left: 2,
+      update_stream: "none",
+    });
+    expect(dataset.columns).toHaveLength(500);
+    expect(dataset.columns[0]).toMatchObject({ pinned: "left" });
+    expect(dataset.columns[1]).toMatchObject({ pinned: "left" });
+    expect(dataset.columns[2]).toMatchObject({ pinned: undefined });
+    expect(dataset.seed).toBe(303);
+    expect(dataset.scale).toBe("smoke");
+    expect(dataset.rowCount).toBe(120);
+  });
+
   test("supports all scale levels for S7 with same row counts as S2", () => {
     expect(createScenarioDataset("S7", { scale: "smoke" }).rowCount).toBe(120);
     expect(createScenarioDataset("S7", { scale: "dev" }).rowCount).toBe(750);

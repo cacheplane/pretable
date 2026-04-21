@@ -14,7 +14,7 @@ test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matr
     adapters: ["pretable", "gridalpha"],
     repeats: 1,
     scale: "dev",
-    scenarios: ["S1", "S2", "S7"],
+    scenarios: ["S1", "S2", "S3", "S7"],
     scripts: ["initial", "scroll"],
     passthroughArgs: [],
   });
