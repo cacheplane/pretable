@@ -12,3 +12,4 @@ export type {
   PretableViewportState,
   PretableVisibleRow,
 } from "./types";
+export type { AutosizeOptions } from "@pretable-internal/grid-core";

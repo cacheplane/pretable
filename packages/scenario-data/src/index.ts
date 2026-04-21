@@ -44,7 +44,7 @@ export interface ScenarioColumn {
   id: string;
   header: string;
   wrap: boolean;
-  widthPx: number;
+  widthPx?: number;
   pinned?: "left";
 }
 
@@ -259,14 +259,21 @@ export function createScenarioDataset(
 }
 
 function buildColumns(scenario: ScenarioDefinition): readonly ScenarioColumn[] {
-  return Array.from({ length: scenario.cols }, (_, index) => ({
-    id: `col_${index}`,
-    header: createColumnHeader(index),
-    wrap: index < scenario.wrapped_columns,
-    widthPx:
-      index < scenario.wrapped_columns ? 220 : index % 4 === 3 ? 96 : 140,
-    pinned: index < scenario.pinned_left ? "left" : undefined,
-  }));
+  return Array.from({ length: scenario.cols }, (_, index) => {
+    const column: ScenarioColumn = {
+      id: `col_${index}`,
+      header: createColumnHeader(index),
+      wrap: index < scenario.wrapped_columns,
+      pinned: index < scenario.pinned_left ? "left" : undefined,
+    };
+
+    if (!scenario.autosize_all_columns) {
+      column.widthPx =
+        index < scenario.wrapped_columns ? 220 : index % 4 === 3 ? 96 : 140;
+    }
+
+    return column;
+  });
 }
 
 function buildRows(

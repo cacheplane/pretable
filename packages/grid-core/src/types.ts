@@ -1,4 +1,7 @@
-import type { LayoutSpan } from "@pretable-internal/layout-core";
+import type {
+  AutosizeOptions,
+  LayoutSpan,
+} from "@pretable-internal/layout-core";
 
 export type GridCoreRow = Record<string, unknown>;
 export type GridCoreSortDirection = "asc" | "desc" | null;
@@ -18,6 +21,7 @@ export interface GridCoreOptions<TRow extends GridCoreRow = GridCoreRow> {
   columns: GridCoreColumn<TRow>[];
   rows: TRow[];
   getRowId?: (row: TRow, index: number) => string;
+  autosize?: boolean | AutosizeOptions;
 }
 
 export interface GridCoreSortState {
@@ -71,6 +75,7 @@ export interface GridCoreStore<TRow extends GridCoreRow = GridCoreRow> {
   setFocus(rowId: string | null, columnId: string | null): void;
   moveFocus(delta: number): void;
   setViewport(viewport: GridCoreViewportState): void;
+  autosizeColumns(autosizeOptions?: AutosizeOptions): void;
 }
 
 export interface GridCoreFrame<TRow extends GridCoreRow = GridCoreRow> {

@@ -35,6 +35,7 @@ export function PretableAdapter({
   const adapterRef = useRef<HTMLElement>(null);
   const surfaceColumns = useMemo(() => [...dataset.columns], [dataset.columns]);
   const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
+  const autosize = dataset.scenario.autosize_all_columns === true;
 
   const onTelemetryChangeRef = useRef(onTelemetryChange);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
@@ -100,6 +101,7 @@ export function PretableAdapter({
 
       <PretableSurface
         ariaLabel="Pretable React adapter"
+        autosize={autosize}
         columns={surfaceColumns}
         getRowId={getScenarioRowId}
         interactionState={
