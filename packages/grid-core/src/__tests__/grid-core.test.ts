@@ -241,4 +241,188 @@ describe("grid-core", () => {
 
     expect(notifications).toBe(2);
   });
+
+  test("applyTransaction adds rows and they appear in the snapshot", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.applyTransaction({
+      add: [{ id: "d", name: "Delta", status: "open", message: "new row" }],
+    });
+
+    const snapshot = grid.getSnapshot();
+
+    expect(snapshot.totalRowCount).toBe(4);
+    expect(snapshot.visibleRows.map((r) => r.id)).toContain("d");
+  });
+
+  test("applyTransaction updates existing rows via partial merge", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.applyTransaction({
+      update: [{ id: "a", name: "Updated Zulu" }],
+    });
+
+    const snapshot = grid.getSnapshot();
+    const updatedRow = snapshot.visibleRows.find((r) => r.id === "a");
+
+    expect(updatedRow?.row).toMatchObject({
+      id: "a",
+      name: "Updated Zulu",
+      status: "open",
+      message: "alpha ready",
+    });
+  });
+
+  test("applyTransaction removes rows by id", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.applyTransaction({ remove: ["b"] });
+
+    const snapshot = grid.getSnapshot();
+
+    expect(snapshot.totalRowCount).toBe(2);
+    expect(snapshot.visibleRows.map((r) => r.id)).not.toContain("b");
+  });
+
+  test("applyTransaction handles add, update, and remove in a single call", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.applyTransaction({
+      add: [{ id: "d", name: "Delta", status: "open", message: "added" }],
+      update: [{ id: "a", name: "Updated" }],
+      remove: ["c"],
+    });
+
+    const snapshot = grid.getSnapshot();
+
+    expect(snapshot.totalRowCount).toBe(3);
+    expect(snapshot.visibleRows.map((r) => r.id)).toEqual(
+      expect.arrayContaining(["a", "b", "d"]),
+    );
+    expect(snapshot.visibleRows.map((r) => r.id)).not.toContain("c");
+    expect(
+      snapshot.visibleRows.find((r) => r.id === "a")?.row,
+    ).toMatchObject({ name: "Updated" });
+  });
+
+  test("applyTransaction emits exactly one notification", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+    let notifications = 0;
+
+    grid.subscribe(() => {
+      notifications += 1;
+    });
+
+    grid.applyTransaction({
+      add: [{ id: "d", name: "Delta", status: "open", message: "new" }],
+      update: [{ id: "a", name: "Updated" }],
+      remove: ["c"],
+    });
+
+    expect(notifications).toBe(1);
+  });
+
+  test("applyTransaction silently skips update for nonexistent row", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.applyTransaction({
+      update: [{ id: "nonexistent", name: "Ghost" }],
+    });
+
+    const snapshot = grid.getSnapshot();
+
+    expect(snapshot.totalRowCount).toBe(3);
+  });
+
+  test("applyTransaction silently skips remove for nonexistent row", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.applyTransaction({ remove: ["nonexistent"] });
+
+    const snapshot = grid.getSnapshot();
+
+    expect(snapshot.totalRowCount).toBe(3);
+  });
+
+  test("applyTransaction throws when getRowId is not provided", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+    });
+
+    expect(() => {
+      grid.applyTransaction({
+        add: [{ id: "d", name: "Delta", status: "open", message: "new" }],
+      });
+    }).toThrow("getRowId");
+  });
+
+  test("applyTransaction added rows are sorted into position by active sort", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.setSort("name", "asc");
+    grid.applyTransaction({
+      add: [{ id: "d", name: "Charlie", status: "open", message: "new" }],
+    });
+
+    const snapshot = grid.getSnapshot();
+    const names = snapshot.visibleRows.map(
+      (r) => (r.row as DemoRow).name,
+    );
+
+    expect(names).toEqual(["Alpha", "Bravo", "Charlie", "Zulu"]);
+  });
+
+  test("applyTransaction invalidates snapshot cache", () => {
+    const grid = createGridCore({
+      columns: [...columns],
+      rows,
+      getRowId: (row) => row.id,
+    });
+
+    const before = grid.getSnapshot();
+
+    grid.applyTransaction({
+      update: [{ id: "a", name: "Changed" }],
+    });
+
+    const after = grid.getSnapshot();
+
+    expect(after).not.toBe(before);
+    expect(after.visibleRows.find((r) => r.id === "a")?.row).toMatchObject({
+      name: "Changed",
+    });
+  });
 });

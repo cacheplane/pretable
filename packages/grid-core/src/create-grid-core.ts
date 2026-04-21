@@ -1,6 +1,6 @@
 import { autosizeColumns } from "@pretable-internal/layout-core";
 import type { AutosizeOptions } from "@pretable-internal/layout-core";
-import { createSourceRows, deriveVisibleRows } from "./derived-rows";
+import { createSourceRows, deriveVisibleRows, type SourceRow } from "./derived-rows";
 import type {
   GridCoreFocusState,
   GridCoreOptions,
@@ -11,6 +11,7 @@ import type {
   GridCoreSortDirection,
   GridCoreSortState,
   GridCoreStore,
+  GridCoreTransaction,
   GridCoreViewportState,
 } from "./types";
 
@@ -53,7 +54,10 @@ export function createGridCore<TRow extends GridCoreRow>(
           : undefined,
       )
     : inputOptions;
-  const sourceRows = createSourceRows(options);
+  let sourceRows = createSourceRows(options);
+  const sourceRowIndex = new Map<string, SourceRow<TRow>>(
+    sourceRows.map((entry) => [entry.id, entry]),
+  );
   let cachedSnapshot: GridCoreSnapshot<TRow> | null = null;
   let cachedVisibleRows: GridCoreRowModel<TRow>[] | null = null;
   let cachedDerivedSort: GridCoreSortState | null = null;
@@ -206,6 +210,70 @@ export function createGridCore<TRow extends GridCoreRow>(
       }
 
       options = nextOptions;
+      emit();
+    },
+    applyTransaction(transaction: GridCoreTransaction<TRow>) {
+      if (!options.getRowId) {
+        throw new Error(
+          "applyTransaction requires getRowId on GridCoreOptions",
+        );
+      }
+
+      const getRowId = options.getRowId;
+
+      if (transaction.remove) {
+        const removeSet = new Set(transaction.remove);
+
+        sourceRows = sourceRows.filter((entry) => {
+          if (removeSet.has(entry.id)) {
+            sourceRowIndex.delete(entry.id);
+            return false;
+          }
+
+          return true;
+        });
+      }
+
+      if (transaction.update) {
+        for (const patch of transaction.update) {
+          const id = getRowId(patch as TRow, -1);
+          const existing = sourceRowIndex.get(id);
+
+          if (!existing) {
+            continue;
+          }
+
+          const merged = { ...existing.row, ...patch } as TRow;
+          const updated: SourceRow<TRow> = {
+            id: existing.id,
+            row: merged,
+            sourceIndex: existing.sourceIndex,
+          };
+          const arrayIndex = sourceRows.indexOf(existing);
+
+          if (arrayIndex !== -1) {
+            sourceRows[arrayIndex] = updated;
+          }
+
+          sourceRowIndex.set(id, updated);
+        }
+      }
+
+      if (transaction.add) {
+        for (const row of transaction.add) {
+          const id = getRowId(row, sourceRows.length);
+          const entry: SourceRow<TRow> = {
+            id,
+            row,
+            sourceIndex: sourceRows.length,
+          };
+
+          sourceRows.push(entry);
+          sourceRowIndex.set(id, entry);
+        }
+      }
+
+      cachedVisibleRows = null;
       emit();
     },
   };
