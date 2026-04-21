@@ -55,6 +55,7 @@
 ### Task 1: Add `planColumns()` to layout-core
 
 **Files:**
+
 - Create: `packages/layout-core/src/column-plan.ts`
 - Modify: `packages/layout-core/src/types.ts`
 - Modify: `packages/layout-core/src/index.ts`
@@ -248,15 +249,16 @@ Expected: FAIL — `planColumns` is not exported yet
 - [ ] **Step 5: Implement `planColumns` in `packages/layout-core/src/column-plan.ts`**
 
 ```typescript
-import type {
-  ColumnPlan,
-  PlanColumnsInput,
-  PlannedColumn,
-} from "./types";
+import type { ColumnPlan, PlanColumnsInput, PlannedColumn } from "./types";
 
 export function planColumns(input: PlanColumnsInput): ColumnPlan {
   const pinned: PlannedColumn[] = [];
-  const scrollable: { index: number; id: string; width: number; left: number }[] = [];
+  const scrollable: {
+    index: number;
+    id: string;
+    width: number;
+    left: number;
+  }[] = [];
   let pinnedLeftWidth = 0;
   let scrollableLeft = 0;
 
@@ -296,7 +298,8 @@ export function planColumns(input: PlanColumnsInput): ColumnPlan {
 
   while (low <= high) {
     const mid = Math.floor((low + high) / 2);
-    const colRight = scrollable[mid].left + scrollable[mid].width + pinnedLeftWidth;
+    const colRight =
+      scrollable[mid].left + scrollable[mid].width + pinnedLeftWidth;
 
     if (colRight <= input.scrollLeft) {
       low = mid + 1;
@@ -361,6 +364,7 @@ git commit -m "feat(layout-core): add planColumns for horizontal column virtuali
 ### Task 2: Expand grid-core viewport state with `scrollLeft` and `width`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts`
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 - Test: `packages/grid-core/src/__tests__/grid-core.test.ts`
@@ -370,85 +374,90 @@ git commit -m "feat(layout-core): add planColumns for horizontal column virtuali
 In `packages/grid-core/src/__tests__/grid-core.test.ts`, update the test `"the external store can return a snapshot and emit change notifications"`. Change the `setViewport` calls to include `scrollLeft` and `width`:
 
 ```typescript
-  test("the external store can return a snapshot and emit change notifications", () => {
-    const grid = createGridCore({
-      columns: [...columns],
-      rows,
-      getRowId: (row) => row.id,
-    });
-    let notifications = 0;
-
-    const unsubscribe = grid.subscribe(() => {
-      notifications += 1;
-    });
-
-    grid.setViewport({ scrollTop: 240, scrollLeft: 0, height: 320, width: 1440 });
-    unsubscribe();
-    grid.setViewport({ scrollTop: 480, scrollLeft: 100, height: 320, width: 1440 });
-
-    expect(notifications).toBe(1);
-    expect(grid.getSnapshot().viewport).toEqual({
-      scrollTop: 480,
-      scrollLeft: 100,
-      height: 320,
-      width: 1440,
-    });
+test("the external store can return a snapshot and emit change notifications", () => {
+  const grid = createGridCore({
+    columns: [...columns],
+    rows,
+    getRowId: (row) => row.id,
   });
+  let notifications = 0;
+
+  const unsubscribe = grid.subscribe(() => {
+    notifications += 1;
+  });
+
+  grid.setViewport({ scrollTop: 240, scrollLeft: 0, height: 320, width: 1440 });
+  unsubscribe();
+  grid.setViewport({
+    scrollTop: 480,
+    scrollLeft: 100,
+    height: 320,
+    width: 1440,
+  });
+
+  expect(notifications).toBe(1);
+  expect(grid.getSnapshot().viewport).toEqual({
+    scrollTop: 480,
+    scrollLeft: 100,
+    height: 320,
+    width: 1440,
+  });
+});
 ```
 
 Also update the `"getSnapshot returns a stable reference until state changes"` test:
 
 ```typescript
-  test("getSnapshot returns a stable reference until state changes", () => {
-    const grid = createGridCore({
-      columns: [...columns],
-      rows,
-      getRowId: (row) => row.id,
-    });
-
-    const first = grid.getSnapshot();
-    const second = grid.getSnapshot();
-
-    expect(second).toBe(first);
-
-    grid.setViewport({ scrollTop: 44, scrollLeft: 0, height: 320, width: 1440 });
-
-    const third = grid.getSnapshot();
-
-    expect(third).not.toBe(first);
-    expect(grid.getSnapshot()).toBe(third);
+test("getSnapshot returns a stable reference until state changes", () => {
+  const grid = createGridCore({
+    columns: [...columns],
+    rows,
+    getRowId: (row) => row.id,
   });
+
+  const first = grid.getSnapshot();
+  const second = grid.getSnapshot();
+
+  expect(second).toBe(first);
+
+  grid.setViewport({ scrollTop: 44, scrollLeft: 0, height: 320, width: 1440 });
+
+  const third = grid.getSnapshot();
+
+  expect(third).not.toBe(first);
+  expect(grid.getSnapshot()).toBe(third);
+});
 ```
 
 Add a new test for `scrollLeft` change detection:
 
 ```typescript
-  test("setViewport emits when scrollLeft changes and suppresses when unchanged", () => {
-    const grid = createGridCore({
-      columns: [...columns],
-      rows,
-      getRowId: (row) => row.id,
-    });
-    let notifications = 0;
-
-    grid.subscribe(() => {
-      notifications += 1;
-    });
-
-    grid.setViewport({ scrollTop: 0, scrollLeft: 0, height: 320, width: 1440 });
-
-    expect(notifications).toBe(1);
-
-    // Same state — should not emit
-    grid.setViewport({ scrollTop: 0, scrollLeft: 0, height: 320, width: 1440 });
-
-    expect(notifications).toBe(1);
-
-    // scrollLeft changed — should emit
-    grid.setViewport({ scrollTop: 0, scrollLeft: 200, height: 320, width: 1440 });
-
-    expect(notifications).toBe(2);
+test("setViewport emits when scrollLeft changes and suppresses when unchanged", () => {
+  const grid = createGridCore({
+    columns: [...columns],
+    rows,
+    getRowId: (row) => row.id,
   });
+  let notifications = 0;
+
+  grid.subscribe(() => {
+    notifications += 1;
+  });
+
+  grid.setViewport({ scrollTop: 0, scrollLeft: 0, height: 320, width: 1440 });
+
+  expect(notifications).toBe(1);
+
+  // Same state — should not emit
+  grid.setViewport({ scrollTop: 0, scrollLeft: 0, height: 320, width: 1440 });
+
+  expect(notifications).toBe(1);
+
+  // scrollLeft changed — should emit
+  grid.setViewport({ scrollTop: 0, scrollLeft: 200, height: 320, width: 1440 });
+
+  expect(notifications).toBe(2);
+});
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -474,37 +483,42 @@ export interface GridCoreViewportState {
 Change the initial viewport state on line 28 from:
 
 ```typescript
-  let viewport: GridCoreViewportState = { scrollTop: 0, height: 0 };
+let viewport: GridCoreViewportState = { scrollTop: 0, height: 0 };
 ```
 
 to:
 
 ```typescript
-  let viewport: GridCoreViewportState = { scrollTop: 0, scrollLeft: 0, height: 0, width: 0 };
+let viewport: GridCoreViewportState = {
+  scrollTop: 0,
+  scrollLeft: 0,
+  height: 0,
+  width: 0,
+};
 ```
 
 Update the `setViewport` equality check (around line 143-148) from:
 
 ```typescript
-      if (
-        viewport.scrollTop === nextViewport.scrollTop &&
-        viewport.height === nextViewport.height
-      ) {
-        return;
-      }
+if (
+  viewport.scrollTop === nextViewport.scrollTop &&
+  viewport.height === nextViewport.height
+) {
+  return;
+}
 ```
 
 to:
 
 ```typescript
-      if (
-        viewport.scrollTop === nextViewport.scrollTop &&
-        viewport.scrollLeft === nextViewport.scrollLeft &&
-        viewport.height === nextViewport.height &&
-        viewport.width === nextViewport.width
-      ) {
-        return;
-      }
+if (
+  viewport.scrollTop === nextViewport.scrollTop &&
+  viewport.scrollLeft === nextViewport.scrollLeft &&
+  viewport.height === nextViewport.height &&
+  viewport.width === nextViewport.width
+) {
+  return;
+}
 ```
 
 - [ ] **Step 5: Fix all TypeScript callers that pass the old 2-field viewport**
@@ -514,6 +528,7 @@ There are several files that call `grid.setViewport` or `setViewport` with only 
 Run: `pnpm typecheck 2>&1 | grep "scrollLeft"`
 
 Fix each caller by adding the missing fields. The key callers are:
+
 - `packages/react/src/use-pretable.ts` (the `useLayoutEffect` that syncs viewport)
 - `packages/react/src/internal/pretable-surface.tsx` (the `onScroll` handler)
 - `packages/renderer-dom/src/__tests__/renderer-dom.test.ts` (test that calls `grid.setViewport`)
@@ -540,6 +555,7 @@ git commit -m "feat(grid-core): expand viewport state with scrollLeft and width"
 ### Task 3: Add column planning to renderer-dom
 
 **Files:**
+
 - Modify: `packages/renderer-dom/src/types.ts`
 - Modify: `packages/renderer-dom/src/create-renderer.ts`
 - Test: `packages/renderer-dom/src/__tests__/renderer-dom.test.ts`
@@ -549,90 +565,113 @@ git commit -m "feat(grid-core): expand viewport state with scrollLeft and width"
 Add these tests to the existing `describe("renderer-dom", ...)` block:
 
 ```typescript
-  test("virtualizes columns when scrollLeft and viewportWidth are provided", () => {
-    const manyColumns = Array.from({ length: 50 }, (_, i) => ({
+test("virtualizes columns when scrollLeft and viewportWidth are provided", () => {
+  const manyColumns = Array.from({ length: 50 }, (_, i) => ({
+    id: `col_${i}`,
+    header: `Column ${i}`,
+    widthPx: 140,
+  }));
+  const grid = createGridCore({
+    columns: manyColumns,
+    rows: [
+      {
+        id: "row-0",
+        ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])),
+      },
+      {
+        id: "row-1",
+        ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])),
+      },
+    ],
+    getRowId: (row) => String(row.id),
+  });
+
+  const render = createDomRenderSnapshot({
+    columns: grid.options.columns,
+    snapshot: grid.getSnapshot(),
+    scrollTop: 0,
+    scrollLeft: 0,
+    viewportHeight: 320,
+    viewportWidth: 400,
+    overscan: 1,
+  });
+
+  expect(render.columns.length).toBeLessThan(50);
+  expect(render.columns.length).toBeGreaterThanOrEqual(3);
+  expect(render.totalWidth).toBe(50 * 140);
+  expect(render.nodeCount).toBe(render.rows.length * render.columns.length);
+});
+
+test("includes pinned columns in the column plan regardless of scrollLeft", () => {
+  const columnsWithPinned = [
+    {
+      id: "pinned_0",
+      header: "Pinned 0",
+      widthPx: 100,
+      pinned: "left" as const,
+    },
+    {
+      id: "pinned_1",
+      header: "Pinned 1",
+      widthPx: 120,
+      pinned: "left" as const,
+    },
+    ...Array.from({ length: 20 }, (_, i) => ({
       id: `col_${i}`,
       header: `Column ${i}`,
       widthPx: 140,
-    }));
-    const grid = createGridCore({
-      columns: manyColumns,
-      rows: [
-        { id: "row-0", ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])) },
-        { id: "row-1", ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])) },
-      ],
-      getRowId: (row) => String(row.id),
-    });
-
-    const render = createDomRenderSnapshot({
-      columns: grid.options.columns,
-      snapshot: grid.getSnapshot(),
-      scrollTop: 0,
-      scrollLeft: 0,
-      viewportHeight: 320,
-      viewportWidth: 400,
-      overscan: 1,
-    });
-
-    expect(render.columns.length).toBeLessThan(50);
-    expect(render.columns.length).toBeGreaterThanOrEqual(3);
-    expect(render.totalWidth).toBe(50 * 140);
-    expect(render.nodeCount).toBe(render.rows.length * render.columns.length);
+    })),
+  ];
+  const grid = createGridCore({
+    columns: columnsWithPinned,
+    rows: [
+      {
+        id: "row-0",
+        ...Object.fromEntries(columnsWithPinned.map((c) => [c.id, "v"])),
+      },
+    ],
+    getRowId: (row) => String(row.id),
   });
 
-  test("includes pinned columns in the column plan regardless of scrollLeft", () => {
-    const columnsWithPinned = [
-      { id: "pinned_0", header: "Pinned 0", widthPx: 100, pinned: "left" as const },
-      { id: "pinned_1", header: "Pinned 1", widthPx: 120, pinned: "left" as const },
-      ...Array.from({ length: 20 }, (_, i) => ({
-        id: `col_${i}`,
-        header: `Column ${i}`,
-        widthPx: 140,
-      })),
-    ];
-    const grid = createGridCore({
-      columns: columnsWithPinned,
-      rows: [{ id: "row-0", ...Object.fromEntries(columnsWithPinned.map((c) => [c.id, "v"])) }],
-      getRowId: (row) => String(row.id),
-    });
-
-    const render = createDomRenderSnapshot({
-      columns: grid.options.columns,
-      snapshot: grid.getSnapshot(),
-      scrollTop: 0,
-      scrollLeft: 2000,
-      viewportHeight: 320,
-      viewportWidth: 400,
-      overscan: 1,
-    });
-
-    const pinnedIds = render.columns.filter((c) => c.pinned === "left").map((c) => c.id);
-
-    expect(pinnedIds).toEqual(["pinned_0", "pinned_1"]);
+  const render = createDomRenderSnapshot({
+    columns: grid.options.columns,
+    snapshot: grid.getSnapshot(),
+    scrollTop: 0,
+    scrollLeft: 2000,
+    viewportHeight: 320,
+    viewportWidth: 400,
+    overscan: 1,
   });
 
-  test("returns all columns when viewportWidth is not provided (backwards compatible)", () => {
-    const grid = createGridCore({
-      columns: [
-        { id: "a", header: "A", widthPx: 140 },
-        { id: "b", header: "B", widthPx: 140 },
-      ],
-      rows: [{ id: "row-0", a: "1", b: "2" }],
-      getRowId: (row) => String(row.id),
-    });
+  const pinnedIds = render.columns
+    .filter((c) => c.pinned === "left")
+    .map((c) => c.id);
 
-    const render = createDomRenderSnapshot({
-      columns: grid.options.columns,
-      snapshot: grid.getSnapshot(),
-      scrollTop: 0,
-      viewportHeight: 320,
-      overscan: 1,
-    });
+  expect(pinnedIds).toEqual(["pinned_0", "pinned_1"]);
+});
 
-    expect(render.columns).toHaveLength(2);
-    expect(render.columns[0]).toMatchObject({ id: "a", left: 0, width: 140 });
-    expect(render.columns[1]).toMatchObject({ id: "b", left: 140, width: 140 });
+test("returns all columns when viewportWidth is not provided (backwards compatible)", () => {
+  const grid = createGridCore({
+    columns: [
+      { id: "a", header: "A", widthPx: 140 },
+      { id: "b", header: "B", widthPx: 140 },
+    ],
+    rows: [{ id: "row-0", a: "1", b: "2" }],
+    getRowId: (row) => String(row.id),
   });
+
+  const render = createDomRenderSnapshot({
+    columns: grid.options.columns,
+    snapshot: grid.getSnapshot(),
+    scrollTop: 0,
+    viewportHeight: 320,
+    overscan: 1,
+  });
+
+  expect(render.columns).toHaveLength(2);
+  expect(render.columns[0]).toMatchObject({ id: "a", left: 0, width: 140 });
+  expect(render.columns[1]).toMatchObject({ id: "b", left: 140, width: 140 });
+});
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -695,47 +734,55 @@ import { planColumns } from "@pretable-internal/layout-core";
 Inside `createDomRenderSnapshot`, after the existing `planViewport` call and `rows` mapping, add column planning. Replace the return statement (the block starting with `return {`) with:
 
 ```typescript
-  const WRAPPED_COLUMN_WIDTH_FOR_PLAN = 220;
-  const FIXED_COLUMN_WIDTH_FOR_PLAN = 140;
+const WRAPPED_COLUMN_WIDTH_FOR_PLAN = 220;
+const FIXED_COLUMN_WIDTH_FOR_PLAN = 140;
 
-  const columnInputs = input.columns.map((col) => ({
-    id: col.id,
-    width: col.widthPx ?? (col.wrap ? WRAPPED_COLUMN_WIDTH_FOR_PLAN : FIXED_COLUMN_WIDTH_FOR_PLAN),
-    pinned: col.pinned,
-  }));
+const columnInputs = input.columns.map((col) => ({
+  id: col.id,
+  width:
+    col.widthPx ??
+    (col.wrap ? WRAPPED_COLUMN_WIDTH_FOR_PLAN : FIXED_COLUMN_WIDTH_FOR_PLAN),
+  pinned: col.pinned,
+}));
 
-  const columnPlan =
-    input.viewportWidth !== undefined
-      ? planColumns({
-          columns: columnInputs,
-          scrollLeft: input.scrollLeft ?? 0,
-          viewportWidth: input.viewportWidth,
-          overscan: input.overscan,
-        })
-      : {
-          columns: columnInputs.map((col, index) => {
-            let left = 0;
-            for (let i = 0; i < index; i++) {
-              left += columnInputs[i].width;
-            }
-            return { index, id: col.id, left, width: col.width, pinned: col.pinned };
-          }),
-          totalWidth: columnInputs.reduce((sum, col) => sum + col.width, 0),
-          pinnedLeftWidth: columnInputs
-            .filter((col) => col.pinned === "left")
-            .reduce((sum, col) => sum + col.width, 0),
-        };
+const columnPlan =
+  input.viewportWidth !== undefined
+    ? planColumns({
+        columns: columnInputs,
+        scrollLeft: input.scrollLeft ?? 0,
+        viewportWidth: input.viewportWidth,
+        overscan: input.overscan,
+      })
+    : {
+        columns: columnInputs.map((col, index) => {
+          let left = 0;
+          for (let i = 0; i < index; i++) {
+            left += columnInputs[i].width;
+          }
+          return {
+            index,
+            id: col.id,
+            left,
+            width: col.width,
+            pinned: col.pinned,
+          };
+        }),
+        totalWidth: columnInputs.reduce((sum, col) => sum + col.width, 0),
+        pinnedLeftWidth: columnInputs
+          .filter((col) => col.pinned === "left")
+          .reduce((sum, col) => sum + col.width, 0),
+      };
 
-  return {
-    frame: {
-      snapshot: input.snapshot,
-    },
-    rows,
-    columns: columnPlan.columns,
-    nodeCount: rows.length * columnPlan.columns.length,
-    totalHeight: viewportPlan.totalHeight,
-    totalWidth: columnPlan.totalWidth,
-  };
+return {
+  frame: {
+    snapshot: input.snapshot,
+  },
+  rows,
+  columns: columnPlan.columns,
+  nodeCount: rows.length * columnPlan.columns.length,
+  totalHeight: viewportPlan.totalHeight,
+  totalWidth: columnPlan.totalWidth,
+};
 ```
 
 Remove the old `totalWidth` calculation that was in the return block (the `input.columns.reduce(...)` line).
@@ -759,6 +806,7 @@ git commit -m "feat(renderer-dom): add column planning to render snapshot"
 This task changes the layout model for cells from CSS grid to absolute positioning, which is required for column virtualization (only a subset of columns will be in the DOM). This is a prerequisite for the actual column virtualization wiring in Task 5.
 
 **Files:**
+
 - Modify: `packages/react/src/internal/styles.ts`
 - Modify: `packages/react/src/internal/pretable-surface.tsx`
 - Test: `packages/react/src/internal/__tests__/pretable-surface.test.tsx`
@@ -812,10 +860,7 @@ export function getScrollContentStyle(
   };
 }
 
-export function getRowStyle(
-  top: number,
-  height: number,
-): CSSProperties {
+export function getRowStyle(top: number, height: number): CSSProperties {
   return {
     borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
     boxSizing: "border-box",
@@ -826,10 +871,7 @@ export function getRowStyle(
   };
 }
 
-export function getCellStyle(
-  left: number,
-  width: number,
-): CSSProperties {
+export function getCellStyle(left: number, width: number): CSSProperties {
   return {
     boxSizing: "border-box",
     height: "100%",
@@ -840,10 +882,7 @@ export function getCellStyle(
   };
 }
 
-export function getHeaderCellStyle(
-  left: number,
-  width: number,
-): CSSProperties {
+export function getHeaderCellStyle(left: number, width: number): CSSProperties {
   return {
     boxSizing: "border-box",
     height: "100%",
@@ -877,11 +916,11 @@ This is the largest change. The key modifications:
 Update the component body. Remove the `templateColumns` useMemo entirely:
 
 ```typescript
-  // DELETE this block:
-  // const templateColumns = useMemo(
-  //   () => columns.map((column) => `${getColumnWidth(column)}px`).join(" "),
-  //   [columns],
-  // );
+// DELETE this block:
+// const templateColumns = useMemo(
+//   () => columns.map((column) => `${getColumnWidth(column)}px`).join(" "),
+//   [columns],
+// );
 ```
 
 Change the header row rendering to use `renderSnapshot.columns` and absolute positioning. Replace the header `<div>` with:
@@ -1035,6 +1074,7 @@ git commit -m "refactor(react): switch cells from CSS grid to absolute positioni
 ### Task 5: Wire up horizontal scroll tracking and column virtualization in the React surface
 
 **Files:**
+
 - Modify: `packages/react/src/use-pretable.ts`
 - Modify: `packages/react/src/internal/pretable-surface.tsx`
 - Test: `packages/react/src/internal/__tests__/pretable-surface.test.tsx`
@@ -1152,20 +1192,27 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
 Update the `createDomRenderSnapshot` call to include `scrollLeft` and `viewportWidth`:
 
 ```typescript
-  const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
-    () =>
-      createDomRenderSnapshot({
-        columns: grid.options.columns,
-        snapshot,
-        scrollTop: snapshot.viewport.scrollTop,
-        scrollLeft: snapshot.viewport.scrollLeft,
-        viewportHeight,
-        viewportWidth,
-        overscan,
-        measuredHeights,
-      }),
-    [grid.options.columns, measuredHeights, overscan, snapshot, viewportHeight, viewportWidth],
-  );
+const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
+  () =>
+    createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot,
+      scrollTop: snapshot.viewport.scrollTop,
+      scrollLeft: snapshot.viewport.scrollLeft,
+      viewportHeight,
+      viewportWidth,
+      overscan,
+      measuredHeights,
+    }),
+  [
+    grid.options.columns,
+    measuredHeights,
+    overscan,
+    snapshot,
+    viewportHeight,
+    viewportWidth,
+  ],
+);
 ```
 
 Update the `PretableRenderSnapshot` type to include `columns`:
@@ -1175,7 +1222,13 @@ export interface PretableRenderSnapshot<
   TRow extends PretableRow = PretableRow,
 > {
   rows: PretableRenderRow<TRow>[];
-  columns: { index: number; id: string; left: number; width: number; pinned?: "left" }[];
+  columns: {
+    index: number;
+    id: string;
+    left: number;
+    width: number;
+    pinned?: "left";
+  }[];
   nodeCount: number;
   totalHeight: number;
   totalWidth: number;
@@ -1189,34 +1242,34 @@ In `packages/react/src/internal/pretable-surface.tsx`:
 Add a `viewportWidth` state that reads from the scroll container's width. Use a ref callback or layout effect to measure the container width:
 
 ```typescript
-  const [viewportWidth, setViewportWidth] = useState(0);
-  const viewportRef = useRef<HTMLDivElement>(null);
+const [viewportWidth, setViewportWidth] = useState(0);
+const viewportRef = useRef<HTMLDivElement>(null);
 ```
 
 Add a layout effect to measure initial width:
 
 ```typescript
-  useLayoutEffect(() => {
-    const el = viewportRef.current;
-    if (el && viewportWidth === 0) {
-      setViewportWidth(el.clientWidth);
-    }
-  });
+useLayoutEffect(() => {
+  const el = viewportRef.current;
+  if (el && viewportWidth === 0) {
+    setViewportWidth(el.clientWidth);
+  }
+});
 ```
 
 Pass `viewportWidth` to `usePretableModel`:
 
 ```typescript
-  const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
-    columns,
-    getRowId,
-    interactionOverrides: interactionState ?? undefined,
-    measuredHeights,
-    overscan,
-    rows,
-    viewportHeight: bodyViewportHeight,
-    viewportWidth: viewportWidth || undefined,
-  });
+const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
+  columns,
+  getRowId,
+  interactionOverrides: interactionState ?? undefined,
+  measuredHeights,
+  overscan,
+  rows,
+  viewportHeight: bodyViewportHeight,
+  viewportWidth: viewportWidth || undefined,
+});
 ```
 
 Update the `onScroll` handler to include `scrollLeft` and `width`:
@@ -1239,29 +1292,29 @@ Update the `onScroll` handler to include `scrollLeft` and `width`:
 Also update the `useLayoutEffect` that syncs viewport height to include the new fields:
 
 ```typescript
-  useLayoutEffect(() => {
-    if (
-      snapshot.viewport.height === bodyViewportHeight &&
-      snapshot.viewport.width === (viewportWidth || 0)
-    ) {
-      return;
-    }
+useLayoutEffect(() => {
+  if (
+    snapshot.viewport.height === bodyViewportHeight &&
+    snapshot.viewport.width === (viewportWidth || 0)
+  ) {
+    return;
+  }
 
-    grid.setViewport({
-      scrollTop: snapshot.viewport.scrollTop,
-      scrollLeft: snapshot.viewport.scrollLeft,
-      height: bodyViewportHeight,
-      width: viewportWidth || 0,
-    });
-  }, [
-    grid,
-    snapshot.viewport.height,
-    snapshot.viewport.width,
-    snapshot.viewport.scrollTop,
-    snapshot.viewport.scrollLeft,
-    bodyViewportHeight,
-    viewportWidth,
-  ]);
+  grid.setViewport({
+    scrollTop: snapshot.viewport.scrollTop,
+    scrollLeft: snapshot.viewport.scrollLeft,
+    height: bodyViewportHeight,
+    width: viewportWidth || 0,
+  });
+}, [
+  grid,
+  snapshot.viewport.height,
+  snapshot.viewport.width,
+  snapshot.viewport.scrollTop,
+  snapshot.viewport.scrollLeft,
+  bodyViewportHeight,
+  viewportWidth,
+]);
 ```
 
 Add `ref={viewportRef}` to the outer `<div>` (the scroll viewport).
@@ -1288,6 +1341,7 @@ git commit -m "feat(react): wire up column virtualization with horizontal scroll
 ### Task 6: Make S3 runnable in the bench app
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-types.ts`
 - Modify: `apps/bench/src/query-state.ts`
 - Modify: `packages/bench-runner/src/index.ts`
@@ -1302,65 +1356,65 @@ git commit -m "feat(react): wire up column virtualization with horizontal scroll
 In `apps/bench/src/__tests__/query-state.test.ts`, add:
 
 ```typescript
-  test("accepts S3 many-columns scenario", () => {
-    expect(parseBenchQuery("?scenario=S3&scale=dev&script=scroll")).toEqual({
-      adapterId: "pretable",
-      scenarioId: "S3",
-      profile: "default",
-      scale: "dev",
-      scriptName: "scroll",
-      autorun: false,
-    });
+test("accepts S3 many-columns scenario", () => {
+  expect(parseBenchQuery("?scenario=S3&scale=dev&script=scroll")).toEqual({
+    adapterId: "pretable",
+    scenarioId: "S3",
+    profile: "default",
+    scale: "dev",
+    scriptName: "scroll",
+    autorun: false,
   });
+});
 ```
 
 In `packages/bench-runner/src/__tests__/bench-runner.test.ts`, add within the `"enforces the explicit P0a support matrix"` test:
 
 ```typescript
-    expect(
-      validateSupportedP0aRequest({
-        ...baseRequest,
-        scenarioId: "S3",
-        scriptName: "scroll",
-      }),
-    ).toEqual({ ok: true });
+expect(
+  validateSupportedP0aRequest({
+    ...baseRequest,
+    scenarioId: "S3",
+    scriptName: "scroll",
+  }),
+).toEqual({ ok: true });
 
-    // S3 does NOT support interaction scripts
-    expect(
-      validateSupportedP0aRequest({
-        ...baseRequest,
-        scenarioId: "S3",
-        scriptName: "sort",
-      }),
-    ).toEqual({
-      ok: false,
-      reason: expect.stringContaining("scenario"),
-    });
+// S3 does NOT support interaction scripts
+expect(
+  validateSupportedP0aRequest({
+    ...baseRequest,
+    scenarioId: "S3",
+    scriptName: "sort",
+  }),
+).toEqual({
+  ok: false,
+  reason: expect.stringContaining("scenario"),
+});
 ```
 
 In `packages/scenario-data/src/__tests__/scenario-data.test.ts`, add:
 
 ```typescript
-  test("models many-columns scenario S3 with 500 columns and 2 pinned", () => {
-    const dataset = createScenarioDataset("S3");
+test("models many-columns scenario S3 with 500 columns and 2 pinned", () => {
+  const dataset = createScenarioDataset("S3");
 
-    expect(getScenarioById("S3")).toMatchObject({
-      id: "S3",
-      name: "many-columns",
-      cols: 500,
-      row_height_mode: "fixed",
-      wrapped_columns: 0,
-      pinned_left: 2,
-      update_stream: "none",
-    });
-    expect(dataset.columns).toHaveLength(500);
-    expect(dataset.columns[0]).toMatchObject({ pinned: "left" });
-    expect(dataset.columns[1]).toMatchObject({ pinned: "left" });
-    expect(dataset.columns[2]).toMatchObject({ pinned: undefined });
-    expect(dataset.seed).toBe(303);
-    expect(dataset.scale).toBe("smoke");
-    expect(dataset.rowCount).toBe(120);
+  expect(getScenarioById("S3")).toMatchObject({
+    id: "S3",
+    name: "many-columns",
+    cols: 500,
+    row_height_mode: "fixed",
+    wrapped_columns: 0,
+    pinned_left: 2,
+    update_stream: "none",
   });
+  expect(dataset.columns).toHaveLength(500);
+  expect(dataset.columns[0]).toMatchObject({ pinned: "left" });
+  expect(dataset.columns[1]).toMatchObject({ pinned: "left" });
+  expect(dataset.columns[2]).toMatchObject({ pinned: undefined });
+  expect(dataset.seed).toBe(303);
+  expect(dataset.scale).toBe("smoke");
+  expect(dataset.rowCount).toBe(120);
+});
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1379,7 +1433,7 @@ Expected: PASS (scenario data already defines S3; this test just proves the exis
 Change the scenarioId type:
 
 ```typescript
-  scenarioId: "S1" | "S2" | "S3" | "S7";
+scenarioId: "S1" | "S2" | "S3" | "S7";
 ```
 
 - [ ] **Step 4: Update `apps/bench/src/query-state.ts`**
@@ -1444,6 +1498,7 @@ git commit -m "feat(bench): make S3 many-columns scenario runnable"
 ### Task 7: Verify S1/S2/S7 scroll regression and S3 smoke
 
 **Files:**
+
 - No planned code changes
 
 - [ ] **Step 1: Run lint, typecheck, and full test suite**
@@ -1460,11 +1515,12 @@ Expected: All runs complete, H1 remains satisfied
 - [ ] **Step 3: Run S3 smoke**
 
 Run: `pnpm bench:matrix -- --project=chromium --adapters=pretable --scenarios=S3 --scripts=scroll --scale=dev --repeats=3`
-Expected: S3 runs complete successfully. Node count should be much lower than 500 * visible_rows (proving column virtualization is active).
+Expected: S3 runs complete successfully. Node count should be much lower than 500 \* visible_rows (proving column virtualization is active).
 
 - [ ] **Step 4: Report results**
 
 Record:
+
 - S1/S2/S7 H1 status
 - S3 run status and key metrics (nodeCount, rendered cells, scroll quality)
 - Any regressions or unexpected behavior

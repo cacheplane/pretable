@@ -160,7 +160,14 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
         overscan,
         measuredHeights,
       }),
-    [grid.options.columns, measuredHeights, overscan, snapshot, viewportHeight, viewportWidth],
+    [
+      grid.options.columns,
+      measuredHeights,
+      overscan,
+      snapshot,
+      viewportHeight,
+      viewportWidth,
+    ],
   );
   const telemetry = useMemo<PretableTelemetry>(() => {
     const viewportBottom =

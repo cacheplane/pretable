@@ -42,10 +42,7 @@ export function getScrollContentStyle(
   };
 }
 
-export function getRowStyle(
-  top: number,
-  height: number,
-): CSSProperties {
+export function getRowStyle(top: number, height: number): CSSProperties {
   return {
     borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
     boxSizing: "border-box",
@@ -56,10 +53,7 @@ export function getRowStyle(
   };
 }
 
-export function getCellStyle(
-  left: number,
-  width: number,
-): CSSProperties {
+export function getCellStyle(left: number, width: number): CSSProperties {
   return {
     boxSizing: "border-box",
     height: "100%",
@@ -70,10 +64,7 @@ export function getCellStyle(
   };
 }
 
-export function getHeaderCellStyle(
-  left: number,
-  width: number,
-): CSSProperties {
+export function getHeaderCellStyle(left: number, width: number): CSSProperties {
   return {
     boxSizing: "border-box",
     height: "100%",

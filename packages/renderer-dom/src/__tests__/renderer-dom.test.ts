@@ -104,8 +104,14 @@ describe("renderer-dom", () => {
     const grid = createGridCore({
       columns: manyColumns,
       rows: [
-        { id: "row-0", ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])) },
-        { id: "row-1", ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])) },
+        {
+          id: "row-0",
+          ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])),
+        },
+        {
+          id: "row-1",
+          ...Object.fromEntries(manyColumns.map((c) => [c.id, `val-${c.id}`])),
+        },
       ],
       getRowId: (row) => String(row.id),
     });
@@ -128,8 +134,18 @@ describe("renderer-dom", () => {
 
   test("includes pinned columns in the column plan regardless of scrollLeft", () => {
     const columnsWithPinned = [
-      { id: "pinned_0", header: "Pinned 0", widthPx: 100, pinned: "left" as const },
-      { id: "pinned_1", header: "Pinned 1", widthPx: 120, pinned: "left" as const },
+      {
+        id: "pinned_0",
+        header: "Pinned 0",
+        widthPx: 100,
+        pinned: "left" as const,
+      },
+      {
+        id: "pinned_1",
+        header: "Pinned 1",
+        widthPx: 120,
+        pinned: "left" as const,
+      },
       ...Array.from({ length: 20 }, (_, i) => ({
         id: `col_${i}`,
         header: `Column ${i}`,
@@ -138,7 +154,12 @@ describe("renderer-dom", () => {
     ];
     const grid = createGridCore({
       columns: columnsWithPinned,
-      rows: [{ id: "row-0", ...Object.fromEntries(columnsWithPinned.map((c) => [c.id, "v"])) }],
+      rows: [
+        {
+          id: "row-0",
+          ...Object.fromEntries(columnsWithPinned.map((c) => [c.id, "v"])),
+        },
+      ],
       getRowId: (row) => String(row.id),
     });
 
@@ -152,7 +173,9 @@ describe("renderer-dom", () => {
       overscan: 1,
     });
 
-    const pinnedIds = render.columns.filter((c) => c.pinned === "left").map((c) => c.id);
+    const pinnedIds = render.columns
+      .filter((c) => c.pinned === "left")
+      .map((c) => c.id);
 
     expect(pinnedIds).toEqual(["pinned_0", "pinned_1"]);
   });
@@ -200,7 +223,12 @@ describe("renderer-dom", () => {
     });
     const initialCallCount = prepareTextSpy.mock.calls.length;
 
-    grid.setViewport({ scrollTop: 44 * 4, scrollLeft: 0, height: 320, width: 0 });
+    grid.setViewport({
+      scrollTop: 44 * 4,
+      scrollLeft: 0,
+      height: 320,
+      width: 0,
+    });
     createDomRenderSnapshot({
       columns: grid.options.columns,
       snapshot: grid.getSnapshot(),

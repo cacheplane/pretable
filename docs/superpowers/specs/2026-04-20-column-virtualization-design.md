@@ -32,9 +32,9 @@ Column virtualization mirrors the existing row virtualization pattern, extending
 ```typescript
 interface GridCoreViewportState {
   scrollTop: number;
-  scrollLeft: number;  // new
+  scrollLeft: number; // new
   height: number;
-  width: number;       // new — viewport width
+  width: number; // new — viewport width
 }
 ```
 
@@ -53,17 +53,17 @@ interface PlanColumnsInput {
 }
 
 interface PlannedColumn {
-  index: number;     // index into the original columns array
+  index: number; // index into the original columns array
   id: string;
-  left: number;      // absolute offset from left edge
+  left: number; // absolute offset from left edge
   width: number;
   pinned?: "left";
 }
 
 interface ColumnPlan {
-  columns: PlannedColumn[];  // pinned + visible scrollable
+  columns: PlannedColumn[]; // pinned + visible scrollable
   totalWidth: number;
-  pinnedLeftWidth: number;   // total width of pinned zone
+  pinnedLeftWidth: number; // total width of pinned zone
 }
 ```
 
@@ -88,8 +88,8 @@ Pinned columns always render and are not virtualized. Pinned count is always sma
 interface DomRenderSnapshot<TRow> {
   frame: GridCoreFrame<TRow>;
   rows: DomRenderRow<TRow>[];
-  columns: PlannedColumn[];   // new — from planColumns()
-  nodeCount: number;          // now rows.length * columns.length
+  columns: PlannedColumn[]; // new — from planColumns()
+  nodeCount: number; // now rows.length * columns.length
   totalHeight: number;
   totalWidth: number;
 }
@@ -111,12 +111,12 @@ The header row also virtualizes — only visible + pinned column headers render,
 
 S3 becomes runnable in the bench app:
 
-| File | Change |
-| --- | --- |
-| `apps/bench/src/bench-types.ts` | Add `"S3"` to scenarioId union |
-| `apps/bench/src/query-state.ts` | Add `"S3"` recognition in `parseBenchQuery` |
+| File                                 | Change                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `apps/bench/src/bench-types.ts`      | Add `"S3"` to scenarioId union                                                              |
+| `apps/bench/src/query-state.ts`      | Add `"S3"` recognition in `parseBenchQuery`                                                 |
 | `packages/bench-runner/src/index.ts` | Add `"S3"` to `validateSupportedP0aRequest`. S3 uses `scroll` only — no interaction scripts |
-| `scripts/bench-matrix.mjs` | Add `"S3"` to `DEFAULT_SCENARIOS` |
+| `scripts/bench-matrix.mjs`           | Add `"S3"` to `DEFAULT_SCENARIOS`                                                           |
 
 No new hypotheses for S3 initially. S3 proves that column virtualization doesn't break the existing scroll quality proof. The existing H1 evaluation already accepts any scenario — S3 scroll runs feed into it. If S3 exposes column-specific quality gaps (e.g., horizontal blank gaps), targeted hypotheses can be added later.
 
@@ -124,26 +124,26 @@ All four adapters (pretable, Grid Alpha, GridBeta, GridGamma) already handle arb
 
 ## S3 Scenario Definition (Existing)
 
-| Property | Value |
-| --- | --- |
-| id | S3 |
-| name | many-columns |
-| rows | 10,000 |
-| cols | 500 |
-| row_height_mode | fixed |
-| wrapped_columns | 0 |
-| pinned_left | 2 |
-| update_stream | none |
-| purpose | Column virtualization and pinned-zone overhead |
+| Property        | Value                                          |
+| --------------- | ---------------------------------------------- |
+| id              | S3                                             |
+| name            | many-columns                                   |
+| rows            | 10,000                                         |
+| cols            | 500                                            |
+| row_height_mode | fixed                                          |
+| wrapped_columns | 0                                              |
+| pinned_left     | 2                                              |
+| update_stream   | none                                           |
+| purpose         | Column virtualization and pinned-zone overhead |
 
 Row count scales (existing):
 
-| Scale | Rows |
-| --- | --- |
-| smoke | 250 |
-| dev | 1,000 |
-| hypothesis | 5,000 |
-| target | 10,000 |
+| Scale      | Rows   |
+| ---------- | ------ |
+| smoke      | 250    |
+| dev        | 1,000  |
+| hypothesis | 5,000  |
+| target     | 10,000 |
 
 ## Testing Strategy
 

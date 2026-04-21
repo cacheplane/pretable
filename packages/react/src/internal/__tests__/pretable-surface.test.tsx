@@ -722,7 +722,9 @@ describe("PretableSurface", () => {
       />,
     );
 
-    const renderedCells = view.container.querySelectorAll("[data-pretable-cell]");
+    const renderedCells = view.container.querySelectorAll(
+      "[data-pretable-cell]",
+    );
 
     // 50 columns at 140px = 7000px total. With a default viewport, far fewer should render.
     expect(renderedCells.length).toBeLessThan(50);
@@ -739,7 +741,12 @@ describe("PretableSurface", () => {
     });
 
     const wideColumns = [
-      { id: "pinned_ts", header: "Timestamp", pinned: "left" as const, widthPx: 188 },
+      {
+        id: "pinned_ts",
+        header: "Timestamp",
+        pinned: "left" as const,
+        widthPx: 188,
+      },
       ...Array.from({ length: 49 }, (_, i) => ({
         id: `col_${i}`,
         header: `Column ${i}`,
