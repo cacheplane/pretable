@@ -9,6 +9,7 @@ export type {
   PretableSelectionState,
   PretableSortDirection,
   PretableSortState,
+  PretableTransaction,
   PretableViewportState,
   PretableVisibleRow,
 } from "./types";
