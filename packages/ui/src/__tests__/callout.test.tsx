@@ -31,4 +31,15 @@ describe("Callout", () => {
     expect(screen.getByText("Just a body")).toBeInTheDocument();
     expect(screen.queryByText(/^(Requirements|Watch)/)).toBeNull();
   });
+
+  it("exposes role='note' for assistive technologies", () => {
+    render(<Callout>Supplementary info</Callout>);
+    expect(screen.getByRole("note")).toHaveTextContent("Supplementary info");
+  });
+
+  it("keeps role='note' for the warn variant (not role='alert')", () => {
+    render(<Callout variant="warn">A persistent warning</Callout>);
+    expect(screen.getByRole("note")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

@@ -23,7 +23,7 @@ export function Callout({
     .filter(Boolean)
     .join(" ");
   return (
-    <div className={classes}>
+    <div className={classes} role="note">
       {tag ? <span className="pt-callout-tag">{tag}</span> : null}
       <span className="pt-callout-body">{children}</span>
     </div>
