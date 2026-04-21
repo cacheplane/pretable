@@ -1,0 +1,71 @@
+/**
+ * pretable design tokens
+ *
+ * Consumer imports this file once at the app's entry point. All component
+ * styles in components.css reference these variables. To retheme, override
+ * any variable at a more specific scope (e.g. [data-theme="dark"]).
+ *
+ * See design spec §3 for palette rationale and WCAG contrast ratings.
+ */
+:root {
+  /* Editorial — marketing / playground chrome / docs prose */
+  --pt-cream: #ede5d4;
+  --pt-cream-hi: #f5eedd;
+  --pt-cream-lo: #e0d6bf;
+  --pt-cream-rule: #cdc3aa;
+  --pt-ink: #1a1815;
+  --pt-ink-dim: #4a443b;
+  --pt-ink-softer: #7a7468;
+  --pt-amber-ink: #8a5d0f;
+  --pt-amber: #c68a1e;
+  --pt-amber-soft: #f5e8ca;
+
+  /* Terminal — grid surface, bench, code blocks */
+  --pt-dark: #0f0e0c;
+  --pt-grid-bg: #0b0a09;
+  --pt-grid-raised: #151310;
+  --pt-grid-rule: #1f1c18;
+  --pt-grid-text: #d8d2c3;
+  --pt-grid-dim: #8f8a7d;
+
+  /* Severity — only saturated color in the system */
+  --pt-sev-info: #6fa9c9;
+  --pt-sev-warn: #d9a44f;
+  --pt-sev-err: #d3615a;
+  --pt-sev-ok: #7ea86f;
+
+  /* Syntax highlighting (maps to severity family) */
+  --pt-code-key: #d9a44f;
+  --pt-code-str: #7ea86f;
+  --pt-code-fn: #6fa9c9;
+  --pt-code-com: #6a6359;
+  --pt-code-prop: #c9a47e;
+
+  /* Typography stacks */
+  --pt-font-serif: "Fraunces", Georgia, "Times New Roman", serif;
+  --pt-font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  --pt-font-mono:
+    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono",
+    monospace;
+
+  /* Type scale */
+  --pt-fs-display-xl: 60px;
+  --pt-fs-display-lg: 44px;
+  --pt-fs-display-md: 32px;
+  --pt-fs-dek: 18px;
+  --pt-fs-body: 15px;
+  --pt-fs-ui: 13.5px;
+  --pt-fs-eyebrow: 11px;
+  --pt-fs-data: 12.5px;
+
+  /* Layout tokens (used primarily by docs) */
+  --pt-page-max: 1440px;
+  --pt-header-h: 60px;
+  --pt-sidebar-w: 260px;
+  --pt-toc-w: 224px;
+  --pt-prose-max: 720px;
+  --pt-code-max: 900px;
+  --pt-modal-w: 560px;
+}
