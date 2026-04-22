@@ -3,15 +3,12 @@ import { create, push, finish, resolve } from "../index";
 import type {
   AstNode,
   StreamState,
-  StreamError,
   NullNode,
   BoolNode,
   NumberNode,
   StringNode,
   ArrayNode,
   ObjectNode,
-  NodeStatus,
-  JsonValue,
 } from "../index";
 
 describe("types", () => {

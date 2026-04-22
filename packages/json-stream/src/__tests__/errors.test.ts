@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { create, push, finish, resolve } from "../index";
+import { create, push, finish } from "../index";
 
 describe("errors — trailing token after root value", () => {
   test("true followed by false", () => {
