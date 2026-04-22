@@ -21,3 +21,12 @@ export {
   isObjectNode,
   isStringNode,
 } from "./guards";
+
+export { resolve } from "./resolve";
+
+import { createInternal } from "./create";
+import type { StreamState } from "./types";
+
+export function create(): StreamState {
+  return createInternal();
+}
