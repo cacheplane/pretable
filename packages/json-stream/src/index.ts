@@ -25,8 +25,18 @@ export {
 export { resolve } from "./resolve";
 
 import { createInternal } from "./create";
-import type { StreamState } from "./types";
+import { pushInternal } from "./push";
+import { finishInternal } from "./finish";
+import type { InternalState, StreamState } from "./types";
 
 export function create(): StreamState {
   return createInternal();
+}
+
+export function push(state: StreamState, chunk: string): StreamState {
+  return pushInternal(state as InternalState, chunk);
+}
+
+export function finish(state: StreamState): StreamState {
+  return finishInternal(state as InternalState);
 }
