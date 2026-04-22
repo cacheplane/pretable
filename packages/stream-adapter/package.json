@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,9 +19,9 @@
     "@cacheplane/json-stream": "workspace:*"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "pnpm --filter @cacheplane/json-stream build && tsc -b",
     "lint": "eslint src --ext .ts",
-    "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc -b --pretty false"
+    "test": "pnpm --filter @cacheplane/json-stream build && vitest run --passWithNoTests",
+    "typecheck": "pnpm --filter @cacheplane/json-stream build && tsc -b --pretty false"
   }
 }

@@ -23,7 +23,9 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 describe("parseElementStream", () => {
   test("yields complete elements from a JSON array", async () => {
     const chunks = ['[{"id":"1","name":"Alice"},{"id":"2","name":"Bob"}]'];
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
 
     expect(results).toEqual([
       { id: "1", name: "Alice" },
@@ -37,7 +39,9 @@ describe("parseElementStream", () => {
       'me":"Alice"},{"id',
       '":"2","name":"Bob"}]',
     ];
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
 
     expect(results).toEqual([
       { id: "1", name: "Alice" },
@@ -69,13 +73,17 @@ describe("parseElementStream", () => {
       '{"id":"3","name":"Carol"}]',
     ];
 
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
     expect(results).toHaveLength(3);
   });
 
   test("handles empty array", async () => {
     const chunks = ["[]"];
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
     expect(results).toEqual([]);
   });
 
@@ -85,14 +93,18 @@ describe("parseElementStream", () => {
       meta: { score: number };
     }
     const chunks = ['[{"id":"1","meta":{"score":100}}]'];
-    const results = await collect(parseElementStream<NestedRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<NestedRow>(asyncChunks(chunks)),
+    );
     expect(results).toEqual([{ id: "1", meta: { score: 100 } }]);
   });
 
   test("character-at-a-time streaming", async () => {
     const json = '[{"id":"1","name":"Alice"}]';
     const chunks = json.split("");
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
     expect(results).toEqual([{ id: "1", name: "Alice" }]);
   });
 });
