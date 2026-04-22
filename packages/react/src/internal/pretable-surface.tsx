@@ -8,7 +8,9 @@ import {
   useState,
 } from "react";
 import type {
+  AutosizeOptions,
   PretableColumn,
+  PretableGrid,
   PretableGridOptions,
   PretableRow,
 } from "@pretable/core";
@@ -104,6 +106,7 @@ interface PretableSurfaceInteractionState {
 
 export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   ariaLabel: string;
+  autosize?: boolean | AutosizeOptions;
   columns: PretableColumn<TRow>[];
   getBodyCellClassName?: (
     input: PretableSurfaceBodyCellClassNameInput<TRow>,
@@ -131,6 +134,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     sort: { columnId: string; direction: "asc" | "desc" } | null,
   ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
+  onGridReady?: (grid: PretableGrid<TRow>) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellRenderInput<TRow>,
   ) => ReactNode;
@@ -145,6 +149,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,
+  autosize,
   columns,
   getBodyCellClassName,
   getBodyCellProps,
@@ -155,6 +160,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   getRowProps,
   interactionState,
   overscan = 6,
+  onGridReady,
   onSelectedRowIdChange,
   onSortChange,
   onTelemetryChange,
@@ -175,6 +181,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const viewportRef = useRef<HTMLDivElement>(null);
   const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
+    autosize,
     columns,
     getRowId,
     interactionOverrides: interactionState ?? undefined,
@@ -197,6 +204,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   useLayoutEffect(() => {
     onTelemetryChange?.(telemetry);
   }, [onTelemetryChange, telemetry]);
+
+  useLayoutEffect(() => {
+    onGridReady?.(grid);
+  }, [grid, onGridReady]);
 
   useLayoutEffect(() => {
     if (!interactionState?.selectedRowId) {

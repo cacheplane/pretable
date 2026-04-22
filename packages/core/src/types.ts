@@ -9,11 +9,13 @@ export type {
   GridCoreViewportState as PretableViewportState,
 } from "@pretable-internal/grid-core";
 import type {
+  AutosizeOptions,
   GridCoreColumn,
   GridCoreOptions,
   GridCoreSnapshot,
   GridCoreSortDirection,
   GridCoreStore,
+  GridCoreTransaction,
 } from "@pretable-internal/grid-core";
 
 export type PretableColumn<TRow extends PretableRow = PretableRow> =
@@ -22,6 +24,9 @@ export type PretableColumn<TRow extends PretableRow = PretableRow> =
 export type PretableGridOptions<TRow extends PretableRow = PretableRow> =
   GridCoreOptions<TRow>;
 
+export type PretableTransaction<TRow extends PretableRow = PretableRow> =
+  GridCoreTransaction<TRow>;
+
 export interface PretableGrid<
   TRow extends PretableRow = PretableRow,
 > extends Omit<GridCoreStore<TRow>, "options"> {
@@ -29,4 +34,6 @@ export interface PretableGrid<
   options: PretableGridOptions<TRow>;
   getSnapshot(): GridCoreSnapshot<TRow>;
   setSort(columnId: string | null, direction: GridCoreSortDirection): void;
+  autosizeColumns(options?: AutosizeOptions): void;
+  applyTransaction(transaction: PretableTransaction<TRow>): void;
 }

@@ -1,14 +1,19 @@
 import { useCallback, useMemo, useRef } from "react";
 
+import type { PretableGrid } from "@pretable/react";
 import type { PretableTelemetry } from "@pretable/react/internal";
 import { PretableSurface } from "@pretable/react/internal";
-import type { ScenarioDataset } from "@pretable-internal/scenario-data";
+import type {
+  ScenarioDataset,
+  ScenarioRow,
+} from "@pretable-internal/scenario-data";
 
 import type { BenchInteractionPlan } from "./interaction-plan";
 
 export interface PretableAdapterProps {
   dataset: ScenarioDataset;
   interactionPlan?: BenchInteractionPlan | null;
+  onGridReady?: (grid: PretableGrid<ScenarioRow>) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   runKey: number;
 }
@@ -29,12 +34,24 @@ function getScenarioRowId(row: ScenarioDataset["rows"][number]) {
 export function PretableAdapter({
   dataset,
   interactionPlan,
+  onGridReady,
   onTelemetryChange,
   runKey,
 }: PretableAdapterProps) {
   const adapterRef = useRef<HTMLElement>(null);
   const surfaceColumns = useMemo(() => [...dataset.columns], [dataset.columns]);
   const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
+  const autosize = dataset.scenario.autosize_all_columns === true;
+
+  const gridRef = useRef<PretableGrid<ScenarioRow> | null>(null);
+  const onGridReadyRef = useRef(onGridReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
+  onGridReadyRef.current = onGridReady;
+
+  const handleGridReady = useCallback((grid: PretableGrid<ScenarioRow>) => {
+    gridRef.current = grid;
+    onGridReadyRef.current?.(grid);
+  }, []);
 
   const onTelemetryChangeRef = useRef(onTelemetryChange);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
@@ -100,6 +117,7 @@ export function PretableAdapter({
 
       <PretableSurface
         ariaLabel="Pretable React adapter"
+        autosize={autosize}
         columns={surfaceColumns}
         getRowId={getScenarioRowId}
         interactionState={
@@ -112,6 +130,7 @@ export function PretableAdapter({
               }
             : null
         }
+        onGridReady={handleGridReady}
         onTelemetryChange={handleTelemetryChange}
         overscan={4}
         renderBodyCell={({ value }) => String(value ?? "")}

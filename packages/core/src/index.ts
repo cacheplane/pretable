@@ -9,6 +9,8 @@ export type {
   PretableSelectionState,
   PretableSortDirection,
   PretableSortState,
+  PretableTransaction,
   PretableViewportState,
   PretableVisibleRow,
 } from "./types";
+export type { AutosizeOptions } from "@pretable-internal/grid-core";

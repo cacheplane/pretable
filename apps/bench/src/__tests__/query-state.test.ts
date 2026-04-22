@@ -85,6 +85,17 @@ describe("parseBenchQuery", () => {
     });
   });
 
+  test("accepts S4 offscreen-autosize scenario", () => {
+    expect(parseBenchQuery("?scenario=S4&scale=dev&script=scroll")).toEqual({
+      adapterId: "pretable",
+      scenarioId: "S4",
+      profile: "default",
+      scale: "dev",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
+
   test("accepts S3 many-columns scenario", () => {
     expect(parseBenchQuery("?scenario=S3&scale=dev&script=scroll")).toEqual({
       adapterId: "pretable",
@@ -93,6 +104,27 @@ describe("parseBenchQuery", () => {
       scale: "dev",
       scriptName: "scroll",
       autorun: false,
+    });
+  });
+
+  test("accepts S5 streaming-updates scenario", () => {
+    expect(parseBenchQuery("?scenario=S5&scale=dev&script=scroll")).toEqual({
+      adapterId: "pretable",
+      scenarioId: "S5",
+      profile: "default",
+      scale: "dev",
+      scriptName: "scroll",
+      autorun: false,
+    });
+  });
+
+  test("accepts updates script", () => {
+    expect(
+      parseBenchQuery("?scenario=S5&scale=dev&script=updates"),
+    ).toMatchObject({
+      scenarioId: "S5",
+      scale: "dev",
+      scriptName: "updates",
     });
   });
 

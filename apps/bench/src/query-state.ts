@@ -35,9 +35,13 @@ export function parseBenchQuery(
         ? "S2"
         : scenario === "S3"
           ? "S3"
-          : scenario === "S7"
-            ? "S7"
-            : DEFAULT_QUERY_STATE.scenarioId,
+          : scenario === "S4"
+            ? "S4"
+            : scenario === "S5"
+              ? "S5"
+            : scenario === "S7"
+              ? "S7"
+              : DEFAULT_QUERY_STATE.scenarioId,
     profile: DEFAULT_QUERY_STATE.profile,
     scale:
       scale === "smoke" ||
@@ -50,7 +54,8 @@ export function parseBenchQuery(
       script === "scroll" ||
       script === "sort" ||
       script === "filter-metadata" ||
-      script === "filter-text"
+      script === "filter-text" ||
+      script === "updates"
         ? script
         : DEFAULT_QUERY_STATE.scriptName,
     autorun: searchParams.get("autorun") === "1",

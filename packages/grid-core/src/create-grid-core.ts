@@ -1,4 +1,10 @@
-import { createSourceRows, deriveVisibleRows } from "./derived-rows";
+import { autosizeColumns } from "@pretable-internal/layout-core";
+import type { AutosizeOptions } from "@pretable-internal/layout-core";
+import {
+  createSourceRows,
+  deriveVisibleRows,
+  type SourceRow,
+} from "./derived-rows";
 import type {
   GridCoreFocusState,
   GridCoreOptions,
@@ -9,14 +15,53 @@ import type {
   GridCoreSortDirection,
   GridCoreSortState,
   GridCoreStore,
+  GridCoreTransaction,
   GridCoreViewportState,
 } from "./types";
 
-export function createGridCore<TRow extends GridCoreRow>(
+function applyAutosize<TRow extends GridCoreRow>(
   options: GridCoreOptions<TRow>,
+  autosizeOptions?: AutosizeOptions,
+): GridCoreOptions<TRow> {
+  const result = autosizeColumns({
+    columns: options.columns,
+    rows: options.rows,
+    options: autosizeOptions,
+  });
+
+  if (result.widths.size === 0) {
+    return options;
+  }
+
+  const nextColumns = options.columns.map((column) => {
+    const computedWidth = result.widths.get(column.id);
+
+    if (computedWidth === undefined) {
+      return column;
+    }
+
+    return { ...column, widthPx: computedWidth };
+  });
+
+  return { ...options, columns: nextColumns };
+}
+
+export function createGridCore<TRow extends GridCoreRow>(
+  inputOptions: GridCoreOptions<TRow>,
 ): GridCoreStore<TRow> {
   const listeners = new Set<() => void>();
-  const sourceRows = createSourceRows(options);
+  let options = inputOptions.autosize
+    ? applyAutosize(
+        inputOptions,
+        typeof inputOptions.autosize === "object"
+          ? inputOptions.autosize
+          : undefined,
+      )
+    : inputOptions;
+  let sourceRows = createSourceRows(options);
+  const sourceRowIndex = new Map<string, SourceRow<TRow>>(
+    sourceRows.map((entry) => [entry.id, entry]),
+  );
   let cachedSnapshot: GridCoreSnapshot<TRow> | null = null;
   let cachedVisibleRows: GridCoreRowModel<TRow>[] | null = null;
   let cachedDerivedSort: GridCoreSortState | null = null;
@@ -32,9 +77,11 @@ export function createGridCore<TRow extends GridCoreRow>(
     width: 0,
   };
 
-  return {
-    options,
-    subscribe(listener) {
+  const store = {
+    get options() {
+      return options;
+    },
+    subscribe(listener: () => void) {
       listeners.add(listener);
 
       return () => {
@@ -159,7 +206,83 @@ export function createGridCore<TRow extends GridCoreRow>(
       viewport = nextViewport;
       emit();
     },
+    autosizeColumns(autosizeOptions?: AutosizeOptions) {
+      const nextOptions = applyAutosize(options, autosizeOptions);
+
+      if (nextOptions === options) {
+        return;
+      }
+
+      options = nextOptions;
+      emit();
+    },
+    applyTransaction(transaction: GridCoreTransaction<TRow>) {
+      if (!options.getRowId) {
+        throw new Error(
+          "applyTransaction requires getRowId on GridCoreOptions",
+        );
+      }
+
+      const getRowId = options.getRowId;
+
+      if (transaction.remove) {
+        const removeSet = new Set(transaction.remove);
+
+        sourceRows = sourceRows.filter((entry) => {
+          if (removeSet.has(entry.id)) {
+            sourceRowIndex.delete(entry.id);
+            return false;
+          }
+
+          return true;
+        });
+      }
+
+      if (transaction.update) {
+        for (const patch of transaction.update) {
+          const id = getRowId(patch as TRow, -1);
+          const existing = sourceRowIndex.get(id);
+
+          if (!existing) {
+            continue;
+          }
+
+          const merged = { ...existing.row, ...patch } as TRow;
+          const updated: SourceRow<TRow> = {
+            id: existing.id,
+            row: merged,
+            sourceIndex: existing.sourceIndex,
+          };
+          const arrayIndex = sourceRows.indexOf(existing);
+
+          if (arrayIndex !== -1) {
+            sourceRows[arrayIndex] = updated;
+          }
+
+          sourceRowIndex.set(id, updated);
+        }
+      }
+
+      if (transaction.add) {
+        for (const row of transaction.add) {
+          const id = getRowId(row, sourceRows.length);
+          const entry: SourceRow<TRow> = {
+            id,
+            row,
+            sourceIndex: sourceRows.length,
+          };
+
+          sourceRows.push(entry);
+          sourceRowIndex.set(id, entry);
+        }
+      }
+
+      cachedVisibleRows = null;
+      emit();
+    },
   };
+
+  return store;
 
   function getSnapshot(): GridCoreSnapshot<TRow> {
     if (cachedSnapshot) {
