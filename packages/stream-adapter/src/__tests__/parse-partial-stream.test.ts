@@ -52,9 +52,51 @@ describe("parsePartialStream", () => {
       parsePartialStream<TestRow>(asyncChunks(chunks)),
     );
 
+    // Exactly two distinct snapshots: after "id" resolves, after "name" resolves.
+    // Whitespace-only chunks must not produce new yields.
+    expect(results).toEqual([
+      { id: "1" },
+      { id: "1", name: "Alice" },
+    ]);
     for (let i = 1; i < results.length; i++) {
       expect(results[i]).not.toBe(results[i - 1]);
     }
+  });
+
+  test("does not yield an empty object when the root object opens", async () => {
+    // Regression: parser initializes ObjectNode.value as {}, which previously
+    // leaked through as a spurious first yield before any key had resolved.
+    const chunks = ["{", '"id":"1"', ',"name":"Alice"}'];
+
+    const results = await collect(
+      parsePartialStream<TestRow>(asyncChunks(chunks)),
+    );
+
+    expect(results).toEqual([
+      { id: "1" },
+      { id: "1", name: "Alice" },
+    ]);
+    for (const r of results) {
+      expect(Object.keys(r).length).toBeGreaterThan(0);
+    }
+  });
+
+  test("yields progressively as each key resolves", async () => {
+    const chunks = [
+      '{"id":"1"',
+      ',"name":"Alice"',
+      ',"score":100}',
+    ];
+
+    const results = await collect(
+      parsePartialStream<TestRow>(asyncChunks(chunks)),
+    );
+
+    expect(results).toEqual([
+      { id: "1" },
+      { id: "1", name: "Alice" },
+      { id: "1", name: "Alice", score: 100 },
+    ]);
   });
 
   test("handles chunk boundaries within the object", async () => {

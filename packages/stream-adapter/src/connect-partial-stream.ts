@@ -40,9 +40,11 @@ export function connectPartialStream<TRow extends Record<string, unknown>>(
         batcher.update([{ ...partial, id: options.rowId } as Partial<TRow>]);
       }
       batcher.flush();
+      batcher.dispose();
       settle({ status: "resolved" });
     } catch (err) {
       batcher.flush();
+      batcher.dispose();
       settle({ status: "rejected", reason: err });
     }
   })();

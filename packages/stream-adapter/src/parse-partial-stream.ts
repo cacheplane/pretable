@@ -27,7 +27,15 @@ export async function* parsePartialStream<TRow>(
         );
       }
 
-      if (root.value !== undefined && root.value !== lastValue) {
+      // Skip the initial empty-object state — only yield once at least one
+      // key has fully resolved. Without this guard, the very first yield
+      // would be `{}`, which translates to spurious no-op transactions
+      // downstream in connectPartialStream.
+      if (
+        root.value !== undefined &&
+        root.value !== lastValue &&
+        Object.keys(root.value).length > 0
+      ) {
         lastValue = root.value;
         yield root.value as Partial<TRow>;
       }
@@ -42,7 +50,12 @@ export async function* parsePartialStream<TRow>(
 
   if (state.rootId !== null) {
     const root = state.nodes[state.rootId];
-    if (isObjectNode(root) && root.value !== undefined && root.value !== lastValue) {
+    if (
+      isObjectNode(root) &&
+      root.value !== undefined &&
+      root.value !== lastValue &&
+      Object.keys(root.value).length > 0
+    ) {
       yield root.value as Partial<TRow>;
     }
   }

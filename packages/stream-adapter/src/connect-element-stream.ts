@@ -35,9 +35,11 @@ export function connectElementStream<TRow extends Record<string, unknown>>(
         batcher.add([element]);
       }
       batcher.flush();
+      batcher.dispose();
       settle({ status: "resolved" });
     } catch (err) {
       batcher.flush();
+      batcher.dispose();
       settle({ status: "rejected", reason: err });
     }
   })();
