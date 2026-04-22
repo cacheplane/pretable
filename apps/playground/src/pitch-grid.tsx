@@ -4,7 +4,13 @@ import {
   inspectionDatasetScaleOptions,
   type InspectionDatasetScale,
 } from "@pretable-internal/scenario-data";
+import {
+  InspectionGrid,
+  type PretableTelemetry,
+} from "@pretable/react/internal";
 import { useMemo, useState } from "react";
+
+import "./pitch-grid.css";
 
 interface InteractionState {
   sort: { columnId: string; direction: "asc" | "desc" } | null;
@@ -19,11 +25,12 @@ export function PitchGrid() {
     filters: {},
     selectedRowId: null,
   });
+  const [telemetry, setTelemetry] = useState<PretableTelemetry | null>(null);
 
   const dataset = useMemo(() => createInspectionDataset(scale), [scale]);
+  const rows = useMemo(() => [...dataset.rows], [dataset.rows]);
 
-  // Task 6 replaces these with real telemetry values from InspectionGrid.
-  const renderedRowCount = 0;
+  const renderedRowCount = telemetry?.renderedRowCount ?? 0;
   const selectedId = interactionState.selectedRowId ?? "none";
 
   return (
@@ -31,7 +38,6 @@ export function PitchGrid() {
       id="grid"
       className="bg-grid-bg text-grid-text border-y border-grid-rule"
     >
-      {/* Chrome strip */}
       <div
         data-testid="pitch-grid-chrome"
         className="flex items-center justify-between border-b border-grid-rule px-7 py-3 font-mono text-[11px] text-grid-dim md:px-10"
@@ -66,7 +72,6 @@ export function PitchGrid() {
         </div>
       </div>
 
-      {/* Filter row */}
       <div
         data-testid="pitch-grid-filters"
         className="grid grid-flow-col auto-cols-fr gap-3 border-b border-grid-rule bg-grid-raised px-7 py-3 font-mono text-[12px] md:px-10"
@@ -96,13 +101,24 @@ export function PitchGrid() {
         })}
       </div>
 
-      {/* Grid body placeholder — replaced in Task 6 */}
-      <div
-        data-testid="pitch-grid-body-placeholder"
-        className="px-7 py-12 text-grid-dim md:px-10"
-      >
-        grid mounts in task 6
-      </div>
+      <InspectionGrid
+        ariaLabel="Inspection grid"
+        filterableColumnIds={dataset.filterableColumnIds}
+        interactionState={interactionState}
+        onSelectedRowIdChange={(rowId) => {
+          setInteractionState((current) => ({
+            ...current,
+            selectedRowId: rowId,
+          }));
+        }}
+        onSortChange={(sort) => {
+          setInteractionState((current) => ({ ...current, sort }));
+        }}
+        onTelemetryChange={setTelemetry}
+        overscan={5}
+        rows={rows}
+        viewportHeight={420}
+      />
     </section>
   );
 }
