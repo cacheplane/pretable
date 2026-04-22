@@ -23,6 +23,7 @@ export function pushInternal(state: InternalState, chunk: string): InternalState
 
     const ch = chunk[pos];
     const prevMode = s.mode;
+    const prevIndex = s.index;
     let result: { state: InternalState; pos: number };
 
     switch (s.mode) {
@@ -62,9 +63,14 @@ export function pushInternal(state: InternalState, chunk: string): InternalState
 
     s = result.state;
 
-    if (result.pos !== pos) {
-      // Handler consumed the character
-      pos = result.pos;
+    // Compute how many characters were consumed by checking how much state.index advanced.
+    // Handlers return state.index (global position) as result.pos, but we need a chunk-local
+    // offset. Use the delta in state.index to advance pos correctly.
+    const consumed = s.index - prevIndex;
+
+    if (consumed > 0) {
+      // Handler consumed one or more characters — advance chunk-local position by the same amount.
+      pos += consumed;
     } else if (s.error) {
       // Error set, stop
       break;

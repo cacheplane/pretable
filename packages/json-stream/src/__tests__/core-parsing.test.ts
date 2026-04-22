@@ -309,3 +309,69 @@ describe("push — objects", () => {
     });
   });
 });
+
+describe("multi-chunk streaming", () => {
+  test("literal split across chunks (t-r-u-e)", () => {
+    let state = create();
+    state = push(state, "t");
+    state = push(state, "r");
+    state = push(state, "u");
+    state = push(state, "e");
+    state = finish(state);
+    expect(resolve(state)).toBe(true);
+  });
+
+  test("string split across chunks", () => {
+    let state = create();
+    state = push(state, '"hel');
+    state = push(state, 'lo"');
+    state = finish(state);
+    expect(resolve(state)).toBe("hello");
+  });
+
+  test("number split across chunks", () => {
+    let state = create();
+    state = push(state, "1");
+    state = push(state, "2");
+    state = push(state, "3");
+    state = push(state, ".4");
+    state = push(state, "5");
+    state = finish(state);
+    expect(resolve(state)).toBe(123.45);
+  });
+
+  test("object split across chunks", () => {
+    let state = create();
+    state = push(state, '{"hel');
+    state = push(state, 'lo": 1}');
+    state = finish(state);
+    expect(resolve(state)).toEqual({ hello: 1 });
+  });
+
+  test("complete JSON parsed one character at a time", () => {
+    const json = '{"a": [1, "b", true, null]}';
+    let state = create();
+    for (const ch of json) {
+      state = push(state, ch);
+    }
+    state = finish(state);
+    expect(state.error).toBeNull();
+    expect(resolve(state)).toEqual({ a: [1, "b", true, null] });
+  });
+});
+
+describe("finish — unclosed containers", () => {
+  test("finish reports error for unclosed array with number", () => {
+    let state = create();
+    state = push(state, "[42");
+    state = finish(state);
+    expect(state.error).not.toBeNull();
+  });
+
+  test("finish reports error for unclosed object with number", () => {
+    let state = create();
+    state = push(state, '{"a": 42');
+    state = finish(state);
+    expect(state.error).not.toBeNull();
+  });
+});
