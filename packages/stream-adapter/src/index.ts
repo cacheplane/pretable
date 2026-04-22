@@ -4,3 +4,4 @@ export type {
   StreamConnection,
 } from "./types";
 export { createBatcher } from "./create-batcher";
+export { connectElementStream } from "./connect-element-stream";
