@@ -75,10 +75,8 @@ describe("connectElementStream", () => {
   test("dispose() stops iteration and flushes remaining", async () => {
     const grid = createMockGrid();
 
-    let yieldCount = 0;
     async function* slow(): AsyncIterable<TestRow> {
       for (let i = 0; i < 100; i++) {
-        yieldCount++;
         yield { id: String(i), name: `row-${i}` };
         await new Promise((r) => setTimeout(r, 10));
       }
