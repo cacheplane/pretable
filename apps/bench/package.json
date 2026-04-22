@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable/react build",
+    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable-internal/stream-adapter build && pnpm --filter @pretable/react build",
     "predev": "pnpm run prepare:deps",
     "dev": "vite",
     "prebuild": "pnpm run prepare:deps",
@@ -25,6 +25,7 @@
     "@gridgamma/x-data-grid": "^9.0.2",
     "@pretable-internal/bench-runner": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
+    "@pretable-internal/stream-adapter": "workspace:*",
     "@pretable/react": "workspace:*",
     "@gridbeta/react-virtual": "^3.13.23",
     "gridalpha-community": "^35.2.1",

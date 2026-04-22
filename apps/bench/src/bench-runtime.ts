@@ -597,6 +597,9 @@ export async function measureBenchUpdatesRun(
   const UPDATES_PER_TICK = 50;
   const columnIds = dataset.columns.map((c) => c.id);
 
+  const { createBatcher } = await import("@pretable-internal/stream-adapter");
+  const batcher = createBatcher(grid);
+
   let totalUpdates = 0;
   const longTaskDurations: number[] = [];
   const observer = createLongTaskObserver(longTaskDurations);
@@ -618,37 +621,46 @@ export async function measureBenchUpdatesRun(
 
   tickRaf();
 
-  await new Promise<void>((resolve) => {
-    let elapsed = 0;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let elapsed = 0;
 
-    const interval = setInterval(() => {
-      elapsed += BATCH_INTERVAL_MS;
+      const interval = setInterval(() => {
+        try {
+          elapsed += BATCH_INTERVAL_MS;
 
-      const patches: Record<string, unknown>[] = [];
+          const patches: Record<string, unknown>[] = [];
 
-      for (let i = 0; i < UPDATES_PER_TICK; i += 1) {
-        const rowIndex = Math.floor(Math.random() * dataset.rows.length);
-        const row = dataset.rows[rowIndex];
-        const colIndex = Math.floor(Math.random() * columnIds.length);
-        const columnId = columnIds[colIndex];
-        const id = String((row as Record<string, unknown>).id ?? rowIndex);
+          for (let i = 0; i < UPDATES_PER_TICK; i += 1) {
+            const rowIndex = Math.floor(Math.random() * dataset.rows.length);
+            const row = dataset.rows[rowIndex];
+            const colIndex = Math.floor(Math.random() * columnIds.length);
+            const columnId = columnIds[colIndex];
+            const id = String((row as Record<string, unknown>).id ?? rowIndex);
 
-        patches.push({ id, [columnId]: `upd-${totalUpdates + i}` });
-      }
+            patches.push({ id, [columnId]: `upd-${totalUpdates + i}` });
+          }
 
-      grid.applyTransaction({ update: patches });
-      totalUpdates += UPDATES_PER_TICK;
+          batcher.update(patches);
+          totalUpdates += UPDATES_PER_TICK;
 
-      if (elapsed >= DURATION_MS) {
-        clearInterval(interval);
-        resolve();
-      }
-    }, BATCH_INTERVAL_MS);
-  });
-
-  rafHandle.running = false;
-  cancelAnimationFrame(rafHandle.id);
-  observer?.disconnect();
+          if (elapsed >= DURATION_MS) {
+            clearInterval(interval);
+            batcher.flush();
+            resolve();
+          }
+        } catch (err) {
+          clearInterval(interval);
+          reject(err);
+        }
+      }, BATCH_INTERVAL_MS);
+    });
+  } finally {
+    batcher.dispose();
+    rafHandle.running = false;
+    cancelAnimationFrame(rafHandle.id);
+    observer?.disconnect();
+  }
 
   const domNodesPeak = root.querySelectorAll("*").length;
   const renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
