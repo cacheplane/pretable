@@ -179,14 +179,10 @@ describe("edge cases — numbers", () => {
 describe("edge cases — object keys", () => {
   test("object with escaped key (hello\\nworld)", () => {
     let state = create();
-    state = push(state, '"hello\\nworld": 1');
-    // This is NOT valid top-level JSON (a key without object braces)
-    // Wrap in object braces:
-    let state2 = create();
-    state2 = push(state2, '{"hello\\nworld": 1}');
-    state2 = finish(state2);
-    expect(state2.error).toBeNull();
-    expect(resolve(state2)).toEqual({ "hello\nworld": 1 });
+    state = push(state, '{"hello\\nworld": 1}');
+    state = finish(state);
+    expect(state.error).toBeNull();
+    expect(resolve(state)).toEqual({ "hello\nworld": 1 });
   });
 
   test("object with unicode-escaped key", () => {
