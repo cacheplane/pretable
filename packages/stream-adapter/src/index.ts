@@ -6,3 +6,4 @@ export type {
 export { createBatcher } from "./create-batcher";
 export { connectElementStream } from "./connect-element-stream";
 export { connectPartialStream } from "./connect-partial-stream";
+export { parseElementStream } from "./parse-element-stream";
