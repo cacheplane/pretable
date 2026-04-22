@@ -95,6 +95,9 @@ importers:
       '@pretable-internal/scenario-data':
         specifier: workspace:*
         version: link:../../packages/scenario-data
+      '@pretable-internal/stream-adapter':
+        specifier: workspace:*
+        version: link:../../packages/stream-adapter
       '@pretable/react':
         specifier: workspace:*
         version: link:../../packages/react

@@ -25,6 +25,7 @@
     "@gridgamma/x-data-grid": "^9.0.2",
     "@pretable-internal/bench-runner": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
+    "@pretable-internal/stream-adapter": "workspace:*",
     "@pretable/react": "workspace:*",
     "@gridbeta/react-virtual": "^3.13.23",
     "gridalpha-community": "^35.2.1",
