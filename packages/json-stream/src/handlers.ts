@@ -7,10 +7,8 @@ import {
   closePrimitive,
   openNode,
   toErrorState,
+  NUMBER_RE,
 } from "./internals";
-
-// Number validation regex: matches a valid JSON number string
-const NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
 // ---- Value handler ----
 
@@ -281,7 +279,6 @@ export function handleNumberValue(state: InternalState, ch: string): { state: In
 
   const isDigit = (c: string) => c >= "0" && c <= "9";
   const lastChar = buf[buf.length - 1];
-  const secondChar = buf[1];
 
   // Determine what phase we're in based on buffer contents
   const hasDecimalDot = buf.includes(".");

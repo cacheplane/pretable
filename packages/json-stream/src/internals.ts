@@ -1,5 +1,8 @@
 import type { AstNode, ArrayNode, InternalState, JsonValue, ObjectNode, StreamError, StringNode } from "./types";
 
+// Number validation regex: matches a valid JSON number string
+export const NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
 // --- Node operations ---
 
 export function replaceNode(nodes: AstNode[], id: number, node: AstNode): AstNode[] {

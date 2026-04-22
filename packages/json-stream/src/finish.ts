@@ -1,7 +1,5 @@
 import type { InternalState } from "./types";
-import { closePrimitive, toErrorState, afterValue } from "./internals";
-
-const NUMBER_RE = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+import { closePrimitive, toErrorState, afterValue, NUMBER_RE } from "./internals";
 
 export function finishInternal(state: InternalState): InternalState {
   if (state.error) return state;
