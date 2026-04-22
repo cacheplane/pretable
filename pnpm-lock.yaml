@@ -182,6 +182,15 @@ importers:
 
   packages/text-core: {}
 
+  packages/ui:
+    dependencies:
+      "@fontsource-variable/fraunces":
+        specifier: ^5.0.0
+        version: 5.2.9
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+
 packages:
   "@adobe/css-tools@4.4.4":
     resolution:
@@ -922,6 +931,12 @@ packages:
     peerDependenciesMeta:
       "@noble/hashes":
         optional: true
+
+  "@fontsource-variable/fraunces@5.2.9":
+    resolution:
+      {
+        integrity: sha512-Y6IjunlN9Ni723np+GIgAaKzCDBrPRrqNi01TZxHs5wtHYROWFM9W6yiT+/gGwSjWIRD18oX17kD/BRWekc/Lw==,
+      }
 
   "@humanfs/core@0.19.1":
     resolution:
@@ -4608,6 +4623,8 @@ snapshots:
       levn: 0.4.1
 
   "@exodus/bytes@1.15.0": {}
+
+  "@fontsource-variable/fraunces@5.2.9": {}
 
   "@humanfs/core@0.19.1": {}
 
