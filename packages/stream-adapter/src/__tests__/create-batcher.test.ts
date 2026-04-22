@@ -9,9 +9,17 @@ interface TestRow {
 }
 
 function createMockGrid(): GridLike<TestRow> & {
-  calls: Array<{ add?: TestRow[]; update?: Partial<TestRow>[]; remove?: string[] }>;
+  calls: Array<{
+    add?: TestRow[];
+    update?: Partial<TestRow>[];
+    remove?: string[];
+  }>;
 } {
-  const calls: Array<{ add?: TestRow[]; update?: Partial<TestRow>[]; remove?: string[] }> = [];
+  const calls: Array<{
+    add?: TestRow[];
+    update?: Partial<TestRow>[];
+    remove?: string[];
+  }> = [];
   return {
     calls,
     applyTransaction(tx) {

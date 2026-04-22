@@ -23,12 +23,7 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 
 describe("parsePartialStream", () => {
   test("yields partial object snapshots as properties complete", async () => {
-    const chunks = [
-      '{"id":"1"',
-      ',"name":"Ali',
-      'ce","score":',
-      "100}",
-    ];
+    const chunks = ['{"id":"1"', ',"name":"Ali', 'ce","score":', "100}"];
 
     const results = await collect(
       parsePartialStream<TestRow>(asyncChunks(chunks)),
@@ -41,12 +36,7 @@ describe("parsePartialStream", () => {
   });
 
   test("only yields when resolved value reference changes (identity-preserving)", async () => {
-    const chunks = [
-      '{"id":"1",',
-      ' ',
-      ' ',
-      '"name":"Alice"}',
-    ];
+    const chunks = ['{"id":"1",', " ", " ", '"name":"Alice"}'];
 
     const results = await collect(
       parsePartialStream<TestRow>(asyncChunks(chunks)),
@@ -54,10 +44,7 @@ describe("parsePartialStream", () => {
 
     // Exactly two distinct snapshots: after "id" resolves, after "name" resolves.
     // Whitespace-only chunks must not produce new yields.
-    expect(results).toEqual([
-      { id: "1" },
-      { id: "1", name: "Alice" },
-    ]);
+    expect(results).toEqual([{ id: "1" }, { id: "1", name: "Alice" }]);
     for (let i = 1; i < results.length; i++) {
       expect(results[i]).not.toBe(results[i - 1]);
     }
@@ -72,21 +59,14 @@ describe("parsePartialStream", () => {
       parsePartialStream<TestRow>(asyncChunks(chunks)),
     );
 
-    expect(results).toEqual([
-      { id: "1" },
-      { id: "1", name: "Alice" },
-    ]);
+    expect(results).toEqual([{ id: "1" }, { id: "1", name: "Alice" }]);
     for (const r of results) {
       expect(Object.keys(r).length).toBeGreaterThan(0);
     }
   });
 
   test("yields progressively as each key resolves", async () => {
-    const chunks = [
-      '{"id":"1"',
-      ',"name":"Alice"',
-      ',"score":100}',
-    ];
+    const chunks = ['{"id":"1"', ',"name":"Alice"', ',"score":100}'];
 
     const results = await collect(
       parsePartialStream<TestRow>(asyncChunks(chunks)),

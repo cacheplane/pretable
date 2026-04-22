@@ -33,6 +33,7 @@ packages/stream-adapter/
 ```
 
 **Responsibilities:**
+
 - `types.ts` — All public interfaces and the `GridLike` structural type (avoids hard coupling to grid-core's concrete class)
 - `create-batcher.ts` — RAF scheduling, buffer accumulation, flush/dispose lifecycle
 - `connect-element-stream.ts` — Async iteration → batcher.add, StreamConnection lifecycle
@@ -45,6 +46,7 @@ packages/stream-adapter/
 ### Task 1: Package Scaffolding
 
 **Files:**
+
 - Create: `packages/stream-adapter/package.json`
 - Create: `packages/stream-adapter/tsconfig.json`
 - Create: `packages/stream-adapter/src/index.ts`
@@ -95,9 +97,7 @@ Note: `@pretable-internal/grid-core` is NOT a runtime dependency. The adapter us
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.*", "src/**/__tests__/**"],
-  "references": [
-    { "path": "../json-stream" }
-  ]
+  "references": [{ "path": "../json-stream" }]
 }
 ```
 
@@ -133,11 +133,7 @@ export interface StreamConnection {
 - [ ] **Step 4: Create `src/index.ts` with type-only exports**
 
 ```ts
-export type {
-  GridLike,
-  TransactionBatcher,
-  StreamConnection,
-} from "./types";
+export type { GridLike, TransactionBatcher, StreamConnection } from "./types";
 ```
 
 This barrel will grow as we implement each module.
@@ -167,6 +163,7 @@ git commit -m "feat(stream-adapter): scaffold package with types"
 ### Task 2: TransactionBatcher
 
 **Files:**
+
 - Create: `packages/stream-adapter/src/create-batcher.ts`
 - Create: `packages/stream-adapter/src/__tests__/create-batcher.test.ts`
 - Modify: `packages/stream-adapter/src/index.ts`
@@ -187,9 +184,17 @@ interface TestRow {
 }
 
 function createMockGrid(): GridLike<TestRow> & {
-  calls: Array<{ add?: TestRow[]; update?: Partial<TestRow>[]; remove?: string[] }>;
+  calls: Array<{
+    add?: TestRow[];
+    update?: Partial<TestRow>[];
+    remove?: string[];
+  }>;
 } {
-  const calls: Array<{ add?: TestRow[]; update?: Partial<TestRow>[]; remove?: string[] }> = [];
+  const calls: Array<{
+    add?: TestRow[];
+    update?: Partial<TestRow>[];
+    remove?: string[];
+  }> = [];
   return {
     calls,
     applyTransaction(tx) {
@@ -471,6 +476,7 @@ git commit -m "feat(stream-adapter): implement TransactionBatcher with RAF flush
 ### Task 3: connectElementStream
 
 **Files:**
+
 - Create: `packages/stream-adapter/src/connect-element-stream.ts`
 - Create: `packages/stream-adapter/src/__tests__/connect-element-stream.test.ts`
 - Modify: `packages/stream-adapter/src/index.ts`
@@ -490,9 +496,17 @@ interface TestRow {
 }
 
 function createMockGrid(): GridLike<TestRow> & {
-  calls: Array<{ add?: TestRow[]; update?: Partial<TestRow>[]; remove?: string[] }>;
+  calls: Array<{
+    add?: TestRow[];
+    update?: Partial<TestRow>[];
+    remove?: string[];
+  }>;
 } {
-  const calls: Array<{ add?: TestRow[]; update?: Partial<TestRow>[]; remove?: string[] }> = [];
+  const calls: Array<{
+    add?: TestRow[];
+    update?: Partial<TestRow>[];
+    remove?: string[];
+  }> = [];
   return {
     calls,
     applyTransaction(tx) {
@@ -684,6 +698,7 @@ git commit -m "feat(stream-adapter): implement connectElementStream"
 ### Task 4: connectPartialStream
 
 **Files:**
+
 - Create: `packages/stream-adapter/src/connect-partial-stream.ts`
 - Create: `packages/stream-adapter/src/__tests__/connect-partial-stream.test.ts`
 - Modify: `packages/stream-adapter/src/index.ts`
@@ -704,9 +719,17 @@ interface TestRow {
 }
 
 function createMockGrid(): GridLike<TestRow> & {
-  calls: Array<{ add?: TestRow[]; update?: Partial<TestRow>[]; remove?: string[] }>;
+  calls: Array<{
+    add?: TestRow[];
+    update?: Partial<TestRow>[];
+    remove?: string[];
+  }>;
 } {
-  const calls: Array<{ add?: TestRow[]; update?: Partial<TestRow>[]; remove?: string[] }> = [];
+  const calls: Array<{
+    add?: TestRow[];
+    update?: Partial<TestRow>[];
+    remove?: string[];
+  }> = [];
   return {
     calls,
     applyTransaction(tx) {
@@ -909,6 +932,7 @@ git commit -m "feat(stream-adapter): implement connectPartialStream"
 ### Task 5: parseElementStream
 
 **Files:**
+
 - Create: `packages/stream-adapter/src/parse-element-stream.ts`
 - Create: `packages/stream-adapter/src/__tests__/parse-element-stream.test.ts`
 - Modify: `packages/stream-adapter/src/index.ts`
@@ -943,7 +967,9 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 describe("parseElementStream", () => {
   test("yields complete elements from a JSON array", async () => {
     const chunks = ['[{"id":"1","name":"Alice"},{"id":"2","name":"Bob"}]'];
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
 
     expect(results).toEqual([
       { id: "1", name: "Alice" },
@@ -957,7 +983,9 @@ describe("parseElementStream", () => {
       'me":"Alice"},{"id',
       '":"2","name":"Bob"}]',
     ];
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
 
     expect(results).toEqual([
       { id: "1", name: "Alice" },
@@ -992,13 +1020,17 @@ describe("parseElementStream", () => {
       '{"id":"3","name":"Carol"}]',
     ];
 
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
     expect(results).toHaveLength(3);
   });
 
   test("handles empty array", async () => {
     const chunks = ["[]"];
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
     expect(results).toEqual([]);
   });
 
@@ -1008,14 +1040,18 @@ describe("parseElementStream", () => {
       meta: { score: number };
     }
     const chunks = ['[{"id":"1","meta":{"score":100}}]'];
-    const results = await collect(parseElementStream<NestedRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<NestedRow>(asyncChunks(chunks)),
+    );
     expect(results).toEqual([{ id: "1", meta: { score: 100 } }]);
   });
 
   test("character-at-a-time streaming", async () => {
     const json = '[{"id":"1","name":"Alice"}]';
     const chunks = json.split("");
-    const results = await collect(parseElementStream<TestRow>(asyncChunks(chunks)));
+    const results = await collect(
+      parseElementStream<TestRow>(asyncChunks(chunks)),
+    );
     expect(results).toEqual([{ id: "1", name: "Alice" }]);
   });
 });
@@ -1134,6 +1170,7 @@ git commit -m "feat(stream-adapter): implement parseElementStream"
 ### Task 6: parsePartialStream
 
 **Files:**
+
 - Create: `packages/stream-adapter/src/parse-partial-stream.ts`
 - Create: `packages/stream-adapter/src/__tests__/parse-partial-stream.test.ts`
 - Modify: `packages/stream-adapter/src/index.ts`
@@ -1168,12 +1205,7 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 
 describe("parsePartialStream", () => {
   test("yields partial object snapshots as properties complete", async () => {
-    const chunks = [
-      '{"id":"1"',
-      ',"name":"Ali',
-      'ce","score":',
-      "100}",
-    ];
+    const chunks = ['{"id":"1"', ',"name":"Ali', 'ce","score":', "100}"];
 
     const results = await collect(
       parsePartialStream<TestRow>(asyncChunks(chunks)),
@@ -1189,12 +1221,7 @@ describe("parsePartialStream", () => {
 
   test("only yields when resolved value reference changes (identity-preserving)", async () => {
     // Push chunks that don't change the resolved value
-    const chunks = [
-      '{"id":"1",',
-      ' ',
-      ' ',
-      '"name":"Alice"}',
-    ];
+    const chunks = ['{"id":"1",', " ", " ", '"name":"Alice"}'];
 
     const results = await collect(
       parsePartialStream<TestRow>(asyncChunks(chunks)),
@@ -1267,12 +1294,7 @@ Expected: FAIL — `parsePartialStream` not found.
 Create `packages/stream-adapter/src/parse-partial-stream.ts`:
 
 ```ts
-import {
-  create,
-  push,
-  finish,
-  isObjectNode,
-} from "@cacheplane/json-stream";
+import { create, push, finish, isObjectNode } from "@cacheplane/json-stream";
 import type { StreamState } from "@cacheplane/json-stream";
 
 /**
@@ -1320,7 +1342,11 @@ export async function* parsePartialStream<TRow>(
 
   if (state.rootId !== null) {
     const root = state.nodes[state.rootId];
-    if (isObjectNode(root) && root.value !== undefined && root.value !== lastValue) {
+    if (
+      isObjectNode(root) &&
+      root.value !== undefined &&
+      root.value !== lastValue
+    ) {
       yield root.value as Partial<TRow>;
     }
   }
@@ -1355,6 +1381,7 @@ git commit -m "feat(stream-adapter): implement parsePartialStream"
 ### Task 7: Benchmark Refactoring
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-runtime.ts` (lines 571-675)
 - Modify: `apps/bench/package.json` (add stream-adapter dependency)
 
@@ -1375,42 +1402,43 @@ Replace the `setInterval` loop in `apps/bench/src/bench-runtime.ts` (`measureBen
 Replace the `await new Promise<void>((resolve) => { ... });` block (lines 620-647) with:
 
 ```ts
-  const { createBatcher } = await import("@pretable-internal/stream-adapter");
-  const batcher = createBatcher(grid);
+const { createBatcher } = await import("@pretable-internal/stream-adapter");
+const batcher = createBatcher(grid);
 
-  await new Promise<void>((resolve) => {
-    let elapsed = 0;
+await new Promise<void>((resolve) => {
+  let elapsed = 0;
 
-    const interval = setInterval(() => {
-      elapsed += BATCH_INTERVAL_MS;
+  const interval = setInterval(() => {
+    elapsed += BATCH_INTERVAL_MS;
 
-      const patches: Record<string, unknown>[] = [];
+    const patches: Record<string, unknown>[] = [];
 
-      for (let i = 0; i < UPDATES_PER_TICK; i += 1) {
-        const rowIndex = Math.floor(Math.random() * dataset.rows.length);
-        const row = dataset.rows[rowIndex];
-        const colIndex = Math.floor(Math.random() * columnIds.length);
-        const columnId = columnIds[colIndex];
-        const id = String((row as Record<string, unknown>).id ?? rowIndex);
+    for (let i = 0; i < UPDATES_PER_TICK; i += 1) {
+      const rowIndex = Math.floor(Math.random() * dataset.rows.length);
+      const row = dataset.rows[rowIndex];
+      const colIndex = Math.floor(Math.random() * columnIds.length);
+      const columnId = columnIds[colIndex];
+      const id = String((row as Record<string, unknown>).id ?? rowIndex);
 
-        patches.push({ id, [columnId]: `upd-${totalUpdates + i}` });
-      }
+      patches.push({ id, [columnId]: `upd-${totalUpdates + i}` });
+    }
 
-      batcher.update(patches);
-      totalUpdates += UPDATES_PER_TICK;
+    batcher.update(patches);
+    totalUpdates += UPDATES_PER_TICK;
 
-      if (elapsed >= DURATION_MS) {
-        clearInterval(interval);
-        batcher.flush();
-        resolve();
-      }
-    }, BATCH_INTERVAL_MS);
-  });
+    if (elapsed >= DURATION_MS) {
+      clearInterval(interval);
+      batcher.flush();
+      resolve();
+    }
+  }, BATCH_INTERVAL_MS);
+});
 
-  batcher.dispose();
+batcher.dispose();
 ```
 
 The key changes:
+
 1. Replace direct `grid.applyTransaction({ update: patches })` with `batcher.update(patches)`
 2. Call `batcher.flush()` before resolving to ensure all buffered updates are applied
 3. Call `batcher.dispose()` after the promise resolves to clean up
@@ -1465,11 +1493,7 @@ Expected: No lint errors.
 The final `packages/stream-adapter/src/index.ts` should export:
 
 ```ts
-export type {
-  GridLike,
-  TransactionBatcher,
-  StreamConnection,
-} from "./types";
+export type { GridLike, TransactionBatcher, StreamConnection } from "./types";
 
 export { createBatcher } from "./create-batcher";
 export { connectElementStream } from "./connect-element-stream";

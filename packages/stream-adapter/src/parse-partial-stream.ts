@@ -1,9 +1,4 @@
-import {
-  create,
-  push,
-  finish,
-  isObjectNode,
-} from "@cacheplane/json-stream";
+import { create, push, finish, isObjectNode } from "@cacheplane/json-stream";
 import type { StreamState } from "@cacheplane/json-stream";
 
 export async function* parsePartialStream<TRow>(
