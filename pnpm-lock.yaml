@@ -183,6 +183,12 @@ importers:
 
   packages/scenario-data: {}
 
+  packages/stream-adapter:
+    dependencies:
+      '@cacheplane/json-stream':
+        specifier: workspace:*
+        version: link:../json-stream
+
   packages/text-core: {}
 
   packages/ui:
