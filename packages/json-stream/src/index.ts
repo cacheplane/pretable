@@ -11,3 +11,13 @@ export type {
   StreamState,
   StringNode,
 } from "./types";
+
+export {
+  isArrayNode,
+  isBoolNode,
+  isComplete,
+  isNullNode,
+  isNumberNode,
+  isObjectNode,
+  isStringNode,
+} from "./guards";
