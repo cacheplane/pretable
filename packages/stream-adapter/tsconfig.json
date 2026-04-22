@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "files": ["src/index.ts"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.*", "src/**/__tests__/**"],
+  "references": [{ "path": "../json-stream" }]
+}
