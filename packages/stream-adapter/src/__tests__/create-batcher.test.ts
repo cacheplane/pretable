@@ -166,4 +166,48 @@ describe("createBatcher", () => {
 
     batcher.dispose();
   });
+
+  test("subsequent mutations still batch after applyTransaction throws", async () => {
+    // Contract: if grid.applyTransaction throws, the batch that triggered it
+    // is lost (buffers are cleared before the call), but the batcher's
+    // internal state remains consistent. Subsequent mutations schedule a new
+    // RAF and land as a fresh transaction.
+    let throwOnce = true;
+    const calls: Array<{
+      add?: TestRow[];
+      update?: Partial<TestRow>[];
+      remove?: string[];
+    }> = [];
+    const grid: GridLike<TestRow> = {
+      applyTransaction(tx) {
+        if (throwOnce) {
+          throwOnce = false;
+          throw new Error("grid boom");
+        }
+        calls.push(tx);
+      },
+    };
+    const batcher = createBatcher(grid);
+
+    batcher.add([{ id: "1", name: "Alice", score: 10 }]);
+
+    // First RAF: applyTransaction throws. The rejection propagates out of
+    // the RAF callback — vitest's fake-RAF surfaces it as a test failure
+    // unless we tolerate it. Using a process-level guard is overkill here;
+    // instead catch via try/await on the timer advance.
+    await expect(vi.advanceTimersToNextTimerAsync()).rejects.toThrow(
+      "grid boom",
+    );
+
+    expect(calls).toHaveLength(0);
+
+    // Batcher state must still be usable.
+    batcher.add([{ id: "2", name: "Bob", score: 20 }]);
+    await vi.advanceTimersToNextTimerAsync();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].add).toEqual([{ id: "2", name: "Bob", score: 20 }]);
+
+    batcher.dispose();
+  });
 });
