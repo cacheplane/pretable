@@ -47,7 +47,7 @@ describe("errors — invalid unicode escapes", () => {
     let state = create();
     state = push(state, '"\\uZZZZ"');
     expect(state.error).not.toBeNull();
-    expect(state.error!.message).toContain("ZZZZ");
+    expect(state.error!.message).toContain("hex digit");
   });
 
   test("invalid unicode \\uGGGG", () => {
@@ -56,16 +56,11 @@ describe("errors — invalid unicode escapes", () => {
     expect(state.error).not.toBeNull();
   });
 
-  // Note: \\u00GG is parsed by parseInt("00GG", 16) which returns 0 (stops at G),
-  // so the implementation treats it as \\u0000. This is a quirk of parseInt behavior.
-  test("invalid unicode \\u00GG is treated as \\u0000 by parseInt (implementation quirk)", () => {
+  test("invalid unicode \\u00GG is rejected", () => {
     let state = create();
     state = push(state, '"\\u00GG"');
-    // The implementation uses parseInt which stops at non-hex chars,
-    // so \\u00GG is accepted (not an error in this implementation)
-    state = finish(state);
-    expect(state.error).toBeNull();
-    expect(resolve(state)).toBe("\u0000");
+    expect(state.error).not.toBeNull();
+    expect(state.error!.message).toContain("hex digit");
   });
 });
 
