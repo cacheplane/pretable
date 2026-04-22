@@ -83,6 +83,7 @@ export type ParseMode =
   | "LiteralValue"
   | "ArrayItemOrEnd"
   | "ObjectKeyOrEnd"
+  | "ObjectKey"
   | "ObjectColon"
   | "Separator"
   | "Done"
