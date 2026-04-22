@@ -12,9 +12,15 @@ describe("<App />", () => {
   test("renders Nav with playground active and version string", () => {
     render(<App />);
 
+    // Nav's header landmark
+    // Note: Multiple headers may exist in the rendered output; find the one with banner role
+    // that contains the Primary nav
+    const headers = screen.getAllByRole("banner");
+    const header = headers.find((h) => h.querySelector('nav[aria-label="Primary"]'));
+    expect(header).toBeInTheDocument();
+
     // Primary nav links (from @pretable/ui's LINKS: playground/bench/docs/github)
     const primaryNav = screen.getByRole("navigation", { name: "Primary" });
-    expect(primaryNav).toBeInTheDocument();
     expect(within(primaryNav).getByText("playground")).toBeInTheDocument();
     expect(within(primaryNav).getByText("bench")).toBeInTheDocument();
 
