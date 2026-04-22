@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { create, resolve } from "../index";
 import type {
   AstNode,
   StreamState,
@@ -42,5 +43,22 @@ describe("types", () => {
     expect(nodes[3].kind).toBe("string");
     expect(nodes[4].kind).toBe("array");
     expect(nodes[5].kind).toBe("object");
+  });
+});
+
+describe("create", () => {
+  test("returns empty state with no nodes and no root", () => {
+    const state = create();
+    expect(state.nodes).toEqual([]);
+    expect(state.rootId).toBeNull();
+    expect(state.error).toBeNull();
+    expect(state.complete).toBe(false);
+  });
+});
+
+describe("resolve", () => {
+  test("returns undefined for empty state", () => {
+    const state = create();
+    expect(resolve(state)).toBeUndefined();
   });
 });
