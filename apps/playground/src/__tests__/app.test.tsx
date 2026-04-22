@@ -12,14 +12,8 @@ describe("<App />", () => {
   test("renders Nav with playground active and version string", () => {
     render(<App />);
 
-    // Nav's header landmark. InspectionDemo still renders <header> panels
-    // inside <main> which testing-library also exposes as role=banner,
-    // so filter for the one that contains the Primary nav (unique to Nav).
-    // This disambiguation is temporary — after Task 8 deletes InspectionDemo,
-    // getByRole("banner") will find exactly one element.
-    const header = screen
-      .getAllByRole("banner")
-      .find((el) => el.querySelector('nav[aria-label="Primary"]'));
+    // Nav's header landmark.
+    const header = screen.getByRole("banner");
     expect(header).toBeInTheDocument();
 
     // Primary nav links (from @pretable/ui's LINKS: playground/bench/docs/github)
