@@ -182,19 +182,27 @@ const CONTROL_NAMES: Record<number, string> = {
   31: "US",
 };
 
+function isHexDigit(ch: string): boolean {
+  return (
+    (ch >= "0" && ch <= "9") ||
+    (ch >= "a" && ch <= "f") ||
+    (ch >= "A" && ch <= "F")
+  );
+}
+
 export function handleStringValue(state: InternalState, ch: string): { state: InternalState; pos: number } {
   // Unicode escape accumulation
   if (state.stringUnicode !== null) {
+    if (!isHexDigit(ch)) {
+      return { state: toErrorState(state, `Invalid unicode escape: expected hex digit, got '${ch}'`), pos: state.index };
+    }
     const hexDigits = state.stringUnicode + ch;
     const s1 = advancePosition(state, ch);
     if (hexDigits.length < 4) {
       return { state: { ...s1, stringUnicode: hexDigits }, pos: s1.index };
     }
-    // We have 4 hex digits
+    // We have 4 valid hex digits
     const codePoint = parseInt(hexDigits, 16);
-    if (isNaN(codePoint)) {
-      return { state: toErrorState(s1, `Invalid unicode escape \\u${hexDigits}`), pos: s1.index };
-    }
     const char = String.fromCharCode(codePoint);
     const s2 = appendStringFragment({ ...s1, stringUnicode: null }, char);
     return { state: s2, pos: s2.index };
