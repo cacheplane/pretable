@@ -597,6 +597,9 @@ export async function measureBenchUpdatesRun(
   const UPDATES_PER_TICK = 50;
   const columnIds = dataset.columns.map((c) => c.id);
 
+  const { createBatcher } = await import("@pretable-internal/stream-adapter");
+  const batcher = createBatcher(grid);
+
   let totalUpdates = 0;
   const longTaskDurations: number[] = [];
   const observer = createLongTaskObserver(longTaskDurations);
@@ -636,15 +639,18 @@ export async function measureBenchUpdatesRun(
         patches.push({ id, [columnId]: `upd-${totalUpdates + i}` });
       }
 
-      grid.applyTransaction({ update: patches });
+      batcher.update(patches);
       totalUpdates += UPDATES_PER_TICK;
 
       if (elapsed >= DURATION_MS) {
         clearInterval(interval);
+        batcher.flush();
         resolve();
       }
     }, BATCH_INTERVAL_MS);
   });
+
+  batcher.dispose();
 
   rafHandle.running = false;
   cancelAnimationFrame(rafHandle.id);
