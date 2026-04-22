@@ -3,3 +3,4 @@ export type {
   TransactionBatcher,
   StreamConnection,
 } from "./types";
+export { createBatcher } from "./create-batcher";
