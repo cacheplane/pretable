@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import {
   afterEach,
   beforeEach,
@@ -39,7 +45,9 @@ describe("<CopyCommand />", () => {
     const button = screen.getByRole("button", {
       name: /copy install command/i,
     });
-    fireEvent.click(button);
+    await act(async () => {
+      fireEvent.click(button);
+    });
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
       "npm i @pretable/react",
@@ -55,15 +63,17 @@ describe("<CopyCommand />", () => {
       name: /copy install command/i,
     });
 
-    fireEvent.click(button);
-
-    // flush the clipboard promise
-    await vi.runAllTicks();
+    // Click and let the clipboard promise + setState flush through React.
+    await act(async () => {
+      fireEvent.click(button);
+    });
 
     expect(button).toHaveTextContent(/copied/i);
 
-    // advance past the 1200ms timer
-    vi.advanceTimersByTime(1300);
+    // Advance past the 1200ms revert timer and flush the resulting render.
+    await act(async () => {
+      vi.advanceTimersByTime(1300);
+    });
 
     expect(button).toHaveTextContent("$ npm i @pretable/react");
   });

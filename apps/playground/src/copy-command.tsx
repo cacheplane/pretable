@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { flushSync } from "react-dom";
 
 export interface CopyCommandProps {
   command: string;
@@ -12,8 +11,8 @@ export function CopyCommand({ command, className }: CopyCommandProps) {
   const onClick = async () => {
     try {
       await navigator.clipboard.writeText(command);
-      flushSync(() => setCopied(true));
-      setTimeout(() => flushSync(() => setCopied(false)), 1200);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
     } catch {
       // Clipboard API can fail in insecure contexts; silent no-op.
     }
