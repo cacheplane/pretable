@@ -14,9 +14,7 @@ describe("<PitchHero />", () => {
 
     // Eyebrow (monospace, uppercase — content check only)
     expect(
-      screen.getByText(
-        /\$ pretable — read-heavy wedge · vol\. 1 · no\. 4/i,
-      ),
+      screen.getByText(/\$ pretable — read-heavy wedge · vol\. 1 · no\. 4/i),
     ).toBeInTheDocument();
 
     // Headline is an <h1>

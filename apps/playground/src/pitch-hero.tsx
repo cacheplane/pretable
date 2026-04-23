@@ -10,14 +10,13 @@ export function PitchHero() {
           $ pretable — read-heavy wedge · vol. 1 · no. 4
         </p>
         <h1 className="mt-3 font-display text-[44px] leading-[1.02] tracking-[-0.025em] md:text-[60px] md:leading-none">
-          the grid that treats{" "}
-          <em className="italic text-amber-ink">scroll</em>{" "}
+          the grid that treats <em className="italic text-amber-ink">scroll</em>{" "}
           as a first-class feature.
         </h1>
         <p className="mt-5 max-w-[760px] font-display text-[18px] leading-[1.44] text-ink-dim">
           Render 500k rows at <Receipt>60fps</Receipt>. Selection stays keyed by
-          row id across filters. Every budget in the{" "}
-          <Receipt>p99</Receipt> column is green.
+          row id across filters. Every budget in the <Receipt>p99</Receipt>{" "}
+          column is green.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <a

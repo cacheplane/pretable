@@ -13,6 +13,7 @@
 ## File Structure
 
 **New files:**
+
 ```
 apps/playground/src/
   copy-command.tsx          // pill CTA with clipboard write, reused from hero
@@ -29,6 +30,7 @@ apps/playground/src/
 ```
 
 **Modified files:**
+
 ```
 apps/playground/package.json        // + @pretable/ui, tailwindcss@^4, @tailwindcss/vite, @fontsource-variable/fraunces
 apps/playground/vite.config.ts      // + tailwindcss() plugin, + VITE_APP_VERSION define
@@ -39,6 +41,7 @@ apps/playground/tsconfig.json       // (add "DOM" lib if missing; verify vite/cl
 ```
 
 **Deleted files:**
+
 ```
 apps/playground/src/inspection-demo.tsx
 apps/playground/src/__tests__/inspection-demo.test.tsx
@@ -51,6 +54,7 @@ apps/playground/src/__tests__/inspection-demo.test.tsx
 Wire Tailwind v4, Fraunces, and `@pretable/ui` into the app. Nothing renders yet — this task only establishes the build + styling foundation so later tasks can use `bg-cream`, `font-display`, `<Nav>`, etc.
 
 **Files:**
+
 - Modify: `apps/playground/package.json`
 - Modify: `apps/playground/vite.config.ts`
 - Modify: `apps/playground/src/app.css` (rewritten)
@@ -58,6 +62,7 @@ Wire Tailwind v4, Fraunces, and `@pretable/ui` into the app. Nothing renders yet
 - [ ] **Step 1: Install Tailwind v4, Vite plugin, Fraunces, and the ui workspace package**
 
 Run (from repo root):
+
 ```bash
 pnpm --filter @pretable/app-playground add @pretable/ui@workspace:*
 pnpm --filter @pretable/app-playground add -D tailwindcss@^4 @tailwindcss/vite
@@ -65,6 +70,7 @@ pnpm --filter @pretable/app-playground add @fontsource-variable/fraunces
 ```
 
 Expected: `apps/playground/package.json` gains:
+
 - `dependencies`: `@pretable/ui: "workspace:*"`, `@fontsource-variable/fraunces: "^5.x.x"`
 - `devDependencies`: `tailwindcss: "^4.x.x"`, `@tailwindcss/vite: "^4.x.x"`
 
@@ -124,9 +130,11 @@ Replace the entire contents of `apps/playground/src/app.css` with:
 
   --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
   --font-sans:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
   --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono", monospace;
+    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono",
+    monospace;
 }
 
 *,
@@ -165,6 +173,7 @@ Note: this rewrite **deletes** all the `.inspection-*`, `.playground-shell`, `.f
 - [ ] **Step 4: Sanity-check the build**
 
 Run:
+
 ```bash
 pnpm --filter @pretable/app-playground dev
 ```
@@ -172,6 +181,7 @@ pnpm --filter @pretable/app-playground dev
 Expected: dev server boots with no CSS parse errors. The page will render blank (or just `<InspectionDemo />` unstyled) because layout CSS is gone. That's expected at this stage — we're only confirming Tailwind + token imports compile. Ctrl-C out.
 
 Also verify typecheck passes:
+
 ```bash
 pnpm --filter @pretable/app-playground typecheck
 ```
@@ -192,6 +202,7 @@ git commit -m "chore(playground): install Tailwind v4, @pretable/ui, and Fraunce
 Replace the bare `<main><InspectionDemo /></main>` root with the spec's Nav + main + Footer shell. `<InspectionDemo />` remains inside `<main>` temporarily so the page still renders something until Task 8 replaces it section-by-section.
 
 **Files:**
+
 - Modify: `apps/playground/src/app.tsx`
 - Test: `apps/playground/src/__tests__/app.test.tsx` (new; will grow over later tasks)
 
@@ -253,6 +264,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 - [ ] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 pnpm --filter @pretable/app-playground test -- app.test
 ```
@@ -288,6 +300,7 @@ The `InspectionDemo` render lives inside `<main>` temporarily. Task 8 removes it
 - [ ] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 pnpm --filter @pretable/app-playground test -- app.test
 ```
@@ -295,6 +308,7 @@ pnpm --filter @pretable/app-playground test -- app.test
 Expected: all three tests PASS.
 
 Also verify typecheck:
+
 ```bash
 pnpm --filter @pretable/app-playground typecheck
 ```
@@ -315,6 +329,7 @@ git commit -m "feat(playground): wrap page in shared Nav + Footer from @pretable
 Pill-shaped button used by the hero for the ghost-monospace `$ npm i @pretable/react` CTA. Displays a leading `$ ` glyph + the command; writes the command (without `$ `) to clipboard on click; flashes `✓ copied` for ~1.2s.
 
 **Files:**
+
 - Create: `apps/playground/src/copy-command.tsx`
 - Test: `apps/playground/src/__tests__/copy-command.test.tsx`
 
@@ -325,14 +340,7 @@ Create `apps/playground/src/__tests__/copy-command.test.tsx`:
 ```tsx
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  test,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { CopyCommand } from "../copy-command";
 
@@ -473,6 +481,7 @@ git commit -m "feat(playground): add CopyCommand helper for hero CTA"
 Spec §5.2. Cream surface; 64px top/bottom padding; eyebrow + headline with italic amber emphasis + dek with inline `<Receipt>` + two CTAs (primary anchor + `<CopyCommand>`).
 
 **Files:**
+
 - Create: `apps/playground/src/pitch-hero.tsx`
 - Test: `apps/playground/src/__tests__/pitch-hero.test.tsx`
 
@@ -497,9 +506,7 @@ describe("<PitchHero />", () => {
 
     // Eyebrow (monospace, uppercase — content check only)
     expect(
-      screen.getByText(
-        /\$ pretable — read-heavy wedge · vol\. 1 · no\. 4/i,
-      ),
+      screen.getByText(/\$ pretable — read-heavy wedge · vol\. 1 · no\. 4/i),
     ).toBeInTheDocument();
 
     // Headline is an <h1>
@@ -573,8 +580,8 @@ export function PitchHero() {
         </h1>
         <p className="mt-5 max-w-[760px] font-display text-[18px] leading-[1.44] text-ink-dim">
           Render 500k rows at <Receipt>60fps</Receipt>. Selection stays keyed by
-          row id across filters. Every budget in the{" "}
-          <Receipt>p99</Receipt> column is green.
+          row id across filters. Every budget in the <Receipt>p99</Receipt>{" "}
+          column is green.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <a
@@ -594,6 +601,7 @@ export function PitchHero() {
 Note on the italic amber span: Tailwind's `italic` utility sets `font-style: italic`, but `<em>` already defaults to italic. The belt-and-suspenders `[font-style:italic]` is a safety net in case a CSS reset neutralized `<em>` styling. `not-italic` reset then arbitrary explicit italic — a single `italic` class would also work; keep whichever reads clearer during implementation.
 
 Simpler form:
+
 ```tsx
 <em className="italic text-amber-ink">scroll</em>
 ```
@@ -622,6 +630,7 @@ git commit -m "feat(playground): add PitchHero section"
 Builds the outer chrome (scale select + telemetry readout + filter inputs) without yet mounting `InspectionGrid`. A placeholder `<div>` stands in for the grid body so tests can assert the surrounding shell in isolation.
 
 **Files:**
+
 - Create: `apps/playground/src/pitch-grid.tsx`
 - Test: `apps/playground/src/__tests__/pitch-grid.test.tsx`
 
@@ -745,9 +754,7 @@ export function PitchGrid() {
               className="bg-transparent text-amber outline-none cursor-pointer"
               value={scale}
               onChange={(event) => {
-                setScale(
-                  event.currentTarget.value as InspectionDatasetScale,
-                );
+                setScale(event.currentTarget.value as InspectionDatasetScale);
               }}
             >
               {inspectionDatasetScaleOptions.map((option) => (
@@ -816,6 +823,7 @@ pnpm --filter @pretable/app-playground test -- pitch-grid.test
 Expected: all five tests PASS.
 
 Also verify typecheck:
+
 ```bash
 pnpm --filter @pretable/app-playground typecheck
 ```
@@ -836,6 +844,7 @@ git commit -m "feat(playground): scaffold PitchGrid chrome strip and filter row"
 Mount the real `InspectionGrid` primitive in place of the placeholder. Wire telemetry from `onTelemetryChange` to update the chrome readout. Port grid-internal CSS rules (for the `inspection-header-cell` / `inspection-row` / `inspection-cell` classes InspectionGrid emits) into a new `pitch-grid.css` styled for the terminal-dark theme.
 
 **Files:**
+
 - Modify: `apps/playground/src/pitch-grid.tsx`
 - Modify: `apps/playground/src/__tests__/pitch-grid.test.tsx`
 - Create: `apps/playground/src/pitch-grid.css`
@@ -845,36 +854,36 @@ Mount the real `InspectionGrid` primitive in place of the placeholder. Wire tele
 Append to `apps/playground/src/__tests__/pitch-grid.test.tsx` (inside the same describe):
 
 ```tsx
-  test("mounts an InspectionGrid-styled grid (finds inspection-header-row in DOM)", () => {
-    const { container } = render(<PitchGrid />);
-    expect(
-      container.querySelector(".inspection-header-cell"),
-    ).toBeInTheDocument();
-  });
+test("mounts an InspectionGrid-styled grid (finds inspection-header-row in DOM)", () => {
+  const { container } = render(<PitchGrid />);
+  expect(
+    container.querySelector(".inspection-header-cell"),
+  ).toBeInTheDocument();
+});
 
-  test("changing scale updates the dataset row count surfaced in the grid", () => {
-    render(<PitchGrid />);
-    const scaleSelect = screen.getByLabelText("Dataset scale");
+test("changing scale updates the dataset row count surfaced in the grid", () => {
+  render(<PitchGrid />);
+  const scaleSelect = screen.getByLabelText("Dataset scale");
 
-    // tiny should render fewer rows than dev — exact assertion deferred to the
-    // telemetry update below (renderedRowCount decreases monotonically).
-    fireEvent.change(scaleSelect, { target: { value: "tiny" } });
-    expect(scaleSelect).toHaveValue("tiny");
+  // tiny should render fewer rows than dev — exact assertion deferred to the
+  // telemetry update below (renderedRowCount decreases monotonically).
+  fireEvent.change(scaleSelect, { target: { value: "tiny" } });
+  expect(scaleSelect).toHaveValue("tiny");
 
-    // Chrome strip updates once telemetry flows. The test relies on the
-    // onTelemetryChange wiring; if this assertion flakes, the wiring is off.
-    const strip = screen.getByTestId("pitch-grid-chrome");
-    expect(strip).toHaveTextContent(/rendered/i);
-  });
+  // Chrome strip updates once telemetry flows. The test relies on the
+  // onTelemetryChange wiring; if this assertion flakes, the wiring is off.
+  const strip = screen.getByTestId("pitch-grid-chrome");
+  expect(strip).toHaveTextContent(/rendered/i);
+});
 ```
 
 The existing "placeholder check" test should be **removed** now that real integration lands:
 
 ```tsx
-  // Delete this test block — superseded by the real integration test above.
-  test("changing the scale select re-derives the dataset (placeholder check via rendered row count after wiring)", () => {
-    // ...
-  });
+// Delete this test block — superseded by the real integration test above.
+test("changing the scale select re-derives the dataset (placeholder check via rendered row count after wiring)", () => {
+  // ...
+});
 ```
 
 - [ ] **Step 2: Run test to verify the new assertions fail**
@@ -920,7 +929,7 @@ const renderedRowCount = telemetry?.renderedRowCount ?? 0;
     rows={[...dataset.rows]}
     viewportHeight={420}
   />
-</div>
+</div>;
 ```
 
 Final file should read end-to-end as (merge carefully):
@@ -980,9 +989,7 @@ export function PitchGrid() {
               className="bg-transparent text-amber outline-none cursor-pointer"
               value={scale}
               onChange={(event) => {
-                setScale(
-                  event.currentTarget.value as InspectionDatasetScale,
-                );
+                setScale(event.currentTarget.value as InspectionDatasetScale);
               }}
             >
               {inspectionDatasetScaleOptions.map((option) => (
@@ -1204,6 +1211,7 @@ git commit -m "feat(playground): wire PitchGrid to InspectionGrid with terminal-
 Spec §5.4. Cream surface; Fraunces italic amber header; 4-column grid of Fraunces numbers with top hairline rules; bench link below.
 
 **Files:**
+
 - Create: `apps/playground/src/receipts-band.tsx`
 - Test: `apps/playground/src/__tests__/receipts-band.test.tsx`
 
@@ -1293,10 +1301,7 @@ export function ReceiptsBand() {
         </h2>
         <ul className="mt-6 grid grid-cols-2 gap-6 md:grid-cols-4">
           {STATS.map((stat) => (
-            <li
-              key={stat.caption}
-              className="border-t border-ink pt-3"
-            >
+            <li key={stat.caption} className="border-t border-ink pt-3">
               <div className="font-display text-[44px] leading-[1] tracking-[-0.02em]">
                 {stat.value}
               </div>
@@ -1344,6 +1349,7 @@ git commit -m "feat(playground): add ReceiptsBand section with hardcoded snapsho
 Replace the temporary `<InspectionDemo />` render in `<App>` with the three new sections stacked inside `<main>`. Delete `inspection-demo.tsx` and its test. Grow `app.test.tsx` to assert section ordering and landmark structure.
 
 **Files:**
+
 - Modify: `apps/playground/src/app.tsx`
 - Modify: `apps/playground/src/__tests__/app.test.tsx`
 - Delete: `apps/playground/src/inspection-demo.tsx`
@@ -1354,38 +1360,38 @@ Replace the temporary `<InspectionDemo />` render in `<App>` with the three new 
 Append to `apps/playground/src/__tests__/app.test.tsx` (inside the same describe):
 
 ```tsx
-  test("renders the three section components in order inside <main>", () => {
-    render(<App />);
-    const main = screen.getByRole("main");
+test("renders the three section components in order inside <main>", () => {
+  render(<App />);
+  const main = screen.getByRole("main");
 
-    // hero h1 appears before receipts h2; grid section has id="grid"
-    const h1 = within(main).getByRole("heading", { level: 1 });
-    const h2 = within(main).getByRole("heading", { level: 2 });
-    const grid = main.querySelector("#grid");
+  // hero h1 appears before receipts h2; grid section has id="grid"
+  const h1 = within(main).getByRole("heading", { level: 1 });
+  const h2 = within(main).getByRole("heading", { level: 2 });
+  const grid = main.querySelector("#grid");
 
-    expect(h1).toBeInTheDocument();
-    expect(h2).toBeInTheDocument();
-    expect(grid).toBeInTheDocument();
+  expect(h1).toBeInTheDocument();
+  expect(h2).toBeInTheDocument();
+  expect(grid).toBeInTheDocument();
 
-    // DOM order: h1 (hero) → grid section → h2 (receipts)
-    const h1Pos = Array.from(main.querySelectorAll("*")).indexOf(h1);
-    const gridPos = Array.from(main.querySelectorAll("*")).indexOf(
-      grid as Element,
-    );
-    const h2Pos = Array.from(main.querySelectorAll("*")).indexOf(h2);
+  // DOM order: h1 (hero) → grid section → h2 (receipts)
+  const h1Pos = Array.from(main.querySelectorAll("*")).indexOf(h1);
+  const gridPos = Array.from(main.querySelectorAll("*")).indexOf(
+    grid as Element,
+  );
+  const h2Pos = Array.from(main.querySelectorAll("*")).indexOf(h2);
 
-    expect(h1Pos).toBeLessThan(gridPos);
-    expect(gridPos).toBeLessThan(h2Pos);
-  });
+  expect(h1Pos).toBeLessThan(gridPos);
+  expect(gridPos).toBeLessThan(h2Pos);
+});
 
-  test("no InspectionDemo-era status card or sidebar is rendered", () => {
-    render(<App />);
-    // These testids used to live in InspectionDemo.
-    expect(
-      screen.queryByTestId("inspection-diagnostics"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByTestId("inspection-detail")).not.toBeInTheDocument();
-  });
+test("no InspectionDemo-era status card or sidebar is rendered", () => {
+  render(<App />);
+  // These testids used to live in InspectionDemo.
+  expect(
+    screen.queryByTestId("inspection-diagnostics"),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByTestId("inspection-detail")).not.toBeInTheDocument();
+});
 ```
 
 - [ ] **Step 2: Run tests to verify the new assertions fail**
@@ -1462,6 +1468,7 @@ git commit -m "feat(playground): compose PitchHero + PitchGrid + ReceiptsBand; d
 Run the dev server end-to-end; confirm the five-section layout matches the spec; grab a real bench snapshot and replace the placeholder numbers in `<ReceiptsBand />`.
 
 **Files:**
+
 - Modify: `apps/playground/src/receipts-band.tsx` (replace `STATS` values)
 
 - [ ] **Step 1: Run dev server and verify sections visually**
@@ -1495,6 +1502,7 @@ pnpm bench:matrix
 (If neither exists, fall back to `pnpm --filter @pretable/app-bench dev`, select scenario `S7` at scale `stress`, let it run long enough to stabilize, and read the four metrics from the UI.)
 
 From the output, note:
+
 - **Total rows rendered** for the winning scenario (e.g., `500k`)
 - **Frame p50** in ms (e.g., `2.4ms`)
 - **Jank events** — count of frames >16ms during the run (ideally `0`)
@@ -1605,33 +1613,33 @@ Mark the direction-A items in the TodoWrite list complete. Move to direction B n
 
 Quick cross-walk of the design spec against this plan:
 
-| Spec section                       | Task(s)  |
-| ---------------------------------- | -------- |
-| §1 Goal                            | 8, 9     |
-| §2 Scope (A vs D)                  | 7, 9     |
-| §3 Component tree                  | 2, 4–8   |
-| §3 State ownership                 | 4–7      |
-| §3 Type contracts                  | 5, 6     |
-| §4 Styling approach (Tailwind v4)  | 1        |
-| §4 `app.css` rewrite               | 1        |
-| §5.1 `<Nav>` wiring                | 2        |
-| §5.2 `<PitchHero />`               | 3, 4     |
-| §5.3 `<PitchGrid />`               | 5, 6     |
-| §5.4 `<ReceiptsBand />`            | 7, 9     |
-| §5.5 `<Footer>` wiring             | 2        |
-| §5.6 Version plumbing              | 1, 2     |
-| §6 Data flow                       | 5, 6     |
-| §7 Testing plan                    | 2–9      |
-| §8 Out-of-scope / follow-ups       | —        |
-| §9 Rollback                        | 10 (PR)  |
-| §10 Risks                          | 1, 9, 10 |
-| §11 Success criteria 1 (5 sections rendered) | 8, 9  |
-| §11 Success criteria 2 (full-bleed dark grid, real telemetry) | 6, 9  |
-| §11 Success criteria 3 (real receipts numbers) | 9  |
-| §11 Success criteria 4 (CTA anchor) | 4, 9  |
-| §11 Success criteria 5 (InspectionDemo deleted) | 8  |
-| §11 Success criteria 6 (CI green)  | 10  |
-| §11 Success criteria 7 (manual verification) | 9  |
+| Spec section                                                  | Task(s)  |
+| ------------------------------------------------------------- | -------- |
+| §1 Goal                                                       | 8, 9     |
+| §2 Scope (A vs D)                                             | 7, 9     |
+| §3 Component tree                                             | 2, 4–8   |
+| §3 State ownership                                            | 4–7      |
+| §3 Type contracts                                             | 5, 6     |
+| §4 Styling approach (Tailwind v4)                             | 1        |
+| §4 `app.css` rewrite                                          | 1        |
+| §5.1 `<Nav>` wiring                                           | 2        |
+| §5.2 `<PitchHero />`                                          | 3, 4     |
+| §5.3 `<PitchGrid />`                                          | 5, 6     |
+| §5.4 `<ReceiptsBand />`                                       | 7, 9     |
+| §5.5 `<Footer>` wiring                                        | 2        |
+| §5.6 Version plumbing                                         | 1, 2     |
+| §6 Data flow                                                  | 5, 6     |
+| §7 Testing plan                                               | 2–9      |
+| §8 Out-of-scope / follow-ups                                  | —        |
+| §9 Rollback                                                   | 10 (PR)  |
+| §10 Risks                                                     | 1, 9, 10 |
+| §11 Success criteria 1 (5 sections rendered)                  | 8, 9     |
+| §11 Success criteria 2 (full-bleed dark grid, real telemetry) | 6, 9     |
+| §11 Success criteria 3 (real receipts numbers)                | 9        |
+| §11 Success criteria 4 (CTA anchor)                           | 4, 9     |
+| §11 Success criteria 5 (InspectionDemo deleted)               | 8        |
+| §11 Success criteria 6 (CI green)                             | 10       |
+| §11 Success criteria 7 (manual verification)                  | 9        |
 
 All success criteria are covered. Out-of-scope items are intentionally not in the plan.
 
