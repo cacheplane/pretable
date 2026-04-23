@@ -52,9 +52,7 @@ export function PitchGrid() {
               className="bg-transparent text-amber outline-none cursor-pointer"
               value={scale}
               onChange={(event) => {
-                setScale(
-                  event.currentTarget.value as InspectionDatasetScale,
-                );
+                setScale(event.currentTarget.value as InspectionDatasetScale);
               }}
             >
               {inspectionDatasetScaleOptions.map((option) => (

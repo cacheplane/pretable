@@ -47,10 +47,7 @@ export function ReceiptsBand() {
         </h2>
         <ul className="mt-6 grid grid-cols-2 gap-6 md:grid-cols-4">
           {STATS.map((stat) => (
-            <li
-              key={stat.caption}
-              className="border-t border-ink pt-3"
-            >
+            <li key={stat.caption} className="border-t border-ink pt-3">
               <div className="font-display text-[44px] leading-[1] tracking-[-0.02em]">
                 {stat.value}
               </div>

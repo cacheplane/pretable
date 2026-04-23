@@ -6,14 +6,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  test,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { CopyCommand } from "../copy-command";
 

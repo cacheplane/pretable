@@ -17,6 +17,7 @@ The goal is structural and editorial coherence at parity with shipped spec copy.
 ## 2. Scope boundary (A vs D)
 
 **A owns:**
+
 - All five sections rendered, in order, with full editorial chrome.
 - Spec copy verbatim (eyebrow, headline with italic amber emphasis, dek, CTAs, receipts band header, caption).
 - Receipts band numbers sourced from a **real bench snapshot** taken during implementation — four hardcoded `{value, caption}` pairs. D swaps to live source.
@@ -25,6 +26,7 @@ The goal is structural and editorial coherence at parity with shipped spec copy.
 - Deletion of `apps/playground/src/inspection-demo.tsx` and its associated styles in `app.css`.
 
 **D owns (later):**
+
 - Live bench numbers wired to a build-time or runtime source.
 - Copy voice polish.
 - Real GitHub star count.
@@ -53,7 +55,7 @@ The goal is structural and editorial coherence at parity with shipped spec copy.
 
 ### Cream/dark alternation
 
-Four of five sections are cream (`--pt-cream`); only `<PitchGrid />` is terminal-dark (`--pt-grid-bg`). The grid section is full-bleed with no card chrome — the grid *is* the page. This rhythm honors visual-system-design §2 gap #3 ("no competitor contrasts editorial light chrome against dark terminal product surfaces").
+Four of five sections are cream (`--pt-cream`); only `<PitchGrid />` is terminal-dark (`--pt-grid-bg`). The grid section is full-bleed with no card chrome — the grid _is_ the page. This rhythm honors visual-system-design §2 gap #3 ("no competitor contrasts editorial light chrome against dark terminal product surfaces").
 
 ### State ownership
 
@@ -62,6 +64,7 @@ Every piece of state is encapsulated inside the component that owns it. No prop-
 **`<PitchHero />`** — stateless. Renders eyebrow, headline with italic amber emphasis, dek, and two CTAs. CTA 1 is an `<a href="#grid">` anchor; CTA 2 is a copy-to-clipboard command.
 
 **`<PitchGrid />`** — owns grid state:
+
 - `scale: InspectionDatasetScale` — drives dropdown in chrome strip
 - `interactionState: { sort, filters, selectedRowId }` — drives filter row and selection
 - `telemetry: PretableTelemetry | null` — populated via `onTelemetryChange`
@@ -129,8 +132,12 @@ This follows the monorepo convention: **`packages/*` are vanilla CSS; `apps/*` m
   --color-sev-ok: var(--pt-sev-ok);
 
   --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
-  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono", monospace;
+  --font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono",
+    monospace;
 }
 
 body {
@@ -150,7 +157,8 @@ The existing `.inspection-demo`, `.inspection-controls`, `.inspection-sidebar`, 
     $ pretable — read-heavy wedge · vol. 1 · no. 4
   </p>
   <h1 className="font-display text-[60px] leading-none tracking-tight mt-3">
-    the grid that treats <em className="text-amber-ink">scroll</em> as a first-class feature.
+    the grid that treats <em className="text-amber-ink">scroll</em> as a
+    first-class feature.
   </h1>
 </section>
 ```
@@ -260,17 +268,20 @@ Unit tests (vitest + jsdom) under `apps/playground/src/__tests__/`:
 - **`app.test.tsx`** — `<App>` renders sections in order: Nav, then hero, grid, receipts band in `<main>`, then Footer.
 
 Accessibility assertions inlined into the tests above:
+
 - Single `<main>` landmark.
 - Heading order: one `<h1>` (hero), one `<h2>` (receipts), no skipped levels.
 - Grid section has `id="grid"` so hero CTA anchor resolves.
 
 Not tested:
+
 - Visual fidelity (no screenshot/Percy)
 - `InspectionGrid` behavior (covered upstream in `@pretable/react`)
 - Tailwind output (compile-time)
 - Font loading (trust `@fontsource-variable/fraunces`)
 
 Manual verification before opening the PR:
+
 - `pnpm dev:playground` → page loads; all five sections visible.
 - Tab through: sensible focus order; CTA 1 scrolls to `#grid`.
 - Change scale → dataset + `rendered N` update.
@@ -282,6 +293,7 @@ CI acceptance: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm 
 ## 8. Out of scope / related follow-ups
 
 **Out of scope for A (owned by D or later):**
+
 - Live / dynamic receipts band numbers — A hardcodes a snapshot, D wires a source.
 - `frame p50` telemetry instrumentation — would require changes inside `@pretable/react`. Separate PR.
 - Final copy voice / real GitHub star fetch / OG meta tags / favicon refresh.
@@ -289,12 +301,14 @@ CI acceptance: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm 
 - Dark-mode toggle (visual-system-design §9 explicitly cuts from v1).
 
 **Follow-ups surfaced during brainstorming:**
+
 - **`<Nav>` link customization** — today's shipped `<Nav>` owns `LINKS` at module scope. A doesn't need customization, but once we have more surfaces (C's docs, maybe a changelog page) a consumer likely wants to pass in links. Don't address during A; revisit as a dedicated `@pretable/ui` PR when the second consumer of `<Nav>` actually needs it.
 - **`<CodeBlock>` inline/button variant** — if a future page wants a compact copyable command in the same visual family as the hero CTA, either extract the pill from `<CopyCommand />` into `@pretable/ui` or add a `variant="inline"` to `<CodeBlock>`. Not A's problem; local helper ships.
 - **Dev-tool "selected event" sidebar** — deleted with `<InspectionDemo />`. Not restored. If later needed for internal grid debugging, rebuild against the shared primitive rather than resurrect the old file.
 - **Footer `ciStatus` source** — hardcoded `"green"` in A. Real wiring (to CI-run JSON or a status endpoint) is D's concern.
 
 **Out of scope for the whole A→D arc, flagged separately:**
+
 - **Consumer theming architecture for `@pretable/*`.** The broader story for how external consumers override tokens, handle dark mode, interact with `@pretable/react` grid styles, and compose (or not) with `@pretable/ui` is an open design question. Current token model (global CSS custom properties under `:root`) works for internal surfaces but has no documented override story. Needs its own brainstorm → spec → plan before external consumers depend on it. Recorded in memory and here so it doesn't get lost.
 
 ## 9. Rollback
@@ -319,6 +333,7 @@ No data migrations, no external config changes, no effect on `@pretable/*` packa
 ## 11. Success criteria
 
 A is successful if:
+
 1. `apps/playground` renders the five-section pitch landing per visual-system-design §5 on `pnpm dev:playground`.
 2. The grid section is full-bleed, terminal-dark, and shows real telemetry (`rendered N · sel <id>`) driven by `InspectionGrid`.
 3. The receipts band shows four real numbers sourced from a bench run done during implementation, with captions that describe what they measure.
