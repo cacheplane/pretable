@@ -15,6 +15,8 @@ export function App() {
         <PitchGrid />
         <ReceiptsBand />
       </main>
+      {/* TODO(direction-D): wire ciStatus to a real source (status/runsets/*.json
+          or a build-time env var). Hardcoded "green" for the A ship. */}
       <Footer version={APP_VERSION} ciStatus="green" />
     </>
   );
