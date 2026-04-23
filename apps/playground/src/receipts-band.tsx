@@ -3,6 +3,34 @@ interface Stat {
   caption: string;
 }
 
+// Receipts snapshot — bench run status as of 2026-04-23 at 90253ce:
+//
+//   No live metrics are sourceable today. The status/snapshots/ and
+//   status/runsets/ directories are empty; no bench:matrix run has been
+//   executed against this codebase yet.
+//
+//   Bench command: `pnpm bench:matrix` (builds bench app, starts vite preview
+//   on port 4173, then runs Playwright via `pnpm bench:e2e` for each
+//   adapter × scenario × script combination).
+//
+//   What the bench WOULD produce for S7 scroll (pretable adapter):
+//     - "rows rendered"  → result_row_count from the summary JSON.
+//                          S7/target scale = 50,000 rows.
+//     - "frame p50"      → CAPTION MISMATCH: the bench only tracks
+//                          scroll_frame_p95_ms (p95), not p50. Caption
+//                          would need to be changed to "frame p95" when
+//                          populated, or a p50 metric must be added to
+//                          @pretable-internal/bench-runner first.
+//     - "jank events"    → long_tasks_count (browser Long Tasks API,
+//                          threshold ≥ 50ms) from the summary JSON.
+//     - "vs gridalpha"     → ratio of pretable scroll_frame_p95_ms to
+//                          gridalpha scroll_frame_p95_ms from a paired run.
+//                          gridalpha adapter IS present in DEFAULT_ADAPTERS
+//                          (bench-matrix.mjs line 7), so this ratio is
+//                          computable once the matrix runs.
+//
+//   All four values below are PLACEHOLDERS. Direction D will wire these
+//   to a live bench:matrix run and refresh.
 const STATS: readonly Stat[] = [
   { value: "500k", caption: "rows rendered" },
   { value: "2.4ms", caption: "frame p50" },
