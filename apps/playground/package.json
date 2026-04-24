@@ -1,9 +1,10 @@
 {
   "name": "@pretable/app-playground",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable/react build",
+    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build",
     "predev": "pnpm run prepare:deps",
     "dev": "vite",
     "prebuild": "pnpm run prepare:deps",
@@ -17,7 +18,13 @@
   "dependencies": {
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable/react": "workspace:*",
+    "@pretable/ui": "workspace:*",
+    "@fontsource-variable/fraunces": "^5.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0"
   }
 }

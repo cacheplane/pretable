@@ -1,5 +1,7 @@
 node_modules
 .worktrees
+.claude
+.superpowers
 dist
 *.tsbuildinfo
 coverage
