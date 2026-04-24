@@ -1,7 +1,11 @@
 /**
  * Rows rendered in the grid. `id === symbol` is the row identifier.
+ *
+ * Extends Record<string, unknown> so the type satisfies the GridLike
+ * constraint from @pretable-internal/stream-adapter (which is
+ * `TRow extends Record<string, unknown>`).
  */
-export interface StockRow {
+export interface StockRow extends Record<string, unknown> {
   id: string;
   symbol: string;
   name: string;
