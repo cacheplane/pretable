@@ -1,0 +1,31 @@
+{
+  "name": "@pretable/app-streaming-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare:deps": "pnpm --filter @cacheplane/json-stream build && pnpm --filter @pretable-internal/stream-adapter build && pnpm --filter @pretable/react build",
+    "predev": "pnpm run prepare:deps",
+    "dev": "vite",
+    "prebuild": "pnpm run prepare:deps",
+    "build": "vite build",
+    "lint": "eslint src scripts --ext .ts,.tsx",
+    "pretest": "pnpm run prepare:deps",
+    "test": "vitest run --environment jsdom --passWithNoTests",
+    "pretypecheck": "pnpm run prepare:deps",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "capture": "tsx scripts/capture-phase1.ts",
+    "generate-phase2": "tsx scripts/generate-phase2.ts",
+    "make-dev-fixture": "tsx scripts/make-dev-fixture.ts"
+  },
+  "dependencies": {
+    "@cacheplane/json-stream": "workspace:*",
+    "@pretable-internal/stream-adapter": "workspace:*",
+    "@pretable/react": "workspace:*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "openai": "^4.60.0"
+  }
+}
