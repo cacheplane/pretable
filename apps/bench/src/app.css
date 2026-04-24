@@ -1,28 +1,76 @@
-:root {
-  color: #f7f4ea;
-  background:
-    radial-gradient(
-      circle at top left,
-      rgba(214, 96, 36, 0.28),
-      transparent 28%
-    ),
-    radial-gradient(
-      circle at bottom right,
-      rgba(67, 126, 201, 0.24),
-      transparent 26%
-    ),
-    #0e1116;
-  font-family: "IBM Plex Sans", "Avenir Next", system-ui, sans-serif;
+@import "@fontsource-variable/fraunces/wght.css";
+@import "@fontsource-variable/fraunces/wght-italic.css";
+@import "@pretable/ui/tokens.css";
+@import "@pretable/ui/components.css";
+@import "tailwindcss";
+
+@theme inline {
+  --color-cream: var(--pt-cream);
+  --color-cream-hi: var(--pt-cream-hi);
+  --color-cream-rule: var(--pt-cream-rule);
+  --color-ink: var(--pt-ink);
+  --color-ink-dim: var(--pt-ink-dim);
+  --color-ink-softer: var(--pt-ink-softer);
+  --color-amber-ink: var(--pt-amber-ink);
+  --color-amber: var(--pt-amber);
+  --color-amber-soft: var(--pt-amber-soft);
+  --color-grid-bg: var(--pt-grid-bg);
+  --color-grid-raised: var(--pt-grid-raised);
+  --color-grid-rule: var(--pt-grid-rule);
+  --color-grid-text: var(--pt-grid-text);
+  --color-grid-dim: var(--pt-grid-dim);
+  --color-sev-info: var(--pt-sev-info);
+  --color-sev-warn: var(--pt-sev-warn);
+  --color-sev-err: var(--pt-sev-err);
+  --color-sev-ok: var(--pt-sev-ok);
+
+  /* Fraunces is referenced as "Fraunces Variable" to match the family name
+     @fontsource-variable/fraunces registers, which unlocks the variable
+     weight axis. Intentionally NOT indirected through --pt-font-serif
+     (which uses plain "Fraunces" for external consumers without the
+     fontsource package). Keep literal. */
+  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono",
+    monospace;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
   min-height: 100vh;
 }
+
+body {
+  font-family: var(--font-sans);
+  color: var(--pt-ink);
+  background: var(--pt-cream);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ----------------------------------------------------------------------- */
+/* Bench-specific chrome                                                   */
+/* ----------------------------------------------------------------------- */
 
 .bench-shell {
   margin: 0 auto;
@@ -36,24 +84,27 @@ body {
 
 .eyebrow {
   margin: 0 0 12px;
-  color: #ffbc7d;
-  font-size: 0.88rem;
-  font-weight: 700;
+  color: var(--pt-amber-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .bench-hero h1 {
   margin: 0;
-  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  font-family: var(--font-display);
   font-size: clamp(2.5rem, 5vw, 4.6rem);
   letter-spacing: -0.04em;
-  line-height: 0.94;
+  line-height: 1;
+  color: var(--pt-ink);
 }
 
 .hero-copy {
   max-width: 620px;
-  color: #d7d1c4;
+  color: var(--pt-ink-dim);
+  font-family: var(--font-display);
   font-size: 1.05rem;
   line-height: 1.6;
 }
@@ -67,11 +118,9 @@ body {
 
 .scenario-panel,
 .preview-panel {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 24px;
-  background: rgba(17, 22, 30, 0.74);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--pt-cream-rule);
+  border-radius: 8px;
+  background: var(--pt-cream-hi);
   padding: 24px;
 }
 
@@ -81,14 +130,15 @@ body {
 
 .panel-header h2 {
   margin: 0 0 6px;
-  font-family: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  font-family: var(--font-display);
   font-size: 1.45rem;
+  color: var(--pt-ink);
 }
 
 .panel-header p,
 .scenario-card p,
 .status-note {
-  color: #cfc8bc;
+  color: var(--pt-ink-dim);
   line-height: 1.5;
 }
 
@@ -101,9 +151,9 @@ body {
 }
 
 .scenario-card {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--pt-cream-rule);
+  border-radius: 6px;
+  background: var(--pt-cream);
   padding: 16px;
 }
 
@@ -115,16 +165,18 @@ body {
 }
 
 .scenario-id {
-  border-radius: 999px;
-  background: rgba(255, 188, 125, 0.14);
-  color: #ffbc7d;
-  font-size: 0.82rem;
-  font-weight: 700;
-  padding: 4px 10px;
+  border-radius: 3px;
+  background: var(--pt-amber-soft);
+  color: var(--pt-amber-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
 }
 
 .scenario-card strong {
   font-size: 1rem;
+  color: var(--pt-ink);
 }
 
 .scenario-card p {
@@ -132,14 +184,14 @@ body {
 }
 
 .scenario-card small {
-  color: #8aa7cd;
+  color: var(--pt-ink-softer);
 }
 
 .preview-panel section {
-  border: 1px dashed rgba(138, 167, 205, 0.35);
-  border-radius: 18px;
+  border: 1px solid var(--pt-cream-rule);
+  border-radius: 6px;
   padding: 18px;
-  background: rgba(138, 167, 205, 0.06);
+  background: var(--pt-cream);
 }
 
 .active-scenario {
@@ -162,19 +214,32 @@ body {
 
 .run-toolbar button {
   border: 0;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #ffbc7d, #d66024);
-  color: #0e1116;
+  border-radius: 2px;
+  background: var(--pt-ink);
+  color: var(--pt-cream-hi);
   cursor: pointer;
   font: inherit;
-  font-weight: 700;
-  padding: 10px 16px;
+  font-weight: 600;
+  padding: 10px 18px;
 }
 
+.run-toolbar button:hover {
+  background: var(--pt-ink-hover, var(--pt-ink));
+}
+
+.run-toolbar button:focus-visible {
+  outline: 2px solid var(--pt-amber-ink);
+  outline-offset: 2px;
+}
+
+/* Grid / telemetry surfaces stay dark — they render structured data and
+   preserve the cream-bracket-dark rhythm the visual system relies on. */
+
 .viewport-card {
-  border: 1px dashed rgba(138, 167, 205, 0.35);
-  border-radius: 18px;
-  background: rgba(138, 167, 205, 0.06);
+  border: 1px solid var(--pt-grid-rule);
+  border-radius: 4px;
+  background: var(--pt-grid-bg);
+  color: var(--pt-grid-text);
   margin-bottom: 18px;
   min-height: 180px;
   overscroll-behavior: contain;
@@ -188,9 +253,9 @@ body {
 }
 
 .adapter-surface section {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--pt-cream-rule);
+  border-radius: 6px;
+  background: var(--pt-cream);
   padding: 18px;
 }
 
@@ -202,20 +267,29 @@ body {
 }
 
 .result-grid dt {
-  color: #8aa7cd;
-  font-size: 0.8rem;
+  color: var(--pt-ink-softer);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
   margin-bottom: 4px;
   text-transform: uppercase;
 }
 
 .result-grid dd {
   margin: 0;
+  color: var(--pt-ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
 }
 
 .result-json {
-  border-radius: 18px;
-  background: rgba(0, 0, 0, 0.22);
-  color: #f7f4ea;
+  border: 1px solid var(--pt-grid-rule);
+  border-radius: 4px;
+  background: var(--pt-grid-bg);
+  color: var(--pt-grid-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
   margin: 0;
   overflow: auto;
   padding: 16px;
