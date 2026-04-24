@@ -39,21 +39,21 @@ Data flow into the grid uses the two adapter APIs back-to-back — element strea
 
 ## Decision Log
 
-| # | Decision | Choice | Rationale |
-|---|----------|--------|-----------|
-| 1 | App form factor | Standalone Vite + React app at `apps/streaming-demo` | Isolates from the pitch landing effort on `feat/website-surfaces`; ships independently; no conflicts |
-| 2 | Layout | Grid-dominant (~75%) with right-rail pipeline inspector and bottom transport | User-validated during brainstorming. Wide-screen friendly, reads as "main content + dev tools" |
-| 3 | Visual theme | Bloomberg-modern: near-black `#0a0a0f`, muted text, green/red accents, modern monospace | Unmistakably "financial data" without DOS-era cheesiness. Sits apart from brand theme so grid density drives the feel |
-| 4 | Demo content | ~2,500 fictional-price rows keyed on real ticker symbols (AAPL, GOOGL, …) with a "prices fictional" disclaimer | Real tickers are viscerally recognizable; fictional prices eliminate market-data confusion |
-| 5 | Streaming mode | Hybrid: phase 1 element-stream table fill (~30 s), phase 2 continuous updates (~90 s) | Exercises both `connectElementStream` and `batcher.update()` paths. Matches the wedge story: "fill a table, then keep updating it" |
-| 6 | Recording source — phase 1 | Captured once from real `openai.responses.create()` → JSONL, checked in | Proves the adapter handles a genuine LLM stream. One-time capture cost, fully deterministic replay after |
-| 7 | Recording source — phase 2 | Pre-computed seeded random walk → JSONL, checked in | Deterministic scrub-back semantics; no runtime RNG state to manage; tiny generator script keeps the file reproducible |
-| 8 | Autoplay | On by default, loops on end | Zero-click wow for first-time visitors |
-| 9 | Speed control | 0.5× / 1× / 2× / 4× selector | 2× and 4× let impatient viewers skip ahead; 0.5× for demos where someone wants to point at details |
-| 10 | Scrub strategy | Set virtual clock; rewind parser state by replaying phase-1 chunks from 0 to target; rebuild grid by replaying all ops | Phase 1 is ~30 s of chunks; re-parsing in-memory is sub-millisecond. Simpler than checkpointing and immune to drift |
-| 11 | Update rate (phase 2) | ~500 patches/s across the 2,500 rows (each row updates every ~5 s on average) | Visually chaotic enough to feel alive; genuinely stresses the batcher under realistic load |
-| 12 | Theme tokens | Local CSS file; does NOT consume `@pretable/ui` (warm/brand tokens conflict with Bloomberg-modern) | Keeps the streaming demo's aesthetic distinct from the pitch landing page |
-| 13 | Capture API key | Developer-supplied at capture time via `OPENAI_API_KEY` env var; not needed at app build or runtime | Recording file is the artifact; no secrets in the browser or CI |
+| #   | Decision                   | Choice                                                                                                                 | Rationale                                                                                                                          |
+| --- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | App form factor            | Standalone Vite + React app at `apps/streaming-demo`                                                                   | Isolates from the pitch landing effort on `feat/website-surfaces`; ships independently; no conflicts                               |
+| 2   | Layout                     | Grid-dominant (~75%) with right-rail pipeline inspector and bottom transport                                           | User-validated during brainstorming. Wide-screen friendly, reads as "main content + dev tools"                                     |
+| 3   | Visual theme               | Bloomberg-modern: near-black `#0a0a0f`, muted text, green/red accents, modern monospace                                | Unmistakably "financial data" without DOS-era cheesiness. Sits apart from brand theme so grid density drives the feel              |
+| 4   | Demo content               | ~2,500 fictional-price rows keyed on real ticker symbols (AAPL, GOOGL, …) with a "prices fictional" disclaimer         | Real tickers are viscerally recognizable; fictional prices eliminate market-data confusion                                         |
+| 5   | Streaming mode             | Hybrid: phase 1 element-stream table fill (~30 s), phase 2 continuous updates (~90 s)                                  | Exercises both `connectElementStream` and `batcher.update()` paths. Matches the wedge story: "fill a table, then keep updating it" |
+| 6   | Recording source — phase 1 | Captured once from real `openai.responses.create()` → JSONL, checked in                                                | Proves the adapter handles a genuine LLM stream. One-time capture cost, fully deterministic replay after                           |
+| 7   | Recording source — phase 2 | Pre-computed seeded random walk → JSONL, checked in                                                                    | Deterministic scrub-back semantics; no runtime RNG state to manage; tiny generator script keeps the file reproducible              |
+| 8   | Autoplay                   | On by default, loops on end                                                                                            | Zero-click wow for first-time visitors                                                                                             |
+| 9   | Speed control              | 0.5× / 1× / 2× / 4× selector                                                                                           | 2× and 4× let impatient viewers skip ahead; 0.5× for demos where someone wants to point at details                                 |
+| 10  | Scrub strategy             | Set virtual clock; rewind parser state by replaying phase-1 chunks from 0 to target; rebuild grid by replaying all ops | Phase 1 is ~30 s of chunks; re-parsing in-memory is sub-millisecond. Simpler than checkpointing and immune to drift                |
+| 11  | Update rate (phase 2)      | ~500 patches/s across the 2,500 rows (each row updates every ~5 s on average)                                          | Visually chaotic enough to feel alive; genuinely stresses the batcher under realistic load                                         |
+| 12  | Theme tokens               | Local CSS file; does NOT consume `@pretable/ui` (warm/brand tokens conflict with Bloomberg-modern)                     | Keeps the streaming demo's aesthetic distinct from the pitch landing page                                                          |
+| 13  | Capture API key            | Developer-supplied at capture time via `OPENAI_API_KEY` env var; not needed at app build or runtime                    | Recording file is the artifact; no secrets in the browser or CI                                                                    |
 
 ---
 
@@ -88,6 +88,7 @@ apps/streaming-demo/
 ```
 
 Responsibilities:
+
 - `replay-engine.ts` — pure TypeScript, no DOM. Clock, dispatch, scrub, play/pause. Owns no React state. Emits events a React adapter subscribes to.
 - `recording-loader.ts` — single responsibility: fetch + parse JSONL to typed arrays.
 - `streaming-grid.tsx` — wraps the Pretable React surface with the column definitions and plumbs the adapter's batcher into `grid.applyTransaction`.
@@ -127,6 +128,7 @@ One JSON object per line. Each entry is a pre-computed batch of row updates at a
 ```
 
 Each `patches` array is fed directly to `batcher.update(patches)` when the virtual clock crosses `t`. The generator script guarantees:
+
 - Every patch includes `id` (the real ticker symbol, matching phase 1)
 - `last` evolves via seeded random walk bounded to within ±5% of its phase-1 start
 - `change_pct` is recomputed as `(last - start) / start * 100`, rounded to two decimals
@@ -139,18 +141,19 @@ Each `patches` array is fed directly to `batcher.update(patches)` when the virtu
 
 Real ticker symbols, ~2,500 rows. Disclaimer in footer: _"Prices fictional — demo replay."_
 
-| Column | Type | Example | Phase 1 (add) | Phase 2 (update) |
-|---|---|---|---|---|
-| `id` | string (row ID) | `"AAPL"` | ✓ set | (key) |
-| `symbol` | string | `"AAPL"` | ✓ set | — |
-| `name` | string | `"Apple Inc"` | ✓ set | — |
-| `last` | number | `193.42` | ✓ set | ✓ updated |
-| `change_pct` | number | `2.3` | ✓ set | ✓ updated |
-| `volume` | number | `48221000` | ✓ set | ✓ updated |
-| `sector` | string | `"Technology"` | ✓ set | — |
-| `last_update` | string | `"14:23:45"` | ✓ set | ✓ updated |
+| Column        | Type            | Example        | Phase 1 (add) | Phase 2 (update) |
+| ------------- | --------------- | -------------- | ------------- | ---------------- |
+| `id`          | string (row ID) | `"AAPL"`       | ✓ set         | (key)            |
+| `symbol`      | string          | `"AAPL"`       | ✓ set         | —                |
+| `name`        | string          | `"Apple Inc"`  | ✓ set         | —                |
+| `last`        | number          | `193.42`       | ✓ set         | ✓ updated        |
+| `change_pct`  | number          | `2.3`          | ✓ set         | ✓ updated        |
+| `volume`      | number          | `48221000`     | ✓ set         | ✓ updated        |
+| `sector`      | string          | `"Technology"` | ✓ set         | —                |
+| `last_update` | string          | `"14:23:45"`   | ✓ set         | ✓ updated        |
 
 Grid column display:
+
 - `symbol` — bold monospace, left-aligned
 - `name` — Inter, truncated with ellipsis on overflow
 - `last` — monospace, right-aligned, 2 decimals
@@ -167,10 +170,10 @@ Grid column display:
 
 ```ts
 interface EngineState {
-  clock: number;          // virtual seconds elapsed
-  speed: number;          // 0.5 | 1 | 2 | 4
-  playing: boolean;       // autoplay started, not paused
-  totalDuration: number;  // max(t) across both recordings
+  clock: number; // virtual seconds elapsed
+  speed: number; // 0.5 | 1 | 2 | 4
+  playing: boolean; // autoplay started, not paused
+  totalDuration: number; // max(t) across both recordings
 }
 ```
 
@@ -195,6 +198,7 @@ Parser dispatch pushes the chunk through `@cacheplane/json-stream`'s `push()`, t
 ### Scrub
 
 When the transport scrubs to a new time:
+
 1. Reset parser state (`create()` a fresh `StreamState`)
 2. Reset batcher (flush, recreate)
 3. Reset grid by recreating the grid store from scratch (simpler and faster than iterating 2,500 remove ids)
@@ -236,6 +240,7 @@ Non-`delta` events render with a colored tag (e.g., `[created]`, `[done]`). When
 ### Parser AST panel (bottom half of right rail)
 
 Three stacked sections:
+
 1. Current mode badge: `StringValue`, `NumberValue`, `ArrayItemOrEnd`, etc. — the parser's internal mode name
 2. Tree view: a compact rendering of the AST. Collapsed by default; the node currently being built is highlighted. Approximately:
    ```
@@ -250,6 +255,7 @@ Three stacked sections:
 3. Resolved value preview: `state.resolve()`'s output on the current streaming row, if a row is in progress.
 
 During phase 2, the parser isn't running, so the panel shows:
+
 ```
 [phase 2: live updates]
 patches delivered: 12,384
@@ -285,6 +291,7 @@ git commit -m "chore(streaming-demo): refresh phase1 recording"
 ```
 
 The capture script (`scripts/capture-phase1.ts`):
+
 1. Connects to OpenAI Responses API (`openai.responses.create()` with `stream: true`)
 2. Uses the best model available at capture time (`gpt-5` or whatever is current; parameterized by env var `OPENAI_MODEL`, defaulting to `gpt-5`)
 3. Prompt: _"Generate exactly 2500 fictional stock tickers as a single JSON array of objects. Fields per object: `symbol` (4-5 uppercase chars), `name`, `last` (number 1–5000 with 2 decimals), `change_pct` (number -10 to 10 with 2 decimals), `volume` (integer 100000 to 100000000), `sector` (one of: Technology, Healthcare, Financials, Consumer, Energy, Industrials, Materials, Utilities, RealEstate, Communication), `last_update` (string HH:MM:SS representing a plausible US market hours time). Output the JSON array only, no prose."_
@@ -305,6 +312,7 @@ git commit -m "chore(streaming-demo): regenerate phase2 updates"
 ```
 
 The generator script (`scripts/generate-phase2.ts`):
+
 1. Reads `src/recordings/phase1.jsonl`
 2. Concatenates the `delta` text to reconstruct the full JSON array; parses it with the same `@cacheplane/json-stream` library to get the seed row set
 3. Seeds a deterministic PRNG (e.g., mulberry32 with seed `0xC0FFEE`)

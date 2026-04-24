@@ -7,12 +7,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  create,
-  push,
-  finish,
-  resolve,
-} from "@cacheplane/json-stream";
+import { create, push, finish, resolve } from "@cacheplane/json-stream";
 
 import { parseJsonl } from "../src/recording-loader";
 import type { Phase1Entry, StockRow } from "../src/types";

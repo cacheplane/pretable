@@ -9,8 +9,7 @@
   --down: #f87171;
   --accent: #4ade80;
   --mono: "SF Mono", Monaco, "Courier New", monospace;
-  --sans:
-    "Inter", -apple-system, system-ui, sans-serif;
+  --sans: "Inter", -apple-system, system-ui, sans-serif;
 }
 
 * {

@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -19,7 +20,6 @@ const PHASE2_URL = "/src/recordings/phase2.jsonl";
 
 export function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [engine, setEngine] = useState<ReplayEngine | null>(null);
   const [grid, setGrid] = useState<PretableGrid<StockRow> | null>(null);
   const [phase1, setPhase1] = useState<Phase1Entry[] | null>(null);
   const [phase2, setPhase2] = useState<Phase2Entry[] | null>(null);
@@ -67,17 +67,23 @@ export function App() {
     setGrid(g);
   }, []);
 
-  // Create the engine once recordings + grid are ready, autoplay on.
-  useEffect(() => {
-    if (!phase1 || !phase2 || !grid) return;
-    const e = createEngine({ phase1, phase2, grid });
-    setEngine(e);
-    e.play();
-    return () => {
-      e.dispose();
-      setEngine(null);
-    };
+  // Derive the engine synchronously once recordings + grid are ready.
+  // Using useMemo (not state set inside an effect) keeps render flow clean
+  // and avoids the react-hooks/set-state-in-effect lint trip.
+  const engine: ReplayEngine | null = useMemo(() => {
+    if (!phase1 || !phase2 || !grid) return null;
+    return createEngine({ phase1, phase2, grid });
   }, [phase1, phase2, grid]);
+
+  // Lifecycle effect: start playback when the engine becomes available,
+  // dispose when it changes or the component unmounts.
+  useEffect(() => {
+    if (!engine) return;
+    engine.play();
+    return () => {
+      engine.dispose();
+    };
+  }, [engine]);
 
   return (
     <div className="app-shell">

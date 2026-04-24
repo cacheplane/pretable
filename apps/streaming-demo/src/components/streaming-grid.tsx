@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 import type { PretableGrid } from "@pretable/react";
 import { PretableSurface } from "@pretable/react/internal";
