@@ -59,3 +59,30 @@ body,
   padding: 10px 16px;
   background: var(--panel);
 }
+
+/* Cell styling for the streaming grid */
+.cell-symbol {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text);
+}
+.cell-name {
+  color: var(--muted);
+}
+.cell-numeric {
+  font-family: var(--mono);
+}
+.cell-up {
+  color: var(--up);
+}
+.cell-down {
+  color: var(--down);
+}
+.cell-sector {
+  color: var(--muted);
+  font-size: 11px;
+}
+.cell-time {
+  color: var(--dim);
+  font-size: 11px;
+}
