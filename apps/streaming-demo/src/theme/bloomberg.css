@@ -1,0 +1,61 @@
+:root {
+  --bg: #0a0a0f;
+  --panel: #14141b;
+  --border: #27272a;
+  --text: #fafafa;
+  --muted: #a1a1aa;
+  --dim: #52525b;
+  --up: #4ade80;
+  --down: #f87171;
+  --accent: #4ade80;
+  --mono: "SF Mono", Monaco, "Courier New", monospace;
+  --sans:
+    "Inter", -apple-system, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+}
+.app-header {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--panel);
+}
+.app-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  overflow: hidden;
+}
+.grid-slot {
+  overflow: hidden;
+  background: var(--bg);
+}
+.inspector-slot {
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+}
+.transport-slot {
+  border-top: 1px solid var(--border);
+  padding: 10px 16px;
+  background: var(--panel);
+}
