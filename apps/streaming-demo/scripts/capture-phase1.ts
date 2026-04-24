@@ -20,16 +20,18 @@ if (!process.env.OPENAI_API_KEY) {
   process.exit(1);
 }
 
-const PROMPT = `Generate exactly 2500 fictional stock tickers as a single JSON array of objects, output on a single line with no surrounding prose. Fields per object:
-- symbol: 4-5 uppercase letters
+const ROW_COUNT = Number(process.env.STREAMING_DEMO_ROW_COUNT ?? "500");
+
+const PROMPT = `Output a JSON array of exactly ${ROW_COUNT} fictional stock ticker objects. No surrounding prose, no markdown, no commentary — just the array. Each object has these fields:
+- symbol: 4-5 uppercase letters (real ticker symbols are fine; e.g. AAPL, MSFT, GOOGL)
 - name: a realistic company name
-- last: number between 1 and 5000, two decimals
-- change_pct: number between -10 and 10, two decimals
+- last: number between 1 and 5000 with two decimal places
+- change_pct: number between -10 and 10 with two decimal places
 - volume: integer between 100000 and 100000000
 - sector: one of Technology, Healthcare, Financials, Consumer, Energy, Industrials, Materials, Utilities, RealEstate, Communication
-- last_update: string HH:MM:SS representing a plausible US market hours time
+- last_update: string HH:MM:SS during US market hours
 
-Output the JSON array only, no prose, no backticks.`;
+Begin output with [ and end with ]. Do not respond with anything other than the JSON array.`;
 
 const openai = new OpenAI();
 
