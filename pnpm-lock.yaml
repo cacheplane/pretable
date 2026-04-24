@@ -82,6 +82,9 @@ importers:
       "@emotion/styled":
         specifier: ^11.14.1
         version: 11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.5))(@types/react@19.2.14)(react@19.2.5)
+      "@fontsource-variable/fraunces":
+        specifier: ^5.2.9
+        version: 5.2.9
       "@gridgamma/material":
         specifier: ^9.0.0
         version: 9.0.0(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.5))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.5))(@types/react@19.2.14)(react@19.2.5))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -100,6 +103,9 @@ importers:
       "@pretable/react":
         specifier: workspace:*
         version: link:../../packages/react
+      "@pretable/ui":
+        specifier: workspace:*
+        version: link:../../packages/ui
       "@gridbeta/react-virtual":
         specifier: ^3.13.23
         version: 3.13.23(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -115,6 +121,13 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.5(react@19.2.5)
+    devDependencies:
+      "@tailwindcss/vite":
+        specifier: ^4.2.4
+        version: 4.2.4(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1))
+      tailwindcss:
+        specifier: ^4.2.4
+        version: 4.2.4
 
   apps/playground:
     dependencies:
