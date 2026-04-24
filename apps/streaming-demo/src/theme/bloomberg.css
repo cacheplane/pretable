@@ -209,3 +209,43 @@ body,
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.ast-mode-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  background: var(--accent);
+  color: #0a0a0f;
+  border-radius: 8px;
+  font-size: 9px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.ast-building {
+  padding-left: 12px;
+  background: rgba(74, 222, 128, 0.05);
+  border-left: 2px solid var(--accent);
+  margin-top: 4px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+.ast-field {
+  padding-left: 12px;
+}
+.ast-key {
+  color: var(--muted);
+}
+.ast-value {
+  color: var(--text);
+}
+.ast-phase2-badge {
+  color: #fbbf24;
+  margin-bottom: 8px;
+}
+.ast-stats {
+  color: var(--muted);
+}
+.ast-stats strong {
+  color: var(--text);
+  font-weight: 600;
+}
