@@ -13,6 +13,7 @@
 ## File Structure
 
 **Modified files (4):**
+
 ```
 apps/bench/package.json           // + deps, + version, + prepare:deps chain
 apps/bench/vite.config.ts         // + tailwindcss plugin, + VITE_APP_VERSION define; keep vitest `test` block
@@ -23,6 +24,7 @@ apps/bench/src/app.css            // rewritten end-to-end against @pretable/ui t
 **No new files. No deleted files. No changes anywhere else in the repo.**
 
 **Intentionally NOT modified:**
+
 - `apps/bench/src/bench-app.tsx` (the 431-line kitchen sink — keeps all JSX, all state)
 - `apps/bench/src/bench-runtime.ts`, `query-state.ts`, the four adapter files
 - Any file under `packages/*` (vanilla-CSS convention stays intact)
@@ -35,12 +37,14 @@ apps/bench/src/app.css            // rewritten end-to-end against @pretable/ui t
 Install Tailwind v4, Fraunces, and `@pretable/ui`; wire the Tailwind plugin into bench's `vite.config.ts` while preserving the vitest `test` block; add `version` + update `prepare:deps` to also build `@pretable/ui`. Nothing visual yet — this is the foundation for later tasks.
 
 **Files:**
+
 - Modify: `apps/bench/package.json`
 - Modify: `apps/bench/vite.config.ts`
 
 - [ ] **Step 1: Install deps**
 
 Run from repo root:
+
 ```bash
 pnpm --filter @pretable/app-bench add @pretable/ui@workspace:*
 pnpm --filter @pretable/app-bench add -D tailwindcss@^4 @tailwindcss/vite
@@ -48,6 +52,7 @@ pnpm --filter @pretable/app-bench add @fontsource-variable/fraunces
 ```
 
 Expected: `apps/bench/package.json` gains:
+
 - `dependencies`: `@pretable/ui: "workspace:*"`, `@fontsource-variable/fraunces: "^5.x.x"`
 - `devDependencies`: `tailwindcss: "^4.x.x"`, `@tailwindcss/vite: "^4.x.x"`
 
@@ -89,6 +94,7 @@ export default defineConfig({
 ```
 
 Key differences from playground's `vite.config.ts`:
+
 - Imports from `vitest/config` (not `vite`) — bench merges Vite + Vitest config in one file
 - Retains the `test` block (environment, include/exclude patterns, passWithNoTests)
 
@@ -97,6 +103,7 @@ Key differences from playground's `vite.config.ts`:
 - [ ] **Step 4: Sanity-check the build**
 
 Run:
+
 ```bash
 pnpm --filter @pretable/app-bench typecheck
 ```
@@ -104,6 +111,7 @@ pnpm --filter @pretable/app-bench typecheck
 Expected: PASS.
 
 Run:
+
 ```bash
 pnpm --filter @pretable/app-bench test
 ```
@@ -111,6 +119,7 @@ pnpm --filter @pretable/app-bench test
 Expected: PASS. 6 existing test files run to completion. No new tests added by this task, but existing behavior must still work.
 
 Run dev briefly (short timeout, background) to confirm the Tailwind plugin boots:
+
 ```bash
 # Boot dev, confirm no CSS parse errors, stop.
 pnpm --filter @pretable/app-bench dev
@@ -133,6 +142,7 @@ git commit -m "chore(bench): install Tailwind v4, @pretable/ui, and Fraunces; wi
 Wrap the existing `<BenchApp>` with `<Nav active="bench">` and `<Footer>`. Add the `APP_VERSION` plumbing. No test changes — Nav/Footer contract coverage already lives in `apps/playground/src/__tests__/app.test.tsx`. Existing bench tests must stay green.
 
 **Files:**
+
 - Modify: `apps/bench/src/app.tsx`
 
 - [ ] **Step 1: Rewrite `apps/bench/src/app.tsx`**
@@ -166,6 +176,7 @@ export function App() {
 ```
 
 Key differences from Task 2 of direction A:
+
 - The bench-specific `BenchApp` invocation with `search` + `browserVersion` props is preserved inside `<main>`.
 - `<Nav active="bench">` (vs `active="playground"`).
 - Comment block matches playground's `ciStatus` TODO for cross-surface consistency.
@@ -173,11 +184,13 @@ Key differences from Task 2 of direction A:
 - [ ] **Step 2: Verify existing tests still pass**
 
 Run:
+
 ```bash
 pnpm --filter @pretable/app-bench test
 ```
 
 Expected: PASS. All 6 existing test files run to completion. Confirm none of them break because:
+
 - `<BenchApp>` still renders inside `<App />` with the same `search` + `browserVersion` props → runtime tests unchanged.
 - Tests that render `<App />` now get a `<Nav>` + `<Footer>` wrapper — they shouldn't assert on their absence.
 
@@ -205,6 +218,7 @@ git commit -m "feat(bench): wrap page in shared Nav + Footer from @pretable/ui"
 The substantive task. Replace all hardcoded hex / rgba / gradient values with tokens. Import Fraunces, tokens, components, Tailwind. Add `@theme inline`. Preserve every class name (`.bench-shell`, `.bench-hero`, `.eyebrow`, `.scenario-panel`, `.preview-panel`, `.scenario-card`, etc.) so `bench-app.tsx`'s markup keeps rendering — just against a new palette.
 
 **Files:**
+
 - Modify: `apps/bench/src/app.css`
 
 - [ ] **Step 1: Replace entire file contents**
@@ -245,9 +259,11 @@ Replace `apps/bench/src/app.css` with:
      fontsource package). Keep literal. */
   --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
   --font-sans:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
   --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono", monospace;
+    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono",
+    monospace;
 }
 
 *,
@@ -529,22 +545,23 @@ body {
 
 Token mapping summary (for your reference — don't copy into the file):
 
-| Current | New |
-|---|---|
-| `color: #f7f4ea` on `:root` | `color: var(--pt-ink)` on `body` |
-| dark-gradient body background | flat `var(--pt-cream)` on `body` |
-| `color: #ffbc7d` on `.eyebrow` | `var(--pt-amber-ink)` + mono font |
-| `"Space Grotesk"` display family | `var(--font-display)` (Fraunces) |
-| `color: #d7d1c4` on `.hero-copy` | `var(--pt-ink-dim)` |
-| `rgba(255,255,255,0.08)` borders | `var(--pt-cream-rule)` |
-| `rgba(17,22,30,0.74)` panel bg + backdrop-filter blur | flat `var(--pt-cream-hi)` |
-| `rgba(255,188,125,0.14)` pill bg + `#ffbc7d` text | `var(--pt-amber-soft)` + `var(--pt-amber-ink)` |
-| `#8aa7cd` dashed dim accents | `var(--pt-cream-rule)` solid |
-| `linear-gradient(135deg,#ffbc7d,#d66024)` button | flat `var(--pt-ink)` bg + `var(--pt-cream-hi)` text (matches playground's primary CTA) |
-| `rgba(0,0,0,0.22)` result-json bg | `var(--pt-grid-bg)` (terminal palette — grid content surface) |
-| `#8aa7cd` scenario-card small | `var(--pt-ink-softer)` |
+| Current                                               | New                                                                                    |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `color: #f7f4ea` on `:root`                           | `color: var(--pt-ink)` on `body`                                                       |
+| dark-gradient body background                         | flat `var(--pt-cream)` on `body`                                                       |
+| `color: #ffbc7d` on `.eyebrow`                        | `var(--pt-amber-ink)` + mono font                                                      |
+| `"Space Grotesk"` display family                      | `var(--font-display)` (Fraunces)                                                       |
+| `color: #d7d1c4` on `.hero-copy`                      | `var(--pt-ink-dim)`                                                                    |
+| `rgba(255,255,255,0.08)` borders                      | `var(--pt-cream-rule)`                                                                 |
+| `rgba(17,22,30,0.74)` panel bg + backdrop-filter blur | flat `var(--pt-cream-hi)`                                                              |
+| `rgba(255,188,125,0.14)` pill bg + `#ffbc7d` text     | `var(--pt-amber-soft)` + `var(--pt-amber-ink)`                                         |
+| `#8aa7cd` dashed dim accents                          | `var(--pt-cream-rule)` solid                                                           |
+| `linear-gradient(135deg,#ffbc7d,#d66024)` button      | flat `var(--pt-ink)` bg + `var(--pt-cream-hi)` text (matches playground's primary CTA) |
+| `rgba(0,0,0,0.22)` result-json bg                     | `var(--pt-grid-bg)` (terminal palette — grid content surface)                          |
+| `#8aa7cd` scenario-card small                         | `var(--pt-ink-softer)`                                                                 |
 
 Rules removed:
+
 - `backdrop-filter: blur(18px)` (cream-hi is opaque; no blur needed)
 - `box-shadow: 0 24px 80px rgba(0,0,0,0.28)` on panels (editorial cream doesn't want the dark-drop shadow)
 - Dashed blueish borders on `.preview-panel section` / `.viewport-card` (replaced with solid token borders)
@@ -552,6 +569,7 @@ Rules removed:
 - [ ] **Step 2: Verify build + tests**
 
 Run the full playground suite:
+
 ```bash
 pnpm --filter @pretable/app-bench test
 ```
@@ -559,6 +577,7 @@ pnpm --filter @pretable/app-bench test
 Expected: PASS. All 6 tests run to completion unchanged.
 
 Run typecheck:
+
 ```bash
 pnpm --filter @pretable/app-bench typecheck
 ```
@@ -566,6 +585,7 @@ pnpm --filter @pretable/app-bench typecheck
 Expected: PASS.
 
 Run dev briefly to confirm the new CSS compiles:
+
 ```bash
 pnpm --filter @pretable/app-bench dev
 # Ctrl-C after confirming no CSS parse errors.
@@ -618,6 +638,7 @@ Grid Alpha and GridGamma X ship their own CSS. Likely outcomes, in order of like
 3. **Global stomp** — a vendor CSS rule overrides `@pretable/ui/components.css` body/anchor/heading styles. Unlikely but possible. If it happens, scope the adapter render:
 
    Edit `apps/bench/src/app.css` — add these rules at the end:
+
    ```css
    /* Scope vendor CSS within adapter surfaces so @pretable/ui governs outside. */
    .bench-adapter-ag,
@@ -631,6 +652,7 @@ Grid Alpha and GridGamma X ship their own CSS. Likely outcomes, in order of like
 - [ ] **Step 3: Commit adjustments (if any)**
 
 If Step 1 or 2 surfaced adjustments:
+
 ```bash
 git add apps/bench/src/app.css   # or bench-app.tsx if adapter scoping was needed
 git commit -m "fix(bench): <specific adjustment, e.g. 'tighten scenario-card hairline spacing'>"
@@ -686,14 +708,17 @@ git push -u origin feat/website-surfaces
 Note: this branch already has direction A's commits. The PR you opened as PR #12 tracks `feat/website-surfaces`; pushing direction B's commits will add to that same PR. That's NOT what we want — direction B should be its own PR.
 
 Two options:
+
 1. **Separate branch for B.** Create `feat/bench-ui-integration` off `main` (or off the rebase point), cherry-pick B's commits onto it, push, open new PR. **This requires direction A to be merged first** (otherwise the base is wrong and you'd conflict).
 2. **Stack B on A.** Leave B's commits on `feat/website-surfaces`, update PR #12 to cover both A and B. Larger PR, but no rebase gymnastics.
 
 **Default: option 1 (separate branch) — but gated on A being merged.** If A is still open:
+
 - STOP here and report BLOCKED with "Direction A (PR #12) must be merged before direction B can open its own PR on top of clean main."
 - User can either merge PR #12 and re-dispatch Task 5, or accept stacking B on A (option 2).
 
 If A is merged (PR #12 closed as merged into main):
+
 ```bash
 git fetch origin --prune
 git checkout main
@@ -707,6 +732,7 @@ git push -u origin feat/bench-ui-integration
 ```
 
 Then open the PR:
+
 ```bash
 gh pr create --title "feat(bench): wire @pretable/ui chrome into bench (direction B)" --body "$(cat <<'EOF'
 ## Summary
@@ -752,25 +778,25 @@ Mark Task 5 done. Report the PR URL + which CI checks passed + any follow-ups.
 
 ## Spec coverage check
 
-| Spec section                 | Task(s)      |
-| ---------------------------- | ------------ |
-| §1 Goal                      | 1–5          |
-| §2 Scope boundary            | 1–3          |
-| §3 Architecture              | 2            |
-| §4 Styling integration       | 1, 3         |
-| §4 Token mapping cheat sheet | 3 (Step 1)   |
-| §4 Dark surfaces             | 3 (Step 1)   |
-| §4 Vendor CSS fallback       | 4 (Step 2)   |
-| §5 Testing (no new tests)    | 2, 3 (verify only) |
-| §6 Out of scope              | — (not a task) |
-| §7 Success criteria 1 (chrome renders) | 2, 4 |
-| §7 Success criteria 2 (zero hardcoded hex) | 3 |
-| §7 Success criteria 3 (Nav/Footer match) | 2, 4 |
-| §7 Success criteria 4 (bench still runs) | 4 |
-| §7 Success criteria 5 (CI green) | 5 |
-| §7 Success criteria 6 (adapters work) | 4 |
-| §8 Rollback                  | 5 (PR) |
-| §9 Risks                     | 3, 4 |
+| Spec section                               | Task(s)            |
+| ------------------------------------------ | ------------------ |
+| §1 Goal                                    | 1–5                |
+| §2 Scope boundary                          | 1–3                |
+| §3 Architecture                            | 2                  |
+| §4 Styling integration                     | 1, 3               |
+| §4 Token mapping cheat sheet               | 3 (Step 1)         |
+| §4 Dark surfaces                           | 3 (Step 1)         |
+| §4 Vendor CSS fallback                     | 4 (Step 2)         |
+| §5 Testing (no new tests)                  | 2, 3 (verify only) |
+| §6 Out of scope                            | — (not a task)     |
+| §7 Success criteria 1 (chrome renders)     | 2, 4               |
+| §7 Success criteria 2 (zero hardcoded hex) | 3                  |
+| §7 Success criteria 3 (Nav/Footer match)   | 2, 4               |
+| §7 Success criteria 4 (bench still runs)   | 4                  |
+| §7 Success criteria 5 (CI green)           | 5                  |
+| §7 Success criteria 6 (adapters work)      | 4                  |
+| §8 Rollback                                | 5 (PR)             |
+| §9 Risks                                   | 3, 4               |
 
 All spec requirements covered.
 

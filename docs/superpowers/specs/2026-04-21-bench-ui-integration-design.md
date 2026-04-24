@@ -88,19 +88,19 @@ The current 241-line file is replaced with a token-driven stylesheet in three la
 
 The rewrite is a mechanical substitution. The current file leans on ~20 hardcoded hex values and a handful of RGBA overlays. Each maps cleanly:
 
-| Current (approx.)                   | Token                                     | Usage                             |
-| ----------------------------------- | ----------------------------------------- | --------------------------------- |
-| Dark gradient body                  | `var(--pt-cream)` flat                    | `.bench-shell` ambient background |
-| `#f7f4ea` body text                 | `var(--pt-ink)`                           | body default                      |
-| `#ffbc7d` eyebrow orange            | `var(--pt-amber-ink)`                     | `.eyebrow`                        |
-| `#7db8ff` blue accent               | `var(--pt-sev-info)` or `var(--pt-amber)` | selected-state highlight          |
-| IBM Plex Sans                       | `var(--font-sans)` (system stack)         | body                              |
-| Large headline                      | `var(--font-display)` (Fraunces)          | `.bench-hero h1`                  |
-| Panel backgrounds (`rgba(...)`)     | `var(--pt-cream-hi)`                      | cream-hi panels                   |
-| Panel borders                       | `var(--pt-cream-rule)`                    | hairlines                         |
-| Viewport/grid card                  | `var(--pt-grid-bg)` + `--pt-grid-rule`    | where grid renders                |
+| Current (approx.)                   | Token                                       | Usage                             |
+| ----------------------------------- | ------------------------------------------- | --------------------------------- |
+| Dark gradient body                  | `var(--pt-cream)` flat                      | `.bench-shell` ambient background |
+| `#f7f4ea` body text                 | `var(--pt-ink)`                             | body default                      |
+| `#ffbc7d` eyebrow orange            | `var(--pt-amber-ink)`                       | `.eyebrow`                        |
+| `#7db8ff` blue accent               | `var(--pt-sev-info)` or `var(--pt-amber)`   | selected-state highlight          |
+| IBM Plex Sans                       | `var(--font-sans)` (system stack)           | body                              |
+| Large headline                      | `var(--font-display)` (Fraunces)            | `.bench-hero h1`                  |
+| Panel backgrounds (`rgba(...)`)     | `var(--pt-cream-hi)`                        | cream-hi panels                   |
+| Panel borders                       | `var(--pt-cream-rule)`                      | hairlines                         |
+| Viewport/grid card                  | `var(--pt-grid-bg)` + `--pt-grid-rule`      | where grid renders                |
 | Result JSON / telemetry backgrounds | `var(--pt-grid-bg)` + `var(--pt-grid-text)` | mono data blocks                  |
-| Warn / error badges                 | `var(--pt-sev-warn)` / `var(--pt-sev-err)` | status indicators                 |
+| Warn / error badges                 | `var(--pt-sev-warn)` / `var(--pt-sev-err)`  | status indicators                 |
 
 If a hex value in the current file doesn't map cleanly to an existing token, the implementation resolves by:
 
@@ -192,12 +192,12 @@ No effect on `@pretable/*` packages, on `apps/playground`, or on published artif
 
 ## 9. Risks
 
-| Risk                                                                    | Mitigation                                                                                               |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Risk                                                                     | Mitigation                                                                                               |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | Deep CSS selector specificity in current `app.css` missed during rewrite | Implementation does a systematic rule-by-rule rewrite; manual visual verification catches strays         |
 | Vendor CSS (Grid Alpha, GridGamma) clashes with `@pretable/ui/components.css`     | Scope vendor adapter renders under `.bench-adapter-*` wrapper if needed; `@pretable/ui` governs outside  |
 | Tailwind v4 `@theme inline` duplication with playground                  | Pure duplication is fine; the two apps are independent surfaces. Not worth DRY-extracting for two apps.  |
-| Visual regressions in a niche adapter render (e.g., GridGamma X hover state)  | Accept minor chrome mismatches; only fix the visual noise if it breaks function. Full polish is §6's job |
+| Visual regressions in a niche adapter render (e.g., GridGamma X hover state)   | Accept minor chrome mismatches; only fix the visual noise if it breaks function. Full polish is §6's job |
 | Bench tests assert on a removed class/color                              | Preserve behavior: if legit user-facing assertion, adjust token map; if implementation-coupled, update   |
 
 ---
