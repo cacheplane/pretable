@@ -198,8 +198,7 @@ export function App() {
   --down: #f87171;
   --accent: #4ade80;
   --mono: "SF Mono", Monaco, "Courier New", monospace;
-  --sans:
-    "Inter", -apple-system, system-ui, sans-serif;
+  --sans: "Inter", -apple-system, system-ui, sans-serif;
 }
 
 * {
@@ -561,7 +560,10 @@ while (i < jsonText.length) {
 }
 t += 0.05;
 phase1Lines.push(
-  JSON.stringify({ t: Number(t.toFixed(3)), type: "response.output_text.done" }),
+  JSON.stringify({
+    t: Number(t.toFixed(3)),
+    type: "response.output_text.done",
+  }),
 );
 t += 0.01;
 phase1Lines.push(
@@ -645,8 +647,26 @@ import type { Phase1Entry, Phase2Entry, StockRow } from "./types";
 
 function fakePhase1(): Phase1Entry[] {
   const full = JSON.stringify([
-    { id: "AAPL", symbol: "AAPL", name: "Apple", last: 100, change_pct: 1.0, volume: 1000, sector: "Tech", last_update: "14:00:00" },
-    { id: "GOOGL", symbol: "GOOGL", name: "Alphabet", last: 140, change_pct: -0.5, volume: 2000, sector: "Tech", last_update: "14:00:00" },
+    {
+      id: "AAPL",
+      symbol: "AAPL",
+      name: "Apple",
+      last: 100,
+      change_pct: 1.0,
+      volume: 1000,
+      sector: "Tech",
+      last_update: "14:00:00",
+    },
+    {
+      id: "GOOGL",
+      symbol: "GOOGL",
+      name: "Alphabet",
+      last: 140,
+      change_pct: -0.5,
+      volume: 2000,
+      sector: "Tech",
+      last_update: "14:00:00",
+    },
   ]);
   return [
     { t: 0, type: "response.created" },
@@ -2098,6 +2118,7 @@ cd apps/streaming-demo && pnpm dev
 ```
 
 Open in browser. Expected:
+
 - Header visible
 - Grid slot renders (empty initially)
 - Inspector slot shows "loading recordings…" briefly, then populates
@@ -2135,12 +2156,7 @@ git commit -m "feat(streaming-demo): wire engine, grid, inspector, transport"
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  create,
-  push,
-  finish,
-  resolve,
-} from "@cacheplane/json-stream";
+import { create, push, finish, resolve } from "@cacheplane/json-stream";
 
 import { parseJsonl } from "../src/recording-loader";
 import type { Phase1Entry, StockRow } from "../src/types";
@@ -2416,6 +2432,7 @@ cd apps/streaming-demo && pnpm generate-phase2
 - [ ] **Step 4: Visual QA**
 
 Run `pnpm dev`. Verify:
+
 - Grid fills with 2,500 rows over ~30 s
 - Rows look like real ticker data
 - Phase transition feels natural
@@ -2448,9 +2465,9 @@ Replay-style demo app showing the Pretable streaming adapter feeding a captured 
 ## Development
 
 \`\`\`
-pnpm dev     # Vite dev server
-pnpm build   # production build
-pnpm test    # unit tests
+pnpm dev # Vite dev server
+pnpm build # production build
+pnpm test # unit tests
 \`\`\`
 
 The app ships with checked-in recordings at \`src/recordings/phase1.jsonl\` (real OpenAI capture) and \`src/recordings/phase2.jsonl\` (seeded random walk). The app is fully self-contained at runtime — no network calls.
@@ -2470,7 +2487,7 @@ Reads \`phase1.jsonl\`, seeds a PRNG with \`0xC0FFEE\`, writes 90 s of update ba
 \`\`\`
 export OPENAI_API_KEY=sk-...
 pnpm capture
-pnpm generate-phase2   # re-derive phase 2 from the new phase 1
+pnpm generate-phase2 # re-derive phase 2 from the new phase 1
 \`\`\`
 
 Use \`OPENAI_MODEL=...\` to override the default model (\`gpt-5\`). The script writes every SSE event to \`phase1.jsonl\` with relative timestamps. Capture is non-deterministic — don't re-run unless you're intentionally refreshing the demo content.

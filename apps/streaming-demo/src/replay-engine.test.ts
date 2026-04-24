@@ -5,8 +5,26 @@ import type { Phase1Entry, Phase2Entry, StockRow } from "./types";
 
 function fakePhase1(): Phase1Entry[] {
   const full = JSON.stringify([
-    { id: "AAPL", symbol: "AAPL", name: "Apple", last: 100, change_pct: 1.0, volume: 1000, sector: "Tech", last_update: "14:00:00" },
-    { id: "GOOGL", symbol: "GOOGL", name: "Alphabet", last: 140, change_pct: -0.5, volume: 2000, sector: "Tech", last_update: "14:00:00" },
+    {
+      id: "AAPL",
+      symbol: "AAPL",
+      name: "Apple",
+      last: 100,
+      change_pct: 1.0,
+      volume: 1000,
+      sector: "Tech",
+      last_update: "14:00:00",
+    },
+    {
+      id: "GOOGL",
+      symbol: "GOOGL",
+      name: "Alphabet",
+      last: 140,
+      change_pct: -0.5,
+      volume: 2000,
+      sector: "Tech",
+      last_update: "14:00:00",
+    },
   ]);
   return [
     { t: 0, type: "response.created" },
