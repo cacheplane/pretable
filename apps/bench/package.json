@@ -1,9 +1,10 @@
 {
   "name": "@pretable/app-bench",
   "private": true,
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable-internal/stream-adapter build && pnpm --filter @pretable/react build",
+    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable-internal/stream-adapter build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build",
     "predev": "pnpm run prepare:deps",
     "dev": "vite",
     "prebuild": "pnpm run prepare:deps",
@@ -21,16 +22,22 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@fontsource-variable/fraunces": "^5.2.9",
     "@mui/material": "^9.0.0",
     "@mui/x-data-grid": "^9.0.2",
     "@pretable-internal/bench-runner": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable-internal/stream-adapter": "workspace:*",
     "@pretable/react": "workspace:*",
+    "@pretable/ui": "workspace:*",
     "@tanstack/react-virtual": "^3.13.23",
     "ag-grid-community": "^35.2.1",
     "ag-grid-react": "^35.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.4",
+    "tailwindcss": "^4.2.4"
   }
 }
