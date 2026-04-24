@@ -1,5 +1,7 @@
 node_modules
 .worktrees
+.assistant
+.superpowers
 dist
 *.tsbuildinfo
 coverage
