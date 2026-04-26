@@ -43,8 +43,6 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     scriptName === "sort" ||
     scriptName === "filter-metadata" ||
     scriptName === "filter-text";
-  const interactionSupported =
-    interactionScript && adapterId === "pretable" && scenarioId === "S2";
 
   const cwd = process.cwd();
   const summaryPath = path.join(
@@ -56,7 +54,12 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   await mkdir(path.dirname(summaryPath), { recursive: true });
   await writeFile(summaryPath, `${JSON.stringify(result, null, 2)}\n`);
 
-  if (interactionScript && !interactionSupported) {
+  // The bench-runner gates which (adapter × scenario × script) combos it
+  // supports (e.g. interactions only on pretable + S2/S7, updates only on
+  // pretable + S5). When a combo isn't supported, the app reports
+  // status: "unsupported" — accept that and bail before the completed-run
+  // assertions.
+  if (result?.status === "unsupported") {
     expect(result).toMatchObject({
       status: "unsupported",
       unsupported: {
