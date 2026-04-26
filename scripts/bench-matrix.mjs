@@ -124,6 +124,7 @@ export function createHypothesisReport(input) {
       evaluateH10(input.runs),
       evaluateH11(input.runs),
       evaluateH12(input.runs),
+      evaluateH13(input.runs),
     ],
   };
 }
@@ -617,6 +618,74 @@ function evaluateH11(runs) {
 
 function evaluateH12(runs) {
   return { ...evaluateH8(runs, "S7"), id: "H12" };
+}
+
+/**
+ * H13 — Streaming Update Frame Budget.
+ *
+ * Pretable's `updates` script on the S5 streaming-updates scenario should
+ * keep frame p95 within one 60Hz frame budget (≤ 16ms) with zero long
+ * tasks (>50ms blocking) across the 3-second test.
+ *
+ * Phase 1 ships absolute thresholds against pretable only — no comparator
+ * has an `updates` adapter wired yet (only Grid Alpha has a native batching
+ * API; GridGamma has updateRows; GridBeta has setRows). Phase 2 will promote
+ * to a comparative claim once the comparator update paths land.
+ */
+function evaluateH13(runs) {
+  const updatesSeries = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S5",
+    scriptName: "updates",
+  });
+
+  if (updatesSeries.length === 0) {
+    return {
+      id: "H13",
+      status: "insufficient",
+      summary:
+        "Missing a completed S5 updates run, so streaming update frame budget proof is not available yet.",
+      evidence: [],
+    };
+  }
+
+  const evidence = summarizeRunSeriesEvidence(updatesSeries);
+  const framePass = evidence.metrics.scroll_frame_p95_ms;
+  const longTasksCount = maxMetric(updatesSeries, "long_tasks_count");
+
+  const failingSubCriteria = [];
+
+  if (framePass === undefined || framePass > 16) {
+    failingSubCriteria.push(
+      `frame p95 is ${framePass ?? "missing"}ms (threshold: ≤ 16ms)`,
+    );
+  }
+
+  if (longTasksCount === undefined || longTasksCount > 0) {
+    failingSubCriteria.push(
+      `long tasks count is ${longTasksCount ?? "missing"} (threshold: 0)`,
+    );
+  }
+
+  if (failingSubCriteria.length > 0) {
+    return {
+      id: "H13",
+      status: "failing",
+      summary: `Streaming updates on S5 are measured, but ${failingSubCriteria.length} frame-budget sub-criteria are not met: ${failingSubCriteria.join("; ")}.`,
+      evidence: [evidence],
+    };
+  }
+
+  const hasRepeatedEvidence = evidence.sampleCount > 1;
+
+  return {
+    id: "H13",
+    status: "satisfied",
+    summary: hasRepeatedEvidence
+      ? "Streaming updates on S5 keep frame p95 within one 60Hz frame (≤ 16ms) with zero long tasks across the 3-second test. Evidence is based on current repeated-run medians."
+      : "Streaming updates on S5 keep frame p95 within one 60Hz frame (≤ 16ms) with zero long tasks across the 3-second test. Evidence is based on the current sample.",
+    evidence: [evidence],
+  };
 }
 
 function evaluateInteractionHypothesis(
