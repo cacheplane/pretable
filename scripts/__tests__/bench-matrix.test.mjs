@@ -1337,7 +1337,7 @@ test("composite H1 fails when pretable backward anchor shift exceeds threshold",
   assert.match(h1?.summary ?? "", /anchor shift/i);
 });
 
-test("hypothesis array has 9 entries with H9-H12 for S7", () => {
+test("hypothesis array has 10 entries with H9-H12 for S7 and H13 for S5 updates", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-50-00-000z",
     generatedAt: "2026-04-20T10:51:00.000Z",
@@ -1345,7 +1345,7 @@ test("hypothesis array has 9 entries with H9-H12 for S7", () => {
     runs: [],
   });
 
-  assert.equal(report.hypotheses.length, 9);
+  assert.equal(report.hypotheses.length, 10);
   assert.ok(report.hypotheses.find((h) => h.id === "H1"));
   assert.equal(
     report.hypotheses.find((h) => h.id === "H3"),
@@ -1359,6 +1359,7 @@ test("hypothesis array has 9 entries with H9-H12 for S7", () => {
   assert.ok(report.hypotheses.find((h) => h.id === "H10"));
   assert.ok(report.hypotheses.find((h) => h.id === "H11"));
   assert.ok(report.hypotheses.find((h) => h.id === "H12"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H13"));
 });
 
 test("H9 satisfied when S7 scroll quality passes all thresholds with failing competitor", () => {
@@ -1592,6 +1593,111 @@ test("H12 insufficient when no S7 filter-text data exists", () => {
   assert.match(h12?.summary ?? "", /S7/i);
 });
 
+test("H13 insufficient when no S5 updates run exists", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-25t10-00-00-000z",
+    generatedAt: "2026-04-25T10:01:00.000Z",
+    entries: [],
+    runs: [],
+  });
+
+  const h13 = report.hypotheses.find((h) => h.id === "H13");
+
+  assert.equal(h13?.status, "insufficient");
+  assert.match(h13?.summary ?? "", /S5 updates/i);
+});
+
+test("H13 satisfied when S5 updates frame p95 ≤ 16ms with zero long tasks", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-25t10-10-00-000z",
+    generatedAt: "2026-04-25T10:11:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath:
+          "status/chromium-pretable-default-s5-updates-2026-04-25t10-10-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createUpdatesRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-25T10:10:00.000Z",
+        scroll_frame_p95_ms: 12,
+        long_tasks_count: 0,
+      }),
+    ],
+  });
+
+  const h13 = report.hypotheses.find((h) => h.id === "H13");
+
+  assert.equal(h13?.status, "satisfied");
+  assert.equal(h13?.evidence?.length, 1);
+  assert.equal(h13?.evidence?.[0]?.adapterId, "pretable");
+});
+
+test("H13 failing when frame p95 exceeds 16ms threshold", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-25t10-20-00-000z",
+    generatedAt: "2026-04-25T10:21:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath:
+          "status/chromium-pretable-default-s5-updates-2026-04-25t10-20-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createUpdatesRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-25T10:20:00.000Z",
+        scroll_frame_p95_ms: 24,
+        long_tasks_count: 0,
+      }),
+    ],
+  });
+
+  const h13 = report.hypotheses.find((h) => h.id === "H13");
+
+  assert.equal(h13?.status, "failing");
+  assert.match(h13?.summary ?? "", /frame p95.*24ms/);
+});
+
+test("H13 failing when any long task fires during the streaming test", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-25t10-30-00-000z",
+    generatedAt: "2026-04-25T10:31:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath:
+          "status/chromium-pretable-default-s5-updates-2026-04-25t10-30-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createUpdatesRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-25T10:30:00.000Z",
+        scroll_frame_p95_ms: 12,
+        long_tasks_count: 2,
+      }),
+    ],
+  });
+
+  const h13 = report.hypotheses.find((h) => h.id === "H13");
+
+  assert.equal(h13?.status, "failing");
+  assert.match(h13?.summary ?? "", /long tasks.*2/);
+});
+
 function createScrollRun({
   adapterId,
   timestamp,
@@ -1638,6 +1744,44 @@ function createScrollRun({
         : { scroll_anchor_shift_px }),
       scroll_anchor_shift_forward_p95_px,
       scroll_anchor_shift_backward_p95_px,
+    },
+  };
+}
+
+function createUpdatesRun({
+  adapterId,
+  timestamp,
+  scenarioId = "S5",
+  notes = ["streaming demo replay"],
+  scroll_frame_p95_ms,
+  long_tasks_count = 0,
+  long_tasks_ms = 0,
+  dom_nodes_peak = 1500,
+  rendered_rows_peak = 30,
+  rendered_cells_peak = 900,
+}) {
+  return {
+    adapterId,
+    profile: "default",
+    scenarioId,
+    scriptName: "updates",
+    browserName: "chromium",
+    browserVersion: "123.0",
+    timestamp,
+    seed: 505,
+    viewport: { width: 1440, height: 900 },
+    fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+    deviceScaleFactor: 1,
+    notes,
+    status: "completed",
+    tracePath: `status/traces/chromium-${adapterId}-default-${scenarioId.toLowerCase()}-updates.trace.zip`,
+    metrics: {
+      scroll_frame_p95_ms,
+      long_tasks_count,
+      long_tasks_ms,
+      dom_nodes_peak,
+      rendered_rows_peak,
+      rendered_cells_peak,
     },
   };
 }
