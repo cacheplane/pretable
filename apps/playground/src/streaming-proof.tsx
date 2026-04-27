@@ -1,0 +1,57 @@
+import { Receipt } from "@pretable/ui";
+
+interface StreamingMetric {
+  value: string;
+  caption: string;
+}
+
+// Real numbers from H13 (S5 streaming-updates, hypothesis scale, 3 repeats,
+// merged in PR #15). The hypothesis report at status/runsets/ is the source
+// of truth; these get refreshed when bench:matrix re-runs.
+const METRICS: readonly StreamingMetric[] = [
+  { value: "9ms", caption: "frame p95 (≤ 16ms budget)" },
+  { value: "0", caption: "long tasks" },
+  { value: "1k/s", caption: "updates sustained" },
+];
+
+export function StreamingProof() {
+  return (
+    <section className="bg-cream text-ink border-b border-cream-rule px-7 py-[52px] md:px-10">
+      <div className="mx-auto max-w-[1240px]">
+        <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-amber-ink">
+          Wedge · streaming
+        </p>
+        <h2 className="mt-3 font-display text-[36px] leading-[1.08] tracking-[-0.02em] md:text-[44px]">
+          Stream <em className="italic text-amber-ink">tokens</em>.
+          <br className="hidden md:block" /> Render <Receipt>500 rows</Receipt>{" "}
+          in 30s.
+        </h2>
+        <p className="mt-5 max-w-[760px] font-display text-[18px] leading-[1.44] text-ink-dim">
+          An OpenAI Responses stream, parsed live, batched on{" "}
+          <Receipt>requestAnimationFrame</Receipt>, applied to the same grid
+          that proved it scrolls. The frame budget stays under one 60Hz frame.
+        </p>
+        <ul className="mt-8 grid grid-cols-3 gap-6">
+          {METRICS.map((metric) => (
+            <li key={metric.caption} className="border-t border-ink pt-3">
+              <div className="font-display text-[36px] leading-[1] tracking-[-0.02em] md:text-[44px]">
+                {metric.value}
+              </div>
+              <div className="mt-1 font-mono text-[12px] text-ink-dim">
+                {metric.caption}
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-8">
+          <a
+            href="/streaming/"
+            className="inline-flex items-center gap-2 rounded-[2px] bg-ink px-[18px] py-[10px] text-[13px] text-cream-hi hover:bg-ink/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-ink focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
+          >
+            Watch it stream →
+          </a>
+        </div>
+      </div>
+    </section>
+  );
+}
