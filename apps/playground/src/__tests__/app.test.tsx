@@ -40,28 +40,35 @@ describe("<App />", () => {
     expect(screen.getByRole("main")).toBeInTheDocument();
   });
 
-  test("renders the three section components in order inside <main>", () => {
+  test("renders sections in order inside <main>: hero → grid → streaming → receipts", () => {
     render(<App />);
     const main = screen.getByRole("main");
 
-    // hero h1 appears before receipts h2; grid section has id="grid"
     const h1 = within(main).getByRole("heading", { level: 1 });
-    const h2 = within(main).getByRole("heading", { level: 2 });
     const grid = main.querySelector("#grid");
+    const streamingHeading = within(main).getByRole("heading", {
+      name: /stream.*tokens/i,
+    });
+    const receiptsHeading = within(main).getByRole("heading", {
+      name: /receipts.*not claims/i,
+    });
 
     expect(h1).toBeInTheDocument();
-    expect(h2).toBeInTheDocument();
     expect(grid).toBeInTheDocument();
+    expect(streamingHeading).toBeInTheDocument();
+    expect(receiptsHeading).toBeInTheDocument();
 
-    // DOM order: h1 (hero) → grid section → h2 (receipts)
-    const h1Pos = Array.from(main.querySelectorAll("*")).indexOf(h1);
-    const gridPos = Array.from(main.querySelectorAll("*")).indexOf(
-      grid as Element,
-    );
-    const h2Pos = Array.from(main.querySelectorAll("*")).indexOf(h2);
+    const all = Array.from(main.querySelectorAll("*"));
+    const positions = {
+      h1: all.indexOf(h1),
+      grid: all.indexOf(grid as Element),
+      streaming: all.indexOf(streamingHeading),
+      receipts: all.indexOf(receiptsHeading),
+    };
 
-    expect(h1Pos).toBeLessThan(gridPos);
-    expect(gridPos).toBeLessThan(h2Pos);
+    expect(positions.h1).toBeLessThan(positions.grid);
+    expect(positions.grid).toBeLessThan(positions.streaming);
+    expect(positions.streaming).toBeLessThan(positions.receipts);
   });
 
   test("no InspectionDemo-era status card or sidebar is rendered", () => {
