@@ -1,4 +1,4 @@
-export type NavPage = "playground" | "bench" | "docs" | "github";
+export type NavPage = "playground" | "website" | "bench" | "docs" | "github";
 
 export interface NavCta {
   label: string;
@@ -15,7 +15,7 @@ export interface NavProps {
 }
 
 const LINKS: Array<{ id: NavPage; label: string; href: string }> = [
-  { id: "playground", label: "playground", href: "/" },
+  { id: "website", label: "pretable", href: "/" },
   { id: "bench", label: "bench", href: "/bench" },
   { id: "docs", label: "docs", href: "/docs" },
   {

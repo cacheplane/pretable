@@ -49,7 +49,7 @@ export function PitchGrid() {
             <span className="sr-only">Dataset scale</span>
             <select
               aria-label="Dataset scale"
-              className="bg-transparent text-amber outline-none cursor-pointer"
+              className="bg-transparent text-accent outline-none cursor-pointer"
               value={scale}
               onChange={(event) => {
                 setScale(event.currentTarget.value as InspectionDatasetScale);
@@ -94,7 +94,7 @@ export function PitchGrid() {
                     filters: { ...current.filters, [columnId]: nextValue },
                   }));
                 }}
-                className="rounded-[2px] border border-grid-rule bg-grid-bg px-2 py-1 text-grid-text placeholder:text-grid-dim focus:outline-none focus:border-amber"
+                className="rounded-[2px] border border-grid-rule bg-grid-bg px-2 py-1 text-grid-text placeholder:text-grid-dim focus:outline-none focus:border-accent"
                 placeholder={`Filter ${label.toLowerCase()}`}
               />
             </label>

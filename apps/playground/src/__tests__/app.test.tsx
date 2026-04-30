@@ -9,21 +9,21 @@ afterEach(() => {
 });
 
 describe("<App />", () => {
-  test("renders Nav with playground active and version string", () => {
+  test("renders Nav with primary links and version string", () => {
     render(<App />);
 
     // Nav's header landmark.
     const header = screen.getByRole("banner");
     expect(header).toBeInTheDocument();
 
-    // Primary nav links (from @pretable/ui's LINKS: playground/bench/docs/github)
+    // Primary nav links (post-website-pivot LINKS: pretable/bench/docs/github).
+    // The "playground" link was retired when @pretable/ui's Nav swapped to a
+    // website home tab; playground is being retired in Phase 3 of the pivot.
+    // <Nav active="playground"> still typechecks but no link is highlighted.
     const primaryNav = screen.getByRole("navigation", { name: "Primary" });
-    expect(within(primaryNav).getByText("playground")).toBeInTheDocument();
+    expect(within(primaryNav).getByText("pretable")).toBeInTheDocument();
     expect(within(primaryNav).getByText("bench")).toBeInTheDocument();
-
-    // Active link carries "active" on the anchor
-    const active = within(primaryNav).getByText("playground").closest("a");
-    expect(active).toHaveClass("active");
+    expect(within(primaryNav).getByText("docs")).toBeInTheDocument();
   });
 
   test("renders Footer with a ci status dot and a version string", () => {
