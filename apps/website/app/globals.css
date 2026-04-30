@@ -1,0 +1,179 @@
+@import "@fontsource-variable/fraunces/wght.css";
+@import "@fontsource-variable/fraunces/wght-italic.css";
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "@pretable/ui/tokens.css";
+@import "@pretable/ui/components.css";
+@import "tailwindcss";
+
+@theme inline {
+  --color-bg-page: var(--pt-bg-page);
+  --color-bg-card: var(--pt-bg-card);
+  --color-bg-raised: var(--pt-bg-raised);
+  --color-rule: var(--pt-rule);
+  --color-rule-soft: var(--pt-rule-soft);
+  --color-text-primary: var(--pt-text-primary);
+  --color-text-secondary: var(--pt-text-secondary);
+  --color-text-muted: var(--pt-text-muted);
+  --color-accent: var(--pt-accent);
+  --color-accent-deep: var(--pt-accent-deep);
+  --color-accent-soft: var(--pt-accent-soft);
+  --color-grid-bg: var(--pt-grid-bg);
+  --color-grid-raised: var(--pt-grid-raised);
+  --color-grid-rule: var(--pt-grid-rule);
+  --color-grid-text: var(--pt-grid-text);
+  --color-grid-dim: var(--pt-grid-dim);
+  --color-sev-info: var(--pt-sev-info);
+  --color-sev-warn: var(--pt-sev-warn);
+  --color-sev-err: var(--pt-sev-err);
+  --color-sev-ok: var(--pt-sev-ok);
+
+  --font-display: var(--pt-font-serif);
+  --font-sans: var(--pt-font-sans);
+  --font-mono: var(--pt-font-mono);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--pt-text-primary);
+  background: var(--pt-bg-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* InspectionGrid internals — these classes come from @pretable/react/internal */
+#grid [data-pretable-scroll-viewport] {
+  background: var(--pt-grid-bg);
+  height: 460px;
+  overflow: auto;
+  position: relative;
+  outline: none;
+}
+
+#grid [data-pretable-scroll-viewport]:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--pt-accent);
+}
+
+#grid .inspection-header-row {
+  display: grid;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  border-bottom: 1px solid var(--pt-grid-rule);
+  background: var(--pt-grid-raised);
+}
+
+#grid .inspection-header-cell {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+  min-height: 52px;
+  border: 0;
+  border-right: 1px solid var(--pt-grid-rule);
+  background: inherit;
+  color: var(--pt-grid-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 14px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+#grid .inspection-header-cell strong {
+  color: var(--pt-grid-text);
+  font-weight: 600;
+}
+
+#grid .inspection-header-cell.is-filtered {
+  border-bottom: 2px solid var(--pt-accent);
+}
+
+#grid .sort-indicator {
+  color: var(--pt-accent);
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+#grid .inspection-scroll-content {
+  position: relative;
+}
+
+#grid .inspection-row {
+  display: grid;
+  position: absolute;
+  inset-inline: 0;
+  border-bottom: 1px solid var(--pt-grid-rule);
+  cursor: pointer;
+}
+
+#grid .inspection-row:hover .inspection-cell {
+  background: var(--pt-grid-raised);
+}
+
+#grid .inspection-cell {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 100%;
+  padding: 12px;
+  background: var(--pt-grid-bg);
+  border-right: 1px solid var(--pt-grid-rule);
+  color: var(--pt-grid-text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.52;
+}
+
+#grid .inspection-cell[data-pinned="left"] {
+  z-index: 3;
+  background: var(--pt-grid-raised);
+}
+
+#grid .inspection-cell[data-selected="true"] {
+  background: color-mix(in oklab, var(--pt-accent) 14%, var(--pt-grid-bg));
+}
+
+#grid .inspection-cell[data-focused="true"] {
+  outline: 1px solid var(--pt-accent);
+  outline-offset: -1px;
+}
+
+#grid .inspection-cell-label {
+  color: var(--pt-grid-dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+#grid .inspection-cell-value {
+  color: var(--pt-grid-text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
