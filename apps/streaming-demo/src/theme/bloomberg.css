@@ -26,10 +26,19 @@ body,
   font-size: 13px;
 }
 
+/*
+ * Mobile-first: stack grid → inspector → transport vertically.
+ * Above 768px, restore the grid + right-rail layout (D from the design).
+ *
+ * Uses 100dvh (dynamic viewport height) so iOS Safari's address bar doesn't
+ * truncate content when it auto-hides during scroll. 100vh fallback kept for
+ * browsers that pre-date the dvh unit.
+ */
 .app-shell {
   display: grid;
   grid-template-rows: auto 1fr auto;
   height: 100vh;
+  height: 100dvh;
 }
 .app-header {
   border-bottom: 1px solid var(--border);
@@ -40,7 +49,7 @@ body,
 }
 .app-body {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-rows: 1fr auto;
   overflow: hidden;
 }
 .grid-slot {
@@ -48,15 +57,28 @@ body,
   background: var(--bg);
 }
 .inspector-slot {
-  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   background: var(--panel);
   display: grid;
   grid-template-rows: 1fr 1fr;
+  max-height: 35vh;
 }
 .transport-slot {
   border-top: 1px solid var(--border);
   padding: 10px 16px;
   background: var(--panel);
+}
+
+@media (min-width: 768px) {
+  .app-body {
+    grid-template-rows: none;
+    grid-template-columns: 1fr 320px;
+  }
+  .inspector-slot {
+    border-top: 0;
+    border-left: 1px solid var(--border);
+    max-height: none;
+  }
 }
 
 /* Cell styling for the streaming grid */
@@ -86,19 +108,39 @@ body,
   font-size: 11px;
 }
 
+/*
+ * Mobile-first transport: the scrub bar gets a full row of its own so its
+ * thumb stays draggable, and the controls flex-wrap above. Above 640px the
+ * whole bar collapses back to a single row.
+ */
 .transport-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   font-family: var(--mono);
   font-size: 12px;
+}
+.transport-scrub {
+  flex: 1 1 100%;
+  order: 99;
+}
+@media (min-width: 640px) {
+  .transport-bar {
+    flex-wrap: nowrap;
+  }
+  .transport-scrub {
+    flex: 1;
+    order: initial;
+  }
 }
 .transport-play {
   background: transparent;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 4px 10px;
+  padding: 8px 14px;
+  min-height: 44px;
   cursor: pointer;
   font-size: 13px;
 }
@@ -110,7 +152,8 @@ body,
   min-width: 80px;
 }
 .transport-scrub {
-  flex: 1;
+  /* flex sizing comes from the mobile-first block above; here we just
+     set the slider's filled-bar color */
   accent-color: var(--accent);
 }
 .transport-phase {
@@ -135,9 +178,10 @@ body,
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 3px 6px;
+  padding: 8px 10px;
+  min-height: 44px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
