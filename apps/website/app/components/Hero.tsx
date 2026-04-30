@@ -10,9 +10,8 @@ export function Hero() {
           $ pretable — vol. 2 · no. 1
         </p>
         <h1 className="mt-4 font-display text-[40px] leading-[1.02] tracking-[-0.025em] text-text-primary md:text-[56px] md:leading-none">
-          The grid that treats{" "}
-          <em className="italic text-accent">scroll</em>{" "}
-          as a first-class feature.
+          The grid that treats <em className="italic text-accent">scroll</em> as
+          a first-class feature.
         </h1>
         <p className="mx-auto mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           500k rows. 60fps scroll. Selection survives filters. Built on a

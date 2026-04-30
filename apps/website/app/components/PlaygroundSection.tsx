@@ -52,9 +52,7 @@ export function PlaygroundSection() {
               className="bg-transparent text-accent outline-none cursor-pointer"
               value={scale}
               onChange={(event) => {
-                setScale(
-                  event.currentTarget.value as InspectionDatasetScale,
-                );
+                setScale(event.currentTarget.value as InspectionDatasetScale);
               }}
             >
               {inspectionDatasetScaleOptions.map((option) => (
