@@ -1,19 +1,23 @@
 @import "@fontsource-variable/fraunces/wght.css";
 @import "@fontsource-variable/fraunces/wght-italic.css";
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
 @import "@pretable/ui/tokens.css";
 @import "@pretable/ui/components.css";
 @import "tailwindcss";
 
 @theme inline {
-  --color-cream: var(--pt-cream);
-  --color-cream-hi: var(--pt-cream-hi);
-  --color-cream-rule: var(--pt-cream-rule);
-  --color-ink: var(--pt-ink);
-  --color-ink-dim: var(--pt-ink-dim);
-  --color-ink-softer: var(--pt-ink-softer);
-  --color-amber-ink: var(--pt-amber-ink);
-  --color-amber: var(--pt-amber);
-  --color-amber-soft: var(--pt-amber-soft);
+  --color-bg-page: var(--pt-bg-page);
+  --color-bg-card: var(--pt-bg-card);
+  --color-bg-raised: var(--pt-bg-raised);
+  --color-rule: var(--pt-rule);
+  --color-rule-soft: var(--pt-rule-soft);
+  --color-text-primary: var(--pt-text-primary);
+  --color-text-secondary: var(--pt-text-secondary);
+  --color-text-muted: var(--pt-text-muted);
+  --color-accent: var(--pt-accent);
+  --color-accent-deep: var(--pt-accent-deep);
+  --color-accent-soft: var(--pt-accent-soft);
   --color-grid-bg: var(--pt-grid-bg);
   --color-grid-raised: var(--pt-grid-raised);
   --color-grid-rule: var(--pt-grid-rule);
@@ -24,18 +28,9 @@
   --color-sev-err: var(--pt-sev-err);
   --color-sev-ok: var(--pt-sev-ok);
 
-  /* Fraunces is referenced as "Fraunces Variable" to match the family name
-     @fontsource-variable/fraunces registers, which unlocks the variable
-     weight axis. Intentionally NOT indirected through --pt-font-serif
-     (which uses plain "Fraunces" for external consumers without the
-     fontsource package). Keep literal. */
-  --font-display: "Fraunces Variable", Georgia, "Times New Roman", serif;
-  --font-sans:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono",
-    monospace;
+  --font-display: var(--pt-font-serif);
+  --font-sans: var(--pt-font-sans);
+  --font-mono: var(--pt-font-mono);
 }
 
 *,
@@ -52,8 +47,8 @@ body {
 
 body {
   font-family: var(--font-sans);
-  color: var(--pt-ink);
-  background: var(--pt-cream);
+  color: var(--pt-text-primary);
+  background: var(--pt-bg-page);
 }
 
 .sr-only {

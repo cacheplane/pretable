@@ -144,6 +144,12 @@ importers:
       '@fontsource-variable/fraunces':
         specifier: ^5.0.0
         version: 5.2.9
+      '@fontsource-variable/inter':
+        specifier: ^5.2.8
+        version: 5.2.8
+      '@fontsource-variable/jetbrains-mono':
+        specifier: ^5.2.8
+        version: 5.2.8
       '@pretable-internal/scenario-data':
         specifier: workspace:*
         version: link:../../packages/scenario-data
