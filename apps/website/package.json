@@ -11,7 +11,7 @@
     "build": "next build",
     "prestart": "pnpm run prepare:deps",
     "start": "next start",
-    "lint": "next lint --dir app",
+    "lint": "eslint app --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
