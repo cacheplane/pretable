@@ -10,8 +10,9 @@ export function PitchHero() {
           $ pretable — read-heavy wedge · vol. 1 · no. 4
         </p>
         <h1 className="mt-3 font-display text-[44px] leading-[1.02] tracking-[-0.025em] md:text-[60px] md:leading-none">
-          the grid that treats <em className="italic text-accent-deep">scroll</em>{" "}
-          as a first-class feature.
+          the grid that treats{" "}
+          <em className="italic text-accent-deep">scroll</em> as a first-class
+          feature.
         </h1>
         <p className="mt-5 max-w-[760px] font-display text-[18px] leading-[1.44] text-text-secondary">
           Render 500k rows at <Receipt>60fps</Receipt>. Selection stays keyed by

@@ -15,6 +15,7 @@
 ### PR-A files (touched in token rename)
 
 **Modified:**
+
 ```
 packages/ui/src/tokens.css                          // wholesale rewrite (new names + cool-slate values)
 packages/ui/src/components.css                      // search-replace var() references
@@ -30,6 +31,7 @@ apps/playground/src/streaming-proof.tsx             // Tailwind class strings
 ```
 
 **Untouched in PR-A:**
+
 - `apps/streaming-demo` (independent Bloomberg-terminal theme; doesn't import @pretable/ui tokens)
 - All test files (assertions are behavior-focused, not color-focused)
 - `apps/bench/src/bench-app.tsx` and adapter files (bench's color usage lives entirely in `app.css`)
@@ -37,6 +39,7 @@ apps/playground/src/streaming-proof.tsx             // Tailwind class strings
 ### PR-B files (apps/website scaffold)
 
 **Created:**
+
 ```
 apps/website/
   app/
@@ -65,64 +68,64 @@ apps/website/
 
 This table is the canonical source for the search-replace work in PR-A. Keep it open while editing.
 
-| Old name (current `tokens.css`) | New name              | Old hex     | New hex    | Status                                  |
-| ------------------------------- | --------------------- | ----------- | ---------- | --------------------------------------- |
-| `--pt-cream`                    | `--pt-bg-page`        | `#ede5d4`   | `#0b1120`  | rename + revalue                        |
-| `--pt-cream-hi`                 | `--pt-bg-card`        | `#f5eedd`   | `#0f172a`  | rename + revalue                        |
-| `--pt-cream-lo`                 | `--pt-bg-raised`      | `#e0d6bf`   | `#1e293b`  | rename + revalue                        |
-| `--pt-cream-rule`               | `--pt-rule`           | `#cdc3aa`   | `#1e293b`  | rename + revalue                        |
-| `--pt-ink`                      | `--pt-text-primary`   | `#1a1815`   | `#e2e8f0`  | rename + revalue                        |
-| `--pt-ink-hover`                | `--pt-bg-raised`      | `#0a0806`   | `#1e293b`  | dropped; use `--pt-bg-raised`           |
-| `--pt-ink-dim`                  | `--pt-text-secondary` | `#4a443b`   | `#94a3b8`  | rename + revalue                        |
-| `--pt-ink-softer`               | `--pt-text-muted`     | `#7a7468`   | `#64748b`  | rename + revalue                        |
-| `--pt-amber-ink`                | `--pt-accent-deep`    | `#8a5d0f`   | `#0284c7`  | rename + revalue                        |
-| `--pt-amber-ink-dark`           | `--pt-accent-deep`    | `#7d4f0a`   | `#0284c7`  | dropped; folded into `--pt-accent-deep` |
-| `--pt-amber`                    | `--pt-accent`         | `#c68a1e`   | `#38bdf8`  | rename + revalue                        |
-| `--pt-amber-soft`               | `--pt-accent-soft`    | `#f5e8ca`   | `#1e3a52`  | rename + revalue                        |
-| `--pt-dark`                     | (kept name)           | `#0f0e0c`   | `#020617`  | retune only                             |
-| `--pt-grid-bg`                  | (kept name)           | `#0b0a09`   | `#0a0f1a`  | retune only                             |
-| `--pt-grid-head`                | `--pt-grid-raised`    | `#0d0c0a`   | `#0d1426`  | dropped; use `--pt-grid-raised`         |
-| `--pt-grid-raised`              | (kept name)           | `#151310`   | `#0d1426`  | retune only                             |
-| `--pt-grid-rule`                | (kept name)           | `#1f1c18`   | `#131b2c`  | retune only                             |
-| `--pt-grid-text`                | (kept name)           | `#d8d2c3`   | `#cbd5e1`  | retune only                             |
-| `--pt-grid-dim`                 | (kept name)           | `#8f8a7d`   | `#64748b`  | retune only                             |
-| `--pt-sev-*`                    | (unchanged)           | (unchanged) | (unchanged)| no change — domain colors               |
-| `--pt-code-*`                   | (unchanged)           | (unchanged) | (unchanged)| no change — Phase 2 may revisit         |
-| `--pt-font-serif`               | (kept name)           | "Fraunces"  | "Fraunces Variable" + serif fallback | family literal updated  |
-| `--pt-font-sans`                | (kept name)           | system stack| "Inter Variable" + system fallback   | new — wires Inter font  |
-| `--pt-font-mono`                | (kept name)           | system stack| "JetBrains Mono Variable" + fallback | new — wires JetBrains   |
-| `--pt-fs-*`, `--pt-page-max`, `--pt-header-h`, `--pt-sidebar-w`, `--pt-toc-w`, `--pt-prose-max`, `--pt-code-max`, `--pt-modal-w` | (unchanged) | (unchanged) | (unchanged) | layout tokens — no change |
+| Old name (current `tokens.css`)                                                                                                  | New name              | Old hex      | New hex                              | Status                                  |
+| -------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ------------ | ------------------------------------ | --------------------------------------- |
+| `--pt-cream`                                                                                                                     | `--pt-bg-page`        | `#ede5d4`    | `#0b1120`                            | rename + revalue                        |
+| `--pt-cream-hi`                                                                                                                  | `--pt-bg-card`        | `#f5eedd`    | `#0f172a`                            | rename + revalue                        |
+| `--pt-cream-lo`                                                                                                                  | `--pt-bg-raised`      | `#e0d6bf`    | `#1e293b`                            | rename + revalue                        |
+| `--pt-cream-rule`                                                                                                                | `--pt-rule`           | `#cdc3aa`    | `#1e293b`                            | rename + revalue                        |
+| `--pt-ink`                                                                                                                       | `--pt-text-primary`   | `#1a1815`    | `#e2e8f0`                            | rename + revalue                        |
+| `--pt-ink-hover`                                                                                                                 | `--pt-bg-raised`      | `#0a0806`    | `#1e293b`                            | dropped; use `--pt-bg-raised`           |
+| `--pt-ink-dim`                                                                                                                   | `--pt-text-secondary` | `#4a443b`    | `#94a3b8`                            | rename + revalue                        |
+| `--pt-ink-softer`                                                                                                                | `--pt-text-muted`     | `#7a7468`    | `#64748b`                            | rename + revalue                        |
+| `--pt-amber-ink`                                                                                                                 | `--pt-accent-deep`    | `#8a5d0f`    | `#0284c7`                            | rename + revalue                        |
+| `--pt-amber-ink-dark`                                                                                                            | `--pt-accent-deep`    | `#7d4f0a`    | `#0284c7`                            | dropped; folded into `--pt-accent-deep` |
+| `--pt-amber`                                                                                                                     | `--pt-accent`         | `#c68a1e`    | `#38bdf8`                            | rename + revalue                        |
+| `--pt-amber-soft`                                                                                                                | `--pt-accent-soft`    | `#f5e8ca`    | `#1e3a52`                            | rename + revalue                        |
+| `--pt-dark`                                                                                                                      | (kept name)           | `#0f0e0c`    | `#020617`                            | retune only                             |
+| `--pt-grid-bg`                                                                                                                   | (kept name)           | `#0b0a09`    | `#0a0f1a`                            | retune only                             |
+| `--pt-grid-head`                                                                                                                 | `--pt-grid-raised`    | `#0d0c0a`    | `#0d1426`                            | dropped; use `--pt-grid-raised`         |
+| `--pt-grid-raised`                                                                                                               | (kept name)           | `#151310`    | `#0d1426`                            | retune only                             |
+| `--pt-grid-rule`                                                                                                                 | (kept name)           | `#1f1c18`    | `#131b2c`                            | retune only                             |
+| `--pt-grid-text`                                                                                                                 | (kept name)           | `#d8d2c3`    | `#cbd5e1`                            | retune only                             |
+| `--pt-grid-dim`                                                                                                                  | (kept name)           | `#8f8a7d`    | `#64748b`                            | retune only                             |
+| `--pt-sev-*`                                                                                                                     | (unchanged)           | (unchanged)  | (unchanged)                          | no change — domain colors               |
+| `--pt-code-*`                                                                                                                    | (unchanged)           | (unchanged)  | (unchanged)                          | no change — Phase 2 may revisit         |
+| `--pt-font-serif`                                                                                                                | (kept name)           | "Fraunces"   | "Fraunces Variable" + serif fallback | family literal updated                  |
+| `--pt-font-sans`                                                                                                                 | (kept name)           | system stack | "Inter Variable" + system fallback   | new — wires Inter font                  |
+| `--pt-font-mono`                                                                                                                 | (kept name)           | system stack | "JetBrains Mono Variable" + fallback | new — wires JetBrains                   |
+| `--pt-fs-*`, `--pt-page-max`, `--pt-header-h`, `--pt-sidebar-w`, `--pt-toc-w`, `--pt-prose-max`, `--pt-code-max`, `--pt-modal-w` | (unchanged)           | (unchanged)  | (unchanged)                          | layout tokens — no change               |
 
 ---
 
 ## Tailwind class string mapping (for the 5 playground TSX files in PR-A Task 7)
 
-| Old class              | New class                    |
-| ---------------------- | ---------------------------- |
-| `bg-cream`             | `bg-bg-page`                 |
-| `bg-cream-hi`          | `bg-bg-card`                 |
-| `text-ink`             | `text-text-primary`          |
-| `text-ink-dim`         | `text-text-secondary`        |
-| `text-ink-softer`      | `text-text-muted`            |
-| `text-amber-ink`       | `text-accent-deep`           |
-| `text-amber`           | `text-accent`                |
-| `text-cream-hi`        | `text-bg-card`               |
-| `border-cream-rule`    | `border-rule`                |
-| `border-ink`           | `border-text-primary`        |
-| `bg-ink`               | `bg-text-primary`            |
-| `hover:bg-ink`         | `hover:bg-bg-raised`         |
-| `hover:bg-ink/90`      | `hover:bg-bg-raised`         |
-| `hover:text-cream-hi`  | `hover:text-bg-card`         |
-| `focus-visible:ring-amber-ink` | `focus-visible:ring-accent` |
+| Old class                         | New class                           |
+| --------------------------------- | ----------------------------------- |
+| `bg-cream`                        | `bg-bg-page`                        |
+| `bg-cream-hi`                     | `bg-bg-card`                        |
+| `text-ink`                        | `text-text-primary`                 |
+| `text-ink-dim`                    | `text-text-secondary`               |
+| `text-ink-softer`                 | `text-text-muted`                   |
+| `text-amber-ink`                  | `text-accent-deep`                  |
+| `text-amber`                      | `text-accent`                       |
+| `text-cream-hi`                   | `text-bg-card`                      |
+| `border-cream-rule`               | `border-rule`                       |
+| `border-ink`                      | `border-text-primary`               |
+| `bg-ink`                          | `bg-text-primary`                   |
+| `hover:bg-ink`                    | `hover:bg-bg-raised`                |
+| `hover:bg-ink/90`                 | `hover:bg-bg-raised`                |
+| `hover:text-cream-hi`             | `hover:text-bg-card`                |
+| `focus-visible:ring-amber-ink`    | `focus-visible:ring-accent`         |
 | `focus-visible:ring-offset-cream` | `focus-visible:ring-offset-bg-page` |
-| `bg-grid-bg`           | (unchanged)                  |
-| `bg-grid-raised`       | (unchanged)                  |
-| `border-grid-rule`     | (unchanged)                  |
-| `text-grid-text`       | (unchanged)                  |
-| `text-grid-dim`        | (unchanged)                  |
-| `placeholder:text-grid-dim` | (unchanged)             |
-| `focus:border-amber`   | `focus:border-accent`        |
-| `bg-transparent text-amber` | `bg-transparent text-accent` |
+| `bg-grid-bg`                      | (unchanged)                         |
+| `bg-grid-raised`                  | (unchanged)                         |
+| `border-grid-rule`                | (unchanged)                         |
+| `text-grid-text`                  | (unchanged)                         |
+| `text-grid-dim`                   | (unchanged)                         |
+| `placeholder:text-grid-dim`       | (unchanged)                         |
+| `focus:border-amber`              | `focus:border-accent`               |
+| `bg-transparent text-amber`       | `bg-transparent text-accent`        |
 
 Note: `bg-text-primary` reads awkwardly (text color used as a bg), but this is what dawn does (`bg-text-primary` is a real class that resolves to `var(--color-text-primary)`). The semantic naming is intentional — primary-text is also the inverse-bg color in a dark theme.
 
@@ -135,6 +138,7 @@ Note: `bg-text-primary` reads awkwardly (text color used as a bg), but this is w
 This plan was committed on branch `feat/website-phase-1` (off `origin/main` at `35526a3`). The PR-A work continues on this branch — the spec + plan commits ride along into PR-A's diff (acceptable; they're the introduction of the new docs anyway). After PR-A merges, branch `feat/website-phase-2` (or similar) starts off fresh main for PR-B.
 
 **Verify branch state before starting:**
+
 ```bash
 cd /Users/blove/repos/pretable/.claude/worktrees/pedantic-joliot-7e6d20
 git status
@@ -146,6 +150,7 @@ git status
 Wholesale rewrite — keep the same file shape (`:root { ... }`) but with new names and cool-slate values. Layout tokens, type-scale tokens, severity tokens, syntax tokens stay; color tokens rename + revalue; font tokens add Inter and JetBrains Mono families.
 
 **Files:**
+
 - Modify: `packages/ui/src/tokens.css`
 
 - [ ] **Step 1: Replace `tokens.css` content**
@@ -262,6 +267,7 @@ git commit -m "refactor(ui): retune tokens.css to cool-slate with semantic names
 Replace all `var(--pt-old-name)` references with new names per the mapping table. The file is 343 lines with ~30 `var(--pt-*)` references for renamed tokens. Do this as a search-replace pass.
 
 **Files:**
+
 - Modify: `packages/ui/src/components.css`
 
 - [ ] **Step 1: Run the search-replace pass**
@@ -314,6 +320,7 @@ git commit -m "refactor(ui): rename var() references in components.css to new to
 Add `"website"` to the `NavPage` union; change `LINKS` to point the home tab at `"website"` instead of `"playground"`. Keep `"playground"` in the union (so existing consumers' `<Nav active="playground">` typechecks) but remove its link entry.
 
 **Files:**
+
 - Modify: `packages/ui/src/nav.tsx`
 
 - [ ] **Step 1: Edit the type and LINKS array**
@@ -381,6 +388,7 @@ const LINKS: Array<{ id: NavPage; label: string; href: string }> = [
 ```
 
 Key changes:
+
 - `NavPage` adds `"website"` (kept `"playground"` for transitional compat)
 - LINKS first entry is now `{ id: "website", label: "pretable", href: "/" }` — the home tab uses the brand wordmark and points at `/` (the website's homepage). The old `"playground"` link is gone.
 
@@ -408,6 +416,7 @@ git commit -m "refactor(ui): add website to NavPage; replace playground link wit
 Update the `@theme inline` Tailwind block + bench-specific class rules to consume the new token names. Bench has no Tailwind utility classes referencing tokens in TSX (verified — all bench color usage lives in app.css), so no TSX edits needed.
 
 **Files:**
+
 - Modify: `apps/bench/src/app.css`
 
 - [ ] **Step 1: Replace the `@theme inline` block**
@@ -473,6 +482,7 @@ Find the existing `@import "@fontsource-variable/fraunces/wght.css"` and `@impor
 - [ ] **Step 4: Install the new fontsource packages in bench**
 
 From repo root:
+
 ```bash
 pnpm --filter @pretable/app-bench add @fontsource-variable/inter @fontsource-variable/jetbrains-mono
 ```
@@ -512,6 +522,7 @@ git commit -m "refactor(bench): migrate app.css to new @pretable/ui tokens; add 
 Same `@theme inline` block update as bench, plus Inter + JetBrains Mono imports + dep installs. Playground's `app.css` does not have many bench-style class rules (most playground styling is Tailwind utility classes in the TSX files, handled in Task 7).
 
 **Files:**
+
 - Modify: `apps/playground/src/app.css`
 
 - [ ] **Step 1: Replace the `@theme inline` block**
@@ -563,6 +574,7 @@ git commit -m "refactor(playground): migrate app.css to new @pretable/ui tokens;
 This file is vanilla CSS (not Tailwind), styling InspectionGrid's emitted class names against the dark grid palette. Most rules already reference `--pt-grid-*` (which mostly stay), but a few use renamed tokens.
 
 **Files:**
+
 - Modify: `apps/playground/src/pitch-grid.css`
 
 - [ ] **Step 1: Apply var() rename**
@@ -591,6 +603,7 @@ git commit -m "refactor(playground): rename var() references in pitch-grid.css"
 Five playground files hard-code Tailwind utility class strings referencing the old token names. Each needs a class-string migration per the Tailwind class mapping table at the top of this plan.
 
 **Files (5 total):**
+
 - Modify: `apps/playground/src/copy-command.tsx`
 - Modify: `apps/playground/src/pitch-hero.tsx`
 - Modify: `apps/playground/src/pitch-grid.tsx`
@@ -654,8 +667,8 @@ export function PitchHero() {
         </p>
         <h1 className="mt-3 font-display text-[44px] leading-[1.02] tracking-[-0.025em] md:text-[60px] md:leading-none">
           the grid that treats{" "}
-          <em className="italic text-accent-deep">scroll</em>{" "}
-          as a first-class feature.
+          <em className="italic text-accent-deep">scroll</em> as a first-class
+          feature.
         </h1>
         <p className="mt-5 max-w-[760px] font-display text-[18px] leading-[1.44] text-text-secondary">
           {/* dek body content unchanged */}
@@ -680,6 +693,7 @@ export function PitchHero() {
 - [ ] **Step 3: Migrate `apps/playground/src/pitch-grid.tsx`**
 
 Apply the substitution list. The grid section's wrapper, chrome strip, scale select, and filter inputs all get className updates. Most of the existing Tailwind classes are `bg-grid-*` / `text-grid-*` / `border-grid-*` which stay unchanged. The changing classes are:
+
 - `text-amber` → `text-accent` (in the scale select)
 - `focus:border-amber` → `focus:border-accent` (in the filter input)
 
@@ -688,6 +702,7 @@ The full migrated file's wrapper and structure stay as-is; only those two change
 ```bash
 grep -nE "(bg-cream|text-ink|amber|cream-)" apps/playground/src/pitch-grid.tsx
 ```
+
 Expected: NO output.
 
 - [ ] **Step 4: Migrate `apps/playground/src/receipts-band.tsx`**
@@ -729,6 +744,7 @@ Apply the substitution list. The migrated section looks like:
 - [ ] **Step 5: Migrate `apps/playground/src/streaming-proof.tsx`**
 
 Apply the substitution list. The file structure mirrors `receipts-band.tsx`. Key changes:
+
 - Section wrapper: `bg-bg-page text-text-primary border-b border-rule`
 - Eyebrow: `text-accent-deep`
 - `<em>`: `text-accent-deep`
@@ -744,6 +760,7 @@ Preserve the `METRICS` constant and its provenance comment (the H13 reference) v
 ```bash
 grep -nE "(bg-cream|text-ink|text-amber|border-cream|bg-amber|bg-ink|text-cream|border-ink)" apps/playground/src/*.tsx
 ```
+
 Expected: NO output. (Note: `text-amber` is a substring of `text-amber-ink` — if the grep matches, double-check the line is genuinely the bare `text-amber` and apply rule 7 vs rule 8 from the substitution list.)
 
 - [ ] **Step 7: Run playground tests + typecheck**
@@ -794,6 +811,7 @@ pnpm --filter @pretable/app-bench dev
 ```
 
 Open the URL. Walk through:
+
 - Header (Nav) shows `pretable / bench / docs / github` with `bench` highlighted as active. Brand is "pretable" (the wordmark from the LINKS update).
 - Bench hero, scenario panel, preview panel render against cool-slate (dark navy bg, cyan accents, no cream anywhere).
 - Click through a bench run; result JSON renders against `--pt-grid-*` (still dark, slightly cooler).
@@ -808,6 +826,7 @@ pnpm --filter @pretable/app-playground dev
 ```
 
 Open the URL. Walk through:
+
 - Nav at top: `pretable / bench / docs / github`. **`pretable` is the active tab visually... wait — playground's `<App>` calls `<Nav active="playground">`, not `"website"`. After the LINKS update, no link has `id="playground"`, so no link visually highlights as active. This is the documented transitional state.** The Nav still renders correctly; it just doesn't mark a tab as active. Acceptable.
 - Hero, grid section, streaming-proof section, receipts band all render against cool-slate.
 - Hero CTA "Try the live playground ↓" smooth-scrolls to grid section.
@@ -825,6 +844,7 @@ pnpm --filter @pretable/app-streaming-demo dev
 ```
 
 Open the URL. Walk through:
+
 - The Bloomberg-terminal aesthetic is unchanged (yellow/black). Streaming-demo doesn't consume `@pretable/ui` tokens; PR-A should not affect it.
 - Replay loads, stream advances, pipeline inspector shows.
 
@@ -920,6 +940,7 @@ git checkout -b feat/website-scaffold origin/main
 ```
 
 Fallback if local `main` is in another worktree (the Claude main repo `/Users/blove/repos/pretable` already holds it):
+
 ```bash
 cd /Users/blove/repos/pretable && git pull --ff-only && cd -
 git fetch origin --prune
@@ -935,6 +956,7 @@ After this, HEAD = `origin/main` post-PR-A merge. New branch `feat/website-scaff
 Create the new app's directory structure with package.json + configs + empty `app/` subdir + .gitignore + README. No React code yet — just the skeleton that lets `pnpm install` resolve and `next build` succeed (rendering a default empty page).
 
 **Files (all created):**
+
 - `apps/website/package.json`
 - `apps/website/next.config.ts`
 - `apps/website/postcss.config.mjs`
@@ -1026,10 +1048,10 @@ export default config;
     "noEmit": true,
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./*"] }
+    "paths": { "@/*": ["./*"] },
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
 }
 ```
 
@@ -1052,6 +1074,7 @@ next-env.d.ts
 The pretable website (cool-slate AI-startup landing). Next.js 16 + Tailwind v4 + MDX-ready.
 
 ## Phases
+
 - **Phase 1 (this PR):** scaffold + hero + live playground grid section directly below.
 - **Phase 2:** AI-startup body sections (problem / solution / stack / CTA), ScrollReveal animations, ambient blob narrative.
 - **Phase 3:** Retire `apps/playground` (its hero + grid pattern lives here now).
@@ -1059,11 +1082,13 @@ The pretable website (cool-slate AI-startup landing). Next.js 16 + Tailwind v4 +
 See `docs/superpowers/specs/2026-04-24-website-phase-1-design.md` for the design.
 
 ## Local dev
+
 \`\`\`bash
 pnpm --filter @pretable/app-website dev
 \`\`\`
 
 ## Deployment
+
 Vercel-ready. Project + domain wiring deferred (manual step when ready).
 ```
 
@@ -1105,6 +1130,7 @@ git commit -m "chore(website): scaffold apps/website Next.js app skeleton"
 The CSS entry point. Imports fonts + tokens + components.css + tailwindcss. Declares `@theme inline` map. Sets body defaults. Includes `#grid` rules to style InspectionGrid's emitted classes (mirrors `apps/playground/src/pitch-grid.css` pattern but inlined here).
 
 **Files:**
+
 - Create: `apps/website/app/globals.css`
 
 - [ ] **Step 1: Create the file with full content**
@@ -1307,6 +1333,7 @@ git commit -m "feat(website): add globals.css with tokens, theme, and grid inter
 The Next.js root layout. Wraps the page in `<Nav active="website">` + `<main>` + `<Footer>` from `@pretable/ui`. Imports `globals.css`.
 
 **Files:**
+
 - Create: `apps/website/app/layout.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -1361,6 +1388,7 @@ git commit -m "feat(website): add root layout with Nav + Footer"
 Decorative gradient blob component. Server-renderable.
 
 **Files:**
+
 - Create: `apps/website/app/components/AmbientBlob.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -1402,6 +1430,7 @@ git commit -m "feat(website): add AmbientBlob decorative component"
 Direct port of `apps/playground/src/copy-command.tsx` with `"use client"` directive at top and Tailwind classes already aligned to new token names (post PR-A).
 
 **Files:**
+
 - Create: `apps/website/app/components/CopyCommand.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -1468,6 +1497,7 @@ git commit -m "feat(website): add CopyCommand client component (port from playgr
 Centered hero with eyebrow, headline, dek, and two CTAs. Server component (no `useState`). Composes `<AmbientBlob>` + `<CopyCommand>`.
 
 **Files:**
+
 - Create: `apps/website/app/components/Hero.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -1485,9 +1515,8 @@ export function Hero() {
           $ pretable — vol. 2 · no. 1
         </p>
         <h1 className="mt-4 font-display text-[40px] leading-[1.02] tracking-[-0.025em] text-text-primary md:text-[56px] md:leading-none">
-          The grid that treats{" "}
-          <em className="italic text-accent">scroll</em>{" "}
-          as a first-class feature.
+          The grid that treats <em className="italic text-accent">scroll</em> as
+          a first-class feature.
         </h1>
         <p className="mx-auto mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           500k rows. 60fps scroll. Selection survives filters. Built on a
@@ -1522,6 +1551,7 @@ git commit -m "feat(website): add Hero section"
 Direct port of `apps/playground/src/pitch-grid.tsx` with `"use client"` directive and class names already aligned to new token names. The section keeps `id="grid"` so the hero CTA anchor resolves.
 
 **Files:**
+
 - Create: `apps/website/app/components/PlaygroundSection.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -1581,9 +1611,7 @@ export function PlaygroundSection() {
               className="bg-transparent text-accent outline-none cursor-pointer"
               value={scale}
               onChange={(event) => {
-                setScale(
-                  event.currentTarget.value as InspectionDatasetScale,
-                );
+                setScale(event.currentTarget.value as InspectionDatasetScale);
               }}
             >
               {inspectionDatasetScaleOptions.map((option) => (
@@ -1672,6 +1700,7 @@ git commit -m "feat(website): add PlaygroundSection client component (port from 
 The homepage — composes `<Hero />` + `<PlaygroundSection />` inside the layout's `<main>` slot.
 
 **Files:**
+
 - Create: `apps/website/app/page.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -1743,6 +1772,7 @@ pnpm --filter @pretable/app-website dev
 ```
 
 Open the dev URL (typically `http://localhost:3000`). Walk through:
+
 - Page loads with cool-slate dark navy background.
 - Nav at top: `pretable / bench / docs / github` with `pretable` active.
 - Hero renders centered: cyan eyebrow → Fraunces headline with italic cyan emphasis → Inter dek → solid-cyan primary CTA `Try the playground ↓` and ghost-mono `$ npm i @pretable/react` CTA pill.
@@ -1833,40 +1863,40 @@ Mark PR-B done. Note PR URL. Phase 1 implementation is complete pending the user
 
 ## Spec coverage check
 
-| Spec section                       | Task(s)         |
-| ---------------------------------- | --------------- |
-| §1 Goal                            | PR-A 1-9, PR-B 10-19 |
-| §2 Scope (PR-A vs PR-B)            | structure       |
-| §3 Architecture (component tree)   | PR-B 12, 13, 14, 15, 16, 17 |
-| §3 State ownership                 | PR-B 14, 16     |
-| §3 Type contracts                  | PR-A 3, PR-B 16 |
-| §4 Token rename strategy           | PR-A 1          |
-| §4 Token mapping table             | PR-A 1, 2 (and reference table at top) |
-| §4 components.css migration        | PR-A 2          |
-| §4 Nav.tsx changes                 | PR-A 3          |
-| §4 bench's app.css migration       | PR-A 4          |
-| §4 playground's app.css migration  | PR-A 5, 6       |
-| §4 playground TSX migration        | PR-A 7          |
-| §5 Directory layout                | PR-B 10, 11, 12, 13, 14, 15, 16, 17 |
-| §5 package.json                    | PR-B 10         |
-| §5 next.config.ts / postcss.config.mjs / tsconfig.json | PR-B 10 |
-| §5 globals.css                     | PR-B 11         |
-| §5 layout.tsx                      | PR-B 12         |
-| §5 page.tsx                        | PR-B 17         |
-| §6 Hero.tsx                        | PR-B 15         |
-| §6 AmbientBlob.tsx                 | PR-B 13         |
-| §6 CopyCommand.tsx                 | PR-B 14         |
-| §6 PlaygroundSection.tsx           | PR-B 16         |
-| §7 Testing approach (no new tests) | PR-A 4, 7, 8; PR-B 18 |
-| §8 Out-of-scope items              | — (intentionally not tasks) |
-| §9 Rollback                        | PR-A 9, PR-B 19 (single squash-merge per PR) |
-| §10 Risks                          | PR-A 7 (component grep), PR-B 18 (RSC boundary check) |
-| §11 Success criteria 1 (PR-A)      | PR-A 8          |
-| §11 Success criteria 2 (PR-B build)| PR-B 18         |
-| §11 Success criteria 3 (Nav active)| PR-A 3, PR-B 12 |
-| §11 Success criteria 4 (visual identity) | PR-A 8, PR-B 18 |
-| §11 Success criteria 5 (CI green)  | PR-A 8, PR-B 18 |
-| §11 Success criteria 6 (Phase 2 ground) | structural — passes if PR-A and PR-B both merge |
+| Spec section                                           | Task(s)                                               |
+| ------------------------------------------------------ | ----------------------------------------------------- |
+| §1 Goal                                                | PR-A 1-9, PR-B 10-19                                  |
+| §2 Scope (PR-A vs PR-B)                                | structure                                             |
+| §3 Architecture (component tree)                       | PR-B 12, 13, 14, 15, 16, 17                           |
+| §3 State ownership                                     | PR-B 14, 16                                           |
+| §3 Type contracts                                      | PR-A 3, PR-B 16                                       |
+| §4 Token rename strategy                               | PR-A 1                                                |
+| §4 Token mapping table                                 | PR-A 1, 2 (and reference table at top)                |
+| §4 components.css migration                            | PR-A 2                                                |
+| §4 Nav.tsx changes                                     | PR-A 3                                                |
+| §4 bench's app.css migration                           | PR-A 4                                                |
+| §4 playground's app.css migration                      | PR-A 5, 6                                             |
+| §4 playground TSX migration                            | PR-A 7                                                |
+| §5 Directory layout                                    | PR-B 10, 11, 12, 13, 14, 15, 16, 17                   |
+| §5 package.json                                        | PR-B 10                                               |
+| §5 next.config.ts / postcss.config.mjs / tsconfig.json | PR-B 10                                               |
+| §5 globals.css                                         | PR-B 11                                               |
+| §5 layout.tsx                                          | PR-B 12                                               |
+| §5 page.tsx                                            | PR-B 17                                               |
+| §6 Hero.tsx                                            | PR-B 15                                               |
+| §6 AmbientBlob.tsx                                     | PR-B 13                                               |
+| §6 CopyCommand.tsx                                     | PR-B 14                                               |
+| §6 PlaygroundSection.tsx                               | PR-B 16                                               |
+| §7 Testing approach (no new tests)                     | PR-A 4, 7, 8; PR-B 18                                 |
+| §8 Out-of-scope items                                  | — (intentionally not tasks)                           |
+| §9 Rollback                                            | PR-A 9, PR-B 19 (single squash-merge per PR)          |
+| §10 Risks                                              | PR-A 7 (component grep), PR-B 18 (RSC boundary check) |
+| §11 Success criteria 1 (PR-A)                          | PR-A 8                                                |
+| §11 Success criteria 2 (PR-B build)                    | PR-B 18                                               |
+| §11 Success criteria 3 (Nav active)                    | PR-A 3, PR-B 12                                       |
+| §11 Success criteria 4 (visual identity)               | PR-A 8, PR-B 18                                       |
+| §11 Success criteria 5 (CI green)                      | PR-A 8, PR-B 18                                       |
+| §11 Success criteria 6 (Phase 2 ground)                | structural — passes if PR-A and PR-B both merge       |
 
 All requirements covered.
 
