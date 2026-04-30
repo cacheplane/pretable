@@ -5,55 +5,59 @@
  * styles in components.css reference these variables. To retheme, override
  * any variable at a more specific scope (e.g. [data-theme="dark"]).
  *
- * See design spec §3 for palette rationale and WCAG contrast ratings.
+ * Cool-slate AI-startup palette (2026-04-24 pivot — see
+ * docs/superpowers/specs/2026-04-24-website-phase-1-design.md).
  */
 :root {
-  /* Editorial — marketing / playground chrome / docs prose */
-  --pt-cream: #ede5d4;
-  --pt-cream-hi: #f5eedd;
-  --pt-cream-lo: #e0d6bf;
-  --pt-cream-rule: #cdc3aa;
-  --pt-ink: #1a1815;
-  --pt-ink-hover: #0a0806;
-  --pt-ink-dim: #4a443b;
-  --pt-ink-softer: #7a7468;
-  --pt-amber-ink: #8a5d0f;
-  --pt-amber-ink-dark: #7d4f0a;
-  --pt-amber: #c68a1e;
-  --pt-amber-soft: #f5e8ca;
+  /* Page surfaces */
+  --pt-bg-page: #0b1120;
+  --pt-bg-card: #0f172a;
+  --pt-bg-raised: #1e293b;
+  --pt-rule: #1e293b;
+  --pt-rule-soft: #131b2c;
 
-  /* Terminal — grid surface, bench, code blocks */
-  --pt-dark: #0f0e0c;
-  --pt-grid-bg: #0b0a09;
-  --pt-grid-head: #0d0c0a;
-  --pt-grid-raised: #151310;
-  --pt-grid-rule: #1f1c18;
-  --pt-grid-text: #d8d2c3;
-  --pt-grid-dim: #8f8a7d;
+  /* Text ramp */
+  --pt-text-primary: #e2e8f0;
+  --pt-text-secondary: #94a3b8;
+  --pt-text-muted: #64748b;
+  --pt-text-dim: #475569;
 
-  /* Severity — only saturated color in the system */
+  /* Singular accent (cyan family) */
+  --pt-accent: #38bdf8;
+  --pt-accent-deep: #0284c7;
+  --pt-accent-soft: #1e3a52;
+
+  /* Grid surfaces (always-dark family, cooler than before) */
+  --pt-dark: #020617;
+  --pt-grid-bg: #0a0f1a;
+  --pt-grid-raised: #0d1426;
+  --pt-grid-rule: #131b2c;
+  --pt-grid-text: #cbd5e1;
+  --pt-grid-dim: #64748b;
+
+  /* Severity — only saturated colors in the system (unchanged) */
   --pt-sev-info: #6fa9c9;
   --pt-sev-warn: #d9a44f;
   --pt-sev-err: #d3615a;
   --pt-sev-ok: #7ea86f;
 
-  /* Syntax highlighting (maps to severity family) */
+  /* Syntax highlighting (maps to severity family — unchanged) */
   --pt-code-key: #d9a44f;
   --pt-code-str: #7ea86f;
   --pt-code-fn: #6fa9c9;
   --pt-code-com: #6a6359;
   --pt-code-prop: #c9a47e;
 
-  /* Typography stacks */
-  --pt-font-serif: "Fraunces", Georgia, "Times New Roman", serif;
+  /* Typography stacks — Fraunces + Inter + JetBrains Mono via fontsource */
+  --pt-font-serif: "Fraunces Variable", Georgia, "Times New Roman", serif;
   --pt-font-sans:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", sans-serif;
+    "Inter Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --pt-font-mono:
-    ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", "Roboto Mono",
-    monospace;
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+    "Cascadia Code", "Roboto Mono", monospace;
 
-  /* Type scale */
+  /* Type scale (unchanged) */
   --pt-fs-display-xl: 60px;
   --pt-fs-display-lg: 44px;
   --pt-fs-display-md: 32px;
@@ -63,7 +67,7 @@
   --pt-fs-eyebrow: 11px;
   --pt-fs-data: 12.5px;
 
-  /* Layout tokens (used primarily by docs) */
+  /* Layout tokens (unchanged) */
   --pt-page-max: 1440px;
   --pt-header-h: 60px;
   --pt-sidebar-w: 260px;
