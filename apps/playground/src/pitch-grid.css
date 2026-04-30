@@ -13,7 +13,7 @@
 }
 
 #grid [data-pretable-scroll-viewport]:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--pt-amber);
+  box-shadow: inset 0 0 0 2px var(--pt-accent);
 }
 
 #grid .inspection-header-row {
@@ -22,7 +22,7 @@
   top: 0;
   z-index: 6;
   border-bottom: 1px solid var(--pt-grid-rule);
-  background: var(--pt-grid-head, var(--pt-grid-raised));
+  background: var(--pt-grid-raised, var(--pt-grid-raised));
 }
 
 #grid .inspection-header-cell {
@@ -49,11 +49,11 @@
 }
 
 #grid .inspection-header-cell.is-filtered {
-  border-bottom: 2px solid var(--pt-amber);
+  border-bottom: 2px solid var(--pt-accent);
 }
 
 #grid .sort-indicator {
-  color: var(--pt-amber);
+  color: var(--pt-accent);
   font-size: 11px;
   opacity: 0.6;
 }
@@ -90,15 +90,15 @@
 
 #grid .inspection-cell[data-pinned="left"] {
   z-index: 3;
-  background: var(--pt-grid-head, var(--pt-grid-raised));
+  background: var(--pt-grid-raised, var(--pt-grid-raised));
 }
 
 #grid .inspection-cell[data-selected="true"] {
-  background: color-mix(in oklab, var(--pt-amber) 14%, var(--pt-grid-bg));
+  background: color-mix(in oklab, var(--pt-accent) 14%, var(--pt-grid-bg));
 }
 
 #grid .inspection-cell[data-focused="true"] {
-  outline: 1px solid var(--pt-amber);
+  outline: 1px solid var(--pt-accent);
   outline-offset: -1px;
 }
 
