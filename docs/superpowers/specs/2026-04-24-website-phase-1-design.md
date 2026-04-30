@@ -4,10 +4,11 @@
 **Status:** Draft for review
 **Scope:** Phase 1 of the website pivot — scaffold a new `apps/website` Next.js 16 app with a hero section + live playground grid section directly below, on a retuned cool-slate `@pretable/ui` palette. Bench cosmetically reskins on merge as a side effect of the token retune.
 **Parent context:**
+
 - [`2026-04-21-pretable-visual-system-design.md`](./2026-04-21-pretable-visual-system-design.md) — original cream-editorial visual system. **This pivot supersedes its §5 (playground) and palette decisions; the spec stays in the repo as historical context but no longer governs the website surface.**
 - Reference repos (read-only inspiration): `~/repos/dawn` and `~/repos/angular-agent-framework`. Both Next.js 16 + Tailwind v4 + MDX + Fraunces + Inter + JetBrains Mono.
 - Memory: [`project_website_pivot_after_b.md`](../../../../../.assistant/projects/-Users-blove-repos-pretable/memory/project_website_pivot_after_b.md).
-**Dependencies shipped:** `@pretable/ui` (PR #7), playground pitch landing (PR #12, `c29da2b`), bench UI integration (PR #13, `1e5c167`), streaming demo app (PR #14), playground StreamingProof section (PR #16), mobile-responsive surfaces (PR #17). `apps/streaming-demo` has its own `bloomberg.css` theme and does **not** consume `@pretable/ui` tokens — it's out of scope for the rename.
+  **Dependencies shipped:** `@pretable/ui` (PR #7), playground pitch landing (PR #12, `c29da2b`), bench UI integration (PR #13, `1e5c167`), streaming demo app (PR #14), playground StreamingProof section (PR #16), mobile-responsive surfaces (PR #17). `apps/streaming-demo` has its own `bloomberg.css` theme and does **not** consume `@pretable/ui` tokens — it's out of scope for the rename.
 
 ---
 
@@ -20,6 +21,7 @@ Pretable's existing `apps/playground` ships a cream-editorial pitch landing with
 - **Phase 3 (future spec):** Retire `apps/playground` — its pitch landing's role is now `apps/website`'s hero + grid section. Drop the `"playground"` `NavPage` value, delete the app and its tests.
 
 Phase 1 is the foundational kickoff. It establishes:
+
 - The new app, its build pipeline, its deployment shape
 - The retuned design system (cool-slate, semantic-not-color token names)
 - The hero + grid pattern from which the rest of the landing grows
@@ -111,9 +113,11 @@ apps/website/app/
 ### Type contracts
 
 PR-A:
+
 - `@pretable/ui` exports add no new types — `NavPage` widens its union, that's it. Existing `Nav`, `Footer`, `Receipt`, `CodeBlock`, `Callout` props stay byte-identical.
 
 PR-B:
+
 - `apps/website` consumes `Nav`, `Footer`, `Receipt`, `CopyCommand` (locally), `InspectionGrid`, `PretableTelemetry`, `createInspectionDataset`, `inspectionColumns`, `inspectionDatasetScaleOptions`, `InspectionDatasetScale`. Same surface playground consumes.
 
 ## 4. Token rename (PR-A)
@@ -163,8 +167,11 @@ Color token names move from "color words" (`--pt-cream`, `--pt-amber`) to "seman
 
   /* Fonts (Fraunces + Inter + JetBrains Mono via fontsource) */
   --pt-font-serif: "Fraunces Variable", Georgia, "Times New Roman", serif;
-  --pt-font-sans: "Inter Variable", ui-sans-serif, -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-  --pt-font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --pt-font-sans:
+    "Inter Variable", ui-sans-serif, -apple-system, system-ui, "Segoe UI",
+    Roboto, sans-serif;
+  --pt-font-mono:
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 ```
 
@@ -172,30 +179,30 @@ Color token names move from "color words" (`--pt-cream`, `--pt-amber`) to "seman
 
 `@pretable/ui/src/components.css` references current names like `var(--pt-cream)`, `var(--pt-ink)`, `var(--pt-amber)`, `var(--pt-amber-soft)`, `var(--pt-cream-rule)`. PR-A globally renames these to the new equivalents. The mapping:
 
-| Old name             | New name                |
-| -------------------- | ----------------------- |
-| `--pt-cream`         | `--pt-bg-page`          |
-| `--pt-cream-hi`      | `--pt-bg-card`          |
-| `--pt-cream-lo`      | `--pt-bg-raised`        |
-| `--pt-cream-rule`    | `--pt-rule`             |
-| `--pt-ink`           | `--pt-text-primary`     |
-| `--pt-ink-hover`     | (drop — wasn't in token set, was inline)|
-| `--pt-ink-dim`       | `--pt-text-secondary`   |
-| `--pt-ink-softer`    | `--pt-text-muted`       |
-| `--pt-amber-ink`     | `--pt-accent-deep`      |
-| `--pt-amber-ink-dark`| (drop or fold into `--pt-accent-deep`) |
-| `--pt-amber`         | `--pt-accent`           |
-| `--pt-amber-soft`    | `--pt-accent-soft`      |
-| `--pt-grid-head`     | `--pt-grid-raised`      |
-| `--pt-grid-bg`       | `--pt-grid-bg`          |
-| `--pt-grid-raised`   | `--pt-grid-raised`      |
-| `--pt-grid-rule`     | `--pt-grid-rule`        |
-| `--pt-grid-text`     | `--pt-grid-text`        |
-| `--pt-grid-dim`      | `--pt-grid-dim`         |
-| `--pt-sev-*`         | `--pt-sev-*` (unchanged)|
-| `--pt-font-serif`    | `--pt-font-serif`       |
-| `--pt-font-sans`     | `--pt-font-sans`        |
-| `--pt-font-mono`     | `--pt-font-mono`        |
+| Old name              | New name                                 |
+| --------------------- | ---------------------------------------- |
+| `--pt-cream`          | `--pt-bg-page`                           |
+| `--pt-cream-hi`       | `--pt-bg-card`                           |
+| `--pt-cream-lo`       | `--pt-bg-raised`                         |
+| `--pt-cream-rule`     | `--pt-rule`                              |
+| `--pt-ink`            | `--pt-text-primary`                      |
+| `--pt-ink-hover`      | (drop — wasn't in token set, was inline) |
+| `--pt-ink-dim`        | `--pt-text-secondary`                    |
+| `--pt-ink-softer`     | `--pt-text-muted`                        |
+| `--pt-amber-ink`      | `--pt-accent-deep`                       |
+| `--pt-amber-ink-dark` | (drop or fold into `--pt-accent-deep`)   |
+| `--pt-amber`          | `--pt-accent`                            |
+| `--pt-amber-soft`     | `--pt-accent-soft`                       |
+| `--pt-grid-head`      | `--pt-grid-raised`                       |
+| `--pt-grid-bg`        | `--pt-grid-bg`                           |
+| `--pt-grid-raised`    | `--pt-grid-raised`                       |
+| `--pt-grid-rule`      | `--pt-grid-rule`                         |
+| `--pt-grid-text`      | `--pt-grid-text`                         |
+| `--pt-grid-dim`       | `--pt-grid-dim`                          |
+| `--pt-sev-*`          | `--pt-sev-*` (unchanged)                 |
+| `--pt-font-serif`     | `--pt-font-serif`                        |
+| `--pt-font-sans`      | `--pt-font-sans`                         |
+| `--pt-font-mono`      | `--pt-font-mono`                         |
 
 Implementation: a single search-replace pass across `packages/ui/src/components.css` plus the four hex values that change in tokens.css. No restructuring of class rules.
 
@@ -210,7 +217,11 @@ const LINKS: Array<{ id: NavPage; label: string; href: string }> = [
   { id: "website", label: "pretable", href: "/" },
   { id: "bench", label: "bench", href: "/bench" },
   { id: "docs", label: "docs", href: "/docs" },
-  { id: "github", label: "github", href: "https://github.com/cacheplane/pretable" },
+  {
+    id: "github",
+    label: "github",
+    href: "https://github.com/cacheplane/pretable",
+  },
 ];
 ```
 
@@ -316,7 +327,7 @@ apps/website/
     "prestart": "pnpm run prepare:deps",
     "start": "next start",
     "lint": "next lint --dir app",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
   },
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.2.9",
@@ -327,7 +338,7 @@ apps/website/
     "@pretable/ui": "workspace:*",
     "next": "^16.2.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",
@@ -335,8 +346,8 @@ apps/website/
     "@types/react": "^19.x.x",
     "@types/react-dom": "^19.x.x",
     "tailwindcss": "^4.2.4",
-    "typescript": "^5.x.x"
-  }
+    "typescript": "^5.x.x",
+  },
 }
 ```
 
@@ -384,10 +395,10 @@ Mirror dawn's tsconfig (Next.js 16 + strict + RSC-aware). Concretely:
     "noEmit": true,
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./*"] }
+    "paths": { "@/*": ["./*"] },
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules"],
 }
 ```
 
@@ -484,8 +495,14 @@ body {
   text-align: left;
   cursor: pointer;
 }
-#grid .inspection-header-cell.is-filtered { border-bottom: 2px solid var(--pt-accent); }
-#grid .sort-indicator { color: var(--pt-accent); font-size: 11px; opacity: 0.6; }
+#grid .inspection-header-cell.is-filtered {
+  border-bottom: 2px solid var(--pt-accent);
+}
+#grid .sort-indicator {
+  color: var(--pt-accent);
+  font-size: 11px;
+  opacity: 0.6;
+}
 #grid .inspection-row {
   display: grid;
   position: absolute;
@@ -493,7 +510,9 @@ body {
   border-bottom: 1px solid var(--pt-grid-rule);
   cursor: pointer;
 }
-#grid .inspection-row:hover .inspection-cell { background: var(--pt-grid-raised); }
+#grid .inspection-row:hover .inspection-cell {
+  background: var(--pt-grid-raised);
+}
 #grid .inspection-cell {
   display: grid;
   gap: 6px;
@@ -505,7 +524,10 @@ body {
   font-size: 12.5px;
   line-height: 1.52;
 }
-#grid .inspection-cell[data-pinned="left"] { z-index: 3; background: var(--pt-grid-raised); }
+#grid .inspection-cell[data-pinned="left"] {
+  z-index: 3;
+  background: var(--pt-grid-raised);
+}
 #grid .inspection-cell[data-selected="true"] {
   background: color-mix(in oklab, var(--pt-accent) 14%, var(--pt-grid-bg));
 }
@@ -546,7 +568,11 @@ export const viewport: Viewport = {
   themeColor: "#0b1120",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>
@@ -598,9 +624,8 @@ export function Hero() {
           $ pretable — vol. 2 · no. 1
         </p>
         <h1 className="mt-4 font-display text-[40px] leading-[1.02] tracking-[-0.025em] text-text-primary md:text-[56px] md:leading-none">
-          The grid that treats{" "}
-          <em className="italic text-accent">scroll</em>{" "}
-          as a first-class feature.
+          The grid that treats <em className="italic text-accent">scroll</em> as
+          a first-class feature.
         </h1>
         <p className="mx-auto mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           500k rows. 60fps scroll. Selection survives filters. Built on a
@@ -676,6 +701,7 @@ The grid section renders below the hero at `id="grid"`. Internal class-name styl
 ### What we test in Phase 1
 
 PR-A:
+
 - `pnpm test` across the entire monorepo stays green. Bench (42), playground (21), package suites all pass.
 - `pnpm typecheck` clean.
 - `pnpm lint` clean.
@@ -683,6 +709,7 @@ PR-A:
 - `pnpm build` green.
 
 PR-B:
+
 - `pnpm --filter @pretable/app-website typecheck` clean.
 - `pnpm --filter @pretable/app-website lint` clean (Next's built-in linter on `app/`).
 - `pnpm --filter @pretable/app-website build` produces a `.next/` output without errors.
@@ -693,17 +720,19 @@ PR-B:
 - Unit tests for `Hero`, `PlaygroundSection`, `CopyCommand`, `AmbientBlob`. These would require either:
   - Jest + react-testing-library configured for Next.js + RSC (significant setup), or
   - Vitest with `@testing-library/react` ported to Next's environment (mostly works but has rough edges with server/client boundaries).
-  Phase 2 introduces the test setup when the body sections justify it.
+    Phase 2 introduces the test setup when the body sections justify it.
 - Visual regression / Percy / screenshot tests — out of scope for the entire pivot.
 - E2E tests for the website — `apps/bench/tests/bench.spec.ts` is the existing Playwright surface; a website e2e test belongs in Phase 2 or 3.
 
 ### Manual verification before each PR merge
 
 PR-A:
+
 - `pnpm --filter @pretable/app-bench dev` boots; bench renders cool-slate; scenario panel + preview panel + run toolbar all functional; clicking through a bench run still works; Nav tab "bench" highlights active.
 - `pnpm --filter @pretable/app-playground dev` boots; playground renders cool-slate; hero + grid section + receipts band all visible; CTAs work; Nav tab — note: there's no longer a "playground" tab in `LINKS`, so playground's `<Nav active="playground">` won't visually highlight anything. Acceptable because playground is being retired.
 
 PR-B:
+
 - `pnpm --filter @pretable/app-website dev` boots Next.js dev server; root URL renders hero + grid section; clicking "Try the playground ↓" smooth-scrolls to grid; copy-command flashes `✓ copied` and clipboard contains `npm i @pretable/react`; grid scale change re-derives dataset; row click highlights amber-blue; filter inputs work.
 - `pnpm --filter @pretable/app-website build && pnpm --filter @pretable/app-website start` boots a production build; same checklist passes.
 - Network tab: Fraunces Variable + Inter Variable + JetBrains Mono Variable WOFF2 files load; no `font-display: block` flash beyond the initial fallback.
@@ -739,16 +768,16 @@ Git operations only. No data migrations, no external config changes, no publishe
 
 ## 10. Risks
 
-| Risk                                                                          | Mitigation                                                                                                                               |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Token rename misses a `var(--pt-cream)` somewhere; UI breaks invisibly        | Grep audit of `packages/`, `apps/` for old token names after the rename pass. Manual visual verification on bench and playground both.   |
-| `@pretable/ui` consumers outside the monorepo (none today, but future)        | The rename is strictly internal as long as `@pretable/ui` isn't published. Phase 3+ work tracks the publishing question.                 |
-| Next.js 16 + Vite + pnpm workspace interop has known sharp edges              | Copy dawn's known-good configs (next.config.ts, postcss.config.mjs, tsconfig.json) rather than improvise.                                |
-| RSC vs client component boundary mistakes                                     | `PlaygroundSection.tsx` and `CopyCommand.tsx` are explicitly `"use client"`; everything else stays server-rendered. Document in PR body. |
-| Font flash / CLS during initial paint                                          | Fraunces / Inter / JetBrains Mono all use fontsource-variable WOFF2 (subset, ~30-40KB each). `font-display: swap` default + serif fallback. |
-| `process.env.npm_package_version` doesn't resolve at build time               | Tested by `pnpm build`. Fallback `"0.0.0"` covers any edge case.                                                                          |
-| Bench or playground tests assert on a specific cream/amber color value        | Tests scanned; current tests are behavior-focused, not color-focused. If any color assertion exists, update the test alongside the rename. |
-| `apps/playground` reskin produces a visually-broken interim state             | Acceptable — the playground is being retired in Phase 3 anyway. As long as it doesn't crash, transitional weirdness is fine.              |
+| Risk                                                                   | Mitigation                                                                                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Token rename misses a `var(--pt-cream)` somewhere; UI breaks invisibly | Grep audit of `packages/`, `apps/` for old token names after the rename pass. Manual visual verification on bench and playground both.      |
+| `@pretable/ui` consumers outside the monorepo (none today, but future) | The rename is strictly internal as long as `@pretable/ui` isn't published. Phase 3+ work tracks the publishing question.                    |
+| Next.js 16 + Vite + pnpm workspace interop has known sharp edges       | Copy dawn's known-good configs (next.config.ts, postcss.config.mjs, tsconfig.json) rather than improvise.                                   |
+| RSC vs client component boundary mistakes                              | `PlaygroundSection.tsx` and `CopyCommand.tsx` are explicitly `"use client"`; everything else stays server-rendered. Document in PR body.    |
+| Font flash / CLS during initial paint                                  | Fraunces / Inter / JetBrains Mono all use fontsource-variable WOFF2 (subset, ~30-40KB each). `font-display: swap` default + serif fallback. |
+| `process.env.npm_package_version` doesn't resolve at build time        | Tested by `pnpm build`. Fallback `"0.0.0"` covers any edge case.                                                                            |
+| Bench or playground tests assert on a specific cream/amber color value | Tests scanned; current tests are behavior-focused, not color-focused. If any color assertion exists, update the test alongside the rename.  |
+| `apps/playground` reskin produces a visually-broken interim state      | Acceptable — the playground is being retired in Phase 3 anyway. As long as it doesn't crash, transitional weirdness is fine.                |
 
 ## 11. Success criteria
 
