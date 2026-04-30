@@ -72,13 +72,16 @@ export function PitchGrid() {
 
       <div
         data-testid="pitch-grid-filters"
-        className="grid grid-flow-col auto-cols-fr gap-3 border-b border-grid-rule bg-grid-raised px-7 py-3 font-mono text-[12px] md:px-10"
+        className="flex flex-wrap gap-3 border-b border-grid-rule bg-grid-raised px-7 py-3 font-mono text-[12px] md:grid md:grid-flow-col md:auto-cols-fr md:px-10"
       >
         {dataset.filterableColumnIds.map((columnId) => {
           const column = inspectionColumns.find((c) => c.id === columnId);
           const label = column?.header ?? columnId;
           return (
-            <label key={columnId} className="grid gap-1 text-grid-dim">
+            <label
+              key={columnId}
+              className="grid min-w-[140px] flex-1 gap-1 text-grid-dim md:min-w-0"
+            >
               <span className="uppercase tracking-[0.06em]">{label}</span>
               <input
                 type="text"
