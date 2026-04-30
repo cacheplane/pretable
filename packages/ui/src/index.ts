@@ -1,3 +1,5 @@
+"use client";
+
 export { Callout, type CalloutProps, type CalloutVariant } from "./callout";
 export {
   CodeBlock,
