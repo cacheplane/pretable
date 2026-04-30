@@ -31,7 +31,7 @@ export function StreamingProof() {
           <Receipt>requestAnimationFrame</Receipt>, applied to the same grid
           that proved it scrolls. The frame budget stays under one 60Hz frame.
         </p>
-        <ul className="mt-8 grid grid-cols-3 gap-6">
+        <ul className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
           {METRICS.map((metric) => (
             <li key={metric.caption} className="border-t border-ink pt-3">
               <div className="font-display text-[36px] leading-[1] tracking-[-0.02em] md:text-[44px]">
@@ -46,7 +46,7 @@ export function StreamingProof() {
         <div className="mt-8">
           <a
             href="/streaming/"
-            className="inline-flex items-center gap-2 rounded-[2px] bg-ink px-[18px] py-[10px] text-[13px] text-cream-hi hover:bg-ink/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-ink focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[2px] bg-ink px-[18px] py-[12px] text-[13px] text-cream-hi hover:bg-ink/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-ink focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
           >
             Watch it stream →
           </a>

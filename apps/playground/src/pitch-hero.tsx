@@ -21,7 +21,7 @@ export function PitchHero() {
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <a
             href="#grid"
-            className="inline-flex items-center gap-2 rounded-[2px] bg-ink px-[18px] py-[10px] text-[13px] text-cream-hi hover:bg-ink/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-ink focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[2px] bg-ink px-[18px] py-[12px] text-[13px] text-cream-hi hover:bg-ink/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-ink focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
           >
             Try the live playground ↓
           </a>
