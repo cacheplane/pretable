@@ -113,9 +113,6 @@ importers:
       '@pretable/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@pretable/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
       '@gridbeta/react-virtual':
         specifier: ^3.13.23
         version: 3.13.23(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -178,9 +175,6 @@ importers:
       '@pretable/react':
         specifier: workspace:*
         version: link:../../packages/react
-      '@pretable/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
       next:
         specifier: ^16.2.0
         version: 16.2.4(@babel/core@7.29.0)(@playwright/test@1.59.1)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
