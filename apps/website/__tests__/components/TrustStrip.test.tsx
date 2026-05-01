@@ -20,11 +20,13 @@ it("renders the cacheplane attribution", () => {
 
 it("renders all four named financial-tier logos", () => {
   const { container } = render(<TrustStrip />);
-  const text = container.textContent ?? "";
-  expect(text).toContain("Santander");
-  expect(text).toContain("M&T Bank");
-  expect(text).toContain("The Motley Fool");
-  expect(text).toContain("AG Grid");
+  const altTexts = [...container.querySelectorAll("img")]
+    .map((img) => img.getAttribute("alt"))
+    .filter((alt): alt is string => alt !== null && alt !== "");
+  expect(altTexts).toContain("Santander");
+  expect(altTexts).toContain("M&T Bank");
+  expect(altTexts).toContain("The Motley Fool");
+  expect(altTexts).toContain("AG Grid");
 });
 
 it("renders the cheeky AG Grid line", () => {
