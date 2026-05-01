@@ -922,4 +922,39 @@ describe("PretableSurface", () => {
       ).toHaveLength(0);
     });
   });
+
+  it("exposes data-pretable-header-row, data-pretable-header-cell, and data-pinned for theming", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="Theming attribute grid"
+        columns={columns}
+        getRowId={getDemoRowId}
+        overscan={0}
+        rows={rows}
+        viewportHeight={400}
+      />,
+    );
+
+    const { container } = view;
+
+    expect(
+      container.querySelector("[data-pretable-header-row]"),
+    ).not.toBeNull();
+
+    const headerCells = container.querySelectorAll(
+      "[data-pretable-header-cell]",
+    );
+    expect(headerCells.length).toBe(columns.length);
+    // First two columns are pinned: left, third+ are not.
+    expect(headerCells[0]?.getAttribute("data-pinned")).toBe("left");
+    expect(headerCells[1]?.getAttribute("data-pinned")).toBe("left");
+    expect(headerCells[2]?.getAttribute("data-pinned")).toBeNull();
+
+    const bodyCells = container.querySelectorAll("[data-pretable-cell]");
+    expect(bodyCells.length).toBeGreaterThan(0);
+    const pinnedBodyCell = container.querySelector(
+      '[data-pretable-cell][data-pinned="left"]',
+    );
+    expect(pinnedBodyCell).not.toBeNull();
+  });
 });
