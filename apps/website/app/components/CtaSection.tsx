@@ -10,7 +10,9 @@ export function CtaSection() {
         </h2>
         <p className="mx-auto mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           The grid is in your hands at the top of this page. The numbers are
-          reproducible at <code className="font-mono text-[15px] text-accent-deep">/bench</code>. The source reads cleanly. Star, install, ship.
+          reproducible at{" "}
+          <code className="font-mono text-[15px] text-accent-deep">/bench</code>
+          . The source reads cleanly. Star, install, ship.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <a

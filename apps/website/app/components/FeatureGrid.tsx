@@ -8,8 +8,7 @@ interface Feature {
 const FEATURES: readonly Feature[] = [
   {
     title: "60fps performance",
-    caption:
-      "500k rows render at frame p95 ≤ 16ms on the S7 stress scenario.",
+    caption: "500k rows render at frame p95 ≤ 16ms on the S7 stress scenario.",
     receiptLabel: "→ receipt: /bench?s=S7&scale=stress",
     receiptHref: "/bench?s=S7&scale=stress",
   },
@@ -70,10 +69,7 @@ export function FeatureGrid() {
           className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
         >
           {FEATURES.map((feature, idx) => (
-            <li
-              key={feature.title}
-              className="border-t border-rule pt-5"
-            >
+            <li key={feature.title} className="border-t border-rule pt-5">
               <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
                 {String(idx + 1).padStart(2, "0")}
               </p>

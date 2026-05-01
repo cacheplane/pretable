@@ -42,6 +42,7 @@ apps/website/package.json          // + "shiki": "^3.x.x" in dependencies
 `<CodeExample />` needs server-side syntax highlighting. Install `shiki@^3` (latest major; ESM-first; tree-shakable). Server-only — no client JS impact.
 
 **Files:**
+
 - Modify: `apps/website/package.json`
 - Modify: `pnpm-lock.yaml`
 
@@ -75,6 +76,7 @@ git commit -m "chore(website): add shiki for server-side syntax highlighting"
 Replace the flat `body { background: var(--pt-bg-page) }` with a vertical 4-stop gradient implementing the cool → warm → cool arc. `background-attachment: fixed` keeps it positional.
 
 **Files:**
+
 - Modify: `apps/website/app/globals.css`
 
 - [ ] **Step 1: Find the existing body rule**
@@ -96,20 +98,20 @@ body {
 body {
   font-family: var(--font-sans);
   color: var(--pt-text-primary);
-  background:
-    linear-gradient(
-      180deg,
-      var(--pt-bg-page) 0%,
-      #0d1426 35%,
-      #0f1518 60%,
-      var(--pt-bg-page) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    var(--pt-bg-page) 0%,
+    #0d1426 35%,
+    #0f1518 60%,
+    var(--pt-bg-page) 100%
+  );
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 ```
 
 The four stops (per spec §4):
+
 - 0% — `--pt-bg-page` cool navy (Hero anchor)
 - 35% — `#0d1426` cooler navy (Problem anchor)
 - 60% — `#0f1518` subtle warm undertone (Receipts/Comparison/Features/Code anchor)
@@ -139,6 +141,7 @@ git commit -m "feat(website): add cool-warm-cool page gradient base"
 The Phase 1 playground already has a `<ReceiptsBand />` that's been cool-slate-restyled in PR #18. Phase 2.A copies it into `apps/website` with one path adjustment: it currently uses `border-b border-rule` for the section rule which is fine, but Phase 2.A sections render against the page gradient (not against an opaque `bg-bg-page`) — so we need to remove the explicit `bg-bg-page` from the section wrapper to let the gradient bleed through.
 
 **Files:**
+
 - Create: `apps/website/app/components/ReceiptsBand.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -222,6 +225,7 @@ git commit -m "feat(website): port ReceiptsBand from playground (transparent bg 
 Cold-indigo emotional beat. The only place on the entire site using indigo accent (Phase 2.B's blob anchor reinforces).
 
 **Files:**
+
 - Create: `apps/website/app/components/Problem.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -239,9 +243,9 @@ export function Problem() {
           <em className="italic text-[#818cf8]">wedge</em>.
         </h2>
         <p className="mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
-          Grid Alpha took down their performance page. GridBeta is headless. GridGamma
-          X reads as a docs shell. Every competitor has stopped letting you
-          watch the grid render.
+          Grid Alpha took down their performance page. GridBeta is headless. GridGamma X
+          reads as a docs shell. Every competitor has stopped letting you watch
+          the grid render.
         </p>
         <p className="mt-6 font-mono text-[12px] text-text-muted">
           Read it for yourself: their landing pages.
@@ -268,6 +272,7 @@ git commit -m "feat(website): add Problem section (the wedge beat)"
 Cyan-answer beat. Three-bullet row reinforces the three claims that Receipts (next section) backs up.
 
 **Files:**
+
 - Create: `apps/website/app/components/Solution.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -296,8 +301,8 @@ export function Solution() {
             virtualization
           </li>
           <li>
-            <span className="text-accent">▸</span> streaming-aware — token-by-token
-            rendering
+            <span className="text-accent">▸</span> streaming-aware —
+            token-by-token rendering
           </li>
           <li>
             <span className="text-accent">▸</span> stable selection — row-id
@@ -324,6 +329,7 @@ git commit -m "feat(website): add Solution section (the answer beat)"
 Semantic HTML `<table>` with hardcoded scorecard data. Pretable column visually distinct (italic-cyan, FASTEST badge). Numbers are placeholder-realistic; provenance comment marks them as snapshot.
 
 **Files:**
+
 - Create: `apps/website/app/components/ComparisonTable.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -527,6 +533,7 @@ git commit -m "feat(website): add ComparisonTable section (4-adapter scorecard)"
 Six static cards, 3×2 on desktop / 2×3 on tablet / 1×6 on mobile. Each card has a mono number eyebrow, Fraunces title, Inter caption, and a mono "→ receipt" backlink.
 
 **Files:**
+
 - Create: `apps/website/app/components/FeatureGrid.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -542,8 +549,7 @@ interface Feature {
 const FEATURES: readonly Feature[] = [
   {
     title: "60fps performance",
-    caption:
-      "500k rows render at frame p95 ≤ 16ms on the S7 stress scenario.",
+    caption: "500k rows render at frame p95 ≤ 16ms on the S7 stress scenario.",
     receiptLabel: "→ receipt: /bench?s=S7&scale=stress",
     receiptHref: "/bench?s=S7&scale=stress",
   },
@@ -604,10 +610,7 @@ export function FeatureGrid() {
           className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
         >
           {FEATURES.map((feature, idx) => (
-            <li
-              key={feature.title}
-              className="border-t border-rule pt-5"
-            >
+            <li key={feature.title} className="border-t border-rule pt-5">
               <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
                 {String(idx + 1).padStart(2, "0")}
               </p>
@@ -646,6 +649,7 @@ git commit -m "feat(website): add FeatureGrid section (six receipts)"
 Server component that calls `shiki` at module load to produce pre-highlighted HTML for the LLM-streaming snippet. No client JS for highlighting — the raw HTML ships pre-rendered.
 
 **Files:**
+
 - Create: `apps/website/app/components/CodeExample.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -744,6 +748,7 @@ git commit -m "feat(website): add CodeExample section with shiki-highlighted str
 Final ask. Two CTAs matching the Hero's pattern: primary anchor up to `#grid`, ghost-mono GitHub link.
 
 **Files:**
+
 - Create: `apps/website/app/components/CtaSection.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -761,7 +766,9 @@ export function CtaSection() {
         </h2>
         <p className="mx-auto mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           The grid is in your hands at the top of this page. The numbers are
-          reproducible at <code className="font-mono text-[15px] text-accent-deep">/bench</code>. The source reads cleanly. Star, install, ship.
+          reproducible at{" "}
+          <code className="font-mono text-[15px] text-accent-deep">/bench</code>
+          . The source reads cleanly. Star, install, ship.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <a
@@ -800,6 +807,7 @@ git commit -m "feat(website): add CtaSection (check the receipts)"
 Wire the seven new sections into `apps/website/app/page.tsx` between `<PlaygroundSection />` and the implicit `<Footer />` (which lives in `layout.tsx`).
 
 **Files:**
+
 - Modify: `apps/website/app/page.tsx`
 
 - [ ] **Step 1: Replace `page.tsx`**
@@ -959,25 +967,25 @@ Phase 2.A implementation done. Wait for user merge before starting Phase 2.B (an
 
 ## Spec coverage check
 
-| Spec section                                  | Task(s)             |
-| --------------------------------------------- | ------------------- |
-| §1 Goal — 7 sections + page gradient          | 1–10                |
-| §2 Scope — what 2.A owns                      | structural          |
-| §3 Architecture — file structure + conventions | 3–9                |
-| §4 Page gradient base                         | 2                   |
-| §5.1 Problem section copy                     | 4                   |
-| §5.2 Solution section copy                    | 5                   |
-| §5.3 ReceiptsBand port                        | 3                   |
-| §5.4 ComparisonTable                          | 6                   |
-| §5.5 FeatureGrid (6 cards)                    | 7                   |
-| §5.6 CodeExample (LLM streaming snippet)      | 8                   |
-| §5.7 CtaSection                               | 9                   |
-| §6 Composition + page.tsx                     | 10                  |
-| §7 No new tests; CI green                     | 10                  |
-| §8 Out-of-scope                               | (intentionally not a task) |
-| §9 Rollback                                   | 11 (PR squash-merge) |
-| §10 Risks                                     | inline notes in tasks 8 (shiki ESM), 6 (numbers credibility) |
-| §11 Success criteria                          | 10 (manual smoke)   |
+| Spec section                                   | Task(s)                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| §1 Goal — 7 sections + page gradient           | 1–10                                                         |
+| §2 Scope — what 2.A owns                       | structural                                                   |
+| §3 Architecture — file structure + conventions | 3–9                                                          |
+| §4 Page gradient base                          | 2                                                            |
+| §5.1 Problem section copy                      | 4                                                            |
+| §5.2 Solution section copy                     | 5                                                            |
+| §5.3 ReceiptsBand port                         | 3                                                            |
+| §5.4 ComparisonTable                           | 6                                                            |
+| §5.5 FeatureGrid (6 cards)                     | 7                                                            |
+| §5.6 CodeExample (LLM streaming snippet)       | 8                                                            |
+| §5.7 CtaSection                                | 9                                                            |
+| §6 Composition + page.tsx                      | 10                                                           |
+| §7 No new tests; CI green                      | 10                                                           |
+| §8 Out-of-scope                                | (intentionally not a task)                                   |
+| §9 Rollback                                    | 11 (PR squash-merge)                                         |
+| §10 Risks                                      | inline notes in tasks 8 (shiki ESM), 6 (numbers credibility) |
+| §11 Success criteria                           | 10 (manual smoke)                                            |
 
 All spec requirements covered.
 

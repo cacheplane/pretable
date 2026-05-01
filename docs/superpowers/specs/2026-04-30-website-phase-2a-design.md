@@ -4,10 +4,11 @@
 **Status:** Draft for review
 **Scope:** Phase 2.A of the website pivot — insert seven static "AI-startup landing" body sections between the existing `<PlaygroundSection />` and `<Footer />` on `apps/website`. Add a vertical page-level gradient base. No animations, no blobs, no MDX — those are Phase 2.B / 2.C.
 **Parent context:**
+
 - [`2026-04-24-website-phase-1-design.md`](./2026-04-24-website-phase-1-design.md) — Phase 1 design (token retune + scaffold + hero + live grid).
 - Reference: `~/repos/dawn/apps/web/app/components/landing/` (12 sections), `~/repos/angular-agent-framework/apps/website/src/components/landing/` (~25 sections).
 - Memory: [`project_website_pivot_after_b.md`](../../../../../.assistant/projects/-Users-blove-repos-pretable/memory/project_website_pivot_after_b.md), [`project_ai_integrations_future.md`](../../../../../.assistant/projects/-Users-blove-repos-pretable/memory/project_ai_integrations_future.md).
-**Dependencies shipped:** Phase 1 PR #18 (`@pretable/ui` cool-slate retune, `c29da2b → 7cf5ac0`), Phase 1 PR #19 (`apps/website` scaffold + Hero + PlaygroundSection, `2925929`).
+  **Dependencies shipped:** Phase 1 PR #18 (`@pretable/ui` cool-slate retune, `c29da2b → 7cf5ac0`), Phase 1 PR #19 (`apps/website` scaffold + Hero + PlaygroundSection, `2925929`).
 
 ---
 
@@ -62,6 +63,7 @@ Phase 2.A explicitly does **not** include the multi-blob ambient narrative, Scro
 ### File structure
 
 **Created:**
+
 ```
 apps/website/app/components/
   Problem.tsx               // server, ~50 lines
@@ -74,6 +76,7 @@ apps/website/app/components/
 ```
 
 **Modified:**
+
 ```
 apps/website/app/globals.css       // body { background: linear-gradient(...) } + background-attachment: fixed
 apps/website/app/page.tsx          // import + compose 7 new sections
@@ -110,20 +113,20 @@ The `body { ... }` rule in `apps/website/app/globals.css` changes from a flat to
 body {
   font-family: var(--font-sans);
   color: var(--pt-text-primary);
-  background:
-    linear-gradient(
-      180deg,
-      var(--pt-bg-page) 0%,
-      #0d1426 35%,
-      #0f1518 60%,
-      var(--pt-bg-page) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    var(--pt-bg-page) 0%,
+    #0d1426 35%,
+    #0f1518 60%,
+    var(--pt-bg-page) 100%
+  );
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 ```
 
 The four stops:
+
 - **0%** — `--pt-bg-page` (cool navy, the page baseline). Anchors Hero + PlaygroundSection.
 - **35%** — `#0d1426` (cooler navy, slightly deeper). Anchors Problem (the cold beat).
 - **60%** — `#0f1518` (subtle warm undertone — barely off the navy axis, slightly green-shifted). Anchors the proof stretch (Receipts / Comparison / Features / Code).
@@ -184,6 +187,7 @@ Markup: a semantic `<table>` with `<thead>` + `<tbody>`. NOT a CSS-grid hack —
 
 Columns: `Metric | Pretable | Grid Alpha | GridBeta | GridGamma X | Budget`
 Rows (hardcoded snapshots in 2.A — same provenance comment as `ReceiptsBand`):
+
 - `frame p95 (ms)` | `9` | `28` | `21` | `34` | `≤ 16ms`
 - `interact p99 (ms)` | `4` | `18` | `15` | `26` | `≤ 32ms`
 - `rendered rows @ S7` | `500k` | `n/a` | `8k` | `n/a` | `target`
@@ -193,6 +197,7 @@ Rows (hardcoded snapshots in 2.A — same provenance comment as `ReceiptsBand`):
 (Numbers are placeholder-realistic for 2.A. Real numbers replace these in the actual implementation when the bench output is parsed; if not available at impl time, ship with a `TODO(bench-numbers): refresh from latest matrix run` provenance comment same shape as `<ReceiptsBand />` already uses.)
 
 Visual treatment:
+
 - Pretable column heading: italic Fraunces, `text-accent` cyan, with a small `FASTEST` badge (mono 9px uppercase, `bg-accent-soft text-accent` rounded-[2px]).
 - Win cells: `text-accent` cyan.
 - Loss cells: `text-text-muted` (slate-500ish).
@@ -211,6 +216,7 @@ Closing line: `Re-run the comparison → /bench` (mono `text-accent-deep`).
 Layout: `<ul role="list">` with `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`. Six `<li>` cards.
 
 Each card:
+
 - Mono number eyebrow: `01` … `06`, `text-accent` cyan, mono 11px tracking.
 - Title: Fraunces 22px display, `text-text-primary`.
 - Caption: Inter 14px `text-text-secondary`, max 2 lines.
@@ -331,18 +337,21 @@ export default function HomePage() {
 ## 8. Out of scope / handoff to 2.B + 2.C
 
 **Phase 2.B (next):**
+
 - Multi-blob ambient narrative (5+ absolute-positioned blobs at scroll-height milestones, indigo → cyan → amber → cyan).
 - ScrollReveal entrance animations via IntersectionObserver.
 - Optional: visual elements inside FeatureGrid cards (icons, mini-screenshots, animated SVG).
 - Tune the page gradient hex values once blobs land — they may compete; either reduce gradient intensity or shift blob alpha.
 
 **Phase 2.C:**
+
 - MDX content support — convert section copy to MDX so it's edit-without-redeploy.
 - Update `docs/superpowers/specs/2026-04-21-pretable-visual-system-design.md` to reflect the cool-slate AI-startup pivot (or replace it with a new spec).
 - Next.js + RSC unit-test setup; backfill tests for sections.
 - Real-time bench data feed for `<ComparisonTable />` (build-time JSON read from `status/runsets/`).
 
 **Phase 3 (later):**
+
 - Retire `apps/playground` — its hero + grid pattern lives in `apps/website` now.
 - Drop `"playground"` from `NavPage` union; remove `apps/playground/src/__tests__/app.test.tsx`'s transitional banner-filter pattern.
 
@@ -357,14 +366,14 @@ If the visual change is judged off after merge, the body sections can be retired
 
 ## 10. Risks
 
-| Risk                                                              | Mitigation                                                                                                                                    |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `shiki` is heavy (server bundle size)                             | shiki@^3 ESM tree-shakes well; we only import the languages we use (`tsx`). Server-rendered HTML output is tiny; no client JS impact.        |
-| Hardcoded numbers in `<ComparisonTable />` go stale               | Provenance comment in source; same pattern playground's ReceiptsBand uses. Phase 2.C wires real bench output.                                 |
-| Page gradient + Phase 2.B blobs visually compete                  | Gradient stops are deliberately subtle; blobs ship in a separate PR where they can be tuned against the live gradient.                        |
-| FeatureGrid item #6 (`No-flash hydration`) is hard to demonstrate | Card text is descriptive; no explicit "→ receipt" link — implicit (the website itself proves it).                                            |
-| Editorial copy lands too dry / too marketing                       | Voice is locked at "editorial-confident" — engineering claims with one rhetorical move per section. Spec author reads the page aloud post-merge to catch register drift. |
-| ComparisonTable hardcoded loss numbers exaggerate vs reality       | Numbers are placeholder-realistic per existing bench output; if real bench shows pretable losing on a metric, the row gets dropped or reframed during impl. The page must not lie. |
+| Risk                                                              | Mitigation                                                                                                                                                                         |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shiki` is heavy (server bundle size)                             | shiki@^3 ESM tree-shakes well; we only import the languages we use (`tsx`). Server-rendered HTML output is tiny; no client JS impact.                                              |
+| Hardcoded numbers in `<ComparisonTable />` go stale               | Provenance comment in source; same pattern playground's ReceiptsBand uses. Phase 2.C wires real bench output.                                                                      |
+| Page gradient + Phase 2.B blobs visually compete                  | Gradient stops are deliberately subtle; blobs ship in a separate PR where they can be tuned against the live gradient.                                                             |
+| FeatureGrid item #6 (`No-flash hydration`) is hard to demonstrate | Card text is descriptive; no explicit "→ receipt" link — implicit (the website itself proves it).                                                                                  |
+| Editorial copy lands too dry / too marketing                      | Voice is locked at "editorial-confident" — engineering claims with one rhetorical move per section. Spec author reads the page aloud post-merge to catch register drift.           |
+| ComparisonTable hardcoded loss numbers exaggerate vs reality      | Numbers are placeholder-realistic per existing bench output; if real bench shows pretable losing on a metric, the row gets dropped or reframed during impl. The page must not lie. |
 
 ## 11. Success criteria
 
