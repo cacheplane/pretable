@@ -1,0 +1,883 @@
+{
+  "runsetId": "2026-05-01t18-22-08-429z",
+  "generatedAt": "2026-05-01T18:27:25.301Z",
+  "adapters": [
+    {
+      "adapterId": "pretable",
+      "adapterFamily": "candidate"
+    },
+    {
+      "adapterId": "ag-grid",
+      "adapterFamily": "full-grid"
+    },
+    {
+      "adapterId": "tanstack",
+      "adapterFamily": "virtualization-primitive"
+    }
+  ],
+  "matrix": {
+    "adapters": ["pretable", "ag-grid", "tanstack"],
+    "scenarios": ["S5"],
+    "scripts": ["updates"],
+    "repeats": 3
+  },
+  "slices": [
+    {
+      "scenarioId": "S5",
+      "scriptName": "updates",
+      "adapterIds": ["pretable", "ag-grid", "tanstack"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "batch interval ms: 50",
+          "duration ms: 3000",
+          "frame budget threshold ms: 16"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "updates total: 300",
+          "update rate per sec: 100",
+          "updates per tick: 5",
+          "batch interval ms: 50",
+          "duration ms: 3000",
+          "frame budget threshold ms: 16",
+          "total frames sampled: 360",
+          "internal telemetry rendered rows: 7",
+          "internal telemetry visible rows: 3",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 406656",
+          "internal telemetry viewport range: 0-3",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none",
+          "updates total: 1500",
+          "update rate per sec: 500",
+          "updates per tick: 25",
+          "total frames sampled: 359",
+          "internal telemetry planned height: 403680",
+          "updates total: 3000",
+          "update rate per sec: 1000",
+          "updates per tick: 50",
+          "internal telemetry planned height: 399713",
+          "updates total: 15000",
+          "update rate per sec: 5000",
+          "updates per tick: 250",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry planned height: 372538",
+          "internal telemetry viewport range: 0-2",
+          "updates total: 30000",
+          "update rate per sec: 10000",
+          "updates per tick: 500",
+          "total frames sampled: 358",
+          "internal telemetry planned height: 349594",
+          "updates total: 75000",
+          "update rate per sec: 25000",
+          "updates per tick: 1250",
+          "internal telemetry planned height: 289282",
+          "internal telemetry planned height: 406608",
+          "internal telemetry planned height: 403800",
+          "internal telemetry planned height: 399936",
+          "internal telemetry planned height: 376097",
+          "internal telemetry planned height: 350465",
+          "internal telemetry planned height: 291377",
+          "internal telemetry planned height: 406680",
+          "internal telemetry planned height: 403200",
+          "internal telemetry planned height: 401153",
+          "internal telemetry planned height: 374177",
+          "internal telemetry planned height: 350410",
+          "internal telemetry planned height: 286296"
+        ],
+        "varying": {
+          "internal telemetry planned height": [
+            "286296",
+            "289282",
+            "291377",
+            "349594",
+            "350410",
+            "350465",
+            "372538",
+            "374177",
+            "376097",
+            "399713",
+            "399936",
+            "401153",
+            "403200",
+            "403680",
+            "403800",
+            "406608",
+            "406656",
+            "406680"
+          ],
+          "internal telemetry rendered rows": ["6", "7"],
+          "internal telemetry viewport range": ["0-2", "0-3"],
+          "internal telemetry visible rows": ["2", "3"],
+          "total frames sampled": ["358", "359", "360"],
+          "update rate per sec": [
+            "100",
+            "1000",
+            "10000",
+            "25000",
+            "500",
+            "5000"
+          ],
+          "updates per tick": ["1250", "25", "250", "5", "50", "500"],
+          "updates total": ["1500", "15000", "300", "3000", "30000", "75000"]
+        }
+      }
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "H1",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 scroll run, so composite scroll quality cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H6",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H7",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H8",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H5",
+      "status": "satisfied",
+      "summary": "The matrix run writes summary JSON, trace artifacts, and a machine-readable hypothesis report from one command.",
+      "evidence": [
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-22-21-842z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-22-27-500z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-22-34-977z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-22-40-648z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-22-45-603z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-22-50-927z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-22-56-003z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-00-988z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-06-081z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-11-257z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-18-088z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-23-369z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-28-610z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-36-004z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-41-001z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-46-072z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-51-382z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s5-hypothesis-updates-2026-05-01t18-23-56-404z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-01-444z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-06-643z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-12-206z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-19-142z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-24-165z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-29-164z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-34-180z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-39-186z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-44-214z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-49-610z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-24-54-890z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-25-00-611z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-25-07-998z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-25-13-799z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-25-19-343z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-25-24-535z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-25-29-698z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s5-hypothesis-updates-2026-05-01t18-25-35-003z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-25-40-334z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-25-47-859z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-25-52-876z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-25-57-907z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-03-266z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-08-840z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-16-027z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-21-370z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-26-632z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-31-991z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-39-868z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-45-080z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-51-993z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-26-57-957z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-27-05-275z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-27-11-041z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-27-16-519z.summary.json"
+        },
+        {
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s5-hypothesis-updates-2026-05-01t18-27-22-044z.summary.json"
+        }
+      ]
+    },
+    {
+      "id": "H9",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 scroll run, so composite scroll quality cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H10",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H11",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H12",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H13",
+      "status": "directional",
+      "summary": "Streaming updates on S5 meet all frame-budget thresholds, but every measured comparator also clears them — the uniqueness claim is not yet supported.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "status": "completed",
+          "sampleCount": 18,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "batch interval ms: 50",
+              "duration ms: 3000",
+              "frame budget threshold ms: 16",
+              "internal telemetry total rows: 3000",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "updates total: 300",
+              "update rate per sec: 100",
+              "updates per tick: 5",
+              "batch interval ms: 50",
+              "duration ms: 3000",
+              "frame budget threshold ms: 16",
+              "total frames sampled: 360",
+              "internal telemetry rendered rows: 7",
+              "internal telemetry visible rows: 3",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 406656",
+              "internal telemetry viewport range: 0-3",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none",
+              "updates total: 1500",
+              "update rate per sec: 500",
+              "updates per tick: 25",
+              "total frames sampled: 359",
+              "internal telemetry planned height: 403680",
+              "updates total: 3000",
+              "update rate per sec: 1000",
+              "updates per tick: 50",
+              "internal telemetry planned height: 399713",
+              "updates total: 15000",
+              "update rate per sec: 5000",
+              "updates per tick: 250",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry planned height: 372538",
+              "internal telemetry viewport range: 0-2",
+              "updates total: 30000",
+              "update rate per sec: 10000",
+              "updates per tick: 500",
+              "total frames sampled: 358",
+              "internal telemetry planned height: 349594",
+              "updates total: 75000",
+              "update rate per sec: 25000",
+              "updates per tick: 1250",
+              "internal telemetry planned height: 289282",
+              "internal telemetry planned height: 406608",
+              "internal telemetry planned height: 403800",
+              "internal telemetry planned height: 399936",
+              "internal telemetry planned height: 376097",
+              "internal telemetry planned height: 350465",
+              "internal telemetry planned height: 291377",
+              "internal telemetry planned height: 406680",
+              "internal telemetry planned height: 403200",
+              "internal telemetry planned height: 401153",
+              "internal telemetry planned height: 374177",
+              "internal telemetry planned height: 350410",
+              "internal telemetry planned height: 286296"
+            ],
+            "varying": {
+              "internal telemetry planned height": [
+                "286296",
+                "289282",
+                "291377",
+                "349594",
+                "350410",
+                "350465",
+                "372538",
+                "374177",
+                "376097",
+                "399713",
+                "399936",
+                "401153",
+                "403200",
+                "403680",
+                "403800",
+                "406608",
+                "406656",
+                "406680"
+              ],
+              "internal telemetry rendered rows": ["6", "7"],
+              "internal telemetry viewport range": ["0-2", "0-3"],
+              "internal telemetry visible rows": ["2", "3"],
+              "total frames sampled": ["358", "359", "360"],
+              "update rate per sec": [
+                "100",
+                "1000",
+                "10000",
+                "25000",
+                "500",
+                "5000"
+              ],
+              "updates per tick": ["1250", "25", "250", "5", "50", "500"],
+              "updates total": [
+                "1500",
+                "15000",
+                "300",
+                "3000",
+                "30000",
+                "75000"
+              ]
+            }
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 71,
+            "rendered_rows_peak": 7,
+            "rendered_cells_peak": 49,
+            "streaming_cls": 0.0007065600554148355,
+            "frame_max_ms": 16.399999999999977,
+            "frame_budget_overruns_count": 1,
+            "long_tasks_max_ms": 0,
+            "scroll_position_drift_px": 0,
+            "visible_row_count_drift": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 8.799999999999955,
+              "median": 9,
+              "max": 9.299999999999727
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 71,
+              "max": 71
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 7,
+              "max": 7
+            },
+            "rendered_cells_peak": {
+              "min": 42,
+              "median": 49,
+              "max": 49
+            },
+            "streaming_cls": {
+              "min": 0.0006711005502276949,
+              "median": 0.0007065600554148355,
+              "max": 0.0007065600554148355
+            },
+            "frame_max_ms": {
+              "min": 9.299999999999955,
+              "median": 16.399999999999977,
+              "max": 17.600000000000023
+            },
+            "frame_budget_overruns_count": {
+              "min": 0,
+              "median": 1,
+              "max": 1
+            },
+            "long_tasks_max_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_position_drift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "visible_row_count_drift": {
+              "min": 0,
+              "median": 0,
+              "max": 1
+            }
+          }
+        },
+        {
+          "adapterId": "ag-grid",
+          "adapterFamily": "full-grid",
+          "scenarioId": "S5",
+          "scriptName": "updates",
+          "status": "completed",
+          "sampleCount": 18,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "batch interval ms: 50",
+              "duration ms: 3000",
+              "frame budget threshold ms: 16"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "updates total: 300",
+              "update rate per sec: 100",
+              "updates per tick: 5",
+              "batch interval ms: 50",
+              "duration ms: 3000",
+              "frame budget threshold ms: 16",
+              "total frames sampled: 360",
+              "updates total: 1500",
+              "update rate per sec: 500",
+              "updates per tick: 25",
+              "updates total: 3000",
+              "update rate per sec: 1000",
+              "updates per tick: 50",
+              "updates total: 15000",
+              "update rate per sec: 5000",
+              "updates per tick: 250",
+              "updates total: 30000",
+              "update rate per sec: 10000",
+              "updates per tick: 500",
+              "total frames sampled: 359",
+              "updates total: 75000",
+              "update rate per sec: 25000",
+              "updates per tick: 1250"
+            ],
+            "varying": {
+              "total frames sampled": ["359", "360"],
+              "update rate per sec": [
+                "100",
+                "1000",
+                "10000",
+                "25000",
+                "500",
+                "5000"
+              ],
+              "updates per tick": ["1250", "25", "250", "5", "50", "500"],
+              "updates total": [
+                "1500",
+                "15000",
+                "300",
+                "3000",
+                "30000",
+                "75000"
+              ]
+            }
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 454,
+            "rendered_rows_peak": 44,
+            "rendered_cells_peak": 154,
+            "streaming_cls": 0,
+            "frame_max_ms": 9.300000000000182,
+            "frame_budget_overruns_count": 0,
+            "long_tasks_max_ms": 0,
+            "scroll_position_drift_px": 0,
+            "visible_row_count_drift": 14
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 8.800000000000011,
+              "median": 9,
+              "max": 9.199999999999818
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 289,
+              "median": 454,
+              "max": 454
+            },
+            "rendered_rows_peak": {
+              "min": 14,
+              "median": 44,
+              "max": 44
+            },
+            "rendered_cells_peak": {
+              "min": 49,
+              "median": 154,
+              "max": 154
+            },
+            "streaming_cls": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "frame_max_ms": {
+              "min": 9.299999999999727,
+              "median": 9.300000000000182,
+              "max": 16.69999999999999
+            },
+            "frame_budget_overruns_count": {
+              "min": 0,
+              "median": 0,
+              "max": 1
+            },
+            "long_tasks_max_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_position_drift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "visible_row_count_drift": {
+              "min": 0,
+              "median": 14,
+              "max": 30
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H14",
+      "status": "directional",
+      "summary": "Streaming operating envelope reaches 25000/sec for pretable. The smallest comparator envelope is ag-grid at 25000/sec, which is within 10× of pretable — uniqueness claim is not supported by an order-of-magnitude gap.",
+      "evidence": []
+    },
+    {
+      "id": "H15",
+      "status": "satisfied",
+      "summary": "Streaming row stability holds for pretable (max drift: 1 rows across the operating envelope). ag-grid drifts up to 28 rows during streaming — a real differentiator vs that adapter's row recycling behavior.",
+      "evidence": []
+    }
+  ]
+}
