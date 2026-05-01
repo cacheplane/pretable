@@ -7,7 +7,10 @@ test("landing page renders hero, playground, and resolves docs", async ({
 
   await expect(page).toHaveTitle("pretable");
   await expect(
-    page.getByRole("heading", { level: 1, name: /fastest data grid for react/i }),
+    page.getByRole("heading", {
+      level: 1,
+      name: /fastest data grid for react/i,
+    }),
   ).toBeVisible();
   await expect(page.locator("#grid")).toBeVisible();
   await expect(page.locator('[data-testid="pitch-grid-chrome"]')).toBeVisible({
