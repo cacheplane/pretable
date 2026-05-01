@@ -3,7 +3,7 @@ export function CtaSection() {
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[860px] text-center">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-          06 · ready to ship
+          07 · ready to ship
         </p>
         <h2 className="mt-4 font-display text-[40px] leading-[1.02] tracking-[-0.025em] md:text-[56px] md:leading-none">
           Run the benchmarks. Then ship.
