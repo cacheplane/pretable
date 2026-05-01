@@ -11,6 +11,7 @@ describe("parseBenchQuery", () => {
       scale: "dev",
       scriptName: "initial",
       autorun: false,
+      updateRatePerSec: 1000,
     });
   });
 
@@ -26,6 +27,7 @@ describe("parseBenchQuery", () => {
       scale: "dev",
       scriptName: "initial",
       autorun: true,
+      updateRatePerSec: 1000,
     });
   });
 
@@ -41,6 +43,7 @@ describe("parseBenchQuery", () => {
       scale: "hypothesis",
       scriptName: "scroll",
       autorun: false,
+      updateRatePerSec: 1000,
     });
   });
 
@@ -56,6 +59,7 @@ describe("parseBenchQuery", () => {
       scale: "hypothesis",
       scriptName: "scroll",
       autorun: false,
+      updateRatePerSec: 1000,
     });
   });
 
@@ -71,6 +75,7 @@ describe("parseBenchQuery", () => {
       scale: "hypothesis",
       scriptName: "scroll",
       autorun: false,
+      updateRatePerSec: 1000,
     });
   });
 
@@ -82,6 +87,7 @@ describe("parseBenchQuery", () => {
       scale: "dev",
       scriptName: "scroll",
       autorun: false,
+      updateRatePerSec: 1000,
     });
   });
 
@@ -93,6 +99,7 @@ describe("parseBenchQuery", () => {
       scale: "dev",
       scriptName: "scroll",
       autorun: false,
+      updateRatePerSec: 1000,
     });
   });
 
@@ -104,6 +111,7 @@ describe("parseBenchQuery", () => {
       scale: "dev",
       scriptName: "scroll",
       autorun: false,
+      updateRatePerSec: 1000,
     });
   });
 
@@ -115,6 +123,7 @@ describe("parseBenchQuery", () => {
       scale: "dev",
       scriptName: "scroll",
       autorun: false,
+      updateRatePerSec: 1000,
     });
   });
 

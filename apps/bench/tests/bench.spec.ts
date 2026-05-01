@@ -12,6 +12,7 @@ const adapterId = process.env.PRETABLE_BENCH_ADAPTER ?? "pretable";
 const scale = process.env.PRETABLE_BENCH_SCALE ?? "dev";
 const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
+const updateRatePerSec = process.env.PRETABLE_BENCH_UPDATE_RATE_PER_SEC;
 const adapterLabel =
   adapterId === "ag-grid"
     ? "AG Grid Community adapter"
@@ -29,8 +30,11 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     snapshots: true,
   });
 
+  const rateParam = updateRatePerSec
+    ? `&updateRatePerSec=${updateRatePerSec}`
+    : "";
   await page.goto(
-    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}&autorun=1`,
+    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}&autorun=1`,
   );
 
   await expect(page.getByText(adapterLabel)).toBeVisible();
