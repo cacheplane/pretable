@@ -1,0 +1,13 @@
+{
+  // Extends tsconfig.base.json (NOT tsconfig.react.json) — this package has no React dependency.
+  // The local `lib` override adds DOM types because src/density.ts uses `document` and
+  // `getComputedStyle` (and the contract test uses jsdom-provided DOM globals).
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.*", "src/**/__tests__/**"]
+}
