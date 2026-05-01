@@ -284,15 +284,6 @@ importers:
 
   packages/text-core: {}
 
-  packages/ui:
-    dependencies:
-      '@fontsource-variable/fraunces':
-        specifier: ^5.0.0
-        version: 5.2.9
-      react:
-        specifier: ^19.0.0
-        version: 19.2.5
-
 packages:
 
   '@adobe/css-tools@4.4.4':
