@@ -88,6 +88,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
       - name: Pull Vercel project settings
         run: |
           mkdir -p .vercel
@@ -104,16 +106,27 @@ jobs:
           url=$(npx vercel deploy --prebuilt --archive=tgz --prod --yes --token=${{ secrets.VERCEL_TOKEN }} | tail -n 1)
           echo "deployment_url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed: $url"
-      - name: Smoke test public production alias
-        # Unique *-cacheplane.vercel.app URLs are gated by Vercel deployment
-        # protection (HTTP 401). Smoke against the public production alias,
-        # which is what end users actually hit.
+      - name: Wait for production alias to update
+        # vercel deploy --prod returns once the unique deployment URL is
+        # ready; the public alias atomically repoints shortly after. A short
+        # readiness loop avoids racing the alias swap.
         run: |
-          for i in 1 2 3 4 5; do
+          for i in 1 2 3 4 5 6; do
             code=$(curl -sS -o /dev/null -w "%{http_code}" "https://pretable.vercel.app" || true)
             echo "Attempt $i: HTTP $code"
             if [ "$code" = "200" ]; then exit 0; fi
             sleep 5
           done
-          echo "Smoke test failed: pretable.vercel.app did not return 200"
+          echo "Public alias did not return 200 after deploy"
           exit 1
+      - name: Smoke test prod with Playwright
+        env:
+          BASE_URL: https://pretable.vercel.app
+        run: pnpm --filter @pretable/app-website smoke
+      - name: Upload smoke artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-smoke-traces
+          path: apps/website/test-results/
+          retention-days: 7
