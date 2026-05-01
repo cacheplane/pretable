@@ -31,13 +31,17 @@ export function getDensityHeights(): DensityHeights {
     };
   }
   const styles = getComputedStyle(document.documentElement);
+  // Defensive: some test environments mock getComputedStyle with plain
+  // objects that don't implement getPropertyValue. Treat that as "unset"
+  // and fall back, instead of throwing.
+  const read = (name: string): string => {
+    if (typeof styles?.getPropertyValue !== "function") return "";
+    return styles.getPropertyValue(name);
+  };
   return {
-    rowHeight:
-      parsePx(styles.getPropertyValue("--pretable-row-height")) ??
-      FALLBACK_ROW_HEIGHT,
+    rowHeight: parsePx(read("--pretable-row-height")) ?? FALLBACK_ROW_HEIGHT,
     headerHeight:
-      parsePx(styles.getPropertyValue("--pretable-header-height")) ??
-      FALLBACK_HEADER_HEIGHT,
+      parsePx(read("--pretable-header-height")) ?? FALLBACK_HEADER_HEIGHT,
   };
 }
 
