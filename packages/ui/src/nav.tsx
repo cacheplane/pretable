@@ -1,4 +1,4 @@
-export type NavPage = "playground" | "website" | "bench" | "docs" | "github";
+export type NavPage = "website" | "bench" | "docs" | "github";
 
 export interface NavCta {
   label: string;
