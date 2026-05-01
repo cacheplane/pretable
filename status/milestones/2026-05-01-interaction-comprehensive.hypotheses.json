@@ -1,6 +1,6 @@
 {
-  "runsetId": "2026-05-01t21-01-45-644z",
-  "generatedAt": "2026-05-01T21:11:58.756Z",
+  "runsetId": "2026-05-01t21-43-54-597z",
+  "generatedAt": "2026-05-01T21:46:51.921Z",
   "adapters": [
     {
       "adapterId": "pretable",
@@ -66,7 +66,7 @@
           "internal telemetry rendered rows: 7",
           "internal telemetry visible rows: 3",
           "internal telemetry total rows: 3000",
-          "internal telemetry planned height: 515712",
+          "internal telemetry planned height: 515729",
           "internal telemetry viewport range: 0-3",
           "internal telemetry selected row: S2-row-1775",
           "internal telemetry focused row: S2-row-1775"
@@ -81,7 +81,7 @@
           "internal telemetry rendered rows: 7",
           "internal telemetry visible rows: 3",
           "internal telemetry total rows: 3000",
-          "internal telemetry planned height: 515712",
+          "internal telemetry planned height: 515729",
           "internal telemetry viewport range: 0-3",
           "internal telemetry selected row: S2-row-1775",
           "internal telemetry focused row: S2-row-1775"
@@ -354,7 +354,7 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 16.799999999999955,
+            "scroll_frame_p95_ms": 9.300000000000011,
             "blank_gap_frames": 0,
             "long_tasks_count": 0,
             "long_tasks_ms": 0,
@@ -369,9 +369,9 @@
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 16.699999999999932,
-              "median": 16.799999999999955,
-              "max": 17
+              "min": 9.200000000000045,
+              "median": 9.300000000000011,
+              "max": 9.300000000000068
             },
             "blank_gap_frames": {
               "min": 0,
@@ -455,10 +455,10 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 59.10000000000002,
+            "scroll_frame_p95_ms": 41.700000000000045,
             "blank_gap_frames": 0,
-            "long_tasks_count": 2,
-            "long_tasks_ms": 102,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
             "dom_nodes_peak": 657,
             "scroll_viewport_nodes_peak": 468,
             "rendered_rows_peak": 66,
@@ -470,9 +470,9 @@
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 58.799999999999955,
-              "median": 59.10000000000002,
-              "max": 74.19999999999993
+              "min": 41.69999999999999,
+              "median": 41.700000000000045,
+              "max": 42.60000000000002
             },
             "blank_gap_frames": {
               "min": 0,
@@ -481,13 +481,13 @@
             },
             "long_tasks_count": {
               "min": 0,
-              "median": 2,
-              "max": 5
+              "median": 0,
+              "max": 0
             },
             "long_tasks_ms": {
               "min": 0,
-              "median": 102,
-              "max": 284
+              "median": 0,
+              "max": 0
             },
             "dom_nodes_peak": {
               "min": 657,
@@ -556,7 +556,7 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 24.600000000000023,
+            "scroll_frame_p95_ms": 15.099999999999966,
             "blank_gap_frames": 0,
             "long_tasks_count": 0,
             "long_tasks_ms": 0,
@@ -571,9 +571,9 @@
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 17.5,
-              "median": 24.600000000000023,
-              "max": 26.100000000000023
+              "min": 10.300000000000011,
+              "median": 15.099999999999966,
+              "max": 16.69999999999999
             },
             "blank_gap_frames": {
               "min": 0,
@@ -636,8 +636,8 @@
     },
     {
       "id": "H6",
-      "status": "failing",
-      "summary": "The interaction is instrumented and current medians stay within thresholds, but worst-case repeats still exceed the current latency or stability limits.",
+      "status": "satisfied",
+      "summary": "Wrapped-text local sorting stays within the current interaction and settle thresholds while preserving post-sort stability. Evidence is based on current repeated-run medians.",
       "evidence": [
         {
           "adapterId": "pretable",
@@ -657,7 +657,7 @@
               "internal telemetry rendered rows: 7",
               "internal telemetry visible rows: 3",
               "internal telemetry total rows: 3000",
-              "internal telemetry planned height: 515712",
+              "internal telemetry planned height: 515729",
               "internal telemetry viewport range: 0-3",
               "internal telemetry selected row: S2-row-1775",
               "internal telemetry focused row: S2-row-1775"
@@ -672,7 +672,7 @@
               "internal telemetry rendered rows: 7",
               "internal telemetry visible rows: 3",
               "internal telemetry total rows: 3000",
-              "internal telemetry planned height: 515712",
+              "internal telemetry planned height: 515729",
               "internal telemetry viewport range: 0-3",
               "internal telemetry selected row: S2-row-1775",
               "internal telemetry focused row: S2-row-1775"
@@ -680,8 +680,8 @@
             "varying": {}
           },
           "metrics": {
-            "interaction_latency_ms": 8.399999999999977,
-            "settle_duration_ms": 16.699999999999932,
+            "interaction_latency_ms": 16.5,
+            "settle_duration_ms": 24.899999999999977,
             "post_interaction_blank_gap_frames": 0,
             "post_interaction_anchor_shift_px": 0,
             "post_interaction_row_height_error_p95_px": 0,
@@ -694,14 +694,14 @@
           },
           "metricSummary": {
             "interaction_latency_ms": {
-              "min": 8.200000000000045,
-              "median": 8.399999999999977,
-              "max": 8.600000000000023
+              "min": 15.699999999999989,
+              "median": 16.5,
+              "max": 16.700000000000045
             },
             "settle_duration_ms": {
-              "min": 16.600000000000023,
-              "median": 16.699999999999932,
-              "max": 50
+              "min": 16.5,
+              "median": 24.899999999999977,
+              "max": 25
             },
             "post_interaction_blank_gap_frames": {
               "min": 0,
@@ -798,7 +798,7 @@
             "varying": {}
           },
           "metrics": {
-            "interaction_latency_ms": 8.300000000000011,
+            "interaction_latency_ms": 25,
             "settle_duration_ms": 16.69999999999999,
             "post_interaction_blank_gap_frames": 0,
             "post_interaction_anchor_shift_px": 0,
@@ -812,14 +812,14 @@
           },
           "metricSummary": {
             "interaction_latency_ms": {
-              "min": 8.299999999999955,
-              "median": 8.300000000000011,
-              "max": 8.699999999999989
+              "min": 16.399999999999977,
+              "median": 25,
+              "max": 25.100000000000023
             },
             "settle_duration_ms": {
-              "min": 15.899999999999977,
+              "min": 16.600000000000023,
               "median": 16.69999999999999,
-              "max": 33.200000000000045
+              "max": 25.30000000000001
             },
             "post_interaction_blank_gap_frames": {
               "min": 0,
@@ -916,8 +916,8 @@
             "varying": {}
           },
           "metrics": {
-            "interaction_latency_ms": 16.700000000000045,
-            "settle_duration_ms": 33,
+            "interaction_latency_ms": 16.600000000000023,
+            "settle_duration_ms": 16.69999999999999,
             "post_interaction_blank_gap_frames": 0,
             "post_interaction_anchor_shift_px": 0,
             "post_interaction_row_height_error_p95_px": 0,
@@ -930,14 +930,14 @@
           },
           "metricSummary": {
             "interaction_latency_ms": {
-              "min": 8.400000000000091,
-              "median": 16.700000000000045,
-              "max": 25.80000000000001
+              "min": 16.599999999999966,
+              "median": 16.600000000000023,
+              "max": 16.69999999999999
             },
             "settle_duration_ms": {
-              "min": 24.100000000000023,
-              "median": 33,
-              "max": 41.60000000000002
+              "min": 16.600000000000023,
+              "median": 16.69999999999999,
+              "max": 25
             },
             "post_interaction_blank_gap_frames": {
               "min": 0,
@@ -997,433 +997,433 @@
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t21-03-01-041z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t21-44-11-742z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "sort",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t21-03-07-780z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t21-44-14-438z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-metadata",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t21-03-14-592z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t21-44-16-811z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-text",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t21-03-21-382z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t21-44-19-365z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "scroll",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t21-03-29-084z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t21-44-21-641z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t21-03-43-221z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t21-44-24-060z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t21-03-55-286z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t21-44-26-261z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t21-04-06-605z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t21-44-28-607z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t21-04-12-669z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t21-44-30-896z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "sort",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t21-04-18-644z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t21-44-33-242z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-metadata",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t21-04-23-062z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t21-44-35-287z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-text",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t21-04-30-177z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t21-44-37-410z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t21-04-36-925z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t21-44-39-815z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t21-04-51-305z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t21-44-42-643z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t21-05-06-639z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t21-44-44-787z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t21-05-16-318z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t21-44-47-280z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t21-05-22-364z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t21-44-50-045z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "sort",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t21-05-29-760z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t21-44-52-409z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-metadata",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t21-05-38-114z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t21-44-54-451z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-text",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t21-05-54-090z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t21-44-56-355z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t21-06-10-206z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t21-44-58-365z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t21-06-17-872z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t21-45-00-859z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t21-06-24-865z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t21-45-03-216z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t21-06-31-814z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t21-45-05-270z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t21-06-40-663z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t21-45-07-334z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "sort",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t21-06-55-304z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t21-45-10-600z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-metadata",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t21-07-03-566z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t21-45-12-805z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-text",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t21-07-10-956z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t21-45-14-755z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "scroll",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t21-07-18-595z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t21-45-16-694z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t21-07-28-524z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t21-45-19-599z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t21-07-40-136z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t21-45-21-644z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t21-07-52-572z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t21-45-23-689z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t21-08-01-222z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t21-45-25-770z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "sort",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t21-08-08-402z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t21-45-28-719z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-metadata",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t21-08-14-147z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t21-45-30-811z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-text",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t21-08-18-962z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t21-45-32-957z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t21-08-23-486z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t21-45-36-209z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t21-08-29-460z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t21-45-39-804z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t21-08-34-373z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t21-45-42-143z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t21-08-38-784z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t21-45-44-081z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t21-08-45-077z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t21-45-46-197z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "sort",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t21-08-50-695z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t21-45-49-351z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-metadata",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t21-08-56-187z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t21-45-51-366z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-text",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t21-09-03-979z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t21-45-53-341z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t21-09-24-078z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t21-45-55-317z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t21-09-37-015z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t21-45-58-180z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t21-09-44-393z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t21-46-00-166z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t21-09-48-874z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t21-46-02-124z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t21-09-52-295z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t21-46-04-013z.summary.json"
         },
         {
           "scenarioId": "S2",
-          "scriptName": "sort",
-          "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t21-09-57-213z.summary.json"
-        },
-        {
-          "scenarioId": "S2",
-          "scriptName": "filter-metadata",
-          "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t21-10-01-682z.summary.json"
-        },
-        {
-          "scenarioId": "S2",
-          "scriptName": "filter-text",
-          "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t21-10-07-718z.summary.json"
-        },
-        {
-          "scenarioId": "S7",
-          "scriptName": "scroll",
-          "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t21-10-12-266z.summary.json"
-        },
-        {
-          "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t21-10-16-178z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t21-46-06-202z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t21-46-08-125z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t21-46-11-201z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t21-46-13-871z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t21-46-16-208z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t21-10-20-537z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t21-46-18-410z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t21-10-24-429z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t21-46-20-341z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t21-10-29-880z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t21-46-22-271z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "sort",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t21-10-34-724z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t21-46-24-530z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-metadata",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t21-10-40-244z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t21-46-26-515z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-text",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t21-10-46-591z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t21-46-28-566z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t21-10-57-189z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t21-46-30-465z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t21-11-07-744z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t21-46-32-659z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t21-11-13-399z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t21-46-34-445z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t21-11-20-031z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t21-46-36-363z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t21-11-25-829z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t21-46-38-232z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "sort",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t21-11-30-468z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t21-46-40-568z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-metadata",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t21-11-35-057z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t21-46-42-650z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "filter-text",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t21-11-39-824z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t21-46-44-427z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t21-11-44-431z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t21-46-46-185z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "sort",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t21-11-49-779z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t21-46-48-268z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-metadata",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t21-11-53-605z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t21-46-50-030z.summary.json"
         },
         {
           "scenarioId": "S7",
           "scriptName": "filter-text",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t21-11-57-761z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t21-46-51-777z.summary.json"
         }
       ]
     },
@@ -1471,7 +1471,7 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 17.100000000000023,
+            "scroll_frame_p95_ms": 9.299999999999955,
             "blank_gap_frames": 0,
             "long_tasks_count": 0,
             "long_tasks_ms": 0,
@@ -1486,9 +1486,9 @@
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 16.700000000000045,
-              "median": 17.100000000000023,
-              "max": 17.5
+              "min": 9.099999999999909,
+              "median": 9.299999999999955,
+              "max": 9.399999999999977
             },
             "blank_gap_frames": {
               "min": 0,
@@ -1572,10 +1572,10 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 74.60000000000014,
+            "scroll_frame_p95_ms": 42,
             "blank_gap_frames": 0,
-            "long_tasks_count": 5,
-            "long_tasks_ms": 285,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
             "dom_nodes_peak": 657,
             "scroll_viewport_nodes_peak": 468,
             "rendered_rows_peak": 66,
@@ -1587,9 +1587,9 @@
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 66.79999999999995,
-              "median": 74.60000000000014,
-              "max": 91.59999999999991
+              "min": 41.60000000000002,
+              "median": 42,
+              "max": 58.299999999999955
             },
             "blank_gap_frames": {
               "min": 0,
@@ -1597,14 +1597,14 @@
               "max": 0
             },
             "long_tasks_count": {
-              "min": 2,
-              "median": 5,
-              "max": 11
+              "min": 0,
+              "median": 0,
+              "max": 1
             },
             "long_tasks_ms": {
-              "min": 105,
-              "median": 285,
-              "max": 666
+              "min": 0,
+              "median": 0,
+              "max": 55
             },
             "dom_nodes_peak": {
               "min": 657,
@@ -1673,24 +1673,24 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 24.299999999999955,
+            "scroll_frame_p95_ms": 10.299999999999955,
             "blank_gap_frames": 0,
             "long_tasks_count": 0,
             "long_tasks_ms": 0,
-            "dom_nodes_peak": 499,
-            "scroll_viewport_nodes_peak": 494,
-            "rendered_rows_peak": 12,
-            "rendered_cells_peak": 480,
+            "dom_nodes_peak": 540,
+            "scroll_viewport_nodes_peak": 535,
+            "rendered_rows_peak": 13,
+            "rendered_cells_peak": 520,
             "row_height_error_p95_px": 0,
-            "scroll_anchor_shift_px": 326,
-            "scroll_anchor_shift_forward_p95_px": 326,
+            "scroll_anchor_shift_px": 322,
+            "scroll_anchor_shift_forward_p95_px": 322,
             "scroll_anchor_shift_backward_p95_px": 0
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 17.100000000000023,
-              "median": 24.299999999999955,
-              "max": 24.900000000000034
+              "min": 10.199999999999989,
+              "median": 10.299999999999955,
+              "max": 16.299999999999955
             },
             "blank_gap_frames": {
               "min": 0,
@@ -1708,23 +1708,23 @@
               "max": 0
             },
             "dom_nodes_peak": {
-              "min": 499,
-              "median": 499,
+              "min": 540,
+              "median": 540,
               "max": 540
             },
             "scroll_viewport_nodes_peak": {
-              "min": 494,
-              "median": 494,
+              "min": 535,
+              "median": 535,
               "max": 535
             },
             "rendered_rows_peak": {
-              "min": 12,
-              "median": 12,
+              "min": 13,
+              "median": 13,
               "max": 13
             },
             "rendered_cells_peak": {
-              "min": 480,
-              "median": 480,
+              "min": 520,
+              "median": 520,
               "max": 520
             },
             "row_height_error_p95_px": {
@@ -1734,13 +1734,13 @@
             },
             "scroll_anchor_shift_px": {
               "min": 322,
-              "median": 326,
-              "max": 326
+              "median": 322,
+              "max": 322
             },
             "scroll_anchor_shift_forward_p95_px": {
               "min": 322,
-              "median": 326,
-              "max": 326
+              "median": 322,
+              "max": 322
             },
             "scroll_anchor_shift_backward_p95_px": {
               "min": 0,
@@ -1797,8 +1797,8 @@
             "varying": {}
           },
           "metrics": {
-            "interaction_latency_ms": 8.899999999999977,
-            "settle_duration_ms": 33.40000000000009,
+            "interaction_latency_ms": 17.5,
+            "settle_duration_ms": 24.900000000000034,
             "post_interaction_blank_gap_frames": 0,
             "post_interaction_anchor_shift_px": 0,
             "post_interaction_row_height_error_p95_px": 0,
@@ -1811,14 +1811,14 @@
           },
           "metricSummary": {
             "interaction_latency_ms": {
-              "min": 8.300000000000068,
-              "median": 8.899999999999977,
-              "max": 16.599999999999966
+              "min": 16.599999999999966,
+              "median": 17.5,
+              "max": 25
             },
             "settle_duration_ms": {
-              "min": 16.5,
-              "median": 33.40000000000009,
-              "max": 41.60000000000002
+              "min": 16.80000000000001,
+              "median": 24.900000000000034,
+              "max": 32.39999999999998
             },
             "post_interaction_blank_gap_frames": {
               "min": 0,
@@ -1915,8 +1915,8 @@
             "varying": {}
           },
           "metrics": {
-            "interaction_latency_ms": 8.399999999999977,
-            "settle_duration_ms": 16.600000000000023,
+            "interaction_latency_ms": 16.80000000000001,
+            "settle_duration_ms": 24.5,
             "post_interaction_blank_gap_frames": 0,
             "post_interaction_anchor_shift_px": 0,
             "post_interaction_row_height_error_p95_px": 0,
@@ -1929,14 +1929,14 @@
           },
           "metricSummary": {
             "interaction_latency_ms": {
-              "min": 8.300000000000068,
-              "median": 8.399999999999977,
-              "max": 8.399999999999977
+              "min": 16.69999999999999,
+              "median": 16.80000000000001,
+              "max": 25.099999999999966
             },
             "settle_duration_ms": {
-              "min": 16.600000000000023,
-              "median": 16.600000000000023,
-              "max": 16.699999999999932
+              "min": 16.700000000000045,
+              "median": 24.5,
+              "max": 24.600000000000023
             },
             "post_interaction_blank_gap_frames": {
               "min": 0,
@@ -2033,8 +2033,8 @@
             "varying": {}
           },
           "metrics": {
-            "interaction_latency_ms": 8.300000000000011,
-            "settle_duration_ms": 16.69999999999999,
+            "interaction_latency_ms": 16.69999999999999,
+            "settle_duration_ms": 24.100000000000023,
             "post_interaction_blank_gap_frames": 0,
             "post_interaction_anchor_shift_px": 0,
             "post_interaction_row_height_error_p95_px": 0,
@@ -2047,13 +2047,13 @@
           },
           "metricSummary": {
             "interaction_latency_ms": {
-              "min": 8.200000000000045,
-              "median": 8.300000000000011,
-              "max": 24.899999999999977
+              "min": 15.900000000000034,
+              "median": 16.69999999999999,
+              "max": 16.700000000000045
             },
             "settle_duration_ms": {
-              "min": 16.699999999999932,
-              "median": 16.69999999999999,
+              "min": 16.599999999999966,
+              "median": 24.100000000000023,
               "max": 25.899999999999977
             },
             "post_interaction_blank_gap_frames": {
