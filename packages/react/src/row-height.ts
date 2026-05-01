@@ -1,11 +1,18 @@
 const MIN_ROW_HEIGHT = 44;
 
+function parsePxLength(value: string | null | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function measureRenderedRowHeight(row: HTMLElement) {
   const style = getComputedStyle(row);
   const verticalPadding =
-    parseFloat(style.paddingTop || "0") +
-    parseFloat(style.paddingBottom || "0");
-  const borderHeight = parseFloat(style.borderBottomWidth || "0");
+    parsePxLength(style.paddingTop) + parsePxLength(style.paddingBottom);
+  const borderHeight = parsePxLength(style.borderBottomWidth);
   const wrappedCells = [
     ...row.querySelectorAll<HTMLElement>(
       '[data-pretable-cell][data-pretable-wrap="true"]',
