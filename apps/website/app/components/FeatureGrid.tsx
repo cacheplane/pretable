@@ -13,25 +13,11 @@ const FEATURES: readonly Feature[] = [
     receiptHref: "/bench?s=S7&scale=stress",
   },
   {
-    title: "Stream-aware",
-    caption:
-      "Token-by-token rendering for OpenAI, Anthropic, or your own SSE. Sustains 100 to 25,000 updates/sec on S5 hypothesis scale without exceeding 60 fps.",
-    receiptLabel: "→ receipt: /streaming-demo",
-    receiptHref: "/streaming-demo",
-  },
-  {
     title: "Selection survives filters",
     caption:
       "Row-id keys persist across filter, sort, and live updates. Click a row, filter the grid, the selection sticks.",
     receiptLabel: "→ receipt: live demo above",
     receiptHref: "#grid",
-  },
-  {
-    title: "Wrapped text, no jank",
-    caption:
-      "Multi-line cell content with auto-height — no layout shift on scroll, no row-jump on hover.",
-    receiptLabel: "→ receipt: /bench?s=S2",
-    receiptHref: "/bench?s=S2",
   },
   {
     title: "Deterministic engine",
@@ -54,10 +40,10 @@ export function FeatureGrid() {
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[1240px]">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-          04 · what's in the box
+          05 · what's in the box
         </p>
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
-          Six receipts.
+          Engineering credibility points.
         </h2>
         <p className="mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           Each feature backed by a bench scenario or demo. No claim without a
