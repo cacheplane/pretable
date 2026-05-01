@@ -1,0 +1,42 @@
+/**
+ * @pretable/ui/tailwind.css
+ * Opt-in Tailwind v4 bridge. Aliases --pretable-* tokens to --color-* / --font-*
+ * shortcuts under the `pt-` prefix to avoid collisions with consumer's colors.
+ *
+ * Consumer recipe (Tailwind v4):
+ *   @import "tailwindcss";
+ *   @import "@pretable/ui/themes/material.css";
+ *   @import "@pretable/ui/grid.css";
+ *   @import "@pretable/ui/tailwind.css";
+ */
+
+@theme inline {
+  /* Surfaces */
+  --color-pt-bg-grid: var(--pretable-bg-grid);
+  --color-pt-bg-grid-alt: var(--pretable-bg-grid-alt);
+  --color-pt-bg-header: var(--pretable-bg-header);
+  --color-pt-bg-toolbar: var(--pretable-bg-toolbar);
+  --color-pt-bg-tooltip: var(--pretable-bg-tooltip);
+
+  /* Text */
+  --color-pt-text-cell: var(--pretable-text-cell);
+  --color-pt-text-header: var(--pretable-text-header);
+  --color-pt-text-dim: var(--pretable-text-dim);
+
+  /* Lines */
+  --color-pt-rule: var(--pretable-rule);
+  --color-pt-rule-strong: var(--pretable-rule-strong);
+
+  /* State */
+  --color-pt-bg-hover: var(--pretable-bg-hover);
+  --color-pt-bg-selected: var(--pretable-bg-selected);
+  --color-pt-text-selected: var(--pretable-text-selected);
+  --color-pt-focus-ring: var(--pretable-focus-ring);
+
+  /* Accent */
+  --color-pt-accent: var(--pretable-accent);
+
+  /* Typography */
+  --font-pt-sans: var(--pretable-font-sans);
+  --font-pt-mono: var(--pretable-font-mono);
+}
