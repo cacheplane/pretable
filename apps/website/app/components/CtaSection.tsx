@@ -19,7 +19,7 @@ export function CtaSection() {
             href="#grid"
             className="inline-flex items-center gap-2 rounded-[4px] bg-accent px-5 py-2.5 text-[13px] font-semibold text-bg-page hover:bg-accent-deep focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg-page"
           >
-            Try the playground ↑
+            Try it live ↑
           </a>
           <a
             href="https://github.com/cacheplane/pretable"
