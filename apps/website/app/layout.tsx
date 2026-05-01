@@ -1,6 +1,7 @@
 import { Footer, Nav } from "@pretable/ui";
 import type { Metadata, Viewport } from "next";
 
+import { LandingAmbient } from "./components/LandingAmbient";
 import "./globals.css";
 
 const APP_VERSION = process.env.npm_package_version ?? "0.0.0";
@@ -22,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <LandingAmbient />
         <Nav active="website" version={APP_VERSION} />
         <main>{children}</main>
         {/* TODO(ci-signal): wire ciStatus to a real source once CI status plumbing exists.
