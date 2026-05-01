@@ -376,6 +376,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 column,
                 sortDirection,
               })}
+              data-pretable-header-cell=""
+              data-pinned={plannedCol.pinned === "left" ? "left" : undefined}
               key={column.id}
               onClick={() => {
                 const nextDirection = getNextSortDirection(sortDirection);
@@ -510,6 +512,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     className={getBodyCellClassName?.(bodyInput)}
                     data-column-id={column.id}
                     data-focused={isFocused ? "true" : "false"}
+                    data-pinned={column.pinned === "left" ? "left" : undefined}
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
                     data-selected={isSelected ? "true" : "false"}
