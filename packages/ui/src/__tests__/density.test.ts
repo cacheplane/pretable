@@ -17,7 +17,10 @@ describe("getDensityHeights", () => {
 
   test("reads numeric pixel values from --pretable-row-height and --pretable-header-height", () => {
     document.documentElement.style.setProperty("--pretable-row-height", "48px");
-    document.documentElement.style.setProperty("--pretable-header-height", "52px");
+    document.documentElement.style.setProperty(
+      "--pretable-header-height",
+      "52px",
+    );
     const heights = getDensityHeights();
     expect(heights.rowHeight).toBe(48);
     expect(heights.headerHeight).toBe(52);
@@ -37,7 +40,10 @@ describe("getDensityHeights", () => {
   });
 
   test("parses fractional pixel values", () => {
-    document.documentElement.style.setProperty("--pretable-row-height", "23.5px");
+    document.documentElement.style.setProperty(
+      "--pretable-row-height",
+      "23.5px",
+    );
     const heights = getDensityHeights();
     expect(heights.rowHeight).toBe(23.5);
   });

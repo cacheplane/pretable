@@ -27,10 +27,17 @@ function parsePx(value: string): number | null {
  */
 export function getDensityHeights(): DensityHeights {
   if (typeof document === "undefined") {
-    return { rowHeight: FALLBACK_ROW_HEIGHT, headerHeight: FALLBACK_HEADER_HEIGHT };
+    return {
+      rowHeight: FALLBACK_ROW_HEIGHT,
+      headerHeight: FALLBACK_HEADER_HEIGHT,
+    };
   }
   const styles = getComputedStyle(document.documentElement);
-  const rowHeight = parsePx(styles.getPropertyValue("--pretable-row-height")) ?? FALLBACK_ROW_HEIGHT;
-  const headerHeight = parsePx(styles.getPropertyValue("--pretable-header-height")) ?? FALLBACK_HEADER_HEIGHT;
+  const rowHeight =
+    parsePx(styles.getPropertyValue("--pretable-row-height")) ??
+    FALLBACK_ROW_HEIGHT;
+  const headerHeight =
+    parsePx(styles.getPropertyValue("--pretable-header-height")) ??
+    FALLBACK_HEADER_HEIGHT;
   return { rowHeight, headerHeight };
 }

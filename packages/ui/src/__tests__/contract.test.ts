@@ -88,7 +88,10 @@ describe("token contract", () => {
     const darkBg = getComputedStyle(document.documentElement)
       .getPropertyValue("--pretable-bg-grid")
       .trim();
-    expect(darkBg, "material dark mode did not override --pretable-bg-grid").not.toBe(lightBg);
+    expect(
+      darkBg,
+      "material dark mode did not override --pretable-bg-grid",
+    ).not.toBe(lightBg);
     cleanup();
   });
 
@@ -96,9 +99,14 @@ describe("token contract", () => {
     const themeCleanup = loadCSS(path.join(THEMES_DIR, "excel.css"));
     const gridCss = fs.readFileSync(GRID_CSS, "utf8");
     const refs = new Set(
-      Array.from(gridCss.matchAll(/var\((--pretable-[a-z-]+)/g)).map((m) => m[1]),
+      Array.from(gridCss.matchAll(/var\((--pretable-[a-z-]+)/g)).map(
+        (m) => m[1],
+      ),
     );
-    expect(refs.size, "grid.css references zero --pretable-* vars; this is suspicious").toBeGreaterThan(0);
+    expect(
+      refs.size,
+      "grid.css references zero --pretable-* vars; this is suspicious",
+    ).toBeGreaterThan(0);
     const computed = getComputedStyle(document.documentElement);
     for (const ref of refs) {
       expect(

@@ -329,7 +329,10 @@ describe("getDensityHeights", () => {
 
   test("reads numeric pixel values from --pretable-row-height and --pretable-header-height", () => {
     document.documentElement.style.setProperty("--pretable-row-height", "48px");
-    document.documentElement.style.setProperty("--pretable-header-height", "52px");
+    document.documentElement.style.setProperty(
+      "--pretable-header-height",
+      "52px",
+    );
     const heights = getDensityHeights();
     expect(heights.rowHeight).toBe(48);
     expect(heights.headerHeight).toBe(52);
@@ -349,7 +352,10 @@ describe("getDensityHeights", () => {
   });
 
   test("parses fractional pixel values", () => {
-    document.documentElement.style.setProperty("--pretable-row-height", "23.5px");
+    document.documentElement.style.setProperty(
+      "--pretable-row-height",
+      "23.5px",
+    );
     const heights = getDensityHeights();
     expect(heights.rowHeight).toBe(23.5);
   });
@@ -396,11 +402,18 @@ function parsePx(value: string): number | null {
  */
 export function getDensityHeights(): DensityHeights {
   if (typeof document === "undefined") {
-    return { rowHeight: FALLBACK_ROW_HEIGHT, headerHeight: FALLBACK_HEADER_HEIGHT };
+    return {
+      rowHeight: FALLBACK_ROW_HEIGHT,
+      headerHeight: FALLBACK_HEADER_HEIGHT,
+    };
   }
   const styles = getComputedStyle(document.documentElement);
-  const rowHeight = parsePx(styles.getPropertyValue("--pretable-row-height")) ?? FALLBACK_ROW_HEIGHT;
-  const headerHeight = parsePx(styles.getPropertyValue("--pretable-header-height")) ?? FALLBACK_HEADER_HEIGHT;
+  const rowHeight =
+    parsePx(styles.getPropertyValue("--pretable-row-height")) ??
+    FALLBACK_ROW_HEIGHT;
+  const headerHeight =
+    parsePx(styles.getPropertyValue("--pretable-header-height")) ??
+    FALLBACK_HEADER_HEIGHT;
   return { rowHeight, headerHeight };
 }
 ```
@@ -424,6 +437,7 @@ Use the Edit tool on `packages/ui/src/index.ts`:
   export {};
   ```
 - new_string:
+
   ```ts
   export { getDensityHeights, type DensityHeights } from "./density";
   ```
@@ -522,8 +536,10 @@ This file is verbatim from the spec section "Theme files". Excel theme: gray, te
 
   /* Typography */
   --pretable-font-sans:
-    "Aptos Narrow", "Aptos", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  --pretable-font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+    "Aptos Narrow", "Aptos", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
+  --pretable-font-mono:
+    ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
 }
 
 /* :root is already compact; only non-default tiers need explicit selectors. */
@@ -588,7 +604,12 @@ This file is verbatim from the spec section "Theme files". Material 3 baseline s
   --pretable-radius: 12px; /* M3 medium shape scale (matches Card) */
 
   /* State */
-  --pretable-bg-hover: rgba(29, 27, 32, 0.08); /* on-surface @ 8% — M3 hover state layer */
+  --pretable-bg-hover: rgba(
+    29,
+    27,
+    32,
+    0.08
+  ); /* on-surface @ 8% — M3 hover state layer */
   --pretable-bg-selected: #e8def8; /* secondary-container */
   --pretable-text-selected: #1d192b; /* on-secondary-container */
   --pretable-focus-ring: #6750a4; /* primary */
@@ -605,7 +626,9 @@ This file is verbatim from the spec section "Theme files". Material 3 baseline s
   --pretable-font-size-header: 14px; /* label-large (px equal; weight differs in grid.css) */
 
   /* Typography */
-  --pretable-font-sans: "Roboto Flex", "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --pretable-font-sans:
+    "Roboto Flex", "Roboto", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   --pretable-font-mono: "Roboto Mono", ui-monospace, monospace;
 }
 
@@ -917,6 +940,7 @@ EOF
 - Create: `packages/ui/src/__tests__/contract.test.ts`
 
 The contract test asserts:
+
 1. Every documented `--pretable-*` token resolves to a non-empty value when each theme CSS is loaded.
 2. All density tiers resolve to `<number>px` values for `--pretable-row-height` and `--pretable-header-height`.
 3. Material's dark mode actually overrides at least one color (cheap sanity check on the dark variant).
@@ -1015,7 +1039,10 @@ describe("token contract", () => {
     const darkBg = getComputedStyle(document.documentElement)
       .getPropertyValue("--pretable-bg-grid")
       .trim();
-    expect(darkBg, "material dark mode did not override --pretable-bg-grid").not.toBe(lightBg);
+    expect(
+      darkBg,
+      "material dark mode did not override --pretable-bg-grid",
+    ).not.toBe(lightBg);
     cleanup();
   });
 
@@ -1023,9 +1050,14 @@ describe("token contract", () => {
     const themeCleanup = loadCSS(path.join(THEMES_DIR, "excel.css"));
     const gridCss = fs.readFileSync(GRID_CSS, "utf8");
     const refs = new Set(
-      Array.from(gridCss.matchAll(/var\((--pretable-[a-z-]+)/g)).map((m) => m[1]),
+      Array.from(gridCss.matchAll(/var\((--pretable-[a-z-]+)/g)).map(
+        (m) => m[1],
+      ),
     );
-    expect(refs.size, "grid.css references zero --pretable-* vars; this is suspicious").toBeGreaterThan(0);
+    expect(
+      refs.size,
+      "grid.css references zero --pretable-* vars; this is suspicious",
+    ).toBeGreaterThan(0);
     const computed = getComputedStyle(document.documentElement);
     for (const ref of refs) {
       expect(
@@ -1222,15 +1254,15 @@ const visibleRows = Math.floor(viewportHeight / rowHeight);
 
 All tokens are `--pretable-*` prefixed.
 
-| Group | Tokens |
-|---|---|
-| Surfaces | `bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip` |
-| Text | `text-cell`, `text-header`, `text-dim` |
-| Lines | `rule`, `rule-strong`, `radius` |
-| State | `bg-hover`, `bg-selected`, `text-selected`, `focus-ring` |
-| Accent | `accent` |
-| Density | `row-height`, `header-height`, `cell-padding-x`, `cell-padding-y`, `font-size-cell`, `font-size-header` |
-| Typography | `font-sans`, `font-mono` |
+| Group      | Tokens                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| Surfaces   | `bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip`                                       |
+| Text       | `text-cell`, `text-header`, `text-dim`                                                                  |
+| Lines      | `rule`, `rule-strong`, `radius`                                                                         |
+| State      | `bg-hover`, `bg-selected`, `text-selected`, `focus-ring`                                                |
+| Accent     | `accent`                                                                                                |
+| Density    | `row-height`, `header-height`, `cell-padding-x`, `cell-padding-y`, `font-size-cell`, `font-size-header` |
+| Typography | `font-sans`, `font-mono`                                                                                |
 
 The engine reads `--pretable-row-height` and `--pretable-header-height` directly from CSS at JS time. The other 22 tokens are CSS-only.
 
@@ -1357,7 +1389,8 @@ ls packages/ui/dist/themes
 file packages/ui/dist/index.js packages/ui/dist/index.d.ts
 ```
 
-Expected: 
+Expected:
+
 - `dist/` contains `index.js`, `index.d.ts`, `themes/`, `grid.css`, `tailwind.css`
 - `dist/themes/` contains `excel.css`, `material.css`
 - `index.js` is an ASCII text file (the compiled JS)

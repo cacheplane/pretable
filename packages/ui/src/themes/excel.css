@@ -44,8 +44,10 @@
 
   /* Typography */
   --pretable-font-sans:
-    "Aptos Narrow", "Aptos", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  --pretable-font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+    "Aptos Narrow", "Aptos", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
+  --pretable-font-mono:
+    ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
 }
 
 /* :root is already compact; only non-default tiers need explicit selectors. */
