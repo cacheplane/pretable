@@ -38,6 +38,7 @@ apps/website/app/page.tsx         // wrap 7 body sections in <ScrollReveal>; add
 A small `"use client"` component that wraps children, observes its own root element with `IntersectionObserver`, and toggles fade+slide-up classes on first intersection. One-shot (disconnects after firing). Honors `prefers-reduced-motion: reduce` via Tailwind variants — reduced-motion users see content at full opacity from first paint.
 
 **Files:**
+
 - Create: `apps/website/app/components/ScrollReveal.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -130,6 +131,7 @@ Six absolute-positioned, heavily-blurred radial-gradient `<div>`s wrapped in a `
 The `top:` values are first-pass estimates from §3 of the spec's scroll-height table. They will be re-tuned during manual smoke (Task 5) once we observe actual rendered section heights.
 
 **Files:**
+
 - Create: `apps/website/app/components/LandingAmbient.tsx`
 
 - [ ] **Step 1: Create the file**
@@ -277,6 +279,7 @@ git commit -m "feat(website): add LandingAmbient server component (6 blobs, cool
 Add it as the first child of `<body>`. Z-stacking: page gradient on `<body>` (back) → `<LandingAmbient />` blobs at `-z-40` (mid-back) → Nav / main / Footer at default z-index (front).
 
 **Files:**
+
 - Modify: `apps/website/app/layout.tsx`
 
 - [ ] **Step 1: Update `layout.tsx`**
@@ -383,6 +386,7 @@ git commit -m "feat(website): mount LandingAmbient in root layout"
 Update `apps/website/app/page.tsx` to import `ScrollReveal` and wrap the seven body sections (Problem onward) individually. Hero and PlaygroundSection stay un-wrapped — they're above the fold.
 
 **Files:**
+
 - Modify: `apps/website/app/page.tsx`
 
 - [ ] **Step 1: Update `page.tsx`**
@@ -494,6 +498,7 @@ pnpm --filter @pretable/app-website dev
 Open the dev URL (`http://localhost:3000` or a fallback like 3001 if 3000 is taken). Walk through:
 
 **Animation behavior:**
+
 - Hero + PlaygroundSection visible at full opacity on first paint. No animation.
 - Scroll down past the live grid. As Problem enters the viewport, it fades + slides up over ~700ms.
 - Continue scrolling. Solution → ReceiptsBand → ComparisonTable → FeatureGrid → CodeExample → CtaSection each animate in once.
@@ -501,12 +506,14 @@ Open the dev URL (`http://localhost:3000` or a fallback like 3001 if 3000 is tak
 - Scroll back down: still no re-animation.
 
 **Reduced motion:**
+
 - DevTools → Rendering pane → "Emulate CSS media feature `prefers-reduced-motion`" → set to `reduce`.
 - Reload the page.
 - All seven body sections render at full opacity from first paint. No fade, no slide. Reload + scroll: still no animation.
 - Disable the emulation; the animations come back.
 
 **Blob narrative:**
+
 - Page gradient is subtly visible (Phase 2.A baseline).
 - Six blobs visible behind sections — each at low alpha but discernible at viewport scale:
   - cyan glow behind Hero (top-left)
@@ -526,8 +533,11 @@ Open DevTools console while on the dev URL. Run this snippet to log the y-positi
   const r = s.getBoundingClientRect();
   const top = r.top + window.scrollY;
   const center = top + r.height / 2;
-  const label = s.querySelector("h1, h2")?.textContent?.slice(0, 40) ?? "(no heading)";
-  console.log(`#${i} top=${Math.round(top)} center=${Math.round(center)} :: ${label}`);
+  const label =
+    s.querySelector("h1, h2")?.textContent?.slice(0, 40) ?? "(no heading)";
+  console.log(
+    `#${i} top=${Math.round(top)} center=${Math.round(center)} :: ${label}`,
+  );
 });
 ```
 
@@ -666,22 +676,22 @@ Mark Phase 2.B implementation done. Wait for user merge before starting Phase 2.
 
 ## Spec coverage check
 
-| Spec section | Task(s) |
-|---|---|
-| §1 Goal — ScrollReveal + LandingAmbient | 1, 2, 3, 4 |
-| §2 Scope — what 2.B owns | structural |
-| §3 Architecture — `<ScrollReveal />` shape | 1 |
-| §3 Architecture — `<LandingAmbient />` shape | 2 |
-| §3 Layout integration | 3 |
-| §3 Page composition | 4 |
-| §3 Scroll-height tuning | 5 (Step 3) |
-| §4 Reduced-motion handling | 1 (Tailwind variants) + 5 (manual verification) |
-| §5 Performance | (no task — implicit in component design) |
-| §6 Testing approach | 5 (manual smoke + CI) |
-| §7 Out of scope | (intentionally not a task) |
-| §8 Rollback | 6 (single squash-merge) |
-| §9 Risks | inline notes in Tasks 1, 2, 5 |
-| §10 Success criteria | 5 (manual smoke checklist) |
+| Spec section                                 | Task(s)                                         |
+| -------------------------------------------- | ----------------------------------------------- |
+| §1 Goal — ScrollReveal + LandingAmbient      | 1, 2, 3, 4                                      |
+| §2 Scope — what 2.B owns                     | structural                                      |
+| §3 Architecture — `<ScrollReveal />` shape   | 1                                               |
+| §3 Architecture — `<LandingAmbient />` shape | 2                                               |
+| §3 Layout integration                        | 3                                               |
+| §3 Page composition                          | 4                                               |
+| §3 Scroll-height tuning                      | 5 (Step 3)                                      |
+| §4 Reduced-motion handling                   | 1 (Tailwind variants) + 5 (manual verification) |
+| §5 Performance                               | (no task — implicit in component design)        |
+| §6 Testing approach                          | 5 (manual smoke + CI)                           |
+| §7 Out of scope                              | (intentionally not a task)                      |
+| §8 Rollback                                  | 6 (single squash-merge)                         |
+| §9 Risks                                     | inline notes in Tasks 1, 2, 5                   |
+| §10 Success criteria                         | 5 (manual smoke checklist)                      |
 
 All spec requirements covered.
 

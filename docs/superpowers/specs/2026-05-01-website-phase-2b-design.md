@@ -4,10 +4,11 @@
 **Status:** Draft for review
 **Scope:** Phase 2.B of the website pivot — add two polish layers on top of Phase 2.A's static body sections: (1) entrance animations triggered when sections scroll into view, (2) six absolute-positioned blurred color blobs implementing the cool→warm→cool ambient narrative behind transparent section backgrounds.
 **Parent context:**
+
 - [`2026-04-30-website-phase-2a-design.md`](./2026-04-30-website-phase-2a-design.md) — Phase 2.A (seven static body sections + page gradient base).
 - [`2026-04-24-website-phase-1-design.md`](./2026-04-24-website-phase-1-design.md) — Phase 1 (scaffold + Hero + PlaygroundSection + cool-slate tokens).
 - Reference: `~/repos/dawn/apps/web/app/components/landing/LandingAmbient.tsx` (the 6-blob component dawn uses) and `~/repos/dawn/apps/web/app/components/ScrollReveal.tsx` (dawn's section-reveal wrapper).
-**Dependencies shipped:** Phase 2.A PR #20 (`b97ec8a`) — body sections + page gradient on origin/main.
+  **Dependencies shipped:** Phase 2.A PR #20 (`b97ec8a`) — body sections + page gradient on origin/main.
 
 ---
 
@@ -110,6 +111,7 @@ export function ScrollReveal({ children }: { children: ReactNode }) {
 ```
 
 Key details:
+
 - `motion-reduce:` Tailwind variant collapses the animation under `prefers-reduced-motion: reduce`. The `motion-reduce:transition-none` on the always-applied class disables the transition; the `motion-reduce:opacity-100 motion-reduce:translate-y-0` on the hidden state forces visible-from-start under reduced motion (so a reduced-motion user never sees a hidden section).
 - `threshold: 0.2` — 20% visible triggers. Standard dawn-equivalent.
 - One-shot — `observer.disconnect()` after first intersection. Sections that scroll back out and back in don't re-animate.
@@ -131,17 +133,53 @@ interface Blob {
 
 const BLOBS: readonly Blob[] = [
   // ① cyan / hero / cool entry
-  { top: "40px",   side: "left",   offset: "-120px", size: 320, color: "rgba(56, 189, 248, 0.14)" },
+  {
+    top: "40px",
+    side: "left",
+    offset: "-120px",
+    size: 320,
+    color: "rgba(56, 189, 248, 0.14)",
+  },
   // ② indigo / problem / cold beat (only indigo on the page)
-  { top: "1300px", side: "right",  offset: "-100px", size: 360, color: "rgba(99, 102, 241, 0.12)" },
+  {
+    top: "1300px",
+    side: "right",
+    offset: "-100px",
+    size: 360,
+    color: "rgba(99, 102, 241, 0.12)",
+  },
   // ③ cyan / solution / cyan answer
-  { top: "1900px", side: "left",   offset: "-80px",  size: 300, color: "rgba(56, 189, 248, 0.16)" },
+  {
+    top: "1900px",
+    side: "left",
+    offset: "-80px",
+    size: 300,
+    color: "rgba(56, 189, 248, 0.16)",
+  },
   // ④ amber / receipts + comparison / proof opens
-  { top: "2400px", side: "center", offset: "-200px", size: 400, color: "rgba(245, 158, 11, 0.10)" },
+  {
+    top: "2400px",
+    side: "center",
+    offset: "-200px",
+    size: 400,
+    color: "rgba(245, 158, 11, 0.10)",
+  },
   // ⑤ amber / features + code / proof continues
-  { top: "3300px", side: "right",  offset: "-80px",  size: 360, color: "rgba(245, 158, 11, 0.08)" },
+  {
+    top: "3300px",
+    side: "right",
+    offset: "-80px",
+    size: 360,
+    color: "rgba(245, 158, 11, 0.08)",
+  },
   // ⑥ cyan / cta / cool crescendo (peak alpha)
-  { top: "4200px", side: "center", offset: "-180px", size: 360, color: "rgba(56, 189, 248, 0.18)" },
+  {
+    top: "4200px",
+    side: "center",
+    offset: "-180px",
+    size: 360,
+    color: "rgba(56, 189, 248, 0.18)",
+  },
 ];
 
 function blobStyle(blob: Blob): React.CSSProperties {
@@ -168,7 +206,11 @@ export function LandingAmbient() {
       className="pointer-events-none absolute inset-0 -z-40 overflow-hidden"
     >
       {BLOBS.map((blob, idx) => (
-        <div key={idx} className="absolute rounded-full" style={blobStyle(blob)} />
+        <div
+          key={idx}
+          className="absolute rounded-full"
+          style={blobStyle(blob)}
+        />
       ))}
     </div>
   );
@@ -181,18 +223,18 @@ Pattern is byte-similar to dawn's `LandingAmbient`. The wrapper div spans the fu
 
 The `top:` values above are first-pass estimates derived from rough section-height arithmetic:
 
-| Stop | Section | Approx. height | Cumulative top |
-| --- | --- | --- | --- |
-| Hero | 0 → ~720 | 720 | 0 |
-| PlaygroundSection | 720 → ~1300 | 580 | 720 |
-| Problem | 1300 → ~1700 | 400 | 1300 |
-| Solution | 1700 → ~2150 | 450 | 1700 |
-| ReceiptsBand | 2150 → ~2500 | 350 | 2150 |
-| ComparisonTable | 2500 → ~2950 | 450 | 2500 |
-| FeatureGrid | 2950 → ~3500 | 550 | 2950 |
-| CodeExample | 3500 → ~4000 | 500 | 3500 |
-| CtaSection | 4000 → ~4400 | 400 | 4000 |
-| Footer | 4400 → ~4500 | 100 | 4400 |
+| Stop              | Section      | Approx. height | Cumulative top |
+| ----------------- | ------------ | -------------- | -------------- |
+| Hero              | 0 → ~720     | 720            | 0              |
+| PlaygroundSection | 720 → ~1300  | 580            | 720            |
+| Problem           | 1300 → ~1700 | 400            | 1300           |
+| Solution          | 1700 → ~2150 | 450            | 1700           |
+| ReceiptsBand      | 2150 → ~2500 | 350            | 2150           |
+| ComparisonTable   | 2500 → ~2950 | 450            | 2500           |
+| FeatureGrid       | 2950 → ~3500 | 550            | 2950           |
+| CodeExample       | 3500 → ~4000 | 500            | 3500           |
+| CtaSection        | 4000 → ~4400 | 400            | 4000           |
+| Footer            | 4400 → ~4500 | 100            | 4400           |
 
 Blob `top:` values are positioned to bleed into their target sections (e.g., blob ② at `1300px` sits behind Problem; blob ④ at `2400px` straddles ReceiptsBand → ComparisonTable for the "amber wash through proof" effect).
 
@@ -232,13 +274,27 @@ export default function HomePage() {
     <>
       <Hero />
       <PlaygroundSection />
-      <ScrollReveal><Problem /></ScrollReveal>
-      <ScrollReveal><Solution /></ScrollReveal>
-      <ScrollReveal><ReceiptsBand /></ScrollReveal>
-      <ScrollReveal><ComparisonTable /></ScrollReveal>
-      <ScrollReveal><FeatureGrid /></ScrollReveal>
-      <ScrollReveal><CodeExample /></ScrollReveal>
-      <ScrollReveal><CtaSection /></ScrollReveal>
+      <ScrollReveal>
+        <Problem />
+      </ScrollReveal>
+      <ScrollReveal>
+        <Solution />
+      </ScrollReveal>
+      <ScrollReveal>
+        <ReceiptsBand />
+      </ScrollReveal>
+      <ScrollReveal>
+        <ComparisonTable />
+      </ScrollReveal>
+      <ScrollReveal>
+        <FeatureGrid />
+      </ScrollReveal>
+      <ScrollReveal>
+        <CodeExample />
+      </ScrollReveal>
+      <ScrollReveal>
+        <CtaSection />
+      </ScrollReveal>
     </>
   );
 }
@@ -312,6 +368,7 @@ No measurable client-bundle impact: `<ScrollReveal>` is ~40 lines of TypeScript 
 ### Pre-merge browser inspection (optional)
 
 Boot dev, take a screenshot of the page in three states:
+
 - First paint (Hero + PlaygroundSection visible, body sections opacity 0).
 - Mid-scroll (Problem + Solution animated in; Receipts onward still 0).
 - Bottom (CTA animated in, full page revealed).
@@ -321,6 +378,7 @@ Confirm the cool→warm→cool arc reads correctly via the blob positions.
 ## 7. Out of scope / handoff to 2.C + Phase 3
 
 **Phase 2.C:**
+
 - MDX content support across the seven sections.
 - Update `docs/superpowers/specs/2026-04-21-pretable-visual-system-design.md` to reflect the cool-slate AI-startup pivot (or replace with a new visual system spec).
 - Next.js + RSC unit-test setup. Backfill tests for ScrollReveal + LandingAmbient if/when the suite lands.
@@ -328,9 +386,11 @@ Confirm the cool→warm→cool arc reads correctly via the blob positions.
 - Stagger animation inside `<FeatureGrid>` (cards entering in sequence).
 
 **Phase 3:**
+
 - Retire `apps/playground` — `<Nav>` LINKS pruning, app deletion.
 
 **Other follow-ups (not committed to a phase):**
+
 - Hero parallax effect (dawn has `<HeroEarthParallax />` — earth + starfield + sun bloom). Could land as Phase 2.D if the user wants more visual polish on the hero.
 - Theming-architecture work for external `@pretable/*` consumers (separately tracked).
 - Vercel project + domain wiring.
@@ -343,14 +403,14 @@ Single-PR squash-merge. Revertable atomically:
 
 ## 9. Risks
 
-| Risk | Mitigation |
-|------|------------|
-| Hardcoded `top:` values for blobs become wrong if a section's height changes (e.g., Phase 2.C adds copy to Problem, pushing everything down) | Code comment in `LandingAmbient.tsx` explicitly documents the measurement methodology + how to re-tune. Phase 2.C author re-measures if they touch section heights. |
-| `IntersectionObserver` not supported in target browsers | All evergreen browsers support it natively; Next.js 16 already requires modern targets. No polyfill needed. |
-| Reduced-motion override doesn't actually fire | Tested manually via DevTools in pre-merge smoke. The Tailwind `motion-reduce:` variant compiles to a `@media (prefers-reduced-motion: reduce)` block — can verify in compiled CSS. |
-| Blobs visually compete with the page gradient | First-pass alphas (0.08-0.18) are tuned subtle. If the gradient washes them out at viewport scale, alphas can be bumped up in a follow-up. Conservative defaults. |
-| Animation feels too slow / too fast at 700ms | First-pass; can be tuned. Faster than 500ms reads as flicker; slower than 900ms reads as sluggish. 700ms is the dawn-equivalent sweet spot. |
-| `<ScrollReveal>` opacity-0 hides content from search engines / accessibility tools | Search engines render the SSR HTML which has no opacity-0 (only after JS hydration does the class apply). For a11y, screen readers see the content tree — opacity is visual-only, not inert. Tab-key navigation reaches hidden elements normally (no `tabindex=-1`, no `display:none`). |
+| Risk                                                                                                                                         | Mitigation                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hardcoded `top:` values for blobs become wrong if a section's height changes (e.g., Phase 2.C adds copy to Problem, pushing everything down) | Code comment in `LandingAmbient.tsx` explicitly documents the measurement methodology + how to re-tune. Phase 2.C author re-measures if they touch section heights.                                                                                                                     |
+| `IntersectionObserver` not supported in target browsers                                                                                      | All evergreen browsers support it natively; Next.js 16 already requires modern targets. No polyfill needed.                                                                                                                                                                             |
+| Reduced-motion override doesn't actually fire                                                                                                | Tested manually via DevTools in pre-merge smoke. The Tailwind `motion-reduce:` variant compiles to a `@media (prefers-reduced-motion: reduce)` block — can verify in compiled CSS.                                                                                                      |
+| Blobs visually compete with the page gradient                                                                                                | First-pass alphas (0.08-0.18) are tuned subtle. If the gradient washes them out at viewport scale, alphas can be bumped up in a follow-up. Conservative defaults.                                                                                                                       |
+| Animation feels too slow / too fast at 700ms                                                                                                 | First-pass; can be tuned. Faster than 500ms reads as flicker; slower than 900ms reads as sluggish. 700ms is the dawn-equivalent sweet spot.                                                                                                                                             |
+| `<ScrollReveal>` opacity-0 hides content from search engines / accessibility tools                                                           | Search engines render the SSR HTML which has no opacity-0 (only after JS hydration does the class apply). For a11y, screen readers see the content tree — opacity is visual-only, not inert. Tab-key navigation reaches hidden elements normally (no `tabindex=-1`, no `display:none`). |
 
 ## 10. Success criteria
 
