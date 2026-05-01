@@ -24,7 +24,12 @@
   --pretable-radius: 12px; /* M3 medium shape scale (matches Card) */
 
   /* State */
-  --pretable-bg-hover: rgba(29, 27, 32, 0.08); /* on-surface @ 8% — M3 hover state layer */
+  --pretable-bg-hover: rgba(
+    29,
+    27,
+    32,
+    0.08
+  ); /* on-surface @ 8% — M3 hover state layer */
   --pretable-bg-selected: #e8def8; /* secondary-container */
   --pretable-text-selected: #1d192b; /* on-secondary-container */
   --pretable-focus-ring: #6750a4; /* primary */
@@ -41,7 +46,9 @@
   --pretable-font-size-header: 14px; /* label-large (px equal; weight differs in grid.css) */
 
   /* Typography */
-  --pretable-font-sans: "Roboto Flex", "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --pretable-font-sans:
+    "Roboto Flex", "Roboto", system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   --pretable-font-mono: "Roboto Mono", ui-monospace, monospace;
 }
 

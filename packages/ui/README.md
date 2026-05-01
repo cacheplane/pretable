@@ -128,15 +128,15 @@ const visibleRows = Math.floor(viewportHeight / rowHeight);
 
 All tokens are `--pretable-*` prefixed.
 
-| Group | Tokens |
-|---|---|
-| Surfaces | `bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip` |
-| Text | `text-cell`, `text-header`, `text-dim` |
-| Lines | `rule`, `rule-strong`, `radius` |
-| State | `bg-hover`, `bg-selected`, `text-selected`, `focus-ring` |
-| Accent | `accent` |
-| Density | `row-height`, `header-height`, `cell-padding-x`, `cell-padding-y`, `font-size-cell`, `font-size-header` |
-| Typography | `font-sans`, `font-mono` |
+| Group      | Tokens                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| Surfaces   | `bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip`                                       |
+| Text       | `text-cell`, `text-header`, `text-dim`                                                                  |
+| Lines      | `rule`, `rule-strong`, `radius`                                                                         |
+| State      | `bg-hover`, `bg-selected`, `text-selected`, `focus-ring`                                                |
+| Accent     | `accent`                                                                                                |
+| Density    | `row-height`, `header-height`, `cell-padding-x`, `cell-padding-y`, `font-size-cell`, `font-size-header` |
+| Typography | `font-sans`, `font-mono`                                                                                |
 
 The engine reads `--pretable-row-height` and `--pretable-header-height` directly from CSS at JS time. The other 22 tokens are CSS-only.
 
