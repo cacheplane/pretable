@@ -1,13 +1,13 @@
 # Pretable
 
-Pretable is a `pnpm` monorepo for a text-aware data grid, its public npm packages, and the benchmark/playground surfaces used to prove the wrapped-text and variable-height wedge.
+Pretable is a `pnpm` monorepo for a text-aware data grid, its public npm packages, and the benchmark + marketing surfaces used to prove the wrapped-text and variable-height wedge.
 
 ## Current State
 
 This repo is already beyond scaffolding.
 
 - `apps/bench` is the benchmark lab. It compares Pretable against external adapters, writes hypothesis-bearing artifacts, and is the main source of performance evidence.
-- `apps/playground` is the first product-facing prototype. It currently presents a read-heavy inspection table built on the same core path as the React renderer work.
+- `apps/website` is the marketing landing. It embeds the live grid as a `<PlaygroundSection>` for product-facing demos.
 - `packages/*` contains both the public npm surface and the internal engine layers that are still evolving toward an MVP.
 
 The repo is intentionally conservative about what is public.
@@ -37,7 +37,8 @@ Everything else under `packages/` should be treated as internal implementation d
 ### Apps
 
 - `apps/bench`: benchmark harness and browser test target
-- `apps/playground`: prototype inspection-table playground
+- `apps/website`: marketing landing with embedded live grid
+- `apps/streaming-demo`: streaming adapter demonstration
 
 ### Docs and status outputs
 
@@ -62,10 +63,10 @@ If you open a fresh git worktree, run `pnpm install` there too. The main checkou
 
 ```bash
 pnpm dev:bench
-pnpm dev:playground
+pnpm --filter @pretable/app-website dev
 ```
 
-The playground now defaults to the shared `dev` inspection dataset and exposes a local dataset-scale switcher plus diagnostics for rendered rows, visible rows, planned height, viewport range, and selected row. Use it for real manual inspection, not just smoke testing.
+The website's `<PlaygroundSection>` defaults to the shared `dev` inspection dataset and exposes a dataset-scale switcher plus diagnostics for rendered rows, visible rows, planned height, viewport range, and selected row. Use it for real manual inspection, not just smoke testing.
 
 ### Benchmark entry points
 
@@ -113,10 +114,10 @@ Run these sequentially in a single checkout. Heavy workspace commands can conten
 
 ## Development Workflow
 
-### If you are working on the prototype
+### If you are working on the live demo
 
-- Start in `apps/playground`.
-- Keep the playground on the same renderer/core path as the benchmarked React surface.
+- Start in `apps/website`'s `<PlaygroundSection>`.
+- Keep the demo on the same renderer/core path as the benchmarked React surface.
 - Avoid adding product chrome that bypasses the shared grid path.
 - Use the diagnostics block and dataset-scale switcher to inspect stability under `dev` and `stress`, not just `tiny`.
 
@@ -156,7 +157,7 @@ Column virtualization is live: horizontal virtualization renders only visible co
 
 ## Current Risks
 
-- The benchmark and playground are tighter now, but `@pretable/react/internal` is still an internal seam. It should keep absorbing prototype-specific composition until the public API is deliberate.
+- The benchmark and website demo are tighter now, but `@pretable/react/internal` is still an internal seam. It should keep absorbing prototype-specific composition until the public API is deliberate.
 - Streaming is still architectural intent, not implemented evidence.
 
 ## Recommended Reading

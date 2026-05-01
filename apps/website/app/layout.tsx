@@ -27,7 +27,7 @@ export default function RootLayout({
         <Nav active="website" version={APP_VERSION} />
         <main>{children}</main>
         {/* TODO(ci-signal): wire ciStatus to a real source once CI status plumbing exists.
-            Hardcoded "green" for now — parity with apps/playground/src/app.tsx. */}
+            Hardcoded "green" for now. */}
         <Footer version={APP_VERSION} ciStatus="green" />
       </body>
     </html>

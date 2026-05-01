@@ -6,7 +6,7 @@ import { Nav } from "../nav";
 
 describe("Nav", () => {
   it("renders the wordmark as 'pretable.' with an amber period span", () => {
-    const { container } = render(<Nav active="playground" />);
+    const { container } = render(<Nav active="website" />);
     const brand = container.querySelector(".pt-nav-brand");
     expect(brand).toBeInTheDocument();
     expect(brand).toHaveTextContent("pretable.");
@@ -16,7 +16,7 @@ describe("Nav", () => {
   });
 
   it("renders the version pill when version prop is provided", () => {
-    render(<Nav active="playground" version="0.4" />);
+    render(<Nav active="website" version="0.4" />);
     expect(screen.getByText("v")).toBeInTheDocument();
     expect(screen.getByText("0.4")).toBeInTheDocument();
   });
@@ -24,7 +24,7 @@ describe("Nav", () => {
   it("renders three standard links with the active one marked", () => {
     const { container } = render(<Nav active="bench" />);
     const links = Array.from(container.querySelectorAll(".pt-nav-link"));
-    expect(links).toHaveLength(4); // playground, bench, docs, github
+    expect(links).toHaveLength(4); // website, bench, docs, github
     const active = container.querySelector(".pt-nav-link.active");
     expect(active).toHaveTextContent(/bench/i);
   });
@@ -40,18 +40,15 @@ describe("Nav", () => {
   });
 
   it("renders the GitHub stars count when githubStars is provided", () => {
-    render(<Nav active="playground" githubStars={1234} />);
+    render(<Nav active="website" githubStars={1234} />);
     expect(screen.getByText("1.2k")).toBeInTheDocument();
   });
 
   it("renders the CTA button when cta is provided", () => {
     render(
-      <Nav
-        active="playground"
-        cta={{ label: "Try playground →", href: "/" }}
-      />,
+      <Nav active="website" cta={{ label: "Try it live →", href: "/" }} />,
     );
-    const cta = screen.getByRole("link", { name: /try playground/i });
+    const cta = screen.getByRole("link", { name: /try it live/i });
     expect(cta).toHaveAttribute("href", "/");
     expect(cta).toHaveClass("pt-nav-cta");
   });
