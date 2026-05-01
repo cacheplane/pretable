@@ -1,13 +1,15 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { PretableGrid } from "@pretable/react";
 import type { PretableTelemetry } from "@pretable/react/internal";
 import { PretableSurface } from "@pretable/react/internal";
+import { createBatcher } from "@pretable-internal/stream-adapter";
 import type {
   ScenarioDataset,
   ScenarioRow,
 } from "@pretable-internal/scenario-data";
 
+import type { ApplyBenchUpdates } from "./bench-runtime";
 import type { BenchInteractionPlan } from "./interaction-plan";
 
 export interface PretableAdapterProps {
@@ -15,6 +17,13 @@ export interface PretableAdapterProps {
   interactionPlan?: BenchInteractionPlan | null;
   onGridReady?: (grid: PretableGrid<ScenarioRow>) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
+  /**
+   * Called once the adapter has wired up its update mechanism. Pretable
+   * routes batches through @pretable-internal/stream-adapter's RAF-based
+   * batcher → grid.applyTransaction. This is the wedge's idiomatic
+   * streaming pattern.
+   */
+  onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
   runKey: number;
 }
 
@@ -36,6 +45,7 @@ export function PretableAdapter({
   interactionPlan,
   onGridReady,
   onTelemetryChange,
+  onUpdateApiReady,
   runKey,
 }: PretableAdapterProps) {
   const adapterRef = useRef<HTMLElement>(null);
@@ -47,11 +57,30 @@ export function PretableAdapter({
   const onGridReadyRef = useRef(onGridReady);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onGridReadyRef.current = onGridReady;
+  const onUpdateApiReadyRef = useRef(onUpdateApiReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
+  onUpdateApiReadyRef.current = onUpdateApiReady;
 
   const handleGridReady = useCallback((grid: PretableGrid<ScenarioRow>) => {
     gridRef.current = grid;
     onGridReadyRef.current?.(grid);
   }, []);
+
+  // Wire updates through the stream-adapter batcher (RAF-aligned), the
+  // same path real consumers use for LLM-rate streaming. The batcher is
+  // recreated on each runKey change so a re-run starts with empty buffers.
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const batcher = createBatcher<ScenarioRow>(grid);
+    const apply: ApplyBenchUpdates = (patches) => {
+      batcher.update(patches as Partial<ScenarioRow>[]);
+    };
+    onUpdateApiReadyRef.current?.(apply);
+    return () => {
+      batcher.dispose();
+    };
+  }, [runKey]);
 
   const onTelemetryChangeRef = useRef(onTelemetryChange);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks

@@ -190,18 +190,19 @@ describe("bench-runner contract", () => {
       reason: expect.stringContaining("scenario"),
     });
 
-    // updates script is pretable-only
-    expect(
-      validateSupportedP0aRequest({
-        ...baseRequest,
-        adapterId: "gridalpha",
-        scenarioId: "S5",
-        scriptName: "updates",
-      }),
-    ).toEqual({
-      ok: false,
-      reason: expect.stringContaining("adapter"),
-    });
+    // updates script supports all four adapters on S5 — comparative claim
+    // shipped in PR #15 → comparative promotion (each adapter wires its
+    // own idiomatic streaming path in apps/bench/src/*-adapter.tsx).
+    for (const adapterId of ["gridalpha", "gridbeta", "gridgamma"] as const) {
+      expect(
+        validateSupportedP0aRequest({
+          ...baseRequest,
+          adapterId,
+          scenarioId: "S5",
+          scriptName: "updates",
+        }),
+      ).toEqual({ ok: true });
+    }
 
     // updates script is S5-only
     expect(
