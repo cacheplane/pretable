@@ -17,9 +17,9 @@ import type {
 
 import { measureRenderedRowHeight } from "../row-height";
 import { type PretableTelemetry, usePretableModel } from "../use-pretable";
+import { useResolvedHeights } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
-  HEADER_HEIGHT,
   formatCellValue,
   getNextSortDirection,
   getPinnedLeftOffsets,
@@ -179,7 +179,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const viewportRef = useRef<HTMLDivElement>(null);
-  const bodyViewportHeight = Math.max(viewportHeight - HEADER_HEIGHT, 0);
+  const { headerHeight } = useResolvedHeights();
+  const bodyViewportHeight = Math.max(viewportHeight - headerHeight, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     autosize,
     columns,
@@ -337,7 +338,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         ...viewportStyle,
       }}
     >
-      <div style={getHeaderRowStyle(renderSnapshot.totalWidth)}>
+      <div
+        data-pretable-header-row=""
+        style={getHeaderRowStyle(renderSnapshot.totalWidth, headerHeight)}
+      >
         {renderSnapshot.columns.map((plannedCol) => {
           const column = columns[plannedCol.index];
 
