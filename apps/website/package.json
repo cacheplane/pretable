@@ -12,6 +12,7 @@
     "prestart": "pnpm run prepare:deps",
     "pretest": "pnpm run prepare:deps",
     "test": "vitest run --environment jsdom",
+    "smoke": "playwright test",
     "lint": "eslint app --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
