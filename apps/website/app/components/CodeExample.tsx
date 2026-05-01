@@ -36,10 +36,10 @@ export function CodeExample() {
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[1240px]">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-          05 · the import
+          04 · for engineers
         </p>
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
-          One import. Stream tokens into a stable grid.
+          For engineers: how it looks in your codebase.
         </h2>
         <p className="mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           Connect any token-streaming source — OpenAI Responses, Anthropic, or

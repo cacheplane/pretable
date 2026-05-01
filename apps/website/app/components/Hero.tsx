@@ -1,5 +1,4 @@
 import { AmbientBlob } from "./AmbientBlob";
-import { CopyCommand } from "./CopyCommand";
 
 export function Hero() {
   return (
@@ -10,22 +9,33 @@ export function Hero() {
           $ pretable — vol. 2 · no. 1
         </p>
         <h1 className="mt-4 font-display text-[40px] leading-[1.02] tracking-[-0.025em] text-text-primary md:text-[56px] md:leading-none">
-          The grid that treats <em className="italic text-accent">scroll</em> as
-          a first-class feature.
+          The <em className="italic text-accent">fastest</em> data grid for
+          React.
+          <br />
+          Built for the AI era.
         </h1>
         <p className="mx-auto mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
-          500k rows. 60fps scroll. Selection survives filters. Built on a
-          deterministic engine you can read.
+          60fps under streaming load. Zero row drift. A deterministic engine
+          designed for live data, agent output, and real-time telemetry — not
+          retrofitted from a batch-era grid.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <a
-            href="#grid"
+            href="#receipts"
             className="inline-flex items-center gap-2 rounded-[4px] bg-accent px-5 py-2.5 text-[13px] font-semibold text-bg-page hover:bg-accent-deep focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg-page"
+          >
+            See the receipts ↓
+          </a>
+          <a
+            href="#grid"
+            className="inline-flex items-center gap-2 rounded-[2px] border border-text-primary bg-transparent px-[18px] py-[10px] font-mono text-[13px] text-text-primary hover:bg-bg-raised hover:text-bg-card transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg-page"
           >
             Try it live ↓
           </a>
-          <CopyCommand command="npm i @pretable/react" />
         </div>
+        <p className="mt-8 font-mono text-[11px] text-text-muted">
+          MIT licensed · open source
+        </p>
       </div>
     </section>
   );

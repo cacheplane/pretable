@@ -3,10 +3,10 @@ export function CtaSection() {
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[860px] text-center">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-          06 · check the receipts
+          06 · ready to ship
         </p>
         <h2 className="mt-4 font-display text-[40px] leading-[1.02] tracking-[-0.025em] md:text-[56px] md:leading-none">
-          Check the receipts.
+          Run the benchmarks. Then ship.
         </h2>
         <p className="mx-auto mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           The grid is in your hands at the top of this page. The numbers are

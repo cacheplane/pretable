@@ -23,7 +23,10 @@ const STATS: readonly Stat[] = [
 
 export function ReceiptsBand() {
   return (
-    <section className="text-text-primary border-b border-rule px-7 py-[52px] md:px-10">
+    <section
+      id="receipts"
+      className="text-text-primary border-b border-rule px-7 py-[52px] md:px-10"
+    >
       <div className="mx-auto max-w-[1240px]">
         <h2 className="font-display text-[28px] leading-[1.12] tracking-[-0.02em] md:text-[32px]">
           <em className="italic text-accent-deep">Receipts</em>, not claims.
