@@ -71,8 +71,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
-  deploy:
-    name: Deploy → Vercel
+  deploy-prod:
+    name: Deploy → Vercel (production)
     needs: [test, typecheck, lint, format, build]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -130,3 +130,47 @@ jobs:
           name: website-smoke-traces
           path: apps/website/test-results/
           retention-days: 7
+
+  deploy-preview:
+    name: Deploy → Vercel (preview)
+    needs: [test, typecheck, lint, format, build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Pull Vercel project settings
+        run: |
+          mkdir -p .vercel
+          cat > .vercel/project.json <<EOF
+          {"projectId":"${{ secrets.VERCEL_PROJECT_ID }}","orgId":"${{ secrets.VERCEL_ORG_ID }}","projectName":"pretable"}
+          EOF
+          npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+          rm -rf .vercel/output
+      - name: Build with Vercel
+        run: npx vercel build --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy preview to Vercel
+        id: deploy
+        run: |
+          url=$(npx vercel deploy --prebuilt --archive=tgz --yes --token=${{ secrets.VERCEL_TOKEN }} | tail -n 1)
+          echo "preview_url=$url" >> "$GITHUB_OUTPUT"
+          echo "Preview: $url"
+      - name: Comment preview URL on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: vercel-preview
+          message: |
+            ### Vercel preview ready
+
+            **Preview**: ${{ steps.deploy.outputs.preview_url }}
+            **Commit**: `${{ github.event.pull_request.head.sha }}`
+
+            <sub>Updated automatically by the `deploy-preview` job.</sub>
