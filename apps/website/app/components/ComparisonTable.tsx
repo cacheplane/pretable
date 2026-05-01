@@ -83,15 +83,14 @@ export function ComparisonTable() {
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[1240px]">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-          03 · cell-by-cell receipts
+          03 · how we compare
         </p>
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
-          Cell-by-cell receipts.
+          How we compare.
         </h2>
         <p className="mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
-          S5 streaming-updates scenario at 1,000 patches/sec, 3 repeats on
-          Chromium hypothesis scale. Pretable's column is amber-italic. Numbers
-          come from{" "}
+          Streaming workload at 1,000 patches/sec, 3 repeats on Chromium.
+          Pretable's column is amber-italic. Numbers come from{" "}
           <code className="font-mono text-[15px] text-accent-deep">
             pnpm bench:matrix
           </code>
