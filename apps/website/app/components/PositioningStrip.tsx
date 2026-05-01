@@ -12,12 +12,17 @@ const CARDS: readonly Card[] = [
     headline: "The fastest grid in independent benchmarks.",
     body: (
       <>
-        9 ms frame p95 under 1,000 patches/sec streaming load. Zero long tasks.
-        Zero row drift. Verifiable:{" "}
+        9.3 ms frame p95 on wrapped-text scroll —{" "}
+        <strong className="text-text-primary font-semibold">
+          4.6× faster than Grid Alpha
+        </strong>{" "}
+        (42.5 ms) at 3,000 rows. 9 ms frame p95 under 1,000 patches/sec
+        streaming (tied with Grid Alpha + GridBeta; GridGamma X collapses). Zero long
+        tasks, zero blank gaps, zero anchor shift in both windows. Verifiable:{" "}
         <code className="font-mono text-[13px] text-accent">
           pnpm bench:matrix
-        </code>{" "}
-        against Grid Alpha, GridBeta Virtual, GridGamma X.
+        </code>
+        .
       </>
     ),
   },
