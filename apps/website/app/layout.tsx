@@ -1,4 +1,4 @@
-import { Footer } from "@pretable/ui";
+import { Footer } from "./components/Footer";
 
 import { RouteAwareNav } from "./components/RouteAwareNav";
 import type { Metadata, Viewport } from "next";
