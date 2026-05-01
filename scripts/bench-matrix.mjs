@@ -1415,8 +1415,27 @@ function summarizePolicyNotes(series) {
   };
 }
 
+// Drift signal should fire on actual browser/CSS policy changes (e.g.,
+// "scroll anchoring: auto" vs "scroll anchoring: none" across repeats),
+// not on continuous-numeric diagnostic telemetry that fluctuates by
+// rounding (e.g., "internal telemetry planned height: 515712" vs "515729"
+// at 3,000-row hypothesis scale). The "internal telemetry *" prefix marks
+// notes that are diagnostic only — they are surfaced in the runset as
+// useful context but don't represent a policy that should be reproducible
+// across repeats. Without this filter, H6 (and any interaction hypothesis
+// at hypothesis scale) flips to "directional" purely on planned-height
+// jitter even when the actual interaction-latency distribution is fully
+// within thresholds.
+const DIAGNOSTIC_NOTE_KEY_PREFIX = "internal telemetry ";
+
 function hasPolicyDrift(evidence) {
-  return Object.keys(evidence.policyNotes?.varying ?? {}).length > 0;
+  const varying = evidence.policyNotes?.varying ?? {};
+  for (const key of Object.keys(varying)) {
+    if (!key.startsWith(DIAGNOSTIC_NOTE_KEY_PREFIX)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function getAdapterFamily(adapterId) {
