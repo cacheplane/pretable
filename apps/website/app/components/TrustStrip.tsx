@@ -1,20 +1,23 @@
 interface Logo {
   name: string;
-  className: string;
+  src: string;
+  title?: string;
 }
 
 const FEATURED_LOGOS: readonly Logo[] = [
-  { name: "Santander", className: "font-display text-[18px] font-semibold" },
-  { name: "M&T Bank", className: "font-display text-[18px] font-semibold" },
-  { name: "The Motley Fool", className: "font-display text-[18px] italic" },
+  { name: "Santander", src: "/brand-logos/santander.svg" },
+  { name: "M&T Bank", src: "/brand-logos/m-and-t-bank.svg" },
+  { name: "The Motley Fool", src: "/brand-logos/the-motley-fool.svg" },
   {
     name: "Grid Alpha",
-    className:
-      "font-display text-[18px] font-semibold text-accent underline decoration-dotted underline-offset-4",
+    src: "/brand-logos/gridalpha-wordmark.svg",
+    title: "yes, that Grid Alpha",
   },
+  { name: "Google", src: "/brand-logos/google.svg" },
+  { name: "FedEx", src: "/brand-logos/fedex.svg" },
+  { name: "ClickUp", src: "/brand-logos/clickup.svg" },
+  { name: "Runway", src: "/brand-logos/runway.svg" },
 ];
-
-const OTHER_LOGOS = "+ Google · FedEx · ClickUp · Runway";
 
 export function TrustStrip() {
   return (
@@ -40,22 +43,23 @@ export function TrustStrip() {
             interfaces at:
           </p>
 
-          {/* Logo row */}
-          <div className="mt-5 flex flex-wrap items-center gap-x-9 gap-y-4 border-y border-rule py-4">
-            {FEATURED_LOGOS.map((logo) => (
-              <span
-                key={logo.name}
-                className={logo.className}
-                title={
-                  logo.name === "Grid Alpha" ? "yes, that Grid Alpha" : undefined
-                }
-              >
-                {logo.name}
-              </span>
-            ))}
-            <span className="font-mono text-[12px] text-text-muted">
-              {OTHER_LOGOS}
-            </span>
+          {/* Logo marquee — duplicated so translateX(-50%) wraps seamlessly. */}
+          <div
+            className="mt-5 overflow-hidden border-y border-rule py-5 [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]"
+            aria-label="Featured customers"
+          >
+            <div className="pt-marquee-track flex w-max items-center">
+              {[...FEATURED_LOGOS, ...FEATURED_LOGOS].map((logo, i) => (
+                <img
+                  key={i}
+                  src={logo.src}
+                  alt={i < FEATURED_LOGOS.length ? logo.name : ""}
+                  title={logo.title}
+                  aria-hidden={i >= FEATURED_LOGOS.length || undefined}
+                  className="me-14 h-9 w-auto shrink-0 opacity-75 [filter:brightness(0)_invert(1)]"
+                />
+              ))}
+            </div>
           </div>
 
           {/* Cheeky Grid Alpha line */}
