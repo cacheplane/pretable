@@ -1,21 +1,26 @@
 import { codeToHtml } from "shiki";
 
-const SNIPPET = `import {
-  connectElementStream,
-} from "@pretable-internal/stream-adapter";
+const SNIPPET = `"use client";
+import { useEffect, useState } from "react";
+import { connectElementStream } from "@pretable-internal/stream-adapter";
 import { PretableGrid } from "@pretable/react";
-import OpenAI from "openai";
+import { columns } from "./columns";
+import { openai } from "./openai-client";
 
-export function ChatGrid() {
+export function ChatGrid({ prompt }: { prompt: string }) {
   const [rows, setRows] = useState([]);
-  const stream = await openai.responses.stream({
-    model: "gpt-5",
-    input: prompt,
-  });
 
-  connectElementStream(stream, {
-    onElement: (row) => setRows((r) => [...r, row]),
-  });
+  useEffect(() => {
+    void (async () => {
+      const stream = await openai.responses.stream({
+        model: "gpt-5",
+        input: prompt,
+      });
+      connectElementStream(stream, {
+        onElement: (row) => setRows((r) => [...r, row]),
+      });
+    })();
+  }, [prompt]);
 
   return <PretableGrid rows={rows} columns={columns} />;
 }`;

@@ -15,6 +15,7 @@
   --color-text-primary: var(--pt-text-primary);
   --color-text-secondary: var(--pt-text-secondary);
   --color-text-muted: var(--pt-text-muted);
+  --color-text-dim: var(--pt-text-dim);
   --color-accent: var(--pt-accent);
   --color-accent-deep: var(--pt-accent-deep);
   --color-accent-soft: var(--pt-accent-soft);
