@@ -80,7 +80,7 @@ const NA_MARKER = "n/a";
 
 export function ComparisonTable() {
   return (
-    <section className="text-text-primary px-7 py-24 md:px-10 md:py-28">
+    <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[1240px]">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
           03 · cell-by-cell receipts
