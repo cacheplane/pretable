@@ -3,6 +3,7 @@ import { ComparisonTable } from "./components/ComparisonTable";
 import { CtaSection } from "./components/CtaSection";
 import { FeatureGrid } from "./components/FeatureGrid";
 import { Hero } from "./components/Hero";
+import { HowItWorks } from "./components/HowItWorks";
 import { PlaygroundSection } from "./components/PlaygroundSection";
 import { PositioningStrip } from "./components/PositioningStrip";
 import { Problem } from "./components/Problem";
@@ -33,6 +34,9 @@ export default function HomePage() {
       </ScrollReveal>
       <ScrollReveal>
         <ComparisonTable />
+      </ScrollReveal>
+      <ScrollReveal>
+        <HowItWorks />
       </ScrollReveal>
       <ScrollReveal>
         <CodeExample />
