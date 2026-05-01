@@ -13,7 +13,7 @@ describe("getDensityHeights snapshot", () => {
   test("returns fallback values when no CSS variables are set", () => {
     const heights = getDensityHeights();
     expect(heights.rowHeight).toBe(32);
-    expect(heights.headerHeight).toBe(36);
+    expect(heights.headerHeight).toBe(52);
   });
 
   test("reads numeric pixel values from the documented CSS variables", () => {
@@ -31,7 +31,7 @@ describe("getDensityHeights snapshot", () => {
     document.documentElement.style.setProperty("--pretable-row-height", "22px");
     const heights = getDensityHeights();
     expect(heights.rowHeight).toBe(22);
-    expect(heights.headerHeight).toBe(36);
+    expect(heights.headerHeight).toBe(52);
   });
 
   test("falls back when value is not parseable as <number>px", () => {
@@ -66,7 +66,7 @@ describe("useResolvedHeights hook", () => {
   test("returns fallbacks when neither props nor CSS variables are set", () => {
     const { result } = renderHook(() => useResolvedHeights());
     expect(result.current.rowHeight).toBe(32);
-    expect(result.current.headerHeight).toBe(36);
+    expect(result.current.headerHeight).toBe(52);
   });
 
   test("re-renders when [data-density] attribute changes on <html>", async () => {
