@@ -13,8 +13,11 @@ const NA_MARKER = "n/a";
 // Comparison snapshot — numbers from two committed milestone runsets:
 //
 //   status/milestones/2026-05-01-h1-satisfied.hypotheses.json
-//     S2/scroll/hypothesis × 3 repeats. H1 satisfied. Pretable 9.3ms p95,
-//     0px row-height-error, 4.6× faster than AG Grid (42.5ms, 153px).
+//     S2/scroll/hypothesis × 5 repeats, unified row-height formula across
+//     adapters. H1 satisfied. Pretable median 16ms p95 vs AG Grid 67ms
+//     (4× faster). Pretable holds 0px row-height-error; AG Grid 152px
+//     (autoHeight + wrapText + virtualization at hypothesis scale clips
+//     wrapped content to one line).
 //
 //   status/milestones/2026-05-01-streaming-revalidated.hypotheses.json
 //     S5/updates × {100, 500, 1k, 5k, 10k, 25k}/sec × 3 repeats. H15
@@ -23,17 +26,17 @@ const NA_MARKER = "n/a";
 // Re-derive with `pnpm bench:matrix`. Background memo:
 // docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md.
 //
-// The wedge has two sides. Scroll: real comparative win (4.6×) vs AG Grid.
-// Streaming: tied with AG Grid + TanStack on raw frame budget; the win is
-// row stability + integration. The rows below reflect both halves honestly.
+// The wedge has two sides. Scroll: 4× faster than AG Grid AND zero
+// content overflow vs AG Grid's 152px clipping. Streaming: tied on raw
+// frame budget; the win is row stability + integration.
 const ROWS: readonly Row[] = [
-  // ── Scroll proof (S2 wrapped-text @ 3k rows). The decisive comparative
-  // ── numeric win — 4.6× faster than AG Grid on the canonical wedge.
+  // ── Scroll proof (S2 wrapped-text @ 3k rows, 5 repeats). The decisive
+  // ── numeric win — 4× faster than AG Grid on the canonical wedge.
   {
     metric: "frame p95 (ms) — wrapped scroll",
-    pretable: "9.3",
-    agGrid: "42.5",
-    tanstack: "9.3",
+    pretable: "16",
+    agGrid: "67",
+    tanstack: "17",
     muiX: NA_MARKER,
     budget: "≤ 16",
     pretableWins: true,
@@ -41,12 +44,15 @@ const ROWS: readonly Row[] = [
   {
     metric: "row-height fidelity (px error)",
     pretable: "0",
-    agGrid: "153",
+    agGrid: "152",
     tanstack: "0",
     muiX: NA_MARKER,
     budget: "≤ 1",
     // DOM-truth check: row.height vs cell.scrollHeight + padding + border.
-    // AG Grid's row container is 153px out of sync with the cell content.
+    // AG Grid's row container is 152 px out of sync with the cell content
+    // because its autoHeight + wrapText doesn't fully apply during
+    // virtualization at hypothesis scale — wrapped content gets clipped to
+    // a single line. Pretable's rows hold their cell content (0 px error).
     pretableWins: true,
   },
   // ── Streaming proof (S5 updates @ 1k/sec, hypothesis scale).
@@ -115,9 +121,9 @@ export function ComparisonTable() {
           How we compare.
         </h2>
         <p className="mt-5 max-w-[64ch] font-display text-[17px] leading-[1.55] text-text-secondary">
-          Two windows: wrapped-text scroll at 3,000 rows, and streaming updates
-          at 1,000 patches/sec. Three repeats each on Chromium. Pretable's
-          column is amber-italic. Numbers come from{" "}
+          Two windows: wrapped-text scroll at 3,000 rows (5 repeats), and
+          streaming updates at 1,000 patches/sec (3 repeats). All on Chromium.
+          Pretable's column is amber-italic. Numbers come from{" "}
           <code className="font-mono text-[15px] text-accent-deep">
             pnpm bench:matrix
           </code>
@@ -149,7 +155,7 @@ export function ComparisonTable() {
                   <span className="inline-flex items-center gap-2">
                     <em className="italic text-accent">pretable</em>
                     <span className="rounded-[2px] bg-accent-soft px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-accent">
-                      4.6× faster scroll
+                      4× faster scroll
                     </span>
                   </span>
                 </th>

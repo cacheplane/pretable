@@ -6,18 +6,18 @@ interface Stat {
 // Receipts snapshot — numbers from two committed milestone runsets:
 //
 //   status/milestones/2026-05-01-h1-satisfied.hypotheses.json
-//     S2/scroll/hypothesis × 3 repeats. H1 satisfied.
+//     S2/scroll/hypothesis × 5 repeats, unified row-height formula. H1
+//     satisfied. Pretable median 16ms vs AG Grid 67ms = 4× faster.
 //
 //   status/milestones/2026-05-01-streaming-revalidated.hypotheses.json
 //     S5/updates × 6 rates × 3 repeats. H15 satisfied.
 //
-// "4.6× vs AG Grid" is the real comparative win — wrapped-text scroll p95
-// at hypothesis scale (Pretable 9.3ms vs AG Grid 42.5ms, three repeats).
-// "0 long tasks / streaming" holds across the full 100–25k operating
-// envelope. The page must not lie.
+// "4× vs AG Grid" is the real comparative win — wrapped-text scroll p95
+// at hypothesis scale (5 repeats). "0 long tasks / streaming" holds
+// across the full 100–25k operating envelope. The page must not lie.
 const STATS: readonly Stat[] = [
-  { value: "4.6×", caption: "faster scroll vs ag-grid" },
-  { value: "9.3ms", caption: "frame p95 / wrapped scroll" },
+  { value: "4×", caption: "faster scroll vs ag-grid" },
+  { value: "16ms", caption: "frame p95 / wrapped scroll" },
   { value: "0", caption: "long tasks / streaming" },
   { value: "25k/s", caption: "max sustained update rate" },
 ];
