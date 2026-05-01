@@ -1,0 +1,2131 @@
+{
+  "runsetId": "2026-05-01t20-36-02-611z",
+  "generatedAt": "2026-05-01T20:43:15.477Z",
+  "adapters": [
+    {
+      "adapterId": "pretable",
+      "adapterFamily": "candidate"
+    },
+    {
+      "adapterId": "gridalpha",
+      "adapterFamily": "full-grid"
+    },
+    {
+      "adapterId": "gridbeta",
+      "adapterFamily": "virtualization-primitive"
+    }
+  ],
+  "matrix": {
+    "adapters": ["pretable", "gridalpha", "gridbeta"],
+    "scenarios": ["S2", "S7"],
+    "scripts": ["scroll", "sort", "filter-metadata", "filter-text"],
+    "repeats": 3
+  },
+  "slices": [
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 516284",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "sort",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: sort",
+          "internal telemetry rendered rows: 7",
+          "internal telemetry visible rows: 3",
+          "internal telemetry total rows: 3000",
+          "internal telemetry viewport range: 0-3",
+          "internal telemetry selected row: S2-row-1775",
+          "internal telemetry focused row: S2-row-1775"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: sort",
+          "internal telemetry rendered rows: 7",
+          "internal telemetry visible rows: 3",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515729",
+          "internal telemetry viewport range: 0-3",
+          "internal telemetry selected row: S2-row-1775",
+          "internal telemetry focused row: S2-row-1775",
+          "internal telemetry planned height: 515712"
+        ],
+        "varying": {
+          "internal telemetry planned height": ["515712", "515729"]
+        }
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "filter-metadata",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-metadata",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 103438",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-1502",
+          "internal telemetry focused row: S2-row-1502"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-metadata",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 103438",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-1502",
+          "internal telemetry focused row: S2-row-1502"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "filter-text",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-text",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 86955",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-1501",
+          "internal telemetry focused row: S2-row-1501"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-text",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 86955",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-1501",
+          "internal telemetry focused row: S2-row-1501"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S7",
+      "scriptName": "scroll",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 463428",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S7",
+      "scriptName": "sort",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: sort",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 462102",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S7-row-1560",
+          "internal telemetry focused row: S7-row-1560"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: sort",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 462102",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S7-row-1560",
+          "internal telemetry focused row: S7-row-1560"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S7",
+      "scriptName": "filter-metadata",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-metadata",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 103534",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S7-row-1501",
+          "internal telemetry focused row: S7-row-1501"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-metadata",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 103534",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S7-row-1501",
+          "internal telemetry focused row: S7-row-1501"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S7",
+      "scriptName": "filter-text",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-text",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 75102",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S7-row-1501",
+          "internal telemetry focused row: S7-row-1501"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-text",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 75102",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S7-row-1501",
+          "internal telemetry focused row: S7-row-1501"
+        ],
+        "varying": {}
+      }
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "H1",
+      "status": "satisfied",
+      "summary": "Wrapped-text scrolling delivers zero-artifact quality (row height error ≤ 1px, anchor shift ≤ 16px, no blank gaps, no long tasks) with frame times within 10% of the best measured full-grid comparator. No measured full-grid competitor achieves the same combined quality. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 516284",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 516284",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 17.100000000000023,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 91,
+            "scroll_viewport_nodes_peak": 86,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 0,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 15.899999999999977,
+              "median": 17.100000000000023,
+              "max": 25.30000000000001
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 91,
+              "median": 91,
+              "max": 91
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 86,
+              "median": 86,
+              "max": 86
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "gridalpha",
+          "adapterFamily": "full-grid",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 66.59999999999991,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 657,
+            "scroll_viewport_nodes_peak": 468,
+            "rendered_rows_peak": 66,
+            "rendered_cells_peak": 198,
+            "row_height_error_p95_px": 153,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 50.700000000000045,
+              "median": 66.59999999999991,
+              "max": 66.69999999999993
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 3
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 174
+            },
+            "dom_nodes_peak": {
+              "min": 657,
+              "median": 657,
+              "max": 657
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 468,
+              "median": 468,
+              "max": 468
+            },
+            "rendered_rows_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "rendered_cells_peak": {
+              "min": 198,
+              "median": 198,
+              "max": 198
+            },
+            "row_height_error_p95_px": {
+              "min": 153,
+              "median": 153,
+              "max": 153
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "gridbeta",
+          "adapterFamily": "virtualization-primitive",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 24.100000000000023,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 499,
+            "scroll_viewport_nodes_peak": 494,
+            "rendered_rows_peak": 12,
+            "rendered_cells_peak": 480,
+            "row_height_error_p95_px": 0,
+            "scroll_anchor_shift_px": 403,
+            "scroll_anchor_shift_forward_p95_px": 403,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 17.5,
+              "median": 24.100000000000023,
+              "max": 33.30000000000001
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 499,
+              "median": 499,
+              "max": 499
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 494,
+              "median": 494,
+              "max": 494
+            },
+            "rendered_rows_peak": {
+              "min": 12,
+              "median": 12,
+              "max": 12
+            },
+            "rendered_cells_peak": {
+              "min": 480,
+              "median": 480,
+              "max": 480
+            },
+            "row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_px": {
+              "min": 403,
+              "median": 403,
+              "max": 403
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 403,
+              "median": 403,
+              "max": 403
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H6",
+      "status": "directional",
+      "summary": "Wrapped-text local sorting stays within the current interaction and settle thresholds while preserving post-sort stability. Current medians are promising, but policy drift across repeats keeps the claim directional.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: sort",
+              "internal telemetry rendered rows: 7",
+              "internal telemetry visible rows: 3",
+              "internal telemetry total rows: 3000",
+              "internal telemetry viewport range: 0-3",
+              "internal telemetry selected row: S2-row-1775",
+              "internal telemetry focused row: S2-row-1775"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: sort",
+              "internal telemetry rendered rows: 7",
+              "internal telemetry visible rows: 3",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515729",
+              "internal telemetry viewport range: 0-3",
+              "internal telemetry selected row: S2-row-1775",
+              "internal telemetry focused row: S2-row-1775",
+              "internal telemetry planned height: 515712"
+            ],
+            "varying": {
+              "internal telemetry planned height": ["515712", "515729"]
+            }
+          },
+          "metrics": {
+            "interaction_latency_ms": 16.69999999999999,
+            "settle_duration_ms": 33.30000000000007,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 0,
+            "result_row_count": 3000,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 7,
+            "rendered_cells_peak": 42
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 7.5,
+              "median": 16.69999999999999,
+              "max": 24.600000000000023
+            },
+            "settle_duration_ms": {
+              "min": 16.899999999999977,
+              "median": 33.30000000000007,
+              "max": 41.5
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "result_row_count": {
+              "min": 3000,
+              "median": 3000,
+              "max": 3000
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 7,
+              "median": 7,
+              "max": 7
+            },
+            "rendered_cells_peak": {
+              "min": 42,
+              "median": 42,
+              "max": 42
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H7",
+      "status": "satisfied",
+      "summary": "Metadata filtering stays within the current interaction and settle thresholds while reducing the row set without post-filter instability. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-metadata",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 103438",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-1502",
+              "internal telemetry focused row: S2-row-1502"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-metadata",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 103438",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-1502",
+              "internal telemetry focused row: S2-row-1502"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 25,
+            "settle_duration_ms": 24.999999999999943,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 0,
+            "result_row_count": 750,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 56,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 8.299999999999955,
+              "median": 25,
+              "max": 33.19999999999999
+            },
+            "settle_duration_ms": {
+              "min": 24.899999999999977,
+              "median": 24.999999999999943,
+              "max": 32.5
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "result_row_count": {
+              "min": 750,
+              "median": 750,
+              "max": 750
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 56,
+              "median": 56,
+              "max": 56
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H8",
+      "status": "satisfied",
+      "summary": "Wrapped-text primary-column filtering stays within the current interaction and settle thresholds while preserving post-filter stability. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-text",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 86955",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-1501",
+              "internal telemetry focused row: S2-row-1501"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-text",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 86955",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-1501",
+              "internal telemetry focused row: S2-row-1501"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 8.799999999999955,
+            "settle_duration_ms": 33.10000000000002,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 0,
+            "result_row_count": 500,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 56,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 8,
+              "median": 8.799999999999955,
+              "max": 16.600000000000023
+            },
+            "settle_duration_ms": {
+              "min": 25.099999999999966,
+              "median": 33.10000000000002,
+              "max": 42
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "result_row_count": {
+              "min": 500,
+              "median": 500,
+              "max": 500
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 56,
+              "median": 56,
+              "max": 56
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H5",
+      "status": "satisfied",
+      "summary": "The matrix run writes summary JSON, trace artifacts, and a machine-readable hypothesis report from one command.",
+      "evidence": [
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t20-36-41-112z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t20-36-49-493z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t20-36-52-701z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t20-36-55-653z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t20-36-59-573z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t20-37-12-518z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t20-37-22-918z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t20-37-29-786z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t20-37-33-952z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t20-37-38-727z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t20-37-42-786z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t20-37-47-592z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t20-37-54-730z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t20-37-59-919z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t20-38-04-500z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t20-38-09-159z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t20-38-13-525z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-01t20-38-17-986z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-01t20-38-22-050z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-01t20-38-27-361z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-scroll-2026-05-01t20-38-32-835z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-sort-2026-05-01t20-38-39-242z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-metadata-2026-05-01t20-38-43-459z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s7-hypothesis-filter-text-2026-05-01t20-38-47-172z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t20-38-51-335z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t20-38-56-718z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t20-39-01-331z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t20-39-10-213z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t20-39-15-032z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t20-39-20-188z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t20-39-24-308z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t20-39-28-627z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t20-39-34-027z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t20-39-44-976z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t20-39-52-097z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t20-39-57-469z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t20-40-02-627z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t20-40-09-075z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t20-40-17-345z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t20-40-26-626z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t20-40-34-618z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-sort-2026-05-01t20-40-43-922z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-metadata-2026-05-01t20-40-53-271z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-filter-text-2026-05-01t20-41-02-329z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-scroll-2026-05-01t20-41-07-533z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-sort-2026-05-01t20-41-14-553z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-metadata-2026-05-01t20-41-19-544z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s7-hypothesis-filter-text-2026-05-01t20-41-23-978z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t20-41-28-555z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t20-41-33-210z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t20-41-37-492z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t20-41-43-235z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t20-41-47-529z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t20-41-51-954z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t20-41-55-892z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t20-42-00-052z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t20-42-04-535z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t20-42-09-402z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t20-42-14-049z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t20-42-18-147z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t20-42-22-006z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t20-42-26-652z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t20-42-31-172z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t20-42-35-222z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t20-42-39-842z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-sort-2026-05-01t20-42-45-467z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-metadata-2026-05-01t20-42-49-919z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-filter-text-2026-05-01t20-42-54-329z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-scroll-2026-05-01t20-42-58-805z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-sort-2026-05-01t20-43-03-920z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-metadata-2026-05-01t20-43-09-987z.summary.json"
+        },
+        {
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s7-hypothesis-filter-text-2026-05-01t20-43-15-113z.summary.json"
+        }
+      ]
+    },
+    {
+      "id": "H9",
+      "status": "satisfied",
+      "summary": "Wrapped-text scrolling delivers zero-artifact quality (row height error ≤ 1px, anchor shift ≤ 16px, no blank gaps, no long tasks) with frame times within 10% of the best measured full-grid comparator. No measured full-grid competitor achieves the same combined quality. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 463428",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 463428",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 16.799999999999955,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 103,
+            "scroll_viewport_nodes_peak": 98,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 77,
+            "row_height_error_p95_px": 0,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 16.600000000000023,
+              "median": 16.799999999999955,
+              "max": 24.899999999999977
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 103,
+              "median": 103,
+              "max": 103
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 98,
+              "median": 98,
+              "max": 98
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 77,
+              "median": 77,
+              "max": 77
+            },
+            "row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "gridalpha",
+          "adapterFamily": "full-grid",
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 66.80000000000007,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 3,
+            "long_tasks_ms": 152,
+            "dom_nodes_peak": 657,
+            "scroll_viewport_nodes_peak": 468,
+            "rendered_rows_peak": 66,
+            "rendered_cells_peak": 198,
+            "row_height_error_p95_px": 109,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 58.39999999999998,
+              "median": 66.80000000000007,
+              "max": 75
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 3,
+              "max": 6
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 152,
+              "max": 342
+            },
+            "dom_nodes_peak": {
+              "min": 657,
+              "median": 657,
+              "max": 657
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 468,
+              "median": 468,
+              "max": 468
+            },
+            "rendered_rows_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "rendered_cells_peak": {
+              "min": 198,
+              "median": 198,
+              "max": 198
+            },
+            "row_height_error_p95_px": {
+              "min": 109,
+              "median": 109,
+              "max": 109
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "gridbeta",
+          "adapterFamily": "virtualization-primitive",
+          "scenarioId": "S7",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 17.100000000000023,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 540,
+            "scroll_viewport_nodes_peak": 535,
+            "rendered_rows_peak": 13,
+            "rendered_cells_peak": 520,
+            "row_height_error_p95_px": 0,
+            "scroll_anchor_shift_px": 322,
+            "scroll_anchor_shift_forward_p95_px": 322,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 16.69999999999999,
+              "median": 17.100000000000023,
+              "max": 17.5
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 540,
+              "median": 540,
+              "max": 540
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 535,
+              "median": 535,
+              "max": 535
+            },
+            "rendered_rows_peak": {
+              "min": 13,
+              "median": 13,
+              "max": 13
+            },
+            "rendered_cells_peak": {
+              "min": 520,
+              "median": 520,
+              "max": 520
+            },
+            "row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_px": {
+              "min": 322,
+              "median": 322,
+              "max": 322
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 322,
+              "median": 322,
+              "max": 322
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H10",
+      "status": "satisfied",
+      "summary": "Wrapped-text local sorting stays within the current interaction and settle thresholds while preserving post-sort stability. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S7",
+          "scriptName": "sort",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: sort",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 462102",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S7-row-1560",
+              "internal telemetry focused row: S7-row-1560"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: sort",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 462102",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S7-row-1560",
+              "internal telemetry focused row: S7-row-1560"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 8.400000000000034,
+            "settle_duration_ms": 17.199999999999932,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 0,
+            "result_row_count": 3000,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 42
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 7.800000000000068,
+              "median": 8.400000000000034,
+              "max": 25
+            },
+            "settle_duration_ms": {
+              "min": 16.099999999999966,
+              "median": 17.199999999999932,
+              "max": 25
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "result_row_count": {
+              "min": 3000,
+              "median": 3000,
+              "max": 3000
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 42,
+              "median": 42,
+              "max": 42
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H11",
+      "status": "satisfied",
+      "summary": "Metadata filtering stays within the current interaction and settle thresholds while reducing the row set without post-filter instability. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S7",
+          "scriptName": "filter-metadata",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-metadata",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 103534",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S7-row-1501",
+              "internal telemetry focused row: S7-row-1501"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-metadata",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 103534",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S7-row-1501",
+              "internal telemetry focused row: S7-row-1501"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 8.399999999999977,
+            "settle_duration_ms": 17.5,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 0,
+            "result_row_count": 750,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 42
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 7.600000000000023,
+              "median": 8.399999999999977,
+              "max": 33.30000000000001
+            },
+            "settle_duration_ms": {
+              "min": 16.600000000000023,
+              "median": 17.5,
+              "max": 32.400000000000034
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "result_row_count": {
+              "min": 750,
+              "median": 750,
+              "max": 750
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 42,
+              "median": 42,
+              "max": 42
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H12",
+      "status": "satisfied",
+      "summary": "Wrapped-text primary-column filtering stays within the current interaction and settle thresholds while preserving post-filter stability. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S7",
+          "scriptName": "filter-text",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-text",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 75102",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S7-row-1501",
+              "internal telemetry focused row: S7-row-1501"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-text",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 75102",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S7-row-1501",
+              "internal telemetry focused row: S7-row-1501"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 8.399999999999977,
+            "settle_duration_ms": 24.899999999999977,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 0,
+            "result_row_count": 500,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 42
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 8.300000000000011,
+              "median": 8.399999999999977,
+              "max": 15.899999999999977
+            },
+            "settle_duration_ms": {
+              "min": 16.69999999999999,
+              "median": 24.899999999999977,
+              "max": 33.299999999999955
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "result_row_count": {
+              "min": 500,
+              "median": 500,
+              "max": 500
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 42,
+              "median": 42,
+              "max": 42
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H13",
+      "status": "insufficient",
+      "summary": "Missing a completed S5 updates run, so streaming update frame budget proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H14",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so the streaming operating envelope cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H15",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so streaming row stability cannot be evaluated yet.",
+      "evidence": []
+    }
+  ]
+}
