@@ -8,60 +8,70 @@ interface Row {
   pretableWins: boolean;
 }
 
-// Comparison snapshot — placeholder-realistic numbers as of 2026-04-30.
+// Comparison snapshot — numbers from the streaming rate sweep documented at
+// docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md. Source of
+// truth: status/runsets/*.hypotheses.json from `pnpm bench:matrix`.
 //
-// TODO(bench-numbers): refresh from latest bench:matrix run. Source of truth
-// is status/runsets/*.json from `pnpm bench:matrix`. Phase 2.C / D wires the
-// dynamic feed; today these are hardcoded.
+// The previous version of this table showed placeholder numbers (Pretable
+// 9 ms, Grid Alpha 28 ms, GridBeta 21 ms, GridGamma 34 ms; "vs gridalpha 4.1×") that
+// implied a 4× streaming wedge. Real bench data (S5/updates at 1k patches/
+// sec, hypothesis scale, 3 repeats, Chromium) shows Pretable, Grid Alpha
+// Community, and GridBeta Virtual tied on the top-line streaming metrics —
+// all 9–10 ms p95, all zero long tasks. Only GridGamma X Community fails.
 //
-// Numbers below are tuned to match what the existing bench measures
-// (scroll_frame_p95_ms, long_tasks_count). If any row's numbers turn out to
-// exaggerate vs reality after a real bench run, the row gets reframed or
-// dropped — the page must not lie.
+// The streaming wedge is purpose-built integration + row stability, not raw
+// speed. The rows below reflect that. The page must not lie.
 const ROWS: readonly Row[] = [
   {
-    metric: "frame p95 (ms)",
+    metric: "frame p95 (ms) — streaming",
     pretable: "9",
-    gridAlpha: "28",
-    gridbeta: "21",
-    gridgammaX: "34",
+    gridAlpha: "10",
+    gridbeta: "10",
+    gridgammaX: "100",
     budget: "≤ 16",
-    pretableWins: true,
+    // Three-way tie within run noise. Only GridGamma fails the budget. This
+    // row reflects "streaming-capable", not "fastest" — Pretable does
+    // not have a unique numeric win here.
+    pretableWins: false,
   },
   {
-    metric: "interact p99 (ms)",
-    pretable: "4",
-    gridAlpha: "18",
-    gridbeta: "15",
-    gridgammaX: "26",
-    budget: "≤ 32",
-    pretableWins: true,
-  },
-  {
-    metric: "rendered rows @ S7",
-    pretable: "500k",
-    gridAlpha: "n/a",
-    gridbeta: "8k",
-    gridgammaX: "n/a",
-    budget: "target",
-    pretableWins: true,
-  },
-  {
-    metric: "jank events",
+    metric: "long task ms / 3 s test",
     pretable: "0",
-    gridAlpha: "47",
-    gridbeta: "12",
-    gridgammaX: "61",
+    gridAlpha: "0",
+    gridbeta: "0",
+    gridgammaX: "5,341",
     budget: "0",
+    pretableWins: false,
+  },
+  {
+    metric: "visible row drift",
+    pretable: "0",
+    gridAlpha: "22",
+    gridbeta: "1",
+    gridgammaX: "2",
+    budget: "0",
+    // Only Pretable + GridBeta hold drift at zero; Grid Alpha recycles
+    // 22 rows mid-stream. Real differentiator vs Grid Alpha.
     pretableWins: true,
   },
   {
-    metric: "vs gridalpha",
-    pretable: "4.1×",
-    gridAlpha: "1×",
-    gridbeta: "1.3×",
-    gridgammaX: "0.8×",
-    budget: ">1×",
+    metric: "max sustained rate",
+    pretable: "25,000/s",
+    gridAlpha: "25,000/s",
+    gridbeta: "25,000/s",
+    gridgammaX: "< 500/s",
+    budget: "—",
+    pretableWins: false,
+  },
+  {
+    metric: "purpose-built streaming pipeline",
+    pretable: "yes",
+    gridAlpha: "no",
+    gridbeta: "no",
+    gridgammaX: "no",
+    budget: "—",
+    // @cacheplane/json-stream + @pretable-internal/stream-adapter is the
+    // only adapter shipping a documented end-to-end streaming pipeline.
     pretableWins: true,
   },
 ];
@@ -79,12 +89,20 @@ export function ComparisonTable() {
           Cell-by-cell receipts.
         </h2>
         <p className="mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
-          Every metric, every adapter, the same scenario. Pretable's column is
-          amber-italic; numbers come from the latest{" "}
+          S5 streaming-updates scenario at 1,000 patches/sec, 3 repeats on
+          Chromium hypothesis scale. Pretable's column is amber-italic. Numbers
+          come from{" "}
           <code className="font-mono text-[15px] text-accent-deep">
             pnpm bench:matrix
-          </code>{" "}
-          run.
+          </code>
+          ; full sweep at{" "}
+          <a
+            href="https://github.com/cacheplane/pretable/blob/main/docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md"
+            className="text-accent-deep underline-offset-2 hover:underline"
+          >
+            docs/streaming-rate-envelope
+          </a>
+          .
         </p>
 
         <div className="mt-8 overflow-x-auto">
@@ -98,7 +116,7 @@ export function ComparisonTable() {
                   <span className="inline-flex items-center gap-2">
                     <em className="italic text-accent">pretable</em>
                     <span className="rounded-[2px] bg-accent-soft px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-accent">
-                      fastest
+                      streaming-capable
                     </span>
                   </span>
                 </th>

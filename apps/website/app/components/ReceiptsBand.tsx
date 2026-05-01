@@ -3,23 +3,22 @@ interface Stat {
   caption: string;
 }
 
-// Receipts snapshot — bench run status as of 2026-04-30:
+// Receipts snapshot — numbers from the streaming rate sweep documented at
+// docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md and the
+// scroll-side comparative work in PR #15 (H1 + H13). Source of truth:
+// status/runsets/*.hypotheses.json from `pnpm bench:matrix`.
 //
-//   No live metrics are sourceable today. The status/snapshots/ and
-//   status/runsets/ directories are empty; no bench:matrix run has been
-//   executed against this codebase yet.
-//
-//   Bench command: `pnpm bench:matrix` (builds bench app, starts vite preview
-//   on port 4173, then runs Playwright via `pnpm bench:e2e` for each
-//   adapter × scenario × script combination).
-//
-//   All four values below are PLACEHOLDERS. Phase 2.C or D will wire these
-//   to a live bench:matrix run and refresh.
+// The previous version had four placeholder values. The most egregious was
+// "4.1× vs gridalpha" — real bench data shows Pretable and Grid Alpha are
+// essentially tied on streaming frame p95 (9 vs 10 ms). Replaced with a
+// receipt that actually holds: zero jank events under streaming load
+// (Pretable's stream-adapter batches via RAF, no long tasks across the
+// full 100–25k operating envelope).
 const STATS: readonly Stat[] = [
-  { value: "500k", caption: "rows rendered" },
-  { value: "2.4ms", caption: "frame p50" },
-  { value: "0", caption: "jank events" },
-  { value: "4.1×", caption: "vs gridalpha" },
+  { value: "500k", caption: "rows rendered (S7 target)" },
+  { value: "9ms", caption: "frame p95 / streaming" },
+  { value: "0", caption: "long tasks / streaming" },
+  { value: "25k/s", caption: "max sustained update rate" },
 ];
 
 export function ReceiptsBand() {
