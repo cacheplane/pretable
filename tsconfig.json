@@ -29,9 +29,6 @@
       "path": "./apps/bench"
     },
     {
-      "path": "./apps/playground"
-    },
-    {
       "path": "./packages/json-stream"
     },
     {
