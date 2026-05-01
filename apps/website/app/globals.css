@@ -49,7 +49,14 @@ body {
 body {
   font-family: var(--font-sans);
   color: var(--pt-text-primary);
-  background: var(--pt-bg-page);
+  background: linear-gradient(
+    180deg,
+    var(--pt-bg-page) 0%,
+    #0d1426 35%,
+    #0f1518 60%,
+    var(--pt-bg-page) 100%
+  );
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 
