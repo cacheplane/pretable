@@ -70,3 +70,47 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+
+  deploy:
+    name: Deploy → Vercel
+    needs: [test, typecheck, lint, format, build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Required GitHub secrets:
+    #   VERCEL_TOKEN       — vercel.com/account/tokens
+    #   VERCEL_ORG_ID      — Vercel team id
+    #   VERCEL_PROJECT_ID  — pretable project id
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Pull Vercel project settings
+        run: |
+          mkdir -p .vercel
+          cat > .vercel/project.json <<EOF
+          {"projectId":"${{ secrets.VERCEL_PROJECT_ID }}","orgId":"${{ secrets.VERCEL_ORG_ID }}","projectName":"pretable"}
+          EOF
+          npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          rm -rf .vercel/output
+      - name: Build with Vercel
+        run: npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy to Vercel (production)
+        id: deploy
+        run: |
+          url=$(npx vercel deploy --prebuilt --archive=tgz --prod --yes --token=${{ secrets.VERCEL_TOKEN }} | tail -n 1)
+          echo "deployment_url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed: $url"
+      - name: Smoke test deployed origin
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "${{ steps.deploy.outputs.deployment_url }}" || true)
+            echo "Attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 5
+          done
+          echo "Smoke test failed: deployed origin did not return 200"
+          exit 1
