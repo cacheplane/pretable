@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { Nav } from "../nav";
+import { Nav } from "../Nav";
 
 describe("Nav", () => {
   it("renders the wordmark as 'pretable.' with an amber period span", () => {

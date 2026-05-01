@@ -1,6 +1,6 @@
 "use client";
 
-import { Nav, type NavPage } from "@pretable/ui";
+import { Nav, type NavPage } from "./Nav";
 import { usePathname } from "next/navigation";
 
 interface RouteAwareNavProps {

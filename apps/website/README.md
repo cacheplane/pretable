@@ -6,16 +6,18 @@ This README is **living documentation** of the visual system as it exists today.
 
 ## Tokens
 
-The website's color and typography tokens live in `@pretable/ui`. `app/globals.css` imports them (excerpt):
+The website's color and typography tokens live locally in `app/styles/cool-slate-tokens.css` (`--pt-*` namespace). They were originally housed in a now-deleted `@pretable/ui` package; that package name is reserved for the upcoming public theming package (see `docs/superpowers/specs/2026-05-01-pretable-theming-architecture-design.md`), which writes a different `--pretable-*` namespace. The two namespaces are intentionally distinct and don't collide.
+
+`app/globals.css` imports the tokens (excerpt):
 
 ```css
-@import "@pretable/ui/tokens.css";
-@import "@pretable/ui/components.css";
+@import "./styles/cool-slate-tokens.css";
+@import "./styles/marketing-components.css";
 ```
 
-(See `app/globals.css` for the full top-of-file import block — fonts, Tailwind, then the tokens above.)
+(See `app/globals.css` for the full top-of-file import block — fonts, then the tokens above, then Tailwind.)
 
-The Tailwind theme block in `globals.css` exposes them as `--color-*` shortcuts (e.g., `bg-bg-page`, `text-text-primary`, `text-accent`). For the canonical token list and values, read `packages/ui/src/tokens.css`. Don't restate values here — pointer-only.
+The Tailwind theme block in `globals.css` exposes them as `--color-*` shortcuts (e.g., `bg-bg-page`, `text-text-primary`, `text-accent`). For the canonical token list and values, read `app/styles/cool-slate-tokens.css`. Don't restate values here — pointer-only.
 
 Token groups in active use on the website:
 
