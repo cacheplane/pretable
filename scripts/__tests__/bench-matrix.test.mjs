@@ -1607,7 +1607,7 @@ test("H13 insufficient when no S5 updates run exists", () => {
   assert.match(h13?.summary ?? "", /S5 updates/i);
 });
 
-test("H13 satisfied when S5 updates frame p95 ≤ 16ms with zero long tasks", () => {
+test("H13 directional when only pretable has S5 updates evidence", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-25t10-10-00-000z",
     generatedAt: "2026-04-25T10:11:00.000Z",
@@ -1633,9 +1633,159 @@ test("H13 satisfied when S5 updates frame p95 ≤ 16ms with zero long tasks", ()
 
   const h13 = report.hypotheses.find((h) => h.id === "H13");
 
-  assert.equal(h13?.status, "satisfied");
+  // Without comparator data, the absolute thresholds pass but the
+  // comparative claim is unmeasured → directional.
+  assert.equal(h13?.status, "directional");
   assert.equal(h13?.evidence?.length, 1);
   assert.equal(h13?.evidence?.[0]?.adapterId, "pretable");
+});
+
+test("H13 satisfied when pretable beats best comparator on frame parity with at least one comparator failing absolutes", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-30t10-10-00-000z",
+    generatedAt: "2026-04-30T10:11:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath:
+          "status/chromium-pretable-default-s5-updates-2026-04-30t10-10-00-000z.summary.json",
+      },
+      {
+        adapterId: "ag-grid",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath:
+          "status/chromium-ag-grid-default-s5-updates-2026-04-30t10-11-00-000z.summary.json",
+      },
+      {
+        adapterId: "tanstack",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath:
+          "status/chromium-tanstack-default-s5-updates-2026-04-30t10-12-00-000z.summary.json",
+      },
+    ],
+    runs: [
+      createUpdatesRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-30T10:10:00.000Z",
+        scroll_frame_p95_ms: 9,
+        long_tasks_count: 0,
+      }),
+      createUpdatesRun({
+        adapterId: "ag-grid",
+        timestamp: "2026-04-30T10:11:00.000Z",
+        scroll_frame_p95_ms: 14,
+        long_tasks_count: 0,
+      }),
+      createUpdatesRun({
+        adapterId: "tanstack",
+        timestamp: "2026-04-30T10:12:00.000Z",
+        scroll_frame_p95_ms: 38,
+        long_tasks_count: 4,
+      }),
+    ],
+  });
+
+  const h13 = report.hypotheses.find((h) => h.id === "H13");
+
+  // Pretable 9ms vs best comparator (ag-grid) 14ms → frame parity ratio
+  // 9/14 = 0.64, well within 1.10. TanStack fails the absolute thresholds
+  // → uniqueness claim supported.
+  assert.equal(h13?.status, "satisfied");
+  assert.equal(h13?.evidence?.length, 2);
+  assert.equal(h13?.evidence?.[0]?.adapterId, "pretable");
+  assert.equal(h13?.evidence?.[1]?.adapterId, "ag-grid");
+});
+
+test("H13 directional when all comparators also pass absolute thresholds", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-30t11-00-00-000z",
+    generatedAt: "2026-04-30T11:01:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath: "status/x.summary.json",
+      },
+      {
+        adapterId: "ag-grid",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath: "status/x.summary.json",
+      },
+    ],
+    runs: [
+      createUpdatesRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-30T11:00:00.000Z",
+        scroll_frame_p95_ms: 9,
+        long_tasks_count: 0,
+      }),
+      createUpdatesRun({
+        adapterId: "ag-grid",
+        timestamp: "2026-04-30T11:01:00.000Z",
+        scroll_frame_p95_ms: 12,
+        long_tasks_count: 0,
+      }),
+    ],
+  });
+
+  const h13 = report.hypotheses.find((h) => h.id === "H13");
+
+  // Both adapters pass absolute thresholds → directional, not satisfied.
+  assert.equal(h13?.status, "directional");
+});
+
+test("H13 failing when pretable parity ratio exceeds 110% of best comparator", () => {
+  const report = createHypothesisReport({
+    runsetId: "2026-04-30t12-00-00-000z",
+    generatedAt: "2026-04-30T12:01:00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath: "status/x.summary.json",
+      },
+      {
+        adapterId: "ag-grid",
+        repeatIndex: 0,
+        scenarioId: "S5",
+        scriptName: "updates",
+        summaryPath: "status/x.summary.json",
+      },
+    ],
+    runs: [
+      createUpdatesRun({
+        adapterId: "pretable",
+        timestamp: "2026-04-30T12:00:00.000Z",
+        scroll_frame_p95_ms: 15,
+        long_tasks_count: 0,
+      }),
+      createUpdatesRun({
+        adapterId: "ag-grid",
+        timestamp: "2026-04-30T12:01:00.000Z",
+        scroll_frame_p95_ms: 10,
+        long_tasks_count: 0,
+      }),
+    ],
+  });
+
+  const h13 = report.hypotheses.find((h) => h.id === "H13");
+
+  // 15/10 = 1.5 > 1.10 → fails the comparative parity threshold.
+  assert.equal(h13?.status, "failing");
+  assert.match(h13?.summary ?? "", /50%.*above/);
 });
 
 test("H13 failing when frame p95 exceeds 16ms threshold", () => {

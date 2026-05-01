@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
@@ -7,14 +7,66 @@ import type {
   ScenarioRow,
 } from "@pretable-internal/scenario-data";
 
+import type { ApplyBenchUpdates } from "./bench-runtime";
+
 export interface TanStackAdapterProps {
   dataset: ScenarioDataset;
   runKey: number;
+  /**
+   * TanStack Virtual is a virtualization primitive — it has no batched
+   * update API. Updates flow through React state (setRows) which triggers
+   * a full reconciliation of the displayed rows. This is the idiomatic
+   * pattern and the comparison surface treats it as such.
+   */
+  onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
 }
 
-export function TanStackAdapter({ dataset, runKey }: TanStackAdapterProps) {
+export function TanStackAdapter({
+  dataset,
+  runKey,
+  onUpdateApiReady,
+}: TanStackAdapterProps) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const displayRows = dataset.rows;
+
+  // Lifted to state so updates can mutate via setRows. Reset on runKey.
+  const [displayRows, setDisplayRows] = useState<readonly ScenarioRow[]>(
+    dataset.rows,
+  );
+  useEffect(() => {
+    setDisplayRows(dataset.rows);
+  }, [dataset.rows, runKey]);
+
+  // Index map for O(1) patch lookup. Recomputed on rows reset.
+  const rowIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    displayRows.forEach((row, index) => {
+      map.set(String(row.id ?? index), index);
+    });
+    return map;
+  }, [displayRows]);
+
+  const onUpdateApiReadyRef = useRef(onUpdateApiReady);
+  onUpdateApiReadyRef.current = onUpdateApiReady;
+
+  useEffect(() => {
+    const apply: ApplyBenchUpdates = (patches) => {
+      setDisplayRows((prev) => {
+        // Clone the array; mutate matched rows. O(N) per batch from the
+        // clone alone — that's the inherent cost of "primitive
+        // virtualization + React state" updates. The wedge story is that
+        // Pretable doesn't pay it.
+        const next = prev.slice();
+        for (const patch of patches) {
+          const id = String(patch.id ?? "");
+          const idx = rowIndexById.get(id);
+          if (idx === undefined) continue;
+          next[idx] = { ...next[idx], ...patch } as ScenarioRow;
+        }
+        return next;
+      });
+    };
+    onUpdateApiReadyRef.current?.(apply);
+  }, [rowIndexById, runKey]);
   const totalWidth = dataset.columns.reduce(
     (width, column) => width + (column.widthPx ?? 140),
     0,
