@@ -1397,7 +1397,7 @@ test("composite H1 fails when pretable backward anchor shift exceeds threshold",
   assert.match(h1?.summary ?? "", /anchor shift/i);
 });
 
-test("hypothesis array has 10 entries with H9-H12 for S7 and H13 for S5 updates", () => {
+test("hypothesis array has 12 entries: H1-H13 (no H2/H3/H4) plus H14/H15 for streaming envelope and row stability", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-50-00-000z",
     generatedAt: "2026-04-20T10:51:00.000Z",
@@ -1405,7 +1405,7 @@ test("hypothesis array has 10 entries with H9-H12 for S7 and H13 for S5 updates"
     runs: [],
   });
 
-  assert.equal(report.hypotheses.length, 10);
+  assert.equal(report.hypotheses.length, 12);
   assert.ok(report.hypotheses.find((h) => h.id === "H1"));
   assert.equal(
     report.hypotheses.find((h) => h.id === "H3"),
@@ -1420,6 +1420,8 @@ test("hypothesis array has 10 entries with H9-H12 for S7 and H13 for S5 updates"
   assert.ok(report.hypotheses.find((h) => h.id === "H11"));
   assert.ok(report.hypotheses.find((h) => h.id === "H12"));
   assert.ok(report.hypotheses.find((h) => h.id === "H13"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H14"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H15"));
 });
 
 test("H9 satisfied when S7 scroll quality passes all thresholds with failing competitor", () => {
@@ -1908,6 +1910,214 @@ test("H13 failing when any long task fires during the streaming test", () => {
   assert.match(h13?.summary ?? "", /long tasks.*2/);
 });
 
+test("H14 insufficient when no rate-tagged S5 updates runs exist for pretable", () => {
+  const report = createHypothesisReport({
+    runsetId: "h14-test",
+    generatedAt: "2026-04-30T20:00:00.000Z",
+    entries: [],
+    runs: [],
+  });
+
+  const h14 = report.hypotheses.find((h) => h.id === "H14");
+  assert.equal(h14?.status, "insufficient");
+});
+
+test("H14 satisfied when pretable's envelope is 10x or more above the smallest comparator", () => {
+  // Pretable passes at 25k/sec; GridGamma fails at 500/sec. 25,000 / 500 = 50× gap.
+  const runs = [];
+  for (const rate of [1000, 5000, 25000]) {
+    runs.push(
+      createUpdatesRun({
+        adapterId: "pretable",
+        timestamp: `2026-04-30T20:01:0${rate}.000Z`,
+        scroll_frame_p95_ms: 9,
+        long_tasks_count: 0,
+        updateRatePerSec: rate,
+      }),
+    );
+  }
+  // GridGamma fails at all sampled rates.
+  for (const rate of [1000, 5000]) {
+    runs.push(
+      createUpdatesRun({
+        adapterId: "gridgamma",
+        timestamp: `2026-04-30T20:02:0${rate}.000Z`,
+        scroll_frame_p95_ms: 100,
+        long_tasks_count: 59,
+        updateRatePerSec: rate,
+      }),
+    );
+  }
+  // Add one passing rate for GridGamma (envelope = 100/sec).
+  runs.push(
+    createUpdatesRun({
+      adapterId: "gridgamma",
+      timestamp: "2026-04-30T20:02:100.000Z",
+      scroll_frame_p95_ms: 10,
+      long_tasks_count: 0,
+      updateRatePerSec: 100,
+    }),
+  );
+
+  const report = createHypothesisReport({
+    runsetId: "h14-test",
+    generatedAt: "2026-04-30T20:10:00.000Z",
+    entries: [],
+    runs,
+  });
+
+  const h14 = report.hypotheses.find((h) => h.id === "H14");
+  assert.equal(h14?.status, "satisfied");
+  assert.match(h14?.summary ?? "", /25000/);
+  assert.match(h14?.summary ?? "", /gridgamma/);
+});
+
+test("H14 directional when pretable's envelope is within 10x of every comparator", () => {
+  const runs = [];
+  // Pretable + gridalpha both pass at 1000 and 5000, fail at 25000.
+  for (const adapterId of ["pretable", "gridalpha"]) {
+    for (const rate of [1000, 5000]) {
+      runs.push(
+        createUpdatesRun({
+          adapterId,
+          timestamp: `2026-04-30T${adapterId}-${rate}`,
+          scroll_frame_p95_ms: 9,
+          long_tasks_count: 0,
+          updateRatePerSec: rate,
+        }),
+      );
+    }
+  }
+  const report = createHypothesisReport({
+    runsetId: "h14-test",
+    generatedAt: "2026-04-30T20:10:00.000Z",
+    entries: [],
+    runs,
+  });
+  const h14 = report.hypotheses.find((h) => h.id === "H14");
+  assert.equal(h14?.status, "directional");
+});
+
+test("H14 failing when pretable's envelope is below the H13 baseline of 1000/sec", () => {
+  const runs = [
+    createUpdatesRun({
+      adapterId: "pretable",
+      timestamp: "2026-04-30T21:00:00.000Z",
+      scroll_frame_p95_ms: 9,
+      long_tasks_count: 0,
+      updateRatePerSec: 100,
+    }),
+    createUpdatesRun({
+      adapterId: "pretable",
+      timestamp: "2026-04-30T21:00:01.000Z",
+      scroll_frame_p95_ms: 24,
+      long_tasks_count: 0,
+      updateRatePerSec: 1000,
+    }),
+  ];
+  const report = createHypothesisReport({
+    runsetId: "h14-test",
+    generatedAt: "2026-04-30T21:01:00.000Z",
+    entries: [],
+    runs,
+  });
+  const h14 = report.hypotheses.find((h) => h.id === "H14");
+  assert.equal(h14?.status, "failing");
+  assert.match(h14?.summary ?? "", /below the H13 baseline/);
+});
+
+test("H15 insufficient when no rate-tagged S5 updates runs exist for pretable", () => {
+  const report = createHypothesisReport({
+    runsetId: "h15-test",
+    generatedAt: "2026-04-30T22:00:00.000Z",
+    entries: [],
+    runs: [],
+  });
+  const h15 = report.hypotheses.find((h) => h.id === "H15");
+  assert.equal(h15?.status, "insufficient");
+});
+
+test("H15 satisfied when pretable holds drift ≤ 1 and a comparator drifts > 5", () => {
+  const runs = [
+    createUpdatesRun({
+      adapterId: "pretable",
+      timestamp: "2026-04-30T22:00:00.000Z",
+      scroll_frame_p95_ms: 9,
+      long_tasks_count: 0,
+      visible_row_count_drift: 0,
+      updateRatePerSec: 1000,
+    }),
+    createUpdatesRun({
+      adapterId: "gridalpha",
+      timestamp: "2026-04-30T22:00:01.000Z",
+      scroll_frame_p95_ms: 10,
+      long_tasks_count: 0,
+      visible_row_count_drift: 22,
+      updateRatePerSec: 1000,
+    }),
+  ];
+  const report = createHypothesisReport({
+    runsetId: "h15-test",
+    generatedAt: "2026-04-30T22:01:00.000Z",
+    entries: [],
+    runs,
+  });
+  const h15 = report.hypotheses.find((h) => h.id === "H15");
+  assert.equal(h15?.status, "satisfied");
+  assert.match(h15?.summary ?? "", /gridalpha/);
+  assert.match(h15?.summary ?? "", /22/);
+});
+
+test("H15 directional when pretable holds drift but no comparator exceeds threshold", () => {
+  const runs = [
+    createUpdatesRun({
+      adapterId: "pretable",
+      timestamp: "2026-04-30T22:00:00.000Z",
+      scroll_frame_p95_ms: 9,
+      long_tasks_count: 0,
+      visible_row_count_drift: 0,
+      updateRatePerSec: 1000,
+    }),
+    createUpdatesRun({
+      adapterId: "gridbeta",
+      timestamp: "2026-04-30T22:00:01.000Z",
+      scroll_frame_p95_ms: 10,
+      long_tasks_count: 0,
+      visible_row_count_drift: 1,
+      updateRatePerSec: 1000,
+    }),
+  ];
+  const report = createHypothesisReport({
+    runsetId: "h15-test",
+    generatedAt: "2026-04-30T22:01:00.000Z",
+    entries: [],
+    runs,
+  });
+  const h15 = report.hypotheses.find((h) => h.id === "H15");
+  assert.equal(h15?.status, "directional");
+});
+
+test("H15 failing when pretable's drift exceeds 1", () => {
+  const runs = [
+    createUpdatesRun({
+      adapterId: "pretable",
+      timestamp: "2026-04-30T22:00:00.000Z",
+      scroll_frame_p95_ms: 9,
+      long_tasks_count: 0,
+      visible_row_count_drift: 5,
+      updateRatePerSec: 1000,
+    }),
+  ];
+  const report = createHypothesisReport({
+    runsetId: "h15-test",
+    generatedAt: "2026-04-30T22:01:00.000Z",
+    entries: [],
+    runs,
+  });
+  const h15 = report.hypotheses.find((h) => h.id === "H15");
+  assert.equal(h15?.status, "failing");
+});
+
 function createScrollRun({
   adapterId,
   timestamp,
@@ -1969,7 +2179,16 @@ function createUpdatesRun({
   dom_nodes_peak = 1500,
   rendered_rows_peak = 30,
   rendered_cells_peak = 900,
+  visible_row_count_drift,
+  updateRatePerSec,
 }) {
+  // The bench-runtime emits `update rate per sec: N` in notes for every
+  // updates run since PR #26. The H14/H15 evaluators parse this; tests
+  // that exercise rate-aware paths should set updateRatePerSec.
+  const ratedNotes =
+    updateRatePerSec !== undefined
+      ? [...notes, `update rate per sec: ${updateRatePerSec}`]
+      : notes;
   return {
     adapterId,
     profile: "default",
@@ -1982,7 +2201,7 @@ function createUpdatesRun({
     viewport: { width: 1440, height: 900 },
     fontStack: '"IBM Plex Sans", system-ui, sans-serif',
     deviceScaleFactor: 1,
-    notes,
+    notes: ratedNotes,
     status: "completed",
     tracePath: `status/traces/chromium-${adapterId}-default-${scenarioId.toLowerCase()}-updates.trace.zip`,
     metrics: {
@@ -1992,6 +2211,9 @@ function createUpdatesRun({
       dom_nodes_peak,
       rendered_rows_peak,
       rendered_cells_peak,
+      ...(visible_row_count_drift !== undefined
+        ? { visible_row_count_drift }
+        : {}),
     },
   };
 }
