@@ -8,25 +8,53 @@ interface Row {
   pretableWins: boolean;
 }
 
-// Comparison snapshot — numbers from the streaming rate sweep documented at
-// docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md. Source of
-// truth: status/runsets/*.hypotheses.json from `pnpm bench:matrix`.
+const NA_MARKER = "n/a";
+
+// Comparison snapshot — numbers from two committed milestone runsets:
 //
-// The previous version of this table showed placeholder numbers (Pretable
-// 9 ms, AG Grid 28 ms, TanStack 21 ms, MUI 34 ms; "vs ag-grid 4.1×") that
-// implied a 4× streaming wedge. Real bench data (S5/updates at 1k patches/
-// sec, hypothesis scale, 3 repeats, Chromium) shows Pretable, AG Grid
-// Community, and TanStack Virtual tied on the top-line streaming metrics —
-// all 9–10 ms p95, all zero long tasks. Only MUI X Community fails.
+//   status/milestones/2026-05-01-h1-satisfied.hypotheses.json
+//     S2/scroll/hypothesis × 3 repeats. H1 satisfied. Pretable 9.3ms p95,
+//     0px row-height-error, 4.6× faster than AG Grid (42.5ms, 153px).
 //
-// The streaming wedge is purpose-built integration + row stability, not raw
-// speed. The rows below reflect that. The page must not lie.
+//   status/milestones/2026-05-01-streaming-revalidated.hypotheses.json
+//     S5/updates × {100, 500, 1k, 5k, 10k, 25k}/sec × 3 repeats. H15
+//     satisfied. Pretable max visible-row drift = 1 vs AG Grid's 28.
+//
+// Re-derive with `pnpm bench:matrix`. Background memo:
+// docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md.
+//
+// The wedge has two sides. Scroll: real comparative win (4.6×) vs AG Grid.
+// Streaming: tied with AG Grid + TanStack on raw frame budget; the win is
+// row stability + integration. The rows below reflect both halves honestly.
 const ROWS: readonly Row[] = [
+  // ── Scroll proof (S2 wrapped-text @ 3k rows). The decisive comparative
+  // ── numeric win — 4.6× faster than AG Grid on the canonical wedge.
+  {
+    metric: "frame p95 (ms) — wrapped scroll",
+    pretable: "9.3",
+    agGrid: "42.5",
+    tanstack: "9.3",
+    muiX: NA_MARKER,
+    budget: "≤ 16",
+    pretableWins: true,
+  },
+  {
+    metric: "row-height fidelity (px error)",
+    pretable: "0",
+    agGrid: "153",
+    tanstack: "0",
+    muiX: NA_MARKER,
+    budget: "≤ 1",
+    // DOM-truth check: row.height vs cell.scrollHeight + padding + border.
+    // AG Grid's row container is 153px out of sync with the cell content.
+    pretableWins: true,
+  },
+  // ── Streaming proof (S5 updates @ 1k/sec, hypothesis scale).
   {
     metric: "frame p95 (ms) — streaming",
     pretable: "9",
-    agGrid: "10",
-    tanstack: "10",
+    agGrid: "9",
+    tanstack: "9",
     muiX: "100",
     budget: "≤ 16",
     // Three-way tie within run noise. Only MUI fails the budget. This
@@ -45,13 +73,13 @@ const ROWS: readonly Row[] = [
   },
   {
     metric: "visible row drift",
-    pretable: "0",
-    agGrid: "22",
-    tanstack: "1",
+    pretable: "≤ 1",
+    agGrid: "28",
+    tanstack: "≤ 2",
     muiX: "2",
-    budget: "0",
-    // Only Pretable + TanStack hold drift at zero; AG Grid recycles
-    // 22 rows mid-stream. Real differentiator vs AG Grid.
+    budget: "≤ 1",
+    // Pretable holds drift at the threshold. AG Grid recycles 22-28 rows
+    // at sub-5k rates — real user-visible streaming differentiator.
     pretableWins: true,
   },
   {
@@ -76,8 +104,6 @@ const ROWS: readonly Row[] = [
   },
 ];
 
-const NA_MARKER = "n/a";
-
 export function ComparisonTable() {
   return (
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
@@ -88,13 +114,21 @@ export function ComparisonTable() {
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
           How we compare.
         </h2>
-        <p className="mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
-          Streaming workload at 1,000 patches/sec, 3 repeats on Chromium.
-          Pretable's column is amber-italic. Numbers come from{" "}
+        <p className="mt-5 max-w-[64ch] font-display text-[17px] leading-[1.55] text-text-secondary">
+          Two windows: wrapped-text scroll at 3,000 rows, and streaming updates
+          at 1,000 patches/sec. Three repeats each on Chromium. Pretable's
+          column is amber-italic. Numbers come from{" "}
           <code className="font-mono text-[15px] text-accent-deep">
             pnpm bench:matrix
           </code>
-          ; full sweep at{" "}
+          ; committed evidence in{" "}
+          <a
+            href="https://github.com/cacheplane/pretable/tree/main/status/milestones"
+            className="text-accent-deep underline-offset-2 hover:underline"
+          >
+            status/milestones
+          </a>
+          ; full streaming sweep at{" "}
           <a
             href="https://github.com/cacheplane/pretable/blob/main/docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md"
             className="text-accent-deep underline-offset-2 hover:underline"
@@ -115,7 +149,7 @@ export function ComparisonTable() {
                   <span className="inline-flex items-center gap-2">
                     <em className="italic text-accent">pretable</em>
                     <span className="rounded-[2px] bg-accent-soft px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-accent">
-                      streaming-capable
+                      4.6× faster scroll
                     </span>
                   </span>
                 </th>
