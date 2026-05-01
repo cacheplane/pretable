@@ -1,4 +1,4 @@
-import { codeToHtml } from "shiki";
+import { CodeBlock } from "./CodeBlock";
 
 const SNIPPET = `"use client";
 import { useEffect, useState } from "react";
@@ -25,13 +25,11 @@ export function ChatGrid({ prompt }: { prompt: string }) {
   return <PretableGrid rows={rows} columns={columns} />;
 }`;
 
-// shiki theming: github-dark works well against the cool-slate page gradient.
-// Server-side highlight at module load — pre-rendered HTML ships in the React
-// tree, no client JS for highlighting.
-const HIGHLIGHTED = await codeToHtml(SNIPPET, {
-  lang: "tsx",
-  theme: "github-dark",
-});
+// Evaluate CodeBlock once at module load so CodeExample can remain synchronous.
+// This mirrors the pre-refactor pattern where codeToHtml was awaited at the top
+// level. CodeExample.test.tsx uses `await CodeExample()` which still works — the
+// await is harmless on a non-async function.
+const CODE_BLOCK_UI = await CodeBlock({ code: SNIPPET, lang: "tsx" });
 
 export function CodeExample() {
   return (
@@ -48,10 +46,7 @@ export function CodeExample() {
           your own SSE — to a pretable grid. Selection survives every chunk.
         </p>
 
-        <div
-          className="mt-8 overflow-x-auto rounded-[6px] border border-grid-rule bg-grid-bg p-4 font-mono text-[13px] leading-[1.6] [&_pre]:m-0 [&_pre]:bg-transparent [&_code]:bg-transparent"
-          dangerouslySetInnerHTML={{ __html: HIGHLIGHTED }}
-        />
+        <div className="mt-8">{CODE_BLOCK_UI}</div>
 
         <p className="mt-5 font-mono text-[12px] text-text-muted">
           Full example:{" "}

@@ -1,4 +1,6 @@
-import { Footer, Nav } from "@pretable/ui";
+import { Footer } from "@pretable/ui";
+
+import { RouteAwareNav } from "./components/RouteAwareNav";
 import type { Metadata, Viewport } from "next";
 
 import { LandingAmbient } from "./components/LandingAmbient";
@@ -24,7 +26,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <LandingAmbient />
-        <Nav active="website" version={APP_VERSION} />
+        <RouteAwareNav version={APP_VERSION} />
         <main>{children}</main>
         {/* TODO(ci-signal): wire ciStatus to a real source once CI status plumbing exists.
             Hardcoded "green" for now. */}
