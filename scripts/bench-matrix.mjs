@@ -155,6 +155,8 @@ export function createHypothesisReport(input) {
       evaluateH11(input.runs),
       evaluateH12(input.runs),
       evaluateH13(input.runs),
+      evaluateH14(input.runs),
+      evaluateH15(input.runs),
     ],
   };
 }
@@ -789,6 +791,258 @@ function evaluateH13(runs) {
       ? "Streaming updates on S5 keep frame p95 within one 60Hz frame (≤ 16ms) with zero long tasks, within 10% of the best measured comparator. At least one comparator fails the absolute thresholds. Evidence is based on current repeated-run medians."
       : "Streaming updates on S5 keep frame p95 within one 60Hz frame (≤ 16ms) with zero long tasks, within 10% of the best measured comparator. At least one comparator fails the absolute thresholds. Evidence is based on the current sample.",
     evidence: evidenceArray,
+  };
+}
+
+/**
+ * Parses the rate-per-second from a run's notes. The bench writes
+ * `update rate per sec: N` into notes (see apps/bench/src/bench-runtime.ts).
+ * Returns null if the run has no rate annotation (older runs, or non-
+ * updates scripts).
+ */
+function getUpdateRateFromRun(run) {
+  if (!Array.isArray(run.notes)) return null;
+  const note = run.notes.find(
+    (n) => typeof n === "string" && n.startsWith("update rate per sec:"),
+  );
+  if (!note) return null;
+  const parsed = Number(note.slice("update rate per sec:".length).trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Groups completed S5/updates runs by (adapter, rate). Returns a
+ * Map<adapterId, Map<rate, RunSeries>> so callers can ask: "what's
+ * Pretable's series at 5,000 patches/sec?"
+ */
+function groupUpdatesRunsByAdapterAndRate(runs) {
+  const byAdapter = new Map();
+  for (const run of runs) {
+    if (
+      run.status !== "completed" ||
+      run.scenarioId !== "S5" ||
+      run.scriptName !== "updates"
+    ) {
+      continue;
+    }
+    const rate = getUpdateRateFromRun(run);
+    if (rate === null) continue;
+    const adapter = run.adapterId;
+    if (!byAdapter.has(adapter)) byAdapter.set(adapter, new Map());
+    const byRate = byAdapter.get(adapter);
+    const series = byRate.get(rate) ?? [];
+    series.push(run);
+    byRate.set(rate, series);
+  }
+  return byAdapter;
+}
+
+/**
+ * Highest streaming rate at which an adapter's median frame p95 ≤ 16ms
+ * AND median long_tasks_count == 0. Returns null if the adapter has no
+ * passing rates (broke at the smallest tested rate).
+ */
+function highestPassingStreamingRate(rateSeriesMap) {
+  let highest = null;
+  for (const [rate, series] of rateSeriesMap) {
+    const fp = medianMetric(series, "scroll_frame_p95_ms");
+    const lt = medianMetric(series, "long_tasks_count");
+    if (fp === undefined || lt === undefined) continue;
+    if (fp > 16 || lt > 0) continue;
+    if (highest === null || rate > highest) highest = rate;
+  }
+  return highest;
+}
+
+/**
+ * H14 — Streaming Operating Envelope.
+ *
+ * Pretable's `updates` script on S5 should sustain its frame budget
+ * (frame p95 ≤ 16ms, zero long tasks) across the full operating
+ * envelope. Reports the highest rate at which Pretable still passes,
+ * compares to the highest passing rate of the best comparator, and
+ * checks whether at least one comparator breaks before Pretable does.
+ *
+ * Status:
+ * - insufficient: no rate-tagged Pretable run.
+ * - failing: Pretable doesn't pass at the H13 baseline rate (1,000/sec).
+ * - directional: Pretable's envelope is unique-or-tied with comparators
+ *   but no comparator's envelope is meaningfully smaller (uniqueness
+ *   not supported).
+ * - satisfied: Pretable passes at ≥ 1,000/sec AND at least one
+ *   comparator's envelope is smaller than Pretable's by 10× or more
+ *   (e.g., GridGamma tops out at < 500 while Pretable sustains 25,000+).
+ */
+function evaluateH14(runs) {
+  const byAdapter = groupUpdatesRunsByAdapterAndRate(runs);
+  const pretableSeriesByRate = byAdapter.get("pretable");
+
+  if (!pretableSeriesByRate || pretableSeriesByRate.size === 0) {
+    return {
+      id: "H14",
+      status: "insufficient",
+      summary:
+        "Missing rate-tagged S5 updates runs for pretable, so the streaming operating envelope cannot be evaluated yet.",
+      evidence: [],
+    };
+  }
+
+  const pretableEnvelope = highestPassingStreamingRate(pretableSeriesByRate);
+  const sortedRates = [...pretableSeriesByRate.keys()].sort((a, b) => a - b);
+  const lowestSampledRate = sortedRates[0];
+
+  if (pretableEnvelope === null) {
+    return {
+      id: "H14",
+      status: "failing",
+      summary: `Streaming operating envelope is failing — pretable does not pass absolute thresholds at any tested rate (lowest sampled: ${lowestSampledRate}/sec).`,
+      evidence: [],
+    };
+  }
+
+  if (pretableEnvelope < 1000) {
+    return {
+      id: "H14",
+      status: "failing",
+      summary: `Streaming operating envelope is failing — pretable's highest passing rate is ${pretableEnvelope}/sec, below the H13 baseline of 1,000/sec.`,
+      evidence: [],
+    };
+  }
+
+  // Compare against comparators.
+  const competitorEnvelopes = [];
+  for (const [adapterId, rateSeriesMap] of byAdapter) {
+    if (adapterId === "pretable") continue;
+    const envelope = highestPassingStreamingRate(rateSeriesMap);
+    competitorEnvelopes.push({ adapterId, envelope });
+  }
+
+  if (competitorEnvelopes.length === 0) {
+    return {
+      id: "H14",
+      status: "directional",
+      summary: `Streaming operating envelope reaches ${pretableEnvelope}/sec for pretable, but the comparative claim is unmeasured — no comparator's rate-tagged S5 updates runs are available.`,
+      evidence: [],
+    };
+  }
+
+  // Identify the comparator with the smallest envelope (or no envelope).
+  // A "meaningfully smaller" envelope is ≥ 10× below Pretable's.
+  const smallestCompetitor = competitorEnvelopes.reduce((acc, current) => {
+    const currentEnvelope =
+      current.envelope === null ? -Infinity : current.envelope;
+    const accEnvelope = acc.envelope === null ? -Infinity : acc.envelope;
+    return currentEnvelope < accEnvelope ? current : acc;
+  });
+
+  const meaningfullySmaller =
+    smallestCompetitor.envelope === null ||
+    smallestCompetitor.envelope * 10 <= pretableEnvelope;
+
+  if (!meaningfullySmaller) {
+    return {
+      id: "H14",
+      status: "directional",
+      summary: `Streaming operating envelope reaches ${pretableEnvelope}/sec for pretable. The smallest comparator envelope is ${smallestCompetitor.adapterId} at ${smallestCompetitor.envelope}/sec, which is within 10× of pretable — uniqueness claim is not supported by an order-of-magnitude gap.`,
+      evidence: [],
+    };
+  }
+
+  const smallestSummary =
+    smallestCompetitor.envelope === null
+      ? `${smallestCompetitor.adapterId} fails the streaming budget at the lowest sampled rate (${lowestSampledRate}/sec)`
+      : `${smallestCompetitor.adapterId} tops out at ${smallestCompetitor.envelope}/sec`;
+
+  return {
+    id: "H14",
+    status: "satisfied",
+    summary: `Streaming operating envelope reaches at least ${pretableEnvelope}/sec for pretable. ${smallestSummary} — an order of magnitude smaller envelope, supporting the uniqueness claim.`,
+    evidence: [],
+  };
+}
+
+/**
+ * H15 — Streaming row stability.
+ *
+ * The bench's `visible_row_count_drift` metric measures how many rows
+ * the surface added or removed between the start and end of the
+ * 3-second updates run. Pretable's stream-adapter holds drift at zero
+ * across the operating envelope; Grid Alpha's row recycling makes its
+ * drift visible (22+ rows at sub-5k/sec rates).
+ *
+ * Status:
+ * - insufficient: no rate-tagged Pretable run.
+ * - failing: Pretable's max drift across all sampled rates exceeds 1.
+ * - directional: every measured comparator's drift also stays ≤ 1.
+ * - satisfied: pretable drift ≤ 1 AND at least one comparator drifts > 5.
+ */
+function evaluateH15(runs) {
+  const byAdapter = groupUpdatesRunsByAdapterAndRate(runs);
+  const pretableSeriesByRate = byAdapter.get("pretable");
+
+  if (!pretableSeriesByRate || pretableSeriesByRate.size === 0) {
+    return {
+      id: "H15",
+      status: "insufficient",
+      summary:
+        "Missing rate-tagged S5 updates runs for pretable, so streaming row stability cannot be evaluated yet.",
+      evidence: [],
+    };
+  }
+
+  const adapterMaxDrift = (rateSeriesMap) => {
+    let maxDrift = 0;
+    for (const series of rateSeriesMap.values()) {
+      const drift = medianMetric(series, "visible_row_count_drift");
+      if (drift !== undefined && drift > maxDrift) maxDrift = drift;
+    }
+    return maxDrift;
+  };
+
+  const pretableMaxDrift = adapterMaxDrift(pretableSeriesByRate);
+
+  if (pretableMaxDrift > 1) {
+    return {
+      id: "H15",
+      status: "failing",
+      summary: `Streaming row stability is failing — pretable's worst visible-row drift across rates is ${pretableMaxDrift} rows (threshold: ≤ 1).`,
+      evidence: [],
+    };
+  }
+
+  // Find the worst comparator drift.
+  let worstCompetitor = null;
+  for (const [adapterId, rateSeriesMap] of byAdapter) {
+    if (adapterId === "pretable") continue;
+    const drift = adapterMaxDrift(rateSeriesMap);
+    if (worstCompetitor === null || drift > worstCompetitor.drift) {
+      worstCompetitor = { adapterId, drift };
+    }
+  }
+
+  if (worstCompetitor === null) {
+    return {
+      id: "H15",
+      status: "directional",
+      summary: `Streaming row stability holds for pretable (max drift: ${pretableMaxDrift} rows), but the comparative claim is unmeasured — no comparator's rate-tagged S5 updates runs are available.`,
+      evidence: [],
+    };
+  }
+
+  if (worstCompetitor.drift <= 5) {
+    return {
+      id: "H15",
+      status: "directional",
+      summary: `Streaming row stability holds for pretable (max drift: ${pretableMaxDrift} rows). Worst comparator drift is ${worstCompetitor.adapterId} at ${worstCompetitor.drift} rows, which doesn't exceed the differentiation threshold of 5.`,
+      evidence: [],
+    };
+  }
+
+  return {
+    id: "H15",
+    status: "satisfied",
+    summary: `Streaming row stability holds for pretable (max drift: ${pretableMaxDrift} rows across the operating envelope). ${worstCompetitor.adapterId} drifts up to ${worstCompetitor.drift} rows during streaming — a real differentiator vs that adapter's row recycling behavior.`,
+    evidence: [],
   };
 }
 
