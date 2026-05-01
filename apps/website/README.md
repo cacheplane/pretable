@@ -1,6 +1,6 @@
 # @pretable/app-website
 
-The pretable marketing landing page. Single route (`/`), cool-slate AI-startup direction, scroll-driven narrative.
+The pretable marketing landing page. Cool-slate AI-startup direction, scroll-driven narrative. Two route trees: `/` (landing) and `/docs/*` (MDX-driven documentation surface).
 
 This README is **living documentation** of the visual system as it exists today. It supersedes the proposal at `docs/superpowers/specs/2026-04-21-pretable-visual-system-design.md`.
 
@@ -87,6 +87,26 @@ The blob `top` values are tuned to the current rendered section heights. If a se
 
 ## Testing
 
-`apps/website/__tests__/` holds smoke tests only — one per top-level component plus the home page. Each test renders the component and asserts something stable (a heading exists, a wrapper renders, the code block is present). No interaction tests, no snapshots, no visual regression. The goal is to catch import-level breakage in CI, not to assert visual correctness.
+`apps/website/__tests__/` holds Vitest smoke tests only — one per top-level component plus the home page. Each test renders the component and asserts something stable (a heading exists, a wrapper renders, the code block is present). No interaction tests, no snapshots, no visual regression. The goal is to catch import-level breakage in CI, not to assert visual correctness.
 
 Run locally: `pnpm --filter @pretable/app-website test`.
+
+`apps/website/e2e/` holds Playwright **production smoke** specs. They run against the deployed origin (`BASE_URL`, defaults to `https://pretable.vercel.app`) and assert the hero, the live grid section, and the `/docs` route render. The spec is excluded from Vitest discovery via `vitest.config.ts`.
+
+Run locally against prod: `pnpm --filter @pretable/app-website smoke`.
+
+## Deploys
+
+Production deploys are owned by `.github/workflows/ci.yml`, **not** Vercel's git integration. The Vercel project's "Ignored Build Step" is set to `exit 0` server-side so `git push` to GitHub does not trigger a Vercel build directly — CI is the single source.
+
+Two jobs in `ci.yml` handle this:
+
+- `deploy-prod` — runs on push to `main`, gated on `test`, `typecheck`, `lint`, `format`, `build` passing. Calls `vercel pull --environment=production` → `vercel build --prod` → `vercel deploy --prebuilt --prod`, waits for the public alias `pretable.vercel.app` to atomically swap, then runs the Playwright smoke against the live origin. Traces are uploaded as an artifact on failure.
+- `deploy-preview` — runs on `pull_request` events. Calls `vercel pull --environment=preview` → `vercel build` → `vercel deploy --prebuilt`, then posts (or updates) a sticky comment on the PR with the preview URL. Preview URLs (`*-cacheplane.vercel.app`) are gated by Vercel deployment protection — load them while signed into the `cacheplane` Vercel team.
+
+Live origins:
+
+- Production alias: <https://pretable.vercel.app>
+- Custom domain: <https://pretable.ai> (added to the project; DNS via Vercel nameservers)
+
+Required GitHub secrets (managed at the repo level): `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
