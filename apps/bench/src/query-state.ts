@@ -7,7 +7,11 @@ const DEFAULT_QUERY_STATE: BenchQueryState = {
   scale: "dev",
   scriptName: "initial",
   autorun: false,
+  updateRatePerSec: 1000,
 };
+
+/** Allowed update-rate values for the rate sweep. */
+const UPDATE_RATE_VALUES = new Set([100, 500, 1_000, 5_000, 10_000, 25_000]);
 
 export function parseBenchQuery(
   input: string | URLSearchParams,
@@ -59,5 +63,13 @@ export function parseBenchQuery(
         ? script
         : DEFAULT_QUERY_STATE.scriptName,
     autorun: searchParams.get("autorun") === "1",
+    updateRatePerSec: (() => {
+      const raw = searchParams.get("updateRatePerSec");
+      if (raw === null) return DEFAULT_QUERY_STATE.updateRatePerSec;
+      const parsed = Number(raw);
+      return UPDATE_RATE_VALUES.has(parsed)
+        ? parsed
+        : DEFAULT_QUERY_STATE.updateRatePerSec;
+    })(),
   };
 }

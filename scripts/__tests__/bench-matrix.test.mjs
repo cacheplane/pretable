@@ -16,6 +16,7 @@ test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matr
     scale: "dev",
     scenarios: ["S1", "S2", "S3", "S7"],
     scripts: ["initial", "scroll"],
+    updateRates: [1000],
     passthroughArgs: [],
   });
 });
@@ -36,8 +37,27 @@ test("parseBenchMatrixArgs accepts explicit adapter, scenario, script, and playw
       scale: "hypothesis",
       scenarios: ["S2"],
       scripts: ["scroll"],
+      updateRates: [1000],
       passthroughArgs: ["--project=chromium"],
     },
+  );
+});
+
+test("parseBenchMatrixArgs accepts --update-rates as a CSV of patches/sec", () => {
+  assert.deepEqual(
+    parseBenchMatrixArgs([
+      "--update-rates=100,500,1000,5000,10000,25000",
+      "--scenarios=S5",
+      "--scripts=updates",
+    ]).updateRates,
+    [100, 500, 1000, 5000, 10000, 25000],
+  );
+});
+
+test("parseBenchMatrixArgs falls back to default rate when --update-rates is malformed", () => {
+  assert.deepEqual(
+    parseBenchMatrixArgs(["--update-rates=,abc,-1"]).updateRates,
+    [1000],
   );
 });
 
@@ -58,6 +78,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S1",
         scriptName: "initial",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "pretable",
@@ -65,6 +86,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S1",
         scriptName: "scroll",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "pretable",
@@ -72,6 +94,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S2",
         scriptName: "initial",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "pretable",
@@ -79,6 +102,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S2",
         scriptName: "scroll",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "pretable",
@@ -86,6 +110,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S1",
         scriptName: "initial",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "pretable",
@@ -93,6 +118,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S1",
         scriptName: "scroll",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "pretable",
@@ -100,6 +126,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S2",
         scriptName: "initial",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "pretable",
@@ -107,6 +134,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S2",
         scriptName: "scroll",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "gridalpha",
@@ -114,6 +142,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S1",
         scriptName: "initial",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "gridalpha",
@@ -121,6 +150,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S1",
         scriptName: "scroll",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "gridalpha",
@@ -128,6 +158,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S2",
         scriptName: "initial",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "gridalpha",
@@ -135,6 +166,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S2",
         scriptName: "scroll",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "gridalpha",
@@ -142,6 +174,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S1",
         scriptName: "initial",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "gridalpha",
@@ -149,6 +182,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S1",
         scriptName: "scroll",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "gridalpha",
@@ -156,6 +190,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S2",
         scriptName: "initial",
+        updateRatePerSec: 1000,
       },
       {
         adapterId: "gridalpha",
@@ -163,9 +198,34 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         scale: "dev",
         scenarioId: "S2",
         scriptName: "scroll",
+        updateRatePerSec: 1000,
       },
     ],
   );
+});
+
+test("createBenchMatrixEntries multiplies updates entries across rates without affecting other scripts", () => {
+  const entries = createBenchMatrixEntries({
+    adapters: ["pretable"],
+    repeats: 1,
+    scale: "hypothesis",
+    scenarios: ["S5"],
+    scripts: ["scroll", "updates"],
+    updateRates: [100, 1000, 10000],
+    passthroughArgs: [],
+  });
+
+  // scroll runs once with the default rate; updates expands to 3 entries.
+  assert.equal(entries.length, 4);
+  const scrollEntries = entries.filter((e) => e.scriptName === "scroll");
+  const updatesEntries = entries.filter((e) => e.scriptName === "updates");
+  assert.equal(scrollEntries.length, 1);
+  assert.equal(updatesEntries.length, 3);
+  assert.deepEqual(
+    updatesEntries.map((e) => e.updateRatePerSec),
+    [100, 1000, 10000],
+  );
+  assert.equal(scrollEntries[0].updateRatePerSec, 1000);
 });
 
 test("createBenchRunsetManifest records the invoked matrix and produced summary paths", () => {
