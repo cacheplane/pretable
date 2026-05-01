@@ -3,9 +3,15 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { ScrollReveal } from "../../app/components/ScrollReveal";
 
+const OriginalIntersectionObserver = globalThis.IntersectionObserver;
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  // Direct globalThis assignments aren't tracked by vi.restoreAllMocks();
+  // restore the setup-file shim so test ordering / future tests don't inherit
+  // the per-test SpyObserver below.
+  globalThis.IntersectionObserver = OriginalIntersectionObserver;
 });
 
 it("renders its children", () => {
