@@ -1,6 +1,6 @@
 {
-  "runsetId": "2026-05-01t17-54-26-496z",
-  "generatedAt": "2026-05-01T17:54:57.725Z",
+  "runsetId": "2026-05-01t22-09-23-915z",
+  "generatedAt": "2026-05-01T22:11:04.931Z",
   "adapters": [
     {
       "adapterId": "pretable",
@@ -19,7 +19,7 @@
     "adapters": ["pretable", "gridalpha", "gridbeta"],
     "scenarios": ["S2"],
     "scripts": ["scroll"],
-    "repeats": 3
+    "repeats": 5
   },
   "slices": [
     {
@@ -64,7 +64,7 @@
           "scenarioId": "S2",
           "scriptName": "scroll",
           "status": "completed",
-          "sampleCount": 3,
+          "sampleCount": 5,
           "policyNotes": {
             "common": [
               "contain: none",
@@ -97,7 +97,7 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 9.299999999999955,
+            "scroll_frame_p95_ms": 16.200000000000045,
             "blank_gap_frames": 0,
             "long_tasks_count": 0,
             "long_tasks_ms": 0,
@@ -112,9 +112,9 @@
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 9.199999999999989,
-              "median": 9.299999999999955,
-              "max": 9.300000000000011
+              "min": 15.799999999999955,
+              "median": 16.200000000000045,
+              "max": 17.100000000000023
             },
             "blank_gap_frames": {
               "min": 0,
@@ -179,7 +179,7 @@
           "scenarioId": "S2",
           "scriptName": "scroll",
           "status": "completed",
-          "sampleCount": 3,
+          "sampleCount": 5,
           "policyNotes": {
             "common": [
               "contain: none",
@@ -198,24 +198,24 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 42.5,
+            "scroll_frame_p95_ms": 66.70000000000005,
             "blank_gap_frames": 0,
-            "long_tasks_count": 0,
-            "long_tasks_ms": 0,
+            "long_tasks_count": 3,
+            "long_tasks_ms": 180,
             "dom_nodes_peak": 657,
             "scroll_viewport_nodes_peak": 468,
             "rendered_rows_peak": 66,
             "rendered_cells_peak": 198,
-            "row_height_error_p95_px": 153,
+            "row_height_error_p95_px": 152,
             "scroll_anchor_shift_px": 0,
             "scroll_anchor_shift_forward_p95_px": 0,
             "scroll_anchor_shift_backward_p95_px": 0
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 41.69999999999999,
-              "median": 42.5,
-              "max": 66.40000000000003
+              "min": 58.40000000000009,
+              "median": 66.70000000000005,
+              "max": 82.90000000000003
             },
             "blank_gap_frames": {
               "min": 0,
@@ -223,14 +223,14 @@
               "max": 0
             },
             "long_tasks_count": {
-              "min": 0,
-              "median": 0,
-              "max": 1
+              "min": 1,
+              "median": 3,
+              "max": 4
             },
             "long_tasks_ms": {
-              "min": 0,
-              "median": 0,
-              "max": 114
+              "min": 55,
+              "median": 180,
+              "max": 220
             },
             "dom_nodes_peak": {
               "min": 657,
@@ -253,9 +253,9 @@
               "max": 198
             },
             "row_height_error_p95_px": {
-              "min": 153,
-              "median": 153,
-              "max": 153
+              "min": 152,
+              "median": 152,
+              "max": 152
             },
             "scroll_anchor_shift_px": {
               "min": 0,
@@ -280,7 +280,7 @@
           "scenarioId": "S2",
           "scriptName": "scroll",
           "status": "completed",
-          "sampleCount": 3,
+          "sampleCount": 5,
           "policyNotes": {
             "common": [
               "contain: none",
@@ -299,7 +299,7 @@
             "varying": {}
           },
           "metrics": {
-            "scroll_frame_p95_ms": 9.300000000000011,
+            "scroll_frame_p95_ms": 16.69999999999999,
             "blank_gap_frames": 0,
             "long_tasks_count": 0,
             "long_tasks_ms": 0,
@@ -314,9 +314,9 @@
           },
           "metricSummary": {
             "scroll_frame_p95_ms": {
-              "min": 9.300000000000011,
-              "median": 9.300000000000011,
-              "max": 16.599999999999966
+              "min": 16.600000000000023,
+              "median": 16.69999999999999,
+              "max": 25
             },
             "blank_gap_frames": {
               "min": 0,
@@ -404,55 +404,91 @@
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t17-54-37-963z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t22-09-49-115z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t17-54-40-141z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t22-09-56-764z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t17-54-42-363z.summary.json"
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t22-10-04-481z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 3,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t22-10-10-396z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 4,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t22-10-15-525z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t17-54-44-504z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t22-10-19-845z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t17-54-47-295z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t22-10-24-602z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t17-54-50-258z.summary.json"
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t22-10-29-542z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 3,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t22-10-37-120z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 4,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t22-10-43-440z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 0,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t17-54-53-115z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t22-10-48-060z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 1,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t17-54-55-209z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t22-10-51-435z.summary.json"
         },
         {
           "scenarioId": "S2",
           "scriptName": "scroll",
           "repeatIndex": 2,
-          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t17-54-57-249z.summary.json"
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t22-10-54-791z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 3,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t22-10-58-125z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 4,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t22-11-03-879z.summary.json"
         }
       ]
     },
