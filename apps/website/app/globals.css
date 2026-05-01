@@ -48,6 +48,11 @@ body {
 }
 
 body {
+  /* relative positioning context for <LandingAmbient />'s `absolute inset-0`
+     wrapper — without this, the blob layer resolves against the viewport
+     (initial containing block) instead of the body's full scroll height,
+     and blobs below the first screen get clipped by `overflow-hidden`. */
+  position: relative;
   font-family: var(--font-sans);
   color: var(--pt-text-primary);
   background: linear-gradient(
