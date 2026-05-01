@@ -2,8 +2,8 @@
 @import "@fontsource-variable/fraunces/wght-italic.css";
 @import "@fontsource-variable/inter/wght.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
-@import "@pretable/ui/tokens.css";
-@import "@pretable/ui/components.css";
+@import "./styles/cool-slate-tokens.css";
+@import "./styles/marketing-components.css";
 @import "tailwindcss";
 
 @theme inline {
