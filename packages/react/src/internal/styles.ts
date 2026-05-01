@@ -2,10 +2,17 @@ import type { CSSProperties } from "react";
 
 import { HEADER_HEIGHT } from "./rendering";
 
+/**
+ * Inline styles for @pretable/react's grid surface.
+ *
+ * Layout/positioning math only — no colors, no border-radius, no fonts,
+ * no padding amounts, no backdrop-filter. Skin lives in CSS targeting
+ * the engine's data attributes (`[data-pretable-*]`); see @pretable/ui's
+ * grid.css for the public theming surface.
+ */
+
 export function getViewportStyle(height: number): CSSProperties {
   return {
-    border: "1px solid rgba(255, 255, 255, 0.08)",
-    borderRadius: 16,
     contain: "content",
     containIntrinsicSize: `auto ${height}px`,
     contentVisibility: "auto",
@@ -17,13 +24,13 @@ export function getViewportStyle(height: number): CSSProperties {
   };
 }
 
-export function getHeaderRowStyle(totalWidth: number): CSSProperties {
+export function getHeaderRowStyle(
+  totalWidth: number,
+  headerHeight: number = HEADER_HEIGHT,
+): CSSProperties {
   return {
-    backdropFilter: "blur(8px)",
-    background: "rgba(18, 18, 18, 0.94)",
-    borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
     display: "flex",
-    height: HEADER_HEIGHT,
+    height: headerHeight,
     insetInline: 0,
     minWidth: totalWidth,
     position: "sticky",
@@ -45,7 +52,6 @@ export function getScrollContentStyle(
 
 export function getRowStyle(top: number, height: number): CSSProperties {
   return {
-    borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
     boxSizing: "border-box",
     display: "flex",
     height,
@@ -60,7 +66,6 @@ export function getCellStyle(left: number, width: number): CSSProperties {
     boxSizing: "border-box",
     height: "100%",
     left,
-    padding: "10px 12px",
     position: "absolute",
     top: 0,
     width,
@@ -72,7 +77,6 @@ export function getHeaderCellStyle(left: number, width: number): CSSProperties {
     boxSizing: "border-box",
     height: "100%",
     left,
-    padding: "12px",
     position: "absolute",
     top: 0,
     width,
@@ -81,7 +85,6 @@ export function getHeaderCellStyle(left: number, width: number): CSSProperties {
 
 export function getPinnedCellStyle(left: number): CSSProperties {
   return {
-    background: "rgba(18, 18, 18, 0.96)",
     left,
     position: "sticky",
     top: 0,
