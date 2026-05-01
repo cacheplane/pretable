@@ -46,10 +46,7 @@ describe("Nav", () => {
 
   it("renders the CTA button when cta is provided", () => {
     render(
-      <Nav
-        active="website"
-        cta={{ label: "Try it live →", href: "/" }}
-      />,
+      <Nav active="website" cta={{ label: "Try it live →", href: "/" }} />,
     );
     const cta = screen.getByRole("link", { name: /try it live/i });
     expect(cta).toHaveAttribute("href", "/");
