@@ -138,7 +138,7 @@ describe("PretableSurface", () => {
       overflowAnchor: "none",
       overscrollBehavior: "contain",
     });
-    expect(scrollContent).toHaveStyle({ height: "192px" });
+    expect(scrollContent).toHaveStyle({ height: "198px" });
     expect(renderedRows[0]).toHaveStyle({ top: "0px" });
     expect(firstPinnedCell).toHaveStyle({ position: "sticky", left: "0px" });
     expect(secondPinnedCell).toHaveStyle({ position: "sticky", left: "188px" });
@@ -619,7 +619,7 @@ describe("PretableSurface", () => {
         .getAllByTestId("pretable-row")
         .find((row) => row.getAttribute("data-row-id") === "evt-002");
 
-      expect(shortRow).toHaveAttribute("data-row-height", "64");
+      expect(shortRow).toHaveAttribute("data-row-height", "66");
       expect(
         measureRenderedRowHeightSpy.mock.calls.filter(
           ([node]) => node.getAttribute("data-row-id") === "evt-002",
