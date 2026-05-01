@@ -621,16 +621,19 @@ function evaluateH12(runs) {
 }
 
 /**
- * H13 — Streaming Update Frame Budget.
+ * H13 — Streaming Update Frame Budget (comparative).
  *
- * Pretable's `updates` script on the S5 streaming-updates scenario should
- * keep frame p95 within one 60Hz frame budget (≤ 16ms) with zero long
- * tasks (>50ms blocking) across the 3-second test.
+ * Pretable's `updates` script on the S5 streaming-updates scenario must
+ * (a) clear absolute frame-budget thresholds (frame p95 ≤ 16ms, zero
+ * long tasks across the 3-second test), and (b) match or beat the best
+ * measured comparator's frame p95 within a 10% parity band — the same
+ * structure as H1 for the scroll wedge.
  *
- * Phase 1 ships absolute thresholds against pretable only — no comparator
- * has an `updates` adapter wired yet (only AG Grid has a native batching
- * API; MUI has updateRows; TanStack has setRows). Phase 2 will promote
- * to a comparative claim once the comparator update paths land.
+ * Each adapter wires its idiomatic streaming pattern in apps/bench/src/
+ * (Pretable: stream-adapter batcher → applyTransaction; AG Grid: native
+ * applyTransaction; MUI: apiRef.updateRows; TanStack: setRows merge).
+ * If no comparator data is available, status falls back to "directional"
+ * (absolute thresholds met but uniqueness unmeasured).
  */
 function evaluateH13(runs) {
   const updatesSeries = findRunSeries(runs, {
@@ -649,8 +652,8 @@ function evaluateH13(runs) {
     };
   }
 
-  const evidence = summarizeRunSeriesEvidence(updatesSeries);
-  const framePass = evidence.metrics.scroll_frame_p95_ms;
+  const pretableEvidence = summarizeRunSeriesEvidence(updatesSeries);
+  const framePass = pretableEvidence.metrics.scroll_frame_p95_ms;
   const longTasksCount = maxMetric(updatesSeries, "long_tasks_count");
 
   const failingSubCriteria = [];
@@ -672,19 +675,83 @@ function evaluateH13(runs) {
       id: "H13",
       status: "failing",
       summary: `Streaming updates on S5 are measured, but ${failingSubCriteria.length} frame-budget sub-criteria are not met: ${failingSubCriteria.join("; ")}.`,
-      evidence: [evidence],
+      evidence: [pretableEvidence],
     };
   }
 
-  const hasRepeatedEvidence = evidence.sampleCount > 1;
+  // Comparative band: the best comparator that completed a run.
+  const competitorSeries = groupRunSeries(runs, {
+    scenarioId: "S5",
+    scriptName: "updates",
+  }).filter(
+    (series) =>
+      series[0]?.adapterId !== "pretable" &&
+      medianMetric(series, "scroll_frame_p95_ms") !== undefined,
+  );
+
+  if (competitorSeries.length === 0) {
+    return {
+      id: "H13",
+      status: "directional",
+      summary:
+        "Streaming updates on S5 meet absolute frame-budget thresholds, but the comparative claim is unmeasured — no comparator's `updates` run completed.",
+      evidence: [pretableEvidence],
+    };
+  }
+
+  const bestCompetitorSeries = competitorSeries.reduce((best, current) =>
+    medianMetric(current, "scroll_frame_p95_ms") <
+    medianMetric(best, "scroll_frame_p95_ms")
+      ? current
+      : best,
+  );
+  const bestCompetitorEvidence =
+    summarizeRunSeriesEvidence(bestCompetitorSeries);
+  const evidenceArray = [pretableEvidence, bestCompetitorEvidence];
+
+  const frameParityRatio =
+    pretableEvidence.metrics.scroll_frame_p95_ms /
+    bestCompetitorEvidence.metrics.scroll_frame_p95_ms;
+
+  if (frameParityRatio > 1.1) {
+    const percentAbove = Math.round((frameParityRatio - 1) * 100);
+
+    return {
+      id: "H13",
+      status: "failing",
+      summary: `Streaming updates on S5 meet absolute thresholds, but frame p95 is ${percentAbove}% above the best comparator (${bestCompetitorEvidence.adapterId}: ${bestCompetitorEvidence.metrics.scroll_frame_p95_ms}ms vs pretable: ${pretableEvidence.metrics.scroll_frame_p95_ms}ms). The 10% parity threshold is not met.`,
+      evidence: evidenceArray,
+    };
+  }
+
+  // Whether any comparator also clears the absolute thresholds.
+  const allCompetitorsPassAbsolutes = competitorSeries.every((series) => {
+    const evidence = summarizeRunSeriesEvidence(series);
+    const fp = evidence.metrics.scroll_frame_p95_ms;
+    const lt = maxMetric(series, "long_tasks_count");
+    return fp !== undefined && fp <= 16 && lt !== undefined && lt === 0;
+  });
+
+  if (allCompetitorsPassAbsolutes) {
+    return {
+      id: "H13",
+      status: "directional",
+      summary:
+        "Streaming updates on S5 meet all frame-budget thresholds, but every measured comparator also clears them — the uniqueness claim is not yet supported.",
+      evidence: evidenceArray,
+    };
+  }
+
+  const hasRepeatedEvidence =
+    pretableEvidence.sampleCount > 1 && bestCompetitorEvidence.sampleCount > 1;
 
   return {
     id: "H13",
     status: "satisfied",
     summary: hasRepeatedEvidence
-      ? "Streaming updates on S5 keep frame p95 within one 60Hz frame (≤ 16ms) with zero long tasks across the 3-second test. Evidence is based on current repeated-run medians."
-      : "Streaming updates on S5 keep frame p95 within one 60Hz frame (≤ 16ms) with zero long tasks across the 3-second test. Evidence is based on the current sample.",
-    evidence: [evidence],
+      ? "Streaming updates on S5 keep frame p95 within one 60Hz frame (≤ 16ms) with zero long tasks, within 10% of the best measured comparator. At least one comparator fails the absolute thresholds. Evidence is based on current repeated-run medians."
+      : "Streaming updates on S5 keep frame p95 within one 60Hz frame (≤ 16ms) with zero long tasks, within 10% of the best measured comparator. At least one comparator fails the absolute thresholds. Evidence is based on the current sample.",
+    evidence: evidenceArray,
   };
 }
 

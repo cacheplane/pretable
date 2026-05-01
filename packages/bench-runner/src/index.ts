@@ -255,13 +255,9 @@ export function validateSupportedP0aRequest(
   }
 
   if (request.scriptName === "updates") {
-    if (request.adapterId !== "pretable") {
-      return {
-        ok: false,
-        reason: `Unsupported adapter for updates script: ${request.adapterId}`,
-      };
-    }
-
+    // All four bench adapters wire their idiomatic streaming pattern (see
+    // apps/bench/src/{pretable,ag-grid,mui,tanstack}-adapter.tsx). The
+    // script remains S5-only — that's the streaming-updates scenario.
     if (request.scenarioId !== "S5") {
       return {
         ok: false,

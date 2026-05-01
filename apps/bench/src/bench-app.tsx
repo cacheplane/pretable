@@ -1,4 +1,11 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { PretableGrid } from "@pretable/react";
 import type { PretableTelemetry } from "@pretable/react/internal";
 
@@ -17,6 +24,7 @@ import {
 
 import type { BenchQueryState } from "./bench-types";
 import {
+  type ApplyBenchUpdates,
   createBenchInteractionStateFromTelemetry,
   createPretableTelemetryNotes,
   createBenchRequest,
@@ -91,6 +99,16 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const autorunRef = useRef(false);
   const pretableTelemetryRef = useRef<PretableTelemetry | null>(null);
   const pretableGridRef = useRef<PretableGrid<ScenarioRow> | null>(null);
+  /**
+   * Adapter-agnostic update API ref. Each adapter wires its idiomatic
+   * streaming pattern (Pretable: stream-adapter batcher → applyTransaction;
+   * AG Grid: gridApi.applyTransaction; MUI: apiRef.updateRows; TanStack:
+   * setRows merge) and exposes a uniform `apply(patches)` callback here.
+   */
+  const updateApiRef = useRef<ApplyBenchUpdates | null>(null);
+  const handleUpdateApiReady = useCallback((apply: ApplyBenchUpdates) => {
+    updateApiRef.current = apply;
+  }, []);
   const interactionPlan =
     interactionPlanOverride?.search === search
       ? interactionPlanOverride.plan
@@ -187,11 +205,25 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             : null
           : null;
 
+      // Wait up to ~1s for the current adapter to publish its update API.
+      // AG Grid in particular fires onGridReady asynchronously a few RAFs
+      // after mount, so kicking off the updates script in the very next
+      // frame after setRunKey would race past it and leave updateApiRef
+      // null (no metrics get collected).
+      let updatesApi = updateApiRef.current;
+      if (scriptName === "updates" && !updatesApi) {
+        for (let i = 0; i < 60 && !updateApiRef.current; i++) {
+          await waitForNextAnimationFrame();
+        }
+        updatesApi = updateApiRef.current;
+      }
+
       const updatesRun =
-        scriptName === "updates" && pretableGridRef.current
+        scriptName === "updates" && updatesApi
           ? await measureBenchUpdatesRun(
               viewportRef.current ?? document.body,
-              pretableGridRef.current,
+              query.adapterId,
+              updatesApi,
               dataset,
             )
           : null;
@@ -371,10 +403,16 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 onTelemetryChange={(telemetry) => {
                   pretableTelemetryRef.current = telemetry;
                 }}
+                onUpdateApiReady={handleUpdateApiReady}
                 runKey={runKey}
               />
             ) : (
-              <AdapterSurface dataset={dataset} key={runKey} runKey={runKey} />
+              <AdapterSurface
+                dataset={dataset}
+                key={runKey}
+                onUpdateApiReady={handleUpdateApiReady}
+                runKey={runKey}
+              />
             )}
           </div>
 

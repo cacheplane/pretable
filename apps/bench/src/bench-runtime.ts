@@ -568,17 +568,27 @@ export interface UpdatesBenchRunResult {
   notes: string[];
 }
 
+/**
+ * Caller-supplied function that applies a batch of update patches to the
+ * adapter's grid. Each adapter wires this to its idiomatic streaming
+ * pattern (Pretable: stream-adapter batcher → applyTransaction; AG Grid:
+ * gridApi.applyTransaction directly; MUI: apiRef.updateRows directly;
+ * TanStack: setRows merge).
+ */
+export type ApplyBenchUpdates = (
+  patches: Record<string, unknown>[],
+) => void | Promise<void>;
+
 export async function measureBenchUpdatesRun(
   root: HTMLElement,
-  grid: {
-    applyTransaction(transaction: { update?: Record<string, unknown>[] }): void;
-  },
+  adapterId: BenchQueryState["adapterId"],
+  apply: ApplyBenchUpdates,
   dataset: {
     rows: readonly Record<string, unknown>[];
     columns: readonly { id: string }[];
   },
 ): Promise<UpdatesBenchRunResult> {
-  const profile = scrollRuntimeProfiles.pretable;
+  const profile = scrollRuntimeProfiles[adapterId];
   const viewport = await waitForScrollViewport(root, profile.viewportSelector);
   const viewportPolicyNotes = viewport
     ? detectViewportPolicyNotes(viewport)
@@ -596,9 +606,6 @@ export async function measureBenchUpdatesRun(
   const DURATION_MS = 3_000;
   const UPDATES_PER_TICK = 50;
   const columnIds = dataset.columns.map((c) => c.id);
-
-  const { createBatcher } = await import("@pretable-internal/stream-adapter");
-  const batcher = createBatcher(grid);
 
   let totalUpdates = 0;
   const longTaskDurations: number[] = [];
@@ -641,12 +648,21 @@ export async function measureBenchUpdatesRun(
             patches.push({ id, [columnId]: `upd-${totalUpdates + i}` });
           }
 
-          batcher.update(patches);
+          const applyResult = apply(patches);
+          if (applyResult && typeof applyResult.then === "function") {
+            // The caller can return a Promise (e.g., flush before resolve);
+            // we don't await within the interval to keep the cadence honest,
+            // but we do swallow rejections so they surface via the outer
+            // try/catch above.
+            applyResult.catch((err) => {
+              clearInterval(interval);
+              reject(err);
+            });
+          }
           totalUpdates += UPDATES_PER_TICK;
 
           if (elapsed >= DURATION_MS) {
             clearInterval(interval);
-            batcher.flush();
             resolve();
           }
         } catch (err) {
@@ -656,7 +672,6 @@ export async function measureBenchUpdatesRun(
       }, BATCH_INTERVAL_MS);
     });
   } finally {
-    batcher.dispose();
     rafHandle.running = false;
     cancelAnimationFrame(rafHandle.id);
     observer?.disconnect();

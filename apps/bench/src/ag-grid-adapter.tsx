@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 
 import type { ScenarioDataset } from "@pretable-internal/scenario-data";
 import { AgGridReact } from "ag-grid-react";
@@ -6,20 +6,45 @@ import {
   AllCommunityModule,
   ModuleRegistry,
   type ColDef,
+  type GridApi,
+  type GridReadyEvent,
 } from "ag-grid-community";
 
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
+
+import type { ApplyBenchUpdates } from "./bench-runtime";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 export interface AGGridAdapterProps {
   dataset: ScenarioDataset;
   runKey: number;
+  /**
+   * AG Grid's idiomatic streaming pattern: gridApi.applyTransaction({
+   * update }). Native batching, no wrapper layer.
+   */
+  onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
 }
 
-export function AGGridAdapter({ dataset, runKey }: AGGridAdapterProps) {
+export function AGGridAdapter({
+  dataset,
+  runKey,
+  onUpdateApiReady,
+}: AGGridAdapterProps) {
   const rowData = useMemo(() => [...dataset.rows], [dataset.rows]);
+
+  const onUpdateApiReadyRef = useRef(onUpdateApiReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
+  onUpdateApiReadyRef.current = onUpdateApiReady;
+
+  const handleGridReady = useCallback((event: GridReadyEvent) => {
+    const api: GridApi = event.api;
+    const apply: ApplyBenchUpdates = (patches) => {
+      api.applyTransaction({ update: patches });
+    };
+    onUpdateApiReadyRef.current?.(apply);
+  }, []);
   const columnDefs = useMemo<ColDef[]>(
     () =>
       dataset.columns.map((column) => ({
@@ -81,6 +106,7 @@ export function AGGridAdapter({ dataset, runKey }: AGGridAdapterProps) {
           defaultColDef={defaultColDef}
           getRowId={(params) => String(params.data.id)}
           rowData={rowData}
+          onGridReady={handleGridReady}
         />
       </div>
     </section>
