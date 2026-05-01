@@ -3,20 +3,21 @@ interface Stat {
   caption: string;
 }
 
-// Receipts snapshot — numbers from the streaming rate sweep documented at
-// docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md and the
-// scroll-side comparative work in PR #15 (H1 + H13). Source of truth:
-// status/runsets/*.hypotheses.json from `pnpm bench:matrix`.
+// Receipts snapshot — numbers from two committed milestone runsets:
 //
-// The previous version had four placeholder values. The most egregious was
-// "4.1× vs ag-grid" — real bench data shows Pretable and AG Grid are
-// essentially tied on streaming frame p95 (9 vs 10 ms). Replaced with a
-// receipt that actually holds: zero jank events under streaming load
-// (Pretable's stream-adapter batches via RAF, no long tasks across the
-// full 100–25k operating envelope).
+//   status/milestones/2026-05-01-h1-satisfied.hypotheses.json
+//     S2/scroll/hypothesis × 3 repeats. H1 satisfied.
+//
+//   status/milestones/2026-05-01-streaming-revalidated.hypotheses.json
+//     S5/updates × 6 rates × 3 repeats. H15 satisfied.
+//
+// "4.6× vs AG Grid" is the real comparative win — wrapped-text scroll p95
+// at hypothesis scale (Pretable 9.3ms vs AG Grid 42.5ms, three repeats).
+// "0 long tasks / streaming" holds across the full 100–25k operating
+// envelope. The page must not lie.
 const STATS: readonly Stat[] = [
-  { value: "500k", caption: "rows rendered (S7 target)" },
-  { value: "9ms", caption: "frame p95 / streaming" },
+  { value: "4.6×", caption: "faster scroll vs ag-grid" },
+  { value: "9.3ms", caption: "frame p95 / wrapped scroll" },
   { value: "0", caption: "long tasks / streaming" },
   { value: "25k/s", caption: "max sustained update rate" },
 ];
