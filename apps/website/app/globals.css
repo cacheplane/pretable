@@ -15,6 +15,7 @@
   --color-text-primary: var(--pt-text-primary);
   --color-text-secondary: var(--pt-text-secondary);
   --color-text-muted: var(--pt-text-muted);
+  --color-text-dim: var(--pt-text-dim);
   --color-accent: var(--pt-accent);
   --color-accent-deep: var(--pt-accent-deep);
   --color-accent-soft: var(--pt-accent-soft);
@@ -49,7 +50,14 @@ body {
 body {
   font-family: var(--font-sans);
   color: var(--pt-text-primary);
-  background: var(--pt-bg-page);
+  background: linear-gradient(
+    180deg,
+    var(--pt-bg-page) 0%,
+    #0d1426 35%,
+    #0f1518 60%,
+    var(--pt-bg-page) 100%
+  );
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 

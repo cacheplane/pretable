@@ -23,7 +23,8 @@
     "@pretable/ui": "workspace:*",
     "next": "^16.2.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "shiki": "4.0.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.4",
