@@ -1,14 +1,44 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { ScenarioDataset } from "@pretable-internal/scenario-data";
-import { DataGrid, type GridColDef } from "@gridgamma/x-data-grid";
+import { DataGrid, useGridApiRef, type GridColDef } from "@gridgamma/x-data-grid";
+
+import type { ApplyBenchUpdates } from "./bench-runtime";
 
 export interface GridGammaAdapterProps {
   dataset: ScenarioDataset;
   runKey: number;
+  /**
+   * GridGamma X DataGrid's idiomatic streaming pattern:
+   * apiRef.current.updateRows([{ id, ...patch }]). Native batching.
+   */
+  onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
 }
 
-export function GridGammaAdapter({ dataset, runKey }: GridGammaAdapterProps) {
+export function GridGammaAdapter({
+  dataset,
+  runKey,
+  onUpdateApiReady,
+}: GridGammaAdapterProps) {
+  const apiRef = useGridApiRef();
+  const onUpdateApiReadyRef = useRef(onUpdateApiReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
+  onUpdateApiReadyRef.current = onUpdateApiReady;
+
+  // Wire updates after mount, when apiRef.current is populated.
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const apply: ApplyBenchUpdates = (patches) => {
+      // GridGamma X Community caps updateRows to a single row per call (batched
+      // updates are a Pro/Premium feature). To exercise the idiomatic
+      // Community API faithfully, loop per patch.
+      for (const patch of patches) {
+        api.updateRows([patch]);
+      }
+    };
+    onUpdateApiReadyRef.current?.(apply);
+  }, [apiRef, runKey]);
   const rows = useMemo(
     () =>
       dataset.rows.map((row, index) => ({
@@ -76,6 +106,7 @@ export function GridGammaAdapter({ dataset, runKey }: GridGammaAdapterProps) {
       >
         <DataGrid
           key={runKey}
+          apiRef={apiRef}
           rows={rows}
           columns={columns}
           getRowHeight={() => "auto" as const}
