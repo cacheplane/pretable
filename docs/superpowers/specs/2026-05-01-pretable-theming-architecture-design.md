@@ -760,14 +760,20 @@ The migration breaks into independent shippable PRs (per the user's "small-PR cy
 
 | PR | Scope | Depends on |
 |---|---|---|
-| **1** | Create new `@pretable/ui`: themes, grid.css, density.ts, tailwind.css, contract test. Old package stays where it is. Publishable as 0.0.1 from this PR. | — |
-| **2** | Add `useResolvedHeights` bridge to `@pretable/react`; strip skin from `internal/styles.ts`. Apps still override via their own CSS, so nothing visually breaks. Engine bridge tests added. | PR 1 (for the contract conventions) — but technically independent if we publish the data-attribute contract first |
-| **3** | Move marketing components + cool-slate CSS out of old `@pretable/ui` into `apps/website/app/components/` and `apps/website/app/styles/`. Wire `apps/website` to consume new `@pretable/ui` for the embedded grid. Delete old `packages/ui/` directory. | PR 1 |
-| **4** | Migrate `apps/bench` to its own local Nav/Footer + new `@pretable/ui` for the bench grid. | PR 1, PR 3 (because PR 3 deletes the old package) |
+| **1** | **Liberate the `@pretable/ui` name.** Move marketing components (Receipt, Callout, CodeBlock, Nav, Footer + tests) and cool-slate CSS (`tokens.css`, `components.css`) out of `packages/ui/` into `apps/website/app/components/` and `apps/website/app/styles/`. Duplicate Nav and Footer into `apps/bench/src/components/`. Update all app imports. Delete `packages/ui/` directory. Apps render identically; no visual change. | — |
+| **2** | Create new `@pretable/ui`: themes, grid.css, density.ts, tailwind.css, contract test. Publishable as 0.0.1 from this PR. No consumer yet. | PR 1 (frees the package name) |
+| **3** | Add `useResolvedHeights` bridge to `@pretable/react`; strip skin from `internal/styles.ts`. Apps still override via their own CSS so nothing visually breaks. Engine bridge tests added. | — (independent — engine bridge needs neither old nor new `@pretable/ui` to land) |
+| **4** | Wire `apps/website` to consume new `@pretable/ui` for the embedded grid. Replace the ~110-line `#grid` CSS block in `globals.css` with `@import "@pretable/ui/themes/material.css"` + `@import "@pretable/ui/grid.css"`. | PR 2 (needs new `@pretable/ui`); plays best after PR 3 lands but works before |
+| **5** | Wire `apps/bench` to consume new `@pretable/ui` for the bench grid (Excel theme — bench is technical/dense). | PR 2; can land before or after PR 4 |
 
-PR 1 unlocks everything. PRs 2 and 3 are independent of each other. PR 4 trails PR 3 because it can't import from a package that no longer exists.
+PR 1 frees the package name. PR 2 fills it. PR 3 is fully independent (touches only `@pretable/react`). PRs 4 and 5 each consume the new package once it exists.
 
-Each PR is independently testable: PR 1 ships a CSS package nobody uses yet but with passing contract tests; PR 2 ships an engine bridge with no visual change for app consumers (their CSS still wins); PR 3 ships a working website with a Material grid; PR 4 ships a working bench.
+Each PR is independently testable:
+- PR 1 ships apps that work standalone, no `@pretable/ui` workspace dep
+- PR 2 ships a CSS package with passing contract tests, no consumer
+- PR 3 ships an engine bridge with no visual change for app consumers (their CSS still wins via specificity)
+- PR 4 ships a working website with a Material-themed embedded grid
+- PR 5 ships a working bench with an Excel-themed grid
 
 ---
 
