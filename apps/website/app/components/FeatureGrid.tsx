@@ -15,7 +15,7 @@ const FEATURES: readonly Feature[] = [
   {
     title: "Stream-aware",
     caption:
-      "Token-by-token rendering for OpenAI, Anthropic, or your own SSE — at 1k updates/sec sustained.",
+      "Token-by-token rendering for OpenAI, Anthropic, or your own SSE. Sustains 100 to 25,000 updates/sec on S5 hypothesis scale without exceeding 60 fps.",
     receiptLabel: "→ receipt: /streaming-demo",
     receiptHref: "/streaming-demo",
   },
