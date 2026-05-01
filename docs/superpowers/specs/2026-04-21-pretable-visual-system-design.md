@@ -1,5 +1,7 @@
 # Pretable Visual System — Design Spec
 
+> **Status: Superseded.** This spec described a cream/amber editorial palette. The website pivoted to a cool-slate AI-startup direction in Phase 2.A (2026-04-30). For the current visual system, see [`apps/website/README.md`](../../../apps/website/README.md). This document is preserved for design-history continuity.
+
 **Date:** 2026-04-21
 **Status:** Draft for review
 **Target:** staff engineers and VP-tech decision makers evaluating React data-grid libraries; explicit goal of taking market share from Grid Alpha.
