@@ -1,4 +1,5 @@
-import { Footer, Nav } from "@pretable/ui";
+import { Footer } from "./components/Footer";
+import { Nav } from "./components/Nav";
 
 import { BenchApp } from "./bench-app";
 import { detectBrowserVersion } from "./bench-runtime";
