@@ -225,6 +225,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               query.adapterId,
               updatesApi,
               dataset,
+              { updateRatePerSec: query.updateRatePerSec },
             )
           : null;
 

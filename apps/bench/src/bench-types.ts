@@ -15,4 +15,10 @@ export interface BenchQueryState {
     | "updates"
   >;
   autorun: boolean;
+  /**
+   * Patches per second for the `updates` script. Default is 1000/sec
+   * (the existing S5 default), held by varying batch size at a fixed
+   * 50 ms tick (so RAF/timer behavior stays consistent across rates).
+   */
+  updateRatePerSec: number;
 }

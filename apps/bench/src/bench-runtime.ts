@@ -579,6 +579,16 @@ export type ApplyBenchUpdates = (
   patches: Record<string, unknown>[],
 ) => void | Promise<void>;
 
+export interface MeasureBenchUpdatesOptions {
+  /**
+   * Patches per second to apply via the caller-supplied `apply` callback.
+   * Defaults to 1000 — the existing S5 default. The bench varies batch
+   * size to hit the rate at a fixed 50 ms tick, keeping RAF/timer
+   * behavior consistent across rates.
+   */
+  updateRatePerSec?: number;
+}
+
 export async function measureBenchUpdatesRun(
   root: HTMLElement,
   adapterId: BenchQueryState["adapterId"],
@@ -587,6 +597,7 @@ export async function measureBenchUpdatesRun(
     rows: readonly Record<string, unknown>[];
     columns: readonly { id: string }[];
   },
+  options: MeasureBenchUpdatesOptions = {},
 ): Promise<UpdatesBenchRunResult> {
   const profile = scrollRuntimeProfiles[adapterId];
   const viewport = await waitForScrollViewport(root, profile.viewportSelector);
@@ -604,8 +615,15 @@ export async function measureBenchUpdatesRun(
 
   const BATCH_INTERVAL_MS = 50;
   const DURATION_MS = 3_000;
-  const UPDATES_PER_TICK = 50;
   const FRAME_BUDGET_MS = 16;
+  const updateRatePerSec = options.updateRatePerSec ?? 1000;
+  // Vary batch size to hit the rate at a fixed 50ms tick. RAF/timer
+  // behavior stays consistent across rates so frame metrics stay
+  // comparable; only the per-batch work shifts.
+  const UPDATES_PER_TICK = Math.max(
+    1,
+    Math.round((updateRatePerSec * BATCH_INTERVAL_MS) / 1000),
+  );
   const columnIds = dataset.columns.map((c) => c.id);
 
   let totalUpdates = 0;
@@ -713,6 +731,7 @@ export async function measureBenchUpdatesRun(
     notes: [
       ...viewportPolicyNotes,
       `updates total: ${totalUpdates}`,
+      `update rate per sec: ${updateRatePerSec}`,
       `updates per tick: ${UPDATES_PER_TICK}`,
       `batch interval ms: ${BATCH_INTERVAL_MS}`,
       `duration ms: ${DURATION_MS}`,
