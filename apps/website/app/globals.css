@@ -190,3 +190,26 @@ body {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+@keyframes pt-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.pt-marquee-track {
+  animation: pt-marquee 50s linear infinite;
+}
+
+.pt-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pt-marquee-track {
+    animation: none;
+  }
+}
