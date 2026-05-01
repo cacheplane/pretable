@@ -1,0 +1,54 @@
+# Install + first grid
+
+This guide installs `@pretable/react` and renders a three-column, five-row grid.
+
+## Install
+
+```bash
+npm i @pretable/react @pretable/ui
+```
+
+## Import the styles
+
+Pretable ships two CSS files. Import them once at your app's entry point:
+
+```css
+@import "@pretable/ui/tokens.css";
+@import "@pretable/ui/components.css";
+```
+
+The first file declares all `--pt-*` design tokens. The second file ships component primitives (Nav, Footer, etc.) that consume them. If you only need the engine, you can skip both — components stay unstyled, and you wire your own.
+
+## Render your first grid
+
+```tsx
+import {
+  Pretable,
+  type PretableColumn,
+  type PretableRow,
+} from "@pretable/react";
+
+const columns: Array<PretableColumn> = [
+  { id: "name", header: "Name", getValue: (r) => r.name },
+  { id: "role", header: "Role", getValue: (r) => r.role },
+  { id: "city", header: "City", getValue: (r) => r.city },
+];
+
+const rows: Array<PretableRow> = [
+  { id: "1", name: "Ada", role: "Engineer", city: "London" },
+  { id: "2", name: "Grace", role: "Admiral", city: "New York" },
+  { id: "3", name: "Linus", role: "Maintainer", city: "Helsinki" },
+  { id: "4", name: "Margaret", role: "Director", city: "Boston" },
+  { id: "5", name: "Tim", role: "Inventor", city: "London" },
+];
+
+export function People() {
+  return <Pretable rows={rows} columns={columns} />;
+}
+```
+
+That's the full surface for a static grid. Sort, filter, selection, and streaming rows are layered on top — see the source at `apps/streaming-demo` and `apps/bench` in the repository while a guide is being written.
+
+## What's next
+
+API reference and recipes are in flight. For now, browse the [public exports](https://github.com/cacheplane/pretable/blob/main/packages/react/src/index.ts) and the [streaming demo](https://github.com/cacheplane/pretable/tree/main/apps/streaming-demo) for working code.
