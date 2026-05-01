@@ -605,13 +605,24 @@ export async function measureBenchUpdatesRun(
   const BATCH_INTERVAL_MS = 50;
   const DURATION_MS = 3_000;
   const UPDATES_PER_TICK = 50;
+  const FRAME_BUDGET_MS = 16;
   const columnIds = dataset.columns.map((c) => c.id);
 
   let totalUpdates = 0;
   const longTaskDurations: number[] = [];
   const observer = createLongTaskObserver(longTaskDurations);
+  const layoutShiftValues: number[] = [];
+  const layoutShiftObserver = createLayoutShiftObserver(layoutShiftValues);
   const frameDurations: number[] = [];
   let previousFrameTimestamp: number | null = null;
+
+  // Snapshot the viewport's pre-streaming pose so we can detect drift.
+  // scrollTop drift signals an unwanted scroll caused by row mutations;
+  // visible-row-count drift signals the surface had to re-virtualize.
+  const scrollTopBefore = viewport.scrollTop;
+  const visibleRowCountBefore = root.querySelectorAll(
+    profile.rowSelector,
+  ).length;
 
   const rafHandle = { running: true, id: 0 };
   const tickRaf = () => {
@@ -675,11 +686,27 @@ export async function measureBenchUpdatesRun(
     rafHandle.running = false;
     cancelAnimationFrame(rafHandle.id);
     observer?.disconnect();
+    layoutShiftObserver?.disconnect();
   }
 
   const domNodesPeak = root.querySelectorAll("*").length;
   const renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
   const renderedCellsPeak = root.querySelectorAll(profile.cellSelector).length;
+
+  // Beyond-p95 metrics. They surface jank that frame p95 alone misses.
+  const streamingCls = layoutShiftValues.reduce((sum, v) => sum + v, 0);
+  const frameMaxMs =
+    frameDurations.length > 0 ? Math.max(...frameDurations) : 0;
+  const frameBudgetOverruns = frameDurations.reduce(
+    (count, d) => (d > FRAME_BUDGET_MS ? count + 1 : count),
+    0,
+  );
+  const longTasksMaxMs =
+    longTaskDurations.length > 0 ? Math.max(...longTaskDurations) : 0;
+  const scrollPositionDriftPx = Math.abs(viewport.scrollTop - scrollTopBefore);
+  const visibleRowCountDrift = Math.abs(
+    renderedRowsPeak - visibleRowCountBefore,
+  );
 
   return {
     status: "completed",
@@ -689,6 +716,8 @@ export async function measureBenchUpdatesRun(
       `updates per tick: ${UPDATES_PER_TICK}`,
       `batch interval ms: ${BATCH_INTERVAL_MS}`,
       `duration ms: ${DURATION_MS}`,
+      `frame budget threshold ms: ${FRAME_BUDGET_MS}`,
+      `total frames sampled: ${frameDurations.length}`,
     ],
     metrics: {
       scroll_frame_p95_ms: percentile(frameDurations, 0.95),
@@ -697,6 +726,12 @@ export async function measureBenchUpdatesRun(
       dom_nodes_peak: domNodesPeak,
       rendered_rows_peak: renderedRowsPeak,
       rendered_cells_peak: renderedCellsPeak,
+      streaming_cls: streamingCls,
+      frame_max_ms: frameMaxMs,
+      frame_budget_overruns_count: frameBudgetOverruns,
+      long_tasks_max_ms: longTasksMaxMs,
+      scroll_position_drift_px: scrollPositionDriftPx,
+      visible_row_count_drift: visibleRowCountDrift,
     },
   };
 }
@@ -717,6 +752,44 @@ function createLongTaskObserver(longTaskDurations: number[]) {
 
   observer.observe({
     type: "longtask",
+  });
+
+  return observer;
+}
+
+/**
+ * Observes layout-shift entries during the run and accumulates the
+ * shift value of those that weren't user-initiated. This is the same
+ * computation Chrome's CLS web-vital does, scoped to the streaming
+ * window. Returns null on browsers that don't expose layout-shift.
+ */
+function createLayoutShiftObserver(layoutShiftValues: number[]) {
+  if (
+    typeof PerformanceObserver === "undefined" ||
+    !PerformanceObserver.supportedEntryTypes?.includes("layout-shift")
+  ) {
+    return null;
+  }
+
+  const observer = new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      // The layout-shift entry exposes value (the shift score) and
+      // hadRecentInput (whether the shift happened within 500ms of a
+      // user gesture, which would justify the shift). We only care
+      // about unexpected shifts that happen during streaming.
+      const shiftEntry = entry as PerformanceEntry & {
+        value: number;
+        hadRecentInput: boolean;
+      };
+      if (!shiftEntry.hadRecentInput) {
+        layoutShiftValues.push(shiftEntry.value);
+      }
+    }
+  });
+
+  observer.observe({
+    type: "layout-shift",
+    buffered: false,
   });
 
   return observer;
