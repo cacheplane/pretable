@@ -10,7 +10,8 @@
     "prebuild": "pnpm run prepare:deps",
     "build": "next build",
     "prestart": "pnpm run prepare:deps",
-    "start": "next start",
+    "pretest": "pnpm run prepare:deps",
+    "test": "vitest run --environment jsdom",
     "lint": "eslint app --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
