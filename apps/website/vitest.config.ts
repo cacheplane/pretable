@@ -5,5 +5,6 @@ export default defineConfig({
   plugins: [mdx()],
   test: {
     setupFiles: ["__tests__/setup.ts"],
+    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
   },
 });
