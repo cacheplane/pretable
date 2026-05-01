@@ -21,8 +21,8 @@ export function Solution() {
             virtualization
           </li>
           <li>
-            <span className="text-accent">▸</span> streaming-aware — token-by-token
-            rendering
+            <span className="text-accent">▸</span> streaming-aware —
+            token-by-token rendering
           </li>
           <li>
             <span className="text-accent">▸</span> stable selection — row-id
