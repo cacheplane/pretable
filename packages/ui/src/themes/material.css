@@ -1,0 +1,90 @@
+/**
+ * Material 3 — baseline scheme (seed #6750A4).
+ * Light at :root; dark at [data-theme="dark"]. Default density: standard.
+ * Surface tier: light grid uses `surface`; dark grid uses `surface-container-low`
+ * (raw `surface` reads as a void in dark mode per M3 guidance).
+ */
+
+:root {
+  /* Surfaces — M3 baseline light */
+  --pretable-bg-grid: #fef7ff; /* surface */
+  --pretable-bg-grid-alt: #fef7ff; /* No striping by default — Material list pattern */
+  --pretable-bg-header: #f3edf7; /* surface-container — one tonal step up */
+  --pretable-bg-toolbar: #f3edf7;
+  --pretable-bg-tooltip: #f3edf7;
+
+  /* Text */
+  --pretable-text-cell: #1d1b20; /* on-surface */
+  --pretable-text-header: #49454f; /* on-surface-variant */
+  --pretable-text-dim: #49454f;
+
+  /* Lines */
+  --pretable-rule: #cac4d0; /* outline-variant — decorative dividers */
+  --pretable-rule-strong: #79747e; /* outline */
+  --pretable-radius: 12px; /* M3 medium shape scale (matches Card) */
+
+  /* State */
+  --pretable-bg-hover: rgba(29, 27, 32, 0.08); /* on-surface @ 8% — M3 hover state layer */
+  --pretable-bg-selected: #e8def8; /* secondary-container */
+  --pretable-text-selected: #1d192b; /* on-secondary-container */
+  --pretable-focus-ring: #6750a4; /* primary */
+
+  /* Accent */
+  --pretable-accent: #6750a4; /* primary */
+
+  /* Density — natural default = standard */
+  --pretable-row-height: 48px;
+  --pretable-header-height: 52px;
+  --pretable-cell-padding-x: 16px;
+  --pretable-cell-padding-y: 12px;
+  --pretable-font-size-cell: 14px; /* body-medium */
+  --pretable-font-size-header: 14px; /* label-large (px equal; weight differs in grid.css) */
+
+  /* Typography */
+  --pretable-font-sans: "Roboto Flex", "Roboto", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --pretable-font-mono: "Roboto Mono", ui-monospace, monospace;
+}
+
+/* :root is already standard; only non-default tiers need explicit selectors. */
+
+[data-density="compact"] {
+  --pretable-row-height: 40px;
+  --pretable-header-height: 44px;
+  --pretable-cell-padding-x: 12px;
+  --pretable-cell-padding-y: 6px;
+  --pretable-font-size-cell: 12px; /* body-small */
+  --pretable-font-size-header: 12px;
+}
+
+[data-density="spacious"] {
+  --pretable-row-height: 56px;
+  --pretable-header-height: 64px;
+  --pretable-cell-padding-x: 24px;
+  --pretable-cell-padding-y: 16px;
+  --pretable-font-size-cell: 14px;
+  --pretable-font-size-header: 14px;
+}
+
+/* Dark mode — M3 baseline dark; color-only overrides; density inherits from light. */
+
+[data-theme="dark"] {
+  --pretable-bg-grid: #1d1b20; /* surface-container-low */
+  --pretable-bg-grid-alt: #1d1b20;
+  --pretable-bg-header: #211f26; /* surface-container */
+  --pretable-bg-toolbar: #211f26;
+  --pretable-bg-tooltip: #211f26;
+
+  --pretable-text-cell: #e6e0e9; /* on-surface (dark) */
+  --pretable-text-header: #cac4d0; /* on-surface-variant (dark) */
+  --pretable-text-dim: #cac4d0;
+
+  --pretable-rule: #49454f; /* outline-variant (dark) */
+  --pretable-rule-strong: #938f99; /* outline (dark) */
+
+  --pretable-bg-hover: rgba(230, 224, 233, 0.08); /* on-surface @ 8% — dark */
+  --pretable-bg-selected: #4a4458; /* secondary-container (dark) */
+  --pretable-text-selected: #e8def8; /* on-secondary-container (dark) */
+  --pretable-focus-ring: #d0bcff; /* primary (dark) */
+
+  --pretable-accent: #d0bcff;
+}

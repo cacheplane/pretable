@@ -284,6 +284,8 @@ importers:
 
   packages/text-core: {}
 
+  packages/ui: {}
+
 packages:
 
   '@adobe/css-tools@4.4.4':

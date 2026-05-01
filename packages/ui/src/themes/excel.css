@@ -1,0 +1,69 @@
+/**
+ * Excel — gray, technical, dense.
+ * Aptos Narrow at 11pt (15px), green active-cell border, no row hover.
+ * Light-only by design. Default density: compact.
+ *
+ * Override any token at :root or a more specific scope:
+ *   :root { --pretable-accent: hotpink; }
+ */
+
+:root {
+  /* Surfaces */
+  --pretable-bg-grid: #ffffff;
+  --pretable-bg-grid-alt: #ffffff; /* No striping by default — Excel doesn't band */
+  --pretable-bg-header: #f3f3f3; /* Excel-for-web header strip */
+  --pretable-bg-toolbar: #f3f3f3;
+  --pretable-bg-tooltip: #ffffff;
+
+  /* Text */
+  --pretable-text-cell: #1f1f1f;
+  --pretable-text-header: #5c5c5c; /* Softer than body; Excel chrome convention */
+  --pretable-text-dim: #5c5c5c;
+
+  /* Lines */
+  --pretable-rule: #d4d4d4; /* Excel desktop default RGB 211,211,211 */
+  --pretable-rule-strong: #a6a6a6;
+  --pretable-radius: 0; /* Sharp edges — Excel never rounds */
+
+  /* State */
+  --pretable-bg-hover: transparent; /* No row hover — iconic Excel; consumers opt in */
+  --pretable-bg-selected: rgba(16, 124, 65, 0.1); /* Excel green range tint */
+  --pretable-text-selected: #1f1f1f; /* Don't invert selection text */
+  --pretable-focus-ring: #107c41; /* Excel app brand green active-cell border */
+
+  /* Accent */
+  --pretable-accent: #107c41; /* Excel brand green */
+
+  /* Density — natural default = compact (Excel "Compact" tier) */
+  --pretable-row-height: 20px; /* 15pt at 96 DPI */
+  --pretable-header-height: 24px;
+  --pretable-cell-padding-x: 6px;
+  --pretable-cell-padding-y: 2px;
+  --pretable-font-size-cell: 15px; /* Aptos Narrow 11pt */
+  --pretable-font-size-header: 13px;
+
+  /* Typography */
+  --pretable-font-sans:
+    "Aptos Narrow", "Aptos", "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --pretable-font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+}
+
+/* :root is already compact; only non-default tiers need explicit selectors. */
+
+[data-density="standard"] {
+  --pretable-row-height: 24px;
+  --pretable-header-height: 32px;
+  --pretable-cell-padding-x: 8px;
+  --pretable-cell-padding-y: 4px;
+  --pretable-font-size-cell: 15px;
+  --pretable-font-size-header: 14px;
+}
+
+[data-density="spacious"] {
+  --pretable-row-height: 32px;
+  --pretable-header-height: 40px;
+  --pretable-cell-padding-x: 12px;
+  --pretable-cell-padding-y: 8px;
+  --pretable-font-size-cell: 15px;
+  --pretable-font-size-header: 14px;
+}

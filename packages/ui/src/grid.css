@@ -1,0 +1,111 @@
+/**
+ * @pretable/ui/grid.css
+ * Selector-based grid skin. Targets data attributes exposed by @pretable/react;
+ * values reference --pretable-* tokens defined by theme files.
+ *
+ * Consumer recipe:
+ *   @import "@pretable/ui/themes/excel.css";
+ *   @import "@pretable/ui/grid.css";
+ */
+
+/* Outer viewport (scrollable container) */
+[data-pretable-scroll-viewport] {
+  background: var(--pretable-bg-grid);
+  border: 1px solid var(--pretable-rule-strong);
+  border-radius: var(--pretable-radius);
+  font-family: var(--pretable-font-sans);
+  color: var(--pretable-text-cell);
+}
+
+/* Header row */
+[data-pretable-header-row] {
+  background: var(--pretable-bg-header);
+  border-bottom: 1px solid var(--pretable-rule-strong);
+  height: var(--pretable-header-height);
+}
+
+[data-pretable-header-cell] {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--pretable-cell-padding-x);
+  font-size: var(--pretable-font-size-header);
+  font-weight: 500;
+  color: var(--pretable-text-header);
+  border-right: 1px solid var(--pretable-rule);
+  box-sizing: border-box;
+}
+
+[data-pretable-header-cell]:last-of-type {
+  border-right: none;
+}
+
+/* Body cells */
+[data-pretable-cell] {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
+  font-size: var(--pretable-font-size-cell);
+  color: var(--pretable-text-cell);
+  background: var(--pretable-bg-grid);
+  border-right: 1px solid var(--pretable-rule);
+  border-bottom: 1px solid var(--pretable-rule);
+}
+
+[data-pretable-cell]:last-of-type {
+  border-right: none;
+}
+
+/* Zebra striping — only effective when --pretable-bg-grid-alt differs */
+[data-pretable-row]:nth-child(even) [data-pretable-cell] {
+  background: var(--pretable-bg-grid-alt);
+}
+
+/* Hover */
+[data-pretable-row]:hover [data-pretable-cell] {
+  background: var(--pretable-bg-hover);
+}
+
+/* Pinned cells (sticky left/right) — reuse header background */
+[data-pretable-cell][data-pinned="left"],
+[data-pretable-cell][data-pinned="right"] {
+  background: var(--pretable-bg-header);
+  z-index: 1;
+}
+
+/* Selection */
+[data-pretable-cell][data-selected="true"] {
+  background: var(--pretable-bg-selected);
+  color: var(--pretable-text-selected);
+}
+
+/* Focus */
+[data-pretable-cell][data-focused="true"] {
+  outline: 2px solid var(--pretable-focus-ring);
+  outline-offset: -2px;
+}
+
+/* Numeric cells (opt-in via [data-pretable-numeric="true"]) */
+[data-pretable-cell][data-pretable-numeric="true"] {
+  font-family: var(--pretable-font-mono);
+  text-align: right;
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Toolbar / status bar — applied if engine wraps in named data attribute */
+[data-pretable-toolbar],
+[data-pretable-status-bar] {
+  background: var(--pretable-bg-toolbar);
+  color: var(--pretable-text-dim);
+  font-family: var(--pretable-font-sans);
+  font-size: var(--pretable-font-size-cell);
+}
+
+/* Tooltip / popover */
+[data-pretable-popover] {
+  background: var(--pretable-bg-tooltip);
+  color: var(--pretable-text-cell);
+  border: 1px solid var(--pretable-rule);
+  border-radius: var(--pretable-radius);
+}
