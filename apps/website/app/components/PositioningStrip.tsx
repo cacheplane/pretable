@@ -12,13 +12,15 @@ const CARDS: readonly Card[] = [
     headline: "The fastest grid in independent benchmarks.",
     body: (
       <>
-        9.3 ms frame p95 on wrapped-text scroll —{" "}
+        16 ms frame p95 on wrapped-text scroll —{" "}
         <strong className="text-text-primary font-semibold">
-          4.6× faster than AG Grid
+          4× faster than AG Grid
         </strong>{" "}
-        (42.5 ms) at 3,000 rows. 9 ms frame p95 under 1,000 patches/sec
-        streaming (tied with AG Grid + TanStack; MUI X collapses). Zero long
-        tasks, zero blank gaps, zero anchor shift in both windows. Verifiable:{" "}
+        (67 ms) at 3,000 rows, 5 repeats. AG Grid also clips 152 px of wrapped
+        content; pretable&apos;s rows hold their cell content. 9 ms frame p95
+        under 1,000 patches/sec streaming (tied with AG Grid + TanStack; MUI X
+        collapses). Zero long tasks, zero blank gaps, zero anchor shift.
+        Verifiable:{" "}
         <code className="font-mono text-[13px] text-accent">
           pnpm bench:matrix
         </code>

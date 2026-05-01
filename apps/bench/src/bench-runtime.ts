@@ -143,7 +143,18 @@ const scrollRuntimeProfiles: Record<
     rowIdAttribute: "row-id",
     rowIndexAttribute: "row-index",
     maxSettleFrames: 1,
-    measureRowHeightError: measureAgGridRowHeightError,
+    // Unified with the other adapters: row.height vs max(cell.scrollHeight)
+    // + padding + border. The previous AG Grid-specific formula (style.height
+    // vs renderedHeight) was a different question — "did the grid library's
+    // intent match the actual render?" — and produced numbers not directly
+    // comparable to the wrapped-cell DOM-truth check used elsewhere. Honest
+    // cross-adapter comparison requires one formula. AG Grid still surfaces
+    // a large error here because its autoHeight + wrapText + virtualization
+    // at hypothesis scale leaves wrapped content clipped to a single line
+    // (cell.scrollHeight ≫ row.height) — that's user-visible behavior, not
+    // a measurement artifact.
+    measureRowHeightError: (row, renderedHeight) =>
+      measureWrappedCellRowHeightError(row, renderedHeight, ".ag-cell"),
   },
   pretable: {
     viewportSelector: "[data-pretable-scroll-viewport]",
@@ -1117,14 +1128,6 @@ function measureWrappedCellRowHeightError(
       .filter(Number.isFinite),
   );
   const expectedHeight = contentHeight + verticalPadding + borderHeight;
-
-  return Math.abs(expectedHeight - renderedHeight);
-}
-
-function measureAgGridRowHeightError(row: HTMLElement, renderedHeight: number) {
-  const expectedHeight = parseFloat(
-    row.style.height || getComputedStyle(row).height || "0",
-  );
 
   return Math.abs(expectedHeight - renderedHeight);
 }
