@@ -52,7 +52,17 @@ export type BenchMetricId =
   | "autosize_runtime_ms"
   | "scroll_anchor_shift_px"
   | "scroll_anchor_shift_forward_p95_px"
-  | "scroll_anchor_shift_backward_p95_px";
+  | "scroll_anchor_shift_backward_p95_px"
+  // Beyond-p95 streaming metrics (see apps/bench/src/bench-runtime.ts'
+  // measureBenchUpdatesRun). They surface jank that frame p95 alone misses:
+  // unexpected layout shift, the worst single frame, how many frames blew
+  // the 60Hz budget, and whether streaming caused the viewport to drift.
+  | "streaming_cls"
+  | "frame_max_ms"
+  | "frame_budget_overruns_count"
+  | "long_tasks_max_ms"
+  | "scroll_position_drift_px"
+  | "visible_row_count_drift";
 
 export type BenchScriptName =
   | "initial"
@@ -196,6 +206,12 @@ export const benchMetricIds: readonly BenchMetricId[] = [
   "scroll_anchor_shift_px",
   "scroll_anchor_shift_forward_p95_px",
   "scroll_anchor_shift_backward_p95_px",
+  "streaming_cls",
+  "frame_max_ms",
+  "frame_budget_overruns_count",
+  "long_tasks_max_ms",
+  "scroll_position_drift_px",
+  "visible_row_count_drift",
 ];
 
 export const benchScriptNames: readonly BenchScriptName[] = [
