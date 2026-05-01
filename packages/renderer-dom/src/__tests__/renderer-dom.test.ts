@@ -92,7 +92,12 @@ describe("renderer-dom", () => {
       overscan: 0,
     });
 
-    expect(render.rows[0]?.height).toBe(174);
+    // Calibrated: 6 wrapped lines × 24px (matches browser's actual line-height
+    // for Inter at 16px) + 42px chrome = 186. Previously 174 (= 6 × 22 + 42),
+    // which underestimated by 12px and surfaced as row_height_error_p95_px=5
+    // in the H1 hypothesis after the column-virtualization refactor switched
+    // row sizing from CSS grid auto to planner-driven.
+    expect(render.rows[0]?.height).toBe(186);
   });
 
   test("virtualizes columns when scrollLeft and viewportWidth are provided", () => {

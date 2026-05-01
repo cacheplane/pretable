@@ -11,7 +11,12 @@ import type { DomRenderInput, DomRenderSnapshot } from "./types";
 const DEFAULT_ROW_HEIGHT = 44;
 const WRAPPED_COLUMN_WIDTH = 220;
 const FIXED_COLUMN_WIDTH = 140;
-const ROW_LINE_HEIGHT = 22;
+// Calibrated against actual browser metrics for Inter Variable at 16px in
+// the bench app (cell line-height computed by getComputedStyle = "24px").
+// Mismatched constants caused H1's row_height_error_p95_px to fail at 5px
+// after the column-virtualization refactor (dfb6a20) made row heights
+// planner-driven instead of CSS-grid-auto-sized.
+const ROW_LINE_HEIGHT = 24;
 const ROW_CHROME_HEIGHT = 42;
 const ESTIMATED_CHARACTER_WIDTH = 7;
 const ESTIMATE_FONT_KEY = "Pretable Estimate 14";
