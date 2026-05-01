@@ -13,6 +13,8 @@ status/changeset-status.json
 status/*.summary.json
 status/dashboard.json
 status/runsets/*.json
+# status/milestones/ is intentionally NOT ignored — those are committed
+# proof artifacts referenced by the README and design memos.
 status/snapshots/*.tgz
 status/traces/*.zip
 .vercel

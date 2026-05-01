@@ -213,3 +213,30 @@ for rate in 100 500 1000 5000 10000 25000; do
     --update-rates=$rate
 done
 ```
+
+## 2026-05-01 revalidation
+
+Re-ran the full sweep (`pretable + gridalpha + gridbeta` — GridGamma excluded after it timed out the harness, exactly the documented degradation pattern). Three repeats per adapter × rate. Milestone runset at `status/milestones/2026-05-01-streaming-revalidated.hypotheses.json`.
+
+### What holds
+
+- "Streaming wedge is not raw speed" — confirmed. All three adapters in 8.9–9.1 ms p95 across 100–25 k pps.
+- Grid Alpha's row-recycling drift (22–28 visible-row drift at sub-5 k rates, settles to 0 at high rates) — unchanged.
+- GridGamma X Community is unusable at meaningful streaming rates — confirmed in the partial run before the harness timed out.
+
+### What shifted
+
+- **Frame max:** the memo claimed _"Pretable + Grid Alpha stay at ~10.4 ms (one frame budget) — more predictable than GridBeta."_ On revalidation, **Grid Alpha is solo in the predictability tier (~9.3 ms max across all rates)** while Pretable now matches GridBeta with occasional 16.6–16.7 ms spikes at most rates above 100 pps. Honest correction: Pretable does not currently share Grid Alpha's frame_max predictability advantage. The frame_p95 distribution is unchanged — these are single-frame outliers — so user-perceived smoothness is not affected, but the comparative claim must drop the "shared with Grid Alpha" framing.
+- **Pretable visible-row drift** went from 0 (memo) → 1 max (revalidation) at the 5 k–10 k rate range. Still satisfies H15's `≤ 1` threshold and remains decisively better than Grid Alpha's 28-row max drift, but tightens the margin slightly.
+
+### Hypothesis verdicts (2026-05-01)
+
+- **H13 = directional** — Streaming updates meet all frame-budget thresholds, but every measured comparator also clears them.
+- **H14 = directional** — Streaming operating envelope reaches 25 000 pps for pretable. The smallest comparator envelope is gridalpha at 25 000 pps; uniqueness claim is not supported by an order-of-magnitude gap.
+- **H15 = satisfied** ✓ — Streaming row stability holds for pretable (max drift 1 row across the operating envelope). Grid Alpha drifts up to 28 rows during streaming — a real user-visible differentiator.
+
+### Net wedge framing post-revalidation
+
+The honest streaming pitch is now H15 + integration:
+
+> **Pretable's row count stays stable across streaming rates.** Grid Alpha Community recycles rows during low-rate streams (drifting up to 28 visible rows). At equivalent frame budgets, Pretable's user-visible stability is the differentiator — not raw speed. Plus: `@cacheplane/json-stream` + `@pretable/stream-adapter` ship a purpose-built streaming pipeline; Grid Alpha and GridBeta require you to wire your own.

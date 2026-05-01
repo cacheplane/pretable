@@ -147,18 +147,19 @@ Column virtualization is live: horizontal virtualization renders only visible co
 
 ## Current Proof Surface
 
-- Scroll proof: the latest repeated Chromium `S2/hypothesis/scroll` runset at `status/runsets/2026-04-20t23-48-22-840z.hypotheses.json` satisfies `H1` (composite scroll quality). No scroll regression from interaction work.
-- Interaction proof is now clean at both `dev` and `hypothesis` scale:
-  - the repeated `S2/dev` interaction runset at `status/runsets/2026-04-20t23-47-00-725z.hypotheses.json` satisfies `H6` (`sort`), `H7` (`filter-metadata`), and `H8` (`filter-text`) with max latency under 9ms
-  - the repeated `S2/hypothesis` interaction runset at `status/runsets/2026-04-20t23-47-43-474z.hypotheses.json` also satisfies `H6`, `H7`, and `H8` with max latency under 9ms
-  - the sort variance spike (~74.6ms) that originally motivated the interaction promotion roadmap is gone — likely resolved by earlier shared-path fixes (input recreation fix, post-mutation anchor accounting, row-height measurement churn reduction)
-- Pinned-column scenario (S7) with 3 pinned left columns and variable-height multilingual content is registered and runnable across all four adapters. H9-H12 hypotheses mirror the S2 proof surface.
-- Column virtualization proof (S3): 500 columns with 2 pinned left, fixed-height rows. Scroll runs show 160 peak DOM nodes (vs ~5000 without virtualization), 0 blank-gap frames, 0 long tasks. S1/S2/S7 scroll quality is unaffected by the CSS grid-to-absolute-positioning migration.
+Milestone runsets are committed to `status/milestones/` so README citations resolve in any checkout. Re-runs that reproduce the same verdicts can replace these files; runs that change the verdict get their own dated milestone next to them.
+
+- **Scroll (H1) — satisfied with comparative win.** `status/milestones/2026-05-01-h1-satisfied.hypotheses.json`: at `S2/hypothesis/scroll` × 3 repeats, Pretable's frame_p95 is 9.3 ms with zero row-height-error, zero blank gaps, zero long tasks, zero anchor shift. Grid Alpha is 42.5 ms with 153 px row-height-error. GridBeta matches Pretable's frame quality but is in the virtualization-primitive family. **No measured full-grid competitor achieves the same combined quality** — the H1 evaluator's strongest verdict.
+- **Streaming (H13/H14/H15) — H15 satisfied; H13 + H14 directional.** `status/milestones/2026-05-01-streaming-revalidated.hypotheses.json`: at `S5/hypothesis/updates` × {100, 500, 1k, 5k, 10k, 25k} pps × 3 repeats, all three measured adapters (pretable, gridalpha, gridbeta) hold ~9 ms frame_p95 across the rate range — Pretable's wedge here is **row stability** (max visible-row drift = 1 vs Grid Alpha's 28). GridGamma X Community excluded after timing out the harness, exactly matching its documented degradation pattern. See [`docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md`](docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md) for the full rate-table analysis and the 2026-05-01 revalidation note.
+- **Interaction (H6/H7/H8) — historical proof.** Sort, metadata-filter, and text-filter all passed at `S2/hypothesis` scale on 2026-04-20 with max latency under 9 ms. Those runsets are gitignored; H6/H7/H8 should be re-run and a milestone written when interaction work next changes.
+- **Pinned-column scenario (S7) — registered.** 40 columns, 3 pinned left, variable-height multilingual content, runnable across all four adapters. H9–H12 mirror H1 and H6–H8 for S7. No current milestone runset committed.
+- **Column virtualization (S3) — historical proof.** 500 columns with 2 pinned left, fixed-height rows. Earlier scroll runs showed 160 peak DOM nodes (vs ~5000 without virtualization), 0 blank-gap frames, 0 long tasks. No current milestone runset committed.
 
 ## Current Risks
 
-- The benchmark and website demo are tighter now, but `@pretable/react/internal` is still an internal seam. It should keep absorbing prototype-specific composition until the public API is deliberate.
-- Streaming is still architectural intent, not implemented evidence.
+- `@pretable/react/internal` is still an internal seam. It should keep absorbing prototype-specific composition until the public API is deliberate.
+- Streaming has implemented evidence (H15 satisfied) but H13 and H14 are directional, not satisfied — the comparative streaming wedge is row stability vs Grid Alpha, not raw frame budget vs the field. See `docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md` for the honest framing.
+- H6/H7/H8 and S7's H9–H12 do not currently have committed milestone runsets — they were last verified on 2026-04-20 with gitignored runsets that no longer exist on disk.
 
 ## Recommended Reading
 

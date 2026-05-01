@@ -1,0 +1,502 @@
+{
+  "runsetId": "2026-05-01t17-54-26-496z",
+  "generatedAt": "2026-05-01T17:54:57.725Z",
+  "adapters": [
+    {
+      "adapterId": "pretable",
+      "adapterFamily": "candidate"
+    },
+    {
+      "adapterId": "gridalpha",
+      "adapterFamily": "full-grid"
+    },
+    {
+      "adapterId": "gridbeta",
+      "adapterFamily": "virtualization-primitive"
+    }
+  ],
+  "matrix": {
+    "adapters": ["pretable", "gridalpha", "gridbeta"],
+    "scenarios": ["S2"],
+    "scripts": ["scroll"],
+    "repeats": 3
+  },
+  "slices": [
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll",
+      "adapterIds": ["pretable", "gridalpha", "gridbeta"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 516284",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "H1",
+      "status": "satisfied",
+      "summary": "Wrapped-text scrolling delivers zero-artifact quality (row height error ≤ 1px, anchor shift ≤ 16px, no blank gaps, no long tasks) with frame times within 10% of the best measured full-grid comparator. No measured full-grid competitor achieves the same combined quality. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 516284",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 516284",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.299999999999955,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 91,
+            "scroll_viewport_nodes_peak": 86,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 0,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9.199999999999989,
+              "median": 9.299999999999955,
+              "max": 9.300000000000011
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 91,
+              "median": 91,
+              "max": 91
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 86,
+              "median": 86,
+              "max": 86
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "gridalpha",
+          "adapterFamily": "full-grid",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 42.5,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 657,
+            "scroll_viewport_nodes_peak": 468,
+            "rendered_rows_peak": 66,
+            "rendered_cells_peak": 198,
+            "row_height_error_p95_px": 153,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 41.69999999999999,
+              "median": 42.5,
+              "max": 66.40000000000003
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 1
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 114
+            },
+            "dom_nodes_peak": {
+              "min": 657,
+              "median": 657,
+              "max": 657
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 468,
+              "median": 468,
+              "max": 468
+            },
+            "rendered_rows_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "rendered_cells_peak": {
+              "min": 198,
+              "median": 198,
+              "max": 198
+            },
+            "row_height_error_p95_px": {
+              "min": 153,
+              "median": 153,
+              "max": 153
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "gridbeta",
+          "adapterFamily": "virtualization-primitive",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.300000000000011,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 499,
+            "scroll_viewport_nodes_peak": 494,
+            "rendered_rows_peak": 12,
+            "rendered_cells_peak": 480,
+            "row_height_error_p95_px": 0,
+            "scroll_anchor_shift_px": 403,
+            "scroll_anchor_shift_forward_p95_px": 403,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9.300000000000011,
+              "median": 9.300000000000011,
+              "max": 16.599999999999966
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 499,
+              "median": 499,
+              "max": 499
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 494,
+              "median": 494,
+              "max": 494
+            },
+            "rendered_rows_peak": {
+              "min": 12,
+              "median": 12,
+              "max": 12
+            },
+            "rendered_cells_peak": {
+              "min": 480,
+              "median": 480,
+              "max": 480
+            },
+            "row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_px": {
+              "min": 403,
+              "median": 403,
+              "max": 403
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 403,
+              "median": 403,
+              "max": 403
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H6",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H7",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H8",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H5",
+      "status": "satisfied",
+      "summary": "The matrix run writes summary JSON, trace artifacts, and a machine-readable hypothesis report from one command.",
+      "evidence": [
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t17-54-37-963z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t17-54-40-141z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-01t17-54-42-363z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t17-54-44-504z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t17-54-47-295z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridalpha-default-s2-hypothesis-scroll-2026-05-01t17-54-50-258z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t17-54-53-115z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t17-54-55-209z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-gridbeta-default-s2-hypothesis-scroll-2026-05-01t17-54-57-249z.summary.json"
+        }
+      ]
+    },
+    {
+      "id": "H9",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 scroll run, so composite scroll quality cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H10",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H11",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H12",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H13",
+      "status": "insufficient",
+      "summary": "Missing a completed S5 updates run, so streaming update frame budget proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H14",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so the streaming operating envelope cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H15",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so streaming row stability cannot be evaluated yet.",
+      "evidence": []
+    }
+  ]
+}
