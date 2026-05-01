@@ -9,6 +9,12 @@ const DEFAULT_REPEATS = 1;
 const DEFAULT_SCALE = "dev";
 const DEFAULT_SCENARIOS = ["S1", "S2", "S3", "S7"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
+/**
+ * Default update-rate dimension. Only the `updates` script consumes it;
+ * other scripts ignore the value. Single-element default keeps non-rate-
+ * sweep matrix runs unchanged.
+ */
+const DEFAULT_UPDATE_RATES = [1000];
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 const BENCH_APP_ID = "@pretable/app-bench";
 
@@ -19,6 +25,7 @@ export function parseBenchMatrixArgs(args) {
     scale: DEFAULT_SCALE,
     scenarios: DEFAULT_SCENARIOS,
     scripts: DEFAULT_SCRIPTS,
+    updateRates: DEFAULT_UPDATE_RATES,
     passthroughArgs: [],
   };
 
@@ -51,6 +58,16 @@ export function parseBenchMatrixArgs(args) {
       continue;
     }
 
+    if (arg.startsWith("--update-rates=")) {
+      parsed.updateRates = splitCsvArg(arg.slice("--update-rates=".length))
+        .map((value) => Number.parseInt(value, 10))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      if (parsed.updateRates.length === 0) {
+        parsed.updateRates = DEFAULT_UPDATE_RATES;
+      }
+      continue;
+    }
+
     parsed.passthroughArgs.push(arg);
   }
 
@@ -58,16 +75,29 @@ export function parseBenchMatrixArgs(args) {
 }
 
 export function createBenchMatrixEntries(parsedArgs) {
+  const updateRates =
+    parsedArgs.updateRates && parsedArgs.updateRates.length > 0
+      ? parsedArgs.updateRates
+      : DEFAULT_UPDATE_RATES;
+
   return parsedArgs.adapters.flatMap((adapterId) =>
     Array.from({ length: parsedArgs.repeats }, (_, repeatIndex) =>
       parsedArgs.scenarios.flatMap((scenarioId) =>
-        parsedArgs.scripts.map((scriptName) => ({
-          adapterId,
-          repeatIndex,
-          scale: parsedArgs.scale,
-          scenarioId,
-          scriptName,
-        })),
+        parsedArgs.scripts.flatMap((scriptName) => {
+          // Only the `updates` script consumes the update-rate dimension.
+          // For every other script, single entry with the default rate so
+          // existing matrix runs aren't multiplied.
+          const ratesForEntry =
+            scriptName === "updates" ? updateRates : DEFAULT_UPDATE_RATES;
+          return ratesForEntry.map((updateRatePerSec) => ({
+            adapterId,
+            repeatIndex,
+            scale: parsedArgs.scale,
+            scenarioId,
+            scriptName,
+            updateRatePerSec,
+          }));
+        }),
       ),
     ).flat(),
   );
@@ -237,6 +267,13 @@ function spawnBenchRun(entry, passthroughArgs) {
         PRETABLE_BENCH_SCALE: entry.scale,
         PRETABLE_BENCH_SCENARIO: entry.scenarioId,
         PRETABLE_BENCH_SCRIPT: entry.scriptName,
+        ...(entry.updateRatePerSec !== undefined
+          ? {
+              PRETABLE_BENCH_UPDATE_RATE_PER_SEC: String(
+                entry.updateRatePerSec,
+              ),
+            }
+          : {}),
       },
       stdio: "inherit",
       shell: process.platform === "win32",

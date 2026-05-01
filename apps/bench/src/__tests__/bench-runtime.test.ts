@@ -26,6 +26,7 @@ describe("bench runtime", () => {
       scale: "dev",
       scriptName: "initial",
       autorun: false,
+      updateRatePerSec: 1000,
     };
 
     expect(createBenchRequest(query, dataset, "123.0")).toMatchObject({
