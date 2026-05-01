@@ -1107,6 +1107,79 @@ test("createHypothesisReport records policy-note drift across repeated runs", ()
   });
 });
 
+test("createHypothesisReport ignores diagnostic-telemetry-only drift in policy-drift signal", () => {
+  // Continuous-numeric internal-telemetry notes (e.g., "internal telemetry
+  // planned height: 515712" vs "515729") should not flip a hypothesis from
+  // satisfied to directional — they fluctuate by rounding at hypothesis
+  // scale. Only true browser/CSS policy drift should signal drift.
+  // Uses H6 because its verdict path is purely (passes ? drift→directional
+  // : satisfied), without H1's full-grid-comparator requirement.
+  const baseSortRun = (timestamp, plannedHeight) => ({
+    adapterId: "pretable",
+    profile: "default",
+    scenarioId: "S2",
+    scale: "hypothesis",
+    scriptName: "sort",
+    browserName: "chromium",
+    browserVersion: "123.0",
+    timestamp,
+    seed: 202,
+    rowCount: 3000,
+    viewport: { width: 1440, height: 900 },
+    fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+    deviceScaleFactor: 1,
+    status: "completed",
+    notes: [
+      "interaction mode: sort",
+      "contain: none",
+      "scroll anchoring: none",
+      `internal telemetry planned height: ${plannedHeight}`,
+    ],
+    tracePath: "status/traces/x.trace.zip",
+    metrics: {
+      interaction_latency_ms: 8,
+      settle_duration_ms: 16,
+      post_interaction_blank_gap_frames: 0,
+      post_interaction_anchor_shift_px: 0,
+      post_interaction_row_height_error_p95_px: 0,
+      result_row_count: 3000,
+      selected_row_preserved: 1,
+      focused_row_preserved: 1,
+      dom_nodes_peak: 400,
+    },
+  });
+
+  const report = createHypothesisReport({
+    runsetId: "2026-05-01t21-00-00-000z",
+    generatedAt: "2026-05-01T21:00:00.000Z",
+    entries: [0, 1, 2].map((i) => ({
+      adapterId: "pretable",
+      repeatIndex: i,
+      scenarioId: "S2",
+      scriptName: "sort",
+      summaryPath: `status/${i}.summary.json`,
+    })),
+    runs: [
+      // Three repeats with three different "internal telemetry planned
+      // height" values — pure rounding jitter that should NOT count as
+      // policy drift.
+      baseSortRun("2026-05-01T21:00:00.000Z", "515712"),
+      baseSortRun("2026-05-01T21:00:01.000Z", "515721"),
+      baseSortRun("2026-05-01T21:00:02.000Z", "515729"),
+    ],
+  });
+
+  const h6 = report.hypotheses.find((item) => item.id === "H6");
+
+  // Drift exists in the runset (visible to humans for diagnostics)…
+  assert.deepEqual(h6?.evidence[0]?.policyNotes.varying, {
+    "internal telemetry planned height": ["515712", "515721", "515729"],
+  });
+  // …but it's diagnostic-only, so the hypothesis is satisfied. Verdict
+  // tracks the actual metrics, not telemetry jitter.
+  assert.equal(h6?.status, "satisfied");
+});
+
 test("createHypothesisReport includes unsupported entries without erroring", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-16t10-00-00-000z",

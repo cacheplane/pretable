@@ -1,0 +1,147 @@
+{
+  "runsetId": "2026-05-01t21-00-03-033z",
+  "generatedAt": "2026-05-01T21:01:19.676Z",
+  "adapters": [
+    {
+      "adapterId": "pretable",
+      "adapterFamily": "candidate"
+    }
+  ],
+  "matrix": {
+    "adapters": ["pretable"],
+    "scenarios": ["S3"],
+    "scripts": ["scroll"],
+    "repeats": 3
+  },
+  "slices": [
+    {
+      "scenarioId": "S3",
+      "scriptName": "scroll",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 11",
+          "internal telemetry visible rows: 7",
+          "internal telemetry total rows: 2500",
+          "internal telemetry planned height: 110000",
+          "internal telemetry viewport range: 0-7",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 11",
+          "internal telemetry visible rows: 7",
+          "internal telemetry total rows: 2500",
+          "internal telemetry planned height: 110000",
+          "internal telemetry viewport range: 0-7",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "H1",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 scroll run, so composite scroll quality cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H6",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H7",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H8",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H5",
+      "status": "satisfied",
+      "summary": "The matrix run writes summary JSON, trace artifacts, and a machine-readable hypothesis report from one command.",
+      "evidence": [
+        {
+          "scenarioId": "S3",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s3-hypothesis-scroll-2026-05-01t21-00-58-862z.summary.json"
+        },
+        {
+          "scenarioId": "S3",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s3-hypothesis-scroll-2026-05-01t21-01-06-065z.summary.json"
+        },
+        {
+          "scenarioId": "S3",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s3-hypothesis-scroll-2026-05-01t21-01-17-958z.summary.json"
+        }
+      ]
+    },
+    {
+      "id": "H9",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 scroll run, so composite scroll quality cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H10",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H11",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H12",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H13",
+      "status": "insufficient",
+      "summary": "Missing a completed S5 updates run, so streaming update frame budget proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H14",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so the streaming operating envelope cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H15",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so streaming row stability cannot be evaluated yet.",
+      "evidence": []
+    }
+  ]
+}
