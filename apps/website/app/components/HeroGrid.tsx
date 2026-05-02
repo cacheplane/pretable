@@ -44,6 +44,7 @@ export function HeroGrid() {
     const reduce =
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     if (reduce) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration snapshot for reduced-motion users
       setRows(
         heroEventLog.slice(0, 50).map((entry, index) => ({
           ...entry,
@@ -106,7 +107,9 @@ export function HeroGrid() {
           ariaLabel="Pretable streaming demo"
           columns={columns}
           getRowId={(row: DisplayRow) => row.id}
-          onTelemetryChange={(t) => { telemetryRef.current = t; }}
+          onTelemetryChange={(t) => {
+            telemetryRef.current = t;
+          }}
           rows={rows}
           viewportHeight={520}
         />

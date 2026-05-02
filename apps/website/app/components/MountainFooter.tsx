@@ -43,14 +43,54 @@ export function MountainFooter() {
             y2="48"
           />
           {/* Towers */}
-          <line stroke="#1c1917" strokeOpacity="0.42" strokeWidth="1" x1="320" x2="320" y1="55" y2="120" />
-          <line stroke="#1c1917" strokeOpacity="0.42" strokeWidth="1" x1="640" x2="640" y1="48" y2="100" />
-          <line stroke="#1c1917" strokeOpacity="0.42" strokeWidth="1" x1="960" x2="960" y1="50" y2="92" />
+          <line
+            stroke="#1c1917"
+            strokeOpacity="0.42"
+            strokeWidth="1"
+            x1="320"
+            x2="320"
+            y1="55"
+            y2="120"
+          />
+          <line
+            stroke="#1c1917"
+            strokeOpacity="0.42"
+            strokeWidth="1"
+            x1="640"
+            x2="640"
+            y1="48"
+            y2="100"
+          />
+          <line
+            stroke="#1c1917"
+            strokeOpacity="0.42"
+            strokeWidth="1"
+            x1="960"
+            x2="960"
+            y1="50"
+            y2="92"
+          />
           {/* Two amber chairs */}
           <rect fill="#ea580c" height="6" rx="1" width="8" x="416" y="60" />
-          <line stroke="#1c1917" strokeOpacity="0.4" strokeWidth="0.6" x1="420" x2="420" y1="60" y2="55" />
+          <line
+            stroke="#1c1917"
+            strokeOpacity="0.4"
+            strokeWidth="0.6"
+            x1="420"
+            x2="420"
+            y1="60"
+            y2="55"
+          />
           <rect fill="#ea580c" height="6" rx="1" width="8" x="780" y="55" />
-          <line stroke="#1c1917" strokeOpacity="0.4" strokeWidth="0.6" x1="784" x2="784" y1="55" y2="50" />
+          <line
+            stroke="#1c1917"
+            strokeOpacity="0.4"
+            strokeWidth="0.6"
+            x1="784"
+            x2="784"
+            y1="55"
+            y2="50"
+          />
         </svg>
         <p className="pb-8 pt-3 text-center font-mono text-[11px] uppercase tracking-[0.14em] text-text-muted">
           Built in Bend, OR.

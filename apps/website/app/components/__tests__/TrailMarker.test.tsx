@@ -13,7 +13,9 @@ describe("TrailMarker", () => {
 
   it("renders the blue-square variant", () => {
     render(<TrailMarker variant="blue" label="Intermediate" />);
-    expect(screen.getByRole("img", { name: "Intermediate" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Intermediate" }),
+    ).toBeInTheDocument();
   });
 
   it("renders the black-diamond variant", () => {

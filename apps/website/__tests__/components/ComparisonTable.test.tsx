@@ -16,8 +16,16 @@ it("renders a comparison table with at least one row", () => {
 
 it("renders trail markers for each adapter", () => {
   render(<ComparisonTable />);
-  expect(screen.getByRole("img", { name: /recommended path/i })).toBeInTheDocument();
-  expect(screen.getByRole("img", { name: /familiar but slower/i })).toBeInTheDocument();
-  expect(screen.getByRole("img", { name: /powerful but diy/i })).toBeInTheDocument();
-  expect(screen.getByRole("img", { name: /broken at scale/i })).toBeInTheDocument();
+  expect(
+    screen.getByRole("img", { name: /recommended path/i }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("img", { name: /familiar but slower/i }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("img", { name: /powerful but diy/i }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("img", { name: /broken at scale/i }),
+  ).toBeInTheDocument();
 });

@@ -1,7 +1,11 @@
 .hero {
   position: relative;
   height: 100vh;
-  background: linear-gradient(135deg, var(--pt-bg-card) 0%, var(--pt-bg-raised) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--pt-bg-card) 0%,
+    var(--pt-bg-raised) 100%
+  );
   border-bottom: 1px solid var(--pt-rule-soft);
 }
 
@@ -18,11 +22,22 @@
   color: var(--pt-text-muted);
 }
 
-.dot { color: var(--pt-accent); }
-.brand { font-weight: 600; color: var(--pt-text-primary); }
-.sep { color: var(--pt-text-dim); }
-.spacer { flex-grow: 1; }
-.metric { color: var(--pt-text-secondary); }
+.dot {
+  color: var(--pt-accent);
+}
+.brand {
+  font-weight: 600;
+  color: var(--pt-text-primary);
+}
+.sep {
+  color: var(--pt-text-dim);
+}
+.spacer {
+  flex-grow: 1;
+}
+.metric {
+  color: var(--pt-text-secondary);
+}
 
 .gridFrame {
   height: calc(100% - 44px);

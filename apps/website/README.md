@@ -42,12 +42,12 @@ Three variable fonts, all loaded via `@fontsource-variable/*`:
 
 Light mode by default. The **Alpenglow palette** is defined in `app/styles/cool-slate-tokens.css`:
 
-| Role           | Token              | Value                             |
-| -------------- | ------------------ | --------------------------------- |
-| Page bg        | `--pt-bg-page`     | warm cream                        |
-| Accent         | `--pt-accent`      | dusk peach                        |
-| Cool highlight | `--pt-cool`        | cobalt                            |
-| Drawer bg      | `--pt-drawer-bg`   | dark slate                        |
+| Role           | Token            | Value      |
+| -------------- | ---------------- | ---------- |
+| Page bg        | `--pt-bg-page`   | warm cream |
+| Accent         | `--pt-accent`    | dusk peach |
+| Cool highlight | `--pt-cool`      | cobalt     |
+| Drawer bg      | `--pt-drawer-bg` | dark slate |
 
 ## Page layout
 
@@ -58,14 +58,14 @@ Light mode by default. The **Alpenglow palette** is defined in `app/styles/cool-
 3. **`<DrawerHandle>`** — pill pinned to the bottom of the viewport; click or swipe up to open the drawer.
 4. **`<Drawer>`** — overlay drawer containing six content sections in order:
 
-   | #   | Component          | Role                                                             |
-   | --- | ------------------ | ---------------------------------------------------------------- |
-   | 1   | `ReceiptsBand`     | Numbers + positioning cards + problem callout ("receipts, not claims"). |
-   | 2   | `ComparisonTable`  | Cell-by-cell adapter comparison with trail markers per adapter.  |
-   | 3   | `HowItWorks`       | Architecture explainer.                                          |
-   | 4   | `CodeExample`      | Single-import code snippet (shiki).                              |
-   | 5   | `FeatureGrid`      | Four feature cards with trail markers.                           |
-   | 6   | `CtaSection`       | Install command + GitHub link.                                   |
+   | #   | Component         | Role                                                                    |
+   | --- | ----------------- | ----------------------------------------------------------------------- |
+   | 1   | `ReceiptsBand`    | Numbers + positioning cards + problem callout ("receipts, not claims"). |
+   | 2   | `ComparisonTable` | Cell-by-cell adapter comparison with trail markers per adapter.         |
+   | 3   | `HowItWorks`      | Architecture explainer.                                                 |
+   | 4   | `CodeExample`     | Single-import code snippet (shiki).                                     |
+   | 5   | `FeatureGrid`     | Four feature cards with trail markers.                                  |
+   | 6   | `CtaSection`      | Install command + GitHub link.                                          |
 
    Sections 2–6 inside the drawer are wrapped in `<ScrollReveal>`. `ReceiptsBand` is rendered bare (visible on drawer open).
 
@@ -84,11 +84,11 @@ Full marketing content is always rendered server-side; JavaScript hydration upgr
 
 `<TrailMarker>` is used in `ComparisonTable` and `FeatureGrid` as ski-difficulty metaphors. Four variants:
 
-| Variant        | Symbol | Meaning          |
-| -------------- | ------ | ---------------- |
-| `green`        | circle | easiest          |
-| `blue`         | square | intermediate     |
-| `black`        | diamond | expert          |
+| Variant        | Symbol       | Meaning       |
+| -------------- | ------------ | ------------- |
+| `green`        | circle       | easiest       |
+| `blue`         | square       | intermediate  |
+| `black`        | diamond      | expert        |
 | `double-black` | two diamonds | most advanced |
 
 ## Narrative scaffolding

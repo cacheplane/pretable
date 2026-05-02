@@ -42,7 +42,10 @@ describe("DrawerHandle", () => {
   });
 
   it("flips aria-expanded after click", () => {
-    Object.defineProperty(window, "innerWidth", { value: 1440, writable: true });
+    Object.defineProperty(window, "innerWidth", {
+      value: 1440,
+      writable: true,
+    });
     render(<DrawerHandle />);
     const handle = screen.getByRole("button", { name: /learn more/i });
     fireEvent.click(handle);

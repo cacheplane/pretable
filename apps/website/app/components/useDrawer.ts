@@ -29,6 +29,7 @@ export function useDrawer(): UseDrawerResult {
     if (window.innerWidth < VIEWPORT_BREAKPOINT_PX) {
       return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time post-hydration upgrade gate
     setIsUpgraded(true);
 
     const hash = window.location.hash.replace("#", "");

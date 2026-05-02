@@ -6,15 +6,15 @@ Redesign the pretable marketing landing page (`apps/website`) so the live data g
 
 ## Decisions
 
-| Q | Decision | Rationale |
-| --- | --- | --- |
-| Layout | **A** — full-bleed grid + bottom drawer | Boldest of the three; demonstrates the product instantly; sets the tone for "technical taste" |
-| Palette | **Alpenglow** (warm cream paper · dusk peach `#ea580c` · cobalt `#1d4ed8`) | Mt. Bachelor at sunset; warm + confident; distinctive without being earthy or precious |
-| Default mode | **Light** | Honest signal that the product is welcoming, not a niche tool for dark-room hackers |
-| Drawer interaction | **B (overlay)** + **DOM-first via CSS upgrade** | Theatrical drawer feel with no SEO penalty; identical experience for crawlers, no-JS users, and reduced-motion |
-| Motifs | **B** (trail markers) · **C** (alpine type + gradient) · **D** (mountain silhouette + chairlift) | Lean into the ski metaphor explicitly; trail markers give difficulty gradient for docs/use-cases; mountain silhouette is a deliberate page-foot moment |
-| Grid behavior | **1** — live streaming feed | 1k events/sec with alpenglow flash on new rows; the wedge demonstrates itself in the first 2 seconds |
-| Mobile | **A** — drawer is desktop-only | Mobile gets the natural DOM scroll page (== no-JS fallback); avoids gesture-handling code on Android variants |
+| Q                  | Decision                                                                                         | Rationale                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Layout             | **A** — full-bleed grid + bottom drawer                                                          | Boldest of the three; demonstrates the product instantly; sets the tone for "technical taste"                                                          |
+| Palette            | **Alpenglow** (warm cream paper · dusk peach `#ea580c` · cobalt `#1d4ed8`)                       | Mt. Bachelor at sunset; warm + confident; distinctive without being earthy or precious                                                                 |
+| Default mode       | **Light**                                                                                        | Honest signal that the product is welcoming, not a niche tool for dark-room hackers                                                                    |
+| Drawer interaction | **B (overlay)** + **DOM-first via CSS upgrade**                                                  | Theatrical drawer feel with no SEO penalty; identical experience for crawlers, no-JS users, and reduced-motion                                         |
+| Motifs             | **B** (trail markers) · **C** (alpine type + gradient) · **D** (mountain silhouette + chairlift) | Lean into the ski metaphor explicitly; trail markers give difficulty gradient for docs/use-cases; mountain silhouette is a deliberate page-foot moment |
+| Grid behavior      | **1** — live streaming feed                                                                      | 1k events/sec with alpenglow flash on new rows; the wedge demonstrates itself in the first 2 seconds                                                   |
+| Mobile             | **A** — drawer is desktop-only                                                                   | Mobile gets the natural DOM scroll page (== no-JS fallback); avoids gesture-handling code on Android variants                                          |
 
 ## Architecture
 
@@ -77,11 +77,15 @@ DOM shape:
   transform: translateY(0);
 }
 [data-drawer="open"] .hero {
-  filter: brightness(0.85);  /* dim the grid behind the open drawer */
+  filter: brightness(0.85); /* dim the grid behind the open drawer */
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-drawer] .drawer-wrap { transition: none; }
-  [data-drawer="open"] .hero { filter: none; }
+  [data-drawer] .drawer-wrap {
+    transition: none;
+  }
+  [data-drawer="open"] .hero {
+    filter: none;
+  }
 }
 ```
 
@@ -174,29 +178,29 @@ Alpenglow values:
 
 ```css
 :root {
-  --pt-bg-page:        #fefcf9;  /* warm cream paper */
-  --pt-bg-card:        #fff8f1;  /* slightly warmer card surface */
-  --pt-bg-raised:      #fef3e2;  /* gradient mid-tone */
-  --pt-text-primary:   #0c0a09;  /* near-black */
-  --pt-text-secondary: #44403c;  /* warm gray */
-  --pt-text-muted:     #78716c;  /* warmer muted */
-  --pt-text-dim:       #a8a29e;  /* dim warm gray */
-  --pt-accent:         #ea580c;  /* dusk peach (primary) */
-  --pt-accent-deep:    #b45309;  /* terracotta — hover, links */
-  --pt-accent-soft:    #fef3e2;  /* alpenglow tint for backgrounds */
-  --pt-cool:           #1d4ed8;  /* cobalt — cool data, never accent */
-  --pt-sev-info:       #1d4ed8;
-  --pt-sev-warn:       #b45309;
-  --pt-sev-err:        #b91c1c;
-  --pt-sev-ok:         #15803d;  /* juniper green */
-  --pt-rule:           #f5e6d3;  /* warm rule */
-  --pt-rule-soft:      #faf3eb;  /* lightest rule */
-  --pt-grid-bg:        #ffffff;  /* grid surface — slightly cleaner than page */
-  --pt-grid-rule:      #f5e6d3;
-  --pt-grid-text:      #1c1917;
-  --pt-grid-dim:       #a8a29e;
-  --pt-drawer-bg:      #1e293b;  /* drawer slab — dark counterpoint */
-  --pt-drawer-text:    #fbbf24;  /* warm amber on slab */
+  --pt-bg-page: #fefcf9; /* warm cream paper */
+  --pt-bg-card: #fff8f1; /* slightly warmer card surface */
+  --pt-bg-raised: #fef3e2; /* gradient mid-tone */
+  --pt-text-primary: #0c0a09; /* near-black */
+  --pt-text-secondary: #44403c; /* warm gray */
+  --pt-text-muted: #78716c; /* warmer muted */
+  --pt-text-dim: #a8a29e; /* dim warm gray */
+  --pt-accent: #ea580c; /* dusk peach (primary) */
+  --pt-accent-deep: #b45309; /* terracotta — hover, links */
+  --pt-accent-soft: #fef3e2; /* alpenglow tint for backgrounds */
+  --pt-cool: #1d4ed8; /* cobalt — cool data, never accent */
+  --pt-sev-info: #1d4ed8;
+  --pt-sev-warn: #b45309;
+  --pt-sev-err: #b91c1c;
+  --pt-sev-ok: #15803d; /* juniper green */
+  --pt-rule: #f5e6d3; /* warm rule */
+  --pt-rule-soft: #faf3eb; /* lightest rule */
+  --pt-grid-bg: #ffffff; /* grid surface — slightly cleaner than page */
+  --pt-grid-rule: #f5e6d3;
+  --pt-grid-text: #1c1917;
+  --pt-grid-dim: #a8a29e;
+  --pt-drawer-bg: #1e293b; /* drawer slab — dark counterpoint */
+  --pt-drawer-text: #fbbf24; /* warm amber on slab */
 }
 ```
 

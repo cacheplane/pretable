@@ -176,7 +176,10 @@ export function ComparisonTable() {
                 </th>
                 <th className="px-3 py-3 text-left text-text-muted font-medium">
                   <span className="inline-flex items-center gap-2">
-                    <TrailMarker variant="double-black" label="Broken at scale" />
+                    <TrailMarker
+                      variant="double-black"
+                      label="Broken at scale"
+                    />
                     mui-x
                   </span>
                 </th>

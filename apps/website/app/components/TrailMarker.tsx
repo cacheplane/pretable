@@ -23,9 +23,7 @@ export function TrailMarker({
       width={size}
     >
       <title>{label}</title>
-      {variant === "green" && (
-        <circle cx="9" cy="9" r="7.5" fill="#15803d" />
-      )}
+      {variant === "green" && <circle cx="9" cy="9" r="7.5" fill="#15803d" />}
       {variant === "blue" && (
         <rect x="2" y="2" width="14" height="14" fill="#1d4ed8" />
       )}

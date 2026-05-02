@@ -35,7 +35,7 @@ export function createHeroReplay(options: CreateHeroReplayOptions): HeroReplay {
       }
       lastTickMs = timestampMs;
     },
-    pause(_timestampMs: number) {
+    pause() {
       if (paused) return;
       paused = true;
     },

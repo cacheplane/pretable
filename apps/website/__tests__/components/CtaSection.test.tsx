@@ -9,9 +9,7 @@ afterEach(() => {
 
 it("renders the install command as primary CTA", () => {
   render(<CtaSection />);
-  expect(
-    screen.getByText("npm install @pretable/react"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("npm install @pretable/react")).toBeInTheDocument();
 });
 
 it("renders a GitHub link as secondary CTA", () => {

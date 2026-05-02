@@ -18,64 +18,64 @@
 
 ### New files
 
-| Path | Responsibility |
-| --- | --- |
-| `apps/website/app/components/HeroGrid.tsx` | Streaming grid hero. Imports `PretableSurface` from `@pretable-internal/react-surface`. Hosts replay engine + pause-on-hover. Client component. |
-| `apps/website/app/components/heroGrid/replay.ts` | RAF-batched replay of canned event log. Pure logic, no React. |
-| `apps/website/app/components/heroGrid/eventLog.ts` | The canned event-stream dataset (~3,000 entries) baked into the bundle. |
-| `apps/website/app/components/heroGrid/heroGrid.module.css` | Component-scoped styles for the hero (alpenglow flash on row insert). |
-| `apps/website/app/components/Drawer.tsx` | Wraps drawer content; integrates with `useDrawer` hook. Client component. |
-| `apps/website/app/components/DrawerHandle.tsx` | The "↑ Learn more" button at the bottom of the hero. Client component. |
-| `apps/website/app/components/useDrawer.ts` | State machine: open/closed, history.pushState, esc handler, hash routing, viewport guard. Hook. |
-| `apps/website/app/components/TrailMarker.tsx` | SVG component with 4 variants (green/blue/black/double-black). Server component. |
-| `apps/website/app/components/MountainFooter.tsx` | Cascade silhouette + chairlift SVG composition. Server component. |
-| `apps/website/app/components/__tests__/HeroGrid.test.tsx` | Smoke + interaction tests for HeroGrid. |
-| `apps/website/app/components/__tests__/Drawer.test.tsx` | Drawer state machine tests (open/close/esc/hash). |
-| `apps/website/app/components/__tests__/TrailMarker.test.tsx` | Variants render correctly. |
-| `apps/website/app/components/__tests__/MountainFooter.test.tsx` | Renders all parts (silhouette + cable + chairs + caption). |
-| `apps/website/app/components/heroGrid/__tests__/replay.test.ts` | Replay engine unit tests. |
+| Path                                                            | Responsibility                                                                                                                                  |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/website/app/components/HeroGrid.tsx`                      | Streaming grid hero. Imports `PretableSurface` from `@pretable-internal/react-surface`. Hosts replay engine + pause-on-hover. Client component. |
+| `apps/website/app/components/heroGrid/replay.ts`                | RAF-batched replay of canned event log. Pure logic, no React.                                                                                   |
+| `apps/website/app/components/heroGrid/eventLog.ts`              | The canned event-stream dataset (~3,000 entries) baked into the bundle.                                                                         |
+| `apps/website/app/components/heroGrid/heroGrid.module.css`      | Component-scoped styles for the hero (alpenglow flash on row insert).                                                                           |
+| `apps/website/app/components/Drawer.tsx`                        | Wraps drawer content; integrates with `useDrawer` hook. Client component.                                                                       |
+| `apps/website/app/components/DrawerHandle.tsx`                  | The "↑ Learn more" button at the bottom of the hero. Client component.                                                                          |
+| `apps/website/app/components/useDrawer.ts`                      | State machine: open/closed, history.pushState, esc handler, hash routing, viewport guard. Hook.                                                 |
+| `apps/website/app/components/TrailMarker.tsx`                   | SVG component with 4 variants (green/blue/black/double-black). Server component.                                                                |
+| `apps/website/app/components/MountainFooter.tsx`                | Cascade silhouette + chairlift SVG composition. Server component.                                                                               |
+| `apps/website/app/components/__tests__/HeroGrid.test.tsx`       | Smoke + interaction tests for HeroGrid.                                                                                                         |
+| `apps/website/app/components/__tests__/Drawer.test.tsx`         | Drawer state machine tests (open/close/esc/hash).                                                                                               |
+| `apps/website/app/components/__tests__/TrailMarker.test.tsx`    | Variants render correctly.                                                                                                                      |
+| `apps/website/app/components/__tests__/MountainFooter.test.tsx` | Renders all parts (silhouette + cable + chairs + caption).                                                                                      |
+| `apps/website/app/components/heroGrid/__tests__/replay.test.ts` | Replay engine unit tests.                                                                                                                       |
 
 ### Modified files
 
-| Path | What changes |
-| --- | --- |
-| `packages/ui/src/tokens.css` | Replace token values with Alpenglow set (per spec). |
-| `apps/website/app/globals.css` | Update Tailwind theme block to match new tokens; remove ambient blob layer; add drawer-related CSS variables. |
-| `apps/website/app/page.tsx` | Restructure: `<header>` + `<HeroGrid>` + `<DrawerHandle>` + `<Drawer>` containing 6 sections + `<MountainFooter>`. |
-| `apps/website/app/components/ComparisonTable.tsx` | Add `<TrailMarker>` to each adapter row. Visual updates for new palette. |
-| `apps/website/app/components/FeatureGrid.tsx` | Reduce from 6 cards to 4. Add `<TrailMarker>` per card. Visual updates. |
-| `apps/website/app/components/ReceiptsBand.tsx` | Consolidate `PositioningStrip` (4 cards) + `Problem` callout into this component. Visual updates. |
-| `apps/website/app/components/HowItWorks.tsx` | Visual updates only (palette). |
-| `apps/website/app/components/CodeExample.tsx` | Visual updates only (palette). |
-| `apps/website/app/components/CtaSection.tsx` | Sharpen to single primary CTA (install command) + secondary (GitHub). Visual updates. |
-| `apps/website/app/components/RouteAwareNav.tsx` | Repurpose as the top bar (logo dot + brand + dataset metadata + `/docs` + GitHub link). Sits above the grid. |
-| `apps/website/e2e/smoke.spec.ts` | Update selectors: drop hero-h1 assertion, add `.hero` + drawer handle + `MountainFooter` checks. |
-| `apps/website/__tests__/app/page.test.tsx` | Update for new section list. |
-| `apps/website/__tests__/components/Hero.test.tsx` | DELETE — Hero component removed. |
-| `apps/website/__tests__/components/PlaygroundSection.test.tsx` | DELETE — replaced by HeroGrid. |
-| `apps/website/__tests__/components/PositioningStrip.test.tsx` | DELETE — merged into ReceiptsBand. |
-| `apps/website/__tests__/components/Problem.test.tsx` | DELETE — merged into ReceiptsBand. |
-| `apps/website/__tests__/components/UseCases.test.tsx` | DELETE — merged into FeatureGrid. |
-| `apps/website/__tests__/components/TrustStrip.test.tsx` | DELETE. |
-| `apps/website/__tests__/components/LandingAmbient.test.tsx` | DELETE. |
-| `apps/website/__tests__/components/AmbientBlob.test.tsx` | DELETE. |
-| `apps/website/__tests__/components/ReceiptsBand.test.tsx` | Update for consolidated content. |
-| `apps/website/__tests__/components/ComparisonTable.test.tsx` | Add trail-marker assertion. |
-| `apps/website/__tests__/components/FeatureGrid.test.tsx` | Update for 4-card shape + trail markers. |
-| `apps/website/README.md` | Update section list ("nine sections" → "hero + drawer with six sections + mountain footer"). |
+| Path                                                           | What changes                                                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `packages/ui/src/tokens.css`                                   | Replace token values with Alpenglow set (per spec).                                                                |
+| `apps/website/app/globals.css`                                 | Update Tailwind theme block to match new tokens; remove ambient blob layer; add drawer-related CSS variables.      |
+| `apps/website/app/page.tsx`                                    | Restructure: `<header>` + `<HeroGrid>` + `<DrawerHandle>` + `<Drawer>` containing 6 sections + `<MountainFooter>`. |
+| `apps/website/app/components/ComparisonTable.tsx`              | Add `<TrailMarker>` to each adapter row. Visual updates for new palette.                                           |
+| `apps/website/app/components/FeatureGrid.tsx`                  | Reduce from 6 cards to 4. Add `<TrailMarker>` per card. Visual updates.                                            |
+| `apps/website/app/components/ReceiptsBand.tsx`                 | Consolidate `PositioningStrip` (4 cards) + `Problem` callout into this component. Visual updates.                  |
+| `apps/website/app/components/HowItWorks.tsx`                   | Visual updates only (palette).                                                                                     |
+| `apps/website/app/components/CodeExample.tsx`                  | Visual updates only (palette).                                                                                     |
+| `apps/website/app/components/CtaSection.tsx`                   | Sharpen to single primary CTA (install command) + secondary (GitHub). Visual updates.                              |
+| `apps/website/app/components/RouteAwareNav.tsx`                | Repurpose as the top bar (logo dot + brand + dataset metadata + `/docs` + GitHub link). Sits above the grid.       |
+| `apps/website/e2e/smoke.spec.ts`                               | Update selectors: drop hero-h1 assertion, add `.hero` + drawer handle + `MountainFooter` checks.                   |
+| `apps/website/__tests__/app/page.test.tsx`                     | Update for new section list.                                                                                       |
+| `apps/website/__tests__/components/Hero.test.tsx`              | DELETE — Hero component removed.                                                                                   |
+| `apps/website/__tests__/components/PlaygroundSection.test.tsx` | DELETE — replaced by HeroGrid.                                                                                     |
+| `apps/website/__tests__/components/PositioningStrip.test.tsx`  | DELETE — merged into ReceiptsBand.                                                                                 |
+| `apps/website/__tests__/components/Problem.test.tsx`           | DELETE — merged into ReceiptsBand.                                                                                 |
+| `apps/website/__tests__/components/UseCases.test.tsx`          | DELETE — merged into FeatureGrid.                                                                                  |
+| `apps/website/__tests__/components/TrustStrip.test.tsx`        | DELETE.                                                                                                            |
+| `apps/website/__tests__/components/LandingAmbient.test.tsx`    | DELETE.                                                                                                            |
+| `apps/website/__tests__/components/AmbientBlob.test.tsx`       | DELETE.                                                                                                            |
+| `apps/website/__tests__/components/ReceiptsBand.test.tsx`      | Update for consolidated content.                                                                                   |
+| `apps/website/__tests__/components/ComparisonTable.test.tsx`   | Add trail-marker assertion.                                                                                        |
+| `apps/website/__tests__/components/FeatureGrid.test.tsx`       | Update for 4-card shape + trail markers.                                                                           |
+| `apps/website/README.md`                                       | Update section list ("nine sections" → "hero + drawer with six sections + mountain footer").                       |
 
 ### Deleted files
 
-| Path | Reason |
-| --- | --- |
-| `apps/website/app/components/Hero.tsx` | Replaced by `HeroGrid`. |
+| Path                                                | Reason                            |
+| --------------------------------------------------- | --------------------------------- |
+| `apps/website/app/components/Hero.tsx`              | Replaced by `HeroGrid`.           |
 | `apps/website/app/components/PlaygroundSection.tsx` | `HeroGrid` is the new playground. |
-| `apps/website/app/components/PositioningStrip.tsx` | Merged into `ReceiptsBand`. |
-| `apps/website/app/components/Problem.tsx` | Merged into `ReceiptsBand`. |
-| `apps/website/app/components/UseCases.tsx` | Merged into `FeatureGrid`. |
-| `apps/website/app/components/TrustStrip.tsx` | Dropped. |
-| `apps/website/app/components/LandingAmbient.tsx` | Replaced by alpenglow gradient. |
-| `apps/website/app/components/AmbientBlob.tsx` | Replaced by alpenglow gradient. |
+| `apps/website/app/components/PositioningStrip.tsx`  | Merged into `ReceiptsBand`.       |
+| `apps/website/app/components/Problem.tsx`           | Merged into `ReceiptsBand`.       |
+| `apps/website/app/components/UseCases.tsx`          | Merged into `FeatureGrid`.        |
+| `apps/website/app/components/TrustStrip.tsx`        | Dropped.                          |
+| `apps/website/app/components/LandingAmbient.tsx`    | Replaced by alpenglow gradient.   |
+| `apps/website/app/components/AmbientBlob.tsx`       | Replaced by alpenglow gradient.   |
 
 ---
 
@@ -871,26 +871,166 @@ function formatTime(offsetSeconds: number): string {
 }
 
 export const heroEventLog: readonly HeroEvent[] = [
-  { id: "h-001", timestamp: formatTime(0), kind: "user.created", message: "token-204 ✓", status: "ok", latencyMs: 12 },
-  { id: "h-002", timestamp: formatTime(1), kind: "order.placed", message: "Bonjour depuis Pretable token-231 — customer-facing · 3 items", status: "ok", latencyMs: 9 },
-  { id: "h-003", timestamp: formatTime(2), kind: "payment.captured", message: "stripe.events ✓", status: "ok", latencyMs: 7 },
-  { id: "h-004", timestamp: formatTime(3), kind: "cache.miss", message: "region:us-west-2", status: "error", latencyMs: 23 },
-  { id: "h-005", timestamp: formatTime(4), kind: "webhook.delivered", message: "Hola desde Pretable token-202 — stripe.events · retry 1", status: "ok", latencyMs: 11 },
-  { id: "h-006", timestamp: formatTime(5), kind: "db.write", message: "append-only log", status: "ok", latencyMs: 3 },
-  { id: "h-007", timestamp: formatTime(6), kind: "user.profile.updated", message: "preferences merged", status: "ok", latencyMs: 8 },
-  { id: "h-008", timestamp: formatTime(7), kind: "auth.refresh", message: "JWT renewed for session-9342", status: "ok", latencyMs: 4 },
-  { id: "h-009", timestamp: formatTime(8), kind: "agent.tool.called", message: "search_index('Pretable scroll behavior') — Anthropic streaming", status: "ok", latencyMs: 142 },
-  { id: "h-010", timestamp: formatTime(9), kind: "agent.tool.result", message: "20 docs scored, top-3 selected", status: "ok", latencyMs: 6 },
-  { id: "h-011", timestamp: formatTime(10), kind: "rate.limit", message: "429 throttled — backing off 1.2s", status: "warn", latencyMs: 19 },
-  { id: "h-012", timestamp: formatTime(11), kind: "checkout.completed", message: "Bonjour depuis Pretable token-232 — order.id=ord-44291", status: "ok", latencyMs: 14 },
-  { id: "h-013", timestamp: formatTime(12), kind: "cache.set", message: "session-9342 → 5m TTL", status: "ok", latencyMs: 2 },
-  { id: "h-014", timestamp: formatTime(13), kind: "agent.stream.token", message: "...wrapped-text scroll holds 60fps under streaming load...", status: "ok", latencyMs: 1 },
-  { id: "h-015", timestamp: formatTime(14), kind: "metrics.flushed", message: "p50=8ms · p95=9.3ms · p99=12.1ms", status: "ok", latencyMs: 5 },
-  { id: "h-016", timestamp: formatTime(15), kind: "subscription.renewed", message: "team-pretable · annual", status: "ok", latencyMs: 22 },
-  { id: "h-017", timestamp: formatTime(16), kind: "search.indexed", message: "Hola desde Pretable token-203 — 1,847 events", status: "ok", latencyMs: 31 },
-  { id: "h-018", timestamp: formatTime(17), kind: "agent.thread.opened", message: "thread-7782 · Inspector", status: "ok", latencyMs: 6 },
-  { id: "h-019", timestamp: formatTime(18), kind: "feature.flag.read", message: "wedge.scroll.h1 → enabled", status: "ok", latencyMs: 2 },
-  { id: "h-020", timestamp: formatTime(19), kind: "alert.cleared", message: "PagerDuty incident #4421 resolved", status: "ok", latencyMs: 11 },
+  {
+    id: "h-001",
+    timestamp: formatTime(0),
+    kind: "user.created",
+    message: "token-204 ✓",
+    status: "ok",
+    latencyMs: 12,
+  },
+  {
+    id: "h-002",
+    timestamp: formatTime(1),
+    kind: "order.placed",
+    message: "Bonjour depuis Pretable token-231 — customer-facing · 3 items",
+    status: "ok",
+    latencyMs: 9,
+  },
+  {
+    id: "h-003",
+    timestamp: formatTime(2),
+    kind: "payment.captured",
+    message: "stripe.events ✓",
+    status: "ok",
+    latencyMs: 7,
+  },
+  {
+    id: "h-004",
+    timestamp: formatTime(3),
+    kind: "cache.miss",
+    message: "region:us-west-2",
+    status: "error",
+    latencyMs: 23,
+  },
+  {
+    id: "h-005",
+    timestamp: formatTime(4),
+    kind: "webhook.delivered",
+    message: "Hola desde Pretable token-202 — stripe.events · retry 1",
+    status: "ok",
+    latencyMs: 11,
+  },
+  {
+    id: "h-006",
+    timestamp: formatTime(5),
+    kind: "db.write",
+    message: "append-only log",
+    status: "ok",
+    latencyMs: 3,
+  },
+  {
+    id: "h-007",
+    timestamp: formatTime(6),
+    kind: "user.profile.updated",
+    message: "preferences merged",
+    status: "ok",
+    latencyMs: 8,
+  },
+  {
+    id: "h-008",
+    timestamp: formatTime(7),
+    kind: "auth.refresh",
+    message: "JWT renewed for session-9342",
+    status: "ok",
+    latencyMs: 4,
+  },
+  {
+    id: "h-009",
+    timestamp: formatTime(8),
+    kind: "agent.tool.called",
+    message: "search_index('Pretable scroll behavior') — Anthropic streaming",
+    status: "ok",
+    latencyMs: 142,
+  },
+  {
+    id: "h-010",
+    timestamp: formatTime(9),
+    kind: "agent.tool.result",
+    message: "20 docs scored, top-3 selected",
+    status: "ok",
+    latencyMs: 6,
+  },
+  {
+    id: "h-011",
+    timestamp: formatTime(10),
+    kind: "rate.limit",
+    message: "429 throttled — backing off 1.2s",
+    status: "warn",
+    latencyMs: 19,
+  },
+  {
+    id: "h-012",
+    timestamp: formatTime(11),
+    kind: "checkout.completed",
+    message: "Bonjour depuis Pretable token-232 — order.id=ord-44291",
+    status: "ok",
+    latencyMs: 14,
+  },
+  {
+    id: "h-013",
+    timestamp: formatTime(12),
+    kind: "cache.set",
+    message: "session-9342 → 5m TTL",
+    status: "ok",
+    latencyMs: 2,
+  },
+  {
+    id: "h-014",
+    timestamp: formatTime(13),
+    kind: "agent.stream.token",
+    message: "...wrapped-text scroll holds 60fps under streaming load...",
+    status: "ok",
+    latencyMs: 1,
+  },
+  {
+    id: "h-015",
+    timestamp: formatTime(14),
+    kind: "metrics.flushed",
+    message: "p50=8ms · p95=9.3ms · p99=12.1ms",
+    status: "ok",
+    latencyMs: 5,
+  },
+  {
+    id: "h-016",
+    timestamp: formatTime(15),
+    kind: "subscription.renewed",
+    message: "team-pretable · annual",
+    status: "ok",
+    latencyMs: 22,
+  },
+  {
+    id: "h-017",
+    timestamp: formatTime(16),
+    kind: "search.indexed",
+    message: "Hola desde Pretable token-203 — 1,847 events",
+    status: "ok",
+    latencyMs: 31,
+  },
+  {
+    id: "h-018",
+    timestamp: formatTime(17),
+    kind: "agent.thread.opened",
+    message: "thread-7782 · Inspector",
+    status: "ok",
+    latencyMs: 6,
+  },
+  {
+    id: "h-019",
+    timestamp: formatTime(18),
+    kind: "feature.flag.read",
+    message: "wedge.scroll.h1 → enabled",
+    status: "ok",
+    latencyMs: 2,
+  },
+  {
+    id: "h-020",
+    timestamp: formatTime(19),
+    kind: "alert.cleared",
+    message: "PagerDuty incident #4421 resolved",
+    status: "ok",
+    latencyMs: 11,
+  },
   // Pattern continues — 100 more entries at this density
   // (the engineer running this task should extend to ~120 entries
   //  by repeating these shapes with varied tokens and timestamps;
@@ -1239,7 +1379,11 @@ export function HeroGrid() {
 .hero {
   position: relative;
   height: 100vh;
-  background: linear-gradient(135deg, var(--pt-bg-card) 0%, var(--pt-bg-raised) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--pt-bg-card) 0%,
+    var(--pt-bg-raised) 100%
+  );
   border-bottom: 1px solid var(--pt-rule-soft);
 }
 
@@ -1344,12 +1488,12 @@ Expected: FAIL.
 
 In `apps/website/app/components/ComparisonTable.tsx`, import `TrailMarker` and add a header row above the comparison rows that places markers next to each adapter name. Specifically: in the existing `<thead>` `<th>` for each adapter column, replace plain text with a flex container containing `<TrailMarker>` + name. Map:
 
-| Adapter | Variant | Label |
-| --- | --- | --- |
-| pretable | green | Recommended path |
-| ag-grid | blue | Familiar but slower |
-| tanstack | black | Powerful but DIY |
-| mui-x | double-black | Broken at scale |
+| Adapter  | Variant      | Label               |
+| -------- | ------------ | ------------------- |
+| pretable | green        | Recommended path    |
+| ag-grid  | blue         | Familiar but slower |
+| tanstack | black        | Powerful but DIY    |
+| mui-x    | double-black | Broken at scale     |
 
 Add this `import` at the top of the file:
 
@@ -1437,25 +1581,29 @@ interface Feature {
 const FEATURES: readonly Feature[] = [
   {
     title: "60fps performance",
-    description: "9.3ms p95 frame time on wrapped scroll. 4× faster than AG Grid Community on the same dataset.",
+    description:
+      "9.3ms p95 frame time on wrapped scroll. 4× faster than AG Grid Community on the same dataset.",
     marker: "green",
     markerLabel: "Beginner-friendly",
   },
   {
     title: "Wrapped text, no jank",
-    description: "Multi-line cells, variable row heights, smooth scrolling. Multilingual content tested.",
+    description:
+      "Multi-line cells, variable row heights, smooth scrolling. Multilingual content tested.",
     marker: "blue",
     markerLabel: "Intermediate setup",
   },
   {
     title: "Stream-aware",
-    description: "Token-by-token rendering for OpenAI, Anthropic, your own SSE — sustained from 100 to 25,000 updates/sec.",
+    description:
+      "Token-by-token rendering for OpenAI, Anthropic, your own SSE — sustained from 100 to 25,000 updates/sec.",
     marker: "black",
     markerLabel: "Advanced — bring your own SSE",
   },
   {
     title: "Selection survives filters",
-    description: "Filter, sort, and reorder without losing your selection. Stable focus across mutations.",
+    description:
+      "Filter, sort, and reorder without losing your selection. Stable focus across mutations.",
     marker: "blue",
     markerLabel: "Intermediate — interaction state",
   },
@@ -1465,17 +1613,21 @@ const FEATURES: readonly Feature[] = [
 In the JSX, render each feature inside a `<li>` with a `<TrailMarker>` next to the title:
 
 ```tsx
-{FEATURES.map((feature) => (
-  <li key={feature.title} className="border-t border-rule pt-5">
-    <div className="flex items-center gap-3">
-      <TrailMarker variant={feature.marker} label={feature.markerLabel} />
-      <h3 className="font-display text-[20px] tracking-[-0.01em] text-text-primary">
-        {feature.title}
-      </h3>
-    </div>
-    <p className="mt-3 text-text-secondary leading-[1.55]">{feature.description}</p>
-  </li>
-))}
+{
+  FEATURES.map((feature) => (
+    <li key={feature.title} className="border-t border-rule pt-5">
+      <div className="flex items-center gap-3">
+        <TrailMarker variant={feature.marker} label={feature.markerLabel} />
+        <h3 className="font-display text-[20px] tracking-[-0.01em] text-text-primary">
+          {feature.title}
+        </h3>
+      </div>
+      <p className="mt-3 text-text-secondary leading-[1.55]">
+        {feature.description}
+      </p>
+    </li>
+  ));
+}
 ```
 
 - [ ] **Step 4: Run tests.**
@@ -1546,10 +1698,26 @@ import { TrailMarker } from "./TrailMarker";
 // (existing STATS array stays — 4 receipt numbers)
 
 const POSITIONING = [
-  { num: "01", eyebrow: "Performance", headline: "The fastest grid in independent benchmarks." },
-  { num: "02", eyebrow: "AI-native", headline: "AI isn't a feature. It's the data model." },
-  { num: "03", eyebrow: "Wrapped text", headline: "Multi-line cells, no layout thrash." },
-  { num: "04", eyebrow: "Ecosystem", headline: "Drops into the AI SDKs you already use." },
+  {
+    num: "01",
+    eyebrow: "Performance",
+    headline: "The fastest grid in independent benchmarks.",
+  },
+  {
+    num: "02",
+    eyebrow: "AI-native",
+    headline: "AI isn't a feature. It's the data model.",
+  },
+  {
+    num: "03",
+    eyebrow: "Wrapped text",
+    headline: "Multi-line cells, no layout thrash.",
+  },
+  {
+    num: "04",
+    eyebrow: "Ecosystem",
+    headline: "Drops into the AI SDKs you already use.",
+  },
 ];
 
 export function ReceiptsBand() {
@@ -1568,8 +1736,13 @@ export function ReceiptsBand() {
       {/* Positioning cards — new, absorbed from PositioningStrip */}
       <ul className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2">
         {POSITIONING.map((card) => (
-          <li key={card.num} className="rounded-[8px] border border-rule bg-bg-card p-6">
-            <span className="font-mono text-[10px] text-text-muted">{card.num}</span>
+          <li
+            key={card.num}
+            className="rounded-[8px] border border-rule bg-bg-card p-6"
+          >
+            <span className="font-mono text-[10px] text-text-muted">
+              {card.num}
+            </span>
             <span className="ml-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
               {card.eyebrow}
             </span>
@@ -1582,8 +1755,8 @@ export function ReceiptsBand() {
 
       {/* Problem callout — new, absorbed from Problem */}
       <p className="mt-12 border-l-4 border-accent bg-accent-soft px-6 py-4 font-display text-[16px] text-text-primary">
-        AG Grid Community clips wrapped content to a single line at hypothesis scale.
-        We don't.
+        AG Grid Community clips wrapped content to a single line at hypothesis
+        scale. We don't.
       </p>
     </section>
   );
