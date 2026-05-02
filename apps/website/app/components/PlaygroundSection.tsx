@@ -102,24 +102,30 @@ export function PlaygroundSection() {
         })}
       </div>
 
-      <InspectionGrid
-        ariaLabel="Inspection grid"
-        filterableColumnIds={dataset.filterableColumnIds}
-        interactionState={interactionState}
-        onSelectedRowIdChange={(rowId) => {
-          setInteractionState((current) => ({
-            ...current,
-            selectedRowId: rowId,
-          }));
-        }}
-        onSortChange={(sort) => {
-          setInteractionState((current) => ({ ...current, sort }));
-        }}
-        onTelemetryChange={setTelemetry}
-        overscan={5}
-        rows={rows}
-        viewportHeight={420}
-      />
+      {/* overflow-x clip on the section container scopes the grid's
+          natural width to its own scroll context — without this, the
+          grid's full ~1280px column width forces the entire page to
+          scroll horizontally on narrow viewports. */}
+      <div className="overflow-x-auto">
+        <InspectionGrid
+          ariaLabel="Inspection grid"
+          filterableColumnIds={dataset.filterableColumnIds}
+          interactionState={interactionState}
+          onSelectedRowIdChange={(rowId) => {
+            setInteractionState((current) => ({
+              ...current,
+              selectedRowId: rowId,
+            }));
+          }}
+          onSortChange={(sort) => {
+            setInteractionState((current) => ({ ...current, sort }));
+          }}
+          onTelemetryChange={setTelemetry}
+          overscan={5}
+          rows={rows}
+          viewportHeight={420}
+        />
+      </div>
     </section>
   );
 }
