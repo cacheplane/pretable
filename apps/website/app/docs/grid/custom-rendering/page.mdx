@@ -1,0 +1,227 @@
+---
+title: Custom rendering with usePretableModel
+description: Build your own grid UI on top of the engine — full control over cell rendering, sort UI, filter UI, selection, focus, and pinned columns.
+---
+
+# Custom rendering with `usePretableModel`
+
+`usePretableModel` returns the engine's full state: the grid model (with interaction methods), the snapshot (sort, filters, selection, focus), the render snapshot (which rows to render at what positions), and telemetry. You write your own JSX on top, applying the `[data-pretable-*]` attribute contract so `@pretable/ui/grid.css` styles the result.
+
+This page walks through a minimal-but-complete example.
+
+## When to use it
+
+- You need real sort/filter/selection UI in your app
+- You want custom cell rendering (different React components per column)
+- You're wrapping the engine for your design system
+- You need pinned columns rendered as sticky elements
+
+If none of these apply, the [\<Pretable\> drop-in](/docs/grid/pretable-component) is simpler.
+
+## The hook
+
+```ts
+import { usePretableModel } from "@pretable/react";
+
+const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
+  columns,
+  rows,
+  viewportHeight,
+  // optional:
+  viewportWidth,
+  overscan,
+  interactionOverrides,
+  measuredHeights,
+});
+```
+
+What you get back:
+
+- **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `setFilter(columnId, value)`, `clearFilters()`, `replaceFilters(map)`, `selectRow(id)`, `setFocus(rowId, columnId)`, `moveFocus(delta)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
+- **`snapshot`** — current state. Shape: `{viewport, sort, filters, selection, focus, totalRowCount, visibleRows, visibleRange}`.
+- **`renderSnapshot`** — what to render right now. Shape: `{columns: PlannedColumn[], rows: PretableRenderRow[], nodeCount, totalHeight, totalWidth}`. Each `PretableRenderRow` has `{id, row, rowIndex, top, height}`.
+- **`telemetry`** — `{focusedRowId, rowModelRowCount, renderedRowCount, selectedRowId, totalRowCount, ...}`.
+
+See [API reference](/docs/grid/api-reference) for the full type signatures.
+
+## A minimal working example
+
+```tsx
+import { useResolvedHeights, usePretableModel } from "@pretable/react";
+import type { PretableColumn, PretableRow } from "@pretable/react";
+
+interface Person extends PretableRow {
+  id: string;
+  name: string;
+  role: string;
+  city: string;
+}
+
+const columns: PretableColumn<Person>[] = [
+  { id: "name", header: "Name", getValue: (r) => r.name, widthPx: 200 },
+  { id: "role", header: "Role", getValue: (r) => r.role, widthPx: 200 },
+  { id: "city", header: "City", getValue: (r) => r.city, widthPx: 160 },
+];
+
+export function MyGrid({ rows }: { rows: Person[] }) {
+  const { headerHeight } = useResolvedHeights();
+  const viewportHeight = 480;
+
+  const { grid, snapshot, renderSnapshot } = usePretableModel({
+    columns,
+    rows,
+    viewportHeight,
+  });
+
+  const sortedColumn = snapshot.sort.columnId;
+  const sortedDirection = snapshot.sort.direction;
+
+  return (
+    <div
+      data-pretable-scroll-viewport=""
+      style={{
+        height: viewportHeight,
+        overflow: "auto",
+        position: "relative",
+      }}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        grid.setViewport({
+          scrollTop: el.scrollTop,
+          scrollLeft: el.scrollLeft,
+          height: viewportHeight,
+          width: el.clientWidth,
+        });
+      }}
+    >
+      {/* Header row */}
+      <div
+        data-pretable-header-row=""
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 3,
+          display: "flex",
+          height: headerHeight,
+          minWidth: renderSnapshot.totalWidth,
+        }}
+      >
+        {renderSnapshot.columns.map((col) => {
+          const isSorted = sortedColumn === col.id;
+          const next =
+            isSorted && sortedDirection === "asc"
+              ? "desc"
+              : isSorted && sortedDirection === "desc"
+                ? null
+                : "asc";
+
+          return (
+            <button
+              key={col.id}
+              data-pretable-header-cell=""
+              data-pinned={col.pinned === "left" ? "left" : undefined}
+              onClick={() => grid.setSort(col.id, next)}
+              style={{
+                position: "absolute",
+                left: col.left,
+                width: col.width,
+                top: 0,
+                height: "100%",
+                border: 0,
+                background: "transparent",
+                textAlign: "left",
+              }}
+            >
+              {columns.find((c) => c.id === col.id)?.header}
+              {isSorted ? (sortedDirection === "asc" ? " ▲" : " ▼") : ""}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Body */}
+      <div
+        data-pretable-scroll-content=""
+        style={{
+          position: "relative",
+          height: renderSnapshot.totalHeight,
+          minWidth: renderSnapshot.totalWidth,
+        }}
+      >
+        {renderSnapshot.rows.map((row) => {
+          const isSelected = snapshot.selection.rowIds.includes(row.id);
+          const isFocused = snapshot.focus.rowId === row.id;
+
+          return (
+            <div
+              key={row.id}
+              data-pretable-row=""
+              style={{
+                position: "absolute",
+                top: row.top,
+                height: row.height,
+                left: 0,
+                right: 0,
+                display: "flex",
+              }}
+              onClick={() => {
+                grid.selectRow(row.id);
+                grid.setFocus(row.id, columns[0]?.id ?? null);
+              }}
+            >
+              {renderSnapshot.columns.map((col) => {
+                const column = columns.find((c) => c.id === col.id);
+                const value = column?.getValue?.(row.row) ?? "";
+
+                return (
+                  <div
+                    key={col.id}
+                    data-pretable-cell=""
+                    data-pinned={col.pinned === "left" ? "left" : undefined}
+                    data-selected={isSelected ? "true" : "false"}
+                    data-focused={
+                      isFocused && snapshot.focus.columnId === col.id
+                        ? "true"
+                        : "false"
+                    }
+                    style={{
+                      position: "absolute",
+                      left: col.left,
+                      width: col.width,
+                      height: "100%",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {String(value)}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+```
+
+This renders a working sortable grid with click-to-select. Wire `@pretable/ui/themes/excel.css` + `@pretable/ui/grid.css` and the data attributes get styled automatically — gridlines, header bg, selection background, sort indicator color.
+
+## What this example does NOT cover
+
+The minimal example above is a starting point. For production grids, you'll likely also need:
+
+- **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus(±1)`.
+- **Pinned columns sticky positioning** — apply `position: sticky; left: ${pinnedOffset}px` to pinned cells. The bench's adapter computes pinned offsets via the `getPinnedLeftOffsets` utility (re-exported as part of the internal API).
+- **Per-row measured heights** — use `useLayoutEffect` to measure rendered row heights and pass `measuredHeights: Record<string, number>` to `usePretableModel` for content-aware sizing.
+- **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setFilter(columnId, value)` per change.
+- **Telemetry instrumentation** — use the `telemetry` return value to track visible row counts, frame budget overruns, etc.
+
+For the full reference implementation, see `packages/react-surface/src/pretable-surface.tsx` in the repository — that's what the bench's pretable adapter and the website's playground use internally. It's marked private (lives at `@pretable-internal/react-surface`), but reading its source is the canonical reference for the patterns above.
+
+## Where to go next
+
+- [API reference](/docs/grid/api-reference) — `PretableGrid` model methods, hook return types.
+- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
+- [Theming Overview](/docs/theming) — how the `[data-pretable-*]` attributes get styled.
+- [Token reference](/docs/theming/token-reference) — the 24 CSS variables that drive the look.
