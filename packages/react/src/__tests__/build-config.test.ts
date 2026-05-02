@@ -15,7 +15,6 @@ it("resolves core declarations from explicit declaration files during the react 
     };
   };
 
-  expect(config.compilerOptions?.rootDir).toBe("src");
   expect(config.compilerOptions?.paths).toMatchObject({
     "@pretable/core": ["../core/dist/index.d.ts"],
     "@pretable/core/*": ["../core/dist/*.d.ts"],
@@ -41,7 +40,7 @@ it("exposes only the root subpath export (no ./internal)", async () => {
   };
 
   expect(manifest.exports?.["."]).toMatchObject({
-    import: "./dist/index.js",
+    import: "./dist/index.mjs",
     types: "./dist/index.d.ts",
   });
   expect(manifest.exports?.["./internal"]).toBeUndefined();

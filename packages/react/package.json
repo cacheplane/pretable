@@ -5,15 +5,19 @@
   "files": [
     "dist"
   ],
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
   },
+  "sideEffects": false,
   "peerDependencies": {
     "react": "^19.0.0"
   },
@@ -26,7 +30,7 @@
     "@pretable-internal/renderer-dom": "workspace:*"
   },
   "scripts": {
-    "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/react-surface build && tsup && tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @pretable-internal/react-surface build && pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/react-surface build && vitest run --environment jsdom",
     "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/react-surface build && tsc -p tsconfig.typecheck.json --noEmit"
