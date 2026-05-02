@@ -113,6 +113,9 @@ importers:
       '@pretable/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@pretable/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@gridbeta/react-virtual':
         specifier: ^3.13.23
         version: 3.13.23(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
