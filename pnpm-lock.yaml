@@ -244,7 +244,7 @@ importers:
         version: link:../scenario-data
 
   packages/core:
-    dependencies:
+    devDependencies:
       '@pretable-internal/grid-core':
         specifier: workspace:*
         version: link:../grid-core

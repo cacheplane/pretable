@@ -2,7 +2,13 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   clean: true,
-  dts: false,
+  dts: { resolve: true },
   entry: ["src/index.ts"],
-  format: ["esm"],
+  format: ["esm", "cjs"],
+  outExtension: ({ format }) => ({
+    js: format === "cjs" ? ".cjs" : ".mjs",
+  }),
+  noExternal: ["@pretable-internal/grid-core"],
+  treeshake: true,
+  tsconfig: "tsconfig.build.json",
 });
