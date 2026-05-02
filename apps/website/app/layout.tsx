@@ -3,7 +3,6 @@ import { Footer } from "./components/Footer";
 import { RouteAwareNav } from "./components/RouteAwareNav";
 import type { Metadata, Viewport } from "next";
 
-import { LandingAmbient } from "./components/LandingAmbient";
 import "./globals.css";
 
 const APP_VERSION = process.env.npm_package_version ?? "0.0.0";
@@ -25,7 +24,6 @@ export default function RootLayout({
   return (
     <html data-theme="dark" lang="en">
       <body>
-        <LandingAmbient />
         <RouteAwareNav version={APP_VERSION} />
         <main>{children}</main>
         {/* TODO(ci-signal): wire ciStatus to a real source once CI status plumbing exists.
