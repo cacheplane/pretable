@@ -1,0 +1,62 @@
+---
+title: Pick a theme
+description: Excel vs Material 3 — visual identity, when to use each, and the import statements that activate them.
+---
+
+# Pick a theme
+
+Two prebuilt themes ship with `@pretable/ui`. Pick one that matches your app's audience and aesthetic.
+
+## Excel
+
+```css
+@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/grid.css";
+```
+
+Gray, technical, dense. The default theme. Aptos Narrow at 11pt (the modern Office default font), Excel-green (`#107C41`) active-cell border, no row hover, sharp 0-radius corners. Default density: compact (20px rows, ~3px padding, light gray gridlines `#D4D4D4`).
+
+Use Excel when:
+
+- Your app is data-heavy and information density matters more than whitespace.
+- Your audience is technical (developers, analysts, ops, finance).
+- The grid is the primary surface, not embedded chrome around marketing content.
+- Your app already feels Excel-adjacent — admin dashboards, log viewers, ticket queues, reports.
+
+Light-only by design. Excel doesn't ship a dark variant in `@pretable/ui` — there's no `[data-theme="dark"]` block in `excel.css`. If you need dark mode, use Material instead, or override Excel's tokens manually.
+
+## Material 3
+
+```css
+@import "@pretable/ui/themes/material.css";
+@import "@pretable/ui/grid.css";
+```
+
+Material 3 baseline scheme (seed `#6750A4`). Roboto Flex (variable font) for body text and labels. M3 surface roles for chrome — `surface` for cells, `surface-container` (one tonal step up) for headers. State layers at `on-surface @ 8%` for hover. `secondary-container` for selection. 12dp medium shape scale (12px rounded corners). Default density: standard (48px rows, 16px horizontal padding).
+
+Light at `:root`; dark at `[data-theme="dark"]`. Toggle the attribute on `<html>` to switch — see [Light / dark switching](/docs/theming/light-dark) for the wiring.
+
+Use Material 3 when:
+
+- Your app is consumer-facing or has a Material design language elsewhere.
+- You need both light and dark mode out of the box.
+- The grid is one component among many in a designed product, not the focal point.
+- Your audience expects polish and motion (Material 3 tonal elevation, ripple-target spacing).
+
+## Switching at build time
+
+Pick one theme by importing its CSS file. To switch, swap the import:
+
+```diff
+- @import "@pretable/ui/themes/excel.css";
++ @import "@pretable/ui/themes/material.css";
+```
+
+You can also import both and toggle which one's tokens are active via your own CSS — but that's an advanced pattern. For most apps, pick one theme at build time and override individual tokens if you need brand customization. See [Override tokens](/docs/theming/override-tokens) for that pattern.
+
+## Where to go next
+
+- [Override tokens](/docs/theming/override-tokens) — change individual values within a theme.
+- [Light / dark switching](/docs/theming/light-dark) — for Material consumers.
+- [Density switching](/docs/theming/density) — runtime compact / standard / spacious toggle.
+- [Custom themes](/docs/theming/custom-themes) — start from scratch with your own theme file.
