@@ -1,0 +1,149 @@
+---
+title: Custom themes
+description: Author a theme file from scratch — define all 24 tokens at :root, optionally add density and dark-mode variants.
+---
+
+# Custom themes
+
+When overrides grow beyond a handful of tokens, switch from override-on-top-of-existing to authoring a theme file from scratch. The contract is straightforward: define all 24 `--pretable-*` tokens at `:root`. Optionally add `[data-density="..."]` and `[data-theme="dark"]` blocks for runtime variants.
+
+## Start from a template
+
+Copy `excel.css` or `material.css` from `node_modules/@pretable/ui/themes/` into your project. They're hand-readable CSS — no preprocessing, no build step needed. Rename the file (e.g., `themes/brand.css`) and tweak the values.
+
+```css
+/* themes/brand.css */
+:root {
+  /* Surfaces */
+  --pretable-bg-grid: #ffffff;
+  --pretable-bg-grid-alt: #fafafa;
+  --pretable-bg-header: #f0f0f0;
+  --pretable-bg-toolbar: #f0f0f0;
+  --pretable-bg-tooltip: #ffffff;
+
+  /* Text */
+  --pretable-text-cell: #1a1a1a;
+  --pretable-text-header: #404040;
+  --pretable-text-dim: #6a6a6a;
+
+  /* Lines */
+  --pretable-rule: #d8d8d8;
+  --pretable-rule-strong: #a0a0a0;
+  --pretable-radius: 4px;
+
+  /* State */
+  --pretable-bg-hover: #f5f5f5;
+  --pretable-bg-selected: rgba(255, 87, 34, 0.1);
+  --pretable-text-selected: #1a1a1a;
+  --pretable-focus-ring: #ff5722;
+
+  /* Accent */
+  --pretable-accent: #ff5722;
+
+  /* Density */
+  --pretable-row-height: 28px;
+  --pretable-header-height: 32px;
+  --pretable-cell-padding-x: 8px;
+  --pretable-cell-padding-y: 4px;
+  --pretable-font-size-cell: 14px;
+  --pretable-font-size-header: 12px;
+
+  /* Typography */
+  --pretable-font-sans:
+    "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --pretable-font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+```
+
+Import your theme file instead of (or alongside) the prebuilt themes:
+
+```css
+@import "./themes/brand.css";
+@import "@pretable/ui/grid.css";
+```
+
+## Add a dark-mode variant
+
+If your theme should have dark mode, add a `[data-theme="dark"]` block. Override only the color tokens (density and typography typically inherit from light):
+
+```css
+[data-theme="dark"] {
+  /* Surfaces */
+  --pretable-bg-grid: #1a1a1a;
+  --pretable-bg-grid-alt: #1f1f1f;
+  --pretable-bg-header: #2a2a2a;
+  --pretable-bg-toolbar: #2a2a2a;
+  --pretable-bg-tooltip: #2a2a2a;
+
+  /* Text */
+  --pretable-text-cell: #e8e8e8;
+  --pretable-text-header: #c0c0c0;
+  --pretable-text-dim: #888888;
+
+  /* Lines */
+  --pretable-rule: #3a3a3a;
+  --pretable-rule-strong: #585858;
+
+  /* State */
+  --pretable-bg-hover: #252525;
+  --pretable-bg-selected: rgba(255, 138, 101, 0.15);
+  --pretable-text-selected: #ffffff;
+  --pretable-focus-ring: #ff8a65;
+
+  /* Accent */
+  --pretable-accent: #ff8a65;
+}
+```
+
+Toggle `data-theme="dark"` on `<html>` to activate. See [Light / dark switching](/docs/theming/light-dark) for the React wiring.
+
+## Add density variants
+
+If you want compact/standard/spacious tiers, add explicit blocks for the non-default tiers. Don't redefine the natural default — let `:root` handle that.
+
+If your `:root` is the standard tier:
+
+```css
+[data-density="compact"] {
+  --pretable-row-height: 22px;
+  --pretable-header-height: 26px;
+  --pretable-cell-padding-x: 6px;
+  --pretable-cell-padding-y: 2px;
+  --pretable-font-size-cell: 13px;
+  --pretable-font-size-header: 11px;
+}
+
+[data-density="spacious"] {
+  --pretable-row-height: 40px;
+  --pretable-header-height: 48px;
+  --pretable-cell-padding-x: 16px;
+  --pretable-cell-padding-y: 12px;
+  --pretable-font-size-cell: 14px;
+  --pretable-font-size-header: 13px;
+}
+```
+
+Skip the `[data-density="standard"]` block since `:root` already provides those values. CSS handles the rest — when the user sets `data-density="standard"`, no rule matches and the cascade falls back to `:root`.
+
+## Validate against the contract
+
+Pretable doesn't enforce that custom themes define all 24 tokens — if you skip one, that token resolves to its default value (which depends on the engine's fallback) or to whatever else is in scope. The smoke test in `@pretable/ui` verifies that each shipped theme defines every documented token; if you want similar validation for your custom theme, copy that test pattern.
+
+The full token list is in [Token reference](/docs/theming/token-reference).
+
+## When to ship a custom theme as a separate file vs. override at `:root`
+
+| Approach                                | When to use                                                            |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| Override individual tokens at `:root`   | 1-5 tokens differ from a prebuilt theme. Stay close to Excel/Material. |
+| Author a custom theme file from scratch | Most or all tokens differ. You want a dedicated brand theme.           |
+| Both                                    | Custom theme as the base, occasional overrides for dark-only tweaks.   |
+
+For most apps, overriding individual tokens at `:root` is sufficient. Switch to a custom theme file when the override block grows past ~10 tokens or when you want to share your theme across multiple apps.
+
+## Where to go next
+
+- [Override tokens](/docs/theming/override-tokens) — when single-token overrides are enough.
+- [Token reference](/docs/theming/token-reference) — the canonical 24-token list.
+- [Light / dark switching](/docs/theming/light-dark) — toggle the dark variant of your custom theme.
+- [Density switching](/docs/theming/density) — runtime tier toggle for your custom density blocks.
