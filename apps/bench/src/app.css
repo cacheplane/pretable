@@ -4,6 +4,8 @@
 @import "@fontsource-variable/jetbrains-mono/wght.css";
 @import "./styles/cool-slate-tokens.css";
 @import "./styles/marketing-components.css";
+@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/grid.css";
 @import "tailwindcss";
 
 @theme inline {
