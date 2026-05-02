@@ -1,6 +1,6 @@
 # @pretable/app-website
 
-The pretable marketing landing page. Cool-slate AI-startup direction, scroll-driven narrative. Two route trees: `/` (landing) and `/docs/*` (MDX-driven documentation surface).
+The pretable marketing landing page. Grid-as-hero layout: a full-viewport live streaming grid is the first thing visitors see, with marketing content in a slide-up drawer beneath it. Two route trees: `/` (landing) and `/docs/*` (MDX-driven documentation surface).
 
 This README is **living documentation** of the visual system as it exists today. It supersedes the proposal at `docs/superpowers/specs/2026-04-21-pretable-visual-system-design.md`.
 
@@ -38,54 +38,71 @@ Three variable fonts, all loaded via `@fontsource-variable/*`:
 - **Inter Variable** — sans body. Canonical: `--pt-font-sans`. Tailwind alias: `font-sans`.
 - **JetBrains Mono Variable** — code, eyebrow labels, grid cells. Canonical: `--pt-font-mono`. Tailwind alias: `font-mono`.
 
-## Page gradient + ambient layer
+## Palette
 
-The body element ships a fixed-position vertical gradient (`var(--pt-bg-page)` → indigo midtone → near-black → `--pt-bg-page`) via `app/globals.css`. Two notes:
+Light mode by default. The **Alpenglow palette** is defined in `app/styles/cool-slate-tokens.css`:
 
-- `body { position: relative }` is required so `<LandingAmbient />`'s `absolute inset-0` wrapper anchors to the document, not the viewport.
-- `background-attachment: fixed` keeps the gradient locked while the page scrolls.
+| Role           | Token            | Value      |
+| -------------- | ---------------- | ---------- |
+| Page bg        | `--pt-bg-page`   | warm cream |
+| Accent         | `--pt-accent`    | dusk peach |
+| Cool highlight | `--pt-cool`      | cobalt     |
+| Drawer bg      | `--pt-drawer-bg` | dark slate |
 
-## Section anatomy
+## Page layout
 
-`app/page.tsx` renders nine sections in order:
+`app/page.tsx` renders the full page in this order:
 
-| #   | Component           | Role                                                     |
-| --- | ------------------- | -------------------------------------------------------- |
-| 1   | `Hero`              | Headline + subhead. Above the fold. No scroll animation. |
-| 2   | `PlaygroundSection` | Live `@pretable/react` grid. Above-the-fold proof.       |
-| 3   | `Problem`           | The wedge: read-heavy grids stall in competitor libs.    |
-| 4   | `Solution`          | Pretable's answer to the wedge.                          |
-| 5   | `ReceiptsBand`      | Headline metric strip ("receipts, not claims").          |
-| 6   | `ComparisonTable`   | Cell-by-cell receipts vs. competitors.                   |
-| 7   | `FeatureGrid`       | Six feature cards.                                       |
-| 8   | `CodeExample`       | Single-import code snippet (shiki).                      |
-| 9   | `CtaSection`        | Closing CTA. Links to repo / install / next surface.     |
+1. **`<RouteAwareNav>`** — top navigation bar (shared with `/docs`).
+2. **`<HeroGrid>`** — full-bleed live streaming demo. The grid is the hero: a real `@pretable/react` instance running a live receipts feed, full-viewport.
+3. **`<DrawerHandle>`** — pill pinned to the bottom of the viewport; click or swipe up to open the drawer.
+4. **`<Drawer>`** — overlay drawer containing six content sections in order:
 
-Sections 3–9 are wrapped in `<ScrollReveal>`. Sections 1–2 are not (they're visible on first paint).
+   | #   | Component         | Role                                                                    |
+   | --- | ----------------- | ----------------------------------------------------------------------- |
+   | 1   | `ReceiptsBand`    | Numbers + positioning cards + problem callout ("receipts, not claims"). |
+   | 2   | `ComparisonTable` | Cell-by-cell adapter comparison with trail markers per adapter.         |
+   | 3   | `HowItWorks`      | Architecture explainer.                                                 |
+   | 4   | `CodeExample`     | Single-import code snippet (shiki).                                     |
+   | 5   | `FeatureGrid`     | Four feature cards with trail markers.                                  |
+   | 6   | `CtaSection`      | Install command + GitHub link.                                          |
+
+   Sections 2–6 inside the drawer are wrapped in `<ScrollReveal>`. `ReceiptsBand` is rendered bare (visible on drawer open).
+
+5. **`<MountainFooter>`** — mountain silhouette footer. This is the only ski/mountain motif on the page; the hero and drawer do not repeat it.
+
+### DOM-first SEO
+
+Full marketing content is always rendered server-side; JavaScript hydration upgrades the layout to an overlay drawer at viewport widths ≥ 768 px. At narrower widths (< 768 px), the drawer renders as a natural scroll page — no overlay, no `DrawerHandle` toggle, all sections in document flow.
+
+### Responsive and accessibility behaviour
+
+- **Mobile (< 768 px):** natural scroll page, no drawer overlay.
+- **`prefers-reduced-motion`:** drawer slide animation is disabled; hero replay falls back to a static 50-row snapshot instead of the live streaming animation.
+
+## Trail markers
+
+`<TrailMarker>` is used in `ComparisonTable` and `FeatureGrid` as ski-difficulty metaphors. Four variants:
+
+| Variant        | Symbol       | Meaning       |
+| -------------- | ------------ | ------------- |
+| `green`        | circle       | easiest       |
+| `blue`         | square       | intermediate  |
+| `black`        | diamond      | expert        |
+| `double-black` | two diamonds | most advanced |
 
 ## Narrative scaffolding
-
-Two systems span the page:
 
 ### `<ScrollReveal>` (client component)
 
 `app/components/ScrollReveal.tsx` — IntersectionObserver one-shot pattern. When a wrapped section first crosses 20% visibility, it animates from `opacity: 0; translateY(24px)` → `opacity: 1; translateY(0)` over 700ms with `ease-out`. After the first reveal, the observer disconnects — sections never re-animate on scroll-back. Respects `prefers-reduced-motion: reduce` (drops the translate, keeps opacity).
 
-### `<LandingAmbient />` (server component)
-
-`app/components/LandingAmbient.tsx` — six absolute-positioned, blurred radial-gradient divs at `-z-40`, behind everything else. Color arc cool → indigo → cyan → amber → amber → cyan, mirroring the page narrative (entry, problem cold beat, solution warmth, proof zone, proof zone, CTA crescendo).
-
-`<AmbientBlob />` (`app/components/AmbientBlob.tsx`) is a small standalone primitive — a single blurred radial-gradient div — used by `Hero` for its in-section glow. Independent of `LandingAmbient`.
-
-The blob `top` values are tuned to the current rendered section heights. If a section is added, removed, or substantially resized, **re-tune the blob positions** so the colors still land behind their intended sections. The component file has a comment block walking through the workflow; read it before adjusting.
-
 ## Adding a new section
 
 1. Create `app/components/Foo.tsx` as a server component (default). Use `"use client"` only if the section needs hooks or browser APIs.
 2. Import tokens via Tailwind class names (`text-text-primary`, `bg-bg-card`, etc.) — no inline color hex values.
-3. Render in `app/page.tsx`. If the section sits below the fold, wrap it in `<ScrollReveal>`; if above the fold, render bare.
+3. Render in `app/page.tsx` inside `<Drawer>`. Wrap it in `<ScrollReveal>` unless it should be visible immediately on drawer open.
 4. Add a smoke test at `__tests__/components/Foo.test.tsx` using the existing pattern (render + one assertion).
-5. If the section meaningfully changes page height, re-tune `LandingAmbient`'s blob `top` values.
 
 ## Testing
 
@@ -93,7 +110,7 @@ The blob `top` values are tuned to the current rendered section heights. If a se
 
 Run locally: `pnpm --filter @pretable/app-website test`.
 
-`apps/website/e2e/` holds Playwright **production smoke** specs. They run against the deployed origin (`BASE_URL`, defaults to `https://pretable.vercel.app`) and assert the hero, the live grid section, and the `/docs` route render. The spec is excluded from Vitest discovery via `vitest.config.ts`.
+`apps/website/e2e/` holds Playwright **production smoke** specs. They run against the deployed origin (`BASE_URL`, defaults to `https://pretable.vercel.app`) and assert the hero grid (`[data-pretable-scroll-viewport]`), the drawer handle (`[data-testid="drawer-handle"]`), the mountain footer tagline, and the `/docs` route. The spec is excluded from Vitest discovery via `vitest.config.ts`.
 
 Run locally against prod: `pnpm --filter @pretable/app-website smoke`.
 

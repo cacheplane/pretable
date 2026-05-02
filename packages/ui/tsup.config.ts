@@ -11,6 +11,7 @@ const copyCssCommand = [
   `cp ${join(pkgDir, "src/themes/material.css")} ${join(pkgDir, "dist/themes/material.css")}`,
   `cp ${join(pkgDir, "src/grid.css")} ${join(pkgDir, "dist/grid.css")}`,
   `cp ${join(pkgDir, "src/tailwind.css")} ${join(pkgDir, "dist/tailwind.css")}`,
+  `cp ${join(pkgDir, "src/tokens.css")} ${join(pkgDir, "dist/tokens.css")}`,
 ].join(" && ");
 
 export default defineConfig({

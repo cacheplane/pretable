@@ -1,52 +1,41 @@
 import { CodeExample } from "./components/CodeExample";
 import { ComparisonTable } from "./components/ComparisonTable";
 import { CtaSection } from "./components/CtaSection";
+import { Drawer } from "./components/Drawer";
+import { DrawerHandle } from "./components/DrawerHandle";
 import { FeatureGrid } from "./components/FeatureGrid";
-import { Hero } from "./components/Hero";
+import { HeroGrid } from "./components/HeroGrid";
 import { HowItWorks } from "./components/HowItWorks";
-import { PlaygroundSection } from "./components/PlaygroundSection";
-import { PositioningStrip } from "./components/PositioningStrip";
-import { Problem } from "./components/Problem";
+import { MountainFooter } from "./components/MountainFooter";
 import { ReceiptsBand } from "./components/ReceiptsBand";
 import { ScrollReveal } from "./components/ScrollReveal";
-import { TrustStrip } from "./components/TrustStrip";
-import { UseCases } from "./components/UseCases";
 
 export default function HomePage() {
   return (
     <>
-      <Hero />
-      <ScrollReveal>
-        <PositioningStrip />
-      </ScrollReveal>
-      <PlaygroundSection />
-      <ScrollReveal>
-        <Problem />
-      </ScrollReveal>
-      <ScrollReveal>
-        <UseCases />
-      </ScrollReveal>
-      <ScrollReveal>
-        <TrustStrip />
-      </ScrollReveal>
-      <ScrollReveal>
-        <ReceiptsBand />
-      </ScrollReveal>
-      <ScrollReveal>
-        <ComparisonTable />
-      </ScrollReveal>
-      <ScrollReveal>
-        <HowItWorks />
-      </ScrollReveal>
-      <ScrollReveal>
-        <CodeExample />
-      </ScrollReveal>
-      <ScrollReveal>
-        <FeatureGrid />
-      </ScrollReveal>
-      <ScrollReveal>
-        <CtaSection />
-      </ScrollReveal>
+      <main>
+        <HeroGrid />
+        <DrawerHandle />
+        <Drawer>
+          <ReceiptsBand />
+          <ScrollReveal>
+            <ComparisonTable />
+          </ScrollReveal>
+          <ScrollReveal>
+            <HowItWorks />
+          </ScrollReveal>
+          <ScrollReveal>
+            <CodeExample />
+          </ScrollReveal>
+          <ScrollReveal>
+            <FeatureGrid />
+          </ScrollReveal>
+          <ScrollReveal>
+            <CtaSection />
+          </ScrollReveal>
+        </Drawer>
+      </main>
+      <MountainFooter />
     </>
   );
 }

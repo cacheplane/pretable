@@ -17,7 +17,7 @@ interface CodeBlockProps {
 export async function CodeBlock({ code, lang = "tsx" }: CodeBlockProps) {
   const html = await codeToHtml(code.trimEnd(), {
     lang,
-    theme: "github-dark",
+    theme: "github-light",
   });
   return (
     <div
