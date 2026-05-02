@@ -104,6 +104,9 @@ importers:
       '@pretable-internal/bench-runner':
         specifier: workspace:*
         version: link:../../packages/bench-runner
+      '@pretable-internal/react-surface':
+        specifier: workspace:*
+        version: link:../../packages/react-surface
       '@pretable-internal/scenario-data':
         specifier: workspace:*
         version: link:../../packages/scenario-data
@@ -144,6 +147,9 @@ importers:
       '@cacheplane/json-stream':
         specifier: workspace:*
         version: link:../../packages/json-stream
+      '@pretable-internal/react-surface':
+        specifier: workspace:*
+        version: link:../../packages/react-surface
       '@pretable-internal/stream-adapter':
         specifier: workspace:*
         version: link:../../packages/stream-adapter
@@ -172,6 +178,9 @@ importers:
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.2.8
         version: 5.2.8
+      '@pretable-internal/react-surface':
+        specifier: workspace:*
+        version: link:../../packages/react-surface
       '@pretable-internal/scenario-data':
         specifier: workspace:*
         version: link:../../packages/scenario-data
@@ -255,18 +264,22 @@ importers:
 
   packages/react:
     dependencies:
-      '@pretable-internal/renderer-dom':
-        specifier: workspace:*
-        version: link:../renderer-dom
-      '@pretable-internal/scenario-data':
-        specifier: workspace:*
-        version: link:../scenario-data
       '@pretable/core':
         specifier: workspace:*
         version: link:../core
       react:
         specifier: ^19.0.0
         version: 19.2.5
+    devDependencies:
+      '@pretable-internal/react-surface':
+        specifier: workspace:*
+        version: link:../react-surface
+      '@pretable-internal/renderer-dom':
+        specifier: workspace:*
+        version: link:../renderer-dom
+      '@pretable-internal/scenario-data':
+        specifier: workspace:*
+        version: link:../scenario-data
 
   packages/react-surface:
     dependencies:

@@ -51,23 +51,23 @@ touch packages/react-surface/src/.gitkeep
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": "./dist/index.js",
+    },
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.0.0",
   },
   "dependencies": {
     "@pretable/core": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
-    "@pretable-internal/renderer-dom": "workspace:*"
+    "@pretable-internal/renderer-dom": "workspace:*",
   },
   "scripts": {
     "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && vitest run --environment jsdom",
-    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsc -p tsconfig.typecheck.json --noEmit"
-  }
+    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsc -p tsconfig.typecheck.json --noEmit",
+  },
 }
 ```
 
@@ -80,10 +80,10 @@ Copy from `packages/react/tsconfig.json` and adjust paths. Open `packages/react/
   "extends": "../../tsconfig.react.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/__tests__/**", "node_modules", "dist"]
+  "exclude": ["src/**/__tests__/**", "node_modules", "dist"],
 }
 ```
 
@@ -97,8 +97,8 @@ Copy the shape from `packages/react/tsconfig.build.json`.
   "compilerOptions": {
     "declaration": true,
     "emitDeclarationOnly": false,
-    "noEmit": false
-  }
+    "noEmit": false,
+  },
 }
 ```
 
@@ -107,7 +107,7 @@ Copy the shape from `packages/react/tsconfig.build.json`.
 ```jsonc
 {
   "extends": "./tsconfig.json",
-  "include": ["src/**/*", "src/**/__tests__/**"]
+  "include": ["src/**/*", "src/**/__tests__/**"],
 }
 ```
 
@@ -188,10 +188,10 @@ Apply edits so each `./internal/X` becomes `./X`. The file should look like:
 export { InspectionGrid } from "./inspection-grid";
 export { PretableSurface } from "./pretable-surface";
 export { LabeledGridSurface } from "./labeled-grid-surface";
-export type { /* existing types */ } from "...";
+export type {} from /* existing types */ "...";
 export type { InspectionGridProps } from "./inspection-grid";
 export type { PretableSurfaceProps } from "./pretable-surface";
-export type { PretableTelemetry } from "./use-pretable";  // ← STALE
+export type { PretableTelemetry } from "./use-pretable"; // ← STALE
 ```
 
 The last line is a problem — `use-pretable.ts` lives in `packages/react/src/`, not in this package. Fix in next step.
@@ -332,10 +332,9 @@ export {
   usePretableModel,
   // ...any other public symbols previously re-exported from "./use-pretable"
 } from "@pretable-internal/react-surface";
-export type {
-  // ...preserve all type re-exports from the original index.ts,
-  // now sourced from @pretable-internal/react-surface
-} from "@pretable-internal/react-surface";
+export type {} from // ...preserve all type re-exports from the original index.ts,
+// now sourced from @pretable-internal/react-surface
+"@pretable-internal/react-surface";
 ```
 
 Compare the diff against the pre-move `packages/react/src/index.ts` to confirm every public symbol still appears.
@@ -351,14 +350,14 @@ git show HEAD~2:packages/react/src/index.ts
 ```jsonc
 {
   "dependencies": {
-    "@pretable/core": "workspace:*"
+    "@pretable/core": "workspace:*",
   },
   "devDependencies": {
     "@pretable-internal/react-surface": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
-    "@pretable-internal/renderer-dom": "workspace:*"
+    "@pretable-internal/renderer-dom": "workspace:*",
     // ... existing devDependencies (test runners, etc.) preserved
-  }
+  },
 }
 ```
 
@@ -371,10 +370,10 @@ Critical: `@pretable-internal/react-surface`, `@pretable-internal/scenario-data`
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": "./dist/index.js",
+    },
     // "./internal" entry removed
-  }
+  },
 }
 ```
 
@@ -623,8 +622,8 @@ The current `dependencies` block has only `@pretable-internal/grid-core`; remove
 ```jsonc
 {
   "devDependencies": {
-    "@pretable-internal/grid-core": "workspace:*"
-  }
+    "@pretable-internal/grid-core": "workspace:*",
+  },
 }
 ```
 
@@ -642,12 +641,12 @@ After the edit, run `pnpm install` (already covered in Step 6 below) and confirm
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs",
-      "default": "./dist/index.cjs"
+      "default": "./dist/index.cjs",
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
   },
   "sideEffects": false,
-  "files": ["dist"]
+  "files": ["dist"],
 }
 ```
 
@@ -656,9 +655,9 @@ After the edit, run `pnpm install` (already covered in Step 6 below) and confirm
 ```jsonc
 {
   "scripts": {
-    "build": "pnpm --filter @pretable-internal/grid-core build && tsup"
+    "build": "pnpm --filter @pretable-internal/grid-core build && tsup",
     // tsc -p tsconfig.build.json removed — tsup's dts:true handles types
-  }
+  },
 }
 ```
 
@@ -754,12 +753,12 @@ export default defineConfig({
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs",
-      "default": "./dist/index.cjs"
+      "default": "./dist/index.cjs",
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
   },
   "sideEffects": false,
-  "files": ["dist"]
+  "files": ["dist"],
 }
 ```
 
@@ -768,8 +767,8 @@ export default defineConfig({
 ```jsonc
 {
   "scripts": {
-    "build": "pnpm --filter @pretable-internal/react-surface build && pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup"
-  }
+    "build": "pnpm --filter @pretable-internal/react-surface build && pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup",
+  },
 }
 ```
 
@@ -860,8 +859,8 @@ Match the exports/main/module/types shape from Task 6 step 3 / Task 7 step 2. `p
 ```jsonc
 {
   "scripts": {
-    "build": "tsup"
-  }
+    "build": "tsup",
+  },
 }
 ```
 
@@ -972,8 +971,8 @@ git commit -m "chore(deps): add publint and @arethetypeswrong/cli"
 ```jsonc
 {
   "scripts": {
-    "lint:packaging": "publint --strict && attw --pack"
-  }
+    "lint:packaging": "publint --strict && attw --pack",
+  },
 }
 ```
 
@@ -988,6 +987,7 @@ Expected: both `publint` and `attw` pass with no errors. If either fails, fix th
 Repeat for `@pretable/react` and `@cacheplane/json-stream`. **Each must pass before the next phase.**
 
 Common failures:
+
 - `publint` complains about missing `./package.json` export → already added in Phase 2 tasks.
 - `attw` complains about CJS↔ESM resolution → typically means `outExtension` is wrong or `exports` doesn't have both `import` and `require` conditions. Re-check Task 6/7/8 step 3.
 
@@ -1009,20 +1009,20 @@ git commit -m "build(packaging): add publint+attw lint:packaging scripts"
 In `.github/workflows/ci.yml`, add a `packaging` job after `build`:
 
 ```yaml
-  packaging:
-    name: Packaging — publint + attw
-    runs-on: ubuntu-latest
-    needs: [build]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' build
-      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' lint:packaging
+packaging:
+  name: Packaging — publint + attw
+  runs-on: ubuntu-latest
+  needs: [build]
+  steps:
+    - uses: actions/checkout@v6
+    - uses: pnpm/action-setup@v5
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 22
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' build
+    - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' lint:packaging
 ```
 
 - [ ] **Step 2: Add `packaging` to `deploy-prod` and `deploy-preview` `needs:` arrays.**
@@ -1062,16 +1062,14 @@ git commit -m "ci: add packaging job (publint + attw) gating deploys"
   "baseBranch": "main",
   "changelog": [
     "@svitejs/changesets-changelog-github-compact",
-    { "repo": "cacheplane/pretable" }
+    { "repo": "cacheplane/pretable" },
   ],
   "access": "public",
   "commit": false,
-  "fixed": [
-    ["@pretable/core", "@pretable/react", "@cacheplane/json-stream"]
-  ],
+  "fixed": [["@pretable/core", "@pretable/react", "@cacheplane/json-stream"]],
   "linked": [],
   "ignore": [],
-  "updateInternalDependencies": "patch"
+  "updateInternalDependencies": "patch",
 }
 ```
 
@@ -1134,6 +1132,7 @@ pnpm exec changeset version
 ```
 
 This will:
+
 1. Update `packages/{core,react,json-stream}/package.json` versions to `0.0.1`
 2. Generate `packages/{core,react,json-stream}/CHANGELOG.md` files
 3. Delete `.changeset/initial-release.md` (consumed by the action)
@@ -1310,6 +1309,7 @@ done
 ```
 
 For each tarball, expected files:
+
 - `package/package.json`
 - `package/README.md` (if exists in source)
 - `package/dist/index.mjs`
@@ -1318,6 +1318,7 @@ For each tarball, expected files:
 - `package/dist/index.d.cts`
 
 Check that NONE of the tarballs contain:
+
 - `package/dist/internal.*`
 - `package/src/`
 - `package/__tests__/`

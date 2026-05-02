@@ -13,11 +13,11 @@ Establish a reproducible npm publishing pipeline for pretable's three public pac
 
 Three public packages enter npm distribution under this PR:
 
-| Name | Scope | Role |
-| --- | --- | --- |
-| `@pretable/core` | `@pretable` | Framework-agnostic grid model and public types |
-| `@pretable/react` | `@pretable` | React adapter — public `<Pretable>` and `usePretable` |
-| `@cacheplane/json-stream` | `@cacheplane` | Zero-dependency incremental JSON parser |
+| Name                      | Scope         | Role                                                  |
+| ------------------------- | ------------- | ----------------------------------------------------- |
+| `@pretable/core`          | `@pretable`   | Framework-agnostic grid model and public types        |
+| `@pretable/react`         | `@pretable`   | React adapter — public `<Pretable>` and `usePretable` |
+| `@cacheplane/json-stream` | `@cacheplane` | Zero-dependency incremental JSON parser               |
 
 These three are versioned as a **fixed group** in changesets — they always release together at the same version, even when only one has a changeset.
 
@@ -29,15 +29,15 @@ Out of scope:
 
 ## Decisions
 
-| # | Question | Decision | Rationale |
-| --- | --- | --- | --- |
-| Q1 | Scope | All three public packages, fixed group | Pipeline cost is the same for one or three; ship them together once |
-| Q2 | Module format | Dual ESM+CJS | Maximum consumer compatibility; tsup makes it ~free |
-| Q3 | Initial version | `0.0.1`, patch-only for now | "Test the full development cycle" — claim the npm name without committing to API stability |
-| Q4 | Provenance attestation | Enabled from day one | Free with `id-token: write` + `NPM_CONFIG_PROVENANCE: true`; aligns with "honesty first" principle |
-| Q5 | Internal seam handling | Extract to new `@pretable-internal/react-surface` private package | Structural public/private boundary; matches `@pretable-internal/*` convention; preserves bench measurement integrity |
-| Q6 | Release flow | `changesets/action@v1` with auto-merge of Version Packages PR | Zero-friction releases; can revert to manual gate later if cadence demands it |
-| Q7 | Dist tags | `latest` only | Single active line; `next`/`pre` tags premature at 0.0.x |
+| #   | Question               | Decision                                                          | Rationale                                                                                                            |
+| --- | ---------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Q1  | Scope                  | All three public packages, fixed group                            | Pipeline cost is the same for one or three; ship them together once                                                  |
+| Q2  | Module format          | Dual ESM+CJS                                                      | Maximum consumer compatibility; tsup makes it ~free                                                                  |
+| Q3  | Initial version        | `0.0.1`, patch-only for now                                       | "Test the full development cycle" — claim the npm name without committing to API stability                           |
+| Q4  | Provenance attestation | Enabled from day one                                              | Free with `id-token: write` + `NPM_CONFIG_PROVENANCE: true`; aligns with "honesty first" principle                   |
+| Q5  | Internal seam handling | Extract to new `@pretable-internal/react-surface` private package | Structural public/private boundary; matches `@pretable-internal/*` convention; preserves bench measurement integrity |
+| Q6  | Release flow           | `changesets/action@v1` with auto-merge of Version Packages PR     | Zero-friction releases; can revert to manual gate later if cadence demands it                                        |
+| Q7  | Dist tags              | `latest` only                                                     | Single active line; `next`/`pre` tags premature at 0.0.x                                                             |
 
 ## Architecture
 
@@ -45,25 +45,25 @@ Out of scope:
 
 **Public packages** (npm-published, `private: false`):
 
-| Name | Format | Bundled-in (private) | Runtime deps | Peer deps |
-| --- | --- | --- | --- | --- |
-| `@pretable/core` | dual ESM+CJS | `@pretable-internal/grid-core` | (none) | none |
-| `@pretable/react` | dual ESM+CJS | `@pretable-internal/{react-surface, scenario-data, renderer-dom}` | `@pretable/core` (sibling published package) | `react ^19.0.0` |
-| `@cacheplane/json-stream` | dual ESM+CJS | (none) | (none) | none |
+| Name                      | Format       | Bundled-in (private)                                              | Runtime deps                                 | Peer deps       |
+| ------------------------- | ------------ | ----------------------------------------------------------------- | -------------------------------------------- | --------------- |
+| `@pretable/core`          | dual ESM+CJS | `@pretable-internal/grid-core`                                    | (none)                                       | none            |
+| `@pretable/react`         | dual ESM+CJS | `@pretable-internal/{react-surface, scenario-data, renderer-dom}` | `@pretable/core` (sibling published package) | `react ^19.0.0` |
+| `@cacheplane/json-stream` | dual ESM+CJS | (none)                                                            | (none)                                       | none            |
 
-**Critical detail: bundled internal deps must be in `devDependencies`, not `dependencies`.** With `workspace:*` deps in `dependencies`, pnpm publish substitutes `workspace:*` with the workspace version (`0.0.0` for private packages). Consumers running `npm install @pretable/core` would then try to fetch `@pretable-internal/grid-core@0.0.0` from the registry — 404, broken install. Since `tsup`'s `noExternal` inlines the source at build time, the internal deps are needed only at *build* time and belong in `devDependencies`.
+**Critical detail: bundled internal deps must be in `devDependencies`, not `dependencies`.** With `workspace:*` deps in `dependencies`, pnpm publish substitutes `workspace:*` with the workspace version (`0.0.0` for private packages). Consumers running `npm install @pretable/core` would then try to fetch `@pretable-internal/grid-core@0.0.0` from the registry — 404, broken install. Since `tsup`'s `noExternal` inlines the source at build time, the internal deps are needed only at _build_ time and belong in `devDependencies`.
 
 **Private workspace packages** (NOT published, `private: true`):
 
-| Name | Role |
-| --- | --- |
-| `@pretable-internal/grid-core` | (existing) |
-| `@pretable-internal/layout-core` | (existing) |
-| `@pretable-internal/text-core` | (existing) |
-| `@pretable-internal/renderer-dom` | (existing) |
-| `@pretable-internal/scenario-data` | (existing) |
-| `@pretable-internal/bench-runner` | (existing) |
-| `@pretable-internal/stream-adapter` | (existing) |
+| Name                                   | Role                                                                                                                                                                                                            |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pretable-internal/grid-core`         | (existing)                                                                                                                                                                                                      |
+| `@pretable-internal/layout-core`       | (existing)                                                                                                                                                                                                      |
+| `@pretable-internal/text-core`         | (existing)                                                                                                                                                                                                      |
+| `@pretable-internal/renderer-dom`      | (existing)                                                                                                                                                                                                      |
+| `@pretable-internal/scenario-data`     | (existing)                                                                                                                                                                                                      |
+| `@pretable-internal/bench-runner`      | (existing)                                                                                                                                                                                                      |
+| `@pretable-internal/stream-adapter`    | (existing)                                                                                                                                                                                                      |
 | **`@pretable-internal/react-surface`** | **NEW. Houses `PretableSurface`, `usePretableModel`, `LabeledGridSurface`, `InspectionGrid`, telemetry types — moved out of `packages/react/src/internal/`. Bench, website, streaming-demo consume from here.** |
 
 ### `exports` shape (per public package)
@@ -78,15 +78,15 @@ Out of scope:
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs",
-      "default": "./dist/index.cjs"
+      "default": "./dist/index.cjs",
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
   },
   "files": ["dist"],
   "sideEffects": false,
   "peerDependencies": {
-    "react": "^19.0.0" // only @pretable/react
-  }
+    "react": "^19.0.0", // only @pretable/react
+  },
 }
 ```
 
@@ -123,23 +123,23 @@ packages/react/src/internal/__tests__/                  → packages/react-surfa
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": "./dist/index.js",
+    },
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.0.0",
   },
   "dependencies": {
     "@pretable/core": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
-    "@pretable-internal/renderer-dom": "workspace:*"
+    "@pretable-internal/renderer-dom": "workspace:*",
   },
   "scripts": {
     "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && vitest run --environment jsdom",
-    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsc -p tsconfig.typecheck.json --noEmit"
-  }
+    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsc -p tsconfig.typecheck.json --noEmit",
+  },
 }
 ```
 
@@ -252,10 +252,10 @@ Each public package's `build` script keeps the existing pattern but emits dual o
 ```jsonc
 {
   "scripts": {
-    "build": "pnpm --filter <internal-deps> build && tsup"
+    "build": "pnpm --filter <internal-deps> build && tsup",
     // The standalone tsc emit step (currently `tsc -p tsconfig.build.json`) is
     // dropped — tsup's `dts: true` handles type bundling.
-  }
+  },
 }
 ```
 
@@ -266,8 +266,8 @@ Aligns with TanStack Query's per-package `test:build` pattern. Each public packa
 ```jsonc
 {
   "scripts": {
-    "lint:packaging": "publint --strict && attw --pack"
-  }
+    "lint:packaging": "publint --strict && attw --pack",
+  },
 }
 ```
 
@@ -281,7 +281,7 @@ Tooling added to root `devDependencies`:
 ```jsonc
 {
   "@arethetypeswrong/cli": "^0.18.0",
-  "publint": "^0.3.15"
+  "publint": "^0.3.15",
 }
 ```
 
@@ -318,16 +318,14 @@ Updated `.changeset/config.json`:
   "baseBranch": "main",
   "changelog": [
     "@svitejs/changesets-changelog-github-compact",
-    { "repo": "cacheplane/pretable" }
+    { "repo": "cacheplane/pretable" },
   ],
   "access": "public",
   "commit": false,
-  "fixed": [
-    ["@pretable/core", "@pretable/react", "@cacheplane/json-stream"]
-  ],
+  "fixed": [["@pretable/core", "@pretable/react", "@cacheplane/json-stream"]],
   "linked": [],
   "ignore": [],
-  "updateInternalDependencies": "patch"
+  "updateInternalDependencies": "patch",
 }
 ```
 
@@ -341,7 +339,7 @@ Add to root `devDependencies`:
 
 ```jsonc
 {
-  "@svitejs/changesets-changelog-github-compact": "^1.2.0"
+  "@svitejs/changesets-changelog-github-compact": "^1.2.0",
 }
 ```
 
@@ -493,19 +491,18 @@ After 0.0.1 lands on npm:
    This binds the npm package to our specific workflow. Subsequent publishes don't need NPM_TOKEN — the OIDC token from `id-token: write` authenticates as a trusted publisher.
 
 6. **Drop NPM_TOKEN reliance** (separate small PR after 0.0.2 publishes cleanly via OIDC):
-
    - Edit `.github/workflows/release.yml`: drop the `NPM_TOKEN: ${{ secrets.NPM_TOKEN }}` env line from the changesets/action step.
    - `gh secret delete NPM_TOKEN --repo cacheplane/pretable`
 
 ### Troubleshooting
 
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| `release.yml` fires but doesn't open Version PR | No `.changeset/*.md` files in branch | Add changeset, push to feature branch, merge |
-| Version PR opens but never auto-merges | Branch protection not set, or required-check name mismatch | Adjust branch-protection required checks |
-| `npm publish` fails with 403 | Scope not owned, or NPM_TOKEN scope/permission wrong | Regenerate token; check scope membership |
-| `npm publish` fails with "provenance requires id-token" | `id-token: write` permission missing on job | Confirm `permissions:` block in release.yml |
-| Published tarball missing files | tsup/`files`/exports misconfig | `publint` would have caught it pre-publish; check the packaging job log |
+| Symptom                                                 | Cause                                                      | Fix                                                                     |
+| ------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `release.yml` fires but doesn't open Version PR         | No `.changeset/*.md` files in branch                       | Add changeset, push to feature branch, merge                            |
+| Version PR opens but never auto-merges                  | Branch protection not set, or required-check name mismatch | Adjust branch-protection required checks                                |
+| `npm publish` fails with 403                            | Scope not owned, or NPM_TOKEN scope/permission wrong       | Regenerate token; check scope membership                                |
+| `npm publish` fails with "provenance requires id-token" | `id-token: write` permission missing on job                | Confirm `permissions:` block in release.yml                             |
+| Published tarball missing files                         | tsup/`files`/exports misconfig                             | `publint` would have caught it pre-publish; check the packaging job log |
 
 ### Rollback
 
@@ -521,16 +518,16 @@ Then push a fix + new changeset → 0.0.2.
 
 ## Alignment with reference projects
 
-| Aspect | TanStack Query/Router | Dawn | This design |
-| --- | --- | --- | --- |
-| Versioning tool | changesets | changesets | changesets |
-| Version model | fixed groups | individual | fixed group (3 packages) |
-| Module format | dual ESM+CJS | (varies) | dual ESM+CJS |
-| Package verification | `publint --strict && attw --pack` | publint + tarball-manifest check | `publint --strict && attw --pack` (no manifest check; matches TanStack) |
-| Release action | `changesets/action@v1` | `changesets/action@v1` | `changesets/action@v1` |
-| Provenance | `NPM_CONFIG_PROVENANCE` | `NPM_CONFIG_PROVENANCE` | `NPM_CONFIG_PROVENANCE` |
-| Trusted publishing | OIDC via id-token | NPM_TOKEN | NPM_TOKEN initially → OIDC trusted publishing after 0.0.1 (manual setup) |
-| Auto-merge Version PR | manual | manual | auto-merge via `gh pr merge --auto` |
-| Internal-package handling | publish all separately | publish all separately | bundle internals into public packages via `tsup noExternal` (our case is unique — pretable wants a small public surface, large private engine) |
+| Aspect                    | TanStack Query/Router             | Dawn                             | This design                                                                                                                                    |
+| ------------------------- | --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Versioning tool           | changesets                        | changesets                       | changesets                                                                                                                                     |
+| Version model             | fixed groups                      | individual                       | fixed group (3 packages)                                                                                                                       |
+| Module format             | dual ESM+CJS                      | (varies)                         | dual ESM+CJS                                                                                                                                   |
+| Package verification      | `publint --strict && attw --pack` | publint + tarball-manifest check | `publint --strict && attw --pack` (no manifest check; matches TanStack)                                                                        |
+| Release action            | `changesets/action@v1`            | `changesets/action@v1`           | `changesets/action@v1`                                                                                                                         |
+| Provenance                | `NPM_CONFIG_PROVENANCE`           | `NPM_CONFIG_PROVENANCE`          | `NPM_CONFIG_PROVENANCE`                                                                                                                        |
+| Trusted publishing        | OIDC via id-token                 | NPM_TOKEN                        | NPM_TOKEN initially → OIDC trusted publishing after 0.0.1 (manual setup)                                                                       |
+| Auto-merge Version PR     | manual                            | manual                           | auto-merge via `gh pr merge --auto`                                                                                                            |
+| Internal-package handling | publish all separately            | publish all separately           | bundle internals into public packages via `tsup noExternal` (our case is unique — pretable wants a small public surface, large private engine) |
 
 The internal-bundling pattern is the only meaningful divergence. TanStack and Dawn both publish every workspace package separately. Pretable's deliberate choice (per `repo-memory.md`) is to keep the engine internal until the public API is stable; bundling is the mechanism that makes that work without exposing the seam.
