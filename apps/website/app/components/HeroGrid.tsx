@@ -29,6 +29,7 @@ interface DisplayRow {
   status: string;
   latencyMs: number;
   __sequence: number;
+  [key: string]: unknown;
 }
 
 export function HeroGrid() {

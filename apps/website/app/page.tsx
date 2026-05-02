@@ -8,13 +8,11 @@ import { HeroGrid } from "./components/HeroGrid";
 import { HowItWorks } from "./components/HowItWorks";
 import { MountainFooter } from "./components/MountainFooter";
 import { ReceiptsBand } from "./components/ReceiptsBand";
-import { RouteAwareNav } from "./components/RouteAwareNav";
 import { ScrollReveal } from "./components/ScrollReveal";
 
 export default function HomePage() {
   return (
     <>
-      <RouteAwareNav />
       <main>
         <HeroGrid />
         <DrawerHandle />
