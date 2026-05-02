@@ -10,14 +10,16 @@ npm i @pretable/react @pretable/ui
 
 ## Import the styles
 
-Pretable ships two CSS files. Import them once at your app's entry point:
+Pretable's theming ships in `@pretable/ui`. Pick a theme and import its CSS plus the grid skin once at your app's entry point:
 
 ```css
-@import "@pretable/ui/tokens.css";
-@import "@pretable/ui/components.css";
+@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/grid.css";
 ```
 
-The first file declares all `--pt-*` design tokens. The second file ships component primitives (Nav, Footer, etc.) that consume them. If you only need the engine, you can skip both — components stay unstyled, and you wire your own.
+The theme file declares all `--pretable-*` tokens at `:root`; `grid.css` is the selector-based skin that targets the engine's `[data-pretable-*]` data attributes. Two themes ship today — `excel.css` (gray, dense, technical, light-only) and `material.css` (Material 3 light + dark; toggle dark mode by setting `data-theme="dark"` on `<html>`). If you only need the engine, skip both imports and the grid renders unstyled (functional but no visual chrome).
+
+Tailwind v4 users can additionally import `@pretable/ui/tailwind.css` to get `bg-pt-*`/`text-pt-*` utility shortcuts that alias the `--pretable-*` tokens. Density (compact / standard / spacious) is runtime-switchable by toggling `data-density="..."` on `<html>`.
 
 ## Render your first grid
 
