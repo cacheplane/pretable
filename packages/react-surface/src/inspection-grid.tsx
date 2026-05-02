@@ -4,7 +4,7 @@ import {
   type InspectionRow,
 } from "@pretable-internal/scenario-data";
 import type { HTMLAttributes } from "react";
-import type { PretableTelemetry } from "../use-pretable";
+import type { PretableTelemetry } from "./use-pretable";
 
 import { LabeledGridSurface } from "./labeled-grid-surface";
 import type { PretableSurfaceProps } from "./pretable-surface";

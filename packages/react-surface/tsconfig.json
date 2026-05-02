@@ -1,9 +1,14 @@
 {
   "extends": "../../tsconfig.react.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src"
+    "baseUrl": ".",
+    "outDir": "dist",
+    "paths": {
+      "@pretable/core": ["../core/src/index.ts"],
+      "@pretable-internal/scenario-data": ["../scenario-data/src/index.ts"],
+      "@pretable-internal/renderer-dom": ["../renderer-dom/src/index.ts"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["src/**/__tests__/**", "node_modules", "dist"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.*", "src/**/__tests__/**"]
 }
