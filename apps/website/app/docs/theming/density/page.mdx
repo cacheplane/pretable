@@ -57,15 +57,9 @@ Two density tokens are read by the engine in JavaScript, not just by CSS:
 - `--pretable-row-height` — used by the row virtualizer to compute `top` positions.
 - `--pretable-header-height` — used to position the sticky header and compute body viewport height.
 
-The engine reads these via the `useResolvedHeights` hook (in `@pretable/react`), which subscribes to attribute changes on `<html>` via `MutationObserver`. When you flip `data-density`, the engine re-renders the grid with new heights automatically — no need to pass `rowHeight` or `headerHeight` props from your component.
+The engine reads these via the `useResolvedHeights` hook (in `@pretable/react`), which subscribes to attribute changes on `<html>` via `MutationObserver`. When you flip `data-density`, the engine re-renders the grid with new heights automatically.
 
-If you want to override the heights at the component level (e.g., a single grid uses spacious while the rest of the app respects user preference), pass props:
-
-```tsx
-<PretableGrid rows={rows} columns={columns} rowHeight={56} headerHeight={64} />
-```
-
-Numeric props win over CSS-resolved values. See [Density helpers](/docs/grid/density-helpers) for the full hook API (lands in PR 2 of the docs).
+See [Density helpers](/docs/grid/density-helpers) for the full hook API.
 
 ## Composition with light/dark
 
