@@ -71,9 +71,24 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+  packaging:
+    name: Packaging — publint + attw
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' build
+      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' lint:packaging
+
   deploy-prod:
     name: Deploy → Vercel (production)
-    needs: [test, typecheck, lint, format, build]
+    needs: [test, typecheck, lint, format, build, packaging]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     # Required GitHub secrets:
@@ -133,7 +148,7 @@ jobs:
 
   deploy-preview:
     name: Deploy → Vercel (preview)
-    needs: [test, typecheck, lint, format, build]
+    needs: [test, typecheck, lint, format, build, packaging]
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     permissions:
