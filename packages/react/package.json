@@ -12,24 +12,23 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./internal": {
-      "types": "./dist/internal.d.ts",
-      "import": "./dist/internal.js"
     }
   },
   "peerDependencies": {
     "react": "^19.0.0"
   },
   "dependencies": {
-    "@pretable/core": "workspace:*",
+    "@pretable/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@pretable-internal/react-surface": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable-internal/renderer-dom": "workspace:*"
   },
   "scripts": {
-    "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup && tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/react-surface build && tsup && tsc -p tsconfig.build.json",
     "lint": "eslint src --ext .ts,.tsx",
-    "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && vitest run --environment jsdom",
-    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsc -p tsconfig.typecheck.json --noEmit"
+    "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/react-surface build && vitest run --environment jsdom",
+    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/react-surface build && tsc -p tsconfig.typecheck.json --noEmit"
   }
 }

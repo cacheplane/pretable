@@ -22,18 +22,27 @@ it("resolves core declarations from explicit declaration files during the react 
   });
 });
 
-it("declares an internal package subpath for the shared renderer seam", async () => {
-  const [manifestRaw, tsupRaw] = await Promise.all([
-    readFile(path.join(process.cwd(), "package.json"), "utf8"),
-    readFile(path.join(process.cwd(), "tsup.config.ts"), "utf8"),
-  ]);
+it("bundles all @pretable-internal/* packages via noExternal regex", async () => {
+  const tsupRaw = await readFile(
+    path.join(process.cwd(), "tsup.config.ts"),
+    "utf8",
+  );
+
+  expect(tsupRaw).toContain("/^@pretable-internal\\//");
+});
+
+it("exposes only the root subpath export (no ./internal)", async () => {
+  const manifestRaw = await readFile(
+    path.join(process.cwd(), "package.json"),
+    "utf8",
+  );
   const manifest = JSON.parse(manifestRaw) as {
-    exports?: Record<string, { import?: string; types?: string }>;
+    exports?: Record<string, unknown>;
   };
 
-  expect(manifest.exports?.["./internal"]).toMatchObject({
-    import: "./dist/internal.js",
-    types: "./dist/internal.d.ts",
+  expect(manifest.exports?.["."]).toMatchObject({
+    import: "./dist/index.js",
+    types: "./dist/index.d.ts",
   });
-  expect(tsupRaw).toContain('"src/internal.ts"');
+  expect(manifest.exports?.["./internal"]).toBeUndefined();
 });
