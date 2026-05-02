@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 import type { PretableGrid } from "@pretable/react";
-import { PretableSurface } from "@pretable/react/internal";
+import { PretableSurface } from "@pretable-internal/react-surface";
 
 import { streamingColumns } from "../columns";
 import { formatChange, formatVolume } from "../format";
