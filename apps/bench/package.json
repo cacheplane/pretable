@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable-internal/stream-adapter build && pnpm --filter @pretable/react build",
+    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable-internal/stream-adapter build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build",
     "predev": "pnpm run prepare:deps",
     "dev": "vite",
     "prebuild": "pnpm run prepare:deps",
@@ -31,6 +31,7 @@
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable-internal/stream-adapter": "workspace:*",
     "@pretable/react": "workspace:*",
+    "@pretable/ui": "workspace:*",
     "@tanstack/react-virtual": "^3.13.23",
     "ag-grid-community": "^35.2.1",
     "ag-grid-react": "^35.2.1",
