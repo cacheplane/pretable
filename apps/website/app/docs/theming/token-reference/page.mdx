@@ -1,0 +1,83 @@
+---
+title: Token reference
+description: The canonical 24-token contract for @pretable/ui. Names, descriptions, types, and example values per theme.
+---
+
+# Token reference
+
+Pretable's public theming surface is 24 CSS variables, all `--pretable-*` prefixed. Each theme defines all 24 at `:root`. Excel and Material 3 ship preset values; consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
+
+> Two tokens — `--pretable-row-height` and `--pretable-header-height` — are read by the engine in JavaScript via the `useResolvedHeights` hook. The other 22 are CSS-only.
+
+## Surfaces (5)
+
+| Token                    | Description                                                              | Type  | Excel     | Material 3 (light)              |
+| ------------------------ | ------------------------------------------------------------------------ | ----- | --------- | ------------------------------- |
+| `--pretable-bg-grid`     | Body cell background                                                     | color | `#ffffff` | `#fef7ff` (`surface`)           |
+| `--pretable-bg-grid-alt` | Alternate (zebra) row background; equal to `bg-grid` if no zebra desired | color | `#ffffff` | `#fef7ff`                       |
+| `--pretable-bg-header`   | Header row background; pinned cells reuse this                           | color | `#f3f3f3` | `#f3edf7` (`surface-container`) |
+| `--pretable-bg-toolbar`  | Toolbar + status/pagination bar background                               | color | `#f3f3f3` | `#f3edf7`                       |
+| `--pretable-bg-tooltip`  | Tooltip / column menu / filter popover background                        | color | `#ffffff` | `#f3edf7`                       |
+
+## Text (3)
+
+| Token                    | Description                                                    | Type  | Excel     | Material 3 (light)               |
+| ------------------------ | -------------------------------------------------------------- | ----- | --------- | -------------------------------- |
+| `--pretable-text-cell`   | Body cell text color                                           | color | `#1f1f1f` | `#1d1b20` (`on-surface`)         |
+| `--pretable-text-header` | Header text color                                              | color | `#5c5c5c` | `#49454f` (`on-surface-variant`) |
+| `--pretable-text-dim`    | Secondary text (toolbar labels, empty-state body, status text) | color | `#5c5c5c` | `#49454f`                        |
+
+## Lines (3)
+
+| Token                    | Description                                 | Type   | Excel     | Material 3 (light)             |
+| ------------------------ | ------------------------------------------- | ------ | --------- | ------------------------------ |
+| `--pretable-rule`        | Gridline color (between cells)              | color  | `#d4d4d4` | `#cac4d0` (`outline-variant`)  |
+| `--pretable-rule-strong` | Container outer edge + header bottom border | color  | `#a6a6a6` | `#79747e` (`outline`)          |
+| `--pretable-radius`      | Container border radius                     | length | `0`       | `12px` (M3 medium shape scale) |
+
+## State (4)
+
+| Token                      | Description                               | Type  | Excel                     | Material 3 (light)                           |
+| -------------------------- | ----------------------------------------- | ----- | ------------------------- | -------------------------------------------- |
+| `--pretable-bg-hover`      | Row hover background                      | color | `transparent` (no hover)  | `rgba(29, 27, 32, 0.08)` (`on-surface @ 8%`) |
+| `--pretable-bg-selected`   | Selected cell/row background              | color | `rgba(16, 124, 65, 0.10)` | `#e8def8` (`secondary-container`)            |
+| `--pretable-text-selected` | Selected cell/row text color              | color | `#1f1f1f`                 | `#1d192b` (`on-secondary-container`)         |
+| `--pretable-focus-ring`    | Focus outline color (cell focus, kbd nav) | color | `#107c41` (Excel green)   | `#6750a4` (`primary`)                        |
+
+## Accent (1)
+
+| Token               | Description                                                          | Type  | Excel     | Material 3 (light)    |
+| ------------------- | -------------------------------------------------------------------- | ----- | --------- | --------------------- |
+| `--pretable-accent` | Sort indicator, active filter tag, focus highlights, drag indicators | color | `#107c41` | `#6750a4` (`primary`) |
+
+## Density (6)
+
+The first two are read by the engine in JavaScript. The other four are CSS-only.
+
+| Token                         | Description                  | Type   | Excel  | Material 3 (standard) | Engine reads? |
+| ----------------------------- | ---------------------------- | ------ | ------ | --------------------- | ------------- |
+| `--pretable-row-height`       | Body row height              | length | `20px` | `48px`                | **yes**       |
+| `--pretable-header-height`    | Header row height            | length | `24px` | `52px`                | **yes**       |
+| `--pretable-cell-padding-x`   | Body cell horizontal padding | length | `6px`  | `16px`                | —             |
+| `--pretable-cell-padding-y`   | Body cell vertical padding   | length | `2px`  | `12px`                | —             |
+| `--pretable-font-size-cell`   | Body cell font size          | length | `15px` | `14px`                | —             |
+| `--pretable-font-size-header` | Header font size             | length | `13px` | `14px`                | —             |
+
+> Density tokens vary by tier. The values shown above are each theme's natural default (`:root`). When `[data-density="..."]` is set on `<html>`, the corresponding override block adjusts these tokens — see [Density switching](/docs/theming/density).
+
+## Typography (2)
+
+| Token                  | Description                                  | Type | Excel                                                           | Material 3                               |
+| ---------------------- | -------------------------------------------- | ---- | --------------------------------------------------------------- | ---------------------------------------- |
+| `--pretable-font-sans` | Primary sans-serif family stack              | font | `"Aptos Narrow", "Aptos", "Segoe UI", -apple-system, …`         | `"Roboto Flex", "Roboto", system-ui, …`  |
+| `--pretable-font-mono` | Monospace family stack (numeric cells, code) | font | `ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace` | `"Roboto Mono", ui-monospace, monospace` |
+
+## Stability
+
+`@pretable/ui` is at version 0.0.x. Token names may rename or remove in any patch release. Each release's `CHANGELOG.md` describes the deltas. Override at your own risk; the contract solidifies post-1.0.
+
+## Where to go next
+
+- [Override tokens](/docs/theming/override-tokens) — recipes for changing values.
+- [Theming Overview](/docs/theming) — the architectural model.
+- [Custom themes](/docs/theming/custom-themes) — author your own theme file.
