@@ -1,37 +1,36 @@
+import { TrailMarker, type TrailMarkerVariant } from "./TrailMarker";
+
 interface Feature {
   title: string;
-  caption: string;
-  receiptLabel: string;
-  receiptHref: string;
+  description: string;
+  marker: TrailMarkerVariant;
+  markerLabel: string;
 }
 
 const FEATURES: readonly Feature[] = [
   {
     title: "60fps performance",
-    caption: "500k rows render at frame p95 ≤ 16ms on the S7 stress scenario.",
-    receiptLabel: "→ receipt: /bench?s=S7&scale=stress",
-    receiptHref: "/bench?s=S7&scale=stress",
+    description: "9.3ms p95 frame time on wrapped scroll. 4× faster than AG Grid Community on the same dataset.",
+    marker: "green",
+    markerLabel: "Beginner-friendly",
+  },
+  {
+    title: "Wrapped text, no jank",
+    description: "Multi-line cells, variable row heights, smooth scrolling. Multilingual content tested.",
+    marker: "blue",
+    markerLabel: "Intermediate setup",
+  },
+  {
+    title: "Stream-aware",
+    description: "Token-by-token rendering for OpenAI, Anthropic, your own SSE — sustained from 100 to 25,000 updates/sec.",
+    marker: "black",
+    markerLabel: "Advanced — bring your own SSE",
   },
   {
     title: "Selection survives filters",
-    caption:
-      "Row-id keys persist across filter, sort, and live updates. Click a row, filter the grid, the selection sticks.",
-    receiptLabel: "→ receipt: live demo above",
-    receiptHref: "#grid",
-  },
-  {
-    title: "Deterministic engine",
-    caption:
-      "The render path is read-able. packages/grid-core ships fewer than 3,000 lines.",
-    receiptLabel: "→ receipt: github.com/cacheplane/pretable",
-    receiptHref: "https://github.com/cacheplane/pretable",
-  },
-  {
-    title: "No-flash hydration",
-    caption:
-      "SSR-safe initial paint. Selection state survives hydration. Works in Next.js App Router.",
-    receiptLabel: "→ receipt: this page",
-    receiptHref: "#",
+    description: "Filter, sort, and reorder without losing your selection. Stable focus across mutations.",
+    marker: "blue",
+    markerLabel: "Intermediate — interaction state",
   },
 ];
 
@@ -52,25 +51,17 @@ export function FeatureGrid() {
 
         <ul
           role="list"
-          className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
+          className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2"
         >
-          {FEATURES.map((feature, idx) => (
+          {FEATURES.map((feature) => (
             <li key={feature.title} className="border-t border-rule pt-5">
-              <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-                {String(idx + 1).padStart(2, "0")}
-              </p>
-              <h3 className="mt-2 font-display text-[22px] leading-[1.15] tracking-[-0.015em]">
-                {feature.title}
-              </h3>
-              <p className="mt-2 font-display text-[15px] leading-[1.5] text-text-secondary">
-                {feature.caption}
-              </p>
-              <a
-                href={feature.receiptHref}
-                className="mt-4 block font-mono text-[11px] text-accent-deep hover:underline underline-offset-2"
-              >
-                {feature.receiptLabel}
-              </a>
+              <div className="flex items-center gap-3">
+                <TrailMarker variant={feature.marker} label={feature.markerLabel} />
+                <h3 className="font-display text-[20px] tracking-[-0.01em] text-text-primary">
+                  {feature.title}
+                </h3>
+              </div>
+              <p className="mt-3 text-text-secondary leading-[1.55]">{feature.description}</p>
             </li>
           ))}
         </ul>
