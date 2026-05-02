@@ -92,13 +92,14 @@ body {
   height: 460px;
 }
 
+/* InspectionGrid layout-only overrides. These rules add column-grid
+   layout, sub-cell label/value stacking, and the website's monospace
+   font. Chrome (background, color, border, hover/selected/focused
+   state) is intentionally NOT set here so Material's tokens from
+   @pretable/ui/grid.css flow through. */
+
 #grid .inspection-header-row {
   display: grid;
-  position: sticky;
-  top: 0;
-  z-index: 6;
-  border-bottom: 1px solid var(--pt-grid-rule);
-  background: var(--pt-grid-raised);
 }
 
 #grid .inspection-header-cell {
@@ -107,9 +108,6 @@ body {
   align-items: start;
   min-height: 52px;
   border: 0;
-  border-right: 1px solid var(--pt-grid-rule);
-  background: inherit;
-  color: var(--pt-grid-dim);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -120,16 +118,16 @@ body {
 }
 
 #grid .inspection-header-cell strong {
-  color: var(--pt-grid-text);
+  color: var(--pretable-text-cell);
   font-weight: 600;
 }
 
 #grid .inspection-header-cell.is-filtered {
-  border-bottom: 2px solid var(--pt-accent);
+  border-bottom: 2px solid var(--pretable-accent);
 }
 
 #grid .sort-indicator {
-  color: var(--pt-accent);
+  color: var(--pretable-accent);
   font-size: 11px;
   opacity: 0.6;
 }
@@ -142,12 +140,7 @@ body {
   display: grid;
   position: absolute;
   inset-inline: 0;
-  border-bottom: 1px solid var(--pt-grid-rule);
   cursor: pointer;
-}
-
-#grid .inspection-row:hover .inspection-cell {
-  background: var(--pt-grid-raised);
 }
 
 #grid .inspection-cell {
@@ -156,20 +149,18 @@ body {
   gap: 6px;
   min-height: 100%;
   padding: 12px;
-  background: var(--pt-grid-bg);
-  border-right: 1px solid var(--pt-grid-rule);
-  color: var(--pt-grid-text);
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.52;
 }
 
-/* Pinned/selected/focused styling now provided by @pretable/ui/grid.css
-   targeting the engine's [data-pinned] / [data-selected] / [data-focused]
-   attributes directly. Removed website-local overrides. */
+/* Pinned, selected, focused, and hover styling are all provided by
+   @pretable/ui/grid.css. Cell-level border-bottom (formerly on
+   .inspection-row) is also from grid.css, eliminating the prior
+   bicolor double-rule artifact. */
 
 #grid .inspection-cell-label {
-  color: var(--pt-grid-dim);
+  color: var(--pretable-text-dim);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -177,7 +168,6 @@ body {
 }
 
 #grid .inspection-cell-value {
-  color: var(--pt-grid-text);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
