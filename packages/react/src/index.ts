@@ -17,6 +17,7 @@ export type {
   PretableModel,
   PretableRenderRow,
   PretableRenderSnapshot,
+  PretableTelemetry,
   UsePretableModelOptions,
   UsePretableOptions,
 } from "@pretable-internal/react-surface";

@@ -88,7 +88,7 @@ See [Density helpers](/docs/grid/density-helpers) for the hook API and SSR consi
 The engine has more capabilities than this section covers:
 
 - **Column autosize** — the `autosize` option on `usePretable` and `usePretableModel`; resizes columns to content. Not yet documented as a recipe.
-- **Streaming and transactions** — `grid.applyTransaction({add, update, remove})` for live row updates. See [Streaming Overview](/docs/streaming) (currently a stub).
+- **Streaming and transactions** — `grid.applyTransaction({add, update, remove})` for live row updates. Streaming Overview lands in a subsequent docs PR.
 - **Per-row measured heights** — pass `measuredHeights: Record<string, number>` to `usePretableModel` for content-aware row sizing. The bench's `pretable-adapter.tsx` shows this pattern.
 
 These ship as part of `@pretable/react` today; full doc coverage lands in subsequent releases.
