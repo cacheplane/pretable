@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { DrawerHandle } from "./DrawerHandle";
 import { useDrawer } from "./useDrawer";
 
 interface DrawerProps {
@@ -12,6 +13,7 @@ export function Drawer({ children }: DrawerProps) {
   const { close } = useDrawer();
   return (
     <div className="drawer-wrap" data-testid="drawer">
+      <DrawerHandle />
       <div
         aria-label="More about pretable"
         className="drawer-content overflow-y-auto bg-bg-page"

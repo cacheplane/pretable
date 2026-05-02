@@ -279,7 +279,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: measuring DOM in useLayoutEffect requires synchronous state update
       setMeasuredHeights(nextHeights);
     }
-  });
+    // Deps: only re-run when something that could legitimately change row
+    // measurements has changed. Without these deps, the effect re-runs on
+    // every render — including the re-render triggered by its own
+    // setMeasuredHeights call — which under high-churn streaming with
+    // wrap:true rows can hit React's "Maximum update depth" guard.
+  }, [snapshot.visibleRows, columns, viewportWidth]);
 
   return (
     <div

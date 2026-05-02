@@ -2,7 +2,6 @@ import { CodeExample } from "./components/CodeExample";
 import { ComparisonTable } from "./components/ComparisonTable";
 import { CtaSection } from "./components/CtaSection";
 import { Drawer } from "./components/Drawer";
-import { DrawerHandle } from "./components/DrawerHandle";
 import { FeatureGrid } from "./components/FeatureGrid";
 import { HeroGrid } from "./components/HeroGrid";
 import { HowItWorks } from "./components/HowItWorks";
@@ -15,7 +14,6 @@ export default function HomePage() {
     <>
       <main>
         <HeroGrid />
-        <DrawerHandle />
         <Drawer>
           <ReceiptsBand />
           <ScrollReveal>

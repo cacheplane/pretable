@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Drawer } from "../Drawer";
@@ -23,9 +29,17 @@ describe("Drawer", () => {
     expect(screen.getByText("Marketing content")).toBeInTheDocument();
   });
 
-  it("renders a close button labelled Close", () => {
+  it("renders an internal close button", () => {
     render(<Drawer>x</Drawer>);
-    expect(screen.getByRole("button", { name: /close/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^close$/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("nests the DrawerHandle inside the drawer-wrap so the peek is the handle", () => {
+    render(<Drawer>x</Drawer>);
+    const wrap = screen.getByTestId("drawer");
+    expect(within(wrap).getByTestId("drawer-handle")).toBeInTheDocument();
   });
 });
 
