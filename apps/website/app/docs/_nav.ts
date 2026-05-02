@@ -32,4 +32,20 @@ export const docsNav: DocsNavSection[] = [
       { title: "Token reference", href: "/docs/theming/token-reference" },
     ],
   },
+  {
+    title: "Grid",
+    items: [
+      { title: "Overview", href: "/docs/grid" },
+      {
+        title: "<Pretable> component",
+        href: "/docs/grid/pretable-component",
+      },
+      {
+        title: "Custom rendering",
+        href: "/docs/grid/custom-rendering",
+      },
+      { title: "Density helpers", href: "/docs/grid/density-helpers" },
+      { title: "API reference", href: "/docs/grid/api-reference" },
+    ],
+  },
 ];
