@@ -193,7 +193,7 @@ export function HowItWorks() {
                       className={[
                         "block h-2 w-2 rounded-full",
                         layer.accent
-                          ? "bg-accent shadow-[0_0_0_4px_rgba(56,189,248,0.12)]"
+                          ? "bg-accent shadow-[0_0_0_4px_color-mix(in_srgb,var(--pt-accent)_12%,transparent)]"
                           : "bg-text-dim",
                       ].join(" ")}
                     />

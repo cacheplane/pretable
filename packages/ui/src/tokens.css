@@ -1,0 +1,74 @@
+/**
+ * pretable design tokens — Alpenglow palette
+ *
+ * Light mode, Bend/skiing-inspired: warm cream paper + dusk peach + cobalt.
+ * Consumer imports this file once at the app's entry point. All component
+ * styles reference these variables. To retheme, override any variable at a
+ * more specific scope (e.g. [data-theme="dark"]).
+ *
+ * Alpenglow palette (2026-05-01 redesign — Task 1).
+ */
+:root {
+  /* Page surfaces */
+  --pt-bg-page: #fefcf9;
+  --pt-bg-card: #fff8f1;
+  --pt-bg-raised: #fef3e2;
+  --pt-text-primary: #0c0a09;
+  --pt-text-secondary: #44403c;
+  --pt-text-muted: #78716c;
+  --pt-text-dim: #a8a29e;
+
+  /* Singular accent (warm peach/orange) */
+  --pt-accent: #ea580c;
+  --pt-accent-deep: #b45309;
+  --pt-accent-soft: #fef3e2;
+
+  /* Cool accent (cobalt) */
+  --pt-cool: #1d4ed8;
+
+  /* Severity */
+  --pt-sev-info: #1d4ed8;
+  --pt-sev-warn: #b45309;
+  --pt-sev-err: #b91c1c;
+  --pt-sev-ok: #15803d;
+
+  /* Grid surfaces */
+  --pt-rule: #f5e6d3;
+  --pt-rule-soft: #faf3eb;
+  --pt-grid-bg: #ffffff;
+  --pt-grid-rule: #f5e6d3;
+  --pt-grid-text: #1c1917;
+  --pt-grid-dim: #a8a29e;
+
+  /* Drawer (dark sidebar) */
+  --pt-drawer-bg: #1e293b;
+  --pt-drawer-text: #fbbf24;
+
+  /* Typography stacks — Fraunces + Inter + JetBrains Mono via fontsource */
+  --pt-font-serif: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --pt-font-sans:
+    "Inter Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --pt-font-mono:
+    "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo,
+    "Cascadia Code", "Roboto Mono", monospace;
+
+  /* Type scale */
+  --pt-fs-display-xl: 60px;
+  --pt-fs-display-lg: 44px;
+  --pt-fs-display-md: 32px;
+  --pt-fs-dek: 18px;
+  --pt-fs-body: 15px;
+  --pt-fs-ui: 13.5px;
+  --pt-fs-eyebrow: 11px;
+  --pt-fs-data: 12.5px;
+
+  /* Layout tokens */
+  --pt-page-max: 1440px;
+  --pt-header-h: 60px;
+  --pt-sidebar-w: 260px;
+  --pt-toc-w: 224px;
+  --pt-prose-max: 720px;
+  --pt-code-max: 900px;
+  --pt-modal-w: 560px;
+}

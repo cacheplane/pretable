@@ -1,3 +1,5 @@
+import { TrailMarker } from "./TrailMarker";
+
 interface Row {
   metric: string;
   pretable: string;
@@ -153,6 +155,7 @@ export function ComparisonTable() {
                 </th>
                 <th className="px-3 py-3 text-left">
                   <span className="inline-flex items-center gap-2">
+                    <TrailMarker variant="green" label="Recommended path" />
                     <em className="italic text-accent">pretable</em>
                     <span className="rounded-[2px] bg-accent-soft px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-accent">
                       4× faster scroll
@@ -160,13 +163,25 @@ export function ComparisonTable() {
                   </span>
                 </th>
                 <th className="px-3 py-3 text-left text-text-muted font-medium">
-                  gridalpha
+                  <span className="inline-flex items-center gap-2">
+                    <TrailMarker variant="blue" label="Familiar but slower" />
+                    gridalpha
+                  </span>
                 </th>
                 <th className="px-3 py-3 text-left text-text-muted font-medium">
-                  gridbeta
+                  <span className="inline-flex items-center gap-2">
+                    <TrailMarker variant="black" label="Powerful but DIY" />
+                    gridbeta
+                  </span>
                 </th>
                 <th className="px-3 py-3 text-left text-text-muted font-medium">
-                  gridgamma-x
+                  <span className="inline-flex items-center gap-2">
+                    <TrailMarker
+                      variant="double-black"
+                      label="Broken at scale"
+                    />
+                    gridgamma-x
+                  </span>
                 </th>
                 <th className="px-3 py-3 text-left text-text-secondary font-medium">
                   budget
