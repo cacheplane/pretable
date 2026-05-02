@@ -9,7 +9,7 @@ import {
 import {
   InspectionGrid,
   type PretableTelemetry,
-} from "@pretable/react/internal";
+} from "@pretable-internal/react-surface";
 import { useMemo, useState } from "react";
 
 interface InteractionState {

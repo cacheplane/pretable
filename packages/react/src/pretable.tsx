@@ -4,7 +4,7 @@ import {
   type PretableRow,
 } from "@pretable/core";
 
-import { PretableSurface } from "./internal/pretable-surface";
+import { PretableSurface } from "@pretable-internal/react-surface";
 
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];

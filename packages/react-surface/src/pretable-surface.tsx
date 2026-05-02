@@ -15,8 +15,8 @@ import type {
   PretableRow,
 } from "@pretable/core";
 
-import { measureRenderedRowHeight } from "../row-height";
-import { type PretableTelemetry, usePretableModel } from "../use-pretable";
+import { measureRenderedRowHeight } from "./row-height";
+import { type PretableTelemetry, usePretableModel } from "./use-pretable";
 import { useResolvedHeights } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,

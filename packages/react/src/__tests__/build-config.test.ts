@@ -15,25 +15,41 @@ it("resolves core declarations from explicit declaration files during the react 
     };
   };
 
-  expect(config.compilerOptions?.rootDir).toBe("src");
   expect(config.compilerOptions?.paths).toMatchObject({
     "@pretable/core": ["../core/dist/index.d.ts"],
     "@pretable/core/*": ["../core/dist/*.d.ts"],
   });
 });
 
-it("declares an internal package subpath for the shared renderer seam", async () => {
-  const [manifestRaw, tsupRaw] = await Promise.all([
-    readFile(path.join(process.cwd(), "package.json"), "utf8"),
-    readFile(path.join(process.cwd(), "tsup.config.ts"), "utf8"),
-  ]);
+it("bundles all @pretable-internal/* packages via noExternal regex", async () => {
+  const tsupRaw = await readFile(
+    path.join(process.cwd(), "tsup.config.ts"),
+    "utf8",
+  );
+
+  expect(tsupRaw).toContain("/^@pretable-internal\\//");
+});
+
+it("exposes only the root subpath export (no ./internal)", async () => {
+  const manifestRaw = await readFile(
+    path.join(process.cwd(), "package.json"),
+    "utf8",
+  );
   const manifest = JSON.parse(manifestRaw) as {
-    exports?: Record<string, { import?: string; types?: string }>;
+    exports?: Record<string, unknown>;
   };
 
-  expect(manifest.exports?.["./internal"]).toMatchObject({
-    import: "./dist/internal.js",
-    types: "./dist/internal.d.ts",
+  // Dual ESM+CJS shape: nested types per condition (publint --strict requires
+  // separate type declarations for ESM vs CJS resolution paths).
+  expect(manifest.exports?.["."]).toMatchObject({
+    import: {
+      types: "./dist/index.d.ts",
+      default: "./dist/index.mjs",
+    },
+    require: {
+      types: "./dist/index.d.cts",
+      default: "./dist/index.cjs",
+    },
   });
-  expect(tsupRaw).toContain('"src/internal.ts"');
+  expect(manifest.exports?.["./internal"]).toBeUndefined();
 });

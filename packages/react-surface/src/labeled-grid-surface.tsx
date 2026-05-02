@@ -4,7 +4,7 @@ import type {
   PretableRow,
 } from "@pretable/core";
 import type { HTMLAttributes } from "react";
-import type { PretableTelemetry } from "../use-pretable";
+import type { PretableTelemetry } from "./use-pretable";
 
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 

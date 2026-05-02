@@ -1,6 +1,9 @@
 export { Pretable } from "./pretable";
-export { measureRenderedRowHeight } from "./row-height";
-export { usePretable, usePretableModel } from "./use-pretable";
+export { measureRenderedRowHeight } from "@pretable-internal/react-surface";
+export {
+  usePretable,
+  usePretableModel,
+} from "@pretable-internal/react-surface";
 export type {
   PretableColumn,
   PretableGrid,
@@ -14,4 +17,4 @@ export type {
   PretableRenderSnapshot,
   UsePretableModelOptions,
   UsePretableOptions,
-} from "./use-pretable";
+} from "@pretable-internal/react-surface";
