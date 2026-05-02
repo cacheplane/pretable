@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  PretableSurface,
-  type PretableTelemetry,
-} from "@pretable-internal/react-surface";
+import { PretableSurface } from "@pretable-internal/react-surface";
 import { useEffect, useRef, useState } from "react";
 
 import { type HeroEvent, heroEventLog } from "./heroGrid/eventLog";
@@ -12,6 +9,7 @@ import styles from "./heroGrid/heroGrid.module.css";
 
 const RATE_PER_SEC = 1000;
 const VISIBLE_BUFFER_ROWS = 200;
+const SEED_ROW_COUNT = 30;
 
 const columns = [
   { id: "timestamp", header: "Time", widthPx: 92, pinned: "left" as const },
@@ -32,10 +30,19 @@ interface DisplayRow {
   [key: string]: unknown;
 }
 
+function buildSeedRows(count: number): DisplayRow[] {
+  return heroEventLog.slice(0, count).map((entry, index) => ({
+    ...entry,
+    __sequence: index,
+    id: `seed-${index}`,
+  }));
+}
+
 export function HeroGrid() {
-  const [rows, setRows] = useState<DisplayRow[]>([]);
+  const [rows, setRows] = useState<DisplayRow[]>(() =>
+    buildSeedRows(SEED_ROW_COUNT),
+  );
   const [paused, setPaused] = useState(false);
-  const telemetryRef = useRef<PretableTelemetry | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,22 +56,20 @@ export function HeroGrid() {
         heroEventLog.slice(0, 50).map((entry, index) => ({
           ...entry,
           __sequence: index,
+          id: `seed-${index}`,
         })),
       );
       return;
     }
 
+    let pending: DisplayRow[] = [];
     const replay = createHeroReplay({
       ratePerSec: RATE_PER_SEC,
       onEmit: (event: HeroEvent, sequence: number) => {
-        setRows((prev) => {
-          const next = [
-            { ...event, __sequence: sequence, id: `seq-${sequence}` },
-            ...prev,
-          ];
-          return next.length > VISIBLE_BUFFER_ROWS
-            ? next.slice(0, VISIBLE_BUFFER_ROWS)
-            : next;
+        pending.push({
+          ...event,
+          __sequence: sequence,
+          id: `seq-${sequence}`,
         });
       },
     });
@@ -72,6 +77,16 @@ export function HeroGrid() {
     let raf = 0;
     const loop = (timestampMs: number) => {
       replay.tickAtMs(timestampMs);
+      if (pending.length > 0) {
+        const batch = pending;
+        pending = [];
+        setRows((prev) => {
+          const next = [...batch.reverse(), ...prev];
+          return next.length > VISIBLE_BUFFER_ROWS
+            ? next.slice(0, VISIBLE_BUFFER_ROWS)
+            : next;
+        });
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -107,9 +122,6 @@ export function HeroGrid() {
           ariaLabel="Pretable streaming demo"
           columns={columns}
           getRowId={(row: DisplayRow) => row.id}
-          onTelemetryChange={(t) => {
-            telemetryRef.current = t;
-          }}
           rows={rows}
           viewportHeight={520}
         />
