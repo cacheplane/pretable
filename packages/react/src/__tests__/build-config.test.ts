@@ -39,9 +39,17 @@ it("exposes only the root subpath export (no ./internal)", async () => {
     exports?: Record<string, unknown>;
   };
 
+  // Dual ESM+CJS shape: nested types per condition (publint --strict requires
+  // separate type declarations for ESM vs CJS resolution paths).
   expect(manifest.exports?.["."]).toMatchObject({
-    import: "./dist/index.mjs",
-    types: "./dist/index.d.ts",
+    import: {
+      types: "./dist/index.d.ts",
+      default: "./dist/index.mjs",
+    },
+    require: {
+      types: "./dist/index.d.cts",
+      default: "./dist/index.cjs",
+    },
   });
   expect(manifest.exports?.["./internal"]).toBeUndefined();
 });
