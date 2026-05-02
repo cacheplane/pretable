@@ -212,7 +212,7 @@ This renders a working sortable grid with click-to-select. Wire `@pretable/ui/th
 The minimal example above is a starting point. For production grids, you'll likely also need:
 
 - **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus(±1)`.
-- **Pinned columns sticky positioning** — apply `position: sticky; left: ${pinnedOffset}px` to pinned cells. The bench's adapter computes pinned offsets via the `getPinnedLeftOffsets` utility (re-exported as part of the internal API).
+- **Pinned columns sticky positioning** — apply `position: sticky; left: ${pinnedOffset}px` to pinned cells. The bench's adapter computes pinned offsets via the same algorithm `<PretableSurface>` uses internally; see `packages/react-surface/src/rendering.ts` (function `getPinnedLeftOffsets`) for the canonical implementation.
 - **Per-row measured heights** — use `useLayoutEffect` to measure rendered row heights and pass `measuredHeights: Record<string, number>` to `usePretableModel` for content-aware sizing.
 - **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setFilter(columnId, value)` per change.
 - **Telemetry instrumentation** — use the `telemetry` return value to track visible row counts, frame budget overruns, etc.
