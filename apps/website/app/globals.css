@@ -2,7 +2,7 @@
 @import "@fontsource-variable/fraunces/wght-italic.css";
 @import "@fontsource-variable/inter/wght.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
-@import "./styles/cool-slate-tokens.css";
+@import "@pretable/ui/tokens.css";
 @import "./styles/marketing-components.css";
 @import "@pretable/ui/themes/material.css";
 @import "@pretable/ui/grid.css";
@@ -21,8 +21,8 @@
   --color-accent: var(--pt-accent);
   --color-accent-deep: var(--pt-accent-deep);
   --color-accent-soft: var(--pt-accent-soft);
+  --color-cool: var(--pt-cool);
   --color-grid-bg: var(--pt-grid-bg);
-  --color-grid-raised: var(--pt-grid-raised);
   --color-grid-rule: var(--pt-grid-rule);
   --color-grid-text: var(--pt-grid-text);
   --color-grid-dim: var(--pt-grid-dim);
@@ -50,21 +50,11 @@ body {
 }
 
 body {
-  /* relative positioning context for <LandingAmbient />'s `absolute inset-0`
-     wrapper — without this, the blob layer resolves against the viewport
-     (initial containing block) instead of the body's full scroll height,
-     and blobs below the first screen get clipped by `overflow-hidden`. */
-  position: relative;
-  font-family: var(--font-sans);
+  background: var(--pt-bg-page);
   color: var(--pt-text-primary);
-  background: linear-gradient(
-    180deg,
-    var(--pt-bg-page) 0%,
-    #0d1426 35%,
-    #0f1518 60%,
-    var(--pt-bg-page) 100%
-  );
-  background-attachment: fixed;
+  font-family: var(--font-sans);
+  position: relative;
+  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
 
