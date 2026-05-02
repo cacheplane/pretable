@@ -5,21 +5,30 @@
   "files": [
     "dist"
   ],
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
-  "dependencies": {
+  "sideEffects": false,
+  "devDependencies": {
     "@pretable-internal/grid-core": "workspace:*"
   },
   "scripts": {
-    "build": "pnpm --filter @pretable-internal/grid-core build && tsup && tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @pretable-internal/grid-core build && tsup",
     "lint": "eslint src --ext .ts",
+    "lint:packaging": "publint --strict && attw --pack",
     "test": "pnpm --filter @pretable-internal/grid-core build && vitest run",
     "typecheck": "pnpm --filter @pretable-internal/grid-core build && tsc -p tsconfig.json --noEmit"
   }

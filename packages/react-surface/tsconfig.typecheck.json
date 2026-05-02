@@ -1,16 +1,15 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "composite": false,
     "paths": {
       "@pretable/core": ["../core/dist/index.d.ts"],
       "@pretable/core/*": ["../core/dist/*.d.ts"],
-      "@pretable-internal/react-surface": ["../react-surface/dist/index.d.ts"],
-      "@pretable-internal/react-surface/*": ["../react-surface/dist/*.d.ts"],
       "@pretable-internal/scenario-data": ["../scenario-data/dist/index.d.ts"],
       "@pretable-internal/scenario-data/*": ["../scenario-data/dist/*.d.ts"],
       "@pretable-internal/renderer-dom": ["../renderer-dom/dist/index.d.ts"],
       "@pretable-internal/renderer-dom/*": ["../renderer-dom/dist/*.d.ts"]
-    }
-  }
+    },
+    "rootDir": "src"
+  },
+  "include": ["src"]
 }

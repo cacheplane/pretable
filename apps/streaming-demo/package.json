@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@cacheplane/json-stream": "workspace:*",
+    "@pretable-internal/react-surface": "workspace:*",
     "@pretable-internal/stream-adapter": "workspace:*",
     "@pretable/react": "workspace:*",
     "react": "^19.0.0",

@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import type { PretableGrid } from "@pretable/react";
-import type { PretableTelemetry } from "@pretable/react/internal";
+import type { PretableTelemetry } from "@pretable-internal/react-surface";
 
 import {
   createScenarioDataset,

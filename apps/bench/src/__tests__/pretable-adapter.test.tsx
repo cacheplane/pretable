@@ -10,7 +10,7 @@ import { useEffect } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
-import * as pretableReactInternal from "@pretable/react/internal";
+import * as pretableReactInternal from "@pretable-internal/react-surface";
 
 import { createBenchInteractionPlan } from "../interaction-plan";
 import { PretableAdapter } from "../pretable-adapter";

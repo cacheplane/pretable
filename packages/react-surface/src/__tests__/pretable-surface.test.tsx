@@ -9,8 +9,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
-import * as rowHeight from "../../row-height";
-import { usePretableModel } from "../../use-pretable";
+import * as rowHeight from "../row-height";
+import { usePretableModel } from "../use-pretable";
 
 afterEach(() => {
   cleanup();
