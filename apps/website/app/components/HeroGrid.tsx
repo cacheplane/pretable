@@ -3,13 +3,12 @@
 import { PretableSurface } from "@pretable-internal/react-surface";
 import { useEffect, useRef, useState } from "react";
 
+import { useControlState } from "./heroGrid/controlState";
 import { type HeroEvent, heroEventLog } from "./heroGrid/eventLog";
 import { createHeroReplay } from "./heroGrid/replay";
 import styles from "./heroGrid/heroGrid.module.css";
 
-const RATE_PER_SEC = 1000;
 const VISIBLE_BUFFER_ROWS = 200;
-const SEED_ROW_COUNT = 30;
 
 const columns = [
   { id: "timestamp", header: "Time", widthPx: 92, pinned: "left" as const },
@@ -30,41 +29,27 @@ interface DisplayRow {
   [key: string]: unknown;
 }
 
-function buildSeedRows(count: number): DisplayRow[] {
-  return heroEventLog.slice(0, count).map((entry, index) => ({
+const seedRows = (): DisplayRow[] =>
+  heroEventLog.slice(0, 30).map((entry, index) => ({
     ...entry,
     __sequence: index,
     id: `seed-${index}`,
   }));
-}
 
 export function HeroGrid() {
-  const [rows, setRows] = useState<DisplayRow[]>(() =>
-    buildSeedRows(SEED_ROW_COUNT),
-  );
-  const [paused, setPaused] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const { ratePerSec, isPlaying } = useControlState();
+  const [rows, setRows] = useState<DisplayRow[]>(seedRows);
+  const replayRef = useRef<ReturnType<typeof createHeroReplay> | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     const reduce =
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    if (reduce) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time hydration snapshot for reduced-motion users
-      setRows(
-        heroEventLog.slice(0, 50).map((entry, index) => ({
-          ...entry,
-          __sequence: index,
-          id: `seed-${index}`,
-        })),
-      );
-      return;
-    }
+    if (reduce) return; // keep seed snapshot, no replay
 
     let pending: DisplayRow[] = [];
     const replay = createHeroReplay({
-      ratePerSec: RATE_PER_SEC,
+      ratePerSec,
       onEmit: (event: HeroEvent, sequence: number) => {
         pending.push({
           ...event,
@@ -73,6 +58,7 @@ export function HeroGrid() {
         });
       },
     });
+    replayRef.current = replay;
 
     let raf = 0;
     const loop = (timestampMs: number) => {
@@ -91,41 +77,36 @@ export function HeroGrid() {
     };
     raf = requestAnimationFrame(loop);
 
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      replayRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once; ratePerSec changes handled by separate effect
   }, []);
 
+  // React to ratePerSec changes
   useEffect(() => {
-    if (!containerRef.current) return;
-    const onEnter = () => setPaused(true);
-    const onLeave = () => setPaused(false);
-    const el = containerRef.current;
-    el.addEventListener("pointerenter", onEnter);
-    el.addEventListener("pointerleave", onLeave);
-    return () => {
-      el.removeEventListener("pointerenter", onEnter);
-      el.removeEventListener("pointerleave", onLeave);
-    };
-  }, []);
+    replayRef.current?.setRate(ratePerSec);
+  }, [ratePerSec]);
+
+  // React to play/pause changes
+  useEffect(() => {
+    if (isPlaying) {
+      replayRef.current?.resume(performance.now());
+    } else {
+      replayRef.current?.pause();
+    }
+  }, [isPlaying]);
 
   return (
-    <section className={`hero ${styles.hero}`} ref={containerRef}>
-      <div className={styles.topBar}>
-        <span className={styles.dot}>●</span>
-        <span className={styles.brand}>pretable.ai</span>
-        <span className={styles.sep}>·</span>
-        <span>events.stream</span>
-        <span className={styles.spacer} />
-        <span className={styles.metric}>3,000 rows · 9.3ms p95</span>
-      </div>
-      <div className={styles.gridFrame} data-paused={paused}>
-        <PretableSurface
-          ariaLabel="Pretable streaming demo"
-          columns={columns}
-          getRowId={(row: DisplayRow) => row.id}
-          rows={rows}
-          viewportHeight={520}
-        />
-      </div>
+    <section className={`hero ${styles.hero}`}>
+      <PretableSurface<DisplayRow>
+        ariaLabel="Pretable streaming demo"
+        columns={columns}
+        getRowId={(row) => row.id}
+        rows={rows}
+        viewportHeight={520}
+      />
     </section>
   );
 }

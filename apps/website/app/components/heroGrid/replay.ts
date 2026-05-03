@@ -7,12 +7,13 @@ export interface CreateHeroReplayOptions {
 
 export interface HeroReplay {
   tickAtMs(timestampMs: number): void;
-  pause(timestampMs: number): void;
+  pause(timestampMs?: number): void;
   resume(timestampMs: number): void;
+  setRate(ratePerSec: number): void;
 }
 
 export function createHeroReplay(options: CreateHeroReplayOptions): HeroReplay {
-  const intervalMs = 1000 / options.ratePerSec;
+  let intervalMs = 1000 / options.ratePerSec;
   let lastTickMs: number | null = null;
   let backlog = 0;
   let paused = false;
@@ -43,6 +44,9 @@ export function createHeroReplay(options: CreateHeroReplayOptions): HeroReplay {
       if (!paused) return;
       paused = false;
       lastTickMs = timestampMs;
+    },
+    setRate(ratePerSec: number) {
+      intervalMs = 1000 / ratePerSec;
     },
   };
 }

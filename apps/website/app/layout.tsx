@@ -1,4 +1,3 @@
-import { RouteAwareNav } from "./components/RouteAwareNav";
 import type { Metadata } from "next";
 
 import "./globals.css";
@@ -15,10 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <RouteAwareNav />
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

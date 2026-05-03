@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { useControlState } from "./heroGrid/controlState";
+
 const DRAWER_SECTIONS = new Set([
   "receipts",
   "compare",
@@ -11,8 +13,6 @@ const DRAWER_SECTIONS = new Set([
   "cta",
 ]);
 
-const VIEWPORT_BREAKPOINT_PX = 768;
-
 export interface UseDrawerResult {
   isOpen: boolean;
   open: () => void;
@@ -21,22 +21,21 @@ export interface UseDrawerResult {
 }
 
 export function useDrawer(): UseDrawerResult {
-  const [isOpen, setIsOpen] = useState(false);
+  // isOpen is stored in controlState so all callers share a single source of truth.
+  const { isDrawerOpen: isOpen, setIsDrawerOpen } = useControlState();
   const [isUpgraded, setIsUpgraded] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.innerWidth < VIEWPORT_BREAKPOINT_PX) {
-      return;
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time post-hydration upgrade gate
+    // Always upgrade post-hydration — no viewport-width gate.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time post-hydration upgrade
     setIsUpgraded(true);
 
     const hash = window.location.hash.replace("#", "");
     if (hash && DRAWER_SECTIONS.has(hash)) {
-      setIsOpen(true);
+      setIsDrawerOpen(true);
     }
-  }, []);
+  }, [setIsDrawerOpen]);
 
   useEffect(() => {
     if (!isUpgraded) return;
@@ -49,33 +48,31 @@ export function useDrawer(): UseDrawerResult {
   const open = useCallback(() => {
     if (typeof window === "undefined") return;
     history.pushState({ drawer: "open" }, "");
-    setIsOpen(true);
-  }, []);
+    setIsDrawerOpen(true);
+  }, [setIsDrawerOpen]);
 
   const close = useCallback(() => {
-    setIsOpen(false);
-  }, []);
+    setIsDrawerOpen(false);
+  }, [setIsDrawerOpen]);
 
   const toggle = useCallback(() => {
-    setIsOpen((prev) => !prev);
-  }, []);
+    setIsDrawerOpen(!isOpen);
+  }, [isOpen, setIsDrawerOpen]);
 
   useEffect(() => {
     if (!isUpgraded) return;
     const handler = (event: PopStateEvent) => {
       if (event.state?.drawer === "open") return;
-      setIsOpen(false);
+      setIsDrawerOpen(false);
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
-  }, [isUpgraded]);
+  }, [isUpgraded, setIsDrawerOpen]);
 
   useEffect(() => {
     if (!isUpgraded || !isOpen) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        close();
-      }
+      if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
