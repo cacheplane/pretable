@@ -1,7 +1,7 @@
 {
   "name": "@pretable/app-bench",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable-internal/stream-adapter build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build",

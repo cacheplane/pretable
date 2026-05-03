@@ -1,9 +1,0 @@
----
-"@pretable/core": patch
-"@pretable/react": patch
-"@cacheplane/json-stream": patch
----
-
-Initial release. Pretable's wrapped-text scroll wedge (4× faster than AG Grid on S2/hypothesis), streaming row-stability win (H15 satisfied — pretable max visible-row drift = 1 vs AG Grid's 28 across 100–25,000 patches/sec), and end-to-end React adapter with reusable JSON streaming primitives.
-
-See [the publishing pipeline design](https://github.com/cacheplane/pretable/blob/main/docs/superpowers/specs/2026-05-01-npm-publishing-pipeline-design.md) for context on the build, verification, and release flow.
