@@ -97,11 +97,6 @@ export function ReceiptsBand() {
             </li>
           ))}
         </ul>
-
-        <p className="mt-12 border-l-4 border-accent bg-accent-soft px-6 py-4 font-display text-[16px] text-text-primary">
-          AG Grid Community clips wrapped content to a single line at hypothesis
-          scale. We don&apos;t.
-        </p>
       </div>
     </section>
   );

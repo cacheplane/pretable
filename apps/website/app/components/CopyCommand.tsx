@@ -21,9 +21,9 @@ export function CopyCommand({ command, className }: CopyCommandProps) {
   };
 
   const classes = [
-    "inline-flex items-center gap-2 rounded-[2px] border border-text-primary bg-transparent",
+    "inline-flex cursor-pointer items-center gap-2 rounded-[2px] border border-text-primary bg-transparent",
     "px-[18px] py-[10px] font-mono text-[13px] text-text-primary",
-    "hover:bg-bg-raised hover:text-bg-card transition-colors",
+    "transition-colors hover:bg-text-primary hover:text-bg-page",
     "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg-page",
     className,
   ]

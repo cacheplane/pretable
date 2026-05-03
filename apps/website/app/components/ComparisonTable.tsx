@@ -122,28 +122,15 @@ export function ComparisonTable() {
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
           How we compare.
         </h2>
-        <p className="mt-5 max-w-[64ch] font-display text-[17px] leading-[1.55] text-text-secondary">
-          Two windows: wrapped-text scroll at 3,000 rows (5 repeats), and
-          streaming updates at 1,000 patches/sec (3 repeats). All on Chromium.
-          Pretable's column is amber-italic. Numbers come from{" "}
-          <code className="font-mono text-[15px] text-accent-deep">
-            pnpm bench:matrix
-          </code>
-          ; committed evidence in{" "}
+        <p className="mt-5 max-w-[60ch] font-display text-[17px] leading-[1.55] text-text-secondary">
+          Wrapped-text scroll at 3,000 rows; streaming at 1,000 patches/sec.
+          Both on Chromium.{" "}
           <a
             href="https://github.com/cacheplane/pretable/tree/main/status/milestones"
             className="text-accent-deep underline-offset-2 hover:underline"
           >
-            status/milestones
+            See the methodology →
           </a>
-          ; full streaming sweep at{" "}
-          <a
-            href="https://github.com/cacheplane/pretable/blob/main/docs/superpowers/specs/2026-04-30-streaming-rate-envelope.md"
-            className="text-accent-deep underline-offset-2 hover:underline"
-          >
-            docs/streaming-rate-envelope
-          </a>
-          .
         </p>
 
         <div className="mt-8 overflow-x-auto">
