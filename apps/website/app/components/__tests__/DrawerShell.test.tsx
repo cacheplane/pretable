@@ -41,7 +41,10 @@ describe("DrawerShell", () => {
         <DrawerShell>x</DrawerShell>
       </ControlStateProvider>,
     );
-    Object.defineProperty(window, "innerWidth", { value: 1440, writable: true });
+    Object.defineProperty(window, "innerWidth", {
+      value: 1440,
+      writable: true,
+    });
     fireEvent.click(screen.getByRole("button", { name: /why pretable/i }));
     expect(document.documentElement.getAttribute("data-drawer")).toBe("open");
   });

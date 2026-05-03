@@ -9,9 +9,7 @@ describe("NavBar", () => {
       render(<NavBar mode="site" />);
       expect(screen.getByText(/pretable\.ai/i)).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /docs/i })).toBeInTheDocument();
-      expect(
-        screen.getByRole("link", { name: /github/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /github/i })).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: /show the grid/i }),
       ).not.toBeInTheDocument();

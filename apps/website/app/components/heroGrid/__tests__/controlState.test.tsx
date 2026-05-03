@@ -1,10 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import {
-  ControlStateProvider,
-  useControlState,
-} from "../controlState";
+import { ControlStateProvider, useControlState } from "../controlState";
 
 describe("controlState", () => {
   it("defaults to ratePerSec=1000, isPaused=false, isDrawerOpen=false", () => {

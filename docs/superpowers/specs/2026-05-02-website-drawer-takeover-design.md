@@ -42,6 +42,7 @@ When closed, `pointer-events: none` on the drawer so the grid + handle are inter
 The drawer handle lives **inside** the drawer's outermost element (`.drawer-shell`), positioned absolutely at the bottom when closed (visible peek), out of view when open (covered by drawer content). Click on handle → drawer opens. Click on top-nav "Show the grid" button → drawer closes.
 
 This DOM-first pattern means:
+
 - SEO crawlers see a complete marketing page at `/`.
 - No-JS users get a normal scroll page (drawer renders inline since the JS never adds the `data-drawer` attribute that triggers the CSS upgrade).
 - Reduced-motion users get an instant open/close, no transform animation.
@@ -99,11 +100,11 @@ A new module `apps/website/app/components/heroGrid/controlState.ts` exposes a si
 
 ```ts
 export interface HeroGridControlState {
-  ratePerSec: number;            // 250 | 1000 | 5000 | 25000
+  ratePerSec: number; // 250 | 1000 | 5000 | 25000
   setRatePerSec: (rate: number) => void;
-  isPaused: boolean;             // user toggle
+  isPaused: boolean; // user toggle
   setIsPaused: (paused: boolean) => void;
-  isDrawerOpen: boolean;         // mirrored from useDrawer
+  isDrawerOpen: boolean; // mirrored from useDrawer
   // Effective playing = !isPaused && !isDrawerOpen
 }
 ```
@@ -153,11 +154,11 @@ CSS upgrade rules in `globals.css`:
     left: 0;
     right: 0;
     bottom: 0;
-    pointer-events: auto;     /* always clickable, even when shell is non-interactive */
+    pointer-events: auto; /* always clickable, even when shell is non-interactive */
     z-index: 51;
   }
   html[data-drawer="open"] .drawer-handle {
-    display: none;            /* hide handle when drawer is open */
+    display: none; /* hide handle when drawer is open */
   }
   @media (prefers-reduced-motion: reduce) {
     .drawer-shell {

@@ -16,12 +16,15 @@ Read this entire document before touching code. There are non-obvious traps from
 - **Local dev:** `pnpm install && pnpm --filter @pretable/app-website dev` from the worktree → http://localhost:3000
 
 **Verify your location** before any `git` command:
+
 ```bash
 pwd && git branch --show-current
 ```
+
 Expected: `/Users/blove/repos/pretable/.worktrees/website-redesign` and `main`.
 
 **Verify install is fresh** (post-merge worktrees often need this):
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm -r build  # ensure all internal package dists exist
@@ -49,6 +52,7 @@ pnpm -r build  # ensure all internal package dists exist
 The marketing landing page was redesigned. The live data grid IS the hero (full-bleed `<HeroGrid>` taking 100vh). A bottom drawer was meant to overlay the page above 768px and render inline as natural scroll below 768px. The visual system is the **Alpenglow palette** — warm cream `#fefcf9`, dusk peach `#ea580c`, cobalt `#1d4ed8`, dark slate `#1e293b` — inspired by Bend, OR and skiing. Trail-difficulty markers (green/blue/black/double-black SVGs) appear as cognitive-complexity signals in the comparison table and feature grid. A cascade silhouette + chairlift footer ("Built in Bend, OR.") sits at the page bottom.
 
 **Key new files:**
+
 - `apps/website/app/page.tsx` — assembled layout (currently broken — see §5 Bug 1)
 - `apps/website/app/layout.tsx` — root layout, holds `<RouteAwareNav>` for ALL routes (post-merge it no longer takes a `version` prop and no longer renders `<Footer>`)
 - `apps/website/app/components/HeroGrid.tsx` — wraps `PretableSurface`, animates a streaming event log via `requestAnimationFrame`
@@ -112,6 +116,7 @@ html[data-drawer] .drawer-wrap {
 ```
 
 So on desktop:
+
 - The drawer body floats at the bottom of the viewport with a 56px peek visible
 - `<DrawerHandle>` stays in document flow as a separate element after the 100vh hero — it's nowhere near the bottom of the viewport
 - The 56px peek the user sees is the drawer-content's sticky header (close button + "Why pretable" eyebrow), not a clickable handle
@@ -128,7 +133,7 @@ export function Drawer({ children }: DrawerProps) {
   const { close } = useDrawer();
   return (
     <div className="drawer-wrap" data-testid="drawer">
-      <DrawerHandle />          {/* 56px tall, the peek */}
+      <DrawerHandle /> {/* 56px tall, the peek */}
       <div
         aria-label="More about pretable"
         className="drawer-content overflow-y-auto bg-bg-page"
@@ -151,11 +156,21 @@ export default function HomePage() {
         <HeroGrid />
         <Drawer>
           <ReceiptsBand />
-          <ScrollReveal><ComparisonTable /></ScrollReveal>
-          <ScrollReveal><HowItWorks /></ScrollReveal>
-          <ScrollReveal><CodeExample /></ScrollReveal>
-          <ScrollReveal><FeatureGrid /></ScrollReveal>
-          <ScrollReveal><CtaSection /></ScrollReveal>
+          <ScrollReveal>
+            <ComparisonTable />
+          </ScrollReveal>
+          <ScrollReveal>
+            <HowItWorks />
+          </ScrollReveal>
+          <ScrollReveal>
+            <CodeExample />
+          </ScrollReveal>
+          <ScrollReveal>
+            <FeatureGrid />
+          </ScrollReveal>
+          <ScrollReveal>
+            <CtaSection />
+          </ScrollReveal>
         </Drawer>
       </main>
       <MountainFooter />
@@ -169,6 +184,7 @@ export default function HomePage() {
 **CSS:** the `globals.css` rules already key off `html[data-drawer]` — no change needed there. You may want to verify the peek height (56px in the existing transform) matches the new handle's actual rendered height; adjust either the handle padding or the transform value if not.
 
 **Tests to update:**
+
 - `apps/website/app/components/__tests__/Drawer.test.tsx` — Drawer now renders a DrawerHandle internally; assert `data-testid="drawer-handle"` is queryable inside the Drawer
 - `apps/website/app/components/__tests__/useDrawer.test.ts` — should still pass (it tests the hook, not the structure)
 - `apps/website/e2e/smoke.spec.ts` — already asserts `[data-testid='drawer-handle']` is visible; this should still hold
@@ -178,6 +194,7 @@ export default function HomePage() {
 **Symptom:** Loading the page in Safari (and iOS Safari) crashes the tab. Chrome shows the same error in the console but doesn't necessarily kill the tab.
 
 **Console message:**
+
 ```
 Uncaught Error: Maximum update depth exceeded. This can happen when a component
 repeatedly calls setState inside componentWillUpdate or componentDidUpdate.
@@ -221,6 +238,7 @@ const onTelemetryChange = useCallback((t: PretableTelemetry) => {
 Recommend Option A unless you're using telemetry for something. Option B if you need telemetry available for instrumentation later.
 
 **After fixing the loop, restore the demo:**
+
 - `RATE_PER_SEC = 1000` (was lowered to 30 as a workaround)
 - `wrap: true` on the `message` column (was removed as a workaround)
 - Keep the per-frame batching that's already in HeroGrid (`pending: DisplayRow[]` flushed once per rAF). That alone is correct — the bug is in the telemetry callback, not the batching.
@@ -292,22 +310,24 @@ This is the validation the previous round skipped. Use headed Playwright (`webki
 
 Walk this matrix:
 
-| Viewport (W×H) | Engine(s) | What to verify |
-|---|---|---|
-| 320×568 (iPhone SE) | webkit | Below-768 inline scroll, NO overlay drawer, hero grid horizontal-scrolls inside its frame (NO page-level horizontal overflow), nav fits without wrap |
-| 375×667 (iPhone 8) | webkit + chromium | Same |
-| 390×844 (iPhone 14) | webkit | Same |
-| 768×1024 (iPad portrait — exactly the breakpoint) | webkit | Pick a side (`>= 768` upgrades per `useDrawer.ts:30`). Document and verify either side works |
-| 1024×768 (iPad landscape) | webkit + chromium | Drawer overlay active, peek visible at bottom, slide works smoothly |
-| 1280×800 (small laptop) | webkit + chromium + firefox | Same |
-| 1920×1080 (desktop) | chromium + firefox | Same |
+| Viewport (W×H)                                    | Engine(s)                   | What to verify                                                                                                                                       |
+| ------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 320×568 (iPhone SE)                               | webkit                      | Below-768 inline scroll, NO overlay drawer, hero grid horizontal-scrolls inside its frame (NO page-level horizontal overflow), nav fits without wrap |
+| 375×667 (iPhone 8)                                | webkit + chromium           | Same                                                                                                                                                 |
+| 390×844 (iPhone 14)                               | webkit                      | Same                                                                                                                                                 |
+| 768×1024 (iPad portrait — exactly the breakpoint) | webkit                      | Pick a side (`>= 768` upgrades per `useDrawer.ts:30`). Document and verify either side works                                                         |
+| 1024×768 (iPad landscape)                         | webkit + chromium           | Drawer overlay active, peek visible at bottom, slide works smoothly                                                                                  |
+| 1280×800 (small laptop)                           | webkit + chromium + firefox | Same                                                                                                                                                 |
+| 1920×1080 (desktop)                               | chromium + firefox          | Same                                                                                                                                                 |
 
 For each cell:
+
 - Capture a screenshot
 - List any visual issues (clipped text, overflow, unstyled element, palette inconsistency, broken motif)
 - Confirm zero JS errors during a 5-second observation. Listen for `pageerror` and `console` events with level=error.
 
 Also verify:
+
 - **macOS Reduce Motion** (System Settings → Accessibility → Display → Reduce Motion). Reload. Hero should show a static 50-row snapshot (the early-return branch in `HeroGrid.tsx:46-55`); drawer slide should be disabled (CSS at `globals.css` `@media (prefers-reduced-motion: reduce)`).
 - **Drawer keyboard navigation:** Tab from cold load. Order should be: nav links → drawer handle → drawer content (when open). The handle has `aria-expanded="true|false"` toggling correctly, `aria-controls="drawer-content"`.
 - **Trail markers** have descriptive `aria-label` attributes (already covered by unit tests, but confirm in DOM).
@@ -432,6 +452,7 @@ Keep it under 800 words. The diff and PR speak for themselves; the report is for
 ## 11. Definition of done
 
 A user landing on https://pretable.ai in Safari:
+
 - Sees a streaming, wrapped-text data grid as the page hero
 - Watches multi-line multilingual messages scroll smoothly at 1k events/sec
 - Notices a small handle peeking at the bottom of the viewport

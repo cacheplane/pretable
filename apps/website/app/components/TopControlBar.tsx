@@ -23,10 +23,15 @@ export function TopControlBar({
   p95Ms,
   fps,
 }: TopControlBarProps) {
-  const { ratePerSec, setRatePerSec, isPaused, setIsPaused } = useControlState();
+  const { ratePerSec, setRatePerSec, isPaused, setIsPaused } =
+    useControlState();
 
   return (
-    <div className={styles.bar} role="toolbar" aria-label="Grid stream controls">
+    <div
+      className={styles.bar}
+      role="toolbar"
+      aria-label="Grid stream controls"
+    >
       <div className={styles.left}>
         <span aria-hidden="true" className={styles.dot}>
           ●

@@ -19,6 +19,7 @@
 ### Task 1: Create `controlState.ts` (React context for grid controls)
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/controlState.ts`
 - Create: `apps/website/app/components/heroGrid/__tests__/controlState.test.tsx`
 
@@ -30,10 +31,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import {
-  ControlStateProvider,
-  useControlState,
-} from "../controlState";
+import { ControlStateProvider, useControlState } from "../controlState";
 
 describe("controlState", () => {
   it("defaults to ratePerSec=1000, isPaused=false, isDrawerOpen=false", () => {
@@ -167,6 +165,7 @@ git commit -m "feat(website): controlState context for grid pause + rate"
 ### Task 2: Implement `useFps()` hook
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/useFps.ts`
 - Create: `apps/website/app/components/heroGrid/__tests__/useFps.test.tsx`
 
@@ -283,6 +282,7 @@ git commit -m "feat(website): useFps hook for live frame-rate observation"
 ### Task 3: Create shared `<NavBar>` component
 
 **Files:**
+
 - Create: `apps/website/app/components/NavBar.tsx`
 - Create: `apps/website/app/components/__tests__/NavBar.test.tsx`
 - Delete: `apps/website/app/components/RouteAwareNav.tsx` (replaced)
@@ -302,9 +302,7 @@ describe("NavBar", () => {
       render(<NavBar mode="site" />);
       expect(screen.getByText(/pretable\.ai/i)).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /docs/i })).toBeInTheDocument();
-      expect(
-        screen.getByRole("link", { name: /github/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /github/i })).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: /show the grid/i }),
       ).not.toBeInTheDocument();
@@ -449,6 +447,7 @@ git commit -m "feat(website): shared NavBar component (site/drawer modes)"
 ### Task 4: Implement `<TopControlBar>`
 
 **Files:**
+
 - Create: `apps/website/app/components/TopControlBar.tsx`
 - Create: `apps/website/app/components/topControlBar.module.css`
 - Create: `apps/website/app/components/__tests__/TopControlBar.test.tsx`
@@ -459,10 +458,17 @@ git commit -m "feat(website): shared NavBar component (site/drawer modes)"
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlStateProvider, useControlState } from "../heroGrid/controlState";
+import {
+  ControlStateProvider,
+  useControlState,
+} from "../heroGrid/controlState";
 import { TopControlBar } from "../TopControlBar";
 
-function ControlsAccessor({ onState }: { onState: (s: ReturnType<typeof useControlState>) => void }) {
+function ControlsAccessor({
+  onState,
+}: {
+  onState: (s: ReturnType<typeof useControlState>) => void;
+}) {
   const state = useControlState();
   onState(state);
   return null;
@@ -668,10 +674,15 @@ export function TopControlBar({
   p95Ms,
   fps,
 }: TopControlBarProps) {
-  const { ratePerSec, setRatePerSec, isPaused, setIsPaused } = useControlState();
+  const { ratePerSec, setRatePerSec, isPaused, setIsPaused } =
+    useControlState();
 
   return (
-    <div className={styles.bar} role="toolbar" aria-label="Grid stream controls">
+    <div
+      className={styles.bar}
+      role="toolbar"
+      aria-label="Grid stream controls"
+    >
       <div className={styles.left}>
         <span aria-hidden="true" className={styles.dot}>
           ●
@@ -748,6 +759,7 @@ git commit -m "feat(website): TopControlBar (counter + pause + speed slider)"
 ### Task 5: Refactor `replay.ts` for pause/resume + setRate
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/replay.ts`
 - Modify: `apps/website/app/components/heroGrid/__tests__/replay.test.ts`
 
@@ -788,9 +800,15 @@ In the implementation, change `intervalMs` from `const` to `let`, add `setRate`:
 let intervalMs = 1000 / options.ratePerSec;
 // ... existing ...
 return {
-  tickAtMs(timestampMs) { /* existing */ },
-  pause() { /* existing */ },
-  resume(timestampMs) { /* existing */ },
+  tickAtMs(timestampMs) {
+    /* existing */
+  },
+  pause() {
+    /* existing */
+  },
+  resume(timestampMs) {
+    /* existing */
+  },
   setRate(ratePerSec) {
     intervalMs = 1000 / ratePerSec;
     // reset backlog so the rate change takes immediate effect from this point
@@ -818,6 +836,7 @@ git commit -m "feat(website): replay engine setRate() for live rate changes"
 ### Task 6: Refactor `<HeroGrid>` to integrate control state + fix Bug 2
 
 **Files:**
+
 - Modify: `apps/website/app/components/HeroGrid.tsx`
 - Modify: `apps/website/app/components/__tests__/HeroGrid.test.tsx`
 
@@ -867,6 +886,7 @@ describe("HeroGrid", () => {
 - [ ] **Step 3: Refactor HeroGrid.**
 
 Key changes:
+
 - Read `ratePerSec`, `isPlaying` from `useControlState()`.
 - Remove the inline-arrow `onTelemetryChange` (Bug 2 fix).
 - Drop the section's own top-bar markup (moves to `<TopControlBar>` mounted by `page.tsx`).
@@ -1002,7 +1022,11 @@ Remove the `.topBar`, `.dot`, `.brand`, `.sep`, `.spacer`, `.metric` rules (move
 .hero {
   position: relative;
   height: calc(100vh - 36px);
-  background: linear-gradient(135deg, var(--pt-bg-card) 0%, var(--pt-bg-raised) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--pt-bg-card) 0%,
+    var(--pt-bg-raised) 100%
+  );
 }
 ```
 
@@ -1026,6 +1050,7 @@ git commit -m "feat(website): HeroGrid integrates controlState + drops inline te
 ### Task 7: Implement `<TelemetrySink>` for stable telemetry forwarding (and `<HomeStreamHeader>` orchestrator)
 
 **Files:**
+
 - Create: `apps/website/app/components/HomeStreamHeader.tsx`
 - Create: `apps/website/app/components/__tests__/HomeStreamHeader.test.tsx`
 
@@ -1099,12 +1124,14 @@ git commit -m "feat(website): HomeStreamHeader bridges control state to TopContr
 ### Task 8: Refactor `useDrawer` for fullscreen takeover + control-state mirror
 
 **Files:**
+
 - Modify: `apps/website/app/components/useDrawer.ts`
 - Modify: `apps/website/app/components/__tests__/useDrawer.test.ts`
 
 - [ ] **Step 1: Update tests.**
 
 Update the existing useDrawer tests to:
+
 - Drop the `<768px no-upgrade` assertion (always upgrade now).
 - Add an assertion that `setIsDrawerOpen` is called on `controlState` when drawer toggles.
 
@@ -1228,6 +1255,7 @@ git commit -m "feat(website): useDrawer always-upgrades + mirrors to controlStat
 ### Task 9: Replace `<Drawer>` + `<DrawerHandle>` with `<DrawerShell>`
 
 **Files:**
+
 - Replace: `apps/website/app/components/Drawer.tsx` → `apps/website/app/components/DrawerShell.tsx`
 - Modify: `apps/website/app/components/DrawerHandle.tsx`
 - Modify: `apps/website/app/components/__tests__/Drawer.test.tsx` → `__tests__/DrawerShell.test.tsx`
@@ -1278,7 +1306,10 @@ describe("DrawerShell", () => {
         <DrawerShell>x</DrawerShell>
       </ControlStateProvider>,
     );
-    Object.defineProperty(window, "innerWidth", { value: 1440, writable: true });
+    Object.defineProperty(window, "innerWidth", {
+      value: 1440,
+      writable: true,
+    });
     fireEvent.click(screen.getByRole("button", { name: /why pretable/i }));
     expect(document.documentElement.getAttribute("data-drawer")).toBe("open");
   });
@@ -1425,6 +1456,7 @@ git commit -m "feat(website): DrawerShell — fullscreen takeover with internal 
 ### Task 10: Refactor `apps/website/app/layout.tsx` (drop nav from root)
 
 **Files:**
+
 - Modify: `apps/website/app/layout.tsx`
 - Modify: `apps/website/app/docs/layout.tsx`
 
@@ -1498,6 +1530,7 @@ git commit -m "feat(website): nav moves out of root layout into docs/drawer surf
 ### Task 11: Rewrite `apps/website/app/page.tsx`
 
 **Files:**
+
 - Modify: `apps/website/app/page.tsx`
 
 - [ ] **Step 1: Replace contents.**
@@ -1538,7 +1571,7 @@ export default function HomePage() {
 }
 
 // Small client wrapper so we can pass close() from the drawer's hook to NavBar
-"use client";
+("use client");
 function DrawerNavSlot() {
   // useDrawer is already mounted by DrawerShell; we just need close
   // Use a dedicated import to avoid a circular ref.
@@ -1574,6 +1607,7 @@ git commit -m "feat(website): page.tsx assembles drawer-takeover layout"
 ### Task 12: Update Playwright smoke spec
 
 **Files:**
+
 - Modify: `apps/website/e2e/smoke.spec.ts`
 
 - [ ] **Step 1: Replace contents.**
@@ -1624,6 +1658,7 @@ git commit -m "test(website): smoke covers drawer-takeover open + /docs route"
 ### Task 13: Update README
 
 **Files:**
+
 - Modify: `apps/website/README.md`
 
 - [ ] Update layout section to describe:
@@ -1663,6 +1698,7 @@ All pass.
 ### Task 15: Headed Playwright cross-browser walk
 
 - [ ] Install browsers:
+
 ```bash
 pnpm --filter @pretable/app-website exec playwright install webkit firefox chromium
 ```
@@ -1676,6 +1712,7 @@ pnpm --filter @pretable/app-website exec playwright install webkit firefox chrom
   - Repeats per project: `webkit`, `chromium`, `firefox`
 
 - [ ] Run:
+
 ```bash
 pnpm --filter @pretable/app-website exec playwright test visual.spec.ts
 ```
@@ -1685,6 +1722,7 @@ pnpm --filter @pretable/app-website exec playwright test visual.spec.ts
 ### Task 16: Open PR + merge on green + production validation
 
 - [ ] Push branch:
+
 ```bash
 git push -u origin feat/website-drawer-takeover
 ```

@@ -1,10 +1,17 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { ControlStateProvider, useControlState } from "../heroGrid/controlState";
+import {
+  ControlStateProvider,
+  useControlState,
+} from "../heroGrid/controlState";
 import { TopControlBar } from "../TopControlBar";
 
-function ControlsAccessor({ onState }: { onState: (s: ReturnType<typeof useControlState>) => void }) {
+function ControlsAccessor({
+  onState,
+}: {
+  onState: (s: ReturnType<typeof useControlState>) => void;
+}) {
   const state = useControlState();
   onState(state);
   return null;
@@ -29,7 +36,9 @@ describe("TopControlBar", () => {
     );
     expect(screen.getByText(/1,247/)).toBeInTheDocument();
     expect(screen.getByText(/9\.3/)).toBeInTheDocument();
-    expect(screen.getByText((_, el) => el?.textContent === "59 fps")).toBeInTheDocument();
+    expect(
+      screen.getByText((_, el) => el?.textContent === "59 fps"),
+    ).toBeInTheDocument();
   });
 
   it("toggles isPaused on pause-button click", () => {
