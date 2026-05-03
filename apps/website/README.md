@@ -51,34 +51,27 @@ Light mode by default. The **Alpenglow palette** is defined in `app/styles/cool-
 
 ## Page layout
 
-`app/page.tsx` renders the full page in this order:
+**Cold landing on `/`:** `<HomeStreamHeader>` (36px top control bar with brand + live counter + pause + 4-tier speed slider) + `<HeroGrid>` (full-bleed live streaming demo, 1k events/sec default) + `<DrawerHandle>` (peek bar pinned to bottom).
 
-1. **`<RouteAwareNav>`** — top navigation bar (shared with `/docs`).
-2. **`<HeroGrid>`** — full-bleed live streaming demo. The grid is the hero: a real `@pretable/react` instance running a live receipts feed, full-viewport.
-3. **`<DrawerHandle>`** — pill pinned to the bottom of the viewport; click or swipe up to open the drawer.
-4. **`<Drawer>`** — overlay drawer containing six content sections in order:
+**Drawer takeover:** click handle → CSS transforms `.drawer-shell` from `translateY(100%)` to `translateY(0)` with iOS-spring easing. Drawer fills viewport. Inside: `<NavBar mode="drawer">` (brand + section anchors + Docs/GitHub + "Show the grid ↓" close button) → `<ReceiptsBand>` → `<ComparisonTable>` → `<HowItWorks>` → `<CodeExample>` → `<FeatureGrid>` → `<CtaSection>` → `<MountainFooter>`.
 
-   | #   | Component         | Role                                                                    |
-   | --- | ----------------- | ----------------------------------------------------------------------- |
-   | 1   | `ReceiptsBand`    | Numbers + positioning cards + problem callout ("receipts, not claims"). |
-   | 2   | `ComparisonTable` | Cell-by-cell adapter comparison with trail markers per adapter.         |
-   | 3   | `HowItWorks`      | Architecture explainer.                                                 |
-   | 4   | `CodeExample`     | Single-import code snippet (shiki).                                     |
-   | 5   | `FeatureGrid`     | Four feature cards with trail markers.                                  |
-   | 6   | `CtaSection`      | Install command + GitHub link.                                          |
+**`/docs` route:** uses `<NavBar mode="site">` (no close button). Independent surface.
 
-   Sections 2–6 inside the drawer are wrapped in `<ScrollReveal>`. `ReceiptsBand` is rendered bare (visible on drawer open).
+**Light mode default; Alpenglow palette.**
 
-5. **`<MountainFooter>`** — mountain silhouette footer. This is the only ski/mountain motif on the page; the hero and drawer do not repeat it.
+**DOM-first SEO:** all drawer content rendered server-side at `/`. JS only adds `data-drawer="open|closed"` to `<html>`.
 
-### DOM-first SEO
+**Reduced motion:** drawer transition disabled (instant snap); hero shows static 50-row snapshot.
 
-Full marketing content is always rendered server-side; JavaScript hydration upgrades the layout to an overlay drawer at viewport widths ≥ 768 px. At narrower widths (< 768 px), the drawer renders as a natural scroll page — no overlay, no `DrawerHandle` toggle, all sections in document flow.
+**No viewport gate:** drawer always takes over (was 768px-gated in prior round; that gate is dropped — fullscreen takeover works at every width).
 
-### Responsive and accessibility behaviour
+**Trail markers** (`<TrailMarker>` variants green/blue/black/double-black) used in ComparisonTable + FeatureGrid as ski-difficulty cognitive signals.
 
-- **Mobile (< 768 px):** natural scroll page, no drawer overlay.
-- **`prefers-reduced-motion`:** drawer slide animation is disabled; hero replay falls back to a static 50-row snapshot instead of the live streaming animation.
+**MountainFooter** (Cascade silhouette + chairlift, "Built in Bend, OR.") renders only inside the drawer footer.
+
+**Grid controls:** pause/resume button, 4 speed tiers (Light 250 / Production 1k / Heavy 5k / Extreme 25k), live counter (events/sec, p95 ms, fps).
+
+**Auto-pause on drawer open:** grid pauses while drawer is visible (saves cycles + lets user inspect a frozen frame).
 
 ## Trail markers
 

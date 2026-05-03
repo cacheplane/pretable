@@ -23,6 +23,18 @@ describe("createHeroReplay", () => {
     expect(first?.kind).toEqual(looped?.kind);
   });
 
+  it("can change rate mid-stream via setRate", () => {
+    const onEmit = vi.fn();
+    const replay = createHeroReplay({ ratePerSec: 100, onEmit });
+    replay.tickAtMs(0);
+    replay.tickAtMs(1000); // 100 emissions at 100/sec
+    expect(onEmit).toHaveBeenCalledTimes(100);
+    replay.setRate(500);
+    onEmit.mockClear();
+    replay.tickAtMs(2000); // 1s at 500/sec = 500 emissions
+    expect(onEmit).toHaveBeenCalledTimes(500);
+  });
+
   it("is pausable and resumable without emitting backlog", () => {
     const onEmit = vi.fn();
     const replay = createHeroReplay({ ratePerSec: 100, onEmit });
