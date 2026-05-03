@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("landing renders hero grid, drawer handle, mountain footer; /docs resolves", async ({
+test("landing renders grid + control bar + drawer handle; drawer opens", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -13,8 +13,12 @@ test("landing renders hero grid, drawer handle, mountain footer; /docs resolves"
 
   await expect(page.locator("[data-testid='drawer-handle']")).toBeVisible();
 
+  // Click handle → drawer opens
+  await page.locator("[data-testid='drawer-handle']").click();
+  await expect(page.locator("html")).toHaveAttribute("data-drawer", "open");
   await expect(page.getByText(/built in bend, or\./i)).toBeVisible();
 
+  // /docs still resolves
   const docsResponse = await page.goto("/docs", {
     waitUntil: "domcontentloaded",
   });
