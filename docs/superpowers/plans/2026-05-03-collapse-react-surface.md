@@ -302,6 +302,7 @@ Target:
 For each: replace `from "@pretable-internal/react-surface"` with `from "@pretable/react"`. Keep the imported names identical.
 
 `apps/website/package.json`, `apps/bench/package.json`, `apps/streaming-demo/package.json`:
+
 - Drop `@pretable-internal/react-surface` from `dependencies`.
 - Verify `@pretable/react` is already listed (should be — check first).
 
@@ -446,7 +447,7 @@ EOF
   ```
 
 - [ ] **9.2** Open PR with title:
-  `refactor(react): collapse internal react-surface into @pretable/react`
+      `refactor(react): collapse internal react-surface into @pretable/react`
 
   Body:
   - Brief summary

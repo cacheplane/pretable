@@ -157,6 +157,7 @@ The changes are:
    - `apps/streaming-demo/package.json` and `apps/streaming-demo/src/components/streaming-grid.tsx` — same swap
 10. Delete `packages/react-surface/` (`git rm -rf`).
 11. Add a changeset (`.changeset/<random>.md`) with a major bump for `@pretable/react` (still 0.x — minor bump in semver per 0.x rules, or use `major` field in changeset and let it become 0.1.0):
+
     ```
     ---
     "@pretable/react": minor
@@ -166,6 +167,7 @@ The changes are:
     All grid components (`<PretableSurface>`, `<InspectionGrid>`, `<LabeledGridSurface>`)
     are now exported directly. The opinionated `<Pretable>` preset stays.
     ```
+
 12. Run all gates:
     - `pnpm install --frozen-lockfile`
     - `pnpm -r build`
