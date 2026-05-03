@@ -1,6 +1,6 @@
-import { RouteAwareNav } from "./components/RouteAwareNav";
 import type { Metadata } from "next";
 
+import { NavBar } from "./components/NavBar";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <RouteAwareNav />
+        <NavBar mode="site" />
         {children}
       </body>
     </html>
