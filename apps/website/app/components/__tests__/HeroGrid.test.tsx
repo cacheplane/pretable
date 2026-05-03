@@ -25,4 +25,9 @@ describe("HeroGrid", () => {
       container.querySelector("[data-pretable-scroll-viewport]"),
     ).not.toBeNull();
   });
+
+  it("wraps the grid in a bezel container with the expected testid", () => {
+    const view = renderHeroGrid();
+    expect(view.getByTestId("hero-bezel")).toBeInTheDocument();
+  });
 });
