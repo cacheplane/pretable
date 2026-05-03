@@ -59,7 +59,11 @@ export function useDrawer(): UseDrawerResult {
     // a reload after "Show the grid" / Esc / close button stays on the grid.
     const hash = window.location.hash.replace("#", "");
     if (hash && DRAWER_SECTIONS.has(hash)) {
-      history.replaceState(history.state, "", window.location.pathname + window.location.search);
+      history.replaceState(
+        history.state,
+        "",
+        window.location.pathname + window.location.search,
+      );
     }
   }, [setIsDrawerOpen]);
 

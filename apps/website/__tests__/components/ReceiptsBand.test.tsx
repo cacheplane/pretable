@@ -23,4 +23,3 @@ it("renders the four positioning cards", () => {
   expect(screen.getByText(/performance/i)).toBeInTheDocument();
   expect(screen.getByText(/ai-native/i)).toBeInTheDocument();
 });
-
