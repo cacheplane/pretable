@@ -29,15 +29,14 @@
     "@pretable/core": "workspace:*"
   },
   "devDependencies": {
-    "@pretable-internal/react-surface": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable-internal/renderer-dom": "workspace:*"
   },
   "scripts": {
-    "build": "pnpm --filter @pretable-internal/react-surface build && pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup",
+    "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:packaging": "publint --strict && attw --pack",
-    "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/react-surface build && vitest run --environment jsdom",
-    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable-internal/react-surface build && tsc -p tsconfig.typecheck.json --noEmit"
+    "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && vitest run --environment jsdom",
+    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsc -p tsconfig.typecheck.json --noEmit"
   }
 }

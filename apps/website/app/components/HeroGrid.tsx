@@ -1,6 +1,6 @@
 "use client";
 
-import { PretableSurface } from "@pretable-internal/react-surface";
+import { PretableSurface } from "@pretable/react";
 import { useEffect, useRef, useState } from "react";
 
 import { useControlState } from "./heroGrid/controlState";
