@@ -27,9 +27,9 @@ for (const vp of VIEWPORTS) {
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     // Cold-load assertions
-    await expect(
-      page.locator("[data-pretable-scroll-viewport]"),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.locator("[data-testid='drawer-handle']")).toBeVisible();
 
     // Top control bar visible
@@ -46,11 +46,9 @@ for (const vp of VIEWPORTS) {
 
     // Open drawer
     await page.locator("[data-testid='drawer-handle']").click();
-    await expect(page.locator("html")).toHaveAttribute(
-      "data-drawer",
-      "open",
-      { timeout: 2_000 },
-    );
+    await expect(page.locator("html")).toHaveAttribute("data-drawer", "open", {
+      timeout: 2_000,
+    });
 
     // Wait for slide animation
     await page.waitForTimeout(500);
