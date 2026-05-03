@@ -4,7 +4,7 @@ import type {
   BenchRunRequest,
   BenchRunSummary,
 } from "@pretable-internal/bench-runner";
-import type { PretableTelemetry } from "@pretable-internal/react-surface";
+import type { PretableTelemetry } from "@pretable/react";
 
 import type { BenchQueryState } from "./bench-types";
 

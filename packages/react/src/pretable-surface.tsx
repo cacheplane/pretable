@@ -127,6 +127,14 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   getRowProps?: (
     input: PretableSurfaceRowAttributesInput<TRow>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
+  /**
+   * @experimental
+   *
+   * Inject deterministic sort/filter/selection/focus state. Used internally
+   * by the bench harness for plan replay; exposed for advanced consumers
+   * who need to drive the grid from external state. Shape may change
+   * across minor releases.
+   */
   interactionState?: PretableSurfaceInteractionState | null;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;

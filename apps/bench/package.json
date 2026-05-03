@@ -28,7 +28,6 @@
     "@gridgamma/material": "^9.0.0",
     "@gridgamma/x-data-grid": "^9.0.2",
     "@pretable-internal/bench-runner": "workspace:*",
-    "@pretable-internal/react-surface": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable-internal/stream-adapter": "workspace:*",
     "@pretable/react": "workspace:*",
