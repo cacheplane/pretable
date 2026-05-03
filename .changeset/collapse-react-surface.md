@@ -1,5 +1,5 @@
 ---
-"@pretable/react": minor
+"@pretable/react": patch
 ---
 
 Internal `react-surface` workspace package collapsed into `@pretable/react`.
