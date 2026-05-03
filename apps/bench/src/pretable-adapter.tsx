@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { PretableGrid } from "@pretable/react";
-import type { PretableTelemetry } from "@pretable-internal/react-surface";
-import { PretableSurface } from "@pretable-internal/react-surface";
+import type { PretableTelemetry } from "@pretable/react";
+import { PretableSurface } from "@pretable/react";
 import { createBatcher } from "@pretable-internal/stream-adapter";
 import type {
   ScenarioDataset,
