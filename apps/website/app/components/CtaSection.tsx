@@ -22,7 +22,6 @@ export function CtaSection() {
           GitHub →
         </a>
       </div>
-      <p className="sr-only">{INSTALL_CMD}</p>
     </section>
   );
 }
