@@ -131,7 +131,7 @@ export const heroEventLog: readonly HeroEvent[] = [
     id: "h-015",
     timestamp: formatTime(14),
     kind: "metrics.flushed",
-    message: "p50=8ms · p95=9.3ms · p99=12.1ms",
+    message: "p50=12ms · p95=16ms · p99=22ms",
     status: "ok",
     latencyMs: 5,
   },

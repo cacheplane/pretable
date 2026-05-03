@@ -25,6 +25,10 @@ export const docsNav: DocsNavSection[] = [
         href: "/docs/grid/pretable-component",
       },
       {
+        title: "<PretableSurface> component",
+        href: "/docs/grid/pretable-surface",
+      },
+      {
         title: "Custom rendering",
         href: "/docs/grid/custom-rendering",
       },
