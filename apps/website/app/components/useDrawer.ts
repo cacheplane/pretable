@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { useControlState } from "./heroGrid/controlState";
+
 const DRAWER_SECTIONS = new Set([
   "receipts",
   "compare",
@@ -10,8 +12,6 @@ const DRAWER_SECTIONS = new Set([
   "features",
   "cta",
 ]);
-
-const VIEWPORT_BREAKPOINT_PX = 768;
 
 export interface UseDrawerResult {
   isOpen: boolean;
@@ -23,13 +23,12 @@ export interface UseDrawerResult {
 export function useDrawer(): UseDrawerResult {
   const [isOpen, setIsOpen] = useState(false);
   const [isUpgraded, setIsUpgraded] = useState(false);
+  const { setIsDrawerOpen } = useControlState();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.innerWidth < VIEWPORT_BREAKPOINT_PX) {
-      return;
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time post-hydration upgrade gate
+    // Always upgrade post-hydration — no viewport-width gate.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time post-hydration upgrade
     setIsUpgraded(true);
 
     const hash = window.location.hash.replace("#", "");
@@ -44,7 +43,8 @@ export function useDrawer(): UseDrawerResult {
       "data-drawer",
       isOpen ? "open" : "closed",
     );
-  }, [isOpen, isUpgraded]);
+    setIsDrawerOpen(isOpen);
+  }, [isOpen, isUpgraded, setIsDrawerOpen]);
 
   const open = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -73,9 +73,7 @@ export function useDrawer(): UseDrawerResult {
   useEffect(() => {
     if (!isUpgraded || !isOpen) return;
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        close();
-      }
+      if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
