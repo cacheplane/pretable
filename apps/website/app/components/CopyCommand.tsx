@@ -4,10 +4,20 @@ import { useState } from "react";
 
 export interface CopyCommandProps {
   command: string;
+  /**
+   * Visual prefix shown before the command text. Empty by default. Set to
+   * "$ " for shell-prompt aesthetic. The clipboard copy never includes the
+   * prefix.
+   */
+  prefix?: string;
   className?: string;
 }
 
-export function CopyCommand({ command, className }: CopyCommandProps) {
+export function CopyCommand({
+  command,
+  prefix = "",
+  className,
+}: CopyCommandProps) {
   const [copied, setCopied] = useState(false);
 
   const onClick = async () => {
@@ -37,7 +47,7 @@ export function CopyCommand({ command, className }: CopyCommandProps) {
       aria-label="Copy install command"
       onClick={onClick}
     >
-      {copied ? "✓ copied" : `$ ${command}`}
+      {copied ? "✓ copied" : `${prefix}${command}`}
     </button>
   );
 }
