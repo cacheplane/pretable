@@ -53,6 +53,14 @@ export function useDrawer(): UseDrawerResult {
 
   const close = useCallback(() => {
     setIsDrawerOpen(false);
+    if (typeof window === "undefined") return;
+    // If the URL still carries a drawer-section hash (e.g. /#receipts from a
+    // deep-link or anchor click), strip it without adding a history entry so
+    // a reload after "Show the grid" / Esc / close button stays on the grid.
+    const hash = window.location.hash.replace("#", "");
+    if (hash && DRAWER_SECTIONS.has(hash)) {
+      history.replaceState(history.state, "", window.location.pathname + window.location.search);
+    }
   }, [setIsDrawerOpen]);
 
   const toggle = useCallback(() => {

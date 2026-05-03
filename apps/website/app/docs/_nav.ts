@@ -17,22 +17,6 @@ export const docsNav: DocsNavSection[] = [
     ],
   },
   {
-    title: "Theming",
-    items: [
-      { title: "Overview", href: "/docs/theming" },
-      { title: "Pick a theme", href: "/docs/theming/pick-a-theme" },
-      { title: "Override tokens", href: "/docs/theming/override-tokens" },
-      { title: "Light / dark", href: "/docs/theming/light-dark" },
-      { title: "Density", href: "/docs/theming/density" },
-      { title: "Custom themes", href: "/docs/theming/custom-themes" },
-      {
-        title: "Tailwind + CSS-in-JS",
-        href: "/docs/theming/tailwind-css-in-js",
-      },
-      { title: "Token reference", href: "/docs/theming/token-reference" },
-    ],
-  },
-  {
     title: "Grid",
     items: [
       { title: "Overview", href: "/docs/grid" },
@@ -46,6 +30,22 @@ export const docsNav: DocsNavSection[] = [
       },
       { title: "Density helpers", href: "/docs/grid/density-helpers" },
       { title: "API reference", href: "/docs/grid/api-reference" },
+    ],
+  },
+  {
+    title: "Theming",
+    items: [
+      { title: "Overview", href: "/docs/theming" },
+      { title: "Pick a theme", href: "/docs/theming/pick-a-theme" },
+      { title: "Override tokens", href: "/docs/theming/override-tokens" },
+      { title: "Light / dark", href: "/docs/theming/light-dark" },
+      { title: "Density", href: "/docs/theming/density" },
+      { title: "Custom themes", href: "/docs/theming/custom-themes" },
+      {
+        title: "Tailwind + CSS-in-JS",
+        href: "/docs/theming/tailwind-css-in-js",
+      },
+      { title: "Token reference", href: "/docs/theming/token-reference" },
     ],
   },
 ];
