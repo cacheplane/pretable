@@ -17,6 +17,7 @@
 ## File Structure
 
 **Create:**
+
 - `apps/website/app/components/CopyPromptButton.tsx` — clipboard-writing button mirroring `CopyCommand` ergonomics. Receives prompt as a prop so the caller controls content.
 - `apps/website/app/components/DrawerHero.tsx` — restored positioning hero. Owns the static prompt string constant.
 - `apps/website/app/components/CredibilityCards.tsx` — 4-card positioning section extracted from `ReceiptsBand`.
@@ -25,6 +26,7 @@
 - `apps/website/__tests__/components/CredibilityCards.test.tsx`
 
 **Modify:**
+
 - `apps/website/app/components/ReceiptsBand.tsx` — remove the `POSITIONING` block (now in `CredibilityCards`).
 - `apps/website/__tests__/components/ReceiptsBand.test.tsx` — drop the positioning-cards assertion (now covered by `CredibilityCards.test.tsx`).
 - `apps/website/app/page.tsx` — re-order drawer children: NavSlot → DrawerHero → CredibilityCards → ReceiptsBand → … (rest unchanged).
@@ -38,6 +40,7 @@
 ### Task 1: `CopyPromptButton` — TDD
 
 **Files:**
+
 - Create: `apps/website/app/components/CopyPromptButton.tsx`
 - Create: `apps/website/__tests__/components/CopyPromptButton.test.tsx`
 
@@ -100,6 +103,7 @@ describe("CopyPromptButton", () => {
 ```bash
 pnpm --filter @pretable/app-website test -- CopyPromptButton
 ```
+
 Expected: FAIL with "Cannot find module … CopyPromptButton".
 
 - [ ] **Step 1.3: Implement `CopyPromptButton`**
@@ -156,6 +160,7 @@ export function CopyPromptButton({ prompt, className }: CopyPromptButtonProps) {
 ```bash
 pnpm --filter @pretable/app-website test -- CopyPromptButton
 ```
+
 Expected: PASS, 3/3 tests.
 
 - [ ] **Step 1.5: Commit**
@@ -170,6 +175,7 @@ git commit -m "feat(website): CopyPromptButton — clipboard-writing CTA mirrori
 ### Task 2: `CredibilityCards` — extract from `ReceiptsBand`
 
 **Files:**
+
 - Create: `apps/website/app/components/CredibilityCards.tsx`
 - Create: `apps/website/__tests__/components/CredibilityCards.test.tsx`
 
@@ -205,6 +211,7 @@ describe("CredibilityCards", () => {
 ```bash
 pnpm --filter @pretable/app-website test -- CredibilityCards
 ```
+
 Expected: FAIL — "Cannot find module".
 
 - [ ] **Step 2.3: Implement `CredibilityCards` (verbatim copy of the existing JSX block, wrapped in its own section)**
@@ -273,6 +280,7 @@ export function CredibilityCards() {
 ```bash
 pnpm --filter @pretable/app-website test -- CredibilityCards
 ```
+
 Expected: PASS, 2/2 tests.
 
 - [ ] **Step 2.5: Commit**
@@ -287,6 +295,7 @@ git commit -m "feat(website): CredibilityCards — 4 positioning cards extracted
 ### Task 3: Trim `ReceiptsBand` — remove the now-extracted positioning block
 
 **Files:**
+
 - Modify: `apps/website/app/components/ReceiptsBand.tsx`
 - Modify: `apps/website/__tests__/components/ReceiptsBand.test.tsx`
 
@@ -327,6 +336,7 @@ it("does not render the positioning cards anymore (moved to CredibilityCards)", 
 ```bash
 pnpm --filter @pretable/app-website test -- ReceiptsBand
 ```
+
 Expected: FAIL — `ai-native` is still in the DOM.
 
 - [ ] **Step 3.3: Trim `ReceiptsBand.tsx` — delete the `POSITIONING` constant and the second `<ul>`**
@@ -402,6 +412,7 @@ export function ReceiptsBand() {
 ```bash
 pnpm --filter @pretable/app-website test -- ReceiptsBand
 ```
+
 Expected: PASS, 3/3.
 
 - [ ] **Step 3.5: Commit**
@@ -416,6 +427,7 @@ git commit -m "refactor(website): ReceiptsBand — drop positioning cards (moved
 ### Task 4: `DrawerHero` — TDD
 
 **Files:**
+
 - Create: `apps/website/app/components/DrawerHero.tsx`
 - Create: `apps/website/__tests__/components/DrawerHero.test.tsx`
 
@@ -480,6 +492,7 @@ describe("DrawerHero", () => {
 ```bash
 pnpm --filter @pretable/app-website test -- DrawerHero
 ```
+
 Expected: FAIL — module not found.
 
 - [ ] **Step 4.3: Implement `DrawerHero`**
@@ -550,6 +563,7 @@ export function DrawerHero() {
 ```bash
 pnpm --filter @pretable/app-website test -- DrawerHero
 ```
+
 Expected: PASS, 4/4.
 
 - [ ] **Step 4.5: Commit**
@@ -564,6 +578,7 @@ git commit -m "feat(website): DrawerHero — restored positioning hero with copy
 ### Task 5: Wire the new sections into `page.tsx`
 
 **Files:**
+
 - Modify: `apps/website/app/page.tsx`
 
 - [ ] **Step 5.1: Replace `apps/website/app/page.tsx` with the new ordering**
@@ -626,6 +641,7 @@ export default function HomePage() {
 ```bash
 pnpm --filter @pretable/app-website test
 ```
+
 Expected: PASS — total count grows by ~9 (3 from CopyPromptButton + 2 from CredibilityCards + 4 from DrawerHero), and the previous-step ReceiptsBand changes already covered.
 
 - [ ] **Step 5.3: Commit**
@@ -642,6 +658,7 @@ git commit -m "feat(website): wire DrawerHero + CredibilityCards into the new dr
 The grid currently sits inside `<section className="hero {styles.hero}">` where `.hero` has `height: calc(100vh - 36px)` (the HomeStreamHeader is 36px) and a flat gradient. `<PretableSurface>` is sized by the hard-coded `viewportHeight={520}` prop, which is why there's empty cream space below the rendered rows. We need a centered bezel container with chrome, and we need to feed the bezel's measured inner height into `viewportHeight`.
 
 **Files:**
+
 - Modify: `apps/website/app/components/HeroGrid.tsx`
 - Modify: `apps/website/app/components/heroGrid/heroGrid.module.css`
 
@@ -852,6 +869,7 @@ The existing test (`apps/website/app/components/__tests__/HeroGrid.test.tsx`) re
 ```bash
 pnpm --filter @pretable/app-website test -- HeroGrid
 ```
+
 Expected: PASS.
 
 - [ ] **Step 6.4: Add a structural test for the bezel wrapper**
@@ -870,6 +888,7 @@ it("wraps the grid in a bezel container with the expected testid", () => {
 ```bash
 pnpm --filter @pretable/app-website test -- HeroGrid
 ```
+
 Expected: PASS, +1 test.
 
 - [ ] **Step 6.5: Commit**
@@ -890,6 +909,7 @@ git commit -m "feat(website): HeroGrid — bezel chrome + measured viewport heig
 ```bash
 pnpm --filter @pretable/app-website test
 ```
+
 Expected: ALL PASS, ≥ 81 tests (72 baseline + 9 new from Tasks 1/2/4).
 
 - [ ] **Step 7.2: Boot the dev server**
@@ -899,6 +919,7 @@ pkill -f "next dev"; sleep 2
 pnpm --filter @pretable/app-website dev > /tmp/website-dev-bucket-b.log 2>&1 &
 sleep 8 && grep -E "Ready|Local:" /tmp/website-dev-bucket-b.log | tail -3
 ```
+
 Expected: `✓ Ready` and `http://localhost:3000`.
 
 - [ ] **Step 7.3: Verify in Chrome via the Claude in Chrome MCP**
@@ -908,14 +929,20 @@ Navigate to `http://localhost:3000`, take a screenshot, then:
 ```js
 ({
   bezelPresent: !!document.querySelector('[data-testid="hero-bezel"]'),
-  bezelMaxWidth: getComputedStyle(document.querySelector('[data-testid="hero-bezel"]')).maxWidth,
-  bezelBorderRadius: getComputedStyle(document.querySelector('[data-testid="hero-bezel"]')).borderRadius,
-  drawerStateAttr: document.documentElement.getAttribute('data-drawer'),
-})
+  bezelMaxWidth: getComputedStyle(
+    document.querySelector('[data-testid="hero-bezel"]'),
+  ).maxWidth,
+  bezelBorderRadius: getComputedStyle(
+    document.querySelector('[data-testid="hero-bezel"]'),
+  ).borderRadius,
+  drawerStateAttr: document.documentElement.getAttribute("data-drawer"),
+});
 ```
+
 Expected: `bezelPresent: true`, `maxWidth: 1400px`, `borderRadius: 14px`, `drawerStateAttr: "closed"`.
 
 Then open the drawer (click the handle) and verify in order:
+
 - DrawerNavSlot (with "Show the grid" button) at top
 - DrawerHero — eyebrow, headline "fastest data grid", three CTAs ([Copy prompt] / `$ npm install @pretable/react` / Read the docs →), MIT footer
 - CredibilityCards — 4 positioning cards, eyebrow "02 · why it works"

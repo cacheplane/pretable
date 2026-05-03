@@ -26,6 +26,7 @@ Bucket B also re-frames the grid section itself. The current full-bleed rounded 
 ### Outside the drawer (page.tsx top-level)
 
 Unchanged shell:
+
 ```
 <ControlStateProvider>
   <main>
@@ -63,7 +64,7 @@ Restored from `Hero.tsx` at commit parent of `e0bb4f3`. Restyled to the current 
 Content (verbatim from git for now; revisit in Bucket D):
 
 - Eyebrow (mono, accent): `$ pretable — vol. 2 · no. 1`
-- H1 (display, accent italic on "fastest"): *The fastest data grid for React. Built for the AI era.*
+- H1 (display, accent italic on "fastest"): _The fastest data grid for React. Built for the AI era._
 - Subhead: 60fps under streaming load. Zero row drift. A deterministic engine designed for live data, agent output, and real-time telemetry — not retrofitted from a batch-era grid.
 - CTA cluster (replaces old `[See the receipts ↓] [Try it live ↓]` pair):
   - **`<CopyPromptButton />`** — copies a static AI-agent setup prompt to clipboard (see Prompt content below). Uses the same copy/copied affordance pattern as `<CopyCommand>`.
@@ -117,7 +118,8 @@ Currently rendered as the second `<ul>` inside `ReceiptsBand`. Extract verbatim:
 ### `<ReceiptsBand />` (modified)
 
 Removes the now-extracted credibility cards. Keeps:
-- Heading (*Receipts, not claims.*)
+
+- Heading (_Receipts, not claims._)
 - 4-stat band (4× / 16ms / 0 / 25k/s)
 - "See them re-run in the bench →" link
 
