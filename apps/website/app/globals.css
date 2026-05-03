@@ -186,39 +186,47 @@ body {
 }
 
 @layer components {
-  .drawer-wrap {
-    position: static;
+  .drawer-shell {
+    /* SSR / no-JS fallback: render in normal flow as a long page */
+    position: relative;
+    display: block;
   }
 
-  html[data-drawer] .drawer-wrap {
+  html[data-drawer] .drawer-shell {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 75vh;
+    inset: 0;
     z-index: 50;
-    box-shadow: 0 -8px 24px rgba(28, 25, 23, 0.08);
-    border-top: 2px solid var(--pt-accent);
-    border-radius: 12px 12px 0 0;
-    transform: translateY(calc(100% - 56px));
+    pointer-events: none;
+    transform: translateY(100%);
     transition: transform 360ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
-  html[data-drawer="open"] .drawer-wrap {
+  html[data-drawer="open"] .drawer-shell {
     transform: translateY(0);
+    pointer-events: auto;
   }
 
-  html[data-drawer="open"] .hero {
-    filter: brightness(0.85);
-    transition: filter 360ms ease;
+  html[data-drawer] .drawer-handle {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 51;
+    pointer-events: auto;
+  }
+
+  html[data-drawer="open"] .drawer-handle {
+    display: none;
+  }
+
+  html[data-drawer] .drawer-content {
+    height: 100vh;
+    overflow-y: auto;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    html[data-drawer] .drawer-wrap {
+    html[data-drawer] .drawer-shell {
       transition: none;
-    }
-    html[data-drawer="open"] .hero {
-      filter: none;
     }
   }
 }

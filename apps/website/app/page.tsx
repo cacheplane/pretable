@@ -1,7 +1,7 @@
 import { CodeExample } from "./components/CodeExample";
 import { ComparisonTable } from "./components/ComparisonTable";
 import { CtaSection } from "./components/CtaSection";
-import { Drawer } from "./components/Drawer";
+import { DrawerShell } from "./components/DrawerShell";
 import { FeatureGrid } from "./components/FeatureGrid";
 import { HeroGrid } from "./components/HeroGrid";
 import { HowItWorks } from "./components/HowItWorks";
@@ -14,7 +14,7 @@ export default function HomePage() {
     <>
       <main>
         <HeroGrid />
-        <Drawer>
+        <DrawerShell>
           <ReceiptsBand />
           <ScrollReveal>
             <ComparisonTable />
@@ -31,7 +31,7 @@ export default function HomePage() {
           <ScrollReveal>
             <CtaSection />
           </ScrollReveal>
-        </Drawer>
+        </DrawerShell>
       </main>
       <MountainFooter />
     </>
