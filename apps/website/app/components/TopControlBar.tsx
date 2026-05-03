@@ -47,7 +47,7 @@ export function TopControlBar({
           <strong>{eventsFormatter.format(eventsPerSec)}</strong> ev/s
         </span>
         <span className={styles.metric}>
-          <strong>{p95Ms.toFixed(1)}</strong> ms p95
+          <strong>{p95Ms > 0 ? p95Ms.toFixed(1) : "—"}</strong> ms p95
         </span>
         <span className={styles.metric}>
           <strong>{fps}</strong> fps

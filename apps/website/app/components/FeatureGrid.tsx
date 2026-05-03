@@ -11,7 +11,7 @@ const FEATURES: readonly Feature[] = [
   {
     title: "60fps performance",
     description:
-      "9.3ms p95 frame time on wrapped scroll. 4× faster than Grid Alpha Community on the same dataset.",
+      "16ms p95 frame time on wrapped scroll. 4× faster than Grid Alpha Community on the same dataset.",
     marker: "green",
     markerLabel: "Beginner-friendly",
   },
