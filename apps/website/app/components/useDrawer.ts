@@ -21,9 +21,9 @@ export interface UseDrawerResult {
 }
 
 export function useDrawer(): UseDrawerResult {
-  const [isOpen, setIsOpen] = useState(false);
+  // isOpen is stored in controlState so all callers share a single source of truth.
+  const { isDrawerOpen: isOpen, setIsDrawerOpen } = useControlState();
   const [isUpgraded, setIsUpgraded] = useState(false);
-  const { setIsDrawerOpen } = useControlState();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -33,9 +33,9 @@ export function useDrawer(): UseDrawerResult {
 
     const hash = window.location.hash.replace("#", "");
     if (hash && DRAWER_SECTIONS.has(hash)) {
-      setIsOpen(true);
+      setIsDrawerOpen(true);
     }
-  }, []);
+  }, [setIsDrawerOpen]);
 
   useEffect(() => {
     if (!isUpgraded) return;
@@ -43,32 +43,31 @@ export function useDrawer(): UseDrawerResult {
       "data-drawer",
       isOpen ? "open" : "closed",
     );
-    setIsDrawerOpen(isOpen);
-  }, [isOpen, isUpgraded, setIsDrawerOpen]);
+  }, [isOpen, isUpgraded]);
 
   const open = useCallback(() => {
     if (typeof window === "undefined") return;
     history.pushState({ drawer: "open" }, "");
-    setIsOpen(true);
-  }, []);
+    setIsDrawerOpen(true);
+  }, [setIsDrawerOpen]);
 
   const close = useCallback(() => {
-    setIsOpen(false);
-  }, []);
+    setIsDrawerOpen(false);
+  }, [setIsDrawerOpen]);
 
   const toggle = useCallback(() => {
-    setIsOpen((prev) => !prev);
-  }, []);
+    setIsDrawerOpen(!isOpen);
+  }, [isOpen, setIsDrawerOpen]);
 
   useEffect(() => {
     if (!isUpgraded) return;
     const handler = (event: PopStateEvent) => {
       if (event.state?.drawer === "open") return;
-      setIsOpen(false);
+      setIsDrawerOpen(false);
     };
     window.addEventListener("popstate", handler);
     return () => window.removeEventListener("popstate", handler);
-  }, [isUpgraded]);
+  }, [isUpgraded, setIsDrawerOpen]);
 
   useEffect(() => {
     if (!isUpgraded || !isOpen) return;
