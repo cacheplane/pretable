@@ -12,37 +12,14 @@ interface Stat {
 //   status/milestones/2026-05-01-streaming-revalidated.hypotheses.json
 //     S5/updates × 6 rates × 3 repeats. H15 satisfied.
 //
-// "4× vs Grid Alpha" is the real comparative win — wrapped-text scroll p95
-// at hypothesis scale (5 repeats). "0 long tasks / streaming" holds
-// across the full 100–25k operating envelope. The page must not lie.
+// Positioning cards (Performance / AI-native / Wrapped / Ecosystem) used
+// to live below this stat band; they were extracted to <CredibilityCards />
+// in PR for Bucket B so each section has one job.
 const STATS: readonly Stat[] = [
   { value: "4×", caption: "faster scroll vs gridalpha" },
   { value: "16ms", caption: "frame p95 / wrapped scroll" },
   { value: "0", caption: "long tasks / streaming" },
   { value: "25k/s", caption: "max sustained update rate" },
-];
-
-const POSITIONING = [
-  {
-    num: "01",
-    eyebrow: "Performance",
-    headline: "The fastest grid in independent benchmarks.",
-  },
-  {
-    num: "02",
-    eyebrow: "AI-native",
-    headline: "AI isn't a feature. It's the data model.",
-  },
-  {
-    num: "03",
-    eyebrow: "Wrapped text",
-    headline: "Multi-line cells, no layout thrash.",
-  },
-  {
-    num: "04",
-    eyebrow: "Ecosystem",
-    headline: "Drops into the AI SDKs you already use.",
-  },
 ];
 
 export function ReceiptsBand() {
@@ -78,25 +55,6 @@ export function ReceiptsBand() {
             See them re-run in the bench →
           </a>
         </p>
-
-        <ul className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {POSITIONING.map((card) => (
-            <li
-              key={card.num}
-              className="rounded-[8px] border border-rule bg-bg-card p-6"
-            >
-              <span className="font-mono text-[10px] text-text-muted">
-                {card.num}
-              </span>
-              <span className="ml-2 font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-                {card.eyebrow}
-              </span>
-              <h3 className="mt-3 font-display text-[18px] tracking-[-0.01em]">
-                {card.headline}
-              </h3>
-            </li>
-          ))}
-        </ul>
       </div>
     </section>
   );
