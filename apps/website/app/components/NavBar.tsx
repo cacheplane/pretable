@@ -20,10 +20,13 @@ const DRAWER_ANCHORS = [
 export function NavBar({ mode, onClose }: NavBarProps) {
   return (
     <header
-      className="flex items-center justify-between border-b border-rule-soft bg-bg-card/85 px-7 py-3 backdrop-blur-sm md:px-10"
+      className="flex items-center justify-between gap-3 border-b border-rule-soft bg-bg-card/85 px-4 py-3 backdrop-blur-sm md:gap-5 md:px-10"
       role="banner"
     >
-      <Link className="flex items-center gap-2 font-mono text-[13px]" href="/">
+      <Link
+        className="flex shrink-0 items-center gap-2 font-mono text-[13px]"
+        href="/"
+      >
         <span aria-hidden="true" className="text-accent">
           ●
         </span>
@@ -33,7 +36,7 @@ export function NavBar({ mode, onClose }: NavBarProps) {
       {mode === "drawer" && (
         <nav
           aria-label="Section navigation"
-          className="hidden items-center gap-5 font-mono text-[12px] text-text-muted md:flex"
+          className="hidden flex-1 items-center justify-center gap-5 font-mono text-[12px] text-text-muted md:flex"
         >
           {DRAWER_ANCHORS.map((anchor) => (
             <a
@@ -49,24 +52,26 @@ export function NavBar({ mode, onClose }: NavBarProps) {
 
       <nav
         aria-label="Site links"
-        className="flex items-center gap-5 font-mono text-[12px] text-text-muted"
+        className="flex shrink-0 items-center gap-3 font-mono text-[12px] text-text-muted md:gap-5"
       >
         <Link className="hover:text-text-primary" href="/docs">
           /docs
         </Link>
         <a
-          className="inline-flex items-center gap-1 hover:text-text-primary"
+          aria-label="GitHub"
+          className="hidden hover:text-text-primary md:inline"
           href="https://github.com/cacheplane/pretable"
         >
           GitHub →
         </a>
         {mode === "drawer" && onClose && (
           <button
-            className="inline-flex items-center gap-1 rounded-[4px] border border-text-primary px-3 py-1 text-text-primary hover:bg-bg-raised"
+            aria-label="Show the grid"
+            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-[4px] border border-text-primary px-3 py-1 text-text-primary hover:bg-bg-raised"
             onClick={onClose}
             type="button"
           >
-            Show the grid ↓
+            <span className="hidden sm:inline">Show the grid </span>↓
           </button>
         )}
       </nav>

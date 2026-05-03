@@ -1,6 +1,7 @@
 import { CodeExample } from "./components/CodeExample";
 import { ComparisonTable } from "./components/ComparisonTable";
 import { CtaSection } from "./components/CtaSection";
+import { DrawerHandle } from "./components/DrawerHandle";
 import { DrawerNavSlot } from "./components/DrawerNavSlot";
 import { DrawerShell } from "./components/DrawerShell";
 import { FeatureGrid } from "./components/FeatureGrid";
@@ -19,6 +20,7 @@ export default function HomePage() {
         <HomeStreamHeader />
         <HeroGrid />
       </main>
+      <DrawerHandle />
       <DrawerShell>
         <DrawerNavSlot />
         <ReceiptsBand />
