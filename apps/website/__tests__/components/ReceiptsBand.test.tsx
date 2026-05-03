@@ -18,8 +18,8 @@ it("renders the receipts headline numbers", () => {
   expect(screen.getByText("16ms")).toBeInTheDocument();
 });
 
-it("renders the four positioning cards", () => {
+it("does not render the positioning cards anymore (moved to CredibilityCards)", () => {
   render(<ReceiptsBand />);
-  expect(screen.getByText(/performance/i)).toBeInTheDocument();
-  expect(screen.getByText(/ai-native/i)).toBeInTheDocument();
+  expect(screen.queryByText(/ai-native/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/ecosystem/i)).not.toBeInTheDocument();
 });

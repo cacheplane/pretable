@@ -1,7 +1,9 @@
 import { CodeExample } from "./components/CodeExample";
 import { ComparisonTable } from "./components/ComparisonTable";
+import { CredibilityCards } from "./components/CredibilityCards";
 import { CtaSection } from "./components/CtaSection";
 import { DrawerHandle } from "./components/DrawerHandle";
+import { DrawerHero } from "./components/DrawerHero";
 import { DrawerNavSlot } from "./components/DrawerNavSlot";
 import { DrawerShell } from "./components/DrawerShell";
 import { FeatureGrid } from "./components/FeatureGrid";
@@ -23,6 +25,8 @@ export default function HomePage() {
       <DrawerHandle />
       <DrawerShell>
         <DrawerNavSlot />
+        <DrawerHero />
+        <CredibilityCards />
         <ReceiptsBand />
         <ScrollReveal>
           <ComparisonTable />

@@ -1,9 +1,49 @@
-.hero {
+/* Outer band — fills the visible space below HomeStreamHeader and above
+   the drawer peek. The Alpenglow gradient is the soft canvas the bezel
+   floats on. Padding leaves room for a future sidebar or companion column
+   without re-flow. */
+.heroBackdrop {
   position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
   height: calc(100vh - 36px);
+  padding: 24px 24px 24px 24px;
   background: linear-gradient(
-    135deg,
-    var(--pt-bg-card) 0%,
-    var(--pt-bg-raised) 100%
+    180deg,
+    var(--pt-bg-page) 0%,
+    var(--pt-cream, var(--pt-bg-card)) 100%
   );
+}
+
+/* Inner window — the visible "frame" around the streaming demo. */
+.heroBezel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1400px;
+  background: var(--pt-bg-card);
+  border: 1px solid var(--pt-rule-strong, var(--pt-rule));
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(28, 25, 23, 0.08);
+  overflow: hidden;
+}
+
+/* The grid itself fills the bezel's interior; ResizeObserver measures
+   this element to drive viewportHeight on <PretableSurface>. */
+.heroSurface {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0; /* lets the grid honor the flex parent's height */
+}
+
+@media (max-width: 768px) {
+  .heroBackdrop {
+    padding: 12px;
+  }
+  .heroBezel {
+    border-radius: 10px;
+  }
 }
