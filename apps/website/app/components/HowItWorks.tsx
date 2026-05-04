@@ -1,108 +1,10 @@
 import { LayerStack, type LayerStackItem } from "./LayerStack";
-
-interface Layer {
-  num: string;
-  name: string;
-  responsibility: string;
-  bullets: readonly React.ReactNode[];
-  output: string;
-  pkg: string;
-  accent: boolean;
-}
+import { LAYERS } from "./howItWorksLayers";
 
 interface Callout {
   heading: string;
   body: React.ReactNode;
 }
-
-const LAYERS: readonly Layer[] = [
-  {
-    num: "01",
-    name: "Source",
-    responsibility: "Streaming patches and static rows treated identically.",
-    bullets: [
-      "Token-by-token patches via SSE, WebSocket, or any async iterable",
-      <>
-        Static{" "}
-        <code className="font-mono text-[12px] text-text-primary">Row[]</code>{" "}
-        arrays use the same input shape
-      </>,
-      'No "streaming mode" toggle — adapters convert both to engine input',
-    ],
-    output: "Row[] | Patch",
-    pkg: "stream-adapter",
-    accent: false,
-  },
-  {
-    num: "02",
-    name: "Engine",
-    responsibility: "Pure reducer. Sort, filter, selection, row-id stability.",
-    bullets: [
-      <code className="font-mono text-[12px] text-text-primary">
-        (rows, columns, sort, filter, selection) → Snapshot
-      </code>,
-      "Deterministic — same inputs always produce the same output, every frame",
-      "Row-id keys are first-class — selection survives filters, sorts, and live patches",
-      "Under 3,000 lines. Read it end-to-end in one sitting.",
-    ],
-    output: "Snapshot",
-    pkg: "grid-core",
-    accent: true,
-  },
-  {
-    num: "03",
-    name: "Viewport",
-    responsibility:
-      "Row-height plan + virtualization range. Off-DOM measurement.",
-    bullets: [
-      "Wrapped row heights computed with character-width tables and font metrics — pure arithmetic",
-      <>
-        No{" "}
-        <code className="font-mono text-[12px] text-text-primary">
-          getBoundingClientRect
-        </code>
-        , no forced reflow, no measure-on-mount
-      </>,
-      "Virtualization range derived from scroll position + total planned height",
-      "Off-screen rows excluded from the plan — no phantom DOM",
-    ],
-    output: "RenderPlan",
-    pkg: "layout-core + text-core",
-    accent: true,
-  },
-  {
-    num: "04",
-    name: "Renderer",
-    responsibility: "The only stage that touches the DOM.",
-    bullets: [
-      <>
-        Diffs the previous{" "}
-        <code className="font-mono text-[12px] text-text-primary">
-          RenderPlan
-        </code>{" "}
-        against the new one
-      </>,
-      "Patches affected rows; reuses unchanged DOM nodes",
-      "Selection, sort indicators, filter chips all data-driven from the snapshot — no imperative state",
-    ],
-    output: "Element[]",
-    pkg: "renderer-dom",
-    accent: false,
-  },
-  {
-    num: "05",
-    name: "Frame",
-    responsibility: "RAF coalesces patches per animation frame.",
-    bullets: [
-      "100 to 25,000 patches/sec all collapse to one snapshot per frame",
-      "Long tasks: zero across the operating envelope",
-      "Selection, cursor, scroll position never lost mid-frame",
-    ],
-    output: "60fps",
-    pkg: "browser",
-    accent: false,
-  },
-];
 
 const CALLOUTS: readonly Callout[] = [
   {
@@ -177,13 +79,12 @@ export function HowItWorks() {
               key: layer.num,
               className: [
                 "grid grid-cols-[44px_1fr] gap-4 rounded-[6px] border p-5 md:grid-cols-[56px_1fr_auto] md:gap-5 md:p-6",
-                layer.accent
+                layer.core
                   ? "border-accent/40 bg-bg-card/50"
                   : "border-rule bg-bg-card/65",
               ].join(" "),
               children: (
                 <>
-                  {/* Left: number + dot */}
                   <div className="flex flex-col items-center gap-2 pt-1">
                     <span className="font-mono text-[11px] font-bold tracking-[0.1em] text-text-dim">
                       {layer.num}
@@ -192,14 +93,12 @@ export function HowItWorks() {
                       aria-hidden="true"
                       className={[
                         "block h-2 w-2 rounded-full",
-                        layer.accent
+                        layer.core
                           ? "bg-accent shadow-[0_0_0_4px_color-mix(in_srgb,var(--pt-accent)_12%,transparent)]"
                           : "bg-text-dim",
                       ].join(" ")}
                     />
                   </div>
-
-                  {/* Middle: name + responsibility + bullets */}
                   <div>
                     <h3 className="font-display text-[18px] leading-[1.2] text-text-primary">
                       {layer.name}
@@ -224,8 +123,6 @@ export function HowItWorks() {
                       ))}
                     </ul>
                   </div>
-
-                  {/* Right: output chip + package badge */}
                   <div className="col-span-full flex flex-row items-center gap-2 pl-12 pt-2 md:col-auto md:flex-col md:items-end md:gap-2 md:pl-0 md:pt-0">
                     <span className="rounded-[3px] border border-rule bg-bg-raised/50 px-2 py-0.5 font-mono text-[10px] text-text-secondary">
                       <span className="text-text-dim">→ </span>
