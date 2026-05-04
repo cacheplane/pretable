@@ -26,6 +26,14 @@ export function NavBar({ mode, onClose }: NavBarProps) {
       <Link
         className="flex shrink-0 items-center gap-2 font-mono text-[13px]"
         href="/"
+        onClick={
+          mode === "drawer" && onClose
+            ? (e) => {
+                e.preventDefault();
+                onClose();
+              }
+            : undefined
+        }
       >
         <span aria-hidden="true" className="text-accent">
           ●
