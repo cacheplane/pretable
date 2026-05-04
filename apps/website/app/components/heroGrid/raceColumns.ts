@@ -11,5 +11,5 @@ export const raceColumns: PretableColumn<RaceRow>[] = [
   { id: "finish", header: "Finish", widthPx: 90 },
   { id: "delta", header: "Δ", widthPx: 90 },
   { id: "status", header: "Status", widthPx: 100 },
-  { id: "notes", header: "Notes", widthPx: 280, wrap: true },
+  { id: "notes", header: "Notes", widthPx: 280, wrap: false },
 ];
