@@ -218,6 +218,27 @@ html[data-drawer] .drawer-handle {
   bottom: 0;
   z-index: 51;
   pointer-events: auto;
+  /* iOS-style peek edge */
+  background: var(--pt-drawer-bg);
+  color: var(--pt-drawer-text);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.25);
+  padding: 14px 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+html[data-drawer] .drawer-handle::before {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--pt-text-dim);
+  opacity: 0.5;
 }
 
 html[data-drawer="open"] .drawer-handle {
