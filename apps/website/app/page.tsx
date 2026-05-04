@@ -14,6 +14,7 @@ import { HowItWorks } from "./components/HowItWorks";
 import { MountainFooter } from "./components/MountainFooter";
 import { ReceiptsBand } from "./components/ReceiptsBand";
 import { ScrollReveal } from "./components/ScrollReveal";
+import { StreamingByDesign } from "./components/StreamingByDesign";
 
 export default function HomePage() {
   return (
@@ -33,6 +34,9 @@ export default function HomePage() {
         </ScrollReveal>
         <ScrollReveal>
           <HowItWorks />
+        </ScrollReveal>
+        <ScrollReveal>
+          <StreamingByDesign />
         </ScrollReveal>
         <ScrollReveal>
           <CodeExample />

@@ -11,7 +11,7 @@ Before writing code, ask me:
 
 Then write a step-by-step implementation plan covering: install,
 columns + getRowId setup, data wiring, and any streaming adapter
-(use @pretable-internal/stream-adapter for LLM / SSE sources). Wait
+(use @pretable/stream-adapter for LLM / SSE sources). Wait
 for my approval before implementing each step.
 
 Docs: https://pretable.ai/docs

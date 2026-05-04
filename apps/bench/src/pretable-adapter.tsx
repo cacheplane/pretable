@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { PretableGrid } from "@pretable/react";
 import type { PretableTelemetry } from "@pretable/react";
 import { PretableSurface } from "@pretable/react";
-import { createBatcher } from "@pretable-internal/stream-adapter";
+import { createBatcher } from "@pretable/stream-adapter";
 import type {
   ScenarioDataset,
   ScenarioRow,
@@ -19,7 +19,7 @@ export interface PretableAdapterProps {
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   /**
    * Called once the adapter has wired up its update mechanism. Pretable
-   * routes batches through @pretable-internal/stream-adapter's RAF-based
+   * routes batches through @pretable/stream-adapter's RAF-based
    * batcher → grid.applyTransaction. This is the wedge's idiomatic
    * streaming pattern.
    */

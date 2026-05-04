@@ -43,7 +43,7 @@ export function FeatureGrid() {
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[1240px]">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-          06 · what's in the box
+          07 · what's in the box
         </p>
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
           Engineering credibility points.
