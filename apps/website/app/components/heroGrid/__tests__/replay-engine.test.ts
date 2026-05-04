@@ -21,12 +21,14 @@ const FIXTURE = (() => {
     t += 0.01;
   }
   lines.push(JSON.stringify({ t, type: "response.completed" }));
-  // phase 2
-  lines.push(JSON.stringify({ t: 1.0, type: "update", patches: [{ id: "r-001", status: "running" }] }));
-  lines.push(JSON.stringify({ t: 2.0, type: "update", patches: [{ id: "r-001", gate1: "00:14.32" }] }));
-  lines.push(JSON.stringify({ t: 13.0, type: "update", patches: [{ id: "r-001", finish: "01:18.84", status: "finished", delta: "LEADER" }] }));
-  lines.push(JSON.stringify({ t: 13.5, type: "rerank", patches: [{ id: "r-002", delta: "+1.20" }] }));
-  lines.push(JSON.stringify({ t: 14.0, type: "commentary", patches: [{ id: "r-001", notes: "Aggressive" }] }));
+  // phase 2 — packed into ~0.5s of virtual time so test windows stay short
+  // (engine plays at 1× wall-time pace at every tier; rate envelope only
+  // controls event-type filtering and HEAVY telemetry density)
+  lines.push(JSON.stringify({ t: 0.10, type: "update", patches: [{ id: "r-001", status: "running" }] }));
+  lines.push(JSON.stringify({ t: 0.20, type: "update", patches: [{ id: "r-001", gate1: "00:14.32" }] }));
+  lines.push(JSON.stringify({ t: 0.30, type: "update", patches: [{ id: "r-001", finish: "01:18.84", status: "finished", delta: "LEADER" }] }));
+  lines.push(JSON.stringify({ t: 0.35, type: "rerank", patches: [{ id: "r-002", delta: "+1.20" }] }));
+  lines.push(JSON.stringify({ t: 0.40, type: "commentary", patches: [{ id: "r-001", notes: "Aggressive" }] }));
   return lines.join("\n");
 })();
 

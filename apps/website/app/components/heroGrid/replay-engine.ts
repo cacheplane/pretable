@@ -163,11 +163,12 @@ export function createRaceReplay(options: RaceReplayOptions): RaceReplay {
     }
     const dtWall = (now - lastWall) / 1000;
     lastWall = now;
-    // Virtual time advances proportional to rate so the full recording plays
-    // in real time at a tempo matching the configured event rate. PROD (60)
-    // → 60× compression; HEAVY (250) → 250× compression; LIGHT (10) → 10×.
-    const dt = dtWall * rate;
-    virtualT += dt;
+    // Race plays at 1× narrative pace at every tier — the rate envelope
+    // controls event-type filtering (LIGHT skips rerank/commentary) and
+    // telemetry synthesis density (HEAVY only), NOT playback speed. The
+    // user-facing tier numbers (10/60/250 ev/s) are aspirational marketing
+    // labels; the actual emission rate emerges from filter + telemetry density.
+    virtualT += dtWall;
 
     // Drain phase 2 events
     while (
@@ -180,7 +181,7 @@ export function createRaceReplay(options: RaceReplayOptions): RaceReplay {
       }
     }
 
-    // HEAVY tier telemetry synthesis: 1 row per ~10ms of virtual time
+    // HEAVY tier telemetry synthesis: ~100 rows/sec of wall time (1 per 10ms)
     if (rate === 250) {
       while (nextTelT <= virtualT) {
         options.onTransaction({ add: [synthesizeTelemetry(telCounter++)] });
