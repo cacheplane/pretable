@@ -55,7 +55,7 @@ export function HowItWorks() {
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[1240px]">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-          04 · how it works
+          02 · how it works
         </p>
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
           DOM measuring sucks. We use math.{" "}

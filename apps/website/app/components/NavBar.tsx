@@ -33,7 +33,7 @@ export function NavBar({ mode, onClose }: NavBarProps) {
 
   return (
     <header
-      className="flex items-center justify-between gap-3 border-b border-rule-soft bg-bg-card/85 px-4 py-3 backdrop-blur-sm md:gap-5 md:px-10"
+      className="flex h-11 items-center justify-between gap-3 border-b border-rule-soft bg-bg-card/85 px-4 backdrop-blur-sm md:gap-5 md:px-10"
       role="banner"
     >
       <Link

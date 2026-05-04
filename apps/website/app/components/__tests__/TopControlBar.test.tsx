@@ -18,14 +18,14 @@ function ControlsAccessor({
 }
 
 describe("TopControlBar", () => {
-  it("renders brand and event-stream label", () => {
+  it("renders the brand link to the home page", () => {
     render(
       <ControlStateProvider>
         <TopControlBar fps={60} eventsPerSec={1000} p95Ms={9.3} />
       </ControlStateProvider>,
     );
-    expect(screen.getByText(/pretable\.ai/i)).toBeInTheDocument();
-    expect(screen.getByText(/events\.stream/i)).toBeInTheDocument();
+    const brand = screen.getByRole("link", { name: /pretable\.ai/i });
+    expect(brand).toHaveAttribute("href", "/");
   });
 
   it("renders the live counter with events/sec, p95, and fps", () => {

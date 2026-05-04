@@ -13,7 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html data-drawer="closed" lang="en">
       <body>{children}</body>
     </html>
   );

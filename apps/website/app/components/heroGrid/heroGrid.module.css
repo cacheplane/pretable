@@ -7,7 +7,9 @@
   display: flex;
   align-items: stretch;
   justify-content: center;
-  height: calc(100vh - 36px);
+  /* 44px = TopControlBar; 84px = drawer-handle visible height (reserved so
+     the bezel doesn't sit underneath the drawer peek). */
+  height: calc(100vh - 44px - 84px);
   padding: 24px 24px 24px 24px;
   background: linear-gradient(
     180deg,
