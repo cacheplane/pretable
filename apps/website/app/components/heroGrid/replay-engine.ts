@@ -108,8 +108,13 @@ export function createRaceReplay(options: RaceReplayOptions): RaceReplay {
       ev.type === "commentary"
     ) {
       if (Array.isArray(ev.patches) && typeof ev.t === "number") {
+        // Recording emits `t` in milliseconds; engine's virtual clock works
+        // in seconds (dtWall is divided by 1000 in the rAF tick). Normalize
+        // here so a t > 1000 is treated as ms while small fixture values
+        // (used in tests, e.g. t: 0.4) stay as seconds.
+        const tSeconds = ev.t > 1000 ? ev.t / 1000 : ev.t;
         phase2Events.push({
-          t: ev.t,
+          t: tSeconds,
           type: ev.type as Phase2Type,
           patches: ev.patches as Phase2Event["patches"],
         });

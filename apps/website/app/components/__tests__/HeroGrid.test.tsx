@@ -40,9 +40,11 @@ describe("HeroGrid", () => {
     expect(screen.getByTestId("hero-bezel")).toBeInTheDocument();
   });
 
-  it("renders the course visualization sidebar inside the bezel", () => {
+  it("renders the scoreboard sidebar inside the bezel", () => {
     renderHeroGrid();
-    expect(screen.getByTestId("course-viz")).toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: /race scoreboard/i }),
+    ).toBeInTheDocument();
   });
 
   it("renders the race grid with an accessible label", () => {

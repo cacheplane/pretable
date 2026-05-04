@@ -57,16 +57,16 @@ const RACERS: RacerDef[] = [
 ];
 
 const COMMENTARY_PHRASES = [
-  "Clean line through the pitch.",
-  "Big push out of the start gate.",
-  "Loses a tenth on the flats but recovers.",
-  "Aggressive on the upper section.",
-  "Skis it like a champion.",
-  "Tactical run — patient through the turns.",
-  "Pure speed on the bottom pitch.",
-  "Battles back after a small bobble.",
-  "Direct line — no wasted motion.",
-  "Carrying serious speed into the finish.",
+  "Clean line",
+  "Big push out of start",
+  "Aggressive on top",
+  "Skis it like a champ",
+  "Tactical run",
+  "Pure speed at finish",
+  "Battles back",
+  "Direct line",
+  "Carries serious speed",
+  "Patient through G2",
 ];
 
 function emptyRow(racer: RacerDef, idx: number): RaceRow {
@@ -319,17 +319,14 @@ export function generateRaceRecording(): string {
       phase2Events.push({
         t: tMs,
         type: "update",
-        patches: [{ id, status: "running", notes: "·" }],
+        patches: [{ id, status: "running" }],
       });
     } else if (ev.kind === "tick") {
-      // Progress-trail in notes: dots that grow as the racer moves down the course.
-      const prog = ev.tickProgress ?? 0;
-      const dots = "·".repeat(Math.max(1, Math.floor(prog * 14) + 1));
-      phase2Events.push({
-        t: tMs,
-        type: "commentary",
-        patches: [{ id, notes: dots }],
-      });
+      // Tick events are no-ops in the recording. Telemetry/animation
+      // density is now handled at replay time (HEAVY tier synthesizes
+      // sensor rows). Was: dot-trail in notes; removed because mid-
+      // streaming length changes triggered row-height drift in the
+      // engine's measurement cache.
     } else if (ev.kind === "gate1") {
       phase2Events.push({
         t: tMs,
@@ -386,37 +383,17 @@ export function generateRaceRecording(): string {
         }
       }
 
-      // Commentary stream — 30% chance, but stream multiple phrases for richness.
+      // Commentary — 30% chance, single one-shot patch (no token streaming).
+      // Mid-stream growth was triggering wrap → row-height drift; the
+      // recording now emits each commentary as a single complete patch.
       if (rand() < 0.3) {
         const phrase =
           COMMENTARY_PHRASES[Math.floor(rand() * COMMENTARY_PHRASES.length)]!;
-        const tokens = phrase.split(/(\s+)/).filter((s) => s.length > 0);
-        // 10-15 patches — pad if needed by splitting longer tokens
-        const pieces: string[] = [];
-        for (const tk of tokens) pieces.push(tk);
-        while (pieces.length < 10) {
-          // split longest piece
-          let longestIdx = 0;
-          for (let i = 1; i < pieces.length; i++) {
-            if (pieces[i]!.length > pieces[longestIdx]!.length) longestIdx = i;
-          }
-          const p = pieces[longestIdx]!;
-          if (p.length < 2) break;
-          const mid = Math.floor(p.length / 2);
-          pieces.splice(longestIdx, 1, p.slice(0, mid), p.slice(mid));
-        }
-        const limited = pieces.slice(0, 15);
-        let accum = "";
-        let cT = tMs + 200;
-        for (const piece of limited) {
-          accum += piece;
-          cT += 80 + Math.floor(rand() * 120);
-          phase2Events.push({
-            t: cT,
-            type: "commentary",
-            patches: [{ id, notes: accum }],
-          });
-        }
+        phase2Events.push({
+          t: tMs + 200,
+          type: "commentary",
+          patches: [{ id, notes: phrase }],
+        });
       }
     } else if (ev.kind === "dnf") {
       const gate = ev.racer.dnfGate ?? 1;
@@ -427,7 +404,7 @@ export function generateRaceRecording(): string {
           {
             id,
             status: "DNF",
-            notes: `Out at gate ${gate}`,
+            notes: `Out at G${gate}`,
           },
         ],
       });
@@ -439,7 +416,7 @@ export function generateRaceRecording(): string {
           {
             id,
             status: "DSQ",
-            notes: "Under review — gate fault",
+            notes: "Under review",
           },
         ],
       });
@@ -475,10 +452,8 @@ if (
     "// Regenerate by running scripts/generate-race.ts.\n\n" +
     `export const RACE_RECORDING = ${JSON.stringify(text)};\n`;
   writeFileSync(tsOut, tsBody);
-  // eslint-disable-next-line no-console
   console.log(
     `wrote ${out} — ${text.length} bytes, ${text.split("\n").length - 1} lines`,
   );
-  // eslint-disable-next-line no-console
   console.log(`wrote ${tsOut} — ${tsBody.length} bytes`);
 }
