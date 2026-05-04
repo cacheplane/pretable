@@ -12,7 +12,9 @@ it("renders the section header (eyebrow + h2)", () => {
   expect(container.textContent ?? "").toMatch(/how it works/i);
   const h2 = container.querySelector("h2");
   expect(h2).toBeInTheDocument();
-  expect(h2?.textContent ?? "").toMatch(/deterministic pipeline/i);
+  expect(h2?.textContent ?? "").toMatch(/dom measuring sucks/i);
+  expect(h2?.textContent ?? "").toMatch(/we use math/i);
+  expect(h2?.textContent ?? "").toMatch(/it's hard/i);
 });
 
 it("renders the pipeline diagram above the layer cards", () => {
@@ -53,11 +55,14 @@ it("renders five layers with correct names", () => {
   }
 });
 
-it("renders four callouts including the DOM/math callout", () => {
+it("renders four callouts including the agentic-apps callout", () => {
   const { container } = render(<HowItWorks />);
   const calloutHeadings = container.querySelectorAll(
     "[data-testid='howitworks-callouts'] h4",
   );
   expect(calloutHeadings.length).toBe(4);
-  expect(container.textContent ?? "").toMatch(/dom is expensive/i);
+  const text = container.textContent ?? "";
+  expect(text).toMatch(/built for agentic apps/i);
+  // The DOM/math claim moved into the lede paragraph.
+  expect(text).toMatch(/character-width tables/i);
 });
