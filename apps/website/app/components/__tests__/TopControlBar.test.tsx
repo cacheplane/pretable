@@ -63,6 +63,6 @@ describe("TopControlBar", () => {
       </ControlStateProvider>,
     );
     fireEvent.click(screen.getByRole("radio", { name: /heavy/i }));
-    expect(captured!.ratePerSec).toBe(5000);
+    expect(captured!.ratePerSec).toBe(250);
   });
 });

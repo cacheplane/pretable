@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build",
+    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build && pnpm --filter @pretable/stream-adapter build",
     "predev": "pnpm run prepare:deps",
     "dev": "next dev",
     "prebuild": "pnpm run prepare:deps",
@@ -22,6 +22,7 @@
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@pretable-internal/scenario-data": "workspace:*",
     "@pretable/react": "workspace:*",
+    "@pretable/stream-adapter": "workspace:*",
     "@pretable/ui": "workspace:*",
     "next": "^16.2.0",
     "react": "^19.0.0",

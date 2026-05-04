@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-export type RateTier = 250 | 1000 | 5000 | 25000;
+export type RateTier = 10 | 60 | 250;
 
 export interface HeroGridControlState {
   ratePerSec: RateTier;
@@ -24,7 +24,7 @@ export interface HeroGridControlState {
 const ControlStateContext = createContext<HeroGridControlState | null>(null);
 
 export function ControlStateProvider({ children }: { children: ReactNode }) {
-  const [ratePerSec, setRatePerSec] = useState<RateTier>(1000);
+  const [ratePerSec, setRatePerSec] = useState<RateTier>(60);
   const [isPaused, setIsPaused] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 

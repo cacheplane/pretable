@@ -10,10 +10,9 @@ interface TopControlBarProps {
 }
 
 const TIERS: { value: RateTier; label: string }[] = [
-  { value: 250, label: "Light" },
-  { value: 1000, label: "Production" },
-  { value: 5000, label: "Heavy" },
-  { value: 25000, label: "Extreme" },
+  { value: 10, label: "Light" },
+  { value: 60, label: "Production" },
+  { value: 250, label: "Heavy" },
 ];
 
 const eventsFormatter = new Intl.NumberFormat("en-US");
