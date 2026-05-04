@@ -1,0 +1,34 @@
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 20px;
+  font-family: var(--pt-font-sans, system-ui);
+  color: var(--pt-fg-strong, var(--pt-fg));
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pt-fg-muted, #6b7280);
+}
+
+.time {
+  font-family: var(--pt-font-mono, ui-monospace);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--pt-fg-strong, #1c1917);
+}
+
+.racer {
+  font-size: 14px;
+  color: var(--pt-fg, #44403c);
+}
