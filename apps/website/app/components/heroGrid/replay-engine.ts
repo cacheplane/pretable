@@ -16,15 +16,6 @@ export interface RaceReplay {
   dispose(): void;
 }
 
-interface Phase1Event {
-  t: number;
-  type:
-    | "response.created"
-    | "response.output_text.delta"
-    | "response.completed";
-  delta?: string;
-}
-
 type Phase2Type = "update" | "rerank" | "commentary";
 
 interface Phase2Event {
