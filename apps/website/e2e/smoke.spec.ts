@@ -34,7 +34,10 @@ test("docs brand link returns to drawer when it was last open", async ({
   await expect(page.locator("html")).toHaveAttribute("data-drawer", "open");
 
   // Navigate to /docs via the in-drawer /docs link.
-  await page.getByRole("link", { name: /\/docs/i }).first().click();
+  await page
+    .getByRole("link", { name: /\/docs/i })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/docs/);
 
   // Click brand → should land back on / with drawer open.

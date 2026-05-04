@@ -14,23 +14,24 @@
 
 ## File Map
 
-| File | Change |
-|------|--------|
-| `apps/website/app/globals.css` | Modify — replace `.drawer-handle` rules with iOS-style peek-edge styling |
-| `apps/website/app/components/DrawerHandle.tsx` | Modify — remove appearance utilities, keep behavior + grab-bar markup |
-| `apps/website/app/components/useDrawer.ts` | Modify — write/clear sessionStorage flag in `open`/`close` |
-| `apps/website/app/components/NavBar.tsx` | Modify — drawer-mode brand calls `onClose`; site-mode brand has conditional href |
-| `apps/website/app/components/HowItWorks.tsx` | Modify — new heading, new lede, swap DOM/math callout for "Built for agentic apps" |
-| `apps/website/__tests__/components/HowItWorks.test.tsx` | Modify — update to new heading + callout copy |
-| `apps/website/app/components/__tests__/NavBar.test.tsx` | Modify — assert brand click closes drawer + conditional href in site mode |
-| `apps/website/app/components/__tests__/useDrawer.test.ts` | Modify — assert sessionStorage flag writes/clears |
-| `apps/website/e2e/smoke.spec.ts` | Modify — add docs→home return-path test |
+| File                                                      | Change                                                                             |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `apps/website/app/globals.css`                            | Modify — replace `.drawer-handle` rules with iOS-style peek-edge styling           |
+| `apps/website/app/components/DrawerHandle.tsx`            | Modify — remove appearance utilities, keep behavior + grab-bar markup              |
+| `apps/website/app/components/useDrawer.ts`                | Modify — write/clear sessionStorage flag in `open`/`close`                         |
+| `apps/website/app/components/NavBar.tsx`                  | Modify — drawer-mode brand calls `onClose`; site-mode brand has conditional href   |
+| `apps/website/app/components/HowItWorks.tsx`              | Modify — new heading, new lede, swap DOM/math callout for "Built for agentic apps" |
+| `apps/website/__tests__/components/HowItWorks.test.tsx`   | Modify — update to new heading + callout copy                                      |
+| `apps/website/app/components/__tests__/NavBar.test.tsx`   | Modify — assert brand click closes drawer + conditional href in site mode          |
+| `apps/website/app/components/__tests__/useDrawer.test.ts` | Modify — assert sessionStorage flag writes/clears                                  |
+| `apps/website/e2e/smoke.spec.ts`                          | Modify — add docs→home return-path test                                            |
 
 ---
 
 ## Task 1: Fix drawer handle visibility (iOS-style peek edge)
 
 **Files:**
+
 - Modify: `apps/website/app/globals.css` (lines 214–225)
 - Modify: `apps/website/app/components/DrawerHandle.tsx`
 
@@ -110,6 +111,7 @@ export function DrawerHandle() {
 
 Run: `cd apps/website && pnpm dev`
 Open http://localhost:3000 in a browser. Expected:
+
 - Bar is visible at the bottom of the viewport against the grid (opaque `#1e293b`, no longer transparent).
 - Top corners are rounded (~14px); bottom corners square.
 - Small grab-bar pill (~36×4px) sits centered above the "↑ Why pretable" label.
@@ -134,6 +136,7 @@ git commit -m "fix(website): drawer handle now renders as visible iOS-style peek
 ## Task 2: Drawer-mode brand link closes the drawer
 
 **Files:**
+
 - Modify: `apps/website/app/components/NavBar.tsx`
 - Modify: `apps/website/app/components/__tests__/NavBar.test.tsx`
 
@@ -213,6 +216,7 @@ git commit -m "feat(website): drawer-mode brand link closes the drawer"
 ## Task 3: useDrawer writes/clears sessionStorage flag
 
 **Files:**
+
 - Modify: `apps/website/app/components/useDrawer.ts`
 - Modify: `apps/website/app/components/__tests__/useDrawer.test.ts`
 
@@ -323,6 +327,7 @@ git commit -m "feat(website): useDrawer records last-open state in sessionStorag
 ## Task 4: NavBar site-mode brand has conditional href
 
 **Files:**
+
 - Modify: `apps/website/app/components/NavBar.tsx`
 - Modify: `apps/website/app/components/__tests__/NavBar.test.tsx`
 
@@ -433,6 +438,7 @@ git commit -m "feat(website): site-mode brand returns to drawer when last-open f
 ## Task 5: Rewrite "Why it works" — math thesis + agentic-apps callout
 
 **Files:**
+
 - Modify: `apps/website/app/components/HowItWorks.tsx`
 - Modify: `apps/website/__tests__/components/HowItWorks.test.tsx`
 
@@ -543,6 +549,7 @@ git commit -m "feat(website): why-it-works leads with the math thesis + agentic-
 ## Task 6: Playwright smoke — docs→home return path
 
 **Files:**
+
 - Modify: `apps/website/e2e/smoke.spec.ts`
 
 End-to-end check that the brand link round-trips drawer state correctly.
@@ -552,14 +559,19 @@ End-to-end check that the brand link round-trips drawer state correctly.
 Read the existing structure of `apps/website/e2e/smoke.spec.ts` first to match its conventions (`test.describe`, fixtures, base URL handling). Then add a new `test()` with this shape:
 
 ```ts
-test("docs brand link returns to drawer when it was last open", async ({ page }) => {
+test("docs brand link returns to drawer when it was last open", async ({
+  page,
+}) => {
   await page.goto("/");
   // Open the drawer via the bottom handle.
   await page.getByTestId("drawer-handle").click();
   await expect(page.locator("html[data-drawer='open']")).toBeVisible();
 
   // Navigate to /docs via the in-drawer /docs link.
-  await page.getByRole("link", { name: /\/docs/i }).first().click();
+  await page
+    .getByRole("link", { name: /\/docs/i })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/docs/);
 
   // Click brand → should land back on / with drawer open.
@@ -568,7 +580,9 @@ test("docs brand link returns to drawer when it was last open", async ({ page })
   await expect(page.locator("html[data-drawer='open']")).toBeVisible();
 });
 
-test("docs brand link goes to bare grid when drawer was never opened", async ({ page }) => {
+test("docs brand link goes to bare grid when drawer was never opened", async ({
+  page,
+}) => {
   await page.goto("/docs");
   await page.getByRole("link", { name: /pretable\.ai/i }).click();
   await expect(page).toHaveURL(/\/$/);
@@ -613,9 +627,10 @@ Expected: no errors.
 - [ ] **Manual smoke**
 
 Open dev server. Verify:
+
 1. Bottom drawer handle is visible (opaque, rounded, grab bar).
 2. Click handle → drawer opens.
 3. In drawer, click `pretable.ai` brand → drawer closes (no navigation).
-4. Open drawer, scroll to "how it works" — new heading reads "DOM measuring sucks. We use math. *It's hard.*"; agentic-apps callout is in the 4-pack.
+4. Open drawer, scroll to "how it works" — new heading reads "DOM measuring sucks. We use math. _It's hard._"; agentic-apps callout is in the 4-pack.
 5. Open drawer, click `/docs` → on docs page, click `pretable.ai` brand → drawer is open on `/`.
 6. From a fresh tab, open `/docs` directly → click brand → drawer is closed on `/`.

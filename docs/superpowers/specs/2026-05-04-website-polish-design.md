@@ -70,6 +70,7 @@ Tests in `apps/website/__tests__/components/HowItWorks.test.tsx` need updating t
 SEO note: hash fragments are part of the same URL to crawlers, so `/` vs `/#receipts` are equivalent for indexing — this knob is invisible to search.
 
 Implementation:
+
 - `useDrawer.ts`: write/clear the sessionStorage flag in `open` / `close`.
 - `NavBar.tsx`: in `mode="site"`, the brand component becomes a small client wrapper that reads the flag (in a `useEffect` to avoid SSR mismatch) and rewrites `href` accordingly. Default `/` for SSR + cold loads.
 

@@ -58,7 +58,10 @@ describe("NavBar", () => {
       };
       render(<NavBar mode="drawer" onClose={onClose} />);
       const brand = screen.getByRole("link", { name: /pretable\.ai/i });
-      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+      });
       brand.dispatchEvent(event);
       expect(closed).toBe(true);
       expect(event.defaultPrevented).toBe(true);

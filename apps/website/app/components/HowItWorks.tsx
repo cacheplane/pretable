@@ -12,9 +12,9 @@ const CALLOUTS: readonly Callout[] = [
     heading: "Built for agentic apps.",
     body: (
       <>
-        LLM streams, partial JSON, tool-call traces — bursts of 100 to
-        25,000 patches/sec all collapse to one snapshot per animation
-        frame. No per-token reflow. Selection survives every patch.
+        LLM streams, partial JSON, tool-call traces — bursts of 100 to 25,000
+        patches/sec all collapse to one snapshot per animation frame. No
+        per-token reflow. Selection survives every patch.
       </>
     ),
   },
