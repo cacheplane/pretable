@@ -6,36 +6,36 @@
  */
 
 :root {
-  /* Surfaces — M3 baseline light */
-  --pretable-bg-grid: #fef7ff; /* surface */
-  --pretable-bg-grid-alt: #fef7ff; /* No striping by default — Material list pattern */
-  --pretable-bg-header: #f3edf7; /* surface-container — one tonal step up */
-  --pretable-bg-toolbar: #f3edf7;
-  --pretable-bg-tooltip: #f3edf7;
+  /* Surfaces — M3 neutral grayscale (untinted by primary seed) */
+  --pretable-bg-grid: #fcfcfc; /* N99 */
+  --pretable-bg-grid-alt: #fcfcfc; /* No striping by default — Material list pattern */
+  --pretable-bg-header: #f3f3f3; /* N96 — one tonal step up */
+  --pretable-bg-toolbar: #f3f3f3;
+  --pretable-bg-tooltip: #f3f3f3;
 
   /* Text */
-  --pretable-text-cell: #1d1b20; /* on-surface */
-  --pretable-text-header: #49454f; /* on-surface-variant */
-  --pretable-text-dim: #49454f;
+  --pretable-text-cell: #1c1c1c; /* on-surface */
+  --pretable-text-header: #49494c; /* on-surface-variant */
+  --pretable-text-dim: #49494c;
 
   /* Lines */
-  --pretable-rule: #cac4d0; /* outline-variant — decorative dividers */
-  --pretable-rule-strong: #79747e; /* outline */
+  --pretable-rule: #cccccc; /* outline-variant — decorative dividers */
+  --pretable-rule-strong: #797979; /* outline */
   --pretable-radius: 12px; /* M3 medium shape scale (matches Card) */
 
   /* State */
   --pretable-bg-hover: rgba(
-    29,
-    27,
-    32,
+    28,
+    28,
+    28,
     0.08
   ); /* on-surface @ 8% — M3 hover state layer */
-  --pretable-bg-selected: #e8def8; /* secondary-container */
-  --pretable-text-selected: #1d192b; /* on-secondary-container */
-  --pretable-focus-ring: #6750a4; /* primary */
+  --pretable-bg-selected: #d1e4ff; /* secondary-container — M3 baseline blue */
+  --pretable-text-selected: #001d36; /* on-secondary-container */
+  --pretable-focus-ring: #0061a4; /* primary */
 
   /* Accent */
-  --pretable-accent: #6750a4; /* primary */
+  --pretable-accent: #0061a4; /* primary — M3 baseline blue */
 
   /* Density — natural default = standard */
   --pretable-row-height: 48px;
@@ -75,23 +75,23 @@
 /* Dark mode — M3 baseline dark; color-only overrides; density inherits from light. */
 
 [data-theme="dark"] {
-  --pretable-bg-grid: #1d1b20; /* surface-container-low */
-  --pretable-bg-grid-alt: #1d1b20;
-  --pretable-bg-header: #211f26; /* surface-container */
-  --pretable-bg-toolbar: #211f26;
-  --pretable-bg-tooltip: #211f26;
+  --pretable-bg-grid: #1c1c1c; /* surface-container-low */
+  --pretable-bg-grid-alt: #1c1c1c;
+  --pretable-bg-header: #212121; /* surface-container */
+  --pretable-bg-toolbar: #212121;
+  --pretable-bg-tooltip: #212121;
 
-  --pretable-text-cell: #e6e0e9; /* on-surface (dark) */
-  --pretable-text-header: #cac4d0; /* on-surface-variant (dark) */
-  --pretable-text-dim: #cac4d0;
+  --pretable-text-cell: #e6e6e6; /* on-surface (dark) */
+  --pretable-text-header: #c9c9c9; /* on-surface-variant (dark) */
+  --pretable-text-dim: #c9c9c9;
 
-  --pretable-rule: #49454f; /* outline-variant (dark) */
-  --pretable-rule-strong: #938f99; /* outline (dark) */
+  --pretable-rule: #494949; /* outline-variant (dark) */
+  --pretable-rule-strong: #939393; /* outline (dark) */
 
-  --pretable-bg-hover: rgba(230, 224, 233, 0.08); /* on-surface @ 8% — dark */
-  --pretable-bg-selected: #4a4458; /* secondary-container (dark) */
-  --pretable-text-selected: #e8def8; /* on-secondary-container (dark) */
-  --pretable-focus-ring: #d0bcff; /* primary (dark) */
+  --pretable-bg-hover: rgba(230, 230, 230, 0.08); /* on-surface @ 8% — dark */
+  --pretable-bg-selected: #00497d; /* secondary-container — M3 baseline blue (dark) */
+  --pretable-text-selected: #d1e4ff; /* on-secondary-container */
+  --pretable-focus-ring: #9ecaff; /* primary (dark) */
 
-  --pretable-accent: #d0bcff;
+  --pretable-accent: #9ecaff;
 }

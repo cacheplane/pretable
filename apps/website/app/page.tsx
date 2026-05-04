@@ -1,6 +1,5 @@
 import { CodeExample } from "./components/CodeExample";
 import { ComparisonTable } from "./components/ComparisonTable";
-import { CredibilityCards } from "./components/CredibilityCards";
 import { CtaSection } from "./components/CtaSection";
 import { DrawerHandle } from "./components/DrawerHandle";
 import { DrawerHero } from "./components/DrawerHero";
@@ -27,13 +26,10 @@ export default function HomePage() {
       <DrawerShell>
         <DrawerNavSlot />
         <DrawerHero />
-        <CredibilityCards />
+        <HowItWorks />
         <ReceiptsBand />
         <ScrollReveal>
           <ComparisonTable />
-        </ScrollReveal>
-        <ScrollReveal>
-          <HowItWorks />
         </ScrollReveal>
         <ScrollReveal>
           <StreamingByDesign />
