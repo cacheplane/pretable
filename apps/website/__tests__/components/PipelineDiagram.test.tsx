@@ -29,7 +29,10 @@ describe("PipelineDiagram", () => {
     let cursor = 0;
     for (const label of order) {
       const next = text.indexOf(label, cursor);
-      expect(next, `expected to find ${label} after position ${cursor}`).toBeGreaterThan(-1);
+      expect(
+        next,
+        `expected to find ${label} after position ${cursor}`,
+      ).toBeGreaterThan(-1);
       cursor = next + label.length;
     }
   });
@@ -38,6 +41,9 @@ describe("PipelineDiagram", () => {
     render(<PipelineDiagram />);
     const root = screen.getByTestId("pipeline-diagram");
     expect(root).toBeInTheDocument();
-    expect(root).toHaveAttribute("aria-label", expect.stringMatching(/render pipeline/i));
+    expect(root).toHaveAttribute(
+      "aria-label",
+      expect.stringMatching(/render pipeline/i),
+    );
   });
 });

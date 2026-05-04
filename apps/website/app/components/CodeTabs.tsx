@@ -24,9 +24,8 @@ export function CodeTabs({ panels, defaultIndex = 0 }: CodeTabsProps) {
     const delta = event.key === "ArrowRight" ? 1 : -1;
     const next = (activeIndex + delta + panels.length) % panels.length;
     setActiveIndex(next);
-    const tabs = listRef.current?.querySelectorAll<HTMLButtonElement>(
-      "[role='tab']",
-    );
+    const tabs =
+      listRef.current?.querySelectorAll<HTMLButtonElement>("[role='tab']");
     tabs?.[next]?.focus();
   };
 

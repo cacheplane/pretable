@@ -18,9 +18,7 @@ it("renders the section header (eyebrow + h2)", () => {
 it("renders the pipeline diagram above the layer cards", () => {
   const { container } = render(<HowItWorks />);
   const diagram = container.querySelector('[data-testid="pipeline-diagram"]');
-  const layers = container.querySelector(
-    '[data-testid="howitworks-layers"]',
-  );
+  const layers = container.querySelector('[data-testid="howitworks-layers"]');
   expect(diagram).toBeInTheDocument();
   expect(layers).toBeInTheDocument();
   // Diagram must come before layer cards in the DOM.
