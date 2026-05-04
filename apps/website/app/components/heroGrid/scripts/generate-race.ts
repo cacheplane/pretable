@@ -162,7 +162,7 @@ export function generateRaceRecording(): string {
   // Use real-life time scale, units = seconds. Stagger 4s per racer.
   // Each racer's run ~12s. Splits at 22%, 48%, 74%.
   // Time t is in milliseconds for events.
-  let raceT = t + 500; // small gap
+  const raceT = t + 500; // small gap
 
   interface RacerState {
     idx: number;
