@@ -187,6 +187,9 @@ importers:
       '@pretable/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@pretable/stream-adapter':
+        specifier: workspace:*
+        version: link:../../packages/stream-adapter
       '@pretable/ui':
         specifier: workspace:*
         version: link:../../packages/ui
