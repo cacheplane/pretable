@@ -1,7 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { NavBar } from "../NavBar";
+
+afterEach(() => {
+  sessionStorage.clear();
+});
 
 describe("NavBar", () => {
   describe("mode='site'", () => {
@@ -13,6 +17,21 @@ describe("NavBar", () => {
       expect(
         screen.queryByRole("button", { name: /show the grid/i }),
       ).not.toBeInTheDocument();
+    });
+
+    it("brand href is '/' by default", () => {
+      render(<NavBar mode="site" />);
+      const brand = screen.getByRole("link", { name: /pretable\.ai/i });
+      expect(brand.getAttribute("href")).toBe("/");
+    });
+
+    it("brand href becomes '/#receipts' after mount when sessionStorage flag is set", async () => {
+      sessionStorage.setItem("pretable:lastDrawer", "open");
+      render(<NavBar mode="site" />);
+      const brand = screen.getByRole("link", { name: /pretable\.ai/i });
+      // Wait a microtask for useEffect to run.
+      await Promise.resolve();
+      expect(brand.getAttribute("href")).toBe("/#receipts");
     });
   });
 
