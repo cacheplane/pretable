@@ -112,7 +112,10 @@ function formatDelta(deltaSeconds: number): string {
 }
 
 interface Phase1Event {
-  type: "response.created" | "response.output_text.delta" | "response.completed";
+  type:
+    | "response.created"
+    | "response.output_text.delta"
+    | "response.completed";
   t: number;
   delta?: string;
 }
@@ -211,7 +214,15 @@ export function generateRaceRecording(): string {
   // Build event timeline (ms-relative to phase 2 start), then sort and emit.
   interface RawEvent {
     t: number; // ms relative to phase 2 start
-    kind: "start" | "gate1" | "gate2" | "gate3" | "finish" | "dnf" | "dsq" | "tick";
+    kind:
+      | "start"
+      | "gate1"
+      | "gate2"
+      | "gate3"
+      | "finish"
+      | "dnf"
+      | "dsq"
+      | "tick";
     racer: RacerState;
     tickProgress?: number; // 0..1 along run, for "tick" kind
   }
@@ -238,10 +249,17 @@ export function generateRaceRecording(): string {
       raw.push({ t: tMsRel, kind: "tick", racer: s, tickProgress: progress });
     }
     if (s.fate === "DNF") {
-      const gateMs = s.dnfGate === 1 ? s.gate1S * 1000 : s.dnfGate === 2 ? s.gate2S * 1000 : s.gate3S * 1000;
+      const gateMs =
+        s.dnfGate === 1
+          ? s.gate1S * 1000
+          : s.dnfGate === 2
+            ? s.gate2S * 1000
+            : s.gate3S * 1000;
       // Push past-gates first if applicable
-      if ((s.dnfGate ?? 1) >= 2) raw.push({ t: s.startT + s.gate1S * 1000, kind: "gate1", racer: s });
-      if ((s.dnfGate ?? 1) >= 3) raw.push({ t: s.startT + s.gate2S * 1000, kind: "gate2", racer: s });
+      if ((s.dnfGate ?? 1) >= 2)
+        raw.push({ t: s.startT + s.gate1S * 1000, kind: "gate1", racer: s });
+      if ((s.dnfGate ?? 1) >= 3)
+        raw.push({ t: s.startT + s.gate2S * 1000, kind: "gate2", racer: s });
       // DNF event slightly after the gate they were heading toward
       raw.push({ t: s.startT + gateMs + 600, kind: "dnf", racer: s });
     } else if (s.fate === "DSQ") {
@@ -250,7 +268,11 @@ export function generateRaceRecording(): string {
       raw.push({ t: s.startT + s.gate2S * 1000, kind: "gate2", racer: s });
       raw.push({ t: s.startT + s.gate3S * 1000, kind: "gate3", racer: s });
       raw.push({ t: s.startT + s.finishS * 1000, kind: "finish", racer: s });
-      raw.push({ t: s.startT + s.finishS * 1000 + 1500, kind: "dsq", racer: s });
+      raw.push({
+        t: s.startT + s.finishS * 1000 + 1500,
+        kind: "dsq",
+        racer: s,
+      });
     } else {
       raw.push({ t: s.startT + s.gate1S * 1000, kind: "gate1", racer: s });
       raw.push({ t: s.startT + s.gate2S * 1000, kind: "gate2", racer: s });
@@ -288,7 +310,10 @@ export function generateRaceRecording(): string {
 
   for (const ev of raw) {
     const tMs = raceT + ev.t;
-    const id = ev.racer.def === RACERS[ev.racer.idx] ? String(ev.racer.idx + 1) : String(ev.racer.idx + 1);
+    const id =
+      ev.racer.def === RACERS[ev.racer.idx]
+        ? String(ev.racer.idx + 1)
+        : String(ev.racer.idx + 1);
 
     if (ev.kind === "start") {
       phase2Events.push({
@@ -363,7 +388,8 @@ export function generateRaceRecording(): string {
 
       // Commentary stream — 30% chance, but stream multiple phrases for richness.
       if (rand() < 0.3) {
-        const phrase = COMMENTARY_PHRASES[Math.floor(rand() * COMMENTARY_PHRASES.length)]!;
+        const phrase =
+          COMMENTARY_PHRASES[Math.floor(rand() * COMMENTARY_PHRASES.length)]!;
         const tokens = phrase.split(/(\s+)/).filter((s) => s.length > 0);
         // 10-15 patches — pad if needed by splitting longer tokens
         const pieces: string[] = [];

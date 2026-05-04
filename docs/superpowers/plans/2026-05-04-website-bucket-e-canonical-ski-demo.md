@@ -157,7 +157,10 @@ describe("generateRaceRecording", () => {
   it("contains 30 racers in phase-1 output", () => {
     const out = generateRaceRecording();
     // Reassemble the JSON streamed via response.output_text.delta events
-    const lines = out.trim().split("\n").map((l) => JSON.parse(l));
+    const lines = out
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     const phase1Deltas = lines
       .filter((l: { type: string }) => l.type === "response.output_text.delta")
       .map((l: { delta: string }) => l.delta)
@@ -201,7 +204,7 @@ if (require.main === module) {
 }
 ```
 
-The implementation is involved — see §4 of the spec for the recording shape. Implementer is free to keep the code in one file. Bracket the deliverable: byte-identical determinism (test 1) is the success criterion; the narrative density (5% DNF, leaderboard re-ranks at right moments, etc.) is *aspirational* and can be approximated.
+The implementation is involved — see §4 of the spec for the recording shape. Implementer is free to keep the code in one file. Bracket the deliverable: byte-identical determinism (test 1) is the success criterion; the narrative density (5% DNF, leaderboard re-ranks at right moments, etc.) is _aspirational_ and can be approximated.
 
 The implementer should derive a 30-name racer list (real GS skiers like Marco Odermatt 🇨🇭, Henrik Kristoffersen 🇳🇴, etc., or synthesized — either is fine; deterministic is the only hard constraint). Country flag emojis bake into the racer string.
 
@@ -331,10 +334,7 @@ export interface RaceReplayOptions {
   recording: string;
   ratePerSec: RaceRate;
   isPlaying: boolean;
-  onTransaction: (tx: {
-    add?: RaceRow[];
-    update?: Partial<RaceRow>[];
-  }) => void;
+  onTransaction: (tx: { add?: RaceRow[]; update?: Partial<RaceRow>[] }) => void;
 }
 
 export interface RaceReplay {
@@ -473,7 +473,16 @@ function interpolate(top: number, bottom: number): number {
 function dotColor(bib: number | "—"): string {
   if (bib === "—") return "#9ca3af";
   // Deterministic palette from bib
-  const palette = ["#dc2626", "#ea580c", "#ca8a04", "#16a34a", "#0891b2", "#2563eb", "#7c3aed", "#db2777"];
+  const palette = [
+    "#dc2626",
+    "#ea580c",
+    "#ca8a04",
+    "#16a34a",
+    "#0891b2",
+    "#2563eb",
+    "#7c3aed",
+    "#db2777",
+  ];
   return palette[(bib as number) % palette.length]!;
 }
 
@@ -490,7 +499,13 @@ export function CourseVisualization({ rows }: CourseVisualizationProps) {
     >
       <title>Mt. Bachelor giant slalom course</title>
       {/* Slope background */}
-      <rect x="0" y="0" width={VIEWBOX_W} height={VIEWBOX_H} fill="var(--pt-bg-card)" />
+      <rect
+        x="0"
+        y="0"
+        width={VIEWBOX_W}
+        height={VIEWBOX_H}
+        fill="var(--pt-bg-card)"
+      />
       {/* Course line — shallow S-curves */}
       <path
         d={`M50 20 C 30 100, 70 200, 50 300 S 30 480, 50 580`}
@@ -502,8 +517,21 @@ export function CourseVisualization({ rows }: CourseVisualizationProps) {
       {/* Gate ticks + labels */}
       {GATES.map((gate) => (
         <g key={gate.id}>
-          <line x1="35" y1={gate.y} x2="65" y2={gate.y} stroke="var(--pt-rule, #d6d3d1)" strokeWidth="1" />
-          <text x="80" y={gate.y + 4} fontSize="9" fontFamily="ui-monospace" fill="var(--pt-text-muted, #57534e)">
+          <line
+            x1="35"
+            y1={gate.y}
+            x2="65"
+            y2={gate.y}
+            stroke="var(--pt-rule, #d6d3d1)"
+            strokeWidth="1"
+          />
+          <text
+            x="80"
+            y={gate.y + 4}
+            fontSize="9"
+            fontFamily="ui-monospace"
+            fill="var(--pt-text-muted, #57534e)"
+          >
             {gate.id}
           </text>
         </g>
@@ -674,7 +702,9 @@ const VISIBLE_BUFFER_ROWS = 200;
 export function HeroGrid() {
   const { ratePerSec, isPlaying } = useControlState();
   const [rows, setRows] = useState<RaceRow[]>([]);
-  const [viewportHeight, setViewportHeight] = useState(FALLBACK_VIEWPORT_HEIGHT);
+  const [viewportHeight, setViewportHeight] = useState(
+    FALLBACK_VIEWPORT_HEIGHT,
+  );
   const surfaceRef = useRef<HTMLDivElement>(null);
   const replayRef = useRef<RaceReplay | null>(null);
   const rowMapRef = useRef<Map<string, RaceRow>>(new Map());
@@ -730,7 +760,9 @@ export function HeroGrid() {
           // Materialize ordered rows (most-recent first OR by bib for race rows)
           const all = Array.from(map.values());
           // Race rows by bib ascending; telemetry rows newest first.
-          const raceRows = all.filter((r) => r.bib !== "—").sort((a, b) => (a.bib as number) - (b.bib as number));
+          const raceRows = all
+            .filter((r) => r.bib !== "—")
+            .sort((a, b) => (a.bib as number) - (b.bib as number));
           const telRows = all.filter((r) => r.bib === "—").reverse();
           return [...raceRows, ...telRows].slice(0, VISIBLE_BUFFER_ROWS);
         });
