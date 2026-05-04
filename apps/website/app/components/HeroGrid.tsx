@@ -1,13 +1,14 @@
 "use client";
 
 import { PretableSurface } from "@pretable/react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { CourseVisualization } from "./heroGrid/CourseVisualization";
 import { useControlState } from "./heroGrid/controlState";
 import { raceColumns } from "./heroGrid/raceColumns";
 import { RACE_RECORDING } from "./heroGrid/recordings/race";
 import { createRaceReplay } from "./heroGrid/replay-engine";
+import { Scoreboard } from "./heroGrid/Scoreboard";
+import { applySort, type ColumnId, type SortState } from "./heroGrid/sort";
 import type { RaceRow } from "./heroGrid/types";
 import styles from "./heroGrid/heroGrid.module.css";
 
@@ -17,7 +18,13 @@ const VISIBLE_BUFFER_ROWS = 200;
 export function HeroGrid() {
   const { ratePerSec, isPlaying } = useControlState();
   const [rows, setRows] = useState<RaceRow[]>([]);
+  const [userSort, setUserSort] = useState<SortState | null>(null);
   const replayRef = useRef<ReturnType<typeof createRaceReplay> | null>(null);
+
+  // Sort layer: when userSort is null, applySort delegates to rankRows (default
+  // leaderboard rank). When user clicks a column header, applySort uses the
+  // per-column comparator. Insertion order in `rows` is irrelevant for display.
+  const sortedRows = useMemo(() => applySort(rows, userSort), [rows, userSort]);
 
   // Bezel-fill viewport measurement — same pattern as Bucket B.
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -55,9 +62,9 @@ export function HeroGrid() {
         setRows((prev) => {
           let next = prev;
           if (tx.add) {
-            next = [...tx.add, ...next];
+            next = [...next, ...tx.add];
             if (next.length > VISIBLE_BUFFER_ROWS) {
-              next = next.slice(0, VISIBLE_BUFFER_ROWS);
+              next = next.slice(-VISIBLE_BUFFER_ROWS);
             }
           }
           if (tx.update) {
@@ -102,13 +109,28 @@ export function HeroGrid() {
             <PretableSurface<RaceRow>
               ariaLabel="Live ski racing"
               columns={raceColumns}
+              getRowClassName={({ row }) =>
+                row.delta === "LEADER" ? styles.leaderRow : undefined
+              }
               getRowId={(row) => row.id}
-              rows={rows}
+              interactionState={userSort ? { sort: userSort } : null}
+              onSortChange={(next) => {
+                if (next === null) {
+                  setUserSort(null);
+                  return;
+                }
+                // PretableSurface emits columnId as string; narrow to ColumnId.
+                setUserSort({
+                  columnId: next.columnId as ColumnId,
+                  direction: next.direction,
+                });
+              }}
+              rows={sortedRows}
               viewportHeight={viewportHeight}
             />
           </div>
           <div className={styles.heroSidebar}>
-            <CourseVisualization rows={rows} />
+            <Scoreboard rows={rows} />
           </div>
         </div>
       </div>
