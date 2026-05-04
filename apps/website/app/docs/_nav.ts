@@ -37,6 +37,16 @@ export const docsNav: DocsNavSection[] = [
     ],
   },
   {
+    title: "Streaming",
+    items: [
+      { title: "Overview", href: "/docs/streaming" },
+      { title: "Element streams", href: "/docs/streaming/element-streams" },
+      { title: "Partial streams", href: "/docs/streaming/partial-streams" },
+      { title: "Parsers", href: "/docs/streaming/parsers" },
+      { title: "API reference", href: "/docs/streaming/api-reference" },
+    ],
+  },
+  {
     title: "Theming",
     items: [
       { title: "Overview", href: "/docs/theming" },

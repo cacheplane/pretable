@@ -1,7 +1,6 @@
 {
-  "name": "@pretable-internal/stream-adapter",
+  "name": "@pretable/stream-adapter",
   "version": "0.0.1",
-  "private": true,
   "type": "module",
   "files": [
     "dist"

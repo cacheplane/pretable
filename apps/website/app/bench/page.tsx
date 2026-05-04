@@ -194,7 +194,7 @@ export default function BenchPage() {
           <code>applyTransaction</code>, gridbeta's
           <code> useVirtualizer</code> + setState, pretable's RAF-batched{" "}
           <code>grid.applyTransaction</code> via{" "}
-          <code>@pretable-internal/stream-adapter</code>.
+          <code>@pretable/stream-adapter</code>.
         </li>
         <li>
           <strong className="text-text-primary">Wedge integrity:</strong> the

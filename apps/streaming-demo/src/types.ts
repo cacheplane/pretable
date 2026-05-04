@@ -2,7 +2,7 @@
  * Rows rendered in the grid. `id === symbol` is the row identifier.
  *
  * Extends Record<string, unknown> so the type satisfies the GridLike
- * constraint from @pretable-internal/stream-adapter (which is
+ * constraint from @pretable/stream-adapter (which is
  * `TRow extends Record<string, unknown>`).
  */
 export interface StockRow extends Record<string, unknown> {
