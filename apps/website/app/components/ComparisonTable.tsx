@@ -106,7 +106,7 @@ const ROWS: readonly Row[] = [
     tanstack: "no",
     muiX: "no",
     budget: "—",
-    // @cacheplane/json-stream + @pretable-internal/stream-adapter is the
+    // @cacheplane/json-stream + @pretable/stream-adapter is the
     // only adapter shipping a documented end-to-end streaming pipeline.
     pretableWins: true,
   },

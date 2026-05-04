@@ -13,7 +13,7 @@ const TABS: readonly TabSource[] = [
     lang: "tsx",
     code: `"use client";
 import { useEffect, useState } from "react";
-import { connectElementStream } from "@pretable-internal/stream-adapter";
+import { connectElementStream } from "@pretable/stream-adapter";
 import { Pretable } from "@pretable/react";
 import { columns, type ChatRow } from "./columns";
 import { openai } from "./openai-client";

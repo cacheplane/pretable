@@ -6,8 +6,8 @@ import {
   isComplete,
 } from "@cacheplane/json-stream";
 import type { StreamState } from "@cacheplane/json-stream";
-import { createBatcher } from "@pretable-internal/stream-adapter";
-import type { TransactionBatcher } from "@pretable-internal/stream-adapter";
+import { createBatcher } from "@pretable/stream-adapter";
+import type { TransactionBatcher } from "@pretable/stream-adapter";
 
 import type {
   EngineState,

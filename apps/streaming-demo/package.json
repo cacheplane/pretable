@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @cacheplane/json-stream build && pnpm --filter @pretable-internal/stream-adapter build && pnpm --filter @pretable/react build",
+    "prepare:deps": "pnpm --filter @cacheplane/json-stream build && pnpm --filter @pretable/stream-adapter build && pnpm --filter @pretable/react build",
     "predev": "pnpm run prepare:deps",
     "dev": "vite",
     "prebuild": "pnpm run prepare:deps",
@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@cacheplane/json-stream": "workspace:*",
-    "@pretable-internal/stream-adapter": "workspace:*",
+    "@pretable/stream-adapter": "workspace:*",
     "@pretable/react": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
