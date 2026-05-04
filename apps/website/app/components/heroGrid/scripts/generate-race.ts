@@ -440,8 +440,19 @@ if (
   mkdirSync(dirname(out), { recursive: true });
   const text = generateRaceRecording();
   writeFileSync(out, text);
+  // Also emit a TS wrapper module so HeroGrid can import the recording as a
+  // string constant. Next 16 / Turbopack rejects `?raw` imports of unknown
+  // module types (.jsonl), so we ship the bytes as a TS file instead.
+  const tsOut = join(here, "..", "recordings", "race.ts");
+  const tsBody =
+    "// Auto-generated from race.jsonl. Do not edit by hand.\n" +
+    "// Regenerate by running scripts/generate-race.ts.\n\n" +
+    `export const RACE_RECORDING = ${JSON.stringify(text)};\n`;
+  writeFileSync(tsOut, tsBody);
   // eslint-disable-next-line no-console
   console.log(
     `wrote ${out} — ${text.length} bytes, ${text.split("\n").length - 1} lines`,
   );
+  // eslint-disable-next-line no-console
+  console.log(`wrote ${tsOut} — ${tsBody.length} bytes`);
 }

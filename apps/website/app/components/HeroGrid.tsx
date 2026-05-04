@@ -3,54 +3,27 @@
 import { PretableSurface } from "@pretable/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { CourseVisualization } from "./heroGrid/CourseVisualization";
 import { useControlState } from "./heroGrid/controlState";
-import { type HeroEvent, heroEventLog } from "./heroGrid/eventLog";
-import { createHeroReplay } from "./heroGrid/replay";
+import { raceColumns } from "./heroGrid/raceColumns";
+import { RACE_RECORDING } from "./heroGrid/recordings/race";
+import { createRaceReplay } from "./heroGrid/replay-engine";
+import type { RaceRow } from "./heroGrid/types";
 import styles from "./heroGrid/heroGrid.module.css";
 
-const VISIBLE_BUFFER_ROWS = 200;
 const FALLBACK_VIEWPORT_HEIGHT = 520;
-
-const columns = [
-  { id: "timestamp", header: "Time", widthPx: 92, pinned: "left" as const },
-  { id: "kind", header: "Kind", widthPx: 180 },
-  { id: "message", header: "Message", widthPx: 420, wrap: true },
-  { id: "status", header: "Status", widthPx: 80 },
-  { id: "latencyMs", header: "Latency (ms)", widthPx: 110 },
-];
-
-interface DisplayRow {
-  id: string;
-  timestamp: string;
-  kind: string;
-  message: string;
-  status: string;
-  latencyMs: number;
-  __sequence: number;
-  [key: string]: unknown;
-}
-
-const seedRows = (): DisplayRow[] =>
-  heroEventLog.slice(0, 30).map((entry, index) => ({
-    ...entry,
-    __sequence: index,
-    id: `seed-${index}`,
-  }));
+const VISIBLE_BUFFER_ROWS = 200;
 
 export function HeroGrid() {
   const { ratePerSec, isPlaying } = useControlState();
-  const [rows, setRows] = useState<DisplayRow[]>(seedRows);
-  const replayRef = useRef<ReturnType<typeof createHeroReplay> | null>(null);
+  const [rows, setRows] = useState<RaceRow[]>([]);
+  const replayRef = useRef<ReturnType<typeof createRaceReplay> | null>(null);
 
-  // Measure the bezel's inner surface so PretableSurface fills it. We use
-  // useLayoutEffect for the first paint and a ResizeObserver for window
-  // resizes / drawer state changes. SSR / jsdom (no ResizeObserver) falls
-  // back to a fixed 520.
+  // Bezel-fill viewport measurement — same pattern as Bucket B.
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [viewportHeight, setViewportHeight] = useState(
     FALLBACK_VIEWPORT_HEIGHT,
   );
-
   useLayoutEffect(() => {
     const el = surfaceRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -67,74 +40,76 @@ export function HeroGrid() {
     return () => ro.disconnect();
   }, []);
 
+  // Mount-once: create the replay engine. Apply transactions to local rows state.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const reduce =
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    if (reduce) return; // keep seed snapshot, no replay
+    if (reduce) return;
 
-    let pending: DisplayRow[] = [];
-    const replay = createHeroReplay({
+    const replay = createRaceReplay({
+      recording: RACE_RECORDING,
       ratePerSec,
-      onEmit: (event: HeroEvent, sequence: number) => {
-        pending.push({
-          ...event,
-          __sequence: sequence,
-          id: `seq-${sequence}`,
+      isPlaying,
+      onTransaction: (tx) => {
+        setRows((prev) => {
+          let next = prev;
+          if (tx.add) {
+            next = [...tx.add, ...next];
+            if (next.length > VISIBLE_BUFFER_ROWS) {
+              next = next.slice(0, VISIBLE_BUFFER_ROWS);
+            }
+          }
+          if (tx.update) {
+            const byId = new Map<string, Partial<RaceRow>>();
+            for (const p of tx.update) {
+              const id = (p as { id?: string }).id;
+              if (typeof id !== "string") continue;
+              byId.set(id, { ...byId.get(id), ...p });
+            }
+            next = next.map((row) => {
+              const patch = byId.get(row.id);
+              return patch ? { ...row, ...patch } : row;
+            });
+          }
+          return next;
         });
       },
     });
     replayRef.current = replay;
-
-    let raf = 0;
-    const loop = (timestampMs: number) => {
-      replay.tickAtMs(timestampMs);
-      if (pending.length > 0) {
-        const batch = pending;
-        pending = [];
-        setRows((prev) => {
-          const next = [...batch.reverse(), ...prev];
-          return next.length > VISIBLE_BUFFER_ROWS
-            ? next.slice(0, VISIBLE_BUFFER_ROWS)
-            : next;
-        });
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-
     return () => {
-      cancelAnimationFrame(raf);
+      replay.dispose();
       replayRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally runs once; ratePerSec changes handled by separate effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once; rate/playing changes go through separate effects
   }, []);
 
-  // React to ratePerSec changes
+  // React to rate changes
   useEffect(() => {
     replayRef.current?.setRate(ratePerSec);
   }, [ratePerSec]);
 
   // React to play/pause changes
   useEffect(() => {
-    if (isPlaying) {
-      replayRef.current?.resume(performance.now());
-    } else {
-      replayRef.current?.pause();
-    }
+    replayRef.current?.setPlaying(isPlaying);
   }, [isPlaying]);
 
   return (
     <section className={`hero ${styles.heroBackdrop}`}>
       <div className={styles.heroBezel} data-testid="hero-bezel">
-        <div className={styles.heroSurface} ref={surfaceRef}>
-          <PretableSurface<DisplayRow>
-            ariaLabel="Pretable streaming demo"
-            columns={columns}
-            getRowId={(row) => row.id}
-            rows={rows}
-            viewportHeight={viewportHeight}
-          />
+        <div className={styles.heroSplit}>
+          <div className={styles.heroSurface} ref={surfaceRef}>
+            <PretableSurface<RaceRow>
+              ariaLabel="Live ski racing"
+              columns={raceColumns}
+              getRowId={(row) => row.id}
+              rows={rows}
+              viewportHeight={viewportHeight}
+            />
+          </div>
+          <div className={styles.heroSidebar}>
+            <CourseVisualization rows={rows} />
+          </div>
         </div>
       </div>
     </section>

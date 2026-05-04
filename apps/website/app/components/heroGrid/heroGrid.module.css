@@ -37,6 +37,23 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 0; /* lets the grid honor the flex parent's height */
+  min-width: 0; /* prevents the wide notes column from overflowing in split-pane */
+}
+
+/* Split-pane layout inside the bezel: grid on the left, course-viz sidebar on the right. */
+.heroSplit {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: row;
+}
+
+.heroSidebar {
+  flex: 0 0 300px;
+  border-left: 1px solid var(--pt-rule);
+  background: var(--pt-bg-card);
+  overflow: hidden;
+  display: block;
 }
 
 @media (max-width: 768px) {
@@ -45,5 +62,8 @@
   }
   .heroBezel {
     border-radius: 10px;
+  }
+  .heroSidebar {
+    display: none;
   }
 }
