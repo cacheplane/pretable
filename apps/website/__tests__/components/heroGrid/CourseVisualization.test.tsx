@@ -24,7 +24,10 @@ describe("CourseVisualization", () => {
     render(<CourseVisualization rows={[]} />);
     const root = screen.getByTestId("course-viz");
     expect(root).toBeInTheDocument();
-    expect(root).toHaveAttribute("aria-label", expect.stringMatching(/course/i));
+    expect(root).toHaveAttribute(
+      "aria-label",
+      expect.stringMatching(/course/i),
+    );
   });
 
   it("renders 5 gate-tick labels (G1, G2, G3, G4, FIN)", () => {

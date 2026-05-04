@@ -48,7 +48,9 @@ describe("HeroGrid", () => {
   it("renders the race grid with an accessible label", () => {
     renderHeroGrid();
     expect(
-      screen.getByRole("grid", { name: /live ski racing|live race|streaming/i }),
+      screen.getByRole("grid", {
+        name: /live ski racing|live race|streaming/i,
+      }),
     ).toBeInTheDocument();
   });
 });

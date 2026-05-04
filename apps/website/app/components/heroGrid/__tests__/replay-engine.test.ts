@@ -7,8 +7,30 @@ import type { RaceRow } from "../types";
 // every event-type so we can assert tier filters.
 const FIXTURE = (() => {
   const arr = JSON.stringify([
-    { id: "r-001", bib: 1, racer: "A 🇨🇭", gate1: "", gate2: "", gate3: "", finish: "", delta: "", status: "dns", notes: "" },
-    { id: "r-002", bib: 2, racer: "B 🇳🇴", gate1: "", gate2: "", gate3: "", finish: "", delta: "", status: "dns", notes: "" },
+    {
+      id: "r-001",
+      bib: 1,
+      racer: "A 🇨🇭",
+      gate1: "",
+      gate2: "",
+      gate3: "",
+      finish: "",
+      delta: "",
+      status: "dns",
+      notes: "",
+    },
+    {
+      id: "r-002",
+      bib: 2,
+      racer: "B 🇳🇴",
+      gate1: "",
+      gate2: "",
+      gate3: "",
+      finish: "",
+      delta: "",
+      status: "dns",
+      notes: "",
+    },
   ]);
   const lines: string[] = [];
   lines.push(JSON.stringify({ t: 0.0, type: "response.created" }));
@@ -16,7 +38,13 @@ const FIXTURE = (() => {
   let cursor = 0;
   let t = 0.1;
   while (cursor < arr.length) {
-    lines.push(JSON.stringify({ t, type: "response.output_text.delta", delta: arr.slice(cursor, cursor + 16) }));
+    lines.push(
+      JSON.stringify({
+        t,
+        type: "response.output_text.delta",
+        delta: arr.slice(cursor, cursor + 16),
+      }),
+    );
     cursor += 16;
     t += 0.01;
   }
@@ -24,11 +52,48 @@ const FIXTURE = (() => {
   // phase 2 — packed into ~0.5s of virtual time so test windows stay short
   // (engine plays at 1× wall-time pace at every tier; rate envelope only
   // controls event-type filtering and HEAVY telemetry density)
-  lines.push(JSON.stringify({ t: 0.10, type: "update", patches: [{ id: "r-001", status: "running" }] }));
-  lines.push(JSON.stringify({ t: 0.20, type: "update", patches: [{ id: "r-001", gate1: "00:14.32" }] }));
-  lines.push(JSON.stringify({ t: 0.30, type: "update", patches: [{ id: "r-001", finish: "01:18.84", status: "finished", delta: "LEADER" }] }));
-  lines.push(JSON.stringify({ t: 0.35, type: "rerank", patches: [{ id: "r-002", delta: "+1.20" }] }));
-  lines.push(JSON.stringify({ t: 0.40, type: "commentary", patches: [{ id: "r-001", notes: "Aggressive" }] }));
+  lines.push(
+    JSON.stringify({
+      t: 0.1,
+      type: "update",
+      patches: [{ id: "r-001", status: "running" }],
+    }),
+  );
+  lines.push(
+    JSON.stringify({
+      t: 0.2,
+      type: "update",
+      patches: [{ id: "r-001", gate1: "00:14.32" }],
+    }),
+  );
+  lines.push(
+    JSON.stringify({
+      t: 0.3,
+      type: "update",
+      patches: [
+        {
+          id: "r-001",
+          finish: "01:18.84",
+          status: "finished",
+          delta: "LEADER",
+        },
+      ],
+    }),
+  );
+  lines.push(
+    JSON.stringify({
+      t: 0.35,
+      type: "rerank",
+      patches: [{ id: "r-002", delta: "+1.20" }],
+    }),
+  );
+  lines.push(
+    JSON.stringify({
+      t: 0.4,
+      type: "commentary",
+      patches: [{ id: "r-001", notes: "Aggressive" }],
+    }),
+  );
   return lines.join("\n");
 })();
 
@@ -43,9 +108,14 @@ describe("createRaceReplay", () => {
     originalRaf = globalThis.requestAnimationFrame;
     originalCaf = globalThis.cancelAnimationFrame;
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) =>
-      setTimeout(() => cb(performance.now()), 0) as unknown as number) as typeof globalThis.requestAnimationFrame;
+      setTimeout(
+        () => cb(performance.now()),
+        0,
+      ) as unknown as number) as typeof globalThis.requestAnimationFrame;
     globalThis.cancelAnimationFrame = ((id: number) =>
-      clearTimeout(id as unknown as NodeJS.Timeout)) as typeof globalThis.cancelAnimationFrame;
+      clearTimeout(
+        id as unknown as NodeJS.Timeout,
+      )) as typeof globalThis.cancelAnimationFrame;
   });
   afterEach(() => {
     globalThis.requestAnimationFrame = originalRaf;
@@ -86,7 +156,9 @@ describe("createRaceReplay", () => {
     // running, gate1, finish, commentary — at least 4 update events for r-001
     expect(r1.length).toBeGreaterThanOrEqual(3);
     // rerank for r-002
-    expect(updates.some((u) => u.id === "r-002" && u.delta === "+1.20")).toBe(true);
+    expect(updates.some((u) => u.id === "r-002" && u.delta === "+1.20")).toBe(
+      true,
+    );
     replay.dispose();
   }, 4000);
 

@@ -7,10 +7,7 @@ export interface RaceReplayOptions {
   recording: string;
   ratePerSec: RaceRate;
   isPlaying: boolean;
-  onTransaction: (tx: {
-    add?: RaceRow[];
-    update?: Partial<RaceRow>[];
-  }) => void;
+  onTransaction: (tx: { add?: RaceRow[]; update?: Partial<RaceRow>[] }) => void;
 }
 
 export interface RaceReplay {
@@ -21,7 +18,10 @@ export interface RaceReplay {
 
 interface Phase1Event {
   t: number;
-  type: "response.created" | "response.output_text.delta" | "response.completed";
+  type:
+    | "response.created"
+    | "response.output_text.delta"
+    | "response.completed";
   delta?: string;
 }
 
@@ -86,7 +86,9 @@ export function createRaceReplay(options: RaceReplayOptions): RaceReplay {
   let disposed = false;
 
   // Parse all lines once
-  const lines = options.recording.split("\n").filter((l) => l.trim().length > 0);
+  const lines = options.recording
+    .split("\n")
+    .filter((l) => l.trim().length > 0);
   const phase1Deltas: string[] = [];
   const phase2Events: Phase2Event[] = [];
 
@@ -98,8 +100,16 @@ export function createRaceReplay(options: RaceReplayOptions): RaceReplay {
       continue;
     }
     if (!parsed || typeof parsed !== "object") continue;
-    const ev = parsed as { type?: string; delta?: string; t?: number; patches?: unknown };
-    if (ev.type === "response.output_text.delta" && typeof ev.delta === "string") {
+    const ev = parsed as {
+      type?: string;
+      delta?: string;
+      t?: number;
+      patches?: unknown;
+    };
+    if (
+      ev.type === "response.output_text.delta" &&
+      typeof ev.delta === "string"
+    ) {
       phase1Deltas.push(ev.delta);
     } else if (
       ev.type === "update" ||
@@ -117,7 +127,8 @@ export function createRaceReplay(options: RaceReplayOptions): RaceReplay {
   }
 
   phase2Events.sort((a, b) => a.t - b.t);
-  const lastPhase2T = phase2Events.length > 0 ? phase2Events[phase2Events.length - 1].t : 0;
+  const lastPhase2T =
+    phase2Events.length > 0 ? phase2Events[phase2Events.length - 1].t : 0;
   const loopDuration = lastPhase2T + 5;
 
   // Phase 1: kick off async parser immediately
