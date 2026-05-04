@@ -19,12 +19,18 @@ interface OnCourseRow {
   gateFilled: [boolean, boolean, boolean, boolean];
 }
 
+interface Counters {
+  finished: number;
+  dnf: number;
+}
+
 const MAX_ON_COURSE = 5;
 
 interface ScoreboardModel {
   leader: Leader | null;
   onCourse: OnCourseRow[];
   onCourseOverflow: number;
+  counters: Counters;
 }
 
 function gateFilled(row: RaceRow): [boolean, boolean, boolean, boolean] {
@@ -56,7 +62,12 @@ function buildModel(rows: readonly RaceRow[]): ScoreboardModel {
   }));
   const onCourseOverflow = Math.max(0, running.length - MAX_ON_COURSE);
 
-  return { leader, onCourse, onCourseOverflow };
+  const counters: Counters = {
+    finished: racing.filter((r) => r.status === "finished").length,
+    dnf: racing.filter((r) => r.status === "DNF" || r.status === "DSQ").length,
+  };
+
+  return { leader, onCourse, onCourseOverflow, counters };
 }
 
 export function Scoreboard({ rows }: ScoreboardProps) {
@@ -103,6 +114,15 @@ export function Scoreboard({ rows }: ScoreboardProps) {
               +{model.onCourseOverflow} more
             </div>
           )}
+        </section>
+      )}
+
+      {(model.counters.finished > 0 || model.counters.dnf > 0) && (
+        <section className={styles.counters} data-testid="scoreboard-counters">
+          {model.counters.finished > 0 && (
+            <span>FIN {model.counters.finished}</span>
+          )}
+          {model.counters.dnf > 0 && <span>DNF {model.counters.dnf}</span>}
         </section>
       )}
     </aside>

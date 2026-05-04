@@ -105,4 +105,33 @@ describe("Scoreboard", () => {
     expect(racerRows[0]).toHaveTextContent("2"); // bib 2 = "late"
     expect(racerRows[1]).toHaveTextContent("1");
   });
+
+  it("hides counters when no finished or DNF rows", () => {
+    render(<Scoreboard rows={[]} />);
+    expect(screen.queryByTestId("scoreboard-counters")).toBeNull();
+  });
+
+  it("shows FIN count when at least one finished row", () => {
+    const rows: RaceRow[] = [
+      { ...baseRow, id: "r-1", bib: 1, status: "finished", finish: "01:16", delta: "LEADER" },
+      { ...baseRow, id: "r-2", bib: 2, status: "finished", finish: "01:17", delta: "+1.00" },
+    ];
+    render(<Scoreboard rows={rows} />);
+    expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent("FIN 2");
+  });
+
+  it("shows DNF count when at least one DNF row, hides DNF when zero", () => {
+    const rowsNoDnf: RaceRow[] = [
+      { ...baseRow, id: "r-1", bib: 1, status: "finished", delta: "LEADER" },
+    ];
+    const { rerender } = render(<Scoreboard rows={rowsNoDnf} />);
+    expect(screen.getByTestId("scoreboard-counters")).not.toHaveTextContent("DNF");
+
+    const rowsWithDnf: RaceRow[] = [
+      ...rowsNoDnf,
+      { ...baseRow, id: "r-2", bib: 2, status: "DNF" },
+    ];
+    rerender(<Scoreboard rows={rowsWithDnf} />);
+    expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent("DNF 1");
+  });
 });
