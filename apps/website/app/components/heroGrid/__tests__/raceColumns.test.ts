@@ -12,9 +12,9 @@ describe("raceColumns", () => {
     expect(bib?.pinned).toBe("left");
   });
 
-  it("wraps notes column", () => {
+  it("does not wrap notes column (truncates with ellipsis to keep row height stable)", () => {
     const notes = raceColumns.find((c) => c.id === "notes");
-    expect(notes?.wrap).toBe(true);
+    expect(notes?.wrap).toBe(false);
   });
 
   it("declares total width of 1000px", () => {
