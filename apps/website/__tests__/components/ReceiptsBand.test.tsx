@@ -23,3 +23,11 @@ it("does not render the positioning cards anymore (moved to CredibilityCards)", 
   expect(screen.queryByText(/ai-native/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/ecosystem/i)).not.toBeInTheDocument();
 });
+
+it("uses the inverted slate background (regression guard for the boldness pass)", () => {
+  const { container } = render(<ReceiptsBand />);
+  const section = container.querySelector("section#receipts");
+  expect(section).toBeInTheDocument();
+  expect(section?.className).toContain("bg-text-primary");
+  expect(section?.className).toContain("text-bg-page");
+});
