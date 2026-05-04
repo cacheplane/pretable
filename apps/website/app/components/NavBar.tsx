@@ -26,6 +26,7 @@ export function NavBar({ mode, onClose }: NavBarProps) {
     if (typeof window === "undefined") return;
     const flag = sessionStorage.getItem("pretable:lastDrawer");
     if (flag === "open") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time post-hydration href upgrade
       setBrandHref("/#receipts");
     }
   }, [mode]);
