@@ -104,12 +104,12 @@ export function CodeExample() {
         </div>
 
         <p className="mt-5 font-mono text-[12px] text-text-muted">
-          Full example:{" "}
+          Full reference:{" "}
           <a
-            href="https://github.com/cacheplane/pretable/tree/main/apps/streaming-demo"
+            href="/docs/streaming"
             className="text-accent-deep underline-offset-2 hover:underline"
           >
-            apps/streaming-demo
+            /docs/streaming
           </a>
         </p>
       </div>
