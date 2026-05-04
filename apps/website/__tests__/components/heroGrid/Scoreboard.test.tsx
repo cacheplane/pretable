@@ -51,12 +51,21 @@ describe("Scoreboard", () => {
 
   it("renders one row per running racer with 4 gate dots", () => {
     const rows: RaceRow[] = [
-      { ...baseRow, id: "r-1", bib: 15, status: "running", gate1: "00:14.50", gate2: "00:36.00" },
+      {
+        ...baseRow,
+        id: "r-1",
+        bib: 15,
+        status: "running",
+        gate1: "00:14.50",
+        gate2: "00:36.00",
+      },
       { ...baseRow, id: "r-2", bib: 14, status: "running", gate1: "00:14.30" },
     ];
     render(<Scoreboard rows={rows} />);
     const section = screen.getByTestId("scoreboard-on-course");
-    const racerRows = section.querySelectorAll("[data-testid='scoreboard-racer']");
+    const racerRows = section.querySelectorAll(
+      "[data-testid='scoreboard-racer']",
+    );
     expect(racerRows).toHaveLength(2);
     racerRows.forEach((row) => {
       expect(row.querySelectorAll("[data-testid='gate-dot']")).toHaveLength(4);
@@ -65,17 +74,34 @@ describe("Scoreboard", () => {
 
   it("fills dots based on non-empty gate columns", () => {
     const rows: RaceRow[] = [
-      { ...baseRow, id: "r-1", bib: 15, status: "running", gate1: "00:14.50", gate2: "00:36.00" },
+      {
+        ...baseRow,
+        id: "r-1",
+        bib: 15,
+        status: "running",
+        gate1: "00:14.50",
+        gate2: "00:36.00",
+      },
     ];
     const { container } = render(<Scoreboard rows={rows} />);
     const dots = container.querySelectorAll("[data-testid='gate-dot']");
-    expect([...dots].filter((d) => d.getAttribute("data-filled") === "true")).toHaveLength(2);
-    expect([...dots].filter((d) => d.getAttribute("data-filled") === "false")).toHaveLength(2);
+    expect(
+      [...dots].filter((d) => d.getAttribute("data-filled") === "true"),
+    ).toHaveLength(2);
+    expect(
+      [...dots].filter((d) => d.getAttribute("data-filled") === "false"),
+    ).toHaveLength(2);
   });
 
   it("excludes telemetry rows (id starts with tel-)", () => {
     const rows: RaceRow[] = [
-      { ...baseRow, id: "tel-0001", bib: "—", status: "running", racer: "Sensor: gate 4 wind" },
+      {
+        ...baseRow,
+        id: "tel-0001",
+        bib: "—",
+        status: "running",
+        racer: "Sensor: gate 4 wind",
+      },
       { ...baseRow, id: "r-1", bib: 5, status: "running" },
     ];
     render(<Scoreboard rows={rows} />);
@@ -92,13 +118,23 @@ describe("Scoreboard", () => {
     }));
     render(<Scoreboard rows={rows} />);
     expect(screen.getAllByTestId("scoreboard-racer")).toHaveLength(5);
-    expect(screen.getByTestId("scoreboard-overflow")).toHaveTextContent("+2 more");
+    expect(screen.getByTestId("scoreboard-overflow")).toHaveTextContent(
+      "+2 more",
+    );
   });
 
   it("orders running by gate progress descending", () => {
     const rows: RaceRow[] = [
       { ...baseRow, id: "early", bib: 1, status: "running", gate1: "00:14.00" },
-      { ...baseRow, id: "late", bib: 2, status: "running", gate1: "00:14.00", gate2: "00:36.00", gate3: "00:55.00" },
+      {
+        ...baseRow,
+        id: "late",
+        bib: 2,
+        status: "running",
+        gate1: "00:14.00",
+        gate2: "00:36.00",
+        gate3: "00:55.00",
+      },
     ];
     render(<Scoreboard rows={rows} />);
     const racerRows = screen.getAllByTestId("scoreboard-racer");
@@ -113,11 +149,27 @@ describe("Scoreboard", () => {
 
   it("shows FIN count when at least one finished row", () => {
     const rows: RaceRow[] = [
-      { ...baseRow, id: "r-1", bib: 1, status: "finished", finish: "01:16", delta: "LEADER" },
-      { ...baseRow, id: "r-2", bib: 2, status: "finished", finish: "01:17", delta: "+1.00" },
+      {
+        ...baseRow,
+        id: "r-1",
+        bib: 1,
+        status: "finished",
+        finish: "01:16",
+        delta: "LEADER",
+      },
+      {
+        ...baseRow,
+        id: "r-2",
+        bib: 2,
+        status: "finished",
+        finish: "01:17",
+        delta: "+1.00",
+      },
     ];
     render(<Scoreboard rows={rows} />);
-    expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent("FIN 2");
+    expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent(
+      "FIN 2",
+    );
   });
 
   it("shows DNF count when at least one DNF row, hides DNF when zero", () => {
@@ -125,13 +177,17 @@ describe("Scoreboard", () => {
       { ...baseRow, id: "r-1", bib: 1, status: "finished", delta: "LEADER" },
     ];
     const { rerender } = render(<Scoreboard rows={rowsNoDnf} />);
-    expect(screen.getByTestId("scoreboard-counters")).not.toHaveTextContent("DNF");
+    expect(screen.getByTestId("scoreboard-counters")).not.toHaveTextContent(
+      "DNF",
+    );
 
     const rowsWithDnf: RaceRow[] = [
       ...rowsNoDnf,
       { ...baseRow, id: "r-2", bib: 2, status: "DNF" },
     ];
     rerender(<Scoreboard rows={rowsWithDnf} />);
-    expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent("DNF 1");
+    expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent(
+      "DNF 1",
+    );
   });
 });

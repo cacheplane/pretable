@@ -43,6 +43,7 @@ apps/website/__tests__/components/heroGrid/
 ## Task 1: Sort utility — leaderboard rank
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/sort.ts`
 - Test: `apps/website/app/components/heroGrid/__tests__/sort.test.ts`
 
@@ -75,9 +76,27 @@ const make = (over: Partial<RaceRow>): RaceRow => ({
 describe("rankRows", () => {
   it("orders finished by finish time asc with LEADER first", () => {
     const rows: RaceRow[] = [
-      make({ id: "a", bib: 1, status: "finished", finish: "01:18.00", delta: "+1.50" }),
-      make({ id: "b", bib: 2, status: "finished", finish: "01:16.50", delta: "LEADER" }),
-      make({ id: "c", bib: 3, status: "finished", finish: "01:17.20", delta: "+0.70" }),
+      make({
+        id: "a",
+        bib: 1,
+        status: "finished",
+        finish: "01:18.00",
+        delta: "+1.50",
+      }),
+      make({
+        id: "b",
+        bib: 2,
+        status: "finished",
+        finish: "01:16.50",
+        delta: "LEADER",
+      }),
+      make({
+        id: "c",
+        bib: 3,
+        status: "finished",
+        finish: "01:17.20",
+        delta: "+0.70",
+      }),
     ];
     expect(rankRows(rows).map((r) => r.id)).toEqual(["b", "c", "a"]);
   });
@@ -85,8 +104,21 @@ describe("rankRows", () => {
   it("orders running by gate progress desc, then latest gate time asc", () => {
     const rows: RaceRow[] = [
       make({ id: "early", bib: 1, status: "running", gate1: "00:14.50" }),
-      make({ id: "late", bib: 2, status: "running", gate1: "00:14.30", gate2: "00:36.00", gate3: "00:55.00" }),
-      make({ id: "mid", bib: 3, status: "running", gate1: "00:14.40", gate2: "00:36.10" }),
+      make({
+        id: "late",
+        bib: 2,
+        status: "running",
+        gate1: "00:14.30",
+        gate2: "00:36.00",
+        gate3: "00:55.00",
+      }),
+      make({
+        id: "mid",
+        bib: 3,
+        status: "running",
+        gate1: "00:14.40",
+        gate2: "00:36.10",
+      }),
     ];
     expect(rankRows(rows).map((r) => r.id)).toEqual(["late", "mid", "early"]);
   });
@@ -96,9 +128,20 @@ describe("rankRows", () => {
       make({ id: "dns", bib: 1 }),
       make({ id: "dnf", bib: 2, status: "DNF" }),
       make({ id: "running", bib: 3, status: "running", gate1: "00:14.00" }),
-      make({ id: "finished", bib: 4, status: "finished", finish: "01:16.00", delta: "LEADER" }),
+      make({
+        id: "finished",
+        bib: 4,
+        status: "finished",
+        finish: "01:16.00",
+        delta: "LEADER",
+      }),
     ];
-    expect(rankRows(rows).map((r) => r.id)).toEqual(["finished", "running", "dnf", "dns"]);
+    expect(rankRows(rows).map((r) => r.id)).toEqual([
+      "finished",
+      "running",
+      "dnf",
+      "dns",
+    ]);
   });
 
   it("orders DNS by bib ascending", () => {
@@ -112,8 +155,20 @@ describe("rankRows", () => {
 
   it("breaks running ties on gate progress by bib ascending", () => {
     const rows: RaceRow[] = [
-      make({ id: "high", bib: 30, status: "running", gate1: "00:14.00", gate2: "00:36.00" }),
-      make({ id: "low", bib: 5, status: "running", gate1: "00:14.00", gate2: "00:36.00" }),
+      make({
+        id: "high",
+        bib: 30,
+        status: "running",
+        gate1: "00:14.00",
+        gate2: "00:36.00",
+      }),
+      make({
+        id: "low",
+        bib: 5,
+        status: "running",
+        gate1: "00:14.00",
+        gate2: "00:36.00",
+      }),
     ];
     // same gate2 time → bib ascending tie-break
     expect(rankRows(rows).map((r) => r.id)).toEqual(["low", "high"]);
@@ -121,7 +176,12 @@ describe("rankRows", () => {
 
   it("sinks telemetry rows (bib === '—') to the bottom of their tier", () => {
     const rows: RaceRow[] = [
-      make({ id: "tel-1", bib: "—", status: "running", racer: "Sensor: gate 4 wind" }),
+      make({
+        id: "tel-1",
+        bib: "—",
+        status: "running",
+        racer: "Sensor: gate 4 wind",
+      }),
       make({ id: "race-1", bib: 5, status: "running", gate1: "00:14.00" }),
     ];
     expect(rankRows(rows).map((r) => r.id)).toEqual(["race-1", "tel-1"]);
@@ -228,6 +288,7 @@ git commit -m "feat(website): add rankRows leaderboard sort utility"
 ## Task 2: Sort utility — per-column user sort
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/sort.ts`
 - Modify: `apps/website/app/components/heroGrid/__tests__/sort.test.ts`
 
@@ -244,7 +305,13 @@ describe("applySort", () => {
   it("returns rankRows order when sort is null", () => {
     const rows: RaceRow[] = [
       make({ id: "a", bib: 30 }),
-      make({ id: "b", bib: 1, status: "finished", finish: "01:16.00", delta: "LEADER" }),
+      make({
+        id: "b",
+        bib: 1,
+        status: "finished",
+        finish: "01:16.00",
+        delta: "LEADER",
+      }),
     ];
     expect(applySort(rows, null).map((r) => r.id)).toEqual(["b", "a"]);
   });
@@ -266,7 +333,11 @@ describe("applySort", () => {
       make({ id: "leader", bib: 3, status: "finished", delta: "LEADER" }),
     ];
     const sort: SortState = { columnId: "delta", direction: "asc" };
-    expect(applySort(rows, sort).map((r) => r.id)).toEqual(["leader", "plus", "empty"]);
+    expect(applySort(rows, sort).map((r) => r.id)).toEqual([
+      "leader",
+      "plus",
+      "empty",
+    ]);
   });
 
   it("sorts status by explicit rank: finished < running < DNF < DSQ < dns", () => {
@@ -278,7 +349,13 @@ describe("applySort", () => {
       make({ id: "fin", bib: 5, status: "finished" }),
     ];
     const sort: SortState = { columnId: "status", direction: "asc" };
-    expect(applySort(rows, sort).map((r) => r.id)).toEqual(["fin", "run", "dnf", "dsq", "dns"]);
+    expect(applySort(rows, sort).map((r) => r.id)).toEqual([
+      "fin",
+      "run",
+      "dnf",
+      "dsq",
+      "dns",
+    ]);
   });
 
   it("reverses with desc direction", () => {
@@ -298,7 +375,11 @@ describe("applySort", () => {
       make({ id: "slow", bib: 3, gate1: "00:14.50" }),
     ];
     const sort: SortState = { columnId: "gate1", direction: "asc" };
-    expect(applySort(rows, sort).map((r) => r.id)).toEqual(["fast", "slow", "empty"]);
+    expect(applySort(rows, sort).map((r) => r.id)).toEqual([
+      "fast",
+      "slow",
+      "empty",
+    ]);
   });
 
   it("sorts racer column with localeCompare", () => {
@@ -353,11 +434,7 @@ function emptySink(value: string, direction: SortDirection): number {
   return direction === "asc" ? 1 : -1;
 }
 
-function compareByColumn(
-  a: RaceRow,
-  b: RaceRow,
-  columnId: string,
-): number {
+function compareByColumn(a: RaceRow, b: RaceRow, columnId: string): number {
   switch (columnId) {
     case "bib":
       return bibValue(a.bib) - bibValue(b.bib);
@@ -423,6 +500,7 @@ git commit -m "feat(website): add applySort with per-column race comparators"
 ## Task 3: Notes column — disable wrapping
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/raceColumns.ts`
 
 - [ ] **Step 1: Change `wrap: true` to `wrap: false` on notes column**
@@ -453,6 +531,7 @@ git commit -m "feat(website): disable wrap on notes column to fix row-height dri
 ## Task 4: Race generator — drop placeholder, shorten commentary
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/scripts/generate-race.ts`
 - Regen: `apps/website/app/components/heroGrid/recordings/race.jsonl`
 - Regen: `apps/website/app/components/heroGrid/recordings/race.ts`
@@ -503,18 +582,18 @@ All entries ≤ 22 chars; with the 280px notes column this never wraps.
 In the same file, replace the commentary block (lines ~389–420) with:
 
 ```ts
-      // Commentary — 30% chance, single one-shot patch (no token streaming).
-      // Mid-stream growth was triggering wrap → row-height drift; the
-      // recording now emits each commentary as a single complete patch.
-      if (rand() < 0.3) {
-        const phrase =
-          COMMENTARY_PHRASES[Math.floor(rand() * COMMENTARY_PHRASES.length)]!;
-        phase2Events.push({
-          t: tMs + 200,
-          type: "commentary",
-          patches: [{ id, notes: phrase }],
-        });
-      }
+// Commentary — 30% chance, single one-shot patch (no token streaming).
+// Mid-stream growth was triggering wrap → row-height drift; the
+// recording now emits each commentary as a single complete patch.
+if (rand() < 0.3) {
+  const phrase =
+    COMMENTARY_PHRASES[Math.floor(rand() * COMMENTARY_PHRASES.length)]!;
+  phase2Events.push({
+    t: tMs + 200,
+    type: "commentary",
+    patches: [{ id, notes: phrase }],
+  });
+}
 ```
 
 - [ ] **Step 4: Shorten DNF / DSQ notes**
@@ -558,6 +637,7 @@ git commit -m "feat(website): regenerate race recording with short single-line c
 ## Task 5: Scoreboard component — leader section
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/Scoreboard.tsx`
 - Test: `apps/website/__tests__/components/heroGrid/Scoreboard.test.tsx`
 
@@ -733,6 +813,7 @@ git commit -m "feat(website): add Scoreboard with leader section"
 ## Task 6: Scoreboard — on-course section with gate dots
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/Scoreboard.tsx`
 - Modify: `apps/website/app/components/heroGrid/scoreboard.module.css`
 - Modify: `apps/website/__tests__/components/heroGrid/Scoreboard.test.tsx`
@@ -742,69 +823,105 @@ git commit -m "feat(website): add Scoreboard with leader section"
 Append inside the `describe("Scoreboard", ...)` block in `Scoreboard.test.tsx`:
 
 ```tsx
-  it("hides on-course section when no running rows", () => {
-    render(<Scoreboard rows={[]} />);
-    expect(screen.queryByTestId("scoreboard-on-course")).toBeNull();
-  });
+it("hides on-course section when no running rows", () => {
+  render(<Scoreboard rows={[]} />);
+  expect(screen.queryByTestId("scoreboard-on-course")).toBeNull();
+});
 
-  it("renders one row per running racer with 4 gate dots", () => {
-    const rows: RaceRow[] = [
-      { ...baseRow, id: "r-1", bib: 15, status: "running", gate1: "00:14.50", gate2: "00:36.00" },
-      { ...baseRow, id: "r-2", bib: 14, status: "running", gate1: "00:14.30" },
-    ];
-    const { container } = render(<Scoreboard rows={rows} />);
-    const section = screen.getByTestId("scoreboard-on-course");
-    const racerRows = section.querySelectorAll("[data-testid='scoreboard-racer']");
-    expect(racerRows).toHaveLength(2);
-    // Each row has exactly 4 dots
-    racerRows.forEach((row) => {
-      expect(row.querySelectorAll("[data-testid='gate-dot']")).toHaveLength(4);
-    });
-  });
-
-  it("fills dots based on non-empty gate columns", () => {
-    const rows: RaceRow[] = [
-      { ...baseRow, id: "r-1", bib: 15, status: "running", gate1: "00:14.50", gate2: "00:36.00" },
-    ];
-    const { container } = render(<Scoreboard rows={rows} />);
-    const dots = container.querySelectorAll("[data-testid='gate-dot']");
-    // gate1 + gate2 filled, gate3 + finish empty → 2 filled, 2 empty
-    expect([...dots].filter((d) => d.getAttribute("data-filled") === "true")).toHaveLength(2);
-    expect([...dots].filter((d) => d.getAttribute("data-filled") === "false")).toHaveLength(2);
-  });
-
-  it("excludes telemetry rows (id starts with tel-)", () => {
-    const rows: RaceRow[] = [
-      { ...baseRow, id: "tel-0001", bib: "—", status: "running", racer: "Sensor: gate 4 wind" },
-      { ...baseRow, id: "r-1", bib: 5, status: "running" },
-    ];
-    render(<Scoreboard rows={rows} />);
-    const racerRows = screen.getAllByTestId("scoreboard-racer");
-    expect(racerRows).toHaveLength(1);
-  });
-
-  it("caps on-course at 5 rows and shows +N more overflow indicator", () => {
-    const rows: RaceRow[] = Array.from({ length: 7 }, (_, i) => ({
+it("renders one row per running racer with 4 gate dots", () => {
+  const rows: RaceRow[] = [
+    {
       ...baseRow,
-      id: `r-${i + 1}`,
-      bib: i + 1,
-      status: "running" as const,
-    }));
-    render(<Scoreboard rows={rows} />);
-    expect(screen.getAllByTestId("scoreboard-racer")).toHaveLength(5);
-    expect(screen.getByTestId("scoreboard-overflow")).toHaveTextContent("+2 more");
+      id: "r-1",
+      bib: 15,
+      status: "running",
+      gate1: "00:14.50",
+      gate2: "00:36.00",
+    },
+    { ...baseRow, id: "r-2", bib: 14, status: "running", gate1: "00:14.30" },
+  ];
+  const { container } = render(<Scoreboard rows={rows} />);
+  const section = screen.getByTestId("scoreboard-on-course");
+  const racerRows = section.querySelectorAll(
+    "[data-testid='scoreboard-racer']",
+  );
+  expect(racerRows).toHaveLength(2);
+  // Each row has exactly 4 dots
+  racerRows.forEach((row) => {
+    expect(row.querySelectorAll("[data-testid='gate-dot']")).toHaveLength(4);
   });
+});
 
-  it("orders running by gate progress descending", () => {
-    const rows: RaceRow[] = [
-      { ...baseRow, id: "early", bib: 1, status: "running", gate1: "00:14.00" },
-      { ...baseRow, id: "late", bib: 2, status: "running", gate1: "00:14.00", gate2: "00:36.00", gate3: "00:55.00" },
-    ];
-    render(<Scoreboard rows={rows} />);
-    const racerRows = screen.getAllByTestId("scoreboard-racer");
-    expect(racerRows[0]).toHaveTextContent("2"); // bib 2 = "late"
-    expect(racerRows[1]).toHaveTextContent("1");
-  });
+it("fills dots based on non-empty gate columns", () => {
+  const rows: RaceRow[] = [
+    {
+      ...baseRow,
+      id: "r-1",
+      bib: 15,
+      status: "running",
+      gate1: "00:14.50",
+      gate2: "00:36.00",
+    },
+  ];
+  const { container } = render(<Scoreboard rows={rows} />);
+  const dots = container.querySelectorAll("[data-testid='gate-dot']");
+  // gate1 + gate2 filled, gate3 + finish empty → 2 filled, 2 empty
+  expect(
+    [...dots].filter((d) => d.getAttribute("data-filled") === "true"),
+  ).toHaveLength(2);
+  expect(
+    [...dots].filter((d) => d.getAttribute("data-filled") === "false"),
+  ).toHaveLength(2);
+});
+
+it("excludes telemetry rows (id starts with tel-)", () => {
+  const rows: RaceRow[] = [
+    {
+      ...baseRow,
+      id: "tel-0001",
+      bib: "—",
+      status: "running",
+      racer: "Sensor: gate 4 wind",
+    },
+    { ...baseRow, id: "r-1", bib: 5, status: "running" },
+  ];
+  render(<Scoreboard rows={rows} />);
+  const racerRows = screen.getAllByTestId("scoreboard-racer");
+  expect(racerRows).toHaveLength(1);
+});
+
+it("caps on-course at 5 rows and shows +N more overflow indicator", () => {
+  const rows: RaceRow[] = Array.from({ length: 7 }, (_, i) => ({
+    ...baseRow,
+    id: `r-${i + 1}`,
+    bib: i + 1,
+    status: "running" as const,
+  }));
+  render(<Scoreboard rows={rows} />);
+  expect(screen.getAllByTestId("scoreboard-racer")).toHaveLength(5);
+  expect(screen.getByTestId("scoreboard-overflow")).toHaveTextContent(
+    "+2 more",
+  );
+});
+
+it("orders running by gate progress descending", () => {
+  const rows: RaceRow[] = [
+    { ...baseRow, id: "early", bib: 1, status: "running", gate1: "00:14.00" },
+    {
+      ...baseRow,
+      id: "late",
+      bib: 2,
+      status: "running",
+      gate1: "00:14.00",
+      gate2: "00:36.00",
+      gate3: "00:55.00",
+    },
+  ];
+  render(<Scoreboard rows={rows} />);
+  const racerRows = screen.getAllByTestId("scoreboard-racer");
+  expect(racerRows[0]).toHaveTextContent("2"); // bib 2 = "late"
+  expect(racerRows[1]).toHaveTextContent("1");
+});
 ```
 
 - [ ] **Step 2: Verify tests fail**
@@ -847,7 +964,12 @@ interface ScoreboardModel {
 }
 
 function gateFilled(row: RaceRow): [boolean, boolean, boolean, boolean] {
-  return [row.gate1 !== "", row.gate2 !== "", row.gate3 !== "", row.finish !== ""];
+  return [
+    row.gate1 !== "",
+    row.gate2 !== "",
+    row.gate3 !== "",
+    row.finish !== "",
+  ];
 }
 
 function compareRunning(a: RaceRow, b: RaceRow): number {
@@ -985,6 +1107,7 @@ git commit -m "feat(website): add Scoreboard on-course section with gate-dot pro
 ## Task 7: Scoreboard — counters footer
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/Scoreboard.tsx`
 - Modify: `apps/website/app/components/heroGrid/scoreboard.module.css`
 - Modify: `apps/website/__tests__/components/heroGrid/Scoreboard.test.tsx`
@@ -994,34 +1117,50 @@ git commit -m "feat(website): add Scoreboard on-course section with gate-dot pro
 Append inside the `describe("Scoreboard", ...)` block:
 
 ```tsx
-  it("hides counters when no finished or DNF rows", () => {
-    render(<Scoreboard rows={[]} />);
-    expect(screen.queryByTestId("scoreboard-counters")).toBeNull();
-  });
+it("hides counters when no finished or DNF rows", () => {
+  render(<Scoreboard rows={[]} />);
+  expect(screen.queryByTestId("scoreboard-counters")).toBeNull();
+});
 
-  it("shows FIN count when at least one finished row", () => {
-    const rows: RaceRow[] = [
-      { ...baseRow, id: "r-1", bib: 1, status: "finished", finish: "01:16", delta: "LEADER" },
-      { ...baseRow, id: "r-2", bib: 2, status: "finished", finish: "01:17", delta: "+1.00" },
-    ];
-    render(<Scoreboard rows={rows} />);
-    expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent("FIN 2");
-  });
+it("shows FIN count when at least one finished row", () => {
+  const rows: RaceRow[] = [
+    {
+      ...baseRow,
+      id: "r-1",
+      bib: 1,
+      status: "finished",
+      finish: "01:16",
+      delta: "LEADER",
+    },
+    {
+      ...baseRow,
+      id: "r-2",
+      bib: 2,
+      status: "finished",
+      finish: "01:17",
+      delta: "+1.00",
+    },
+  ];
+  render(<Scoreboard rows={rows} />);
+  expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent("FIN 2");
+});
 
-  it("shows DNF count when at least one DNF row, hides DNF when zero", () => {
-    const rowsNoDnf: RaceRow[] = [
-      { ...baseRow, id: "r-1", bib: 1, status: "finished", delta: "LEADER" },
-    ];
-    const { rerender } = render(<Scoreboard rows={rowsNoDnf} />);
-    expect(screen.getByTestId("scoreboard-counters")).not.toHaveTextContent("DNF");
+it("shows DNF count when at least one DNF row, hides DNF when zero", () => {
+  const rowsNoDnf: RaceRow[] = [
+    { ...baseRow, id: "r-1", bib: 1, status: "finished", delta: "LEADER" },
+  ];
+  const { rerender } = render(<Scoreboard rows={rowsNoDnf} />);
+  expect(screen.getByTestId("scoreboard-counters")).not.toHaveTextContent(
+    "DNF",
+  );
 
-    const rowsWithDnf: RaceRow[] = [
-      ...rowsNoDnf,
-      { ...baseRow, id: "r-2", bib: 2, status: "DNF" },
-    ];
-    rerender(<Scoreboard rows={rowsWithDnf} />);
-    expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent("DNF 1");
-  });
+  const rowsWithDnf: RaceRow[] = [
+    ...rowsNoDnf,
+    { ...baseRow, id: "r-2", bib: 2, status: "DNF" },
+  ];
+  rerender(<Scoreboard rows={rowsWithDnf} />);
+  expect(screen.getByTestId("scoreboard-counters")).toHaveTextContent("DNF 1");
+});
 ```
 
 - [ ] **Step 2: Verify tests fail**
@@ -1050,25 +1189,27 @@ interface ScoreboardModel {
 Extend `buildModel`:
 
 ```tsx
-  const counters: Counters = {
-    finished: racing.filter((r) => r.status === "finished").length,
-    dnf: racing.filter((r) => r.status === "DNF" || r.status === "DSQ").length,
-  };
+const counters: Counters = {
+  finished: racing.filter((r) => r.status === "finished").length,
+  dnf: racing.filter((r) => r.status === "DNF" || r.status === "DSQ").length,
+};
 
-  return { leader, onCourse, onCourseOverflow, counters };
+return { leader, onCourse, onCourseOverflow, counters };
 ```
 
 Append below the on-course section in the returned JSX:
 
 ```tsx
-      {(model.counters.finished > 0 || model.counters.dnf > 0) && (
-        <section className={styles.counters} data-testid="scoreboard-counters">
-          {model.counters.finished > 0 && (
-            <span>FIN {model.counters.finished}</span>
-          )}
-          {model.counters.dnf > 0 && <span>DNF {model.counters.dnf}</span>}
-        </section>
+{
+  (model.counters.finished > 0 || model.counters.dnf > 0) && (
+    <section className={styles.counters} data-testid="scoreboard-counters">
+      {model.counters.finished > 0 && (
+        <span>FIN {model.counters.finished}</span>
       )}
+      {model.counters.dnf > 0 && <span>DNF {model.counters.dnf}</span>}
+    </section>
+  );
+}
 ```
 
 - [ ] **Step 4: Add counters CSS**
@@ -1104,6 +1245,7 @@ git commit -m "feat(website): add Scoreboard counters (FIN/DNF)"
 ## Task 8: HeroGrid integration — sort + leader highlight + scoreboard swap
 
 **Files:**
+
 - Modify: `apps/website/app/components/HeroGrid.tsx`
 - Modify: `apps/website/app/components/heroGrid/heroGrid.module.css`
 - Delete: `apps/website/app/components/heroGrid/CourseVisualization.tsx`
@@ -1115,7 +1257,11 @@ Append to `apps/website/app/components/heroGrid/heroGrid.module.css`:
 
 ```css
 .leaderRow {
-  background: color-mix(in oklab, var(--pt-color-warning, #d97706) 12%, transparent);
+  background: color-mix(
+    in oklab,
+    var(--pt-color-warning, #d97706) 12%,
+    transparent
+  );
 }
 ```
 
@@ -1294,6 +1440,7 @@ Expected: `Local: http://localhost:3000` ready within ~10s.
 - [ ] **Step 2: Open localhost:3000 and observe**
 
 Verify checklist:
+
 - Race grid sorted: leader at top, then `+0.32` etc., running below, dns at bottom.
 - Leader row has a subtle warm tint background.
 - Notes column does not change row height as commentary streams.

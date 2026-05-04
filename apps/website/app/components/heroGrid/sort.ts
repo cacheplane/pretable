@@ -111,7 +111,11 @@ function assertNever(x: never): never {
  * bib uses +Infinity for "—" so numeric sort already handles it.
  * delta uses +Infinity/-Infinity so numeric sort already handles it.
  */
-function getEmptySink(a: RaceRow, b: RaceRow, columnId: ColumnId): number | null {
+function getEmptySink(
+  a: RaceRow,
+  b: RaceRow,
+  columnId: ColumnId,
+): number | null {
   if (
     columnId === "gate1" ||
     columnId === "gate2" ||
@@ -128,11 +132,7 @@ function getEmptySink(a: RaceRow, b: RaceRow, columnId: ColumnId): number | null
   return null;
 }
 
-function compareByColumn(
-  a: RaceRow,
-  b: RaceRow,
-  columnId: ColumnId,
-): number {
+function compareByColumn(a: RaceRow, b: RaceRow, columnId: ColumnId): number {
   switch (columnId) {
     case "bib":
       return bibValue(a.bib) - bibValue(b.bib);

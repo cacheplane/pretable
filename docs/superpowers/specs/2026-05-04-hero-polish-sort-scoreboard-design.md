@@ -35,14 +35,14 @@ The displayed order has two modes. Default (no user sort) is leaderboard rank; c
 
 **User sort** (when `userSort !== null`): apply the column's comparator over the full row set; no status-tier grouping. Direction = asc | desc. Per-column comparators:
 
-| Column | Comparator |
-|---|---|
-| `bib` | Numeric. `"—"` sinks to bottom (telemetry rows). |
-| `racer` | `localeCompare`. |
+| Column                                 | Comparator                                                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `bib`                                  | Numeric. `"—"` sinks to bottom (telemetry rows).                                                 |
+| `racer`                                | `localeCompare`.                                                                                 |
 | `gate1` / `gate2` / `gate3` / `finish` | Empty string sinks; otherwise lex compare (fixed-width `MM:SS.ss` is lex-equivalent to numeric). |
-| `delta` | `"LEADER"` → `-Infinity`; `"+N.NN"` → `parseFloat`; empty → `+Infinity`. |
-| `status` | Explicit rank: `finished < running < DNF < DSQ < dns`. |
-| `notes` | `localeCompare`; empty sinks. |
+| `delta`                                | `"LEADER"` → `-Infinity`; `"+N.NN"` → `parseFloat`; empty → `+Infinity`.                         |
+| `status`                               | Explicit rank: `finished < running < DNF < DSQ < dns`.                                           |
+| `notes`                                | `localeCompare`; empty sinks.                                                                    |
 
 All columns sortable. Telemetry rows (HEAVY tier) are sorted alongside racing rows; their `bib === "—"` sinks them under any numeric-bib sort.
 
@@ -99,20 +99,20 @@ Visual: keep aesthetic consistent with the bezel. Use existing CSS tokens; no ne
 
 ## File changes
 
-| File | Action |
-|---|---|
-| `apps/website/app/components/HeroGrid.tsx` | Modify: add `useMemo` rank+sort, `userSort` state, `onSortChange`, `sort` prop, `getRowClassName`. Swap `<CourseVisualization>` → `<Scoreboard>`. |
-| `apps/website/app/components/heroGrid/raceColumns.ts` | Modify: `notes.wrap = false`. |
-| `apps/website/app/components/heroGrid/sort.ts` | **Create** — `rankRows`, `sortByColumn`, per-column comparators. |
-| `apps/website/app/components/heroGrid/__tests__/sort.test.ts` | **Create**. |
-| `apps/website/app/components/heroGrid/Scoreboard.tsx` | **Create**. |
-| `apps/website/__tests__/components/heroGrid/Scoreboard.test.tsx` | **Create**. |
-| `apps/website/app/components/heroGrid/CourseVisualization.tsx` | **Delete**. |
-| `apps/website/__tests__/components/heroGrid/CourseVisualization.test.tsx` | **Delete**. |
-| `apps/website/app/components/heroGrid/scripts/generate-race.ts` | Modify: drop `··············` placeholder; cap commentary to ~30 chars. |
-| `apps/website/app/components/heroGrid/recordings/race.jsonl` | **Regenerate**. |
-| `apps/website/app/components/heroGrid/recordings/race.ts` | Auto-regens with the .jsonl. |
-| `apps/website/app/components/heroGrid/heroGrid.module.css` | Modify: add `.leaderRow`; adjust `.heroSidebar` for scoreboard tile if needed. |
+| File                                                                      | Action                                                                                                                                            |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/website/app/components/HeroGrid.tsx`                                | Modify: add `useMemo` rank+sort, `userSort` state, `onSortChange`, `sort` prop, `getRowClassName`. Swap `<CourseVisualization>` → `<Scoreboard>`. |
+| `apps/website/app/components/heroGrid/raceColumns.ts`                     | Modify: `notes.wrap = false`.                                                                                                                     |
+| `apps/website/app/components/heroGrid/sort.ts`                            | **Create** — `rankRows`, `sortByColumn`, per-column comparators.                                                                                  |
+| `apps/website/app/components/heroGrid/__tests__/sort.test.ts`             | **Create**.                                                                                                                                       |
+| `apps/website/app/components/heroGrid/Scoreboard.tsx`                     | **Create**.                                                                                                                                       |
+| `apps/website/__tests__/components/heroGrid/Scoreboard.test.tsx`          | **Create**.                                                                                                                                       |
+| `apps/website/app/components/heroGrid/CourseVisualization.tsx`            | **Delete**.                                                                                                                                       |
+| `apps/website/__tests__/components/heroGrid/CourseVisualization.test.tsx` | **Delete**.                                                                                                                                       |
+| `apps/website/app/components/heroGrid/scripts/generate-race.ts`           | Modify: drop `··············` placeholder; cap commentary to ~30 chars.                                                                           |
+| `apps/website/app/components/heroGrid/recordings/race.jsonl`              | **Regenerate**.                                                                                                                                   |
+| `apps/website/app/components/heroGrid/recordings/race.ts`                 | Auto-regens with the .jsonl.                                                                                                                      |
+| `apps/website/app/components/heroGrid/heroGrid.module.css`                | Modify: add `.leaderRow`; adjust `.heroSidebar` for scoreboard tile if needed.                                                                    |
 
 ## Tests
 

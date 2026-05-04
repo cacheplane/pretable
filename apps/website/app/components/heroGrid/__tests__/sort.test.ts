@@ -20,9 +20,27 @@ const make = (over: Partial<RaceRow>): RaceRow => ({
 describe("rankRows", () => {
   it("orders finished by finish time asc with LEADER first", () => {
     const rows: RaceRow[] = [
-      make({ id: "a", bib: 1, status: "finished", finish: "01:18.00", delta: "+1.50" }),
-      make({ id: "b", bib: 2, status: "finished", finish: "01:16.50", delta: "LEADER" }),
-      make({ id: "c", bib: 3, status: "finished", finish: "01:17.20", delta: "+0.70" }),
+      make({
+        id: "a",
+        bib: 1,
+        status: "finished",
+        finish: "01:18.00",
+        delta: "+1.50",
+      }),
+      make({
+        id: "b",
+        bib: 2,
+        status: "finished",
+        finish: "01:16.50",
+        delta: "LEADER",
+      }),
+      make({
+        id: "c",
+        bib: 3,
+        status: "finished",
+        finish: "01:17.20",
+        delta: "+0.70",
+      }),
     ];
     expect(rankRows(rows).map((r) => r.id)).toEqual(["b", "c", "a"]);
   });
@@ -30,8 +48,21 @@ describe("rankRows", () => {
   it("orders running by gate progress desc, then latest gate time asc", () => {
     const rows: RaceRow[] = [
       make({ id: "early", bib: 1, status: "running", gate1: "00:14.50" }),
-      make({ id: "late", bib: 2, status: "running", gate1: "00:14.30", gate2: "00:36.00", gate3: "00:55.00" }),
-      make({ id: "mid", bib: 3, status: "running", gate1: "00:14.40", gate2: "00:36.10" }),
+      make({
+        id: "late",
+        bib: 2,
+        status: "running",
+        gate1: "00:14.30",
+        gate2: "00:36.00",
+        gate3: "00:55.00",
+      }),
+      make({
+        id: "mid",
+        bib: 3,
+        status: "running",
+        gate1: "00:14.40",
+        gate2: "00:36.10",
+      }),
     ];
     expect(rankRows(rows).map((r) => r.id)).toEqual(["late", "mid", "early"]);
   });
@@ -41,9 +72,20 @@ describe("rankRows", () => {
       make({ id: "dns", bib: 1 }),
       make({ id: "dnf", bib: 2, status: "DNF" }),
       make({ id: "running", bib: 3, status: "running", gate1: "00:14.00" }),
-      make({ id: "finished", bib: 4, status: "finished", finish: "01:16.00", delta: "LEADER" }),
+      make({
+        id: "finished",
+        bib: 4,
+        status: "finished",
+        finish: "01:16.00",
+        delta: "LEADER",
+      }),
     ];
-    expect(rankRows(rows).map((r) => r.id)).toEqual(["finished", "running", "dnf", "dns"]);
+    expect(rankRows(rows).map((r) => r.id)).toEqual([
+      "finished",
+      "running",
+      "dnf",
+      "dns",
+    ]);
   });
 
   it("orders DNS by bib ascending", () => {
@@ -57,8 +99,20 @@ describe("rankRows", () => {
 
   it("breaks running ties on gate progress by bib ascending", () => {
     const rows: RaceRow[] = [
-      make({ id: "high", bib: 30, status: "running", gate1: "00:14.00", gate2: "00:36.00" }),
-      make({ id: "low", bib: 5, status: "running", gate1: "00:14.00", gate2: "00:36.00" }),
+      make({
+        id: "high",
+        bib: 30,
+        status: "running",
+        gate1: "00:14.00",
+        gate2: "00:36.00",
+      }),
+      make({
+        id: "low",
+        bib: 5,
+        status: "running",
+        gate1: "00:14.00",
+        gate2: "00:36.00",
+      }),
     ];
     // same gate2 time → bib ascending tie-break
     expect(rankRows(rows).map((r) => r.id)).toEqual(["low", "high"]);
@@ -66,7 +120,12 @@ describe("rankRows", () => {
 
   it("sinks telemetry rows (bib === '—') to the bottom of their tier", () => {
     const rows: RaceRow[] = [
-      make({ id: "tel-1", bib: "—", status: "running", racer: "Sensor: gate 4 wind" }),
+      make({
+        id: "tel-1",
+        bib: "—",
+        status: "running",
+        racer: "Sensor: gate 4 wind",
+      }),
       make({ id: "race-1", bib: 5, status: "running", gate1: "00:14.00" }),
     ];
     expect(rankRows(rows).map((r) => r.id)).toEqual(["race-1", "tel-1"]);
@@ -77,7 +136,13 @@ describe("applySort", () => {
   it("returns rankRows order when sort is null", () => {
     const rows: RaceRow[] = [
       make({ id: "a", bib: 30 }),
-      make({ id: "b", bib: 1, status: "finished", finish: "01:16.00", delta: "LEADER" }),
+      make({
+        id: "b",
+        bib: 1,
+        status: "finished",
+        finish: "01:16.00",
+        delta: "LEADER",
+      }),
     ];
     expect(applySort(rows, null).map((r) => r.id)).toEqual(["b", "a"]);
   });
@@ -99,7 +164,11 @@ describe("applySort", () => {
       make({ id: "leader", bib: 3, status: "finished", delta: "LEADER" }),
     ];
     const sort: SortState = { columnId: "delta", direction: "asc" };
-    expect(applySort(rows, sort).map((r) => r.id)).toEqual(["leader", "plus", "empty"]);
+    expect(applySort(rows, sort).map((r) => r.id)).toEqual([
+      "leader",
+      "plus",
+      "empty",
+    ]);
   });
 
   it("sorts status by explicit rank: finished < running < DNF < DSQ < dns", () => {
@@ -111,7 +180,13 @@ describe("applySort", () => {
       make({ id: "fin", bib: 5, status: "finished" }),
     ];
     const sort: SortState = { columnId: "status", direction: "asc" };
-    expect(applySort(rows, sort).map((r) => r.id)).toEqual(["fin", "run", "dnf", "dsq", "dns"]);
+    expect(applySort(rows, sort).map((r) => r.id)).toEqual([
+      "fin",
+      "run",
+      "dnf",
+      "dsq",
+      "dns",
+    ]);
   });
 
   it("reverses with desc direction", () => {
@@ -131,7 +206,11 @@ describe("applySort", () => {
       make({ id: "slow", bib: 3, gate1: "00:14.50" }),
     ];
     const sort: SortState = { columnId: "gate1", direction: "asc" };
-    expect(applySort(rows, sort).map((r) => r.id)).toEqual(["fast", "slow", "empty"]);
+    expect(applySort(rows, sort).map((r) => r.id)).toEqual([
+      "fast",
+      "slow",
+      "empty",
+    ]);
   });
 
   it("sorts racer column with localeCompare", () => {
@@ -161,6 +240,10 @@ describe("applySort", () => {
     ];
     const sort: SortState = { columnId: "gate1", direction: "desc" };
     // desc: slowest first among non-empty, empty still at bottom
-    expect(applySort(rows, sort).map((r) => r.id)).toEqual(["slow", "fast", "empty"]);
+    expect(applySort(rows, sort).map((r) => r.id)).toEqual([
+      "slow",
+      "fast",
+      "empty",
+    ]);
   });
 });

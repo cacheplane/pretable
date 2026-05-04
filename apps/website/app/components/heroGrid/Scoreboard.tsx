@@ -34,7 +34,12 @@ interface ScoreboardModel {
 }
 
 function gateFilled(row: RaceRow): [boolean, boolean, boolean, boolean] {
-  return [row.gate1 !== "", row.gate2 !== "", row.gate3 !== "", row.finish !== ""];
+  return [
+    row.gate1 !== "",
+    row.gate2 !== "",
+    row.gate3 !== "",
+    row.finish !== "",
+  ];
 }
 
 function compareRunning(a: RaceRow, b: RaceRow): number {

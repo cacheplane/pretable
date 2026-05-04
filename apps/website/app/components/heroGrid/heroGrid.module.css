@@ -69,5 +69,9 @@
 }
 
 .leaderRow {
-  background: color-mix(in oklab, var(--pt-color-warning, #d97706) 12%, transparent);
+  background: color-mix(
+    in oklab,
+    var(--pt-color-warning, #d97706) 12%,
+    transparent
+  );
 }
