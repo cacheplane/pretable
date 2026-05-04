@@ -1,5 +1,6 @@
 import { LayerStack, type LayerStackItem } from "./LayerStack";
 import { LAYERS } from "./howItWorksLayers";
+import { PipelineDiagram } from "./PipelineDiagram";
 
 interface Callout {
   heading: string;
@@ -71,18 +72,18 @@ export function HowItWorks() {
           the DOM is touched exactly once per frame.
         </p>
 
+        <PipelineDiagram />
+
         <LayerStack
           testId="howitworks-layers"
-          className="mt-10 flex flex-col gap-2"
+          className="mt-6 flex flex-col gap-2"
           items={LAYERS.map(
             (layer): LayerStackItem => ({
               key: layer.num,
-              className: [
-                "grid grid-cols-[44px_1fr] gap-4 rounded-[6px] border p-5 md:grid-cols-[56px_1fr_auto] md:gap-5 md:p-6",
-                layer.core
-                  ? "border-accent/40 bg-bg-card/50"
-                  : "border-rule bg-bg-card/65",
-              ].join(" "),
+              // All cards use the same neutral border. The core-stage hint is
+              // carried by the dot+glow on the number column, not the border.
+              className:
+                "grid grid-cols-[44px_1fr] gap-4 rounded-[6px] border border-rule bg-bg-card/65 p-5 md:grid-cols-[56px_1fr_auto] md:gap-5 md:p-6",
               children: (
                 <>
                   <div className="flex flex-col items-center gap-2 pt-1">
