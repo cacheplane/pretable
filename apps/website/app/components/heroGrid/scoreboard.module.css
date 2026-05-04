@@ -32,3 +32,36 @@
   font-size: 14px;
   color: var(--pt-fg, #44403c);
 }
+
+.racerLine {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--pt-font-mono, ui-monospace);
+  font-size: 13px;
+}
+
+.bib {
+  width: 32px;
+  color: var(--pt-fg-muted, #6b7280);
+}
+
+.dots {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.dot {
+  font-size: 14px;
+  color: var(--pt-fg-muted, #6b7280);
+}
+
+.dot[data-filled="true"] {
+  color: var(--pt-fg-strong, #1c1917);
+}
+
+.overflow {
+  font-size: 11px;
+  color: var(--pt-fg-muted, #6b7280);
+  margin-top: 2px;
+}

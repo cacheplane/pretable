@@ -13,21 +13,50 @@ interface Leader {
   finish: string;
 }
 
+interface OnCourseRow {
+  id: string;
+  bib: number | "—";
+  gateFilled: [boolean, boolean, boolean, boolean];
+}
+
+const MAX_ON_COURSE = 5;
+
 interface ScoreboardModel {
   leader: Leader | null;
+  onCourse: OnCourseRow[];
+  onCourseOverflow: number;
+}
+
+function gateFilled(row: RaceRow): [boolean, boolean, boolean, boolean] {
+  return [row.gate1 !== "", row.gate2 !== "", row.gate3 !== "", row.finish !== ""];
+}
+
+function compareRunning(a: RaceRow, b: RaceRow): number {
+  const af = gateFilled(a).filter(Boolean).length;
+  const bf = gateFilled(b).filter(Boolean).length;
+  if (af !== bf) return bf - af;
+  const aBib = typeof a.bib === "number" ? a.bib : Number.POSITIVE_INFINITY;
+  const bBib = typeof b.bib === "number" ? b.bib : Number.POSITIVE_INFINITY;
+  return aBib - bBib;
 }
 
 function buildModel(rows: readonly RaceRow[]): ScoreboardModel {
   const racing = rows.filter((r) => !r.id.startsWith("tel-"));
   const leaderRow = racing.find((r) => r.delta === "LEADER");
   const leader = leaderRow
-    ? {
-        bib: leaderRow.bib,
-        racer: leaderRow.racer,
-        finish: leaderRow.finish,
-      }
+    ? { bib: leaderRow.bib, racer: leaderRow.racer, finish: leaderRow.finish }
     : null;
-  return { leader };
+
+  const running = racing.filter((r) => r.status === "running");
+  running.sort(compareRunning);
+  const onCourse = running.slice(0, MAX_ON_COURSE).map((r) => ({
+    id: r.id,
+    bib: r.bib,
+    gateFilled: gateFilled(r),
+  }));
+  const onCourseOverflow = Math.max(0, running.length - MAX_ON_COURSE);
+
+  return { leader, onCourse, onCourseOverflow };
 }
 
 export function Scoreboard({ rows }: ScoreboardProps) {
@@ -42,6 +71,38 @@ export function Scoreboard({ rows }: ScoreboardProps) {
           <div className={styles.racer}>
             #{model.leader.bib} {model.leader.racer}
           </div>
+        </section>
+      )}
+
+      {model.onCourse.length > 0 && (
+        <section className={styles.section} data-testid="scoreboard-on-course">
+          <div className={styles.label}>ON COURSE</div>
+          {model.onCourse.map((r) => (
+            <div
+              className={styles.racerLine}
+              data-testid="scoreboard-racer"
+              key={r.id}
+            >
+              <span className={styles.bib}>#{r.bib}</span>
+              <span className={styles.dots}>
+                {r.gateFilled.map((filled, i) => (
+                  <span
+                    className={styles.dot}
+                    data-filled={filled ? "true" : "false"}
+                    data-testid="gate-dot"
+                    key={i}
+                  >
+                    {filled ? "●" : "○"}
+                  </span>
+                ))}
+              </span>
+            </div>
+          ))}
+          {model.onCourseOverflow > 0 && (
+            <div className={styles.overflow} data-testid="scoreboard-overflow">
+              +{model.onCourseOverflow} more
+            </div>
+          )}
         </section>
       )}
     </aside>
