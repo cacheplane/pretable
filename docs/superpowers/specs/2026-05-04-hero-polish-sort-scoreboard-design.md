@@ -86,7 +86,7 @@ Rules:
 
 - **Leader section**: rendered only if a row has `delta === "LEADER"`. Shows finish time, bib, racer name (with flag emoji preserved). Hidden until first finisher.
 - **On course section**: rendered only if any row has `status === "running"`. Each row: bib, then four dots `● ○` representing G1, G2, G3, FIN. Filled = corresponding column (`gate1`, `gate2`, `gate3`, `finish`) non-empty. Sorted same as default rank's running tier (gates filled desc). Capped at 5 rows; if >5 running, append `+N more` line.
-- **Counters**: `FIN N` shown if any finished; `DNF N` shown if any DNF. Hidden when both zero.
+- **Counters**: `FIN N` shown if any finished; `DNF N` shown if any DNF or DSQ (DSQ folds into the DNF tally on a tight scoreboard — a single "did not finish" counter). Hidden when both zero.
 - Telemetry rows (`id` starts with `tel-`) are excluded from all calculations.
 - Times rendered in monospace.
 - Single `useMemo` derives the entire view-model from `rows`. No internal state, no rAF.

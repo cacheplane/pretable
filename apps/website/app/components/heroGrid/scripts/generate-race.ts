@@ -452,10 +452,8 @@ if (
     "// Regenerate by running scripts/generate-race.ts.\n\n" +
     `export const RACE_RECORDING = ${JSON.stringify(text)};\n`;
   writeFileSync(tsOut, tsBody);
-  // eslint-disable-next-line no-console
   console.log(
     `wrote ${out} — ${text.length} bytes, ${text.split("\n").length - 1} lines`,
   );
-  // eslint-disable-next-line no-console
   console.log(`wrote ${tsOut} — ${tsBody.length} bytes`);
 }
