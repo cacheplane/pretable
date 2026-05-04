@@ -9,16 +9,12 @@ interface Callout {
 
 const CALLOUTS: readonly Callout[] = [
   {
-    heading: "DOM is expensive. We use math instead.",
+    heading: "Built for agentic apps.",
     body: (
       <>
-        Wrapped row heights computed with character-width tables and font
-        metrics — pure arithmetic. No{" "}
-        <code className="font-mono text-[11.5px] text-text-primary">
-          getBoundingClientRect
-        </code>
-        , no forced reflow, no measure-on-mount. The DOM is touched exactly once
-        per frame, at commit.
+        LLM streams, partial JSON, tool-call traces — bursts of 100 to 25,000
+        patches/sec all collapse to one snapshot per animation frame. No
+        per-token reflow. Selection survives every patch.
       </>
     ),
   },
@@ -59,17 +55,21 @@ export function HowItWorks() {
     <section className="text-text-primary px-7 py-16 md:px-10 md:py-28">
       <div className="mx-auto max-w-[1240px]">
         <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-          04 · how it works
+          02 · how it works
         </p>
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
-          A deterministic pipeline.{" "}
-          <em className="italic text-accent">No magic.</em>
+          DOM measuring sucks. We use math.{" "}
+          <em className="italic text-accent">It's hard.</em>
         </h2>
         <p className="mt-5 max-w-[65ch] font-display text-[15px] leading-[1.6] text-text-secondary">
-          The benchmarks aren't a coincidence. They follow from a render path
-          designed around five stages — each one readable, each one verifiable
-          in source. Engine and viewport are pure functions; data flows one way;
-          the DOM is touched exactly once per frame.
+          Wrapped row heights are computed with character-width tables and font
+          metrics — pure arithmetic. No{" "}
+          <code className="font-mono text-[13.5px] text-text-primary">
+            getBoundingClientRect
+          </code>
+          , no forced reflow, no measure-on-mount. The DOM is touched exactly
+          once per frame, at commit. The five-stage pipeline below is what
+          enforces that discipline.
         </p>
 
         <PipelineDiagram />

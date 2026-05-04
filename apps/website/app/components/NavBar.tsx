@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 export type NavBarMode = "site" | "drawer";
 
@@ -18,14 +19,34 @@ const DRAWER_ANCHORS = [
 ] as const;
 
 export function NavBar({ mode, onClose }: NavBarProps) {
+  const [brandHref, setBrandHref] = useState("/");
+
+  useEffect(() => {
+    if (mode !== "site") return;
+    if (typeof window === "undefined") return;
+    const flag = sessionStorage.getItem("pretable:lastDrawer");
+    if (flag === "open") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time post-hydration href upgrade
+      setBrandHref("/#receipts");
+    }
+  }, [mode]);
+
   return (
     <header
-      className="flex items-center justify-between gap-3 border-b border-rule-soft bg-bg-card/85 px-4 py-3 backdrop-blur-sm md:gap-5 md:px-10"
+      className="flex h-11 items-center justify-between gap-3 border-b border-rule-soft bg-bg-card/85 px-4 backdrop-blur-sm md:gap-5 md:px-10"
       role="banner"
     >
       <Link
         className="flex shrink-0 items-center gap-2 font-mono text-[13px]"
-        href="/"
+        href={brandHref}
+        onClick={
+          mode === "drawer" && onClose
+            ? (e) => {
+                e.preventDefault();
+                onClose();
+              }
+            : undefined
+        }
       >
         <span aria-hidden="true" className="text-accent">
           ●

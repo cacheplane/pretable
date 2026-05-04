@@ -18,6 +18,7 @@ describe("useDrawer", () => {
   afterEach(() => {
     history.replaceState({}, "", "/");
     document.documentElement.removeAttribute("data-drawer");
+    sessionStorage.clear();
   });
 
   it("starts closed and writes data-drawer='closed' on the html element when wide enough", () => {
@@ -60,5 +61,24 @@ describe("useDrawer", () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     });
     expect(document.documentElement.getAttribute("data-drawer")).toBe("closed");
+  });
+
+  it("open() writes pretable:lastDrawer='open' to sessionStorage", () => {
+    const { result } = renderHook(() => useDrawer(), { wrapper });
+    act(() => result.current.open());
+    expect(sessionStorage.getItem("pretable:lastDrawer")).toBe("open");
+  });
+
+  it("close() clears pretable:lastDrawer from sessionStorage", () => {
+    const { result } = renderHook(() => useDrawer(), { wrapper });
+    act(() => result.current.open());
+    act(() => result.current.close());
+    expect(sessionStorage.getItem("pretable:lastDrawer")).toBeNull();
+  });
+
+  it("hash-on-mount auto-open also writes the flag", () => {
+    history.replaceState({}, "", "/#receipts");
+    renderHook(() => useDrawer(), { wrapper });
+    expect(sessionStorage.getItem("pretable:lastDrawer")).toBe("open");
   });
 });

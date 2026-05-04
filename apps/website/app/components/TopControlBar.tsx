@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useControlState, type RateTier } from "./heroGrid/controlState";
 import styles from "./topControlBar.module.css";
 
@@ -32,14 +34,12 @@ export function TopControlBar({
       aria-label="Grid stream controls"
     >
       <div className={styles.left}>
-        <span aria-hidden="true" className={styles.dot}>
-          ●
-        </span>
-        <span className={styles.brand}>pretable.ai</span>
-        <span aria-hidden="true" className={styles.sep}>
-          ·
-        </span>
-        <span>events.stream</span>
+        <Link className={styles.brandLink} href="/">
+          <span aria-hidden="true" className={styles.dot}>
+            ●
+          </span>
+          <span className={styles.brand}>pretable.ai</span>
+        </Link>
       </div>
       <div className={styles.center}>
         <span className={styles.metric}>
@@ -81,6 +81,17 @@ export function TopControlBar({
             </button>
           ))}
         </div>
+        <span aria-hidden="true" className={styles.linkSep} />
+        <Link className={styles.link} href="/docs">
+          /docs
+        </Link>
+        <a
+          aria-label="GitHub"
+          className={styles.link}
+          href="https://github.com/cacheplane/pretable"
+        >
+          GitHub →
+        </a>
       </div>
     </div>
   );

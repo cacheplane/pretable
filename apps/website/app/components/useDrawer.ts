@@ -13,6 +13,8 @@ const DRAWER_SECTIONS = new Set([
   "cta",
 ]);
 
+const LAST_DRAWER_KEY = "pretable:lastDrawer";
+
 export interface UseDrawerResult {
   isOpen: boolean;
   open: () => void;
@@ -34,6 +36,7 @@ export function useDrawer(): UseDrawerResult {
     const hash = window.location.hash.replace("#", "");
     if (hash && DRAWER_SECTIONS.has(hash)) {
       setIsDrawerOpen(true);
+      sessionStorage.setItem(LAST_DRAWER_KEY, "open");
     }
   }, [setIsDrawerOpen]);
 
@@ -49,11 +52,13 @@ export function useDrawer(): UseDrawerResult {
     if (typeof window === "undefined") return;
     history.pushState({ drawer: "open" }, "");
     setIsDrawerOpen(true);
+    sessionStorage.setItem(LAST_DRAWER_KEY, "open");
   }, [setIsDrawerOpen]);
 
   const close = useCallback(() => {
     setIsDrawerOpen(false);
     if (typeof window === "undefined") return;
+    sessionStorage.removeItem(LAST_DRAWER_KEY);
     // If the URL still carries a drawer-section hash (e.g. /#receipts from a
     // deep-link or anchor click), strip it without adding a history entry so
     // a reload after "Show the grid" / Esc / close button stays on the grid.
