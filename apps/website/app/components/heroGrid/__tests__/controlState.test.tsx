@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 import { ControlStateProvider, useControlState } from "../controlState";
 
 describe("controlState", () => {
-  it("defaults to ratePerSec=1000, isPaused=false, isDrawerOpen=false", () => {
+  it("defaults to ratePerSec=60 (PRODUCTION), isPaused=false, isDrawerOpen=false", () => {
     const { result } = renderHook(() => useControlState(), {
       wrapper: ({ children }) => (
         <ControlStateProvider>{children}</ControlStateProvider>
       ),
     });
-    expect(result.current.ratePerSec).toBe(1000);
+    expect(result.current.ratePerSec).toBe(60);
     expect(result.current.isPaused).toBe(false);
     expect(result.current.isDrawerOpen).toBe(false);
     expect(result.current.isPlaying).toBe(true);
@@ -22,8 +22,8 @@ describe("controlState", () => {
         <ControlStateProvider>{children}</ControlStateProvider>
       ),
     });
-    act(() => result.current.setRatePerSec(5000));
-    expect(result.current.ratePerSec).toBe(5000);
+    act(() => result.current.setRatePerSec(250));
+    expect(result.current.ratePerSec).toBe(250);
   });
 
   it("isPlaying is false when isPaused is true", () => {
