@@ -14,7 +14,7 @@ import {
   createDomRenderSnapshot,
   type PlannedColumn,
 } from "@pretable-internal/renderer-dom";
-import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
   autosize?: boolean | AutosizeOptions;
@@ -70,6 +70,8 @@ export interface UsePretableModelOptions<
   overscan?: number;
   state?: PretableSurfaceState | null;
   measuredHeights?: Record<string, number>;
+  onSelectionChange?: (next: PretableSelectionState) => void;
+  onFocusChange?: (next: PretableFocusState) => void;
 }
 
 export interface PretableModel<TRow extends PretableRow = PretableRow> {
@@ -101,8 +103,17 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
   overscan = 6,
   state,
   measuredHeights,
+  onSelectionChange,
+  onFocusChange,
 }: UsePretableModelOptions<TRow>): PretableModel<TRow> {
   const grid = usePretable({ autosize, columns, rows, getRowId });
+
+  const lastEmittedSelectionRef = useRef<PretableSelectionState | null>(null);
+  const lastEmittedFocusRef = useRef<PretableFocusState | null>(null);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  const onFocusChangeRef = useRef(onFocusChange);
+  onSelectionChangeRef.current = onSelectionChange;
+  onFocusChangeRef.current = onFocusChange;
 
   if (state) {
     if (state.sort !== undefined) {
@@ -160,6 +171,36 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
     viewportHeight,
     viewportWidth,
   ]);
+
+  useLayoutEffect(() => {
+    const last = lastEmittedSelectionRef.current;
+    const next = snapshot.selection;
+
+    if (last === null) {
+      lastEmittedSelectionRef.current = next;
+      return;
+    }
+
+    if (JSON.stringify(last) !== JSON.stringify(next)) {
+      lastEmittedSelectionRef.current = next;
+      onSelectionChangeRef.current?.(next);
+    }
+  }, [snapshot.selection]);
+
+  useLayoutEffect(() => {
+    const last = lastEmittedFocusRef.current;
+    const next = snapshot.focus;
+
+    if (last === null) {
+      lastEmittedFocusRef.current = next;
+      return;
+    }
+
+    if (last.rowId !== next.rowId || last.columnId !== next.columnId) {
+      lastEmittedFocusRef.current = next;
+      onFocusChangeRef.current?.(next);
+    }
+  }, [snapshot.focus]);
 
   const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
     () =>

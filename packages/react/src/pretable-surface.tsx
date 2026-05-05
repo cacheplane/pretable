@@ -10,9 +10,11 @@ import {
 import type {
   AutosizeOptions,
   PretableColumn,
+  PretableFocusState,
   PretableGrid,
   PretableGridOptions,
   PretableRow,
+  PretableSelectionState,
 } from "@pretable/core";
 
 import { measureRenderedRowHeight } from "./row-height";
@@ -137,6 +139,8 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   state?: PretableSurfaceState | null;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onSelectionChange?: (next: PretableSelectionState) => void;
+  onFocusChange?: (next: PretableFocusState) => void;
   onSortChange?: (
     sort: { columnId: string; direction: "asc" | "desc" } | null,
   ) => void;
@@ -169,6 +173,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   overscan = 6,
   onGridReady,
   onSelectedRowIdChange,
+  onSelectionChange,
+  onFocusChange,
   onSortChange,
   onTelemetryChange,
   renderBodyCell,
@@ -198,6 +204,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     rows,
     viewportHeight: bodyViewportHeight,
     viewportWidth: viewportWidth || undefined,
+    onSelectionChange,
+    onFocusChange,
   });
   const pinnedOffsets = useMemo(() => getPinnedLeftOffsets(columns), [columns]);
 
