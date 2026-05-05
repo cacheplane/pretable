@@ -117,10 +117,7 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
 
   if (state) {
     if (state.sort !== undefined) {
-      grid.setSort(
-        state.sort?.columnId ?? null,
-        state.sort?.direction ?? null,
-      );
+      grid.setSort(state.sort?.columnId ?? null, state.sort?.direction ?? null);
     }
 
     if (state.filters !== undefined) {

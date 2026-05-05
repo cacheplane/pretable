@@ -1704,6 +1704,7 @@ The bench's `apps/bench/src/interaction-plan.ts` uses `{ focusedRowId, selectedR
 ### Task 1 — Rename `interactionState` → `state` and restructure to slice-based shape
 
 **Files modified:**
+
 - `packages/react/src/use-pretable.ts` — rename `interactionOverrides` → `state` on `UsePretableModelOptions`. Restructure `PretableInteractionOverrides` to the new `{ sort?, filters?, selection?, focus? }` shape. The `selectedRowId` / `focusedRowId` row-id-based fields are **removed** from the public API; consumers who need that shape map it themselves.
 - `packages/react/src/pretable-surface.tsx` — rename the `interactionState` prop to `state`. Restructure `PretableSurfaceInteractionState` to the new shape. Update the controlled-mode read in the `usePretableModel` call: `state: state ?? undefined`.
 - `packages/react/src/inspection-grid.tsx` — propagate the rename.
@@ -1713,6 +1714,7 @@ The bench's `apps/bench/src/interaction-plan.ts` uses `{ focusedRowId, selectedR
 **Engine state injection rules (in `usePretableModel`):**
 
 When `state` is provided, for each slice that is non-`undefined`:
+
 - `state.sort` → `grid.setSort(slice.columnId, slice.direction)`
 - `state.filters` → `grid.replaceFilters(slice)`
 - `state.selection` → `grid.setSelection(slice)`
@@ -1759,6 +1761,7 @@ function planToState(
 ### Task 2 — Add `onSelectionChange` / `onFocusChange` callbacks
 
 **Files modified:**
+
 - `packages/react/src/use-pretable.ts` — add `onSelectionChange?: (state: PretableSelectionState) => void` and `onFocusChange?: (state: PretableFocusState) => void` to `UsePretableModelOptions`. Subscribe to the grid; on subscription emit, if `selection` or `focus` slice has changed since the last emit, call the corresponding callback. Use refs to track the last-emitted values.
 - `packages/react/src/pretable-surface.tsx` — accept and forward the new callbacks.
 - `packages/react/src/inspection-grid.tsx`, `labeled-grid-surface.tsx`, `pretable.tsx` — propagate.
@@ -1779,24 +1782,24 @@ The current keyboard handler (Phase 1) handles ArrowUp/ArrowDown and Enter/Space
 2. **Modifier detection:** use `event.metaKey || event.ctrlKey` for the "Cmd/Ctrl" modifier (cross-platform). `event.shiftKey` for shift.
 3. **Mapping:**
 
-| Key (with modifiers) | Action |
-|---|---|
-| `ArrowUp` / `ArrowDown` / `ArrowLeft` / `ArrowRight` | `grid.moveFocus(direction)` |
-| `Shift + Arrow` | `grid.moveFocus(direction, { extend: true })` |
-| `Cmd/Ctrl + Arrow` | `grid.moveFocus(direction, { jumpToEdge: true })` |
-| `Cmd/Ctrl + Shift + Arrow` | `grid.moveFocus(direction, { jumpToEdge: true, extend: true })` |
-| `Home` | `grid.setFocus({ rowId: focus.rowId, columnId: columns[0].id })` (collapses selection) |
-| `End` | `grid.setFocus({ rowId: focus.rowId, columnId: columns[last].id })` (collapses selection) |
-| `Cmd/Ctrl + Home` | `grid.setFocus({ rowId: visibleRows[0].id, columnId: columns[0].id })` |
-| `Cmd/Ctrl + End` | `grid.setFocus({ rowId: visibleRows[last].id, columnId: columns[last].id })` |
-| `PageUp` / `PageDown` | Compute page step from rendered rows; `grid.setFocus({...new addr...})` |
-| `Shift + PageUp/Down` | Like above but call `grid.extendRangeFromAnchor` after computing the new addr |
-| `Tab` (when `tabBehavior === "wrap-rows"`) | Move focus right, wrap to next row at end. `event.preventDefault()`. |
-| `Shift + Tab` (wrap-rows) | Move focus left, wrap to prev row at start. `event.preventDefault()`. |
-| `Tab` (when `tabBehavior === "exit"`) | Don't preventDefault — browser handles. |
-| `Cmd/Ctrl + A` | `grid.selectAll()` |
-| `Esc` | `grid.clearSelection()` |
-| `Enter` / `Space` | (Phase 1 behavior preserved: toggle row selection on focused row.) |
+| Key (with modifiers)                                 | Action                                                                                    |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `ArrowUp` / `ArrowDown` / `ArrowLeft` / `ArrowRight` | `grid.moveFocus(direction)`                                                               |
+| `Shift + Arrow`                                      | `grid.moveFocus(direction, { extend: true })`                                             |
+| `Cmd/Ctrl + Arrow`                                   | `grid.moveFocus(direction, { jumpToEdge: true })`                                         |
+| `Cmd/Ctrl + Shift + Arrow`                           | `grid.moveFocus(direction, { jumpToEdge: true, extend: true })`                           |
+| `Home`                                               | `grid.setFocus({ rowId: focus.rowId, columnId: columns[0].id })` (collapses selection)    |
+| `End`                                                | `grid.setFocus({ rowId: focus.rowId, columnId: columns[last].id })` (collapses selection) |
+| `Cmd/Ctrl + Home`                                    | `grid.setFocus({ rowId: visibleRows[0].id, columnId: columns[0].id })`                    |
+| `Cmd/Ctrl + End`                                     | `grid.setFocus({ rowId: visibleRows[last].id, columnId: columns[last].id })`              |
+| `PageUp` / `PageDown`                                | Compute page step from rendered rows; `grid.setFocus({...new addr...})`                   |
+| `Shift + PageUp/Down`                                | Like above but call `grid.extendRangeFromAnchor` after computing the new addr             |
+| `Tab` (when `tabBehavior === "wrap-rows"`)           | Move focus right, wrap to next row at end. `event.preventDefault()`.                      |
+| `Shift + Tab` (wrap-rows)                            | Move focus left, wrap to prev row at start. `event.preventDefault()`.                     |
+| `Tab` (when `tabBehavior === "exit"`)                | Don't preventDefault — browser handles.                                                   |
+| `Cmd/Ctrl + A`                                       | `grid.selectAll()`                                                                        |
+| `Esc`                                                | `grid.clearSelection()`                                                                   |
+| `Enter` / `Space`                                    | (Phase 1 behavior preserved: toggle row selection on focused row.)                        |
 
 **The Cmd+C handler is NOT wired in this phase** — Phase 5 adds it.
 
@@ -1822,6 +1825,7 @@ Forward through `Pretable`, `InspectionGrid`, `LabeledGridSurface` if applicable
 **File modified:** `packages/react/src/pretable-surface.tsx`.
 
 **Root viewport `<div>`** (currently has `role="grid"` and `tabIndex={0}`):
+
 - Keep `role="grid"`.
 - Add `aria-multiselectable="true"`.
 - Add `aria-rowcount={snapshot.totalRowCount + 1}` (the +1 is for the header row).
@@ -1829,20 +1833,24 @@ Forward through `Pretable`, `InspectionGrid`, `LabeledGridSurface` if applicable
 - Change `tabIndex={0}` to `tabIndex={-1}` — the cell-level tab stop owns focus now. The viewport gets focus only via programmatic focus on cell mount.
 
 **Header row `<div>`:**
+
 - Add `role="row"`.
 - Add `aria-rowindex={1}`.
 
 **Header cells `<button>`:**
+
 - Add `role="columnheader"`.
 - Add `aria-colindex={i + 1}` (1-based).
 - Add `aria-sort={sortDirection === "asc" ? "ascending" : sortDirection === "desc" ? "descending" : "none"}` when sortable.
 
 **Body rows `<div>`:**
+
 - Add `role="row"`.
 - Add `aria-rowindex={rowIndex + 2}` (+2: 1-based, plus 1 for header).
 - Add `aria-selected={derivedFullySelected ? "true" : undefined}` (use `deriveSelectedRows` for the per-row state).
 
 **Body cells `<div>`:**
+
 - Add `role="gridcell"`.
 - Add `aria-colindex={colIndex + 1}` (1-based).
 - Add `aria-selected={cellInAnyRange ? "true" : undefined}`.
@@ -1867,6 +1875,7 @@ Forward through `Pretable`, `InspectionGrid`, `LabeledGridSurface` if applicable
 **Test coverage required:**
 
 For each keyboard binding in the contract, one test:
+
 - ArrowUp/Down/Left/Right (4 tests) — focus moves one cell.
 - Shift+Arrow (4 tests) — range extends.
 - Cmd+Arrow (4 tests) — focus jumps to grid edge.
@@ -1882,11 +1891,13 @@ For each keyboard binding in the contract, one test:
 - Esc (1 test) — collapses selection to focused cell.
 
 **Plus controlled-mode round-trips:**
+
 - Pass `state.selection`; press an arrow; assert `onSelectionChange` is called with the next state; do NOT update the prop; assert the rendered selection has not visually changed (because consumer didn't commit).
 - Pass `state.selection` and update it from the consumer's setState in `onSelectionChange`; assert the rendered selection follows.
 - Same pattern for `state.focus`.
 
 **ARIA assertions:**
+
 - `screen.getByRole("grid")` exists with `aria-rowcount`, `aria-colcount`.
 - Cells have correct `aria-colindex` and `tabIndex`.
 - Currently-focused cell has `tabIndex={0}`; others have `tabIndex={-1}`.
@@ -1901,6 +1912,7 @@ Use `userEvent` from `@testing-library/user-event` for keyboard interactions. Us
 ### Task 6 — Documentation updates
 
 **Files modified:**
+
 - `apps/website/content/docs/grid/api-reference.mdx` — document the renamed `state` prop with its slice-based shape, the new `onSelectionChange` / `onFocusChange` callbacks, the new `tabBehavior` prop. Add a Keyboard Contract section listing every key (or a forward link to the to-be-built `/docs/grid/keyboard` page in Phase 8).
 - `apps/website/content/docs/grid/pretable-component.mdx` — update API references.
 - `apps/website/content/docs/grid/pretable-surface.mdx` — update API references for `state`, `onSelectionChange`, `onFocusChange`, `tabBehavior`.
