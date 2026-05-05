@@ -125,6 +125,7 @@ export function HeroGrid() {
                   direction: next.direction,
                 });
               }}
+              rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
               rows={sortedRows}
               viewportHeight={viewportHeight}
             />
