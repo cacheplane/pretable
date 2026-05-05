@@ -63,6 +63,11 @@
   --pt-fs-eyebrow: 11px;
   --pt-fs-data: 12.5px;
 
+  /* Cell-range selection (Phase 3 — derived from accent) */
+  --pt-color-selection-bg: rgb(234 88 12 / 0.08);
+  --pt-color-selection-border: rgb(234 88 12 / 0.6);
+  --pt-color-focus-ring: var(--pt-accent);
+
   /* Layout tokens */
   --pt-page-max: 1440px;
   --pt-header-h: 60px;
