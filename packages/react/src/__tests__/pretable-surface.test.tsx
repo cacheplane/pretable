@@ -1763,7 +1763,9 @@ describe("click + drag selection", () => {
     fireEvent.click(cell);
 
     expect(onSelectionChange).toHaveBeenCalled();
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     expect(last.ranges).toHaveLength(1);
     expect(last.ranges[0]).toMatchObject({
       startRowId: "r2",
@@ -1788,7 +1790,9 @@ describe("click + drag selection", () => {
     fireEvent.click(end, { shiftKey: true });
 
     expect(onSelectionChange).toHaveBeenCalled();
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     expect(last.ranges).toHaveLength(1);
     const r = last.ranges[0]!;
     // Range spans (r1,a) to (r2,b) regardless of orientation.
@@ -1813,7 +1817,9 @@ describe("click + drag selection", () => {
     fireEvent.click(end, { metaKey: true });
 
     expect(onSelectionChange).toHaveBeenCalled();
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     expect(last.ranges).toHaveLength(2);
   });
 
