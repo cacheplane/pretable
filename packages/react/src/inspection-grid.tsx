@@ -29,6 +29,7 @@ export interface InspectionGridProps {
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   overscan?: number;
   rows: InspectionRow[];
+  tabBehavior?: PretableSurfaceProps<InspectionRow>["tabBehavior"];
   viewportHeight: number;
 }
 
@@ -43,6 +44,7 @@ export function InspectionGrid({
   onTelemetryChange,
   overscan,
   rows,
+  tabBehavior,
   viewportHeight,
 }: InspectionGridProps) {
   const filterableColumns = new Set<string>(filterableColumnIds);
@@ -73,6 +75,7 @@ export function InspectionGrid({
       rowClassName="inspection-row"
       rows={rows}
       selectFocusedRowOnArrowKey
+      tabBehavior={tabBehavior}
       valueClassName="inspection-cell-value"
       viewportHeight={viewportHeight}
     />

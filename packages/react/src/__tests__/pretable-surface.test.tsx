@@ -120,7 +120,7 @@ describe("PretableSurface", () => {
       "[data-pretable-scroll-content]",
     );
     const renderedRows = view.getAllByTestId("pretable-row");
-    const headerButton = view.getByRole("button", { name: "Sort Timestamp" });
+    const headerButton = view.getByRole("columnheader", { name: "Sort Timestamp" });
     const firstPinnedCell = renderedRows[0]?.querySelectorAll(
       "[data-pretable-cell]",
     )[0];
@@ -157,12 +157,12 @@ describe("PretableSurface", () => {
       />,
     );
 
-    const pinnedHeader = view.getByRole("button", { name: "Sort Timestamp" });
+    const pinnedHeader = view.getByRole("columnheader", { name: "Sort Timestamp" });
     const headerRow = pinnedHeader.parentElement!;
-    const allHeaderButtons = view.getAllByRole("button", {
+    const allHeaderButtons = view.getAllByRole("columnheader", {
       name: /^Sort /,
     });
-    const absoluteHeader = view.getByRole("button", { name: "Sort Tags" });
+    const absoluteHeader = view.getByRole("columnheader", { name: "Sort Tags" });
 
     expect(headerRow).toHaveStyle({ display: "flex" });
     expect(headerRow).toHaveStyle({ height: "52px" });
@@ -198,7 +198,7 @@ describe("PretableSurface", () => {
       />,
     );
 
-    const severityButton = view.getByRole("button", { name: "Sort Severity" });
+    const severityButton = view.getByRole("columnheader", { name: "Sort Severity" });
 
     expect(severityButton).toHaveTextContent("Sort");
 
@@ -834,7 +834,7 @@ describe("PretableSurface", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", {
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
 
