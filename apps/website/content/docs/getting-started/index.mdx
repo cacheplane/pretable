@@ -20,6 +20,7 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
     ```
 
     The theme file declares all `--pretable-*` tokens at `:root`; `grid.css` is the selector-based skin that targets the engine's `[data-pretable-*]` data attributes. Two themes ship today — `excel.css` (gray, dense, technical, light-only) and `material.css` (Material 3 light + dark; toggle dark mode by setting `data-theme="dark"` on `<html>`). If you only need the engine, skip both imports and the grid renders unstyled (functional but no visual chrome).
+
   </Step>
   <Step title="Render your first grid">
     ```tsx
@@ -47,6 +48,7 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
       return <Pretable rows={rows} columns={columns} />;
     }
     ```
+
   </Step>
 </Steps>
 
