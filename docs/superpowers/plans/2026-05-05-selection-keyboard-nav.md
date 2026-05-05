@@ -2075,26 +2075,211 @@ The selection column (Phase 4) provides explicit row-select UX with checkboxes; 
 
 ---
 
-## Phase 4 — Built-in checkbox column + select-all (OUTLINE)
+## Phase 4 — Built-in checkbox column + select-all (DETAILED)
 
-**Branch:** `b4-checkbox-column`. **Detail:** added when Phase 3 merges.
+**Branch:** `b4-checkbox-column`. **Worktree:** `.worktrees/b4-checkbox-column`.
 
-**Work items:**
+**Phase exit criteria:**
 
-- Add `rowSelectionColumn?: RowSelectionColumnConfig` to the surface props (and corresponding controlled-state mirroring if any state needs to live in `state`).
-- In the React rendering layer, inject a synthetic column at `position` (left only in v1) when `rowSelectionColumn.enabled` is true. The column renders a checkbox cell whose three-state value derives from `deriveSelectedRows`.
-- Render header checkbox if `headerCheckbox: true` (default). Wire to `setSelectAllVisible(checked)`. Indeterminate visual when some-but-not-all visible rows are fully selected.
-- Wire body-checkbox click to `toggleRowSelection`. Wire shift+click to a range-toggle helper that walks from the last-checked anchor to the clicked row and toggles each.
-- The synthetic column is **not** part of the cell-range hit testing. Clicks on the checkbox cell mutate selection but do not move focus or collapse other ranges.
-- Update the website hero demo to enable the column with `headerCheckbox: true`.
-- jsdom tests: column injection, header checkbox three states, body checkbox click, shift+click range toggle, decoupling from cell-range click gestures.
-- Smoke test (`apps/website/e2e/smoke.spec.ts`): the hero demo's checkbox column is visible and clickable.
+- New `RowSelectionColumnConfig` type and `rowSelectionColumn?` prop on `<PretableSurface>` (forwarded through `Pretable`, `LabeledGridSurface`, `InspectionGrid`).
+- When enabled, the surface synthetically injects a left-pinned checkbox column with reserved id `__pretable_row_select__`. The column participates in layout (width, pinned offsets) but is filtered out of sort/filter dispatch and cell-range hit-testing.
+- Three-state checkbox per body row, derived from `deriveSelectedRows(snapshot)`. Header checkbox shows checked / indeterminate / unchecked over visible rows; clicking it calls `setSelectAllVisible(checked)`.
+- Body checkbox click → `toggleRowSelection(rowId)`. Shift+click on a body checkbox toggles every row from the last-checked anchor to the clicked row (rows-only convention).
+- Clicking a checkbox does not move focus, does not collapse cell-range selections, and does not initiate marquee drag.
+- Hero demo (`apps/website/app/components/HeroGrid.tsx` and `heroGrid/`) enables the column with the default header checkbox.
+- jsdom tests cover injection, header three states, body click, shift+click range, decoupling from cell-range gestures.
+- Playwright smoke test (`apps/website/e2e/smoke.spec.ts`) asserts the hero checkbox column is visible and clickable.
+- New CSS tokens `--pt-color-checkbox-*` for visual customization.
+- `pnpm -w typecheck` / `test` / `lint` / `format` clean.
 
-**Open questions to resolve when detailing:**
+### Resolved open questions
 
-- Where exactly does the synthetic column live in the column array passed to `deriveVisibleRows` and to the layout engine? It needs to participate in widths and pinning but **not** in the user's column ID space (it should not conflict with a user column whose id is `_select`). Choose a reserved-symbol id like `__pretable_row_select__`.
-- Should the synthetic column appear in `state.sort` / `state.filters` keys? No — it must be filtered out before any sort/filter consideration.
-- How do consumers customize the checkbox visual in v1 without cell renderers? CSS-only via the rendered `<button role="checkbox">`'s class; provide `--pt-color-checkbox-*` tokens and document. Full renderer customization lands in D.
+- **Synthetic column placement**: Inject at the surface level inside `<PretableSurface>` before passing `columns` to `usePretableModel`. Reserved id `__pretable_row_select__` (with double underscores to make accidental collision implausible). The engine sees it as a regular column with no `getValue`, `sortable: false`, `filterable: false`. Surface skips this column when:
+  - Computing cell-range click/drag/keyboard target (the gesture handlers check `column.id` and short-circuit if it matches the reserved id).
+  - Building `aria-selected` for the checkbox cell — it's never "selected" via cell-range; its visual state comes purely from `deriveSelectedRows`.
+- **`state.sort` / `state.filters` interaction**: Engine sees the synthetic column but the surface never sets sort/filter on it. The keyboard handler also skips it for Home/End/etc.
+- **Checkbox UX for partial selection**: a body checkbox shows `aria-checked="mixed"` when its row is in `deriveSelectedRows` map with value `"indeterminate"`. Clicking an indeterminate-state checkbox toggles the row (calls `toggleRowSelection`) — same as clicking an unchecked one. (This matches AG Grid; the alternative "complete the partial selection" would surprise users.)
+
+### Tasks
+
+#### Task 1 — Types + synthetic column injection
+
+**Files:**
+- `packages/react/src/pretable-surface.tsx` — add the prop and injection logic.
+- `packages/react/src/index.ts` — export the new type.
+
+Type:
+
+```ts
+export interface RowSelectionColumnConfig {
+  enabled: true;
+  position?: "left";          // v1: left only
+  pinned?: boolean;            // default true
+  headerCheckbox?: boolean;    // default true
+  width?: number;              // default 36
+}
+```
+
+In `<PretableSurface>`, before the `columns` is passed to `usePretableModel`:
+
+```tsx
+const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
+
+const effectiveColumns = useMemo(() => {
+  if (!rowSelectionColumn?.enabled) return columns;
+  const synth: PretableColumn<TRow> = {
+    id: ROW_SELECT_COLUMN_ID,
+    header: "",
+    widthPx: rowSelectionColumn.width ?? 36,
+    pinned: (rowSelectionColumn.pinned ?? true) ? "left" : undefined,
+    sortable: false,
+    filterable: false,
+  };
+  return [synth, ...columns];
+}, [columns, rowSelectionColumn]);
+```
+
+Pass `effectiveColumns` everywhere `columns` is used. Helpers like `getPinnedLeftOffsets`, `columnIndexById`, etc. already operate on `columns` — switch them to `effectiveColumns`.
+
+The user-facing `columns` prop is unchanged; we only inject internally.
+
+**Cell-range hit-testing exclusion**: in `handleCellClick`, `onPointerDown`, `onPointerEnter`, and the keyboard handler's wrap-rows Tab logic, short-circuit when `columnId === ROW_SELECT_COLUMN_ID`. The checkbox cell has its own click handler.
+
+**Commit:** `feat(react): synthetic row-selection column injection`
+
+#### Task 2 — Checkbox cell + header rendering
+
+**Files:**
+- `packages/react/src/pretable-surface.tsx` — render path branches on `column.id === ROW_SELECT_COLUMN_ID`.
+- `packages/ui/src/grid.css` — checkbox cell styling.
+- `packages/ui/src/tokens.css` — new `--pt-color-checkbox-*` tokens.
+
+For the body cell: when rendering a row, if the column is the synthetic one, render `<button type="button" role="checkbox" aria-checked={"true" | "false" | "mixed"}>`. Determine state from `deriveSelectedRows(snapshot)` via the existing memoized `selectedCellKeys` / `fullySelectedRowIds` mechanism (or compute analogously). Click handler: `event.stopPropagation()` to prevent cell-range gestures, then `toggleRowSelection(rowId)` (or shift+click range — see Task 3).
+
+For the header cell: when rendering header columns, special-case the synthetic id. If `rowSelectionColumn.headerCheckbox === false`, render an empty placeholder. Otherwise render `<button type="button" role="checkbox" aria-checked={...}>` with three-state derivation:
+- `aria-checked="true"` if every visible row is fully selected.
+- `aria-checked="mixed"` if some are.
+- `aria-checked="false"` otherwise.
+
+Click handler: derives current state, calls `grid.setSelectAllVisible(!allFullySelected)`.
+
+CSS tokens (theme-agnostic fallback in `tokens.css`):
+
+```css
+--pt-color-checkbox-bg: var(--pt-color-surface, #fff);
+--pt-color-checkbox-border: var(--pt-color-border, #d1d5db);
+--pt-color-checkbox-checked-bg: var(--pt-accent-500, #3b82f6);
+--pt-color-checkbox-checked-fg: white;
+```
+
+Cell styles in `grid.css`:
+
+```css
+[data-pretable-cell][data-row-select-cell="true"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+[role="checkbox"][data-pretable-row-select] {
+  /* 16x16 checkbox with checkmark / dash for mixed */
+}
+```
+
+Add `data-row-select-cell="true"` to the checkbox cell wrapper for CSS targeting.
+
+**Commit:** `feat(react+ui): three-state checkbox cell + header rendering`
+
+#### Task 3 — Body checkbox shift+click range toggle
+
+**Files:** `packages/react/src/pretable-surface.tsx`.
+
+State: `lastCheckedRowAnchorRef = useRef<string | null>(null)` — tracks the last row whose checkbox was clicked (with or without shift). Cleared if the user does anything else.
+
+Body checkbox click handler:
+- Plain click: `lastCheckedRowAnchorRef.current = rowId`; `grid.toggleRowSelection(rowId)`.
+- Shift+click: if `lastCheckedRowAnchorRef.current` exists and is in current visible rows, walk from anchor row to clicked row (inclusive, regardless of order), and for each row in that span, ensure it's selected (toggle ON if not already a full-row range — match AG Grid: shift+click "extends selection ON", doesn't toggle individually). Update `lastCheckedRowAnchorRef.current = rowId` after.
+
+Use `snapshot.visibleRows` for the row order; find indices of anchor and clicked, walk between them.
+
+Fire `onSelectionChange` from the snapshot-diff pattern.
+
+**Commit:** `feat(react): shift+click range-toggle on row-select checkbox`
+
+#### Task 4 — Forward `rowSelectionColumn` through composition components
+
+**Files:** `packages/react/src/pretable.tsx`, `inspection-grid.tsx`, `labeled-grid-surface.tsx`.
+
+Add `rowSelectionColumn` to the prop types and forwarding lists. `Pretable` (the simple drop-in) intentionally remains opinionated; consider whether to expose `rowSelectionColumn` there. Recommendation: yes — it's the most common feature consumers will want from the simple drop-in. Add a default of "off" so existing consumers see no change.
+
+**Commit:** `feat(react): forward rowSelectionColumn through Pretable / Inspection / LabeledGrid`
+
+#### Task 5 — Hero demo wiring
+
+**Files:** `apps/website/app/components/HeroGrid.tsx` (or `heroGrid/`).
+
+Pass `rowSelectionColumn={{ enabled: true, headerCheckbox: true }}` to `<PretableSurface>` in the hero demo. Verify visual integration.
+
+**Commit:** `feat(website): hero demo enables row-select column`
+
+#### Task 6 — jsdom tests
+
+**Files:** `packages/react/src/__tests__/pretable-surface.test.tsx`.
+
+New `describe("row-select checkbox column", ...)`:
+- Synthetic column injection: with `rowSelectionColumn={{enabled:true}}`, asserts the rendered DOM has the checkbox cell as the leftmost cell.
+- Without `rowSelectionColumn`: asserts no synthetic column appears.
+- Body checkbox click toggles row selection (`onSelectionChange` fires with full-row range).
+- Body checkbox shift+click selects every row from anchor to clicked.
+- Header checkbox: when no rows selected, click selects all visible (full-row ranges per visible row).
+- Header checkbox: when all visible selected, click deselects all visible.
+- Header checkbox: indeterminate state when some rows selected.
+- Per-row `aria-checked`: "true" / "mixed" / "false" based on selection state.
+- Click on checkbox cell does NOT move focus.
+- Click on checkbox cell does NOT collapse existing cell-range selections.
+- Cell-range marquee drag does not affect the checkbox column (drag from a body cell over the checkbox column doesn't select it).
+
+Target test count: 110 → ~125+.
+
+**Commit:** `test(react): row-select checkbox column coverage`
+
+#### Task 7 — Playwright smoke test addition
+
+**Files:** `apps/website/e2e/smoke.spec.ts`.
+
+Add a smoke check: visit the hero, locate the leftmost cell as a checkbox, click it, assert visual state changes. (Don't assert specific selection state — Playwright shouldn't depend on internal details. Just verify the checkbox is rendered and interactive.)
+
+**Commit:** `test(website): hero row-select column smoke check`
+
+#### Task 8 — Doc updates
+
+**Files:** `apps/website/content/docs/grid/pretable-surface.mdx`.
+
+Add a new section before "Click + Drag Selection" (or after, ordering judgment call):
+
+```md
+## Row-Selection Checkbox Column
+
+Set `rowSelectionColumn={{ enabled: true }}` for a left-pinned checkbox column with three-state header checkbox + per-row toggles.
+
+| Config | Default | Effect |
+| --- | --- | --- |
+| `enabled: true` | required | Inject the column. |
+| `headerCheckbox` | `true` | Show the select-all-visible header checkbox. |
+| `pinned` | `true` | Pin to left. |
+| `width` | `36` | Pixels. |
+
+The column is independent from cell-range gestures: clicking a checkbox toggles the row's full-row range without moving focus or collapsing other selections. Shift+click on a body checkbox extends from the last-checked row.
+
+Visual customization via `--pt-color-checkbox-*` tokens.
+```
+
+**Commit:** `docs(website): document row-select checkbox column`
+
+#### Task 9 — Repo-wide gates + PR
+
+- `pnpm -w typecheck` / `test` / `lint` / `format` all clean.
+- Push `b4-checkbox-column`, open PR titled `feat(react): row-select checkbox column (Phase 4 of B)`. Body explains the synthetic column model, shift+click range toggle, hero demo wiring, smoke test addition.
 
 ---
 
