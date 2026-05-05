@@ -103,10 +103,7 @@ describe("serializeRangesAsTsv", () => {
 
   it("multi-range blocks joined with \\n\\n", () => {
     const out = serializeRangesAsTsv<Row>({
-      ranges: [
-        range("r1", "r1", "a", "a"),
-        range("r3", "r3", "c", "c"),
-      ],
+      ranges: [range("r1", "r1", "a", "a"), range("r3", "r3", "c", "c")],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
     });
@@ -146,9 +143,7 @@ describe("serializeRangesAsTsv", () => {
       ...baseColumns,
     ];
     const out = serializeRangesAsTsv<Row>({
-      ranges: [
-        range("r1", "r1", ROW_SELECT_COLUMN_ID, ROW_SELECT_COLUMN_ID),
-      ],
+      ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, ROW_SELECT_COLUMN_ID)],
       visibleRows: makeVisibleRows(rows),
       columns: cols,
     });
