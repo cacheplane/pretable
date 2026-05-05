@@ -42,7 +42,7 @@ describe("Example", () => {
           path: "a.ts",
           lang: "ts",
           source: "const a = 1;",
-          htmlSource: '<pre data-shiki><code>highlighted</code></pre>',
+          htmlSource: "<pre data-shiki><code>highlighted</code></pre>",
         },
       ],
     });
