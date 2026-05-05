@@ -27,7 +27,7 @@ describe("InspectionGrid", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", {
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
     const firstRow = view.getAllByTestId("pretable-row")[0]!;
@@ -72,7 +72,7 @@ describe("InspectionGrid", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", {
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
 

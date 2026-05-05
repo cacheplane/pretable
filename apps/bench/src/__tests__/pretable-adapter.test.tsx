@@ -29,7 +29,7 @@ describe("PretableAdapter", () => {
     const adapter = screen
       .getByRole("grid", { name: "Pretable React adapter" })
       .closest("[data-benchmark-adapter]");
-    const headerButton = screen.getByRole("button", {
+    const headerButton = screen.getByRole("columnheader", {
       name: "Sort Message 1",
     });
     const firstRow = screen.getAllByTestId("pretable-row")[0];

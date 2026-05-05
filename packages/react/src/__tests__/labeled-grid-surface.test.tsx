@@ -86,10 +86,10 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", {
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
-    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+    const severityHeader = view.getByRole("columnheader", { name: "Sort Severity" });
     const firstRow = view.getAllByTestId("pretable-row")[0]!;
     const pinnedCell = within(firstRow)
       .getAllByText("Timestamp")[0]!
@@ -154,10 +154,10 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", {
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
-    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+    const severityHeader = view.getByRole("columnheader", { name: "Sort Severity" });
 
     expect(timestampHeader).toHaveTextContent("Timestamp▼");
     expect(severityHeader).not.toHaveTextContent("▼");
@@ -198,8 +198,8 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
-    const timestampHeader = view.getByRole("button", {
+    const severityHeader = view.getByRole("columnheader", { name: "Sort Severity" });
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
 
@@ -225,7 +225,7 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+    const severityHeader = view.getByRole("columnheader", { name: "Sort Severity" });
 
     fireEvent.click(severityHeader);
 
