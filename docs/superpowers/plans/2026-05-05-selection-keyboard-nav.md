@@ -2470,22 +2470,159 @@ Add a `## Copy` section after the row-select section. Document the `Cmd+C` defau
 
 ---
 
-## Phase 6 — ARIA live region + announcements (OUTLINE)
+## Phase 6 — ARIA live region + announcements (DETAILED)
 
-**Branch:** `b6-aria-live`. **Detail:** added when Phase 5 merges.
+**Branch:** `b6-aria-live`. **Worktree:** `.worktrees/b6-aria-live`.
 
-**Work items:**
+**Phase exit criteria:**
 
-- Off-screen `<div role="status" aria-live="polite" />` rendered inside the surface root.
-- After Cmd+A, after `selectAll()`, after `setSelectAllVisible(true)`: announce "{n} rows × {m} columns selected" (or "all rows selected" if all visible).
-- After successful Cmd+C: announce "{n} rows × {m} columns copied". After failure: "Copy failed".
-- `messages?: { copyAnnouncement?, selectAllAnnouncement?, copyFailedAnnouncement? }` prop allows consumers to override (i18n).
-- jsdom tests: assert `screen.getByRole("status").textContent` after each event.
+- Off-screen `<div role="status" aria-live="polite">` rendered inside the surface root, visually hidden via standard `sr-only` style block.
+- Live region textContent updates on:
+  - **Select-all** (Cmd+A, programmatic `selectAll()`-driven Cmd+A, header-checkbox click that triggers `setSelectAllVisible(true)`): "All rows selected" if every visible row × every data column is in the resulting selection; otherwise "{n} rows × {m} columns selected" computed from the engine's snapshot.
+  - **Copy success**: "{n} rows × {m} columns copied" using the same row/column count derived from `serializeRangesAsTsv`'s output (count blocks).
+  - **Copy failure** (`copyToClipboard` Promise rejects): "Copy failed".
+- `messages?` prop overrides each string for i18n. Defaults are English.
+- Announcements are debounced (~500ms after the latest trigger) to avoid screen-reader thrashing on shift+arrow held down. The latest event wins.
+- Programmatic `grid.setSelection(...)` calls do NOT announce — only user-triggered events.
+- jsdom tests cover: select-all announces, copy announces, copy-failure announces, debounce coalesces rapid extends, `messages` prop overrides.
 
-**Open questions to resolve when detailing:**
+### Resolved open questions
 
-- Debouncing rapid announcements (e.g., shift+arrow held down): probably yes, suppress repeated extend announcements; only announce on a "selection settled" boundary (debounced ~500ms after the last keydown).
-- Should we announce on every `setSelection` programmatic call? No — only on user-initiated extend / select-all / copy.
+- **Debounce**: 500ms via a `setTimeout`-cleared-on-each-event pattern. Stored in a ref. The keyboard handler updates a `pendingAnnouncementRef`; the timer flushes it to the live region's React state, which re-renders the off-screen div. Use `useEffect` cleanup on unmount to clear the timer.
+- **Programmatic vs user-induced**: announcements fire from event handlers (Cmd+A keydown, header-checkbox click, Cmd+C keydown) directly — same pattern as Phase 2's callback emission. Phase 1's `setSelection` calls inside `usePretableModel` never trigger announcements because they don't go through these handlers.
+- **Row/column count for copy**: derived from the `CopyPayload.text` — count `\n\n`-separated blocks, then within each block count rows (lines, minus header line if `copyWithHeaders` was used) and columns (tabs in first body line + 1). Or, simpler: count from the `selection.ranges` × visible rows / data columns directly. Use the simpler approach.
+
+### Tasks
+
+#### Task 1 — Live region scaffolding + `messages` prop
+
+**Files:**
+- `packages/react/src/pretable-surface.tsx` — render `<div role="status" aria-live="polite">` near the root, with `sr-only` styling. Internal state `liveMessage: string` updated via `setLiveMessage`.
+- `packages/ui/src/grid.css` — add a `.pt-sr-only` class with the standard visually-hidden CSS.
+
+```ts
+export interface PretableSurfaceMessages {
+  selectAllAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+    isAll: boolean;
+  }) => string;
+  copyAnnouncement?: (args: { rowCount: number; columnCount: number }) => string;
+  copyFailedAnnouncement?: () => string;
+}
+```
+
+Default messages:
+```ts
+const defaultMessages = {
+  selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
+    isAll
+      ? "All rows selected"
+      : `${rowCount} rows × ${columnCount} columns selected`,
+  copyAnnouncement: ({ rowCount, columnCount }) =>
+    `${rowCount} rows × ${columnCount} columns copied`,
+  copyFailedAnnouncement: () => "Copy failed",
+};
+```
+
+Add `messages?: PretableSurfaceMessages` to `PretableSurfaceProps<TRow>`.
+
+CSS:
+```css
+.pt-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+```
+
+**Commit:** `feat(react+ui): live region scaffolding + messages prop`
+
+#### Task 2 — Announce on select-all and copy
+
+**Files:** `packages/react/src/pretable-surface.tsx`.
+
+Add a debounced announcement helper:
+
+```ts
+const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const pendingAnnouncementRef = useRef<string | null>(null);
+
+function scheduleAnnouncement(message: string) {
+  pendingAnnouncementRef.current = message;
+  if (announceTimerRef.current !== null) {
+    clearTimeout(announceTimerRef.current);
+  }
+  announceTimerRef.current = setTimeout(() => {
+    if (pendingAnnouncementRef.current !== null) {
+      setLiveMessage(pendingAnnouncementRef.current);
+      pendingAnnouncementRef.current = null;
+    }
+    announceTimerRef.current = null;
+  }, ANNOUNCE_DEBOUNCE_MS);
+}
+```
+
+Constant: `const ANNOUNCE_DEBOUNCE_MS = 500;`. Cleanup on unmount via useEffect.
+
+Call sites:
+- **Cmd+A keydown handler**: after `grid.selectAll()`, compute counts (rowCount = visibleRows.length; columnCount = dataColumns.length; isAll = true if all visible rows × all data columns are in the resulting selection — Cmd+A's effect always satisfies this) and call `scheduleAnnouncement((messages.selectAllAnnouncement ?? default)({ rowCount, columnCount, isAll }))`.
+- **Header checkbox click** (if it transitions to all-selected): after `grid.setSelectAllVisible(true)`, compute counts and announce.
+- **Cmd+C handler**: after `(copyToClipboard ?? defaultCopyToClipboard)(payload)` resolves, compute rowCount/columnCount from the selection range, announce. On rejection, announce `messages.copyFailedAnnouncement()`.
+
+Helper for row/column counts from a selection range:
+```ts
+function selectionExtent(
+  ranges: PretableCellRange[],
+  visibleRows: PretableVisibleRow<unknown>[],
+  dataColumns: PretableColumn<unknown>[],
+): { rowCount: number; columnCount: number } {
+  // Build sets of row IDs and column IDs covered by any range, intersected
+  // with visible/data scope. Synthetic column ids treated as "data start".
+  // Return { rowIds.size, columnIds.size }.
+}
+```
+
+**Commit:** `feat(react): announce select-all and copy events`
+
+#### Task 3 — jsdom tests
+
+**Files:** `packages/react/src/__tests__/pretable-surface.test.tsx`.
+
+New `describe("aria-live announcements", ...)`:
+
+1. **Cmd+A announces "All rows selected"** (default copy).
+2. **Cmd+A with custom `messages.selectAllAnnouncement` uses the override**.
+3. **Header checkbox click that selects all visible rows announces all-selected**.
+4. **Cmd+C with selection announces "{n} rows × {m} columns copied"**.
+5. **Cmd+C with custom `messages.copyAnnouncement` uses the override**.
+6. **Cmd+C failure announces "Copy failed"** (use `copyToClipboard={vi.fn().mockRejectedValue(...)}` and `vi.useFakeTimers()` to advance the debounce; or use real timers + `await`-style waits).
+7. **Programmatic `grid.setSelection(...)` from outside does NOT announce**.
+8. **Rapid shift+arrow extends are debounced — only the final state announces** (skip explicit assertion if too flaky in jsdom; alternative: assert announcement appears AFTER 500ms but only once).
+
+Use `vi.useFakeTimers()` + `vi.advanceTimersByTime(500)` for deterministic debounce assertions.
+
+Target test count: 159 → ~170+.
+
+**Commit:** `test(react): aria-live announcement coverage`
+
+#### Task 4 — Doc updates
+
+**Files:** `apps/website/content/docs/grid/pretable-surface.mdx`.
+
+Append a brief note in the existing Copy section about the announcement, plus add `messages?` to the props table (or a small "i18n" callout).
+
+**Commit:** `docs(website): document live-region announcements + messages prop`
+
+#### Task 5 — Repo-wide gates + PR
+
+`pnpm -w typecheck` / `test` / `lint` / `format` clean. Push, open PR.
 
 ---
 
