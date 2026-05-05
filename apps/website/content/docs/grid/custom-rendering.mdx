@@ -37,7 +37,7 @@ const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
 
 What you get back:
 
-- **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `setFilter(columnId, value)`, `clearFilters()`, `replaceFilters(map)`, `selectRow(id)`, `setFocus(rowId, columnId)`, `moveFocus(delta)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
+- **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `setFilter(columnId, value)`, `clearFilters()`, `replaceFilters(map)`, `setSelection(state)`, `selectAll()`, `clearSelection()`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `toggleRowSelection(id)`, `setSelectAllVisible(checked)`, `setFocus({rowId, columnId} | null)`, `moveFocus(direction, options?)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
 - **`snapshot`** — current state. Shape: `{viewport, sort, filters, selection, focus, totalRowCount, visibleRows, visibleRange}`.
 - **`renderSnapshot`** — what to render right now. Shape: `{columns: PlannedColumn[], rows: PretableRenderRow[], nodeCount, totalHeight, totalWidth}`. Each `PretableRenderRow` has `{id, row, rowIndex, top, height}`.
 - **`telemetry`** — `{focusedRowId, rowModelRowCount, renderedRowCount, selectedRowId, totalRowCount, ...}`.
@@ -149,7 +149,9 @@ export function MyGrid({ rows }: { rows: Person[] }) {
         }}
       >
         {renderSnapshot.rows.map((row) => {
-          const isSelected = snapshot.selection.rowIds.includes(row.id);
+          const isSelected = snapshot.selection.ranges.some(
+            (r) => r.startRowId === row.id && r.endRowId === row.id,
+          );
           const isFocused = snapshot.focus.rowId === row.id;
 
           return (
@@ -165,8 +167,11 @@ export function MyGrid({ rows }: { rows: Person[] }) {
                 display: "flex",
               }}
               onClick={() => {
-                grid.selectRow(row.id);
-                grid.setFocus(row.id, columns[0]?.id ?? null);
+                grid.toggleRowSelection(row.id);
+                grid.setFocus({
+                  rowId: row.id,
+                  columnId: columns[0]?.id ?? null,
+                });
               }}
             >
               {renderSnapshot.columns.map((col) => {
@@ -211,7 +216,7 @@ This renders a working sortable grid with click-to-select. Wire `@pretable/ui/th
 
 The minimal example above is a starting point. For production grids, you'll likely also need:
 
-- **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus(±1)`.
+- **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus("up")` / `grid.moveFocus("down")`. The full keyboard contract (shift+arrow extend, Cmd/Ctrl+arrow jump, Tab wrap, Cmd+A, Esc) is wired by `<PretableSurface>` automatically.
 - **Pinned columns sticky positioning** — apply `position: sticky; left: ${pinnedOffset}px` to pinned cells. The bench's adapter computes pinned offsets via the same algorithm `<PretableSurface>` uses internally; see `packages/react-surface/src/rendering.ts` (function `getPinnedLeftOffsets`) for the canonical implementation.
 - **Per-row measured heights** — use `useLayoutEffect` to measure rendered row heights and pass `measuredHeights: Record<string, number>` to `usePretableModel` for content-aware sizing.
 - **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setFilter(columnId, value)` per change.

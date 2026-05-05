@@ -67,7 +67,7 @@ describe("grid-core derivation caching", () => {
     grid.setFilter("status", "open");
     const before = grid.getSnapshot().visibleRows;
 
-    grid.selectRow("a");
+    grid.toggleRowSelection("a");
 
     expect(grid.getSnapshot().visibleRows).toBe(before);
   });
@@ -160,21 +160,25 @@ describe("grid-core emit behavior", () => {
   test("setFocus with identical rowId and columnId does not emit", () => {
     const instrumented = createInstrumentedGrid();
 
-    instrumented.grid.setFocus("b", "name");
+    instrumented.grid.setFocus({ rowId: "b", columnId: "name" });
     instrumented.reset();
 
-    instrumented.grid.setFocus("b", "name");
+    instrumented.grid.setFocus({ rowId: "b", columnId: "name" });
 
     expect(instrumented.emits).toBe(0);
   });
 
-  test("selectRow with identical rowId does not emit", () => {
+  test("toggleRowSelection then a no-op selection write does not emit", () => {
     const instrumented = createInstrumentedGrid();
 
-    instrumented.grid.selectRow("b");
+    instrumented.grid.toggleRowSelection("b");
     instrumented.reset();
 
-    instrumented.grid.selectRow("b");
+    const current = instrumented.grid.getSnapshot().selection;
+    instrumented.grid.setSelection({
+      ranges: current.ranges,
+      anchor: current.anchor,
+    });
 
     expect(instrumented.emits).toBe(0);
   });

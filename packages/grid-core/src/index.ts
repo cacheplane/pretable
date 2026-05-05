@@ -1,8 +1,17 @@
 export { createGridCore } from "./create-grid-core";
+export {
+  deriveSelectedRows,
+  rangeContainsCell,
+  type RowSelectionTriState,
+} from "./derived-selection";
 export type {
+  GridCoreCellAddress,
+  GridCoreCellRange,
   GridCoreColumn,
+  GridCoreFocusDirection,
   GridCoreFocusState,
   GridCoreFrame,
+  GridCoreMoveFocusOptions,
   GridCoreOptions,
   GridCoreRow,
   GridCoreRowModel,

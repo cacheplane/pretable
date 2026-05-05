@@ -46,7 +46,7 @@ function MyGrid({ rows, columns }) {
 }
 ```
 
-The hooks return the grid model and the virtualized render snapshot. You write your own JSX, applying the data-attribute contract so `@pretable/ui/grid.css` styles your output. You wire interaction by calling `grid.setSort`, `grid.replaceFilters`, `grid.selectRow`, `grid.setFocus` — the engine maintains the state, you render the UI.
+The hooks return the grid model and the virtualized render snapshot. You write your own JSX, applying the data-attribute contract so `@pretable/ui/grid.css` styles your output. You wire interaction by calling `grid.setSort`, `grid.replaceFilters`, `grid.toggleRowSelection`, `grid.setFocus` — the engine maintains the state, you render the UI.
 
 Use this when:
 
