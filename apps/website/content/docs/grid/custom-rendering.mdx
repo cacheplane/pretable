@@ -4,10 +4,6 @@ description: "usePretableModel returns the engine's full state: the grid model (
 nav: Grid
 order: 4
 ---
----
-title: Custom rendering with usePretableModel
-description: Build your own grid UI on top of the engine — full control over cell rendering, sort UI, filter UI, selection, focus, and pinned columns.
----
 
 `usePretableModel` returns the engine's full state: the grid model (with interaction methods), the snapshot (sort, filters, selection, focus), the render snapshot (which rows to render at what positions), and telemetry. You write your own JSX on top, applying the `[data-pretable-*]` attribute contract so `@pretable/ui/grid.css` styles the result.
 

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { slugToContentPath, contentPathToSlug, isValidSlugSegment } from "../paths";
+import {
+  slugToContentPath,
+  contentPathToSlug,
+  isValidSlugSegment,
+} from "../paths";
 
 describe("slugToContentPath", () => {
   it("maps empty slug to index.mdx", () => {
@@ -9,14 +13,19 @@ describe("slugToContentPath", () => {
     expect(slugToContentPath(["grid"])).toBe("grid/index.mdx");
   });
   it("maps nested slug to nested file", () => {
-    expect(slugToContentPath(["grid", "pretable-component"])).toBe("grid/pretable-component.mdx");
+    expect(slugToContentPath(["grid", "pretable-component"])).toBe(
+      "grid/pretable-component.mdx",
+    );
   });
 });
 
 describe("contentPathToSlug", () => {
   it("strips .mdx and index", () => {
     expect(contentPathToSlug("grid/index.mdx")).toEqual(["grid"]);
-    expect(contentPathToSlug("grid/pretable-component.mdx")).toEqual(["grid", "pretable-component"]);
+    expect(contentPathToSlug("grid/pretable-component.mdx")).toEqual([
+      "grid",
+      "pretable-component",
+    ]);
     expect(contentPathToSlug("getting-started/index.mdx")).toEqual([]);
   });
 });

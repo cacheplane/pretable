@@ -1,12 +1,8 @@
 ---
 title: Parsers
-description: The parse* helpers sit one layer below connect*.
+description: "The parse* helpers sit one layer below connect*."
 nav: Streaming
 order: 4
----
----
-title: Parsers
-description: parseElementStream + parsePartialStream — turn raw JSON string chunks into typed async iterables.
 ---
 
 The `parse*` helpers sit one layer below `connect*`. They accept an `AsyncIterable<string>` (raw JSON chunks from `fetch`, `Response.body`, SSE, etc.) and yield typed values. Pipe their output into the connect helpers.

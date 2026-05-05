@@ -1,8 +1,13 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { defineExample } from "../../../lib/docs/define-example";
-import chatGridSource from "./ChatGrid.tsx?raw";
-import columnsSource from "./columns.ts?raw";
-import openaiSource from "./openai-client.ts?raw";
-import pageSource from "./page.tsx?raw";
+
+const DIR = path.join(
+  process.cwd(),
+  "content/examples/streaming-chat-grid",
+);
+const read = (f: string) => fs.readFileSync(path.join(DIR, f), "utf8");
 
 // Demo is a self-contained static placeholder so the source files (which import
 // `openai`) don't need to be bundled. The source tabs still show the real code.
@@ -23,9 +28,13 @@ export const streamingChatGrid = defineExample({
   title: "Streaming chat grid",
   Demo: <Demo />,
   files: [
-    { path: "page.tsx", lang: "tsx", source: pageSource },
-    { path: "ChatGrid.tsx", lang: "tsx", source: chatGridSource },
-    { path: "columns.ts", lang: "ts", source: columnsSource },
-    { path: "openai-client.ts", lang: "ts", source: openaiSource },
+    { path: "page.tsx", lang: "tsx", source: read("page.tsx") },
+    { path: "ChatGrid.tsx", lang: "tsx", source: read("ChatGrid.tsx") },
+    { path: "columns.ts", lang: "ts", source: read("columns.ts") },
+    {
+      path: "openai-client.ts",
+      lang: "ts",
+      source: read("openai-client.ts"),
+    },
   ],
 });

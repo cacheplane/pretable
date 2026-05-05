@@ -13,8 +13,6 @@ describe("Prompt", () => {
       </Prompt>,
     );
     fireEvent.click(screen.getByRole("button", { name: /copy prompt/i }));
-    expect(writeText).toHaveBeenCalledWith(
-      "Summarize the last 10 incidents.",
-    );
+    expect(writeText).toHaveBeenCalledWith("Summarize the last 10 incidents.");
   });
 });

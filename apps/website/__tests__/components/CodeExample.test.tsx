@@ -21,9 +21,7 @@ it("show source disclosure reveals tabs for each example file", () => {
     "columns.ts",
     "openai-client.ts",
   ]) {
-    expect(
-      screen.getByRole("tab", { name: filename }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: filename })).toBeInTheDocument();
   }
 });
 

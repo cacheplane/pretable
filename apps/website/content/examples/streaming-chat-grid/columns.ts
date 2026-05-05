@@ -1,3 +1,4 @@
+// @ts-nocheck — sample source for docs; not compiled as app code.
 import type { PretableColumn } from "@pretable/react";
 
 export interface ChatRow {

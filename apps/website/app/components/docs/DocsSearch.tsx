@@ -84,10 +84,7 @@ export function DocsSearch() {
           placeholder="Search the docs"
           className="w-full border-b border-rule bg-transparent px-4 py-3 font-mono text-[14px] outline-none"
         />
-        <ul
-          id="search-results"
-          className="max-h-[60vh] overflow-y-auto py-2"
-        >
+        <ul id="search-results" className="max-h-[60vh] overflow-y-auto py-2">
           {results.map((r) => (
             <li key={r.slug}>
               <Link

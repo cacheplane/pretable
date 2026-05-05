@@ -21,9 +21,7 @@ describe("buildLlmsTxt", () => {
     ]);
     expect(txt).toMatch(/^# Pretable Docs/);
     expect(txt).toMatch(/## Alpha/);
-    expect(txt).toMatch(
-      /- \[Alpha\]\(\/docs\/alpha\.md\): Alpha overview/,
-    );
+    expect(txt).toMatch(/- \[Alpha\]\(\/docs\/alpha\.md\): Alpha overview/);
     expect(txt).toMatch(/- \[One\]\(\/docs\/alpha\/one\.md\): First page/);
   });
 });

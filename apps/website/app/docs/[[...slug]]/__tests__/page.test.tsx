@@ -7,7 +7,6 @@ describe("docs catch-all page", () => {
   it("renders frontmatter title for empty slug", async () => {
     const ui = await Page({
       params: Promise.resolve({ slug: undefined }),
-      searchParams: Promise.resolve({}),
     });
     render(ui as React.ReactElement);
     const headings = screen.getAllByRole("heading", {
