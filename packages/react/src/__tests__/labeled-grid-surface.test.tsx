@@ -121,7 +121,7 @@ describe("LabeledGridSurface", () => {
     expect(timestampHeader).toHaveTextContent("Timestamp▼");
   }, 15_000);
 
-  it("forwards selected row id changes from the shared surface", () => {
+  it("forwards selected row id changes from the shared surface (keyboard row-toggle)", () => {
     const onSelectedRowIdChange = vi.fn();
     const view = render(
       <LabeledGridSurface
@@ -135,7 +135,12 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
+    // Phase 3 click semantics are cell-level — full-row select happens via
+    // keyboard Enter/Space on the focused row (Phase 1 row-toggle).
+    const viewport = view.getByRole("grid", { name: "Inspection grid" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    fireEvent.keyDown(viewport, { key: "Enter" });
 
     expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-002");
   });
