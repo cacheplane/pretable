@@ -6,7 +6,11 @@ import {
   type SourceRow,
 } from "./derived-rows";
 import type {
+  GridCoreCellAddress,
+  GridCoreCellRange,
+  GridCoreFocusDirection,
   GridCoreFocusState,
+  GridCoreMoveFocusOptions,
   GridCoreOptions,
   GridCoreRow,
   GridCoreRowModel,
@@ -68,7 +72,7 @@ export function createGridCore<TRow extends GridCoreRow>(
   let cachedDerivedFilters: Record<string, string> | null = null;
   let sort: GridCoreSortState = { columnId: null, direction: null };
   let filters: Record<string, string> = {};
-  let selection: GridCoreSelectionState = { rowIds: [], anchorRowId: null };
+  let selection: GridCoreSelectionState = { ranges: [], anchor: null };
   let focus: GridCoreFocusState = { rowId: null, columnId: null };
   let viewport: GridCoreViewportState = {
     scrollTop: 0,
@@ -146,51 +150,335 @@ export function createGridCore<TRow extends GridCoreRow>(
       filters = normalized;
       emit();
     },
-    selectRow(rowId: string | null) {
-      const currentRowId = selection.rowIds[0] ?? null;
-
-      if (currentRowId === rowId && selection.anchorRowId === rowId) {
+    setSelection(next: GridCoreSelectionState) {
+      if (selectionsEqual(selection, next)) {
         return;
       }
 
-      selection = rowId
-        ? { rowIds: [rowId], anchorRowId: rowId }
-        : { rowIds: [], anchorRowId: null };
+      selection = {
+        ranges: next.ranges.map((r) => ({ ...r })),
+        anchor: next.anchor ? { ...next.anchor } : null,
+      };
       emit();
     },
-    setFocus(rowId: string | null, columnId: string | null) {
-      if (focus.rowId === rowId && focus.columnId === columnId) {
-        return;
-      }
-
-      focus = { rowId, columnId };
-      emit();
-    },
-    moveFocus(delta: number) {
+    selectAll() {
       const snapshot = getSnapshot();
-      const currentIndex = snapshot.visibleRows.findIndex(
-        (row) => row.id === focus.rowId,
+      const firstRow = snapshot.visibleRows[0];
+      const lastRow = snapshot.visibleRows[snapshot.visibleRows.length - 1];
+      const firstColumn = options.columns[0];
+      const lastColumn = options.columns[options.columns.length - 1];
+
+      if (!firstRow || !lastRow || !firstColumn || !lastColumn) {
+        return;
+      }
+
+      const range: GridCoreCellRange = {
+        startRowId: firstRow.id,
+        endRowId: lastRow.id,
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      };
+      const anchor: GridCoreCellAddress = {
+        rowId: firstRow.id,
+        columnId: firstColumn.id,
+      };
+
+      const next: GridCoreSelectionState = { ranges: [range], anchor };
+
+      if (selectionsEqual(selection, next)) {
+        return;
+      }
+
+      selection = next;
+      emit();
+    },
+    clearSelection() {
+      const focusAddr =
+        focus.rowId && focus.columnId
+          ? { rowId: focus.rowId, columnId: focus.columnId }
+          : null;
+      const next: GridCoreSelectionState = focusAddr
+        ? {
+            ranges: [
+              {
+                startRowId: focusAddr.rowId,
+                endRowId: focusAddr.rowId,
+                startColumnId: focusAddr.columnId,
+                endColumnId: focusAddr.columnId,
+              },
+            ],
+            anchor: focusAddr,
+          }
+        : { ranges: [], anchor: null };
+
+      if (selectionsEqual(selection, next)) {
+        return;
+      }
+
+      selection = next;
+      emit();
+    },
+    addRange(range: GridCoreCellRange) {
+      selection = {
+        ranges: [...selection.ranges, { ...range }],
+        anchor: { rowId: range.startRowId, columnId: range.startColumnId },
+      };
+      emit();
+    },
+    extendRangeFromAnchor(addr: GridCoreCellAddress) {
+      if (!selection.anchor) {
+        return;
+      }
+
+      const newActive: GridCoreCellRange = {
+        startRowId: selection.anchor.rowId,
+        endRowId: addr.rowId,
+        startColumnId: selection.anchor.columnId,
+        endColumnId: addr.columnId,
+      };
+
+      const ranges =
+        selection.ranges.length === 0
+          ? [newActive]
+          : [...selection.ranges.slice(0, -1), newActive];
+
+      selection = { ranges, anchor: selection.anchor };
+      emit();
+    },
+    toggleRowSelection(rowId: string) {
+      const firstColumn = options.columns[0];
+      const lastColumn = options.columns[options.columns.length - 1];
+
+      if (!firstColumn || !lastColumn) {
+        return;
+      }
+
+      const fullRowRange: GridCoreCellRange = {
+        startRowId: rowId,
+        endRowId: rowId,
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      };
+
+      const matchIndex = selection.ranges.findIndex((r) =>
+        isFullRowRange(r, rowId, firstColumn.id, lastColumn.id),
       );
 
-      if (snapshot.visibleRows.length === 0) {
-        focus = { rowId: null, columnId: focus.columnId };
+      if (matchIndex >= 0) {
+        const ranges = selection.ranges.filter((_, i) => i !== matchIndex);
+        selection = { ranges, anchor: selection.anchor };
+      } else {
+        selection = {
+          ranges: [...selection.ranges, fullRowRange],
+          anchor: { rowId, columnId: firstColumn.id },
+        };
+      }
+
+      emit();
+    },
+    setSelectAllVisible(checked: boolean) {
+      const snapshot = getSnapshot();
+      const firstColumn = options.columns[0];
+      const lastColumn = options.columns[options.columns.length - 1];
+
+      if (!firstColumn || !lastColumn) {
+        return;
+      }
+
+      const visibleIds = new Set(snapshot.visibleRows.map((r) => r.id));
+      const nonRowRanges = selection.ranges.filter(
+        (r) =>
+          !isFullRowRange(r, r.startRowId, firstColumn.id, lastColumn.id) ||
+          !visibleIds.has(r.startRowId),
+      );
+
+      let next: GridCoreSelectionState;
+
+      if (checked) {
+        const newRanges = snapshot.visibleRows.map<GridCoreCellRange>(
+          (row) => ({
+            startRowId: row.id,
+            endRowId: row.id,
+            startColumnId: firstColumn.id,
+            endColumnId: lastColumn.id,
+          }),
+        );
+
+        next = {
+          ranges: [...nonRowRanges, ...newRanges],
+          anchor: snapshot.visibleRows[0]
+            ? { rowId: snapshot.visibleRows[0].id, columnId: firstColumn.id }
+            : selection.anchor,
+        };
+      } else {
+        next = { ranges: nonRowRanges, anchor: selection.anchor };
+      }
+
+      if (selectionsEqual(selection, next)) {
+        return;
+      }
+
+      selection = next;
+      emit();
+    },
+    setFocus(addr: GridCoreCellAddress | null) {
+      const nextRowId = addr?.rowId ?? null;
+      const nextColumnId = addr?.columnId ?? null;
+
+      if (focus.rowId === nextRowId && focus.columnId === nextColumnId) {
+        return;
+      }
+
+      focus = { rowId: nextRowId, columnId: nextColumnId };
+      emit();
+    },
+    moveFocus(
+      direction: GridCoreFocusDirection,
+      moveOptions: GridCoreMoveFocusOptions = {},
+    ) {
+      const snapshot = getSnapshot();
+      const visibleRows = snapshot.visibleRows;
+      const columnList = options.columns;
+
+      if (visibleRows.length === 0 || columnList.length === 0) {
+        focus = { rowId: null, columnId: null };
         emit();
         return;
       }
 
-      const nextIndex =
-        currentIndex === -1
-          ? delta >= 0
-            ? 0
-            : snapshot.visibleRows.length - 1
-          : clamp(currentIndex + delta, 0, snapshot.visibleRows.length - 1);
-      const nextRow = snapshot.visibleRows[nextIndex];
+      const currentRowIndex = focus.rowId
+        ? visibleRows.findIndex((r) => r.id === focus.rowId)
+        : -1;
+      const currentColumnIndex = focus.columnId
+        ? columnList.findIndex((c) => c.id === focus.columnId)
+        : -1;
 
-      if (!nextRow) {
+      const hasRowFocus = currentRowIndex !== -1;
+      const hasColumnFocus = currentColumnIndex !== -1;
+      const baseRowIndex = hasRowFocus ? currentRowIndex : 0;
+      const baseColumnIndex = hasColumnFocus ? currentColumnIndex : 0;
+
+      let nextRowIndex = baseRowIndex;
+      let nextColumnIndex = baseColumnIndex;
+
+      const pageStep = computePageStep(viewport, visibleRows);
+
+      // When focus is null on the relevant axis, the move lands on the edge
+      // implied by the direction (down/right → 0; up/left → length-1) without
+      // applying a step, so the user "arrives" at the grid before navigating.
+      switch (direction) {
+        case "up":
+          if (moveOptions.jumpToEdge) {
+            nextRowIndex = 0;
+          } else if (!hasRowFocus) {
+            nextRowIndex = visibleRows.length - 1;
+          } else if (moveOptions.byPage) {
+            nextRowIndex = clamp(
+              baseRowIndex - pageStep,
+              0,
+              visibleRows.length - 1,
+            );
+          } else {
+            nextRowIndex = clamp(baseRowIndex - 1, 0, visibleRows.length - 1);
+          }
+          break;
+        case "down":
+          if (moveOptions.jumpToEdge) {
+            nextRowIndex = visibleRows.length - 1;
+          } else if (!hasRowFocus) {
+            nextRowIndex = 0;
+          } else if (moveOptions.byPage) {
+            nextRowIndex = clamp(
+              baseRowIndex + pageStep,
+              0,
+              visibleRows.length - 1,
+            );
+          } else {
+            nextRowIndex = clamp(baseRowIndex + 1, 0, visibleRows.length - 1);
+          }
+          break;
+        case "left":
+          if (moveOptions.jumpToEdge) {
+            nextColumnIndex = 0;
+          } else if (!hasColumnFocus) {
+            nextColumnIndex = columnList.length - 1;
+          } else {
+            nextColumnIndex = clamp(
+              baseColumnIndex - 1,
+              0,
+              columnList.length - 1,
+            );
+          }
+          break;
+        case "right":
+          if (moveOptions.jumpToEdge) {
+            nextColumnIndex = columnList.length - 1;
+          } else if (!hasColumnFocus) {
+            nextColumnIndex = 0;
+          } else {
+            nextColumnIndex = clamp(
+              baseColumnIndex + 1,
+              0,
+              columnList.length - 1,
+            );
+          }
+          break;
+      }
+
+      const nextRow = visibleRows[nextRowIndex];
+      const nextColumn = columnList[nextColumnIndex];
+
+      if (!nextRow || !nextColumn) {
         return;
       }
 
-      focus = { rowId: nextRow.id, columnId: focus.columnId };
+      const nextAddr: GridCoreCellAddress = {
+        rowId: nextRow.id,
+        columnId: nextColumn.id,
+      };
+
+      focus = nextAddr;
+
+      if (moveOptions.extend) {
+        if (!selection.anchor) {
+          selection = {
+            ranges: [
+              {
+                startRowId: nextAddr.rowId,
+                endRowId: nextAddr.rowId,
+                startColumnId: nextAddr.columnId,
+                endColumnId: nextAddr.columnId,
+              },
+            ],
+            anchor: nextAddr,
+          };
+        } else {
+          const newActive: GridCoreCellRange = {
+            startRowId: selection.anchor.rowId,
+            endRowId: nextAddr.rowId,
+            startColumnId: selection.anchor.columnId,
+            endColumnId: nextAddr.columnId,
+          };
+          const ranges =
+            selection.ranges.length === 0
+              ? [newActive]
+              : [...selection.ranges.slice(0, -1), newActive];
+          selection = { ranges, anchor: selection.anchor };
+        }
+      } else {
+        selection = {
+          ranges: [
+            {
+              startRowId: nextAddr.rowId,
+              endRowId: nextAddr.rowId,
+              startColumnId: nextAddr.columnId,
+              endColumnId: nextAddr.columnId,
+            },
+          ],
+          anchor: nextAddr,
+        };
+      }
+
       emit();
     },
     setViewport(nextViewport: GridCoreViewportState) {
@@ -310,8 +598,8 @@ export function createGridCore<TRow extends GridCoreRow>(
       sort,
       filters: { ...filters },
       selection: {
-        rowIds: [...selection.rowIds],
-        anchorRowId: selection.anchorRowId,
+        ranges: selection.ranges.map((r) => ({ ...r })),
+        anchor: selection.anchor ? { ...selection.anchor } : null,
       },
       focus,
       totalRowCount: sourceRows.length,
@@ -336,6 +624,73 @@ export function createGridCore<TRow extends GridCoreRow>(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function computePageStep<TRow extends GridCoreRow>(
+  viewport: { height: number },
+  visibleRows: GridCoreRowModel<TRow>[],
+): number {
+  if (viewport.height <= 0 || visibleRows.length === 0) {
+    return 1;
+  }
+
+  // 32px = default row-height heuristic; the React adapter overrides this
+  // with measured row heights in Phase 2.
+  const estimatedRowsPerPage = Math.max(
+    1,
+    Math.floor((viewport.height * 0.8) / 32),
+  );
+
+  return Math.min(estimatedRowsPerPage, visibleRows.length);
+}
+
+function isFullRowRange(
+  range: GridCoreCellRange,
+  rowId: string,
+  firstColumnId: string,
+  lastColumnId: string,
+): boolean {
+  return (
+    range.startRowId === rowId &&
+    range.endRowId === rowId &&
+    range.startColumnId === firstColumnId &&
+    range.endColumnId === lastColumnId
+  );
+}
+
+function selectionsEqual(
+  a: GridCoreSelectionState,
+  b: GridCoreSelectionState,
+): boolean {
+  if (a.ranges.length !== b.ranges.length) {
+    return false;
+  }
+
+  for (let i = 0; i < a.ranges.length; i += 1) {
+    const ar = a.ranges[i]!;
+    const br = b.ranges[i]!;
+
+    if (
+      ar.startRowId !== br.startRowId ||
+      ar.endRowId !== br.endRowId ||
+      ar.startColumnId !== br.startColumnId ||
+      ar.endColumnId !== br.endColumnId
+    ) {
+      return false;
+    }
+  }
+
+  if (a.anchor === null && b.anchor === null) {
+    return true;
+  }
+
+  if (a.anchor === null || b.anchor === null) {
+    return false;
+  }
+
+  return (
+    a.anchor.rowId === b.anchor.rowId && a.anchor.columnId === b.anchor.columnId
+  );
 }
 
 function filtersEqual(

@@ -112,13 +112,35 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
     if (interactionOverrides.focusedRowId !== undefined) {
       const firstColumnId = columns[0]?.id ?? null;
       grid.setFocus(
-        interactionOverrides.focusedRowId,
-        interactionOverrides.focusedRowId ? firstColumnId : null,
+        interactionOverrides.focusedRowId
+          ? {
+              rowId: interactionOverrides.focusedRowId,
+              columnId: firstColumnId,
+            }
+          : null,
       );
     }
 
     if (interactionOverrides.selectedRowId !== undefined) {
-      grid.selectRow(interactionOverrides.selectedRowId);
+      const selectedRowId = interactionOverrides.selectedRowId;
+      const firstColumn = columns[0];
+      const lastColumn = columns[columns.length - 1];
+
+      if (selectedRowId === null || !firstColumn || !lastColumn) {
+        grid.setSelection({ ranges: [], anchor: null });
+      } else {
+        grid.setSelection({
+          ranges: [
+            {
+              startRowId: selectedRowId,
+              endRowId: selectedRowId,
+              startColumnId: firstColumn.id,
+              endColumnId: lastColumn.id,
+            },
+          ],
+          anchor: { rowId: selectedRowId, columnId: firstColumn.id },
+        });
+      }
     }
   }
 
@@ -191,7 +213,7 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
       focusedRowId: snapshot.focus.rowId,
       rowModelRowCount: snapshot.visibleRows.length,
       renderedRowCount: renderSnapshot.rows.length,
-      selectedRowId: snapshot.selection.rowIds[0] ?? null,
+      selectedRowId: snapshot.selection.ranges[0]?.startRowId ?? null,
       totalRowCount: snapshot.totalRowCount,
       totalHeight: renderSnapshot.totalHeight,
       visibleRowCount: viewportRows.length,
@@ -211,7 +233,7 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
     renderSnapshot.totalHeight,
     snapshot.focus.rowId,
     snapshot.visibleRows.length,
-    snapshot.selection.rowIds,
+    snapshot.selection.ranges,
     snapshot.totalRowCount,
     snapshot.viewport.height,
     snapshot.viewport.scrollTop,

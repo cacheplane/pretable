@@ -29,9 +29,21 @@ export interface GridCoreSortState {
   direction: GridCoreSortDirection;
 }
 
+export interface GridCoreCellAddress {
+  rowId: string;
+  columnId: string;
+}
+
+export interface GridCoreCellRange {
+  startRowId: string;
+  endRowId: string;
+  startColumnId: string;
+  endColumnId: string;
+}
+
 export interface GridCoreSelectionState {
-  rowIds: string[];
-  anchorRowId: string | null;
+  ranges: GridCoreCellRange[];
+  anchor: GridCoreCellAddress | null;
 }
 
 export interface GridCoreFocusState {
@@ -77,12 +89,32 @@ export interface GridCoreStore<TRow extends GridCoreRow = GridCoreRow> {
   setFilter(columnId: string, value: string): void;
   clearFilters(): void;
   replaceFilters(nextFilters: Record<string, string>): void;
-  selectRow(rowId: string | null): void;
-  setFocus(rowId: string | null, columnId: string | null): void;
-  moveFocus(delta: number): void;
+  // selection actions
+  setSelection(state: GridCoreSelectionState): void;
+  selectAll(): void;
+  clearSelection(): void;
+  addRange(range: GridCoreCellRange): void;
+  extendRangeFromAnchor(addr: GridCoreCellAddress): void;
+  toggleRowSelection(rowId: string): void;
+  setSelectAllVisible(checked: boolean): void;
+
+  // focus actions
+  setFocus(addr: GridCoreCellAddress | null): void;
+  moveFocus(
+    direction: GridCoreFocusDirection,
+    options?: GridCoreMoveFocusOptions,
+  ): void;
   setViewport(viewport: GridCoreViewportState): void;
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
   applyTransaction(transaction: GridCoreTransaction<TRow>): void;
+}
+
+export type GridCoreFocusDirection = "up" | "down" | "left" | "right";
+
+export interface GridCoreMoveFocusOptions {
+  extend?: boolean;
+  jumpToEdge?: boolean;
+  byPage?: boolean;
 }
 
 export interface GridCoreFrame<TRow extends GridCoreRow = GridCoreRow> {
