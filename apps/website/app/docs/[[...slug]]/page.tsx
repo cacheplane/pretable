@@ -25,9 +25,32 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug = [] } = await params;
   const path = pathFor(slug);
+  let title = "Pretable Docs";
+  let description = "The drop-in React data grid built for streaming.";
+  try {
+    const result = await loadDocsPage(slug);
+    title = `${result.frontmatter.title} — Pretable`;
+    description = result.frontmatter.description;
+  } catch {
+    // page not found; metadata falls back to defaults — page itself will 404
+  }
   return {
+    title,
+    description,
     alternates: { types: { "text/markdown": `${path}.md` } },
     other: { "x-llms-txt": "/llms.txt" },
+    openGraph: {
+      type: "article",
+      url: path,
+      title,
+      description,
+      siteName: "Pretable",
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+    },
   };
 }
 
