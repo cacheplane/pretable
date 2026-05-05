@@ -33,4 +33,23 @@ describe("Example", () => {
       "```ts a.ts\nexport const a = 1;\n```\n\n```ts b.ts\nexport const b = 2;\n```\n",
     );
   });
+  it("renders htmlSource markup when provided", () => {
+    const def = defineExample({
+      title: "Demo",
+      Demo: <div />,
+      files: [
+        {
+          path: "a.ts",
+          lang: "ts",
+          source: "const a = 1;",
+          htmlSource: "<pre data-shiki><code>highlighted</code></pre>",
+        },
+      ],
+    });
+    render(<Example example={def} defaultOpen />);
+    expect(document.querySelector("pre[data-shiki]")).not.toBeNull();
+    expect(document.querySelector("pre[data-shiki]")).toHaveTextContent(
+      "highlighted",
+    );
+  });
 });
