@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
@@ -1388,6 +1389,61 @@ describe("controlled-mode round-trips", () => {
 
     expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
     expect(getCell(view, "r2", "a")).toHaveAttribute("data-selected", "false");
+
+    // The callback fires with the proposed-by-engine extended selection,
+    // even though the controlled prop forces it back to the original value
+    // on render. This is what enables consumer-driven controlled mode: the
+    // consumer can read the proposed change and decide whether to commit.
+    expect(onSelectionChange).toHaveBeenCalled();
+    const lastCall =
+      onSelectionChange.mock.calls[onSelectionChange.mock.calls.length - 1]!;
+    const proposed = lastCall[0] as PretableSelectionState;
+    expect(proposed.ranges[0]).toEqual({
+      startRowId: "r1",
+      endRowId: "r2",
+      startColumnId: "a",
+      endColumnId: "a",
+    });
+  });
+
+  it("state.selection: consumer-driven loop — committing onSelectionChange to setState advances the rendered selection", () => {
+    function ConsumerDrivenHarness() {
+      const [selection, setSelection] = React.useState<PretableSelectionState>({
+        ranges: [
+          {
+            startRowId: "r1",
+            endRowId: "r1",
+            startColumnId: "a",
+            endColumnId: "a",
+          },
+        ],
+        anchor: { rowId: "r1", columnId: "a" },
+      });
+      return (
+        <PretableSurface
+          ariaLabel="consumer-driven"
+          columns={gridColumns}
+          getRowId={(row: GridRow) => row.id}
+          overscan={0}
+          rows={gridRows}
+          state={{
+            focus: { rowId: "r1", columnId: "a" },
+            selection,
+          }}
+          onSelectionChange={setSelection}
+          viewportHeight={300}
+        />
+      );
+    }
+
+    const view = render(<ConsumerDrivenHarness />);
+    const grid = view.getByRole("grid");
+
+    fireEvent.keyDown(grid, { key: "ArrowDown", shiftKey: true });
+
+    // Consumer committed the change; rendered selection follows.
+    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r2", "a")).toHaveAttribute("data-selected", "true");
   });
 
   it("state.selection: rerendering with an updated controlled selection prop forces the rendered selection to match the prop", () => {

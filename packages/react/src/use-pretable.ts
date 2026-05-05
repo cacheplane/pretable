@@ -14,7 +14,7 @@ import {
   createDomRenderSnapshot,
   type PlannedColumn,
 } from "@pretable-internal/renderer-dom";
-import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
   autosize?: boolean | AutosizeOptions;
@@ -108,12 +108,12 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
 }: UsePretableModelOptions<TRow>): PretableModel<TRow> {
   const grid = usePretable({ autosize, columns, rows, getRowId });
 
-  const lastEmittedSelectionRef = useRef<PretableSelectionState | null>(null);
-  const lastEmittedFocusRef = useRef<PretableFocusState | null>(null);
-  const onSelectionChangeRef = useRef(onSelectionChange);
-  const onFocusChangeRef = useRef(onFocusChange);
-  onSelectionChangeRef.current = onSelectionChange;
-  onFocusChangeRef.current = onFocusChange;
+  // onSelectionChange / onFocusChange callbacks are wired in the surface's
+  // event handlers (keyboard, click) directly. This keeps callbacks firing
+  // for user-induced changes even when the corresponding slice is controlled
+  // — diff-detection here would race the controlled-prop reapply below.
+  void onSelectionChange;
+  void onFocusChange;
 
   if (state) {
     if (state.sort !== undefined) {
@@ -171,36 +171,6 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
     viewportHeight,
     viewportWidth,
   ]);
-
-  useLayoutEffect(() => {
-    const last = lastEmittedSelectionRef.current;
-    const next = snapshot.selection;
-
-    if (last === null) {
-      lastEmittedSelectionRef.current = next;
-      return;
-    }
-
-    if (JSON.stringify(last) !== JSON.stringify(next)) {
-      lastEmittedSelectionRef.current = next;
-      onSelectionChangeRef.current?.(next);
-    }
-  }, [snapshot.selection]);
-
-  useLayoutEffect(() => {
-    const last = lastEmittedFocusRef.current;
-    const next = snapshot.focus;
-
-    if (last === null) {
-      lastEmittedFocusRef.current = next;
-      return;
-    }
-
-    if (last.rowId !== next.rowId || last.columnId !== next.columnId) {
-      lastEmittedFocusRef.current = next;
-      onFocusChangeRef.current?.(next);
-    }
-  }, [snapshot.focus]);
 
   const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
     () =>

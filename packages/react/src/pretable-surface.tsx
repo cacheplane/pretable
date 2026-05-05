@@ -412,6 +412,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       role="grid"
       tabIndex={-1}
       onKeyDown={(event) => {
+        const before = grid.getSnapshot();
         const handled = handleSurfaceKeyDown(event, {
           bodyViewportHeight,
           columns,
@@ -423,6 +424,19 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
         if (handled) {
           event.preventDefault();
+          const after = grid.getSnapshot();
+          if (
+            before.focus.rowId !== after.focus.rowId ||
+            before.focus.columnId !== after.focus.columnId
+          ) {
+            onFocusChange?.(after.focus);
+          }
+          if (
+            JSON.stringify(before.selection) !==
+            JSON.stringify(after.selection)
+          ) {
+            onSelectionChange?.(after.selection);
+          }
         }
       }}
       onScroll={(event) => {
@@ -583,9 +597,23 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               key={id}
               role="row"
               onClick={() => {
+                const before = grid.getSnapshot();
                 grid.setFocus({ rowId: id, columnId: columns[0]?.id ?? null });
                 replaceSelectionWithFullRow(grid, id, columns);
                 onSelectedRowIdChange?.(id);
+                const after = grid.getSnapshot();
+                if (
+                  before.focus.rowId !== after.focus.rowId ||
+                  before.focus.columnId !== after.focus.columnId
+                ) {
+                  onFocusChange?.(after.focus);
+                }
+                if (
+                  JSON.stringify(before.selection) !==
+                  JSON.stringify(after.selection)
+                ) {
+                  onSelectionChange?.(after.selection);
+                }
               }}
               ref={(node) => {
                 if (node) {
