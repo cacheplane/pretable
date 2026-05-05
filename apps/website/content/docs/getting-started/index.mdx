@@ -7,52 +7,52 @@ order: 1
 
 This guide installs `@pretable/react` and renders a three-column, five-row grid.
 
-## Install
+<Steps>
+  <Step title="Install the packages">
+    `npm i @pretable/react @pretable/ui` — the `react` package is the engine, `ui` ships the themes.
+  </Step>
+  <Step title="Import the styles">
+    Pick a theme and import its CSS plus the grid skin once at your app's entry point:
 
-```bash
-npm i @pretable/react @pretable/ui
-```
+    ```css
+    @import "@pretable/ui/themes/excel.css";
+    @import "@pretable/ui/grid.css";
+    ```
 
-## Import the styles
+    The theme file declares all `--pretable-*` tokens at `:root`; `grid.css` is the selector-based skin that targets the engine's `[data-pretable-*]` data attributes. Two themes ship today — `excel.css` (gray, dense, technical, light-only) and `material.css` (Material 3 light + dark; toggle dark mode by setting `data-theme="dark"` on `<html>`). If you only need the engine, skip both imports and the grid renders unstyled (functional but no visual chrome).
+  </Step>
+  <Step title="Render your first grid">
+    ```tsx
+    import {
+      Pretable,
+      type PretableColumn,
+      type PretableRow,
+    } from "@pretable/react";
 
-Pretable's theming ships in `@pretable/ui`. Pick a theme and import its CSS plus the grid skin once at your app's entry point:
+    const columns: Array<PretableColumn> = [
+      { id: "name", header: "Name", getValue: (r) => r.name },
+      { id: "role", header: "Role", getValue: (r) => r.role },
+      { id: "city", header: "City", getValue: (r) => r.city },
+    ];
 
-```css
-@import "@pretable/ui/themes/excel.css";
-@import "@pretable/ui/grid.css";
-```
+    const rows: Array<PretableRow> = [
+      { id: "1", name: "Ada", role: "Engineer", city: "London" },
+      { id: "2", name: "Grace", role: "Admiral", city: "New York" },
+      { id: "3", name: "Linus", role: "Maintainer", city: "Helsinki" },
+      { id: "4", name: "Margaret", role: "Director", city: "Boston" },
+      { id: "5", name: "Tim", role: "Inventor", city: "London" },
+    ];
 
-The theme file declares all `--pretable-*` tokens at `:root`; `grid.css` is the selector-based skin that targets the engine's `[data-pretable-*]` data attributes. Two themes ship today — `excel.css` (gray, dense, technical, light-only) and `material.css` (Material 3 light + dark; toggle dark mode by setting `data-theme="dark"` on `<html>`). If you only need the engine, skip both imports and the grid renders unstyled (functional but no visual chrome).
+    export function People() {
+      return <Pretable rows={rows} columns={columns} />;
+    }
+    ```
+  </Step>
+</Steps>
 
-Tailwind v4 users can additionally import `@pretable/ui/tailwind.css` to get `bg-pt-*`/`text-pt-*` utility shortcuts that alias the `--pretable-*` tokens. Density (compact / standard / spacious) is runtime-switchable by toggling `data-density="..."` on `<html>`.
-
-## Render your first grid
-
-```tsx
-import {
-  Pretable,
-  type PretableColumn,
-  type PretableRow,
-} from "@pretable/react";
-
-const columns: Array<PretableColumn> = [
-  { id: "name", header: "Name", getValue: (r) => r.name },
-  { id: "role", header: "Role", getValue: (r) => r.role },
-  { id: "city", header: "City", getValue: (r) => r.city },
-];
-
-const rows: Array<PretableRow> = [
-  { id: "1", name: "Ada", role: "Engineer", city: "London" },
-  { id: "2", name: "Grace", role: "Admiral", city: "New York" },
-  { id: "3", name: "Linus", role: "Maintainer", city: "Helsinki" },
-  { id: "4", name: "Margaret", role: "Director", city: "Boston" },
-  { id: "5", name: "Tim", role: "Inventor", city: "London" },
-];
-
-export function People() {
-  return <Pretable rows={rows} columns={columns} />;
-}
-```
+<Callout type="tip">
+  Tailwind v4 users can additionally import `@pretable/ui/tailwind.css` to get `bg-pt-*`/`text-pt-*` utility shortcuts that alias the `--pretable-*` tokens. Density (compact / standard / spacious) is runtime-switchable by toggling `data-density="..."` on `<html>`.
+</Callout>
 
 That's the full surface for a static grid. Sort, filter, selection, and streaming rows are layered on top — see [/docs/streaming](/docs/streaming) for the streaming-adapter API while a guide for the rest is being written.
 
