@@ -98,6 +98,40 @@ export function EventStream({ events }: { events: Event[] }) {
 
 `Cmd/Ctrl + C` (copy) is wired in a follow-up phase.
 
+## Row-Selection Checkbox Column
+
+Set `rowSelectionColumn={{ enabled: true }}` for a left-pinned checkbox column with three-state header checkbox + per-row toggles.
+
+```tsx
+<PretableSurface
+  ariaLabel="Inspection grid"
+  columns={columns}
+  rows={rows}
+  getRowId={(row) => row.id}
+  rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
+  viewportHeight={520}
+/>
+```
+
+| Config option    | Default | Effect                                       |
+| ---------------- | ------- | -------------------------------------------- |
+| `enabled`        | —       | Required. Pass `true` to inject the column.  |
+| `headerCheckbox` | `true`  | Show the select-all-visible header checkbox. |
+| `pinned`         | `true`  | Pin the column to the left.                  |
+| `width`          | `36`    | Column width in pixels.                      |
+
+The checkbox column is independent from cell-range gestures: clicking a checkbox toggles the row's full-row range without moving focus or collapsing other selections. Shift+click on a body checkbox extends the range from the last-checked anchor to the clicked row.
+
+Per-row checkbox state derives from the cell-range model:
+
+- `aria-checked="true"` — every cell in the row is in some selected range.
+- `aria-checked="mixed"` — some-but-not-all cells in the row are selected.
+- `aria-checked="false"` — no cells in the row are selected.
+
+The header checkbox uses the same three-state derivation across visible rows.
+
+Visual customization via `--pt-color-checkbox-bg`, `--pt-color-checkbox-border`, `--pt-color-checkbox-checked-bg`, `--pt-color-checkbox-checked-fg` tokens.
+
 ## Click + Drag Selection
 
 Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pt-color-selection-bg`) and the focused cell shows a 2px inset ring (`--pt-color-focus-ring`).
