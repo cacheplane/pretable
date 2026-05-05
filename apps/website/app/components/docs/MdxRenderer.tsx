@@ -1,6 +1,13 @@
 import type { MDXComponents } from "mdx/types";
 
+import { Callout } from "./mdx/Callout";
+import { Card, CardGroup } from "./mdx/Card";
 import { CodeBlock } from "./mdx/CodeBlock";
+import { CodeGroup } from "./mdx/CodeGroup";
+import { Frame } from "./mdx/Frame";
+import { Prompt } from "./mdx/Prompt";
+import { Step, Steps } from "./mdx/Steps";
+import { Tab, Tabs } from "./mdx/Tabs";
 
 interface PreProps {
   children: React.ReactElement<{
@@ -24,4 +31,14 @@ function Pre(props: PreProps) {
 
 export const docsMdxComponents: MDXComponents = {
   pre: Pre as unknown as MDXComponents["pre"],
+  Callout,
+  Steps,
+  Step,
+  Tabs,
+  Tab,
+  CodeGroup,
+  Card,
+  CardGroup,
+  Frame,
+  Prompt,
 };
