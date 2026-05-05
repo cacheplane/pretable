@@ -1672,24 +1672,253 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 
 ---
 
-## Phase 2 — React adapter: keyboard nav + `state` prop rename (OUTLINE)
+## Phase 2 — React adapter: keyboard nav + `state` prop rename (DETAILED)
 
-**Branch:** `b2-keyboard-nav`. **Detail:** added when Phase 1 merges.
+**Branch:** `b2-keyboard-nav`. **Worktree:** `.worktrees/b2-keyboard-nav` (project-local convention).
 
-**Work items:**
+**Phase exit criteria:**
 
-- Rename `interactionState` prop to `state` across `usePretable`, `usePretableModel`, `Pretable`, `PretableSurface`, `InspectionGrid`, `LabeledGridSurface`. Update all in-repo callsites in the same PR (no alias).
-- Add `state.selection` and `state.focus` slices to `UsePretableOptions` and `UsePretableModelOptions`. Add `onSelectionChange` and `onFocusChange` callbacks. Wire controlled-mode reading and uncontrolled-mode writing.
-- Replace the Phase-1 minimal keyboard handler in `pretable-surface.tsx` with the full keyboard contract from the spec: 2D arrows, shift+arrow extend, cmd/ctrl+arrow jumpToEdge, Home/End, Cmd/Ctrl+Home/End, PageUp/PageDown, shift variants, Tab `wrap-rows` default, Esc, Cmd+A. Cmd+C is wired in Phase 5.
-- Add `tabBehavior?: "wrap-rows" | "exit"` prop on the surface; default `"wrap-rows"`.
-- Implement single-tab-stop ARIA: cells get `tabIndex={isFocused ? 0 : -1}`. Root gets `role="grid"`, `aria-multiselectable="true"`, `aria-rowcount`, `aria-colcount`. Rows get `role="row"`, `aria-rowindex`. Cells get `role="gridcell"`, `aria-colindex`.
-- jsdom component tests: one test per key in the contract (cover both uncontrolled and a controlled-mode round-trip for selection and focus).
+- The `interactionState` prop is renamed to `state` on every public surface (`usePretable`, `usePretableModel`, `Pretable`, `PretableSurface`, `InspectionGrid`, `LabeledGridSurface`). The shape is the slice-based form `{ sort?, filters?, selection?, focus? }`. All in-repo callsites (bench adapter, hero demo, tests) updated. No alias.
+- `onSelectionChange` and `onFocusChange` callbacks fire on engine-driven mutations (keyboard, click) when in controlled mode AND in uncontrolled mode (the existing `onSortChange` pattern).
+- `<PretableSurface>`'s keyboard handler implements the full keyboard contract from the spec, with `tabBehavior` configurable.
+- ARIA: single tab stop, `role="grid"`/`aria-multiselectable="true"`/`aria-rowcount`/`aria-colcount` on root, `role="row"` + `aria-rowindex` on rows, `role="gridcell"` + `aria-colindex` + `tabIndex={isFocused ? 0 : -1}` + `aria-selected` on cells.
+- jsdom tests cover every key in the contract, plus controlled-mode round-trips for selection and focus.
+- `pnpm -w typecheck` / `pnpm -w test` / `pnpm -w lint` clean.
+- One PR opened, CI green, merged on green by user.
 
-**Open questions to resolve when detailing:**
+### Bench plan compatibility
 
-- PageUp/Down step accuracy: should the React surface override the engine's `byPage` step with a real row-height-aware estimate? Likely yes; the engine's estimate is a fallback.
-- Tab handling when `tabBehavior: "exit"`: whose responsibility to advance focus to the next page-level tabbable element? Browser default — the surface just doesn't preventDefault.
-- Does focus follow programmatic `setFocus` from controlled-mode parents? Should the surface call `cellElement.focus()` when the focused cell changes? Most likely yes, behind a `requestAnimationFrame` to avoid scroll thrashing.
+The bench's `apps/bench/src/interaction-plan.ts` uses `{ focusedRowId, selectedRowId }` shape internally for plan replay (and stores them in JSONL plans). To avoid regenerating bench plan files, the **bench adapter** (`apps/bench/src/pretable-adapter.tsx`) translates its plan format to the new `state` prop shape at injection time. The bench plan format itself is unchanged.
+
+### Resolved open questions (from the outline)
+
+- **PageUp/Down step accuracy:** the React surface measures the actual rendered row count in the body viewport (count of currently-rendered `<div data-pretable-row>` elements that fit in `bodyViewportHeight`) and passes that as `byPage` is now interpreted as "the surface owns the step." We pass the surface's measured page-step value to a new `moveFocus` invocation pattern: the surface calls `grid.setFocus({...})` directly with the computed target rather than relying on `byPage`. This keeps the engine's `computePageStep` heuristic as a fallback for non-React consumers.
+- **Tab when `tabBehavior: "exit"`:** the surface does not call `event.preventDefault()`. The browser's default Tab behavior advances focus to the next tabbable element on the page.
+- **Programmatic focus follow:** when the focused cell address changes (either by user action or by controlled-mode prop change), the surface calls `cellElement.focus()` on the matching cell DOM node inside a `useLayoutEffect`. No `requestAnimationFrame` — `useLayoutEffect` already runs synchronously after DOM updates, before paint.
+
+### Worktree setup
+
+- [ ] **Step 2.0.1: Create the worktree** (already done at `.worktrees/b2-keyboard-nav`)
+- [ ] **Step 2.0.2: Verify clean baseline** — `pnpm --filter @pretable/react test` shows 51 passing tests on Phase 1 main.
+
+### Task 1 — Rename `interactionState` → `state` and restructure to slice-based shape
+
+**Files modified:**
+- `packages/react/src/use-pretable.ts` — rename `interactionOverrides` → `state` on `UsePretableModelOptions`. Restructure `PretableInteractionOverrides` to the new `{ sort?, filters?, selection?, focus? }` shape. The `selectedRowId` / `focusedRowId` row-id-based fields are **removed** from the public API; consumers who need that shape map it themselves.
+- `packages/react/src/pretable-surface.tsx` — rename the `interactionState` prop to `state`. Restructure `PretableSurfaceInteractionState` to the new shape. Update the controlled-mode read in the `usePretableModel` call: `state: state ?? undefined`.
+- `packages/react/src/inspection-grid.tsx` — propagate the rename.
+- `packages/react/src/labeled-grid-surface.tsx` — propagate the rename if the prop is forwarded there.
+- `packages/react/src/pretable.tsx` — propagate the rename if relevant.
+
+**Engine state injection rules (in `usePretableModel`):**
+
+When `state` is provided, for each slice that is non-`undefined`:
+- `state.sort` → `grid.setSort(slice.columnId, slice.direction)`
+- `state.filters` → `grid.replaceFilters(slice)`
+- `state.selection` → `grid.setSelection(slice)`
+- `state.focus` → `grid.setFocus(slice.rowId && slice.columnId ? slice : null)` (handle the partial-null case as null per existing semantics)
+
+A slice that is `undefined` means "uncontrolled, engine owns it" — do not touch the engine.
+
+**Bench adapter (`apps/bench/src/pretable-adapter.tsx`):**
+
+Replace the existing translation:
+
+```tsx
+interactionState={
+  interactionPlan ? {
+    sort: ...,
+    filters: ...,
+    focusedRowId: interactionPlan.focusedRowId,
+    selectedRowId: interactionPlan.selectedRowId,
+  } : undefined
+}
+```
+
+With a translation that converts `selectedRowId`/`focusedRowId` to the new shape using the columns array. Use a small helper in `apps/bench/src/pretable-adapter.tsx`:
+
+```tsx
+function planToState(
+  plan: InteractionPlan,
+  columns: BenchColumn[],
+): PretableSurfaceState | undefined {
+  // Translate plan.selectedRowId → state.selection (full-row range)
+  // Translate plan.focusedRowId → state.focus (with first column id)
+  // Pass through plan.sort and plan.filters as-is
+}
+```
+
+**Hero demo (`apps/website/app/components/HeroGrid.tsx` and `heroGrid/`):** Update any callsite passing `interactionState` to `<PretableSurface>` to pass `state` with the new shape.
+
+**Tests in `packages/react/src/__tests__/`:** Update any test that passes `interactionState` to use `state`. Tests asserting against `selectedRowId` / `focusedRowId` snapshot fields should read from `snapshot.selection.ranges[0]?.startRowId` and `snapshot.focus.rowId`.
+
+**Exit:** `pnpm -w typecheck` clean. Single commit. Message:
+
+> `refactor(react): rename interactionState → state with slice-based shape`
+
+### Task 2 — Add `onSelectionChange` / `onFocusChange` callbacks
+
+**Files modified:**
+- `packages/react/src/use-pretable.ts` — add `onSelectionChange?: (state: PretableSelectionState) => void` and `onFocusChange?: (state: PretableFocusState) => void` to `UsePretableModelOptions`. Subscribe to the grid; on subscription emit, if `selection` or `focus` slice has changed since the last emit, call the corresponding callback. Use refs to track the last-emitted values.
+- `packages/react/src/pretable-surface.tsx` — accept and forward the new callbacks.
+- `packages/react/src/inspection-grid.tsx`, `labeled-grid-surface.tsx`, `pretable.tsx` — propagate.
+
+**Important behavior:** callbacks fire on **any** state change (not gated on whether the slice is controlled). This matches how `onSortChange` already works: it always fires; if you've also passed `state.sort`, you decide whether to commit the change to your own state.
+
+**Exit:** Tests pass. Single commit. Message:
+
+> `feat(react): onSelectionChange / onFocusChange callbacks`
+
+### Task 3 — Replace minimal keyboard handler with the full contract
+
+**File modified:** `packages/react/src/pretable-surface.tsx`.
+
+The current keyboard handler (Phase 1) handles ArrowUp/ArrowDown and Enter/Space. Replace with the full contract from the spec's "Keyboard Contract" section. Implementation pattern:
+
+1. **Extract a `handleKeyDown(event, grid, columns, snapshot, opts)` helper** at the bottom of the file or a new module `packages/react/src/keyboard.ts`. The helper returns `{ handled: boolean }`. Surface's `onKeyDown` calls it; if `handled`, calls `event.preventDefault()`.
+2. **Modifier detection:** use `event.metaKey || event.ctrlKey` for the "Cmd/Ctrl" modifier (cross-platform). `event.shiftKey` for shift.
+3. **Mapping:**
+
+| Key (with modifiers) | Action |
+|---|---|
+| `ArrowUp` / `ArrowDown` / `ArrowLeft` / `ArrowRight` | `grid.moveFocus(direction)` |
+| `Shift + Arrow` | `grid.moveFocus(direction, { extend: true })` |
+| `Cmd/Ctrl + Arrow` | `grid.moveFocus(direction, { jumpToEdge: true })` |
+| `Cmd/Ctrl + Shift + Arrow` | `grid.moveFocus(direction, { jumpToEdge: true, extend: true })` |
+| `Home` | `grid.setFocus({ rowId: focus.rowId, columnId: columns[0].id })` (collapses selection) |
+| `End` | `grid.setFocus({ rowId: focus.rowId, columnId: columns[last].id })` (collapses selection) |
+| `Cmd/Ctrl + Home` | `grid.setFocus({ rowId: visibleRows[0].id, columnId: columns[0].id })` |
+| `Cmd/Ctrl + End` | `grid.setFocus({ rowId: visibleRows[last].id, columnId: columns[last].id })` |
+| `PageUp` / `PageDown` | Compute page step from rendered rows; `grid.setFocus({...new addr...})` |
+| `Shift + PageUp/Down` | Like above but call `grid.extendRangeFromAnchor` after computing the new addr |
+| `Tab` (when `tabBehavior === "wrap-rows"`) | Move focus right, wrap to next row at end. `event.preventDefault()`. |
+| `Shift + Tab` (wrap-rows) | Move focus left, wrap to prev row at start. `event.preventDefault()`. |
+| `Tab` (when `tabBehavior === "exit"`) | Don't preventDefault — browser handles. |
+| `Cmd/Ctrl + A` | `grid.selectAll()` |
+| `Esc` | `grid.clearSelection()` |
+| `Enter` / `Space` | (Phase 1 behavior preserved: toggle row selection on focused row.) |
+
+**The Cmd+C handler is NOT wired in this phase** — Phase 5 adds it.
+
+**`tabBehavior` prop:**
+
+```tsx
+interface PretableSurfaceProps<TRow> {
+  // existing
+  tabBehavior?: "wrap-rows" | "exit"; // default "wrap-rows"
+}
+```
+
+Forward through `Pretable`, `InspectionGrid`, `LabeledGridSurface` if applicable.
+
+**Page step computation:** `const pageRowCount = Math.max(1, Math.floor(bodyViewportHeight / averageRowHeight));` where `averageRowHeight` is `bodyViewportHeight / Math.max(1, snapshot.visibleRows.filter(visible-in-viewport).length)`. Bound by `visibleRows.length`. If this is fragile, fall back to `Math.floor(bodyViewportHeight / 32)`.
+
+**Exit:** All keys handled per contract. Single commit. Message:
+
+> `feat(react): full keyboard contract on PretableSurface`
+
+### Task 4 — ARIA attributes
+
+**File modified:** `packages/react/src/pretable-surface.tsx`.
+
+**Root viewport `<div>`** (currently has `role="grid"` and `tabIndex={0}`):
+- Keep `role="grid"`.
+- Add `aria-multiselectable="true"`.
+- Add `aria-rowcount={snapshot.totalRowCount + 1}` (the +1 is for the header row).
+- Add `aria-colcount={columns.length}`.
+- Change `tabIndex={0}` to `tabIndex={-1}` — the cell-level tab stop owns focus now. The viewport gets focus only via programmatic focus on cell mount.
+
+**Header row `<div>`:**
+- Add `role="row"`.
+- Add `aria-rowindex={1}`.
+
+**Header cells `<button>`:**
+- Add `role="columnheader"`.
+- Add `aria-colindex={i + 1}` (1-based).
+- Add `aria-sort={sortDirection === "asc" ? "ascending" : sortDirection === "desc" ? "descending" : "none"}` when sortable.
+
+**Body rows `<div>`:**
+- Add `role="row"`.
+- Add `aria-rowindex={rowIndex + 2}` (+2: 1-based, plus 1 for header).
+- Add `aria-selected={derivedFullySelected ? "true" : undefined}` (use `deriveSelectedRows` for the per-row state).
+
+**Body cells `<div>`:**
+- Add `role="gridcell"`.
+- Add `aria-colindex={colIndex + 1}` (1-based).
+- Add `aria-selected={cellInAnyRange ? "true" : undefined}`.
+- Add `tabIndex={isFocused ? 0 : -1}` — single tab stop pattern.
+- Use the `data-row-id` + `data-column-id` attributes (or compute from row/column ids) to find the focused cell DOM node for programmatic focus.
+
+**Programmatic focus follow:** in a `useLayoutEffect` keyed on `snapshot.focus.rowId, snapshot.focus.columnId`, find the cell DOM node and call `.focus()` on it if it isn't already the active element.
+
+**Performance note:** `aria-selected` per cell requires checking range membership. Use a `useMemo` that builds a `Set<string>` of selected cell keys (`${rowId}::${columnId}`) once per render; cells look up their key in the set in O(1).
+
+**Exit:** ARIA attributes appear on rendered DOM. Single commit. Message:
+
+> `feat(react): ARIA grid attributes + single-tab-stop focus`
+
+### Task 5 — jsdom component tests
+
+**Files created/modified:**
+
+- `packages/react/src/__tests__/pretable-surface.test.tsx` — extend with new test cases.
+- Possibly new file `packages/react/src/__tests__/keyboard.test.tsx` — keyboard-specific tests if grouping helps readability.
+
+**Test coverage required:**
+
+For each keyboard binding in the contract, one test:
+- ArrowUp/Down/Left/Right (4 tests) — focus moves one cell.
+- Shift+Arrow (4 tests) — range extends.
+- Cmd+Arrow (4 tests) — focus jumps to grid edge.
+- Cmd+Shift+Arrow (4 tests) — range extends to grid edge.
+- Home / End (2 tests) — focus moves within row.
+- Cmd+Home / Cmd+End (2 tests) — focus moves to grid corner.
+- PageUp / PageDown (2 tests) — focus moves by page.
+- Shift+PageUp / Shift+PageDown (2 tests) — range extends by page.
+- Tab in `wrap-rows` mode (2 tests: middle of row → next cell; end of row → wrap to next row's first cell).
+- Shift+Tab in `wrap-rows` mode (2 tests).
+- Tab in `exit` mode (1 test) — assert event.defaultPrevented is false.
+- Cmd+A (1 test) — selection becomes full-grid range.
+- Esc (1 test) — collapses selection to focused cell.
+
+**Plus controlled-mode round-trips:**
+- Pass `state.selection`; press an arrow; assert `onSelectionChange` is called with the next state; do NOT update the prop; assert the rendered selection has not visually changed (because consumer didn't commit).
+- Pass `state.selection` and update it from the consumer's setState in `onSelectionChange`; assert the rendered selection follows.
+- Same pattern for `state.focus`.
+
+**ARIA assertions:**
+- `screen.getByRole("grid")` exists with `aria-rowcount`, `aria-colcount`.
+- Cells have correct `aria-colindex` and `tabIndex`.
+- Currently-focused cell has `tabIndex={0}`; others have `tabIndex={-1}`.
+- After Cmd+A, multiple cells have `aria-selected="true"`.
+
+Use `userEvent` from `@testing-library/user-event` for keyboard interactions. Use `screen.getByRole` and `within` for ARIA-friendly queries.
+
+**Exit:** Test count should grow from current 51 to ~85+. Single commit. Message:
+
+> `test(react): keyboard contract + controlled-mode round-trips + ARIA`
+
+### Task 6 — Documentation updates
+
+**Files modified:**
+- `apps/website/content/docs/grid/api-reference.mdx` — document the renamed `state` prop with its slice-based shape, the new `onSelectionChange` / `onFocusChange` callbacks, the new `tabBehavior` prop. Add a Keyboard Contract section listing every key (or a forward link to the to-be-built `/docs/grid/keyboard` page in Phase 8).
+- `apps/website/content/docs/grid/pretable-component.mdx` — update API references.
+- `apps/website/content/docs/grid/pretable-surface.mdx` — update API references for `state`, `onSelectionChange`, `onFocusChange`, `tabBehavior`.
+- `apps/website/content/docs/grid/custom-rendering.mdx` — update keyboard nav notes.
+
+These are minimal renames + additions, not the holistic rewrite (Phase 8). Keep API names truthful and add the new props' existence.
+
+**Exit:** No build or typecheck regressions. Single commit. Message:
+
+> `docs(website): document state prop + keyboard contract`
+
+### Task 7 — Repo-wide verification + PR
+
+- [ ] **Step 2.7.1:** `pnpm -w typecheck` — clean.
+- [ ] **Step 2.7.2:** `pnpm -w test` — all passing, including new keyboard/ARIA tests.
+- [ ] **Step 2.7.3:** `pnpm -w lint` — 0 errors.
+- [ ] **Step 2.7.4:** `pnpm format` — clean (run `pnpm prettier --write .` if needed).
+- [ ] **Step 2.7.5:** Push `b2-keyboard-nav` and open PR titled `feat(react): keyboard nav contract + state prop rename (Phase 2 of B)`. PR body explains the slice-based shape, the keyboard contract, the bench-plan compatibility approach. Wait for CI green; user merges.
 
 ---
 
