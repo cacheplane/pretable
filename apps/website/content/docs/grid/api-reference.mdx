@@ -42,9 +42,15 @@ The `grid` returned by `usePretable` and `usePretableModel`.
 | `setFilter(columnId: string, value: string): void`                            | Set a filter value for one column.                                                   |
 | `clearFilters(): void`                                                        | Remove all filters.                                                                  |
 | `replaceFilters(map: Record<string, string>): void`                           | Replace all filters with a new map.                                                  |
-| `selectRow(rowId: string \| null): void`                                      | Set the selected row (single-selection model). Pass `null` to clear.                 |
-| `setFocus(rowId: string \| null, columnId: string \| null): void`             | Set the focused cell.                                                                |
-| `moveFocus(delta: number): void`                                              | Shift focus by N rows. Negative for up, positive for down. Wraps at boundaries.      |
+| `setSelection(state): void`                                                   | Replace the full selection state ({ ranges, anchor }).                               |
+| `selectAll(): void`                                                           | Select every visible cell as a single full-grid range.                               |
+| `clearSelection(): void`                                                      | Collapse selection to the focused cell (or empty if no focus).                       |
+| `addRange(range): void`                                                       | Append a discontiguous cell range; updates the anchor to the range start.            |
+| `extendRangeFromAnchor(addr): void`                                           | Replace the active range with one spanning anchor → addr.                            |
+| `toggleRowSelection(rowId: string): void`                                     | Add or remove a full-row range for the given row.                                    |
+| `setSelectAllVisible(checked: boolean): void`                                 | Toggle full-row ranges across all currently visible rows.                            |
+| `setFocus(addr: { rowId, columnId } \| null): void`                           | Set the focused cell.                                                                |
+| `moveFocus(direction, options?): void`                                        | Move focus in `"up" \| "down" \| "left" \| "right"`; options: `extend`, `jumpToEdge`, `byPage`. |
 | `setViewport({scrollTop, scrollLeft, height, width}): void`                   | Update viewport metrics. Wire to your scroll container's `onScroll`.                 |
 | `applyTransaction({add?, update?, remove?}): void`                            | Live-update rows. `add` appends, `update` patches by `id`, `remove` deletes by `id`. |
 | `autosizeColumns(opts?): void`                                                | Resize columns to content. Optional `AutosizeOptions` controls the algorithm.        |
@@ -61,7 +67,15 @@ interface PretableGridSnapshot<TRow> {
   };
   sort: { columnId: string | null; direction: "asc" | "desc" | null };
   filters: Record<string, string>;
-  selection: { rowIds: string[]; anchorRowId: string | null };
+  selection: {
+    ranges: Array<{
+      startRowId: string;
+      endRowId: string;
+      startColumnId: string;
+      endColumnId: string;
+    }>;
+    anchor: { rowId: string; columnId: string } | null;
+  };
   focus: { rowId: string | null; columnId: string | null };
   totalRowCount: number;
   visibleRows: { id: string; row: TRow; sourceIndex: number }[];
