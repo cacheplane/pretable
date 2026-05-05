@@ -21,24 +21,30 @@ const filterableHeaderProps = {
 export interface InspectionGridProps {
   ariaLabel: string;
   filterableColumnIds: readonly InspectionFilterableColumnId[];
-  interactionState?: PretableSurfaceProps<InspectionRow>["interactionState"];
+  state?: PretableSurfaceProps<InspectionRow>["state"];
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onSelectionChange?: PretableSurfaceProps<InspectionRow>["onSelectionChange"];
+  onFocusChange?: PretableSurfaceProps<InspectionRow>["onFocusChange"];
   onSortChange?: PretableSurfaceProps<InspectionRow>["onSortChange"];
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   overscan?: number;
   rows: InspectionRow[];
+  tabBehavior?: PretableSurfaceProps<InspectionRow>["tabBehavior"];
   viewportHeight: number;
 }
 
 export function InspectionGrid({
   ariaLabel,
   filterableColumnIds,
-  interactionState,
+  state,
   onSelectedRowIdChange,
+  onSelectionChange,
+  onFocusChange,
   onSortChange,
   onTelemetryChange,
   overscan,
   rows,
+  tabBehavior,
   viewportHeight,
 }: InspectionGridProps) {
   const filterableColumns = new Set<string>(filterableColumnIds);
@@ -57,16 +63,19 @@ export function InspectionGrid({
       }
       getRowId={getInspectionRowId}
       headerCellClassName="inspection-header-cell"
-      interactionState={interactionState}
+      state={state}
       labelClassName="inspection-cell-label"
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
+      onSelectionChange={onSelectionChange}
+      onFocusChange={onFocusChange}
       onSortChange={onSortChange}
       onTelemetryChange={onTelemetryChange}
       pinnedClassName="is-pinned"
       rowClassName="inspection-row"
       rows={rows}
       selectFocusedRowOnArrowKey
+      tabBehavior={tabBehavior}
       valueClassName="inspection-cell-value"
       viewportHeight={viewportHeight}
     />

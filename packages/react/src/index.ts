@@ -25,6 +25,7 @@ export type {
   PretableModel,
   PretableRenderRow,
   PretableRenderSnapshot,
+  PretableSurfaceState,
   PretableTelemetry,
   UsePretableModelOptions,
   UsePretableOptions,

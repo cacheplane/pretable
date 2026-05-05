@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import type { PretableGrid } from "@pretable/react";
-import type { PretableTelemetry } from "@pretable/react";
+import type {
+  PretableColumn,
+  PretableGrid,
+  PretableSurfaceState,
+  PretableTelemetry,
+} from "@pretable/react";
 import { PretableSurface } from "@pretable/react";
 import { createBatcher } from "@pretable/stream-adapter";
 import type {
@@ -149,16 +153,7 @@ export function PretableAdapter({
         autosize={autosize}
         columns={surfaceColumns}
         getRowId={getScenarioRowId}
-        interactionState={
-          interactionPlan
-            ? {
-                filters: interactionPlan.filters,
-                focusedRowId: interactionPlan.focusedRowId,
-                selectedRowId: interactionPlan.selectedRowId,
-                sort: interactionPlan.sort,
-              }
-            : null
-        }
+        state={planToState(interactionPlan, surfaceColumns)}
         onGridReady={handleGridReady}
         onTelemetryChange={handleTelemetryChange}
         overscan={4}
@@ -170,4 +165,43 @@ export function PretableAdapter({
       />
     </section>
   );
+}
+
+function planToState(
+  plan: BenchInteractionPlan | null | undefined,
+  columns: readonly PretableColumn<ScenarioRow>[],
+): PretableSurfaceState | null {
+  if (!plan) {
+    return null;
+  }
+
+  const firstColumn = columns[0];
+  const lastColumn = columns[columns.length - 1];
+  const firstColumnId = firstColumn?.id ?? null;
+
+  const selection: PretableSurfaceState["selection"] =
+    plan.selectedRowId && firstColumn && lastColumn
+      ? {
+          ranges: [
+            {
+              startRowId: plan.selectedRowId,
+              endRowId: plan.selectedRowId,
+              startColumnId: firstColumn.id,
+              endColumnId: lastColumn.id,
+            },
+          ],
+          anchor: { rowId: plan.selectedRowId, columnId: firstColumn.id },
+        }
+      : { ranges: [], anchor: null };
+
+  const focus: PretableSurfaceState["focus"] = plan.focusedRowId
+    ? { rowId: plan.focusedRowId, columnId: firstColumnId }
+    : { rowId: null, columnId: null };
+
+  return {
+    filters: plan.filters,
+    focus,
+    selection,
+    sort: plan.sort,
+  };
 }

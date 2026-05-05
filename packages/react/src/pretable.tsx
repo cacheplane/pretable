@@ -4,12 +4,13 @@ import {
   type PretableRow,
 } from "@pretable/core";
 
-import { PretableSurface } from "./pretable-surface";
+import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   rows: TRow[];
+  tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -25,6 +26,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   columns,
   getRowId,
   rows,
+  tabBehavior,
 }: PretableProps<TRow>) {
   const resolvedGetRowId =
     getRowId ??
@@ -107,6 +109,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
           </>
         )}
         rows={rows}
+        tabBehavior={tabBehavior}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
         viewportHeight={VIEWPORT_HEIGHT}
       />

@@ -2,11 +2,13 @@ import {
   type AutosizeOptions,
   createGrid,
   type PretableColumn,
+  type PretableFocusState,
   type PretableGrid,
   type PretableGridOptions,
   type PretableGridSnapshot,
   type PretableRow,
-  type PretableSortDirection,
+  type PretableSelectionState,
+  type PretableSortState,
 } from "@pretable/core";
 import {
   createDomRenderSnapshot,
@@ -53,11 +55,11 @@ export interface PretableTelemetry {
   };
 }
 
-export interface PretableInteractionOverrides {
+export interface PretableSurfaceState {
   filters?: Record<string, string>;
-  focusedRowId?: string | null;
-  selectedRowId?: string | null;
-  sort?: { columnId: string; direction: PretableSortDirection } | null;
+  focus?: PretableFocusState;
+  selection?: PretableSelectionState;
+  sort?: PretableSortState | null;
 }
 
 export interface UsePretableModelOptions<
@@ -66,8 +68,10 @@ export interface UsePretableModelOptions<
   viewportHeight: number;
   viewportWidth?: number;
   overscan?: number;
-  interactionOverrides?: PretableInteractionOverrides | null;
+  state?: PretableSurfaceState | null;
   measuredHeights?: Record<string, number>;
+  onSelectionChange?: (next: PretableSelectionState) => void;
+  onFocusChange?: (next: PretableFocusState) => void;
 }
 
 export interface PretableModel<TRow extends PretableRow = PretableRow> {
@@ -97,49 +101,40 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
   viewportHeight,
   viewportWidth,
   overscan = 6,
-  interactionOverrides,
+  state,
   measuredHeights,
+  onSelectionChange,
+  onFocusChange,
 }: UsePretableModelOptions<TRow>): PretableModel<TRow> {
   const grid = usePretable({ autosize, columns, rows, getRowId });
 
-  if (interactionOverrides) {
-    grid.setSort(
-      interactionOverrides.sort?.columnId ?? null,
-      interactionOverrides.sort?.direction ?? null,
-    );
-    grid.replaceFilters(interactionOverrides.filters ?? {});
+  // onSelectionChange / onFocusChange callbacks are wired in the surface's
+  // event handlers (keyboard, click) directly. This keeps callbacks firing
+  // for user-induced changes even when the corresponding slice is controlled
+  // — diff-detection here would race the controlled-prop reapply below.
+  void onSelectionChange;
+  void onFocusChange;
 
-    if (interactionOverrides.focusedRowId !== undefined) {
-      const firstColumnId = columns[0]?.id ?? null;
-      grid.setFocus(
-        interactionOverrides.focusedRowId
-          ? {
-              rowId: interactionOverrides.focusedRowId,
-              columnId: firstColumnId,
-            }
-          : null,
-      );
+  if (state) {
+    if (state.sort !== undefined) {
+      grid.setSort(state.sort?.columnId ?? null, state.sort?.direction ?? null);
     }
 
-    if (interactionOverrides.selectedRowId !== undefined) {
-      const selectedRowId = interactionOverrides.selectedRowId;
-      const firstColumn = columns[0];
-      const lastColumn = columns[columns.length - 1];
+    if (state.filters !== undefined) {
+      grid.replaceFilters(state.filters);
+    }
 
-      if (selectedRowId === null || !firstColumn || !lastColumn) {
-        grid.setSelection({ ranges: [], anchor: null });
+    if (state.selection !== undefined) {
+      grid.setSelection(state.selection);
+    }
+
+    if (state.focus !== undefined) {
+      const focus = state.focus;
+
+      if (focus.rowId !== null && focus.columnId !== null) {
+        grid.setFocus({ rowId: focus.rowId, columnId: focus.columnId });
       } else {
-        grid.setSelection({
-          ranges: [
-            {
-              startRowId: selectedRowId,
-              endRowId: selectedRowId,
-              startColumnId: firstColumn.id,
-              endColumnId: lastColumn.id,
-            },
-          ],
-          anchor: { rowId: selectedRowId, columnId: firstColumn.id },
-        });
+        grid.setFocus(null);
       }
     }
   }

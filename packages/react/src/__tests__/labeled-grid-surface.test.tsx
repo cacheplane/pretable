@@ -86,10 +86,12 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", {
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
-    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+    const severityHeader = view.getByRole("columnheader", {
+      name: "Sort Severity",
+    });
     const firstRow = view.getAllByTestId("pretable-row")[0]!;
     const pinnedCell = within(firstRow)
       .getAllByText("Timestamp")[0]!
@@ -144,7 +146,7 @@ describe("LabeledGridSurface", () => {
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        interactionState={{
+        state={{
           sort: { columnId: "timestamp", direction: "desc" },
           filters: {},
         }}
@@ -154,10 +156,12 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const timestampHeader = view.getByRole("button", {
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
-    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+    const severityHeader = view.getByRole("columnheader", {
+      name: "Sort Severity",
+    });
 
     expect(timestampHeader).toHaveTextContent("Timestamp▼");
     expect(severityHeader).not.toHaveTextContent("▼");
@@ -168,7 +172,7 @@ describe("LabeledGridSurface", () => {
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        interactionState={{
+        state={{
           sort: { columnId: "timestamp", direction: "asc" },
           filters: {},
         }}
@@ -188,7 +192,7 @@ describe("LabeledGridSurface", () => {
         columns={columns}
         getRowId={(row) => row.id}
         headerCellClassName="inspection-header-cell"
-        interactionState={{
+        state={{
           sort: null,
           filters: { severity: "error" },
         }}
@@ -198,8 +202,10 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
-    const timestampHeader = view.getByRole("button", {
+    const severityHeader = view.getByRole("columnheader", {
+      name: "Sort Severity",
+    });
+    const timestampHeader = view.getByRole("columnheader", {
       name: "Sort Timestamp",
     });
 
@@ -207,14 +213,14 @@ describe("LabeledGridSurface", () => {
     expect(timestampHeader).not.toHaveClass("is-filtered");
   });
 
-  it("passes interactionState and onSortChange through to the underlying surface", () => {
+  it("passes state and onSortChange through to the underlying surface", () => {
     const onSortChange = vi.fn();
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        interactionState={{
+        state={{
           sort: { columnId: "timestamp", direction: "desc" },
           filters: {},
         }}
@@ -225,7 +231,9 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    const severityHeader = view.getByRole("button", { name: "Sort Severity" });
+    const severityHeader = view.getByRole("columnheader", {
+      name: "Sort Severity",
+    });
 
     fireEvent.click(severityHeader);
 

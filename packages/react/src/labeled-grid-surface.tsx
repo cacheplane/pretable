@@ -32,16 +32,19 @@ export interface LabeledGridSurfaceProps<
   }) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
-  interactionState?: PretableSurfaceProps<TRow>["interactionState"];
+  state?: PretableSurfaceProps<TRow>["state"];
   labelClassName?: string;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onSelectionChange?: PretableSurfaceProps<TRow>["onSelectionChange"];
+  onFocusChange?: PretableSurfaceProps<TRow>["onFocusChange"];
   onSortChange?: PretableSurfaceProps<TRow>["onSortChange"];
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   pinnedClassName?: string;
   rowClassName?: string;
   rows: TRow[];
   selectFocusedRowOnArrowKey?: boolean;
+  tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
   valueClassName?: string;
   viewportHeight: number;
 }
@@ -55,23 +58,26 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   getHeaderCellProps,
   getRowId,
   headerCellClassName,
-  interactionState,
+  state,
   labelClassName,
   overscan,
   onSelectedRowIdChange,
+  onSelectionChange,
+  onFocusChange,
   onSortChange,
   onTelemetryChange,
   pinnedClassName,
   rowClassName,
   rows,
   selectFocusedRowOnArrowKey,
+  tabBehavior,
   valueClassName,
   viewportHeight,
 }: LabeledGridSurfaceProps<TRow>) {
   const getPinnedClassName = (column: PretableColumn<TRow>) =>
     column.pinned === "left" && pinnedClassName ? pinnedClassName : undefined;
   const activeFilterColumns = new Set(
-    Object.entries(interactionState?.filters ?? {})
+    Object.entries(state?.filters ?? {})
       .filter(([, value]) => value.trim() !== "")
       .map(([columnId]) => columnId),
   );
@@ -120,9 +126,11 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       }
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
-      interactionState={interactionState}
+      state={state}
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
+      onSelectionChange={onSelectionChange}
+      onFocusChange={onFocusChange}
       onSortChange={onSortChange}
       onTelemetryChange={onTelemetryChange}
       renderBodyCell={({ column, row, value }) => (
@@ -149,6 +157,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       )}
       rows={rows}
       selectFocusedRowOnArrowKey={selectFocusedRowOnArrowKey}
+      tabBehavior={tabBehavior}
       viewportHeight={viewportHeight}
     />
   );
