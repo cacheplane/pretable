@@ -2105,6 +2105,7 @@ The selection column (Phase 4) provides explicit row-select UX with checkboxes; 
 #### Task 1 — Types + synthetic column injection
 
 **Files:**
+
 - `packages/react/src/pretable-surface.tsx` — add the prop and injection logic.
 - `packages/react/src/index.ts` — export the new type.
 
@@ -2113,10 +2114,10 @@ Type:
 ```ts
 export interface RowSelectionColumnConfig {
   enabled: true;
-  position?: "left";          // v1: left only
-  pinned?: boolean;            // default true
-  headerCheckbox?: boolean;    // default true
-  width?: number;              // default 36
+  position?: "left"; // v1: left only
+  pinned?: boolean; // default true
+  headerCheckbox?: boolean; // default true
+  width?: number; // default 36
 }
 ```
 
@@ -2150,6 +2151,7 @@ The user-facing `columns` prop is unchanged; we only inject internally.
 #### Task 2 — Checkbox cell + header rendering
 
 **Files:**
+
 - `packages/react/src/pretable-surface.tsx` — render path branches on `column.id === ROW_SELECT_COLUMN_ID`.
 - `packages/ui/src/grid.css` — checkbox cell styling.
 - `packages/ui/src/tokens.css` — new `--pt-color-checkbox-*` tokens.
@@ -2157,6 +2159,7 @@ The user-facing `columns` prop is unchanged; we only inject internally.
 For the body cell: when rendering a row, if the column is the synthetic one, render `<button type="button" role="checkbox" aria-checked={"true" | "false" | "mixed"}>`. Determine state from `deriveSelectedRows(snapshot)` via the existing memoized `selectedCellKeys` / `fullySelectedRowIds` mechanism (or compute analogously). Click handler: `event.stopPropagation()` to prevent cell-range gestures, then `toggleRowSelection(rowId)` (or shift+click range — see Task 3).
 
 For the header cell: when rendering header columns, special-case the synthetic id. If `rowSelectionColumn.headerCheckbox === false`, render an empty placeholder. Otherwise render `<button type="button" role="checkbox" aria-checked={...}>` with three-state derivation:
+
 - `aria-checked="true"` if every visible row is fully selected.
 - `aria-checked="mixed"` if some are.
 - `aria-checked="false"` otherwise.
@@ -2197,6 +2200,7 @@ Add `data-row-select-cell="true"` to the checkbox cell wrapper for CSS targeting
 State: `lastCheckedRowAnchorRef = useRef<string | null>(null)` — tracks the last row whose checkbox was clicked (with or without shift). Cleared if the user does anything else.
 
 Body checkbox click handler:
+
 - Plain click: `lastCheckedRowAnchorRef.current = rowId`; `grid.toggleRowSelection(rowId)`.
 - Shift+click: if `lastCheckedRowAnchorRef.current` exists and is in current visible rows, walk from anchor row to clicked row (inclusive, regardless of order), and for each row in that span, ensure it's selected (toggle ON if not already a full-row range — match AG Grid: shift+click "extends selection ON", doesn't toggle individually). Update `lastCheckedRowAnchorRef.current = rowId` after.
 
@@ -2227,6 +2231,7 @@ Pass `rowSelectionColumn={{ enabled: true, headerCheckbox: true }}` to `<Pretabl
 **Files:** `packages/react/src/__tests__/pretable-surface.test.tsx`.
 
 New `describe("row-select checkbox column", ...)`:
+
 - Synthetic column injection: with `rowSelectionColumn={{enabled:true}}`, asserts the rendered DOM has the checkbox cell as the leftmost cell.
 - Without `rowSelectionColumn`: asserts no synthetic column appears.
 - Body checkbox click toggles row selection (`onSelectionChange` fires with full-row range).
@@ -2262,12 +2267,12 @@ Add a new section before "Click + Drag Selection" (or after, ordering judgment c
 
 Set `rowSelectionColumn={{ enabled: true }}` for a left-pinned checkbox column with three-state header checkbox + per-row toggles.
 
-| Config | Default | Effect |
-| --- | --- | --- |
-| `enabled: true` | required | Inject the column. |
-| `headerCheckbox` | `true` | Show the select-all-visible header checkbox. |
-| `pinned` | `true` | Pin to left. |
-| `width` | `36` | Pixels. |
+| Config           | Default  | Effect                                       |
+| ---------------- | -------- | -------------------------------------------- |
+| `enabled: true`  | required | Inject the column.                           |
+| `headerCheckbox` | `true`   | Show the select-all-visible header checkbox. |
+| `pinned`         | `true`   | Pin to left.                                 |
+| `width`          | `36`     | Pixels.                                      |
 
 The column is independent from cell-range gestures: clicking a checkbox toggles the row's full-row range without moving focus or collapsing other selections. Shift+click on a body checkbox extends from the last-checked row.
 

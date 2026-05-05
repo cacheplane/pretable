@@ -2087,7 +2087,9 @@ describe("row-select checkbox column", () => {
       view.container.querySelector("[data-pretable-row-select-all]"),
     ).toBeNull();
     expect(
-      view.container.querySelector(`[data-column-id="${ROW_SELECT_COLUMN_ID}"]`),
+      view.container.querySelector(
+        `[data-column-id="${ROW_SELECT_COLUMN_ID}"]`,
+      ),
     ).toBeNull();
   });
 
@@ -2124,7 +2126,9 @@ describe("row-select checkbox column", () => {
     fireEvent.click(getRowCheckbox(view, "r2")!);
 
     expect(onSelectionChange).toHaveBeenCalled();
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     expect(last.ranges).toContainEqual(fullRowRange("r2"));
     expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "true");
   });
@@ -2146,7 +2150,9 @@ describe("row-select checkbox column", () => {
     expect(getRowCheckbox(view, "r1")).toHaveAttribute("aria-checked", "true");
     fireEvent.click(getRowCheckbox(view, "r1")!);
 
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     expect(last.ranges).not.toContainEqual(fullRowRange("r1"));
     // (Rendered aria-checked stays "true" because the harness is in
     //  controlled mode and does not re-commit the selection prop.)
@@ -2187,7 +2193,9 @@ describe("row-select checkbox column", () => {
     });
 
     fireEvent.click(getRowCheckbox(view, "r3")!);
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     expect(last.ranges).toContainEqual(existingRange);
     expect(last.ranges).toContainEqual(fullRowRange("r3"));
   });
@@ -2200,7 +2208,9 @@ describe("row-select checkbox column", () => {
     });
 
     fireEvent.click(getRowCheckbox(view, "r2")!, { shiftKey: true });
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     expect(last.ranges).toContainEqual(fullRowRange("r2"));
     expect(last.ranges.filter((r) => r.startRowId === r.endRowId)).toHaveLength(
       1,
@@ -2275,7 +2285,9 @@ describe("row-select checkbox column", () => {
     });
 
     fireEvent.click(getHeaderCheckbox(view)!);
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     for (const r of gridRows) {
       expect(last.ranges).not.toContainEqual(fullRowRange(r.id));
     }
@@ -2291,7 +2303,9 @@ describe("row-select checkbox column", () => {
     });
 
     fireEvent.click(getHeaderCheckbox(view)!);
-    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
     for (const r of gridRows) {
       expect(last.ranges).toContainEqual(fullRowRange(r.id));
     }
@@ -2336,7 +2350,10 @@ describe("row-select checkbox column", () => {
   it("row checkbox aria-checked='false' when no cells in that row are selected", () => {
     const view = renderHarness({ rowSelectionColumn: { enabled: true } });
     for (const r of gridRows) {
-      expect(getRowCheckbox(view, r.id)).toHaveAttribute("aria-checked", "false");
+      expect(getRowCheckbox(view, r.id)).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
     }
   });
 

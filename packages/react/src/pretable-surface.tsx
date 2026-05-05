@@ -329,12 +329,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         indeterminateRowIds: indeterminateRows,
       };
     }, [
-    snapshot.selection.ranges,
-    snapshot.visibleRows,
-    effectiveColumns,
-    visibleRowIndexById,
-    columnIndexById,
-  ]);
+      snapshot.selection.ranges,
+      snapshot.visibleRows,
+      effectiveColumns,
+      visibleRowIndexById,
+      columnIndexById,
+    ]);
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -549,18 +549,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             const allFullySelected =
               visibleRows.length > 0 &&
               visibleRows.every((r) => fullySelectedRowIds.has(r.id));
-            const anySelected =
-              visibleRows.some(
-                (r) =>
-                  fullySelectedRowIds.has(r.id) ||
-                  indeterminateRowIds.has(r.id),
-              );
-            const headerCheckState: "true" | "false" | "mixed" = allFullySelected
-              ? "true"
-              : anySelected
-                ? "mixed"
-                : "false";
-            const showHeaderCheckbox = rowSelectionColumn?.headerCheckbox !== false;
+            const anySelected = visibleRows.some(
+              (r) =>
+                fullySelectedRowIds.has(r.id) || indeterminateRowIds.has(r.id),
+            );
+            const headerCheckState: "true" | "false" | "mixed" =
+              allFullySelected ? "true" : anySelected ? "mixed" : "false";
+            const showHeaderCheckbox =
+              rowSelectionColumn?.headerCheckbox !== false;
 
             return (
               <div
@@ -1073,9 +1069,7 @@ function handleCellClick<TRow extends PretableRow>(
   if (selectionChanged) {
     onSelectionChange?.(after.selection);
 
-    const dataColumns = columns.filter(
-      (c) => c.id !== ROW_SELECT_COLUMN_ID,
-    );
+    const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
     const beforeFullRow = singleFullRowSelection(before.selection, dataColumns);
     const afterFullRow = singleFullRowSelection(after.selection, dataColumns);
 
