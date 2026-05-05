@@ -1,0 +1,184 @@
+---
+title: Grid API reference
+description: "Type signatures for the public API of @pretable/react."
+nav: Grid
+order: 6
+---
+
+Type signatures for the public API of `@pretable/react`. Hand-authored from the source at `packages/core/src/types.ts` and `packages/react-surface/src/use-pretable.ts`. Pre-1.0 — names may rename or remove in patch releases.
+
+## `PretableColumn<TRow>`
+
+A column definition. Generic over your row type.
+
+| Field        | Type                     | Required | Description                                                                                        |
+| ------------ | ------------------------ | -------- | -------------------------------------------------------------------------------------------------- |
+| `id`         | `string`                 | yes      | Unique column identifier. Used as React key, sort target, filter target, focus target.             |
+| `header`     | `string`                 | no       | Column header label. Defaults to the column `id` if omitted.                                       |
+| `wrap`       | `boolean`                | no       | If `true`, cells in this column wrap content vertically (sets `[data-pretable-wrap="true"]`).      |
+| `widthPx`    | `number`                 | no       | Fixed pixel width. Defaults to 220 for wrapping columns, 140 for non-wrapping.                     |
+| `pinned`     | `"left"`                 | no       | Pinned positioning. Currently only `"left"` is supported. Sets `[data-pinned="left"]` on the cell. |
+| `sortable`   | `boolean`                | no       | Whether the column can be sorted. Defaults to `true` if a `getValue` is provided.                  |
+| `filterable` | `boolean`                | no       | Whether the column can be filtered. Defaults to `true` if a `getValue` is provided.                |
+| `getValue`   | `(row: TRow) => unknown` | no       | Extract the cell value from the row. If omitted, the column has no sortable/filterable value.      |
+
+## `PretableRow`
+
+```ts
+type PretableRow = Record<string, unknown>;
+```
+
+Your row type extends this. The engine treats rows as opaque records; only `getRowId` and `getValue` access fields.
+
+## `PretableGrid<TRow>` — model methods
+
+The `grid` returned by `usePretable` and `usePretableModel`.
+
+| Method                                                                        | Description                                                                          |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `getSnapshot(): PretableGridSnapshot<TRow>`                                   | Read the current state.                                                              |
+| `subscribe(listener: () => void): () => void`                                 | Subscribe to state changes. Returns an unsubscribe fn.                               |
+| `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Set the sort state. Pass `null` to clear.                                            |
+| `setFilter(columnId: string, value: string): void`                            | Set a filter value for one column.                                                   |
+| `clearFilters(): void`                                                        | Remove all filters.                                                                  |
+| `replaceFilters(map: Record<string, string>): void`                           | Replace all filters with a new map.                                                  |
+| `selectRow(rowId: string \| null): void`                                      | Set the selected row (single-selection model). Pass `null` to clear.                 |
+| `setFocus(rowId: string \| null, columnId: string \| null): void`             | Set the focused cell.                                                                |
+| `moveFocus(delta: number): void`                                              | Shift focus by N rows. Negative for up, positive for down. Wraps at boundaries.      |
+| `setViewport({scrollTop, scrollLeft, height, width}): void`                   | Update viewport metrics. Wire to your scroll container's `onScroll`.                 |
+| `applyTransaction({add?, update?, remove?}): void`                            | Live-update rows. `add` appends, `update` patches by `id`, `remove` deletes by `id`. |
+| `autosizeColumns(opts?): void`                                                | Resize columns to content. Optional `AutosizeOptions` controls the algorithm.        |
+
+## `PretableGridSnapshot<TRow>`
+
+```ts
+interface PretableGridSnapshot<TRow> {
+  viewport: {
+    scrollTop: number;
+    scrollLeft: number;
+    height: number;
+    width: number;
+  };
+  sort: { columnId: string | null; direction: "asc" | "desc" | null };
+  filters: Record<string, string>;
+  selection: { rowIds: string[]; anchorRowId: string | null };
+  focus: { rowId: string | null; columnId: string | null };
+  totalRowCount: number;
+  visibleRows: { id: string; row: TRow; sourceIndex: number }[];
+  visibleRange: { start: number; end: number };
+}
+```
+
+Read via `grid.getSnapshot()` or directly from the `usePretableModel` return value.
+
+## `UsePretableOptions<TRow>` — `usePretable` arguments
+
+```ts
+interface UsePretableOptions<TRow> {
+  columns: PretableColumn<TRow>[];
+  rows: TRow[];
+  getRowId?: (row: TRow, index: number) => string;
+  autosize?: boolean | AutosizeOptions;
+}
+```
+
+`usePretable` returns just the `grid` model. Use it when you only need interaction state, not virtualization.
+
+## `UsePretableModelOptions<TRow>` — `usePretableModel` arguments
+
+```ts
+interface UsePretableModelOptions<TRow> extends UsePretableOptions<TRow> {
+  viewportHeight: number;
+  viewportWidth?: number;
+  overscan?: number; // default 6
+  interactionOverrides?: PretableInteractionOverrides | null;
+  measuredHeights?: Record<string, number>;
+}
+```
+
+`usePretableModel` returns `{grid, snapshot, renderSnapshot, telemetry}`. Use it when you need virtualization metadata for custom rendering.
+
+## `PretableModel<TRow>` — `usePretableModel` return
+
+```ts
+interface PretableModel<TRow> {
+  grid: PretableGrid<TRow>;
+  snapshot: PretableGridSnapshot<TRow>;
+  renderSnapshot: PretableRenderSnapshot<TRow>;
+  telemetry: PretableTelemetry;
+}
+```
+
+## `PretableRenderSnapshot<TRow>`
+
+Tells you which rows to render and where to position them.
+
+```ts
+interface PretableRenderSnapshot<TRow> {
+  columns: PlannedColumn[];
+  rows: PretableRenderRow<TRow>[];
+  nodeCount: number;
+  totalHeight: number;
+  totalWidth: number;
+}
+
+interface PretableRenderRow<TRow> {
+  id: string;
+  row: TRow;
+  rowIndex: number;
+  top: number;
+  height: number;
+}
+
+interface PlannedColumn {
+  id: string;
+  index: number;
+  left: number;
+  width: number;
+  pinned?: "left";
+}
+```
+
+`renderSnapshot.rows` is the slice of rows currently visible in the viewport (plus overscan). Each has `top` (the absolute Y position) and `height` (the row's height — measured if you provided `measuredHeights`, otherwise estimated). Use these to position your row JSX with `position: absolute; top: ${row.top}px; height: ${row.height}px`.
+
+`renderSnapshot.columns` is the column layout — left offset and width per column, accounting for pinned positioning.
+
+## `PretableTelemetry`
+
+```ts
+interface PretableTelemetry {
+  focusedRowId: string | null;
+  rowModelRowCount: number;
+  renderedRowCount: number;
+  selectedRowId: string | null;
+  totalRowCount: number;
+  totalHeight: number;
+  visibleRowCount: number;
+  visibleRowRange: { start: number; end: number };
+}
+```
+
+Useful for instrumentation (frame budget tracking, visible-row counts, focus survival across filters).
+
+## Hook signatures
+
+```ts
+function usePretable<TRow>(opts: UsePretableOptions<TRow>): PretableGrid<TRow>;
+
+function usePretableModel<TRow>(
+  opts: UsePretableModelOptions<TRow>,
+): PretableModel<TRow>;
+
+function useResolvedHeights(
+  rowHeightProp?: number,
+  headerHeightProp?: number,
+): { rowHeight: number; headerHeight: number };
+
+function measureRenderedRowHeight(node: HTMLElement): number;
+```
+
+## Where to go next
+
+- [Custom rendering](/docs/grid/custom-rendering) — uses every type listed above in a runnable example.
+- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights` deeper dive.
+- [Theming Overview](/docs/theming) — the `[data-pretable-*]` attribute contract that pairs with this engine.

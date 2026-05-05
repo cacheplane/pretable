@@ -1,0 +1,82 @@
+---
+title: Tailwind v4 + CSS-in-JS
+description: "@pretable/ui ships pure CSS, which means it works in any styling toolchain."
+nav: Theming
+order: 7
+---
+
+`@pretable/ui` ships pure CSS, which means it works in any styling toolchain. Two specific integrations are documented below.
+
+## Tailwind v4
+
+`@pretable/ui` includes an opt-in Tailwind v4 bridge. Importing `tailwind.css` registers `--color-pt-*` and `--font-pt-*` shortcuts in Tailwind's `@theme` namespace, giving you utility classes that resolve to the active Pretable tokens.
+
+```css
+@import "tailwindcss";
+@import "@pretable/ui/themes/material.css";
+@import "@pretable/ui/grid.css";
+@import "@pretable/ui/tailwind.css";
+```
+
+Now you can use Pretable's tokens in Tailwind utilities:
+
+```tsx
+<aside className="bg-pt-bg-toolbar text-pt-text-dim p-4 border-b border-pt-rule">
+  <p className="font-pt-mono text-pt-accent">Filter active</p>
+</aside>
+```
+
+The `pt-` prefix avoids collisions with your own design tokens. Available utilities:
+
+- `bg-pt-{token}` — backgrounds (e.g., `bg-pt-bg-grid`, `bg-pt-bg-header`, `bg-pt-bg-toolbar`)
+- `text-pt-{token}` — text colors (e.g., `text-pt-text-cell`, `text-pt-accent`)
+- `border-pt-{token}` — border colors (e.g., `border-pt-rule`)
+- `font-pt-{token}` — font families (e.g., `font-pt-mono`, `font-pt-sans`)
+
+Density tokens and `--pretable-radius` are intentionally NOT exposed as Tailwind utilities — they're consumed by `grid.css` directly and don't have meaningful per-element utility analogs.
+
+## Why the bridge is opt-in
+
+You don't need the bridge to use `@pretable/ui` with Tailwind. The grid renders correctly with just `themes/excel.css` + `grid.css` imported. The bridge is only useful if you want to style your own application's UI using Pretable's token palette — for example, building a sidebar that color-matches the embedded grid.
+
+If you don't want the `pt-*` utilities, skip the `tailwind.css` import. The grid still works.
+
+## CSS-in-JS
+
+CSS-in-JS libraries (styled-components, emotion, vanilla-extract, stitches, panda) all support runtime CSS custom properties. Reference Pretable's tokens directly via `var(--pretable-*)`:
+
+```tsx
+import styled from "styled-components";
+
+const Toolbar = styled.div`
+  background: var(--pretable-bg-toolbar);
+  color: var(--pretable-text-dim);
+  border-bottom: 1px solid var(--pretable-rule);
+  font-family: var(--pretable-font-sans);
+  padding: 12px 16px;
+`;
+```
+
+Or with emotion's `css` prop:
+
+```tsx
+import { css } from "@emotion/react";
+
+<div
+  css={css`
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+  `}
+/>;
+```
+
+CSS custom properties resolve at runtime, so they reflect whichever theme + density + dark-mode variant is currently active. No build-time wiring needed.
+
+## Composition with both
+
+You can use the Tailwind bridge AND CSS-in-JS in the same app — they both resolve to the same `--pretable-*` source values. The bridge gives you ergonomic utility classes; CSS-in-JS gives you per-component scoped styles. Use whichever fits the surface you're building.
+
+## Where to go next
+
+- [Override tokens](/docs/theming/override-tokens) — change Pretable's token values; both Tailwind utilities and CSS-in-JS automatically reflect the override.
+- [Token reference](/docs/theming/token-reference) — the full list of `--pretable-*` tokens you can reference in either approach.

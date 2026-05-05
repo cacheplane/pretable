@@ -20,6 +20,14 @@ const withMDX = createMDX({
 const config: NextConfig = {
   reactStrictMode: true,
   pageExtensions: ["ts", "tsx", "mdx"],
+  async headers() {
+    return [
+      {
+        source: "/docs/:path*",
+        headers: [{ key: "Link", value: '</llms.txt>; rel="llms-txt"' }],
+      },
+    ];
+  },
 };
 
 export default withMDX(config);
