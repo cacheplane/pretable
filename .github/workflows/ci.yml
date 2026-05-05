@@ -154,6 +154,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+    outputs:
+      preview_url: ${{ steps.deploy.outputs.preview_url }}
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5
@@ -189,3 +191,42 @@ jobs:
             **Commit**: `${{ github.event.pull_request.head.sha }}`
 
             <sub>Updated automatically by the `deploy-preview` job.</sub>
+
+  smoke-preview:
+    name: Smoke test → Vercel preview (Playwright)
+    needs: deploy-preview
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Wait for preview to respond
+        env:
+          PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview_url }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" "$PREVIEW_URL" || true)
+            echo "Attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 5
+          done
+          echo "Preview did not return 200"
+          exit 1
+      - name: Smoke test preview with Playwright
+        env:
+          BASE_URL: ${{ needs.deploy-preview.outputs.preview_url }}
+        run: pnpm --filter @pretable/app-website exec playwright test --project=chromium
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-preview-traces
+          path: apps/website/test-results/
+          retention-days: 7
