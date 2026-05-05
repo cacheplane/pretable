@@ -80,6 +80,19 @@ export interface RowSelectionColumnConfig {
   width?: number;
 }
 
+export interface PretableSurfaceMessages {
+  selectAllAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+    isAll: boolean;
+  }) => string;
+  copyAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+  }) => string;
+  copyFailedAnnouncement?: () => string;
+}
+
 interface PretableSurfaceHeaderCellRenderInput<
   TRow extends PretableRow = PretableRow,
 > {
@@ -218,6 +231,12 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * `payload.text` (and `payload.html` if present) via `navigator.clipboard`.
    */
   copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
+  /**
+   * Localized message factories for ARIA live announcements (select-all,
+   * copy success, copy failure). Each entry is optional; missing entries
+   * fall back to English defaults.
+   */
+  messages?: PretableSurfaceMessages;
 }
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
@@ -255,6 +274,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     Record<string, number>
   >({});
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [liveMessage] = useState<string>("");
   const measuredHeightsRef = useRef<Record<string, number>>({});
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -594,6 +614,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         ...viewportStyle,
       }}
     >
+      <div
+        aria-atomic="true"
+        aria-live="polite"
+        className="pt-sr-only"
+        data-pretable-live-region=""
+        role="status"
+      >
+        {liveMessage}
+      </div>
       <div
         aria-rowindex={1}
         data-pretable-header-row=""
