@@ -274,48 +274,60 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return map;
   }, [snapshot.visibleRows]);
 
-  const { selectedCellKeys, fullySelectedRowIds } = useMemo(() => {
-    const cellKeys = new Set<string>();
-    const fullyRows = new Set<string>();
-    const ranges = snapshot.selection.ranges;
+  const { selectedCellKeys, fullySelectedRowIds, indeterminateRowIds } =
+    useMemo(() => {
+      const cellKeys = new Set<string>();
+      const fullyRows = new Set<string>();
+      const indeterminateRows = new Set<string>();
+      const ranges = snapshot.selection.ranges;
 
-    // Exclude the synthetic row-select column from the "fully selected"
-    // calculation — it doesn't participate in cell-range selection.
-    const dataColumns = effectiveColumns.filter(
-      (c) => c.id !== ROW_SELECT_COLUMN_ID,
-    );
+      // Exclude the synthetic row-select column from the "fully selected"
+      // calculation — it doesn't participate in cell-range selection.
+      const dataColumns = effectiveColumns.filter(
+        (c) => c.id !== ROW_SELECT_COLUMN_ID,
+      );
 
-    if (ranges.length === 0 || dataColumns.length === 0) {
-      return { selectedCellKeys: cellKeys, fullySelectedRowIds: fullyRows };
-    }
+      if (ranges.length === 0 || dataColumns.length === 0) {
+        return {
+          selectedCellKeys: cellKeys,
+          fullySelectedRowIds: fullyRows,
+          indeterminateRowIds: indeterminateRows,
+        };
+      }
 
-    for (const row of snapshot.visibleRows) {
-      let coveredCount = 0;
+      for (const row of snapshot.visibleRows) {
+        let coveredCount = 0;
 
-      for (const column of dataColumns) {
-        const inAny = ranges.some((range) =>
-          rangeContainsCellLocal(
-            range,
-            row.id,
-            column.id,
-            visibleRowIndexById,
-            columnIndexById,
-          ),
-        );
+        for (const column of dataColumns) {
+          const inAny = ranges.some((range) =>
+            rangeContainsCellLocal(
+              range,
+              row.id,
+              column.id,
+              visibleRowIndexById,
+              columnIndexById,
+            ),
+          );
 
-        if (inAny) {
-          cellKeys.add(`${row.id}::${column.id}`);
-          coveredCount += 1;
+          if (inAny) {
+            cellKeys.add(`${row.id}::${column.id}`);
+            coveredCount += 1;
+          }
+        }
+
+        if (coveredCount === dataColumns.length) {
+          fullyRows.add(row.id);
+        } else if (coveredCount > 0) {
+          indeterminateRows.add(row.id);
         }
       }
 
-      if (coveredCount === dataColumns.length) {
-        fullyRows.add(row.id);
-      }
-    }
-
-    return { selectedCellKeys: cellKeys, fullySelectedRowIds: fullyRows };
-  }, [
+      return {
+        selectedCellKeys: cellKeys,
+        fullySelectedRowIds: fullyRows,
+        indeterminateRowIds: indeterminateRows,
+      };
+    }, [
     snapshot.selection.ranges,
     snapshot.visibleRows,
     effectiveColumns,
@@ -523,6 +535,79 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             return null;
           }
 
+          if (column.id === ROW_SELECT_COLUMN_ID) {
+            const pinnedOffset = pinnedOffsets[column.id];
+            const positionStyle =
+              plannedCol.pinned === "left" && pinnedOffset !== undefined
+                ? {
+                    ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
+                    ...getPinnedCellStyle(pinnedOffset),
+                  }
+                : getHeaderCellStyle(plannedCol.left, plannedCol.width);
+            const visibleRows = snapshot.visibleRows;
+            const allFullySelected =
+              visibleRows.length > 0 &&
+              visibleRows.every((r) => fullySelectedRowIds.has(r.id));
+            const anySelected =
+              visibleRows.some(
+                (r) =>
+                  fullySelectedRowIds.has(r.id) ||
+                  indeterminateRowIds.has(r.id),
+              );
+            const headerCheckState: "true" | "false" | "mixed" = allFullySelected
+              ? "true"
+              : anySelected
+                ? "mixed"
+                : "false";
+            const showHeaderCheckbox = rowSelectionColumn?.headerCheckbox !== false;
+
+            return (
+              <div
+                aria-colindex={plannedCol.index + 1}
+                data-pretable-header-cell=""
+                data-pretable-row-select-header=""
+                data-pinned={plannedCol.pinned === "left" ? "left" : undefined}
+                key={column.id}
+                role="columnheader"
+                style={{
+                  alignItems: "center",
+                  display: "flex",
+                  justifyContent: "center",
+                  padding: 0,
+                  ...positionStyle,
+                }}
+              >
+                {showHeaderCheckbox ? (
+                  <button
+                    aria-checked={headerCheckState}
+                    aria-label="Select all rows"
+                    data-pretable-row-select-all="true"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      const before = grid.getSnapshot();
+                      grid.setSelectAllVisible(!allFullySelected);
+                      const after = grid.getSnapshot();
+                      if (
+                        JSON.stringify(before.selection) !==
+                        JSON.stringify(after.selection)
+                      ) {
+                        onSelectionChange?.(after.selection);
+                      }
+                    }}
+                    role="checkbox"
+                    type="button"
+                  >
+                    {headerCheckState === "true"
+                      ? "✓"
+                      : headerCheckState === "mixed"
+                        ? "–"
+                        : ""}
+                  </button>
+                ) : null}
+              </div>
+            );
+          }
+
           const label = column.header ?? column.id;
           const sortDirection =
             snapshot.sort.columnId === column.id
@@ -690,6 +775,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       }
                     : getCellStyle(plannedCol.left, plannedCol.width);
 
+                const isRowSelectCell = column.id === ROW_SELECT_COLUMN_ID;
+                const rowCheckState: "true" | "false" | "mixed" =
+                  fullySelectedRowIds.has(id)
+                    ? "true"
+                    : indeterminateRowIds.has(id)
+                      ? "mixed"
+                      : "false";
+
                 return (
                   <div
                     {...bodyProps}
@@ -701,6 +794,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     data-pinned={column.pinned === "left" ? "left" : undefined}
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
+                    data-row-select-cell={isRowSelectCell ? "true" : undefined}
                     data-selected={cellIsSelected ? "true" : "false"}
                     key={`${id}:${column.id}`}
                     onClick={(event) => {
@@ -770,11 +864,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         onSelectionChange?.(after.selection);
                         const beforeFullRow = singleFullRowSelection(
                           before.selection,
-                          effectiveColumns,
+                          effectiveColumns.filter(
+                            (c) => c.id !== ROW_SELECT_COLUMN_ID,
+                          ),
                         );
                         const afterFullRow = singleFullRowSelection(
                           after.selection,
-                          effectiveColumns,
+                          effectiveColumns.filter(
+                            (c) => c.id !== ROW_SELECT_COLUMN_ID,
+                          ),
                         );
                         if (beforeFullRow !== afterFullRow) {
                           onSelectedRowIdChange?.(afterFullRow);
@@ -803,9 +901,38 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     tabIndex={cellIsFocused ? 0 : -1}
                   >
-                    {renderBodyCell
-                      ? renderBodyCell(bodyInput)
-                      : formatCellValue(value)}
+                    {isRowSelectCell ? (
+                      <button
+                        aria-checked={rowCheckState}
+                        aria-label="Select row"
+                        data-pretable-row-select="true"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          event.preventDefault();
+                          const before = grid.getSnapshot();
+                          grid.toggleRowSelection(id);
+                          const after = grid.getSnapshot();
+                          if (
+                            JSON.stringify(before.selection) !==
+                            JSON.stringify(after.selection)
+                          ) {
+                            onSelectionChange?.(after.selection);
+                          }
+                        }}
+                        role="checkbox"
+                        type="button"
+                      >
+                        {rowCheckState === "true"
+                          ? "✓"
+                          : rowCheckState === "mixed"
+                            ? "–"
+                            : ""}
+                      </button>
+                    ) : renderBodyCell ? (
+                      renderBodyCell(bodyInput)
+                    ) : (
+                      formatCellValue(value)
+                    )}
                   </div>
                 );
               })}
@@ -915,8 +1042,11 @@ function handleCellClick<TRow extends PretableRow>(
   if (selectionChanged) {
     onSelectionChange?.(after.selection);
 
-    const beforeFullRow = singleFullRowSelection(before.selection, columns);
-    const afterFullRow = singleFullRowSelection(after.selection, columns);
+    const dataColumns = columns.filter(
+      (c) => c.id !== ROW_SELECT_COLUMN_ID,
+    );
+    const beforeFullRow = singleFullRowSelection(before.selection, dataColumns);
+    const afterFullRow = singleFullRowSelection(after.selection, dataColumns);
 
     if (beforeFullRow !== afterFullRow) {
       onSelectedRowIdChange?.(afterFullRow);
