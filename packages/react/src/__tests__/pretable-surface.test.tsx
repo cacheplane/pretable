@@ -9,7 +9,11 @@ import {
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PretableSurface } from "../pretable-surface";
+import {
+  PretableSurface,
+  ROW_SELECT_COLUMN_ID,
+  type RowSelectionColumnConfig,
+} from "../pretable-surface";
 import * as rowHeight from "../row-height";
 import { type PretableSurfaceState, usePretableModel } from "../use-pretable";
 import type {
@@ -1003,6 +1007,7 @@ interface RenderHarnessOpts {
   onSelectionChange?: (next: PretableSelectionState) => void;
   onFocusChange?: (next: PretableFocusState) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  rowSelectionColumn?: RowSelectionColumnConfig;
   tabBehavior?: "wrap-rows" | "exit";
   viewportHeight?: number;
 }
@@ -1018,6 +1023,7 @@ function renderHarness(opts: RenderHarnessOpts = {}) {
       onSelectionChange={opts.onSelectionChange}
       overscan={0}
       rows={gridRows}
+      rowSelectionColumn={opts.rowSelectionColumn}
       state={opts.initialState}
       tabBehavior={opts.tabBehavior}
       viewportHeight={opts.viewportHeight ?? 300}
@@ -2041,5 +2047,346 @@ describe("click + drag selection", () => {
     expect(afterEnterC).toBeGreaterThan(afterEnterB);
 
     fireEvent.pointerUp(c, { pointerId: 1, button: 0 });
+  });
+});
+
+function getRowCheckbox(view: ReturnType<typeof render>, rowId: string) {
+  const row = view.container.querySelector(
+    `[data-pretable-row][data-row-id="${rowId}"]`,
+  );
+  return row?.querySelector(
+    "[data-pretable-row-select]",
+  ) as HTMLButtonElement | null;
+}
+
+function getHeaderCheckbox(view: ReturnType<typeof render>) {
+  return view.container.querySelector(
+    "[data-pretable-row-select-all]",
+  ) as HTMLButtonElement | null;
+}
+
+function fullRowRange(rowId: string) {
+  // With the synthetic row-select column injected at column 0, a full-row
+  // range produced by toggleRowSelection / setSelectAllVisible spans
+  // ROW_SELECT_COLUMN_ID through the last data column (id "c").
+  return {
+    startRowId: rowId,
+    endRowId: rowId,
+    startColumnId: ROW_SELECT_COLUMN_ID,
+    endColumnId: "c",
+  };
+}
+
+describe("row-select checkbox column", () => {
+  it("does not render the synthetic checkbox column when rowSelectionColumn is omitted", () => {
+    const view = renderHarness();
+    expect(
+      view.container.querySelector("[data-pretable-row-select]"),
+    ).toBeNull();
+    expect(
+      view.container.querySelector("[data-pretable-row-select-all]"),
+    ).toBeNull();
+    expect(
+      view.container.querySelector(`[data-column-id="${ROW_SELECT_COLUMN_ID}"]`),
+    ).toBeNull();
+  });
+
+  it("renders a leftmost row checkbox cell when rowSelectionColumn.enabled is true", () => {
+    const view = renderHarness({ rowSelectionColumn: { enabled: true } });
+    const r1 = view.container.querySelector(
+      '[data-pretable-row][data-row-id="r1"]',
+    );
+    const cells = r1?.querySelectorAll("[data-pretable-cell]");
+    expect(cells?.[0]).toHaveAttribute("data-row-select-cell", "true");
+    expect(
+      cells?.[0]?.querySelector("[data-pretable-row-select]"),
+    ).not.toBeNull();
+  });
+
+  it("hides the header checkbox when headerCheckbox: false", () => {
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true, headerCheckbox: false },
+    });
+    expect(getHeaderCheckbox(view)).toBeNull();
+  });
+
+  it("shows the header checkbox by default when rowSelectionColumn is enabled", () => {
+    const view = renderHarness({ rowSelectionColumn: { enabled: true } });
+    expect(getHeaderCheckbox(view)).not.toBeNull();
+  });
+
+  it("plain click on a body checkbox creates a full-row range for that row", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      onSelectionChange,
+    });
+    fireEvent.click(getRowCheckbox(view, "r2")!);
+
+    expect(onSelectionChange).toHaveBeenCalled();
+    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    expect(last.ranges).toContainEqual(fullRowRange("r2"));
+    expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("clicking the checkbox of an already fully-selected row toggles it off", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: null, columnId: null },
+        selection: {
+          ranges: [fullRowRange("r1")],
+          anchor: { rowId: "r1", columnId: ROW_SELECT_COLUMN_ID },
+        },
+      },
+      onSelectionChange,
+    });
+
+    expect(getRowCheckbox(view, "r1")).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(getRowCheckbox(view, "r1")!);
+
+    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    expect(last.ranges).not.toContainEqual(fullRowRange("r1"));
+    // (Rendered aria-checked stays "true" because the harness is in
+    //  controlled mode and does not re-commit the selection prop.)
+  });
+
+  it("clicking a body checkbox does not move focus", () => {
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: "r3", columnId: "b" },
+        selection: { ranges: [], anchor: null },
+      },
+    });
+
+    expect(getCell(view, "r3", "b")).toHaveAttribute("data-focused", "true");
+    fireEvent.click(getRowCheckbox(view, "r1")!);
+    expect(getCell(view, "r3", "b")).toHaveAttribute("data-focused", "true");
+  });
+
+  it("clicking a body checkbox does not collapse an existing cell-range selection", () => {
+    const onSelectionChange = vi.fn();
+    const existingRange = {
+      startRowId: "r1",
+      endRowId: "r2",
+      startColumnId: "a",
+      endColumnId: "b",
+    };
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: "r1", columnId: "a" },
+        selection: {
+          ranges: [existingRange],
+          anchor: { rowId: "r1", columnId: "a" },
+        },
+      },
+      onSelectionChange,
+    });
+
+    fireEvent.click(getRowCheckbox(view, "r3")!);
+    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    expect(last.ranges).toContainEqual(existingRange);
+    expect(last.ranges).toContainEqual(fullRowRange("r3"));
+  });
+
+  it("shift+click on a body checkbox without a prior anchor behaves as plain click", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      onSelectionChange,
+    });
+
+    fireEvent.click(getRowCheckbox(view, "r2")!, { shiftKey: true });
+    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    expect(last.ranges).toContainEqual(fullRowRange("r2"));
+    expect(last.ranges.filter((r) => r.startRowId === r.endRowId)).toHaveLength(
+      1,
+    );
+  });
+
+  it("shift+click extends the row-select range from the prior checkbox anchor (forward)", () => {
+    const view = renderHarness({ rowSelectionColumn: { enabled: true } });
+    fireEvent.click(getRowCheckbox(view, "r1")!);
+    fireEvent.click(getRowCheckbox(view, "r3")!, { shiftKey: true });
+
+    expect(getRowCheckbox(view, "r1")).toHaveAttribute("aria-checked", "true");
+    expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "true");
+    expect(getRowCheckbox(view, "r3")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("shift+click extends the row-select range backward across the prior anchor", () => {
+    const view = renderHarness({ rowSelectionColumn: { enabled: true } });
+    fireEvent.click(getRowCheckbox(view, "r3")!);
+    fireEvent.click(getRowCheckbox(view, "r1")!, { shiftKey: true });
+
+    expect(getRowCheckbox(view, "r1")).toHaveAttribute("aria-checked", "true");
+    expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "true");
+    expect(getRowCheckbox(view, "r3")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("header checkbox is unchecked when no rows are selected", () => {
+    const view = renderHarness({ rowSelectionColumn: { enabled: true } });
+    expect(getHeaderCheckbox(view)).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("header checkbox is checked when every visible row is fully selected", () => {
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: null, columnId: null },
+        selection: {
+          ranges: gridRows.map((r) => fullRowRange(r.id)),
+          anchor: { rowId: "r1", columnId: ROW_SELECT_COLUMN_ID },
+        },
+      },
+    });
+    expect(getHeaderCheckbox(view)).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("header checkbox is mixed when only some rows are fully selected", () => {
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: null, columnId: null },
+        selection: {
+          ranges: [fullRowRange("r2")],
+          anchor: { rowId: "r2", columnId: ROW_SELECT_COLUMN_ID },
+        },
+      },
+    });
+    expect(getHeaderCheckbox(view)).toHaveAttribute("aria-checked", "mixed");
+  });
+
+  it("clicking the header checkbox when all rows are fully selected deselects every visible row", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: null, columnId: null },
+        selection: {
+          ranges: gridRows.map((r) => fullRowRange(r.id)),
+          anchor: { rowId: "r1", columnId: ROW_SELECT_COLUMN_ID },
+        },
+      },
+      onSelectionChange,
+    });
+
+    fireEvent.click(getHeaderCheckbox(view)!);
+    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    for (const r of gridRows) {
+      expect(last.ranges).not.toContainEqual(fullRowRange(r.id));
+    }
+    // Rendered aria-checked remains "true" here because the harness is
+    // controlled and does not commit the proposed selection back.
+  });
+
+  it("clicking the header checkbox when nothing/some is selected selects all visible rows", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      onSelectionChange,
+    });
+
+    fireEvent.click(getHeaderCheckbox(view)!);
+    const last = onSelectionChange.mock.calls.at(-1)![0] as PretableSelectionState;
+    for (const r of gridRows) {
+      expect(last.ranges).toContainEqual(fullRowRange(r.id));
+    }
+    expect(getHeaderCheckbox(view)).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("row checkbox aria-checked='true' when its row is fully selected", () => {
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: null, columnId: null },
+        selection: {
+          ranges: [fullRowRange("r2")],
+          anchor: { rowId: "r2", columnId: ROW_SELECT_COLUMN_ID },
+        },
+      },
+    });
+    expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("row checkbox aria-checked='mixed' when its row is partially selected via a cell range", () => {
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: "r2", columnId: "a" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r2",
+              endRowId: "r2",
+              startColumnId: "a",
+              endColumnId: "b",
+            },
+          ],
+          anchor: { rowId: "r2", columnId: "a" },
+        },
+      },
+    });
+    expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "mixed");
+  });
+
+  it("row checkbox aria-checked='false' when no cells in that row are selected", () => {
+    const view = renderHarness({ rowSelectionColumn: { enabled: true } });
+    for (const r of gridRows) {
+      expect(getRowCheckbox(view, r.id)).toHaveAttribute("aria-checked", "false");
+    }
+  });
+
+  it("cell-range marquee drag does not affect the synthetic checkbox column", () => {
+    const view = renderHarness({ rowSelectionColumn: { enabled: true } });
+    const a = getCell(view, "r1", "a")!;
+    const r2Checkbox = view.container.querySelector(
+      '[data-pretable-row][data-row-id="r2"] [data-row-select-cell="true"]',
+    ) as HTMLElement;
+    const c = getCell(view, "r3", "c")!;
+
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    fireEvent.pointerEnter(r2Checkbox, { pointerId: 1 });
+    fireEvent.pointerEnter(c, { pointerId: 1 });
+    fireEvent.pointerUp(c, { pointerId: 1, button: 0 });
+
+    // Every body cell at columns a..c for rows r1..r3 must be selected, and
+    // no synthetic checkbox cell should be marked selected.
+    for (const rowId of ["r1", "r2", "r3"]) {
+      for (const colId of ["a", "b", "c"]) {
+        expect(getCell(view, rowId, colId)).toHaveAttribute(
+          "data-selected",
+          "true",
+        );
+      }
+      const checkboxCell = view.container.querySelector(
+        `[data-pretable-row][data-row-id="${rowId}"] [data-row-select-cell="true"]`,
+      );
+      expect(checkboxCell).toHaveAttribute("data-selected", "false");
+    }
+  });
+
+  it("Cmd+A keyboard select-all does not mark the synthetic checkbox column as selected", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+      onSelectionChange,
+    });
+    seedFocus(view, "r1", "a");
+    const grid = view.getByRole("grid");
+    fireEvent.keyDown(grid, { key: "a", metaKey: true });
+
+    // The synthetic row-select cells must never render as data-selected="true";
+    // they are excluded from the visual cell-selection set even if the engine
+    // range happens to span the synthetic column id.
+    for (const rowId of gridRows.map((r) => r.id)) {
+      const checkboxCell = view.container.querySelector(
+        `[data-pretable-row][data-row-id="${rowId}"] [data-row-select-cell="true"]`,
+      );
+      expect(checkboxCell).toHaveAttribute("data-selected", "false");
+    }
   });
 });
