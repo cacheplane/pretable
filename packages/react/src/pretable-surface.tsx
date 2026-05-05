@@ -319,7 +319,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const effectiveMessages = useMemo(
     () => ({
       selectAllAnnouncement:
-        messages?.selectAllAnnouncement ?? defaultMessages.selectAllAnnouncement,
+        messages?.selectAllAnnouncement ??
+        defaultMessages.selectAllAnnouncement,
       copyAnnouncement:
         messages?.copyAnnouncement ?? defaultMessages.copyAnnouncement,
       copyFailedAnnouncement:
@@ -1359,7 +1360,11 @@ function computeSelectionExtent<TRow extends PretableRow>(
     (c) => c.id !== ROW_SELECT_COLUMN_ID,
   );
 
-  if (ranges.length === 0 || visibleRows.length === 0 || dataColumns.length === 0) {
+  if (
+    ranges.length === 0 ||
+    visibleRows.length === 0 ||
+    dataColumns.length === 0
+  ) {
     return { rowCount: 0, columnCount: 0, isAll: false };
   }
 
@@ -1391,13 +1396,7 @@ function computeSelectionExtent<TRow extends PretableRow>(
     for (const row of visibleRows) {
       for (const col of dataColumns) {
         if (
-          rangeContainsCellLocal(
-            range,
-            row.id,
-            col.id,
-            rowOrder,
-            columnOrder,
-          )
+          rangeContainsCellLocal(range, row.id, col.id, rowOrder, columnOrder)
         ) {
           coveredRows.add(row.id);
           coveredCols.add(col.id);

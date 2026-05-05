@@ -2497,6 +2497,7 @@ Add a `## Copy` section after the row-select section. Document the `Cmd+C` defau
 #### Task 1 — Live region scaffolding + `messages` prop
 
 **Files:**
+
 - `packages/react/src/pretable-surface.tsx` — render `<div role="status" aria-live="polite">` near the root, with `sr-only` styling. Internal state `liveMessage: string` updated via `setLiveMessage`.
 - `packages/ui/src/grid.css` — add a `.pt-sr-only` class with the standard visually-hidden CSS.
 
@@ -2507,12 +2508,16 @@ export interface PretableSurfaceMessages {
     columnCount: number;
     isAll: boolean;
   }) => string;
-  copyAnnouncement?: (args: { rowCount: number; columnCount: number }) => string;
+  copyAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+  }) => string;
   copyFailedAnnouncement?: () => string;
 }
 ```
 
 Default messages:
+
 ```ts
 const defaultMessages = {
   selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
@@ -2528,6 +2533,7 @@ const defaultMessages = {
 Add `messages?: PretableSurfaceMessages` to `PretableSurfaceProps<TRow>`.
 
 CSS:
+
 ```css
 .pt-sr-only {
   position: absolute;
@@ -2572,11 +2578,13 @@ function scheduleAnnouncement(message: string) {
 Constant: `const ANNOUNCE_DEBOUNCE_MS = 500;`. Cleanup on unmount via useEffect.
 
 Call sites:
+
 - **Cmd+A keydown handler**: after `grid.selectAll()`, compute counts (rowCount = visibleRows.length; columnCount = dataColumns.length; isAll = true if all visible rows × all data columns are in the resulting selection — Cmd+A's effect always satisfies this) and call `scheduleAnnouncement((messages.selectAllAnnouncement ?? default)({ rowCount, columnCount, isAll }))`.
 - **Header checkbox click** (if it transitions to all-selected): after `grid.setSelectAllVisible(true)`, compute counts and announce.
 - **Cmd+C handler**: after `(copyToClipboard ?? defaultCopyToClipboard)(payload)` resolves, compute rowCount/columnCount from the selection range, announce. On rejection, announce `messages.copyFailedAnnouncement()`.
 
 Helper for row/column counts from a selection range:
+
 ```ts
 function selectionExtent(
   ranges: PretableCellRange[],
