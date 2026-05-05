@@ -12,4 +12,19 @@ describe("defineExample", () => {
     expect(def.title).toBe("X");
     expect(def.files[0].path).toBe("page.tsx");
   });
+  it("accepts pre-highlighted htmlSource", () => {
+    const def = defineExample({
+      title: "X",
+      Demo: <div />,
+      files: [
+        {
+          path: "a.ts",
+          lang: "ts",
+          source: "const a = 1;",
+          htmlSource: "<pre><code>const a = 1;</code></pre>",
+        },
+      ],
+    });
+    expect(def.files[0].htmlSource).toContain("<pre>");
+  });
 });
