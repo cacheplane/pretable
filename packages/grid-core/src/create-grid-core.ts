@@ -351,18 +351,25 @@ export function createGridCore<TRow extends GridCoreRow>(
         ? columnList.findIndex((c) => c.id === focus.columnId)
         : -1;
 
-      const baseRowIndex = currentRowIndex === -1 ? 0 : currentRowIndex;
-      const baseColumnIndex = currentColumnIndex === -1 ? 0 : currentColumnIndex;
+      const hasRowFocus = currentRowIndex !== -1;
+      const hasColumnFocus = currentColumnIndex !== -1;
+      const baseRowIndex = hasRowFocus ? currentRowIndex : 0;
+      const baseColumnIndex = hasColumnFocus ? currentColumnIndex : 0;
 
       let nextRowIndex = baseRowIndex;
       let nextColumnIndex = baseColumnIndex;
 
       const pageStep = computePageStep(viewport, visibleRows);
 
+      // When focus is null on the relevant axis, the move lands on the edge
+      // implied by the direction (down/right → 0; up/left → length-1) without
+      // applying a step, so the user "arrives" at the grid before navigating.
       switch (direction) {
         case "up":
           if (moveOptions.jumpToEdge) {
             nextRowIndex = 0;
+          } else if (!hasRowFocus) {
+            nextRowIndex = visibleRows.length - 1;
           } else if (moveOptions.byPage) {
             nextRowIndex = clamp(baseRowIndex - pageStep, 0, visibleRows.length - 1);
           } else {
@@ -372,6 +379,8 @@ export function createGridCore<TRow extends GridCoreRow>(
         case "down":
           if (moveOptions.jumpToEdge) {
             nextRowIndex = visibleRows.length - 1;
+          } else if (!hasRowFocus) {
+            nextRowIndex = 0;
           } else if (moveOptions.byPage) {
             nextRowIndex = clamp(baseRowIndex + pageStep, 0, visibleRows.length - 1);
           } else {
@@ -379,14 +388,22 @@ export function createGridCore<TRow extends GridCoreRow>(
           }
           break;
         case "left":
-          nextColumnIndex = moveOptions.jumpToEdge
-            ? 0
-            : clamp(baseColumnIndex - 1, 0, columnList.length - 1);
+          if (moveOptions.jumpToEdge) {
+            nextColumnIndex = 0;
+          } else if (!hasColumnFocus) {
+            nextColumnIndex = columnList.length - 1;
+          } else {
+            nextColumnIndex = clamp(baseColumnIndex - 1, 0, columnList.length - 1);
+          }
           break;
         case "right":
-          nextColumnIndex = moveOptions.jumpToEdge
-            ? columnList.length - 1
-            : clamp(baseColumnIndex + 1, 0, columnList.length - 1);
+          if (moveOptions.jumpToEdge) {
+            nextColumnIndex = columnList.length - 1;
+          } else if (!hasColumnFocus) {
+            nextColumnIndex = 0;
+          } else {
+            nextColumnIndex = clamp(baseColumnIndex + 1, 0, columnList.length - 1);
+          }
           break;
       }
 

@@ -29,14 +29,21 @@ describe("grid-core", () => {
       getRowId: (row) => row.id,
     });
 
-    grid.selectRow("b");
+    grid.toggleRowSelection("b");
     grid.setSort("name", "asc");
     grid.setFilter("status", "open");
 
     const snapshot = grid.getSnapshot();
 
     expect(snapshot.visibleRows.map((row) => row.id)).toEqual(["b", "a"]);
-    expect(snapshot.selection.rowIds).toEqual(["b"]);
+    expect(snapshot.selection.ranges).toEqual([
+      {
+        startRowId: "b",
+        endRowId: "b",
+        startColumnId: "name",
+        endColumnId: "message",
+      },
+    ]);
   });
 
   test("limited filter state narrows rows without losing selection ids", () => {
@@ -46,13 +53,20 @@ describe("grid-core", () => {
       getRowId: (row) => row.id,
     });
 
-    grid.selectRow("c");
+    grid.toggleRowSelection("c");
     grid.setFilter("message", "error");
 
     const snapshot = grid.getSnapshot();
 
     expect(snapshot.visibleRows.map((row) => row.id)).toEqual(["b"]);
-    expect(snapshot.selection.rowIds).toEqual(["c"]);
+    expect(snapshot.selection.ranges).toEqual([
+      {
+        startRowId: "c",
+        endRowId: "c",
+        startColumnId: "name",
+        endColumnId: "message",
+      },
+    ]);
   });
 
   test("keyboard focus moves by row id and visible order, not React-local indexes", () => {
@@ -63,15 +77,15 @@ describe("grid-core", () => {
     });
 
     grid.setSort("name", "asc");
-    grid.setFocus("b", "name");
-    grid.moveFocus(1);
+    grid.setFocus({ rowId: "b", columnId: "name" });
+    grid.moveFocus("down");
 
     expect(grid.getSnapshot().focus).toEqual({
       rowId: "c",
       columnId: "name",
     });
 
-    grid.moveFocus(1);
+    grid.moveFocus("down");
 
     expect(grid.getSnapshot().focus).toEqual({
       rowId: "a",
