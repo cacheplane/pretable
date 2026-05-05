@@ -147,12 +147,12 @@ Visual customization via `--pt-color-checkbox-bg`, `--pt-color-checkbox-border`,
 />
 ```
 
-| Prop / column field   | Where      | Effect                                                                                            |
-| --------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
-| `copyWithHeaders`     | surface    | When `true`, prepends each block with column headers (separated from the body by a blank line).   |
-| `onCopy`              | surface    | Override the default TSV serializer entirely. Returning `null` skips the clipboard write.         |
-| `copyToClipboard`     | surface    | Override the clipboard sink (test seam). Defaults to `navigator.clipboard.writeText` / `write`.   |
-| `formatForCopy`       | per-column | Per-cell value formatter, called before `defaultCoerceForCopy`. Useful for date/number formatting. |
+| Prop / column field | Where      | Effect                                                                                             |
+| ------------------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| `copyWithHeaders`   | surface    | When `true`, prepends each block with column headers (separated from the body by a blank line).    |
+| `onCopy`            | surface    | Override the default TSV serializer entirely. Returning `null` skips the clipboard write.          |
+| `copyToClipboard`   | surface    | Override the clipboard sink (test seam). Defaults to `navigator.clipboard.writeText` / `write`.    |
+| `formatForCopy`     | per-column | Per-cell value formatter, called before `defaultCoerceForCopy`. Useful for date/number formatting. |
 
 `onCopy` returns a `{ text, html? }` payload. When `html` is present, the surface writes both `text/plain` and `text/html` to the clipboard via the Clipboard API.
 

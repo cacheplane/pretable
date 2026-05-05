@@ -2306,7 +2306,10 @@ Visual customization via `--pt-color-checkbox-*` tokens.
 
 - **jsdom clipboard**: the surface accepts a `copyToClipboard` prop (test-only). Default implementation:
   ```ts
-  async function defaultCopyToClipboard(payload: { text: string; html?: string }) {
+  async function defaultCopyToClipboard(payload: {
+    text: string;
+    html?: string;
+  }) {
     if (typeof navigator === "undefined" || !navigator.clipboard) return;
     if (payload.html && typeof ClipboardItem !== "undefined") {
       await navigator.clipboard.write([
@@ -2331,6 +2334,7 @@ Visual customization via `--pt-color-checkbox-*` tokens.
 #### Task 1 — Engine: add `formatForCopy` to column type
 
 **Files:**
+
 - `packages/grid-core/src/types.ts` — add `formatForCopy?: (value: unknown, row: TRow) => string` to `GridCoreColumn<TRow>`.
 - `packages/core/src/types.ts` — verify the column type re-export carries it through (it should, since `PretableColumn = GridCoreColumn`).
 
@@ -2341,9 +2345,11 @@ Tests: no new tests; the field is optional and inert until Phase 5 consumes it.
 #### Task 2 — `copy.ts` module with serializer + coercion
 
 **Files:**
+
 - Create `packages/react/src/copy.ts`.
 
 Public API:
+
 ```ts
 export interface SerializeRangesArgs<TRow extends PretableRow> {
   ranges: PretableCellRange[];
@@ -2365,7 +2371,8 @@ export function defaultCoerceForCopy(value: unknown): string;
 ```
 
 Implementation rules:
-- Filter `args.columns` to drop any column with id `ROW_SELECT_COLUMN_ID` ("__pretable_row_select__"). Define this id in a shared constants module or import from `pretable-surface.tsx` if already exported.
+
+- Filter `args.columns` to drop any column with id `ROW_SELECT_COLUMN_ID` ("**pretable_row_select**"). Define this id in a shared constants module or import from `pretable-surface.tsx` if already exported.
 - Build column-id → index map and row-id → index map (over visible rows). For each range:
   - Resolve start/end row + column indices in the visible/data space; clamp inverted ranges (start > end after clamp → swap).
   - If a range maps to zero rows or columns after clamping (e.g., all rows filtered out, or only the synthetic column was in the range), skip it.
@@ -2376,6 +2383,7 @@ Implementation rules:
 - HTML: not produced by default. Phase 5 emits `text` only; HTML comes via the `onCopy` override path.
 
 Inline unit tests in a new test file `packages/react/src/__tests__/copy.test.ts`:
+
 - Single range, single column, single row.
 - Multi-row range.
 - Multi-range (separated by `\n\n`).
@@ -2391,10 +2399,12 @@ Inline unit tests in a new test file `packages/react/src/__tests__/copy.test.ts`
 #### Task 3 — Surface: Cmd+C handler + props + clipboard seam
 
 **Files:**
+
 - `packages/react/src/pretable-surface.tsx` — add new props, keydown handler, default clipboard impl.
 - `packages/react/src/index.ts` — export `CopyPayload`, `SerializeRangesArgs`, `defaultCoerceForCopy` if useful.
 
 New props on `PretableSurfaceProps<TRow>`:
+
 ```ts
 copyWithHeaders?: boolean;
 onCopy?: (args: SerializeRangesArgs<TRow>) => CopyPayload;
@@ -2404,6 +2414,7 @@ copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
 Default `copyToClipboard` written as a top-level helper (not inline in component) so it's tree-shakeable.
 
 In the keydown handler (after the existing `handleSurfaceKeyDown` integration), check for `Cmd/Ctrl+C` (key === "c" || "C", `event.metaKey || event.ctrlKey`, no shift, no alt). If matched:
+
 1. Call `event.preventDefault()`.
 2. Build `SerializeRangesArgs` from the current snapshot + columns + `copyWithHeaders` prop.
 3. If `onCopy` is provided, use its return value; otherwise call `serializeRangesAsTsv(args)`.
@@ -2411,6 +2422,7 @@ In the keydown handler (after the existing `handleSurfaceKeyDown` integration), 
 5. Call `(copyToClipboard ?? defaultCopyToClipboard)(payload)`. Wrap in try/catch; on rejection log a warn and return.
 
 Notes:
+
 - The event handler doesn't fire `onSelectionChange` / `onFocusChange` (copy doesn't change state).
 - `Cmd+C` should not fire when the user has clicked into an `<input>` inside the grid (Phase 1 doesn't have any but Phase 4's checkboxes are buttons — they ignore Cmd+C natively). Only intercept when the event target is the grid root or a cell — guard via `event.currentTarget === event.target` or check the event target's tag (rough OK heuristic).
 
@@ -2429,6 +2441,7 @@ Add `copyWithHeaders`, `onCopy`, and `copyToClipboard` to the prop types and for
 **Files:** `packages/react/src/__tests__/pretable-surface.test.tsx`.
 
 New `describe("copy", ...)` block:
+
 - Cmd+C with a single-cell selection writes single-cell TSV via the injected `copyToClipboard` mock.
 - Cmd+C with a multi-row range writes row-major TSV.
 - Cmd+C with multiple discontiguous ranges separates blocks by `\n\n`.
