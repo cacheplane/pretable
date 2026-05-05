@@ -3,10 +3,7 @@ import path from "node:path";
 
 import { defineExample } from "../../../lib/docs/define-example";
 
-const DIR = path.join(
-  process.cwd(),
-  "content/examples/streaming-chat-grid",
-);
+const DIR = path.join(process.cwd(), "content/examples/streaming-chat-grid");
 const read = (f: string) => fs.readFileSync(path.join(DIR, f), "utf8");
 
 // Demo is a self-contained static placeholder so the source files (which import
