@@ -54,3 +54,32 @@ test("docs brand link goes to bare grid when drawer was never opened", async ({
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator("html")).toHaveAttribute("data-drawer", "closed");
 });
+
+test("hero grid row-select checkbox column is visible and clickable", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Header checkbox is rendered.
+  const headerCheckbox = page.locator("[data-pretable-row-select-all]").first();
+  await expect(headerCheckbox).toBeVisible();
+  await expect(headerCheckbox).toHaveAttribute(
+    "aria-checked",
+    /true|false|mixed/,
+  );
+
+  // At least one body checkbox is rendered.
+  const bodyCheckbox = page.locator("[data-pretable-row-select]").first();
+  await expect(bodyCheckbox).toBeVisible();
+
+  // Clicking it changes its aria-checked state.
+  const initialState = await bodyCheckbox.getAttribute("aria-checked");
+  await bodyCheckbox.click();
+  await expect(bodyCheckbox).not.toHaveAttribute(
+    "aria-checked",
+    initialState ?? "false",
+  );
+});

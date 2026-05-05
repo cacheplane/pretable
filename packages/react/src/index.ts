@@ -13,7 +13,11 @@ export { measureRenderedRowHeight } from "./row-height";
 
 // Component prop types
 export type { PretableProps } from "./pretable";
-export type { PretableSurfaceProps } from "./pretable-surface";
+export type {
+  PretableSurfaceProps,
+  RowSelectionColumnConfig,
+} from "./pretable-surface";
+export { ROW_SELECT_COLUMN_ID } from "./pretable-surface";
 export type { InspectionGridProps } from "./inspection-grid";
 export type {
   LabeledGridSurfaceFormatValueInput,

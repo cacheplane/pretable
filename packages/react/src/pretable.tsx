@@ -10,6 +10,7 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   rows: TRow[];
+  rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
   tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
 }
 
@@ -26,6 +27,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   columns,
   getRowId,
   rows,
+  rowSelectionColumn,
   tabBehavior,
 }: PretableProps<TRow>) {
   const resolvedGetRowId =
@@ -109,6 +111,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
           </>
         )}
         rows={rows}
+        rowSelectionColumn={rowSelectionColumn}
         tabBehavior={tabBehavior}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
         viewportHeight={VIEWPORT_HEIGHT}
