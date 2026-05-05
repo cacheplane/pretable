@@ -43,6 +43,7 @@ export interface LabeledGridSurfaceProps<
   pinnedClassName?: string;
   rowClassName?: string;
   rows: TRow[];
+  rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
   selectFocusedRowOnArrowKey?: boolean;
   tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
   valueClassName?: string;
@@ -69,6 +70,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   pinnedClassName,
   rowClassName,
   rows,
+  rowSelectionColumn,
   selectFocusedRowOnArrowKey,
   tabBehavior,
   valueClassName,
@@ -156,6 +158,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
         </>
       )}
       rows={rows}
+      rowSelectionColumn={rowSelectionColumn}
       selectFocusedRowOnArrowKey={selectFocusedRowOnArrowKey}
       tabBehavior={tabBehavior}
       viewportHeight={viewportHeight}
