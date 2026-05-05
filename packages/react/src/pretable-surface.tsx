@@ -46,6 +46,16 @@ import {
   getViewportStyle,
 } from "./styles";
 
+export const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
+
+export interface RowSelectionColumnConfig {
+  enabled: true;
+  position?: "left";
+  pinned?: boolean;
+  headerCheckbox?: boolean;
+  width?: number;
+}
+
 interface PretableSurfaceHeaderCellRenderInput<
   TRow extends PretableRow = PretableRow,
 > {
@@ -158,6 +168,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     input: PretableSurfaceHeaderCellRenderInput<TRow>,
   ) => ReactNode;
   rows: TRow[];
+  rowSelectionColumn?: RowSelectionColumnConfig;
   selectFocusedRowOnArrowKey?: boolean;
   /**
    * Tab key behavior. Default `"wrap-rows"` matches Grid Alpha / Sheets — Tab
@@ -192,6 +203,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   renderBodyCell,
   renderHeaderCell,
   rows,
+  rowSelectionColumn,
   selectFocusedRowOnArrowKey = false,
   tabBehavior = "wrap-rows",
   viewportStyle,
@@ -210,9 +222,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
   const { headerHeight } = useResolvedHeights();
   const bodyViewportHeight = Math.max(viewportHeight - headerHeight, 0);
+  const effectiveColumns = useMemo<PretableColumn<TRow>[]>(() => {
+    if (!rowSelectionColumn?.enabled) return columns;
+    const synth: PretableColumn<TRow> = {
+      id: ROW_SELECT_COLUMN_ID,
+      header: "",
+      widthPx: rowSelectionColumn.width ?? 36,
+      sortable: false,
+      filterable: false,
+      ...((rowSelectionColumn.pinned ?? true) ? { pinned: "left" } : {}),
+    };
+    return [synth, ...columns];
+  }, [columns, rowSelectionColumn]);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
     autosize,
-    columns,
+    columns: effectiveColumns,
     getRowId,
     state: state ?? undefined,
     measuredHeights,
@@ -223,18 +247,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     onSelectionChange,
     onFocusChange,
   });
-  const pinnedOffsets = useMemo(() => getPinnedLeftOffsets(columns), [columns]);
+  const pinnedOffsets = useMemo(
+    () => getPinnedLeftOffsets(effectiveColumns),
+    [effectiveColumns],
+  );
 
   const columnIndexById = useMemo(() => {
     const map = new Map<string, number>();
-    for (let i = 0; i < columns.length; i += 1) {
-      const col = columns[i];
+    for (let i = 0; i < effectiveColumns.length; i += 1) {
+      const col = effectiveColumns[i];
       if (col) {
         map.set(col.id, i);
       }
     }
     return map;
-  }, [columns]);
+  }, [effectiveColumns]);
 
   const visibleRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -252,14 +279,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     const fullyRows = new Set<string>();
     const ranges = snapshot.selection.ranges;
 
-    if (ranges.length === 0 || columns.length === 0) {
+    // Exclude the synthetic row-select column from the "fully selected"
+    // calculation — it doesn't participate in cell-range selection.
+    const dataColumns = effectiveColumns.filter(
+      (c) => c.id !== ROW_SELECT_COLUMN_ID,
+    );
+
+    if (ranges.length === 0 || dataColumns.length === 0) {
       return { selectedCellKeys: cellKeys, fullySelectedRowIds: fullyRows };
     }
 
     for (const row of snapshot.visibleRows) {
       let coveredCount = 0;
 
-      for (const column of columns) {
+      for (const column of dataColumns) {
         const inAny = ranges.some((range) =>
           rangeContainsCellLocal(
             range,
@@ -276,7 +309,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         }
       }
 
-      if (coveredCount === columns.length) {
+      if (coveredCount === dataColumns.length) {
         fullyRows.add(row.id);
       }
     }
@@ -285,7 +318,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   }, [
     snapshot.selection.ranges,
     snapshot.visibleRows,
-    columns,
+    effectiveColumns,
     visibleRowIndexById,
     columnIndexById,
   ]);
@@ -401,11 +434,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // every render — including the re-render triggered by its own
     // setMeasuredHeights call — which under high-churn streaming with
     // wrap:true rows can hit React's "Maximum update depth" guard.
-  }, [snapshot.visibleRows, columns, viewportWidth]);
+  }, [snapshot.visibleRows, effectiveColumns, viewportWidth]);
 
   return (
     <div
-      aria-colcount={columns.length}
+      aria-colcount={effectiveColumns.length}
       aria-label={ariaLabel}
       aria-multiselectable="true"
       aria-rowcount={snapshot.totalRowCount + 1}
@@ -437,7 +470,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         const before = grid.getSnapshot();
         const handled = handleSurfaceKeyDown(event, {
           bodyViewportHeight,
-          columns,
+          columns: effectiveColumns,
           grid,
           onSelectedRowIdChange,
           selectFocusedRowOnArrowKey,
@@ -484,7 +517,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         style={getHeaderRowStyle(renderSnapshot.totalWidth, headerHeight)}
       >
         {renderSnapshot.columns.map((plannedCol) => {
-          const column = columns[plannedCol.index];
+          const column = effectiveColumns[plannedCol.index];
 
           if (!column) {
             return null;
@@ -627,7 +660,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               style={getRowStyle(top, height)}
             >
               {renderSnapshot.columns.map((plannedCol) => {
-                const column = columns[plannedCol.index];
+                const column = effectiveColumns[plannedCol.index];
 
                 if (!column) {
                   return null;
@@ -671,10 +704,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     data-selected={cellIsSelected ? "true" : "false"}
                     key={`${id}:${column.id}`}
                     onClick={(event) => {
+                      if (column.id === ROW_SELECT_COLUMN_ID) return;
                       handleCellClick({
                         cmd: event.metaKey || event.ctrlKey,
                         columnId: column.id,
-                        columns,
+                        columns: effectiveColumns,
                         grid,
                         onFocusChange,
                         onSelectedRowIdChange,
@@ -685,6 +719,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     onPointerDown={(event) => {
                       if (event.button !== 0) return;
+                      if (column.id === ROW_SELECT_COLUMN_ID) return;
                       const cmd = event.metaKey || event.ctrlKey;
                       if (event.shiftKey || cmd) return;
 
@@ -697,7 +732,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       handleCellClick({
                         cmd: false,
                         columnId: column.id,
-                        columns,
+                        columns: effectiveColumns,
                         grid,
                         onFocusChange,
                         onSelectedRowIdChange,
@@ -713,6 +748,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     onPointerEnter={() => {
                       if (!dragAnchorRef.current) return;
+                      if (column.id === ROW_SELECT_COLUMN_ID) return;
                       const before = grid.getSnapshot();
                       const addr: PretableCellAddress = {
                         rowId: id,
@@ -734,11 +770,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         onSelectionChange?.(after.selection);
                         const beforeFullRow = singleFullRowSelection(
                           before.selection,
-                          columns,
+                          effectiveColumns,
                         );
                         const afterFullRow = singleFullRowSelection(
                           after.selection,
-                          columns,
+                          effectiveColumns,
                         );
                         if (beforeFullRow !== afterFullRow) {
                           onSelectedRowIdChange?.(afterFullRow);
@@ -1011,12 +1047,16 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
 ): boolean {
   const {
     bodyViewportHeight,
-    columns,
+    columns: allColumns,
     grid,
     onSelectedRowIdChange,
     selectFocusedRowOnArrowKey,
     tabBehavior,
   } = ctx;
+  // For keyboard navigation purposes treat the synthetic row-select column as
+  // non-existent: Home/End/Tab boundaries and full-row selections operate on
+  // data columns only.
+  const columns = allColumns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
   const { key } = event;
   const cmd = event.metaKey || event.ctrlKey;
   const shift = event.shiftKey;
@@ -1033,6 +1073,15 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       extend: shift,
       jumpToEdge: cmd,
     });
+
+    // Snap off the synthetic row-select column if we landed there.
+    const after = grid.getSnapshot();
+    if (after.focus.columnId === ROW_SELECT_COLUMN_ID && firstColumn) {
+      const rowId = after.focus.rowId;
+      if (rowId) {
+        grid.setFocus({ rowId, columnId: firstColumn.id });
+      }
+    }
 
     if (selectFocusedRowOnArrowKey) {
       const nextFocus = grid.getSnapshot().focus;
