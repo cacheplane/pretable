@@ -14,6 +14,7 @@ import {
   ROW_SELECT_COLUMN_ID,
   type RowSelectionColumnConfig,
 } from "../pretable-surface";
+import type { CopyPayload, SerializeRangesArgs } from "../copy";
 import * as rowHeight from "../row-height";
 import { type PretableSurfaceState, usePretableModel } from "../use-pretable";
 import type {
@@ -2405,5 +2406,316 @@ describe("row-select checkbox column", () => {
       );
       expect(checkboxCell).toHaveAttribute("data-selected", "false");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5 — Cmd+C copy contract integration tests
+// ---------------------------------------------------------------------------
+
+interface RenderCopyHarnessOpts {
+  initialState?: PretableSurfaceState;
+  columns?: typeof gridColumns;
+  copyWithHeaders?: boolean;
+  onCopy?: (args: SerializeRangesArgs<GridRow>) => CopyPayload | null;
+  copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
+  rowSelectionColumn?: RowSelectionColumnConfig;
+}
+
+function renderCopyHarness(opts: RenderCopyHarnessOpts = {}) {
+  return render(
+    <PretableSurface
+      ariaLabel="copy-grid"
+      columns={opts.columns ?? gridColumns}
+      copyToClipboard={opts.copyToClipboard}
+      copyWithHeaders={opts.copyWithHeaders}
+      getRowId={(row: GridRow) => row.id}
+      onCopy={opts.onCopy}
+      overscan={0}
+      rows={gridRows}
+      rowSelectionColumn={opts.rowSelectionColumn}
+      state={opts.initialState}
+      viewportHeight={300}
+    />,
+  );
+}
+
+function singleCellSelection(
+  rowId: string,
+  columnId: string,
+): PretableSurfaceState {
+  return {
+    focus: { rowId, columnId },
+    selection: {
+      ranges: [
+        {
+          startRowId: rowId,
+          endRowId: rowId,
+          startColumnId: columnId,
+          endColumnId: columnId,
+        },
+      ],
+      anchor: { rowId, columnId },
+    },
+  };
+}
+
+describe("PretableSurface copy", () => {
+  it("Cmd+C with a single-cell selection writes a single-cell TSV", () => {
+    const copyToClipboard = vi.fn();
+    const view = renderCopyHarness({
+      initialState: singleCellSelection("r1", "a"),
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(copyToClipboard).toHaveBeenCalledTimes(1);
+    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1" });
+  });
+
+  it("Cmd+C with a multi-row range writes row-major TSV joined by newlines", () => {
+    const copyToClipboard = vi.fn();
+    const view = renderCopyHarness({
+      initialState: {
+        focus: { rowId: "r1", columnId: "a" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r1",
+              endRowId: "r2",
+              startColumnId: "a",
+              endColumnId: "a",
+            },
+          ],
+          anchor: { rowId: "r1", columnId: "a" },
+        },
+      },
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\na2" });
+  });
+
+  it("Cmd+C with a multi-column range writes columns joined by tabs", () => {
+    const copyToClipboard = vi.fn();
+    const view = renderCopyHarness({
+      initialState: {
+        focus: { rowId: "r1", columnId: "a" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r1",
+              endRowId: "r1",
+              startColumnId: "a",
+              endColumnId: "b",
+            },
+          ],
+          anchor: { rowId: "r1", columnId: "a" },
+        },
+      },
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\tb1" });
+  });
+
+  it("Cmd+C with multiple ranges joins blocks with a blank line", () => {
+    const copyToClipboard = vi.fn();
+    const view = renderCopyHarness({
+      initialState: {
+        focus: { rowId: "r1", columnId: "a" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r1",
+              endRowId: "r1",
+              startColumnId: "a",
+              endColumnId: "a",
+            },
+            {
+              startRowId: "r3",
+              endRowId: "r3",
+              startColumnId: "c",
+              endColumnId: "c",
+            },
+          ],
+          anchor: { rowId: "r1", columnId: "a" },
+        },
+      },
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\n\nc3" });
+  });
+
+  it("copyWithHeaders=true prepends a header row + blank line before the body", () => {
+    const copyToClipboard = vi.fn();
+    const view = renderCopyHarness({
+      initialState: {
+        focus: { rowId: "r1", columnId: "a" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r1",
+              endRowId: "r1",
+              startColumnId: "a",
+              endColumnId: "b",
+            },
+          ],
+          anchor: { rowId: "r1", columnId: "a" },
+        },
+      },
+      copyWithHeaders: true,
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(copyToClipboard).toHaveBeenCalledWith({ text: "A\tB\n\na1\tb1" });
+  });
+
+  it("onCopy override receives args and its return value is what gets written", () => {
+    const copyToClipboard = vi.fn();
+    const onCopy = vi.fn((args: SerializeRangesArgs<GridRow>) => {
+      // sanity: args contain the expected pieces
+      expect(args.ranges).toHaveLength(1);
+      expect(args.copyWithHeaders).toBe(false);
+      return { text: "OVERRIDE", html: "<b>OVERRIDE</b>" };
+    });
+    const view = renderCopyHarness({
+      initialState: singleCellSelection("r1", "a"),
+      onCopy,
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(onCopy).toHaveBeenCalledTimes(1);
+    expect(copyToClipboard).toHaveBeenCalledWith({
+      text: "OVERRIDE",
+      html: "<b>OVERRIDE</b>",
+    });
+  });
+
+  it("onCopy returning null skips the clipboard write", () => {
+    const copyToClipboard = vi.fn();
+    const onCopy = vi.fn(() => null);
+    const view = renderCopyHarness({
+      initialState: singleCellSelection("r1", "a"),
+      onCopy,
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(onCopy).toHaveBeenCalledTimes(1);
+    expect(copyToClipboard).not.toHaveBeenCalled();
+  });
+
+  it("formatForCopy on a column overrides default coercion in the body", () => {
+    const copyToClipboard = vi.fn();
+    const customColumns = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        formatForCopy: (value: unknown) => `FORMATTED:${String(value)}`,
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = renderCopyHarness({
+      columns: customColumns,
+      initialState: singleCellSelection("r1", "a"),
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(copyToClipboard).toHaveBeenCalledWith({ text: "FORMATTED:a1" });
+  });
+
+  it("Cmd+C with an empty selection does not call copyToClipboard", () => {
+    const copyToClipboard = vi.fn();
+    const view = renderCopyHarness({
+      initialState: {
+        focus: { rowId: null, columnId: null },
+        selection: { ranges: [], anchor: null },
+      },
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(copyToClipboard).not.toHaveBeenCalled();
+  });
+
+  it("synthetic row-select column is excluded from copy output", () => {
+    const copyToClipboard = vi.fn();
+    // Even though the engine emits a full-row range that spans the synthetic
+    // ROW_SELECT_COLUMN_ID through "c", the serializer must filter the
+    // synthetic column out of the output. The synthetic column has no
+    // value/header that should leak into the clipboard text.
+    const view = renderCopyHarness({
+      rowSelectionColumn: { enabled: true },
+      initialState: {
+        focus: { rowId: "r1", columnId: "a" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r1",
+              endRowId: "r1",
+              startColumnId: ROW_SELECT_COLUMN_ID,
+              endColumnId: "c",
+            },
+          ],
+          anchor: { rowId: "r1", columnId: ROW_SELECT_COLUMN_ID },
+        },
+      },
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(copyToClipboard).toHaveBeenCalledTimes(1);
+    const payload = copyToClipboard.mock.calls[0]![0] as CopyPayload;
+    expect(payload.text).not.toContain(ROW_SELECT_COLUMN_ID);
+    // No leading tab — synthetic column does not contribute an empty cell.
+    expect(payload.text.startsWith("\t")).toBe(false);
+  });
+
+  it("Cmd+Shift+C does not trigger copy", () => {
+    const copyToClipboard = vi.fn();
+    const view = renderCopyHarness({
+      initialState: singleCellSelection("r1", "a"),
+      copyToClipboard,
+    });
+    fireEvent.keyDown(view.getByRole("grid"), {
+      key: "c",
+      metaKey: true,
+      shiftKey: true,
+    });
+
+    expect(copyToClipboard).not.toHaveBeenCalled();
+  });
+
+  it("a failed clipboard write is logged via console.warn and does not throw", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const copyToClipboard = vi.fn().mockRejectedValue(new Error("boom"));
+    const view = renderCopyHarness({
+      initialState: singleCellSelection("r1", "a"),
+      copyToClipboard,
+    });
+
+    expect(() => {
+      fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+    }).not.toThrow();
+
+    // Flush the catch microtask.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(copyToClipboard).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[pretable] clipboard copy failed",
+      expect.any(Error),
+    );
   });
 });
