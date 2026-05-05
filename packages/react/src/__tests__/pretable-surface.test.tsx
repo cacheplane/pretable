@@ -341,7 +341,7 @@ describe("PretableSurface", () => {
     expect(renderedRows[0]).toHaveAttribute("data-selected", "false");
   });
 
-  it("emits selected row id changes for click and keyboard-driven selection", () => {
+  it("emits selected row id changes for keyboard-driven full-row selection", () => {
     const onSelectedRowIdChange = vi.fn();
     const view = render(
       <PretableSurface
@@ -356,13 +356,16 @@ describe("PretableSurface", () => {
       />,
     );
 
-    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
-
+    // selectFocusedRowOnArrowKey: ArrowDown selects the focused row's full
+    // range, which the surface forwards as a row-id change.
     const viewport = view.getByRole("grid", { name: "Inspection grid" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
     fireEvent.keyDown(viewport, { key: "ArrowUp" });
 
-    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(1, "evt-002");
-    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(2, "evt-001");
+    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(1, "evt-001");
+    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(2, "evt-002");
+    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(3, "evt-001");
   });
 
   it("reports internal telemetry without forcing DOM scraping in the parent surface", async () => {
@@ -395,7 +398,10 @@ describe("PretableSurface", () => {
       );
     });
 
-    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
+    // Drive selection via keyboard (Phase 3 cell-click no longer full-row-selects).
+    const viewport = view.getByRole("grid", { name: "Inspection grid" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
 
     await waitFor(() => {
       expect(onTelemetryChange).toHaveBeenLastCalledWith(
@@ -996,6 +1002,7 @@ interface RenderHarnessOpts {
   initialState?: PretableSurfaceState;
   onSelectionChange?: (next: PretableSelectionState) => void;
   onFocusChange?: (next: PretableFocusState) => void;
+  onSelectedRowIdChange?: (rowId: string | null) => void;
   tabBehavior?: "wrap-rows" | "exit";
   viewportHeight?: number;
 }
@@ -1007,6 +1014,7 @@ function renderHarness(opts: RenderHarnessOpts = {}) {
       columns={gridColumns}
       getRowId={(row: GridRow) => row.id}
       onFocusChange={opts.onFocusChange}
+      onSelectedRowIdChange={opts.onSelectedRowIdChange}
       onSelectionChange={opts.onSelectionChange}
       overscan={0}
       rows={gridRows}
@@ -1647,5 +1655,391 @@ describe("ARIA grid attributes", () => {
       "[data-pretable-header-row]",
     );
     expect(headerRow).toHaveAttribute("aria-rowindex", "1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 Task 4 — click + drag selection
+// ---------------------------------------------------------------------------
+
+describe("click + drag selection", () => {
+  // ---- Click semantics ----
+
+  it("plain click on a cell focuses it and collapses selection", () => {
+    const view = renderHarness();
+    const cell = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(cell, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(cell, { pointerId: 1, button: 0 });
+    fireEvent.click(cell);
+
+    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "true");
+    // Only one selected cell
+    expect(getSelectedCells(view)).toHaveLength(1);
+  });
+
+  it("plain click on a different cell collapses any prior wider selection", () => {
+    const view = renderHarness();
+    const grid = view.getByRole("grid");
+    // Cmd+A selects everything
+    fireEvent.keyDown(grid, { key: "a", metaKey: true });
+    expect(getSelectedCells(view).length).toBeGreaterThan(1);
+
+    const cell = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(cell, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(cell, { pointerId: 1, button: 0 });
+    fireEvent.click(cell);
+
+    expect(getSelectedCells(view)).toHaveLength(1);
+    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute("data-focused", "true");
+  });
+
+  it("shift+click with no prior anchor behaves as plain click", () => {
+    const view = renderHarness();
+    const cell = getCell(view, "r2", "b")!;
+    // shift+click — pointerDown short-circuits when shift is held
+    fireEvent.pointerDown(cell, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.pointerUp(cell, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.click(cell, { shiftKey: true });
+
+    // No anchor before -> falls through to plain-click branch -> single cell.
+    expect(getSelectedCells(view)).toHaveLength(1);
+    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
+  });
+
+  it("shift+click extends from existing anchor", () => {
+    const view = renderHarness();
+    // Plain click on (r1, a) sets anchor.
+    const start = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(start, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(start, { pointerId: 1, button: 0 });
+    fireEvent.click(start);
+
+    // Shift+click on (r3, c).
+    const end = getCell(view, "r3", "c")!;
+    fireEvent.pointerDown(end, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.pointerUp(end, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.click(end, { shiftKey: true });
+
+    // 3x3 block selected.
+    expect(getSelectedCells(view)).toHaveLength(9);
+    for (const r of ["r1", "r2", "r3"]) {
+      for (const c of ["a", "b", "c"]) {
+        expect(getCell(view, r, c)).toHaveAttribute("data-selected", "true");
+      }
+    }
+    expect(getCell(view, "r3", "c")).toHaveAttribute("data-focused", "true");
+  });
+
+  it("cmd+click adds a discontiguous range", () => {
+    const view = renderHarness();
+    const start = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(start, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(start, { pointerId: 1, button: 0 });
+    fireEvent.click(start);
+
+    // Cmd+click on (r3, c).
+    const end = getCell(view, "r3", "c")!;
+    fireEvent.pointerDown(end, { pointerId: 1, button: 0, metaKey: true });
+    fireEvent.pointerUp(end, { pointerId: 1, button: 0, metaKey: true });
+    fireEvent.click(end, { metaKey: true });
+
+    // Two single cells selected — discontiguous.
+    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r3", "c")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "false");
+    expect(getSelectedCells(view)).toHaveLength(2);
+    expect(getCell(view, "r3", "c")).toHaveAttribute("data-focused", "true");
+  });
+
+  it("onSelectionChange fires on plain click", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({ onSelectionChange });
+    const cell = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(cell, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(cell, { pointerId: 1, button: 0 });
+    fireEvent.click(cell);
+
+    expect(onSelectionChange).toHaveBeenCalled();
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
+    expect(last.ranges).toHaveLength(1);
+    expect(last.ranges[0]).toMatchObject({
+      startRowId: "r2",
+      endRowId: "r2",
+      startColumnId: "b",
+      endColumnId: "b",
+    });
+  });
+
+  it("onSelectionChange fires on shift+click extension", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({ onSelectionChange });
+    const start = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(start, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(start, { pointerId: 1, button: 0 });
+    fireEvent.click(start);
+    onSelectionChange.mockClear();
+
+    const end = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(end, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.pointerUp(end, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.click(end, { shiftKey: true });
+
+    expect(onSelectionChange).toHaveBeenCalled();
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
+    expect(last.ranges).toHaveLength(1);
+    const r = last.ranges[0]!;
+    // Range spans (r1,a) to (r2,b) regardless of orientation.
+    expect(new Set([r.startRowId, r.endRowId])).toEqual(new Set(["r1", "r2"]));
+    expect(new Set([r.startColumnId, r.endColumnId])).toEqual(
+      new Set(["a", "b"]),
+    );
+  });
+
+  it("onSelectionChange fires on cmd+click discontiguous add", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({ onSelectionChange });
+    const start = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(start, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(start, { pointerId: 1, button: 0 });
+    fireEvent.click(start);
+    onSelectionChange.mockClear();
+
+    const end = getCell(view, "r3", "c")!;
+    fireEvent.pointerDown(end, { pointerId: 1, button: 0, metaKey: true });
+    fireEvent.pointerUp(end, { pointerId: 1, button: 0, metaKey: true });
+    fireEvent.click(end, { metaKey: true });
+
+    expect(onSelectionChange).toHaveBeenCalled();
+    const last = onSelectionChange.mock.calls.at(
+      -1,
+    )![0] as PretableSelectionState;
+    expect(last.ranges).toHaveLength(2);
+  });
+
+  it("onFocusChange fires for each click variant", () => {
+    const onFocusChange = vi.fn();
+    const view = renderHarness({ onFocusChange });
+    const a = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(a, { pointerId: 1, button: 0 });
+    fireEvent.click(a);
+    expect(onFocusChange).toHaveBeenCalled();
+    const callsAfterPlain = onFocusChange.mock.calls.length;
+
+    const b = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(b, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.pointerUp(b, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.click(b, { shiftKey: true });
+    expect(onFocusChange.mock.calls.length).toBeGreaterThan(callsAfterPlain);
+    const callsAfterShift = onFocusChange.mock.calls.length;
+
+    const c = getCell(view, "r3", "c")!;
+    fireEvent.pointerDown(c, { pointerId: 1, button: 0, metaKey: true });
+    fireEvent.pointerUp(c, { pointerId: 1, button: 0, metaKey: true });
+    fireEvent.click(c, { metaKey: true });
+    expect(onFocusChange.mock.calls.length).toBeGreaterThan(callsAfterShift);
+
+    const lastFocus = onFocusChange.mock.calls.at(-1)![0] as PretableFocusState;
+    expect(lastFocus).toMatchObject({ rowId: "r3", columnId: "c" });
+  });
+
+  it("onSelectedRowIdChange fires null on plain cell click after a full-row selection", () => {
+    const onSelectedRowIdChange = vi.fn();
+    const view = renderHarness({ onSelectedRowIdChange });
+    const grid = view.getByRole("grid");
+
+    // Seed focus, then Enter to make a full-row selection on r1.
+    seedFocus(view, "r1", "a");
+    fireEvent.keyDown(grid, { key: "Enter" });
+    expect(onSelectedRowIdChange).toHaveBeenCalledWith("r1");
+    onSelectedRowIdChange.mockClear();
+
+    // Plain click on (r2, b) — collapses to single cell, no longer a full row.
+    const cell = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(cell, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(cell, { pointerId: 1, button: 0 });
+    fireEvent.click(cell);
+
+    expect(onSelectedRowIdChange).toHaveBeenCalledWith(null);
+  });
+
+  it("onSelectedRowIdChange does NOT fire transitioning from cell-range to cell-range", () => {
+    const onSelectedRowIdChange = vi.fn();
+    const view = renderHarness({ onSelectedRowIdChange });
+
+    // Plain click (r1, a) — single cell, not a full row.
+    const a = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(a, { pointerId: 1, button: 0 });
+    fireEvent.click(a);
+
+    // Plain click (r2, b) — still a single cell.
+    const b = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(b, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(b, { pointerId: 1, button: 0 });
+    fireEvent.click(b);
+
+    expect(onSelectedRowIdChange).not.toHaveBeenCalled();
+  });
+
+  // ---- Marquee drag ----
+
+  it("drag from cell A through B to C produces a range A→C", () => {
+    const view = renderHarness();
+    const a = getCell(view, "r1", "a")!;
+    const b = getCell(view, "r2", "b")!;
+    const c = getCell(view, "r3", "c")!;
+
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    fireEvent.pointerEnter(b, { pointerId: 1 });
+    fireEvent.pointerEnter(c, { pointerId: 1 });
+    fireEvent.pointerUp(c, { pointerId: 1, button: 0 });
+
+    expect(getSelectedCells(view)).toHaveLength(9);
+    for (const r of ["r1", "r2", "r3"]) {
+      for (const col of ["a", "b", "c"]) {
+        expect(getCell(view, r, col)).toHaveAttribute("data-selected", "true");
+      }
+    }
+    expect(getCell(view, "r3", "c")).toHaveAttribute("data-focused", "true");
+  });
+
+  it("drag with a single pointerEnter still works", () => {
+    const view = renderHarness();
+    const a = getCell(view, "r1", "a")!;
+    const b = getCell(view, "r2", "b")!;
+
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    fireEvent.pointerEnter(b, { pointerId: 1 });
+    fireEvent.pointerUp(b, { pointerId: 1, button: 0 });
+
+    // 2x2 range
+    expect(getSelectedCells(view)).toHaveLength(4);
+    for (const r of ["r1", "r2"]) {
+      for (const col of ["a", "b"]) {
+        expect(getCell(view, r, col)).toHaveAttribute("data-selected", "true");
+      }
+    }
+  });
+
+  it("pointerUp without movement leaves single-cell selection", () => {
+    const view = renderHarness();
+    const cell = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(cell, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(cell, { pointerId: 1, button: 0 });
+
+    expect(getSelectedCells(view)).toHaveLength(1);
+    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
+  });
+
+  it("Esc during drag reverts to pre-drag selection", () => {
+    const view = renderHarness();
+    const grid = view.getByRole("grid");
+
+    // Establish a prior selection: plain click on (r1, a).
+    const a = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(a, { pointerId: 1, button: 0 });
+    fireEvent.click(a);
+
+    // Begin drag at (r2, b) — collapses to (r2, b).
+    const b = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(b, { pointerId: 1, button: 0 });
+    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "true");
+
+    // Move into (r3, c) — extends.
+    const c = getCell(view, "r3", "c")!;
+    fireEvent.pointerEnter(c, { pointerId: 1 });
+    expect(getSelectedCells(view).length).toBeGreaterThan(1);
+
+    // Esc reverts to pre-drag selection: single cell (r1, a).
+    fireEvent.keyDown(grid, { key: "Escape" });
+
+    expect(getSelectedCells(view)).toHaveLength(1);
+    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
+
+    // Subsequent pointerEnter should NOT extend (drag mode is off).
+    const r4c = getCell(view, "r4", "c");
+    if (r4c) {
+      fireEvent.pointerEnter(r4c, { pointerId: 1 });
+      expect(getSelectedCells(view)).toHaveLength(1);
+      expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
+    }
+    fireEvent.pointerUp(b, { pointerId: 1, button: 0 });
+    expect(getSelectedCells(view)).toHaveLength(1);
+  });
+
+  it("drag with shift held does NOT enter drag mode (pointerEnter ignored)", () => {
+    const view = renderHarness();
+    // Establish anchor at (r1, a).
+    const a = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(a, { pointerId: 1, button: 0 });
+    fireEvent.click(a);
+
+    // Shift+pointerDown on (r2, b) — should short-circuit drag.
+    const b = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(b, { pointerId: 1, button: 0, shiftKey: true });
+
+    // pointerEnter on (r3, c) should NOT extend — drag anchor is null.
+    const c = getCell(view, "r3", "c")!;
+    fireEvent.pointerEnter(c, { pointerId: 1 });
+
+    // Selection still anchored at (r1,a) (unchanged from anchor click).
+    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r3", "c")).toHaveAttribute("data-selected", "false");
+
+    // Shift+click then completes the shift-extend semantics.
+    fireEvent.pointerUp(b, { pointerId: 1, button: 0, shiftKey: true });
+    fireEvent.click(b, { shiftKey: true });
+
+    // Now (r1,a)..(r2,b) — 2x2 = 4 cells.
+    expect(getSelectedCells(view)).toHaveLength(4);
+  });
+
+  it("drag with cmd held does NOT enter drag mode (pointerEnter ignored)", () => {
+    const view = renderHarness();
+    const a = getCell(view, "r1", "a")!;
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    fireEvent.pointerUp(a, { pointerId: 1, button: 0 });
+    fireEvent.click(a);
+
+    const b = getCell(view, "r2", "b")!;
+    fireEvent.pointerDown(b, { pointerId: 1, button: 0, metaKey: true });
+
+    const c = getCell(view, "r3", "c")!;
+    fireEvent.pointerEnter(c, { pointerId: 1 });
+
+    // (r3, c) must not have been silently added.
+    expect(getCell(view, "r3", "c")).toHaveAttribute("data-selected", "false");
+  });
+
+  it("onSelectionChange fires on each pointerEnter during a drag", () => {
+    const onSelectionChange = vi.fn();
+    const view = renderHarness({ onSelectionChange });
+    const a = getCell(view, "r1", "a")!;
+    const b = getCell(view, "r2", "b")!;
+    const c = getCell(view, "r3", "c")!;
+
+    fireEvent.pointerDown(a, { pointerId: 1, button: 0 });
+    const afterDown = onSelectionChange.mock.calls.length;
+
+    fireEvent.pointerEnter(b, { pointerId: 1 });
+    const afterEnterB = onSelectionChange.mock.calls.length;
+    expect(afterEnterB).toBeGreaterThan(afterDown);
+
+    fireEvent.pointerEnter(c, { pointerId: 1 });
+    const afterEnterC = onSelectionChange.mock.calls.length;
+    expect(afterEnterC).toBeGreaterThan(afterEnterB);
+
+    fireEvent.pointerUp(c, { pointerId: 1, button: 0 });
   });
 });

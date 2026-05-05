@@ -49,7 +49,11 @@ describe("InspectionGrid", () => {
       "inspection-cell-value",
     );
 
-    fireEvent.click(view.getAllByTestId("pretable-row")[0]!);
+    // Phase 3: cell-click sets focus + single-cell selection. Full-row select
+    // is reachable via Enter/Space (Phase 1 keyboard row-toggle).
+    const viewport = view.getByRole("grid", { name: "Inspection grid" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    fireEvent.keyDown(viewport, { key: "Enter" });
 
     expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-001");
   }, 15_000);

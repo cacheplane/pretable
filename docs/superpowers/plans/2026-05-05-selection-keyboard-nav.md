@@ -1934,22 +1934,144 @@ These are minimal renames + additions, not the holistic rewrite (Phase 8). Keep 
 
 ---
 
-## Phase 3 — React adapter: click + cell-range selection (OUTLINE)
+## Phase 3 — React adapter: click + cell-range selection (DETAILED)
 
-**Branch:** `b3-cell-range-clicks`. **Detail:** added when Phase 2 merges.
+**Branch:** `b3-cell-range-clicks`. **Worktree:** `.worktrees/b3-cell-range-clicks`.
 
-**Work items:**
+**Phase exit criteria:**
 
-- Click handler on cells: plain click → `setFocus(addr) + clearSelection`; shift+click → `extendRangeFromAnchor(addr)`; cmd/ctrl+click → `addRange(single-cell-range) + setFocus(addr)`.
-- Marquee drag: pointer-down on a cell starts a drag; pointer-move over other cells calls `extendRangeFromAnchor`; pointer-up commits. Cancel on Esc.
-- CSS for selected cell visuals: subtle background (`--pt-color-selection-bg`), 1px active-range border (`--pt-color-selection-border`), 2px focus ring (`--pt-color-focus-ring`). New tokens added to `@pretable/ui/tokens.css` deliberately.
-- ARIA: cells get `aria-selected` based on range membership; rows get `aria-selected` when fully selected.
-- jsdom tests: click, shift+click, cmd+click, drag from cell to cell, Esc cancel of drag, click outside grid does not affect selection.
+- Click semantics on body cells follow Excel-style: plain click collapses to focused cell; shift+click extends; cmd/ctrl+click adds a discontiguous single-cell range.
+- Pointer-drag from one cell to another produces a marquee selection (a range from the drag-start cell to the cell under the pointer at drag-end). Esc during drag cancels.
+- The previous row-level click that replaced selection with a full-row range is **removed**. Row-select UX is left to the checkbox column in Phase 4. The hero demo's row-click UX is intentionally regressed for one phase.
+- Selection visuals use new CSS tokens in `@pretable/ui/tokens.css` (range fill, range border, focus ring).
+- ARIA `aria-selected` already wired in Phase 2; verify it still reflects the new range shapes correctly. No new ARIA work in this phase.
+- jsdom tests cover click variants, drag-marquee, and Esc cancellation. Test count grows from 92 to ~110+.
+- `pnpm -w typecheck` / `pnpm -w test` / `pnpm -w lint` / `pnpm format` clean.
+- One PR opened, CI green, user merges.
 
-**Open questions to resolve when detailing:**
+### Resolved open questions
 
-- Should marquee drag auto-scroll the viewport when the pointer leaves the visible area? (Likely yes; Grid Alpha does. Implementation lands in Phase 3 or punts to a follow-up.)
-- Hit-testing during drag: rely on `pointermove` over cell elements (simple, reliable in jsdom too) vs. `elementFromPoint` (more accurate near gaps). Default to the former.
+- **Auto-scroll during drag**: out of scope for this phase. Grid Alpha does it but it interacts with the engine's viewport handling in non-obvious ways. Defer to a follow-up. Drag that crosses the viewport boundary stops at the last visible cell; the user can release, scroll, and shift+click to extend.
+- **Hit-testing during drag**: use `onPointerMove` on each cell (simple, jsdom-friendly). The drag-start cell sets `pointerCapture` so events keep flowing even if the pointer leaves the cell, and per-cell `onPointerEnter` is what we listen to for hit-detection while dragging.
+- **Mobile/touch**: Pointer Events handle this natively; the same handlers fire for mouse, pen, and touch. No special casing.
+
+### Tasks
+
+#### Task 1 — Replace row-level click with cell-level click semantics
+
+**Files:** `packages/react/src/pretable-surface.tsx`.
+
+The current row `<div>` has an `onClick` that sets focus and replaces selection with a full-row range (the Phase 1 `replaceSelectionWithFullRow` helper). Remove that. Move the click handler to the cell `<div>`.
+
+Cell click behavior:
+
+- **Plain click**: `grid.setFocus({ rowId, columnId })` + `grid.setSelection({ ranges: [singleCellRange], anchor: { rowId, columnId } })`. Replaces all ranges (collapses).
+- **Shift+click**: if no anchor, behaves as plain click. Otherwise `grid.extendRangeFromAnchor({ rowId, columnId })`. Focus moves to the clicked cell.
+- **Cmd/Ctrl+click**: `grid.addRange(singleCellRange)` + `grid.setFocus({ rowId, columnId })`. Anchor updates to the clicked cell.
+
+Wrap the click handler in the same before/after snapshot-diff pattern from Phase 2 to fire `onSelectionChange` and `onFocusChange`.
+
+`onSelectedRowIdChange` (Phase 1 compatibility helper) still fires when the resulting selection has a single full-row range; otherwise fires with `null`. This keeps the Phase 1 helper truthful even in the cell-range world.
+
+The `replaceSelectionWithFullRow` helper in `pretable-surface.tsx` is no longer used by the click path. Keep it exported only if keyboard handlers (Enter/Space row-toggle) still need it; otherwise remove.
+
+**Commit:** `refactor(react): cell-level click semantics (plain / shift / cmd-click)`
+
+#### Task 2 — Pointer-drag marquee selection
+
+**Files:** `packages/react/src/pretable-surface.tsx`.
+
+State: a `dragAnchorRef = useRef<PretableCellAddress | null>(null)`. When non-null, the surface is in drag mode.
+
+Cell handlers:
+
+- **`onPointerDown`** (mouse button 0 only, no shift/cmd): set `dragAnchorRef.current = { rowId, columnId }`. Call `setFocus(addr) + setSelection({ ranges: [singleCellRange], anchor: addr })`. Call `event.currentTarget.setPointerCapture(event.pointerId)`. Do NOT preventDefault — we want focus to land naturally.
+- **`onPointerEnter`** (only when `dragAnchorRef.current !== null`): call `grid.extendRangeFromAnchor({ rowId, columnId })` and `grid.setFocus({ rowId, columnId })`.
+- **`onPointerUp`** / **`onPointerCancel`**: `dragAnchorRef.current = null`. Release pointer capture.
+
+Esc key handler additions: if `dragAnchorRef.current !== null`, set it to null and revert selection to the drag-start single-cell range. This is more intricate than just calling `clearSelection` — we want Esc-during-drag to undo the marquee, not collapse to the focused cell. Use `dragStartSelectionRef = useRef<PretableSelectionState | null>(null)` to capture the pre-drag selection on `onPointerDown`, and restore it on Esc.
+
+If shift/cmd is held on `onPointerDown`, do NOT enter drag mode — let the click handler handle it normally (shift+click extends, cmd+click adds). Drag is for plain-click drags only in v1.
+
+**Commit:** `feat(react): marquee drag selection on body cells`
+
+#### Task 3 — Selection visual tokens + cell styling
+
+**Files:**
+
+- `packages/ui/src/tokens.css` — add new tokens (or extend existing if a similar palette exists)
+- `packages/ui/src/grid.css` (or wherever cell styling lives) — apply the tokens
+- `packages/react/src/styles.ts` — if cell inline-styles need updating
+
+Tokens (added under the existing `:root` / theme blocks):
+
+```css
+--pt-color-selection-bg: rgb(59 130 246 / 0.08); /* light blue 8% */
+--pt-color-selection-border: rgb(59 130 246 / 0.6); /* light blue 60% */
+--pt-color-focus-ring: rgb(59 130 246); /* solid blue */
+```
+
+(Use the existing token system's color semantics — these are placeholders. If `@pretable/ui` already has accent / primary tokens, derive selection colors from them rather than hardcoding hex.)
+
+Cell styling rules:
+
+- Cell with `aria-selected="true"` gets `background: var(--pt-color-selection-bg)`.
+- Cell with `data-active-range-edge="true"` (computed at render time — cells on the boundary of the active range) gets a 1px border via `var(--pt-color-selection-border)`. Skip this if it complicates rendering; a continuous background tint is acceptable for v1.
+- Cell with `data-focused="true"` gets a 2px inset focus ring via `var(--pt-color-focus-ring)`. Use `box-shadow: inset 0 0 0 2px var(--pt-color-focus-ring)`.
+
+Active-range edge detection: for v1, ship just the background tint (no edge border). The full marching-ants Excel-style border can be a follow-up — getting the visual close enough is enough for the demo.
+
+**Commit:** `feat(ui+react): cell-range selection visuals + new tokens`
+
+#### Task 4 — jsdom tests for click variants + drag
+
+**Files:** `packages/react/src/__tests__/pretable-surface.test.tsx`.
+
+Add tests in a new `describe("click + drag selection", ...)` block:
+
+- Plain click on a cell focuses it and collapses selection to that single cell.
+- Shift+click with existing anchor extends the range.
+- Shift+click with no prior anchor behaves as plain click.
+- Cmd+click adds a discontiguous range; existing ranges remain.
+- Cmd+click on an already-selected cell still adds a duplicate single-cell range (idempotent UX is not required in v1).
+- Pointer-drag from cell A to cell C produces a range A→C.
+- Esc during drag reverts to pre-drag selection.
+- Drag with shift held: not entered (shift+click semantics apply on the down event).
+- Drag with cmd held: not entered (cmd+click semantics apply).
+- `onSelectionChange` and `onFocusChange` fire with the post-action state for each click variant.
+
+Pointer events in jsdom: use `fireEvent.pointerDown(cell, { pointerId: 1 })`, `fireEvent.pointerEnter(otherCell, { pointerId: 1 })`, `fireEvent.pointerUp(otherCell, { pointerId: 1 })`. jsdom's `setPointerCapture` is a no-op stub but doesn't throw. Buttons: button=0 = primary.
+
+Target test count: 92 → 110+.
+
+**Commit:** `test(react): click variants + drag-marquee coverage`
+
+#### Task 5 — Doc updates
+
+**Files:** `apps/website/content/docs/grid/pretable-surface.mdx`.
+
+Add a "Click + Drag Selection" section after the keyboard contract:
+
+```md
+## Click + Drag Selection
+
+| Gesture                                | Effect                                     |
+| -------------------------------------- | ------------------------------------------ |
+| Click body cell                        | Focus + collapse selection to single cell. |
+| Shift+click                            | Extend active range from anchor.           |
+| Cmd/Ctrl+click                         | Add a discontiguous single-cell range.     |
+| Drag (pointer down → enter cells → up) | Marquee selection from start to end cell.  |
+| Esc during drag                        | Revert to pre-drag selection.              |
+
+The selection column (Phase 4) provides explicit row-select UX with checkboxes; cell-range gestures and row-select coexist additively.
+```
+
+**Commit:** `docs(website): document cell-level click + drag selection`
+
+#### Task 6 — Repo-wide verification + PR
+
+- `pnpm -w typecheck` / `test` / `lint` / `format` all clean.
+- Push `b3-cell-range-clicks`, open PR titled `feat(react): cell-range click + drag (Phase 3 of B)`. Body explains the click semantics shift, the temporary row-click UX regression in the hero demo (resolved by Phase 4's checkbox column), and the new visual tokens.
 
 ---
 
