@@ -206,6 +206,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const viewportRef = useRef<HTMLDivElement>(null);
+  const dragAnchorRef = useRef<PretableCellAddress | null>(null);
+  const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
   const { headerHeight } = useResolvedHeights();
   const bodyViewportHeight = Math.max(viewportHeight - headerHeight, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
@@ -412,6 +414,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       role="grid"
       tabIndex={-1}
       onKeyDown={(event) => {
+        // Esc cancels an in-flight marquee drag by restoring the pre-drag selection.
+        if (
+          (event.key === "Escape" || event.key === "Esc") &&
+          dragAnchorRef.current !== null &&
+          dragStartSelectionRef.current !== null
+        ) {
+          const before = grid.getSnapshot();
+          grid.setSelection(dragStartSelectionRef.current);
+          dragAnchorRef.current = null;
+          dragStartSelectionRef.current = null;
+          const after = grid.getSnapshot();
+          if (
+            JSON.stringify(before.selection) !== JSON.stringify(after.selection)
+          ) {
+            onSelectionChange?.(after.selection);
+          }
+          event.preventDefault();
+          return;
+        }
+
         const before = grid.getSnapshot();
         const handled = handleSurfaceKeyDown(event, {
           bodyViewportHeight,
@@ -660,6 +682,70 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         rowId: id,
                         shift: event.shiftKey,
                       });
+                    }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      const cmd = event.metaKey || event.ctrlKey;
+                      if (event.shiftKey || cmd) return;
+
+                      dragStartSelectionRef.current = grid.getSnapshot().selection;
+                      dragAnchorRef.current = { rowId: id, columnId: column.id };
+                      handleCellClick({
+                        cmd: false,
+                        columnId: column.id,
+                        columns,
+                        grid,
+                        onFocusChange,
+                        onSelectedRowIdChange,
+                        onSelectionChange,
+                        rowId: id,
+                        shift: false,
+                      });
+                      try {
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      } catch {
+                        // jsdom / older browsers may not support pointer capture
+                      }
+                    }}
+                    onPointerEnter={() => {
+                      if (!dragAnchorRef.current) return;
+                      const before = grid.getSnapshot();
+                      const addr: PretableCellAddress = {
+                        rowId: id,
+                        columnId: column.id,
+                      };
+                      grid.extendRangeFromAnchor(addr);
+                      grid.setFocus(addr);
+                      const after = grid.getSnapshot();
+                      if (
+                        before.focus.rowId !== after.focus.rowId ||
+                        before.focus.columnId !== after.focus.columnId
+                      ) {
+                        onFocusChange?.(after.focus);
+                      }
+                      if (
+                        JSON.stringify(before.selection) !==
+                        JSON.stringify(after.selection)
+                      ) {
+                        onSelectionChange?.(after.selection);
+                        const beforeFullRow = singleFullRowSelection(
+                          before.selection,
+                          columns,
+                        );
+                        const afterFullRow = singleFullRowSelection(
+                          after.selection,
+                          columns,
+                        );
+                        if (beforeFullRow !== afterFullRow) {
+                          onSelectedRowIdChange?.(afterFullRow);
+                        }
+                      }
+                    }}
+                    onPointerUp={() => {
+                      dragAnchorRef.current = null;
+                    }}
+                    onPointerCancel={() => {
+                      dragAnchorRef.current = null;
                     }}
                     ref={(node) => {
                       if (node) {
