@@ -1,0 +1,48 @@
+---
+title: Concepts
+description: "Pretable is built around three layers."
+nav: Getting Started
+order: 2
+---
+
+Pretable is built around three layers. Understanding their boundaries makes the rest of the docs easier to navigate.
+
+## The engine + theming split
+
+`@pretable/react` is the **engine**. It handles row virtualization, column layout, focus and selection state, sort and filter dispatch, and the data attributes (`[data-pretable-*]`) that mark every interactive element. The engine is structurally pure — its inline styles handle position, height, and z-index, but no colors, padding, fonts, or borders.
+
+`@pretable/ui` is the **theming layer**. It ships CSS files: theme files (`themes/excel.css`, `themes/material.css`) declare `--pretable-*` design tokens at `:root`; `grid.css` is a selector-based skin that targets the engine's data attributes and resolves the tokens. There's no JavaScript theme builder; everything is CSS.
+
+The two packages cooperate through a documented contract: the engine emits known data attributes, the theming layer styles them. Either side can be replaced without forking the other — you can ship `@pretable/ui` with a different design system, or use `@pretable/react` with hand-rolled CSS, and both still work.
+
+## Two CSS-variable namespaces
+
+Pretable uses one CSS-variable namespace exclusively: `--pretable-*`. All 24 public tokens live there. See the [token reference](/docs/theming/token-reference) for the full list.
+
+Your application has its own namespace — whatever brand tokens you already use, like `--brand-*`, `--app-*`, or your design system's prefix. The two never collide because they're prefix-disjoint. You can theme the grid with Material 3 while your surrounding marketing site uses your own brand tokens, and there's no leakage either direction.
+
+## Three runtime axes
+
+Pretable's theming surface has three axes that can change at runtime:
+
+- **Theme** — pick `excel.css` or `material.css` at build time by importing one. Switch between themes by swapping which CSS file is active (or by setting CSS variables manually if you want a hybrid).
+- **Density** — toggle `data-density="compact"`, `data-density="standard"`, or `data-density="spacious"` on `<html>` to switch row heights, padding, and font sizes. The engine reads the new heights from CSS via `MutationObserver` and re-renders.
+- **Light / dark** — toggle `data-theme="dark"` on `<html>` to activate Material's dark variant. Excel is light-only by design.
+
+All three compose. `<html data-theme="dark" data-density="spacious">` gives you Material dark in spacious density. CSS specificity handles the cascade; no JavaScript coordination needed beyond the attribute toggles.
+
+## Streaming
+
+Pretable can render rows that arrive over the network — JSON streams, transactions API, server-sent events. The streaming pipeline is implemented but the public API is in flux for v0.0.x. See [Streaming Overview](/docs/streaming) for the current state.
+
+## Pre-1.0 caveat
+
+> Pretable ships at version 0.0.x. Token names in `@pretable/ui` may rename or remove in any patch release. The engine API in `@pretable/react` is more stable but not frozen. Check the changelog before upgrading.
+
+## Where to go next
+
+- [Theming Overview](/docs/theming) — the customization surface, in detail.
+- [Override tokens](/docs/theming/override-tokens) — change individual `--pretable-*` values without forking a theme.
+- [Token reference](/docs/theming/token-reference) — the canonical list of all 24 tokens.
+
+For the architectural rationale (why CSS variables, why density-coupled-to-theme, etc.), the design spec at `docs/superpowers/specs/2026-05-02-pretable-docs-architecture-design.md` has the why behind the what.

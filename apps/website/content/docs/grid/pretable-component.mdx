@@ -1,0 +1,86 @@
+---
+title: The Pretable component
+description: "<Pretable> is the simplest way to render a grid."
+nav: Grid
+order: 2
+---
+
+`<Pretable>` is the simplest way to render a grid. Three props, sensible defaults, working in one import.
+
+```tsx
+import { Pretable, type PretableColumn } from "@pretable/react";
+
+interface Person extends Record<string, unknown> {
+  id: string;
+  name: string;
+  role: string;
+  city: string;
+}
+
+const columns: PretableColumn<Person>[] = [
+  { id: "name", header: "Name", getValue: (r) => r.name },
+  { id: "role", header: "Role", getValue: (r) => r.role },
+  { id: "city", header: "City", getValue: (r) => r.city },
+];
+
+const rows: Person[] = [
+  { id: "1", name: "Ada", role: "Engineer", city: "London" },
+  { id: "2", name: "Grace", role: "Admiral", city: "New York" },
+  { id: "3", name: "Linus", role: "Maintainer", city: "Helsinki" },
+];
+
+export function People() {
+  return <Pretable rows={rows} columns={columns} />;
+}
+```
+
+## Props
+
+| Prop       | Type                                   | Required | Description                                                                                          |
+| ---------- | -------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| `columns`  | `PretableColumn<TRow>[]`               | yes      | Column definitions. See [API reference](/docs/grid/api-reference#pretablecolumn) for the full shape. |
+| `rows`     | `TRow[]`                               | yes      | Row data. Generic over your row type (defaults to `Record<string, unknown>`).                        |
+| `getRowId` | `(row: TRow, index: number) => string` | no       | Custom row key. Defaults to `row.id` if it's a string or number; otherwise the row's index.          |
+
+## Defaults
+
+`<Pretable>` wraps the engine with these hardcoded defaults:
+
+- **Viewport height:** 320px (the scrollable container)
+- **Cell rendering:** label-above-value layout (column header in a small dim line, value in the body)
+- **Header rendering:** column header label + sort-direction indicator (`Newest` / `Oldest` / `Sort`)
+- **No interaction UI** — no sort buttons rendered with click handlers, no filter inputs, no selection toggles. The engine's interaction state is initialized but not wired to user events.
+
+If any of these defaults don't fit your use case, switch to [Custom rendering](/docs/grid/custom-rendering).
+
+## Theming
+
+`<Pretable>` emits the standard `[data-pretable-*]` data attributes, so `@pretable/ui/grid.css` styles the output. Drop in a theme + grid.css to skin it:
+
+```css
+@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/grid.css";
+```
+
+The grid renders with Excel's surface tones, gridlines, accent. Toggle `data-density` on `<html>` to switch density tiers (compact / standard / spacious); the engine re-renders with new heights via `useResolvedHeights`. See [Theming Overview](/docs/theming) for the full theming model.
+
+## Limitations
+
+`<Pretable>` is the simplest possible surface. It is intentionally thin. For:
+
+- **Sort UI** — handle clicks on header buttons to call `grid.setSort(id, direction)`. Use [custom rendering](/docs/grid/custom-rendering).
+- **Filter UI** — render input fields and call `grid.replaceFilters(...)` or `grid.setFilter(id, value)`.
+- **Selection state in your component tree** — wire `grid.selectRow(id)` and read `snapshot.selection.rowIds[0]`.
+- **Focus / keyboard navigation** — wire `grid.setFocus(rowId, columnId)` and `grid.moveFocus(delta)` to keyboard handlers.
+- **Custom cell components** — replace the default label/value layout. Custom rendering lets you render any React tree per cell.
+- **Pinned columns rendered as sticky** — set `column.pinned: "left"` and render with the data-pinned attribute.
+- **Per-row measured heights** — provide `measuredHeights: Record<string, number>` to `usePretableModel`.
+
+All of the above are available with `usePretable` or `usePretableModel`. The drop-in component just doesn't expose the API surface for it.
+
+## Where to go next
+
+- [Custom rendering](/docs/grid/custom-rendering) — `usePretableModel` walkthrough with code.
+- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
+- [API reference](/docs/grid/api-reference) — `PretableColumn`, `PretableGrid`, etc.
+- [Theming Overview](/docs/theming) — how to skin the grid.

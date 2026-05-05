@@ -255,3 +255,85 @@ html[data-drawer] .drawer-content {
     transition: none;
   }
 }
+
+/* Docs MDX prose styles. Tables especially need explicit borders/padding because
+   MDX emits raw <table>/<thead>/<th>/<td> with no classes. */
+.docs-prose {
+  max-width: 72ch;
+}
+.docs-prose h2 {
+  margin-top: 3rem;
+  font-family: var(--font-display, ui-sans-serif);
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  color: var(--pt-text-primary);
+}
+.docs-prose h3 {
+  margin-top: 2rem;
+  font-family: var(--font-display, ui-sans-serif);
+  font-size: 18px;
+  color: var(--pt-text-primary);
+}
+.docs-prose p {
+  margin-top: 1rem;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--pt-text-secondary);
+}
+.docs-prose a {
+  color: var(--pt-accent);
+  text-underline-offset: 2px;
+}
+.docs-prose a:hover {
+  text-decoration: underline;
+}
+.docs-prose code {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 13px;
+  color: var(--pt-text-primary);
+}
+.docs-prose ol {
+  margin-top: 1rem;
+  list-style: decimal;
+  padding-left: 1.5rem;
+}
+.docs-prose ul {
+  margin-top: 1rem;
+  list-style: disc;
+  padding-left: 1.5rem;
+}
+.docs-prose li {
+  margin-top: 0.25rem;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--pt-text-secondary);
+}
+.docs-prose table {
+  margin-top: 1.5rem;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 13px;
+  border-collapse: collapse;
+}
+.docs-prose thead {
+  background-color: var(--pt-bg-card);
+  border-bottom: 1px solid var(--pt-rule);
+}
+.docs-prose th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 500;
+  color: var(--pt-text-primary);
+  white-space: nowrap;
+}
+.docs-prose td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--pt-rule-soft);
+  vertical-align: top;
+  color: var(--pt-text-secondary);
+}
+.docs-prose tr:last-child td {
+  border-bottom: 0;
+}

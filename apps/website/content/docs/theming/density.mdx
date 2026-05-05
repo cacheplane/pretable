@@ -1,0 +1,106 @@
+---
+title: Density switching
+description: "Pretable supports three density tiers — compact, standard, spacious — selected by the data-density attribute on <html>."
+nav: Theming
+order: 5
+---
+
+Pretable supports three density tiers — compact, standard, spacious — selected by the `data-density` attribute on `<html>`. Both Excel and Material define their own values per tier; switching is a single attribute toggle.
+
+## How it composes
+
+Each theme's natural default lives at `:root`:
+
+- **Excel** defaults to compact (20px rows). `[data-density="standard"]` and `[data-density="spacious"]` blocks override for tighter or roomier modes.
+- **Material** defaults to standard (48px rows). `[data-density="compact"]` and `[data-density="spacious"]` blocks override.
+
+When the consumer sets `data-density="standard"` on `<html>` while Excel is loaded, the standard block wins (more specific selector than `:root`). When the consumer removes the attribute, the standard block stops matching and the `:root` (compact) values reassert.
+
+> Density values are theme-coupled by design. Excel's "compact" (20px row) is tighter than Material's "compact" (40px row) because each theme's identity includes its own density character. Picking compact in Excel and compact in Material gives you different absolute heights — the relationship is what's preserved across themes.
+
+## React state-driven
+
+Same pattern as light/dark — hold density in state, sync to the DOM:
+
+```tsx
+import { useEffect, useState } from "react";
+
+type Density = "compact" | "standard" | "spacious";
+
+export function DensityPicker({
+  density,
+  onChange,
+}: {
+  density: Density;
+  onChange: (density: Density) => void;
+}) {
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+  }, [density]);
+
+  return (
+    <div role="radiogroup" aria-label="Row density">
+      <button onClick={() => onChange("compact")}>Compact</button>
+      <button onClick={() => onChange("standard")}>Standard</button>
+      <button onClick={() => onChange("spacious")}>Spacious</button>
+    </div>
+  );
+}
+```
+
+Wrap your app with a `<DensityPicker density={...} onChange={...} />` and hold the state in your app's root or persist it to localStorage.
+
+## The engine bridge
+
+Two density tokens are read by the engine in JavaScript, not just by CSS:
+
+- `--pretable-row-height` — used by the row virtualizer to compute `top` positions.
+- `--pretable-header-height` — used to position the sticky header and compute body viewport height.
+
+The engine reads these via the `useResolvedHeights` hook (in `@pretable/react`), which subscribes to attribute changes on `<html>` via `MutationObserver`. When you flip `data-density`, the engine re-renders the grid with new heights automatically.
+
+See [Density helpers](/docs/grid/density-helpers) for the full hook API.
+
+## Composition with light/dark
+
+Density and theme variants are independent. `<html data-theme="dark" data-density="compact">` gives you Material dark in compact density. The cascade resolves cleanly because `[data-theme="dark"]` overrides only colors and `[data-density="compact"]` overrides only density tokens.
+
+## Persisting density across reloads
+
+Most apps persist density to localStorage:
+
+```tsx
+import { useEffect, useState } from "react";
+
+type Density = "compact" | "standard" | "spacious";
+
+function readDensity(): Density {
+  if (typeof window === "undefined") return "standard";
+  const stored = window.localStorage.getItem("pretable-density");
+  return stored === "compact" || stored === "spacious" ? stored : "standard";
+}
+
+export function useDensity() {
+  const [density, setDensity] = useState<Density>(readDensity);
+
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+    window.localStorage.setItem("pretable-density", density);
+  }, [density]);
+
+  return [density, setDensity] as const;
+}
+```
+
+Use the hook in your density picker:
+
+```tsx
+const [density, setDensity] = useDensity();
+return <DensityPicker density={density} onChange={setDensity} />;
+```
+
+## Where to go next
+
+- [Override tokens](/docs/theming/override-tokens) — change density values themselves, not just which tier is active.
+- [Light / dark switching](/docs/theming/light-dark) — composes with density.
+- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights` API.
