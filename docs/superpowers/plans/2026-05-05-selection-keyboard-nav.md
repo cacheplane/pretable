@@ -1964,6 +1964,7 @@ These are minimal renames + additions, not the holistic rewrite (Phase 8). Keep 
 The current row `<div>` has an `onClick` that sets focus and replaces selection with a full-row range (the Phase 1 `replaceSelectionWithFullRow` helper). Remove that. Move the click handler to the cell `<div>`.
 
 Cell click behavior:
+
 - **Plain click**: `grid.setFocus({ rowId, columnId })` + `grid.setSelection({ ranges: [singleCellRange], anchor: { rowId, columnId } })`. Replaces all ranges (collapses).
 - **Shift+click**: if no anchor, behaves as plain click. Otherwise `grid.extendRangeFromAnchor({ rowId, columnId })`. Focus moves to the clicked cell.
 - **Cmd/Ctrl+click**: `grid.addRange(singleCellRange)` + `grid.setFocus({ rowId, columnId })`. Anchor updates to the clicked cell.
@@ -1983,6 +1984,7 @@ The `replaceSelectionWithFullRow` helper in `pretable-surface.tsx` is no longer 
 State: a `dragAnchorRef = useRef<PretableCellAddress | null>(null)`. When non-null, the surface is in drag mode.
 
 Cell handlers:
+
 - **`onPointerDown`** (mouse button 0 only, no shift/cmd): set `dragAnchorRef.current = { rowId, columnId }`. Call `setFocus(addr) + setSelection({ ranges: [singleCellRange], anchor: addr })`. Call `event.currentTarget.setPointerCapture(event.pointerId)`. Do NOT preventDefault — we want focus to land naturally.
 - **`onPointerEnter`** (only when `dragAnchorRef.current !== null`): call `grid.extendRangeFromAnchor({ rowId, columnId })` and `grid.setFocus({ rowId, columnId })`.
 - **`onPointerUp`** / **`onPointerCancel`**: `dragAnchorRef.current = null`. Release pointer capture.
@@ -1996,6 +1998,7 @@ If shift/cmd is held on `onPointerDown`, do NOT enter drag mode — let the clic
 #### Task 3 — Selection visual tokens + cell styling
 
 **Files:**
+
 - `packages/ui/src/tokens.css` — add new tokens (or extend existing if a similar palette exists)
 - `packages/ui/src/grid.css` (or wherever cell styling lives) — apply the tokens
 - `packages/react/src/styles.ts` — if cell inline-styles need updating
@@ -2003,14 +2006,15 @@ If shift/cmd is held on `onPointerDown`, do NOT enter drag mode — let the clic
 Tokens (added under the existing `:root` / theme blocks):
 
 ```css
---pt-color-selection-bg: rgb(59 130 246 / 0.08);    /* light blue 8% */
+--pt-color-selection-bg: rgb(59 130 246 / 0.08); /* light blue 8% */
 --pt-color-selection-border: rgb(59 130 246 / 0.6); /* light blue 60% */
---pt-color-focus-ring: rgb(59 130 246);             /* solid blue */
+--pt-color-focus-ring: rgb(59 130 246); /* solid blue */
 ```
 
 (Use the existing token system's color semantics — these are placeholders. If `@pretable/ui` already has accent / primary tokens, derive selection colors from them rather than hardcoding hex.)
 
 Cell styling rules:
+
 - Cell with `aria-selected="true"` gets `background: var(--pt-color-selection-bg)`.
 - Cell with `data-active-range-edge="true"` (computed at render time — cells on the boundary of the active range) gets a 1px border via `var(--pt-color-selection-border)`. Skip this if it complicates rendering; a continuous background tint is acceptable for v1.
 - Cell with `data-focused="true"` gets a 2px inset focus ring via `var(--pt-color-focus-ring)`. Use `box-shadow: inset 0 0 0 2px var(--pt-color-focus-ring)`.
@@ -2051,13 +2055,13 @@ Add a "Click + Drag Selection" section after the keyboard contract:
 ```md
 ## Click + Drag Selection
 
-| Gesture | Effect |
-| --- | --- |
-| Click body cell | Focus + collapse selection to single cell. |
-| Shift+click | Extend active range from anchor. |
-| Cmd/Ctrl+click | Add a discontiguous single-cell range. |
-| Drag (pointer down → enter cells → up) | Marquee selection from start to end cell. |
-| Esc during drag | Revert to pre-drag selection. |
+| Gesture                                | Effect                                     |
+| -------------------------------------- | ------------------------------------------ |
+| Click body cell                        | Focus + collapse selection to single cell. |
+| Shift+click                            | Extend active range from anchor.           |
+| Cmd/Ctrl+click                         | Add a discontiguous single-cell range.     |
+| Drag (pointer down → enter cells → up) | Marquee selection from start to end cell.  |
+| Esc during drag                        | Revert to pre-drag selection.              |
 
 The selection column (Phase 4) provides explicit row-select UX with checkboxes; cell-range gestures and row-select coexist additively.
 ```

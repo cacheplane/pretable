@@ -688,8 +688,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       const cmd = event.metaKey || event.ctrlKey;
                       if (event.shiftKey || cmd) return;
 
-                      dragStartSelectionRef.current = grid.getSnapshot().selection;
-                      dragAnchorRef.current = { rowId: id, columnId: column.id };
+                      dragStartSelectionRef.current =
+                        grid.getSnapshot().selection;
+                      dragAnchorRef.current = {
+                        rowId: id,
+                        columnId: column.id,
+                      };
                       handleCellClick({
                         cmd: false,
                         columnId: column.id,
