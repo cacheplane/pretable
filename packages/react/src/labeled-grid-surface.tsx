@@ -32,7 +32,7 @@ export interface LabeledGridSurfaceProps<
   }) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
-  interactionState?: PretableSurfaceProps<TRow>["interactionState"];
+  state?: PretableSurfaceProps<TRow>["state"];
   labelClassName?: string;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
@@ -55,7 +55,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   getHeaderCellProps,
   getRowId,
   headerCellClassName,
-  interactionState,
+  state,
   labelClassName,
   overscan,
   onSelectedRowIdChange,
@@ -71,7 +71,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   const getPinnedClassName = (column: PretableColumn<TRow>) =>
     column.pinned === "left" && pinnedClassName ? pinnedClassName : undefined;
   const activeFilterColumns = new Set(
-    Object.entries(interactionState?.filters ?? {})
+    Object.entries(state?.filters ?? {})
       .filter(([, value]) => value.trim() !== "")
       .map(([columnId]) => columnId),
   );
@@ -120,7 +120,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       }
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
-      interactionState={interactionState}
+      state={state}
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
       onSortChange={onSortChange}

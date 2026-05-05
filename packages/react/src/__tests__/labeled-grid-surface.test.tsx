@@ -144,7 +144,7 @@ describe("LabeledGridSurface", () => {
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        interactionState={{
+        state={{
           sort: { columnId: "timestamp", direction: "desc" },
           filters: {},
         }}
@@ -168,7 +168,7 @@ describe("LabeledGridSurface", () => {
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        interactionState={{
+        state={{
           sort: { columnId: "timestamp", direction: "asc" },
           filters: {},
         }}
@@ -188,7 +188,7 @@ describe("LabeledGridSurface", () => {
         columns={columns}
         getRowId={(row) => row.id}
         headerCellClassName="inspection-header-cell"
-        interactionState={{
+        state={{
           sort: null,
           filters: { severity: "error" },
         }}
@@ -207,14 +207,14 @@ describe("LabeledGridSurface", () => {
     expect(timestampHeader).not.toHaveClass("is-filtered");
   });
 
-  it("passes interactionState and onSortChange through to the underlying surface", () => {
+  it("passes state and onSortChange through to the underlying surface", () => {
     const onSortChange = vi.fn();
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        interactionState={{
+        state={{
           sort: { columnId: "timestamp", direction: "desc" },
           filters: {},
         }}

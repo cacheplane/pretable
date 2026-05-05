@@ -21,7 +21,7 @@ const filterableHeaderProps = {
 export interface InspectionGridProps {
   ariaLabel: string;
   filterableColumnIds: readonly InspectionFilterableColumnId[];
-  interactionState?: PretableSurfaceProps<InspectionRow>["interactionState"];
+  state?: PretableSurfaceProps<InspectionRow>["state"];
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSortChange?: PretableSurfaceProps<InspectionRow>["onSortChange"];
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
@@ -33,7 +33,7 @@ export interface InspectionGridProps {
 export function InspectionGrid({
   ariaLabel,
   filterableColumnIds,
-  interactionState,
+  state,
   onSelectedRowIdChange,
   onSortChange,
   onTelemetryChange,
@@ -57,7 +57,7 @@ export function InspectionGrid({
       }
       getRowId={getInspectionRowId}
       headerCellClassName="inspection-header-cell"
-      interactionState={interactionState}
+      state={state}
       labelClassName="inspection-cell-label"
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}

@@ -16,7 +16,11 @@ import type {
 } from "@pretable/core";
 
 import { measureRenderedRowHeight } from "./row-height";
-import { type PretableTelemetry, usePretableModel } from "./use-pretable";
+import {
+  type PretableSurfaceState,
+  type PretableTelemetry,
+  usePretableModel,
+} from "./use-pretable";
 import { useResolvedHeights } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
@@ -94,16 +98,6 @@ interface PretableSurfaceRowAttributesInput<
   rowIndex: number;
 }
 
-interface PretableSurfaceInteractionState {
-  filters?: Record<string, string>;
-  focusedRowId?: string | null;
-  selectedRowId?: string | null;
-  sort?: {
-    columnId: string;
-    direction: "asc" | "desc";
-  } | null;
-}
-
 export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   ariaLabel: string;
   autosize?: boolean | AutosizeOptions;
@@ -134,8 +128,13 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * by the bench harness for plan replay; exposed for advanced consumers
    * who need to drive the grid from external state. Shape may change
    * across minor releases.
+   *
+   * Each slice ({@link PretableSurfaceState.sort}, `filters`, `selection`,
+   * `focus`) follows the same controlled/uncontrolled pattern: when a slice
+   * is provided (non-undefined) the engine state is forced to it on every
+   * render; when a slice is undefined the engine owns it (uncontrolled).
    */
-  interactionState?: PretableSurfaceInteractionState | null;
+  state?: PretableSurfaceState | null;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSortChange?: (
@@ -166,7 +165,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   getRowClassName,
   getRowId,
   getRowProps,
-  interactionState,
+  state,
   overscan = 6,
   onGridReady,
   onSelectedRowIdChange,
@@ -193,7 +192,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     autosize,
     columns,
     getRowId,
-    interactionOverrides: interactionState ?? undefined,
+    state: state ?? undefined,
     measuredHeights,
     overscan,
     rows,
@@ -219,17 +218,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   }, [grid, onGridReady]);
 
   useLayoutEffect(() => {
-    if (!interactionState?.selectedRowId) {
+    const injectedSelectedRowId =
+      state?.selection?.ranges[0]?.startRowId ?? null;
+
+    if (!injectedSelectedRowId) {
       return;
     }
 
     const currentSelectedRowId =
       snapshot.selection.ranges[0]?.startRowId ?? null;
 
-    if (currentSelectedRowId !== interactionState.selectedRowId) {
-      onSelectedRowIdChange?.(interactionState.selectedRowId);
+    if (currentSelectedRowId !== injectedSelectedRowId) {
+      onSelectedRowIdChange?.(injectedSelectedRowId);
     }
-  }, [interactionState, onSelectedRowIdChange, snapshot.selection.ranges]);
+  }, [state, onSelectedRowIdChange, snapshot.selection.ranges]);
 
   useLayoutEffect(() => {
     let nextHeights = measuredHeightsRef.current;
