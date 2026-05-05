@@ -80,9 +80,16 @@ export function Example({
               </button>
             </div>
           </div>
-          <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55]">
-            {file.source}
-          </pre>
+          {file.htmlSource ? (
+            <div
+              className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55] [&_pre]:m-0 [&_pre]:bg-transparent [&_code]:bg-transparent"
+              dangerouslySetInnerHTML={{ __html: file.htmlSource }}
+            />
+          ) : (
+            <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55]">
+              {file.source}
+            </pre>
+          )}
         </div>
       )}
     </figure>
