@@ -52,6 +52,8 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
   for (const range of args.ranges) {
     const startRow = rowIndex.get(range.startRowId);
     const endRow = rowIndex.get(range.endRowId);
+    const startIsSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+    const endIsSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
     const startCol = colIndex.get(range.startColumnId);
     const endCol = colIndex.get(range.endColumnId);
 
@@ -59,9 +61,21 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
     const rowLo = haveRows ? Math.min(startRow, endRow) : -1;
     const rowHi = haveRows ? Math.max(startRow, endRow) : -1;
 
+    // The synthetic row-select column is positioned BEFORE all data columns
+    // in effectiveColumns. When it appears as a range bound it logically
+    // means "start of the visible row" — translate to the first data column.
+    // Ranges that span only the synthetic column have no data to emit.
     let colLo: number;
     let colHi: number;
-    if (startCol !== undefined && endCol !== undefined) {
+    if (startIsSynth && endIsSynth) {
+      continue;
+    } else if (startIsSynth && endCol !== undefined) {
+      colLo = 0;
+      colHi = endCol;
+    } else if (endIsSynth && startCol !== undefined) {
+      colLo = startCol;
+      colHi = 0;
+    } else if (startCol !== undefined && endCol !== undefined) {
       colLo = Math.min(startCol, endCol);
       colHi = Math.max(startCol, endCol);
     } else if (startCol !== undefined) {
@@ -72,6 +86,9 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
       continue;
     }
 
+    if (colLo > colHi) {
+      [colLo, colHi] = [colHi, colLo];
+    }
     colLo = Math.max(colLo, 0);
     colHi = Math.min(colHi, dataColumns.length - 1);
     if (colLo > colHi) continue;

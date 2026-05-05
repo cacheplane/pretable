@@ -155,19 +155,34 @@ describe("serializeRangesAsTsv", () => {
     expect(out).toBeNull();
   });
 
-  it("range with synthetic-column bound collapses to the data-column endpoint", () => {
+  it("synthetic-column start bound expands to all data columns up to the endpoint", () => {
     const cols: PretableColumn<Row>[] = [
       { id: ROW_SELECT_COLUMN_ID, header: "" },
       ...baseColumns,
     ];
-    // startColumnId is synthetic (not in dataColumns), endColumnId is "c" (last data col).
-    // Only the in-data endpoint is honored; range collapses to that single column.
+    // toggleRowSelection / setSelectAllVisible / selectAll all produce ranges
+    // whose startColumnId === ROW_SELECT_COLUMN_ID. The synthetic column is
+    // positioned before all data columns; treat it as "start of data" so
+    // copy emits every cell in the row.
     const out = serializeRangesAsTsv<Row>({
       ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, "c")],
       visibleRows: makeVisibleRows(rows),
       columns: cols,
     });
-    expect(out).toEqual({ text: "c1" });
+    expect(out).toEqual({ text: "a1\tb1\tc1" });
+  });
+
+  it("synthetic-column end bound expands to start at the data endpoint", () => {
+    const cols: PretableColumn<Row>[] = [
+      { id: ROW_SELECT_COLUMN_ID, header: "" },
+      ...baseColumns,
+    ];
+    const out = serializeRangesAsTsv<Row>({
+      ranges: [range("r1", "r1", "b", ROW_SELECT_COLUMN_ID)],
+      visibleRows: makeVisibleRows(rows),
+      columns: cols,
+    });
+    expect(out).toEqual({ text: "a1\tb1" });
   });
 
   it("range with row id not in visibleRows returns null", () => {

@@ -2648,12 +2648,12 @@ describe("PretableSurface copy", () => {
     expect(copyToClipboard).not.toHaveBeenCalled();
   });
 
-  it("synthetic row-select column is excluded from copy output", () => {
+  it("row-select-driven copy emits all data columns of the row (synthetic column expands)", () => {
     const copyToClipboard = vi.fn();
-    // Even though the engine emits a full-row range that spans the synthetic
-    // ROW_SELECT_COLUMN_ID through "c", the serializer must filter the
-    // synthetic column out of the output. The synthetic column has no
-    // value/header that should leak into the clipboard text.
+    // toggleRowSelection / setSelectAllVisible / selectAll all emit ranges
+    // whose startColumnId is the synthetic ROW_SELECT_COLUMN_ID. The
+    // serializer treats that as "start at first data column" so Cmd+C
+    // produces the full row, not just the last data column.
     const view = renderCopyHarness({
       rowSelectionColumn: { enabled: true },
       initialState: {
@@ -2677,7 +2677,8 @@ describe("PretableSurface copy", () => {
     expect(copyToClipboard).toHaveBeenCalledTimes(1);
     const payload = copyToClipboard.mock.calls[0]![0] as CopyPayload;
     expect(payload.text).not.toContain(ROW_SELECT_COLUMN_ID);
-    // No leading tab — synthetic column does not contribute an empty cell.
+    // Three data columns × one row.
+    expect(payload.text.split("\t").length).toBe(3);
     expect(payload.text.startsWith("\t")).toBe(false);
   });
 
