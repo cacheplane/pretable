@@ -113,7 +113,7 @@ export function HeroGrid() {
                 row.delta === "LEADER" ? styles.leaderRow : undefined
               }
               getRowId={(row) => row.id}
-              interactionState={userSort ? { sort: userSort } : null}
+              state={userSort ? { sort: userSort } : null}
               onSortChange={(next) => {
                 if (next === null) {
                   setUserSort(null);
