@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { loadDocsPage } from "../../../lib/docs/load";
@@ -13,6 +14,23 @@ interface Params {
 
 interface Search {
   format?: string;
+}
+
+function pathFor(slug: string[]): string {
+  return "/docs" + (slug.length ? "/" + slug.join("/") : "");
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<Params>;
+}): Promise<Metadata> {
+  const { slug = [] } = await params;
+  const path = pathFor(slug);
+  return {
+    alternates: { types: { "text/markdown": `${path}.md` } },
+    other: { "x-llms-txt": "/llms.txt" },
+  };
 }
 
 export default async function Page({
@@ -36,6 +54,7 @@ export default async function Page({
       raw: result.raw,
     });
   }
+  const path = pathFor(slug);
   return (
     <DocsShell
       sidebar={<DocsSidebar />}
@@ -46,6 +65,7 @@ export default async function Page({
           group={result.frontmatter.nav}
           title={result.frontmatter.title}
           description={result.frontmatter.description}
+          path={path}
         />
         {result.content}
       </article>
