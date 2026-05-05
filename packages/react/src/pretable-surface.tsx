@@ -220,6 +220,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragAnchorRef = useRef<PretableCellAddress | null>(null);
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
+  const lastCheckedRowAnchorRef = useRef<string | null>(null);
   const { headerHeight } = useResolvedHeights();
   const bodyViewportHeight = Math.max(viewportHeight - headerHeight, 0);
   const effectiveColumns = useMemo<PretableColumn<TRow>[]>(() => {
@@ -910,7 +911,37 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                           event.stopPropagation();
                           event.preventDefault();
                           const before = grid.getSnapshot();
-                          grid.toggleRowSelection(id);
+                          const visible = before.visibleRows;
+
+                          if (
+                            event.shiftKey &&
+                            lastCheckedRowAnchorRef.current
+                          ) {
+                            const anchorId = lastCheckedRowAnchorRef.current;
+                            const anchorIdx = visible.findIndex(
+                              (r) => r.id === anchorId,
+                            );
+                            const clickedIdx = visible.findIndex(
+                              (r) => r.id === id,
+                            );
+                            if (anchorIdx >= 0 && clickedIdx >= 0) {
+                              const [lo, hi] =
+                                anchorIdx <= clickedIdx
+                                  ? [anchorIdx, clickedIdx]
+                                  : [clickedIdx, anchorIdx];
+                              for (let i = lo; i <= hi; i += 1) {
+                                const r = visible[i];
+                                if (r && !fullySelectedRowIds.has(r.id)) {
+                                  grid.toggleRowSelection(r.id);
+                                }
+                              }
+                            }
+                          } else {
+                            grid.toggleRowSelection(id);
+                          }
+
+                          lastCheckedRowAnchorRef.current = id;
+
                           const after = grid.getSnapshot();
                           if (
                             JSON.stringify(before.selection) !==
