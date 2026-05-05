@@ -176,11 +176,11 @@ The surface renders an off-screen `aria-live="polite"` region that announces sel
 />
 ```
 
-| Event                                         | Default announcement                       |
-| --------------------------------------------- | ------------------------------------------ |
-| Cmd/Ctrl+A (or header-checkbox select-all)    | "All rows selected" (or `{n} rows × {m} columns selected` for partial coverage) |
-| Cmd/Ctrl+C success                            | `{n} rows × {m} columns copied`            |
-| Cmd/Ctrl+C failure (clipboard rejects)        | "Copy failed"                              |
+| Event                                      | Default announcement                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------- |
+| Cmd/Ctrl+A (or header-checkbox select-all) | "All rows selected" (or `{n} rows × {m} columns selected` for partial coverage) |
+| Cmd/Ctrl+C success                         | `{n} rows × {m} columns copied`                                                 |
+| Cmd/Ctrl+C failure (clipboard rejects)     | "Copy failed"                                                                   |
 
 Announcements are debounced (~500ms) to avoid screen-reader thrashing on held shift+arrow extends. Programmatic mutations via `state.selection` do **not** announce — only user-triggered events do.
 
