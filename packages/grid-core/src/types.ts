@@ -15,6 +15,7 @@ export interface GridCoreColumn<TRow extends GridCoreRow = GridCoreRow> {
   sortable?: boolean;
   filterable?: boolean;
   getValue?: (row: TRow) => unknown;
+  formatForCopy?: (value: unknown, row: TRow) => string;
 }
 
 export interface GridCoreOptions<TRow extends GridCoreRow = GridCoreRow> {
