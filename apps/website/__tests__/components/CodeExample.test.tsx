@@ -31,3 +31,12 @@ it("links to the streaming docs", () => {
     screen.getByRole("link", { name: /\/docs\/streaming/ }),
   ).toHaveAttribute("href", "/docs/streaming");
 });
+
+it("renders the mock chat grid demo with header row", () => {
+  render(<CodeExample />);
+  // Mock demo renders a table with header columns
+  expect(screen.getByRole("columnheader", { name: /role/i })).toBeInTheDocument();
+  expect(
+    screen.getByRole("columnheader", { name: /content/i }),
+  ).toBeInTheDocument();
+});
