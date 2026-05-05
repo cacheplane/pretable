@@ -5,7 +5,7 @@ import type {
   PretableVisibleRow,
 } from "@pretable/core";
 
-import { ROW_SELECT_COLUMN_ID } from "./pretable-surface";
+import { ROW_SELECT_COLUMN_ID } from "./constants";
 
 export interface SerializeRangesArgs<TRow extends PretableRow> {
   ranges: readonly PretableCellRange[];
