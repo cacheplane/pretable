@@ -2,11 +2,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { loadDocsPage } from "../../../lib/docs/load";
+import { resolvePrevNext } from "../../../lib/docs/prev-next";
 import { buildRawMarkdownResponse } from "../../../lib/docs/raw-response";
 import { DocsPageHeader } from "../../components/docs/DocsPageHeader";
+import { DocsPrevNext } from "../../components/docs/DocsPrevNext";
 import { DocsShell } from "../../components/docs/DocsShell";
 import { DocsSidebar } from "../../components/docs/DocsSidebar";
 import { DocsTOC } from "../../components/docs/DocsTOC";
+import { docsNav } from "../_nav";
 
 interface Params {
   slug?: string[];
@@ -55,6 +58,7 @@ export default async function Page({
     });
   }
   const path = pathFor(slug);
+  const { prev, next } = resolvePrevNext(path, docsNav);
   return (
     <DocsShell
       sidebar={<DocsSidebar />}
@@ -68,6 +72,7 @@ export default async function Page({
           path={path}
         />
         {result.content}
+        <DocsPrevNext prev={prev} next={next} />
       </article>
     </DocsShell>
   );
