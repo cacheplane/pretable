@@ -44,10 +44,10 @@ it("exposes the benchmark viewport, content, row, and cell DOM markers", () => {
   const cells = row?.querySelectorAll("[data-pretable-cell]");
 
   expect(viewport).toHaveAttribute("role", "grid");
-  expect(viewport).toHaveAttribute("tabindex", "0");
+  expect(viewport).toHaveAttribute("tabindex", "-1");
   expect(content).toBeInTheDocument();
   expect(
-    view.getByRole("button", { name: "Sort Message" }),
+    view.getByRole("columnheader", { name: "Sort Message" }),
   ).toBeInTheDocument();
   expect(row).toHaveAttribute("data-row-index", "0");
   expect(cells).toHaveLength(1);

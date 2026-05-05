@@ -1,5 +1,7 @@
 export { createGrid } from "./create-grid";
 export type {
+  PretableCellAddress,
+  PretableCellRange,
   PretableColumn,
   PretableFocusState,
   PretableGrid,
