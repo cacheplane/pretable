@@ -20,6 +20,7 @@ order: 1
       onElement: (row) => grid.applyTransaction({ add: [row] }),
     });
     ```
+
   </Tab>
   <Tab label="Partial streams">
     Use `connectPartialStream` when **a single row grows over time** — a token-streamed assistant message, an incrementally-parsed JSON object, a row whose `latencyMs` ticks up as the request is in-flight.
@@ -32,11 +33,14 @@ order: 1
       onPatch: (patch) => grid.applyTransaction({ update: [patch] }),
     });
     ```
+
   </Tab>
 </Tabs>
 
 <Callout type="tip">
-  Both helpers share the same back-pressure model: the engine batches transactions to one render per animation frame. Selection survives every patch.
+  Both helpers share the same back-pressure model: the engine batches
+  transactions to one render per animation frame. Selection survives every
+  patch.
 </Callout>
 
 ## Next
@@ -49,6 +53,7 @@ order: 1
     `connectPartialStream`, patching a row as it grows.
   </Card>
   <Card title="Parsers" href="/docs/streaming/parsers">
-    Lower-level `parseElement` / `parsePartial` if you're feeding the engine yourself.
+    Lower-level `parseElement` / `parsePartial` if you're feeding the engine
+    yourself.
   </Card>
 </CardGroup>
