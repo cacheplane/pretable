@@ -158,6 +158,32 @@ Visual customization via `--pt-color-checkbox-bg`, `--pt-color-checkbox-border`,
 
 `Cmd+Shift+C`, `Cmd+Alt+C`, etc. are not intercepted — the browser's default behavior applies. Paste is not yet wired; it lands in a Phase 2 follow-up of the copy strand and will mirror this shape (`parseFromCopy?` per column, `onPaste?` at the surface level).
 
+### Live-region announcements
+
+The surface renders an off-screen `aria-live="polite"` region that announces selection and copy events for assistive technology. Defaults are English; pass a `messages?: PretableSurfaceMessages` prop to override:
+
+```tsx
+<PretableSurface
+  messages={{
+    selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
+      isAll
+        ? "Tutto selezionato"
+        : `${rowCount} righe × ${columnCount} colonne selezionate`,
+    copyAnnouncement: ({ rowCount, columnCount }) =>
+      `Copiato ${rowCount} × ${columnCount}`,
+    copyFailedAnnouncement: () => "Copia non riuscita",
+  }}
+/>
+```
+
+| Event                                         | Default announcement                       |
+| --------------------------------------------- | ------------------------------------------ |
+| Cmd/Ctrl+A (or header-checkbox select-all)    | "All rows selected" (or `{n} rows × {m} columns selected` for partial coverage) |
+| Cmd/Ctrl+C success                            | `{n} rows × {m} columns copied`            |
+| Cmd/Ctrl+C failure (clipboard rejects)        | "Copy failed"                              |
+
+Announcements are debounced (~500ms) to avoid screen-reader thrashing on held shift+arrow extends. Programmatic mutations via `state.selection` do **not** announce — only user-triggered events do.
+
 ## Click + Drag Selection
 
 Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pt-color-selection-bg`) and the focused cell shows a 2px inset ring (`--pt-color-focus-ring`).
