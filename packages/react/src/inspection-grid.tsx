@@ -29,6 +29,7 @@ export interface InspectionGridProps {
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   overscan?: number;
   rows: InspectionRow[];
+  rowSelectionColumn?: PretableSurfaceProps<InspectionRow>["rowSelectionColumn"];
   tabBehavior?: PretableSurfaceProps<InspectionRow>["tabBehavior"];
   viewportHeight: number;
 }
@@ -44,6 +45,7 @@ export function InspectionGrid({
   onTelemetryChange,
   overscan,
   rows,
+  rowSelectionColumn,
   tabBehavior,
   viewportHeight,
 }: InspectionGridProps) {
@@ -74,6 +76,7 @@ export function InspectionGrid({
       pinnedClassName="is-pinned"
       rowClassName="inspection-row"
       rows={rows}
+      rowSelectionColumn={rowSelectionColumn}
       selectFocusedRowOnArrowKey
       tabBehavior={tabBehavior}
       valueClassName="inspection-cell-value"
