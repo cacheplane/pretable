@@ -18,6 +18,10 @@ export type {
   RowSelectionColumnConfig,
 } from "./pretable-surface";
 export { ROW_SELECT_COLUMN_ID } from "./pretable-surface";
+
+// Copy / clipboard
+export { defaultCoerceForCopy, serializeRangesAsTsv } from "./copy";
+export type { CopyPayload, SerializeRangesArgs } from "./copy";
 export type { InspectionGridProps } from "./inspection-grid";
 export type {
   LabeledGridSurfaceFormatValueInput,

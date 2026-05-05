@@ -46,7 +46,31 @@ import {
   getViewportStyle,
 } from "./styles";
 
-export const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
+export { ROW_SELECT_COLUMN_ID } from "./constants";
+import { ROW_SELECT_COLUMN_ID } from "./constants";
+import {
+  type CopyPayload,
+  type SerializeRangesArgs,
+  serializeRangesAsTsv,
+} from "./copy";
+
+async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
+  if (typeof navigator === "undefined" || !navigator.clipboard) return;
+  if (
+    payload.html &&
+    typeof globalThis.ClipboardItem !== "undefined" &&
+    typeof navigator.clipboard.write === "function"
+  ) {
+    await navigator.clipboard.write([
+      new globalThis.ClipboardItem({
+        "text/plain": new Blob([payload.text], { type: "text/plain" }),
+        "text/html": new Blob([payload.html], { type: "text/html" }),
+      }),
+    ]);
+  } else {
+    await navigator.clipboard.writeText(payload.text);
+  }
+}
 
 export interface RowSelectionColumnConfig {
   enabled: true;
@@ -179,6 +203,21 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   tabBehavior?: "wrap-rows" | "exit";
   viewportStyle?: CSSProperties;
   viewportHeight: number;
+  /**
+   * When true, Cmd/Ctrl+C copy emits a header row (followed by a blank line)
+   * before the selected rows in each range block. Defaults to `false`.
+   */
+  copyWithHeaders?: boolean;
+  /**
+   * Override the TSV serialization step. Receives the args that would be
+   * passed to {@link serializeRangesAsTsv}; returning `null` cancels the copy.
+   */
+  onCopy?: (args: SerializeRangesArgs<TRow>) => CopyPayload | null;
+  /**
+   * Override the clipboard write step. Defaults to writing
+   * `payload.text` (and `payload.html` if present) via `navigator.clipboard`.
+   */
+  copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
 }
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
@@ -208,6 +247,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   tabBehavior = "wrap-rows",
   viewportStyle,
   viewportHeight,
+  copyWithHeaders,
+  onCopy,
+  copyToClipboard,
 }: PretableSurfaceProps<TRow>) {
   const [measuredHeights, setMeasuredHeights] = useState<
     Record<string, number>
@@ -477,6 +519,35 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             onSelectionChange?.(after.selection);
           }
           event.preventDefault();
+          return;
+        }
+
+        // Cmd/Ctrl+C copy. Skip if focus is in an editable input/textarea.
+        if (
+          (event.key === "c" || event.key === "C") &&
+          (event.metaKey || event.ctrlKey) &&
+          !event.shiftKey &&
+          !event.altKey &&
+          !(event.target instanceof HTMLInputElement) &&
+          !(event.target instanceof HTMLTextAreaElement)
+        ) {
+          event.preventDefault();
+          const snap = grid.getSnapshot();
+          const args: SerializeRangesArgs<TRow> = {
+            ranges: snap.selection.ranges,
+            visibleRows: snap.visibleRows,
+            columns: effectiveColumns,
+            copyWithHeaders: copyWithHeaders ?? false,
+          };
+          const payload = onCopy ? onCopy(args) : serializeRangesAsTsv(args);
+          if (payload) {
+            Promise.resolve(
+              (copyToClipboard ?? defaultCopyToClipboard)(payload),
+            ).catch((err) => {
+              // eslint-disable-next-line no-console
+              console.warn("[pretable] clipboard copy failed", err);
+            });
+          }
           return;
         }
 

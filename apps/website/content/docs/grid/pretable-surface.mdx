@@ -132,6 +132,32 @@ The header checkbox uses the same three-state derivation across visible rows.
 
 Visual customization via `--pt-color-checkbox-bg`, `--pt-color-checkbox-border`, `--pt-color-checkbox-checked-bg`, `--pt-color-checkbox-checked-fg` tokens.
 
+## Copy
+
+`Cmd/Ctrl + C` copies the current selection as **TSV** (tab-separated rows, newline-separated rows, multi-range blocks separated by a blank line). Default cell coercion: `null/undefined → ""`, `Date → ISO`, primitives → `String()`, plain objects → `JSON.stringify`. The synthetic row-select column never appears in the output.
+
+```tsx
+<PretableSurface
+  ariaLabel="Inspection grid"
+  columns={columns}
+  rows={rows}
+  getRowId={(row) => row.id}
+  copyWithHeaders
+  onCopy={(args) => myCustomSerializer(args)}
+/>
+```
+
+| Prop / column field | Where      | Effect                                                                                             |
+| ------------------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| `copyWithHeaders`   | surface    | When `true`, prepends each block with column headers (separated from the body by a blank line).    |
+| `onCopy`            | surface    | Override the default TSV serializer entirely. Returning `null` skips the clipboard write.          |
+| `copyToClipboard`   | surface    | Override the clipboard sink (test seam). Defaults to `navigator.clipboard.writeText` / `write`.    |
+| `formatForCopy`     | per-column | Per-cell value formatter, called before `defaultCoerceForCopy`. Useful for date/number formatting. |
+
+`onCopy` returns a `{ text, html? }` payload. When `html` is present, the surface writes both `text/plain` and `text/html` to the clipboard via the Clipboard API.
+
+`Cmd+Shift+C`, `Cmd+Alt+C`, etc. are not intercepted — the browser's default behavior applies. Paste is not yet wired; it lands in a Phase 2 follow-up of the copy strand and will mirror this shape (`parseFromCopy?` per column, `onPaste?` at the surface level).
+
 ## Click + Drag Selection
 
 Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pt-color-selection-bg`) and the focused cell shows a 2px inset ring (`--pt-color-focus-ring`).

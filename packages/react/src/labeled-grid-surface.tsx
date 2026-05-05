@@ -46,6 +46,9 @@ export interface LabeledGridSurfaceProps<
   rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
   selectFocusedRowOnArrowKey?: boolean;
   tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
+  copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
+  onCopy?: PretableSurfaceProps<TRow>["onCopy"];
+  copyToClipboard?: PretableSurfaceProps<TRow>["copyToClipboard"];
   valueClassName?: string;
   viewportHeight: number;
 }
@@ -73,6 +76,9 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   rowSelectionColumn,
   selectFocusedRowOnArrowKey,
   tabBehavior,
+  copyWithHeaders,
+  onCopy,
+  copyToClipboard,
   valueClassName,
   viewportHeight,
 }: LabeledGridSurfaceProps<TRow>) {
@@ -161,6 +167,9 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       rowSelectionColumn={rowSelectionColumn}
       selectFocusedRowOnArrowKey={selectFocusedRowOnArrowKey}
       tabBehavior={tabBehavior}
+      copyWithHeaders={copyWithHeaders}
+      onCopy={onCopy}
+      copyToClipboard={copyToClipboard}
       viewportHeight={viewportHeight}
     />
   );
