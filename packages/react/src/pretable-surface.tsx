@@ -223,12 +223,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       return;
     }
 
-    const currentSelectedRowId = snapshot.selection.rowIds[0] ?? null;
+    const currentSelectedRowId =
+      snapshot.selection.ranges[0]?.startRowId ?? null;
 
     if (currentSelectedRowId !== interactionState.selectedRowId) {
       onSelectedRowIdChange?.(interactionState.selectedRowId);
     }
-  }, [interactionState, onSelectedRowIdChange, snapshot.selection.rowIds]);
+  }, [interactionState, onSelectedRowIdChange, snapshot.selection.ranges]);
 
   useLayoutEffect(() => {
     let nextHeights = measuredHeightsRef.current;
@@ -303,16 +304,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       tabIndex={0}
       onKeyDown={(event) => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          grid.moveFocus(event.key === "ArrowDown" ? 1 : -1);
+          grid.moveFocus(event.key === "ArrowDown" ? "down" : "up");
 
           const nextFocus = grid.getSnapshot().focus;
 
           if (nextFocus.rowId && nextFocus.columnId === null && columns[0]) {
-            grid.setFocus(nextFocus.rowId, columns[0].id);
+            grid.setFocus({ rowId: nextFocus.rowId, columnId: columns[0].id });
           }
 
           if (selectFocusedRowOnArrowKey && nextFocus.rowId) {
-            grid.selectRow(nextFocus.rowId);
+            replaceSelectionWithFullRow(grid, nextFocus.rowId, columns);
             onSelectedRowIdChange?.(nextFocus.rowId);
           }
 
@@ -328,7 +329,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           const focusedRowId = grid.getSnapshot().focus.rowId;
 
           if (focusedRowId) {
-            grid.selectRow(focusedRowId);
+            replaceSelectionWithFullRow(grid, focusedRowId, columns);
             onSelectedRowIdChange?.(focusedRowId);
             event.preventDefault();
           }
@@ -448,7 +449,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       >
         {renderSnapshot.rows.map(({ height, id, row, rowIndex, top }) => {
           const isFocused = snapshot.focus.rowId === id;
-          const isSelected = snapshot.selection.rowIds.includes(id);
+          const isSelected = snapshot.selection.ranges.some(
+            (range) => range.startRowId === id && range.endRowId === id,
+          );
           const rowProps =
             getRowProps?.({
               isFocused,
@@ -479,8 +482,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               data-testid="pretable-row"
               key={id}
               onClick={() => {
-                grid.setFocus(id, columns[0]?.id ?? null);
-                grid.selectRow(id);
+                grid.setFocus({ rowId: id, columnId: columns[0]?.id ?? null });
+                replaceSelectionWithFullRow(grid, id, columns);
                 onSelectedRowIdChange?.(id);
               }}
               ref={(node) => {
@@ -548,6 +551,32 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       </div>
     </div>
   );
+}
+
+function replaceSelectionWithFullRow<TRow extends PretableRow>(
+  grid: PretableGrid<TRow>,
+  rowId: string,
+  columns: PretableColumn<TRow>[],
+): void {
+  const firstColumn = columns[0];
+  const lastColumn = columns[columns.length - 1];
+
+  if (!firstColumn || !lastColumn) {
+    grid.setSelection({ ranges: [], anchor: null });
+    return;
+  }
+
+  grid.setSelection({
+    ranges: [
+      {
+        startRowId: rowId,
+        endRowId: rowId,
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      },
+    ],
+    anchor: { rowId, columnId: firstColumn.id },
+  });
 }
 
 function getRowMeasurementKey(rowNode: HTMLDivElement) {
