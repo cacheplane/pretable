@@ -57,4 +57,34 @@ describe("DocsSearch", () => {
       screen.queryByRole("link", { name: /Theming/ }),
     ).not.toBeInTheDocument();
   });
+  it("ranks exact-prefix title match above body match", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      json: () =>
+        Promise.resolve([
+          {
+            slug: "/docs/api",
+            title: "Other",
+            description: "",
+            nav: "Grid",
+            headings: [],
+            body: "Streaming is mentioned here in the body once.",
+          },
+          {
+            slug: "/docs/streaming",
+            title: "Streaming",
+            description: "",
+            nav: "Streaming",
+            headings: [],
+            body: "",
+          },
+        ]),
+    }) as unknown as typeof fetch;
+    render(<DocsSearch />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const input = await screen.findByRole("combobox");
+    fireEvent.change(input, { target: { value: "stream" } });
+    const links = await screen.findAllByRole("link");
+    // First result should be the page whose title starts with "Stream"
+    expect(links[0]).toHaveAttribute("href", "/docs/streaming");
+  });
 });
