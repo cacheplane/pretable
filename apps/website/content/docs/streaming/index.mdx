@@ -1,62 +1,59 @@
 ---
 title: Streaming
-description: "@pretable/stream-adapter wires any async data source to a Pretable grid."
+description: "@pretable/stream-adapter wires any async data source to a grid — one reducer, one render path."
 nav: Streaming
 order: 1
 ---
 
 `@pretable/stream-adapter` wires any async data source to a Pretable grid. It treats a 1,000-patch/sec stream and a static array of rows as the same input shape — one reducer, one render path, one selection model. There's no "streaming mode" toggle.
 
-## Install
+## Pick the shape that matches your source
 
-```bash
-npm install @pretable/stream-adapter
-```
+<Tabs>
+  <Tab label="Element streams">
+    Use `connectElementStream` when the source emits **one full row per chunk** — LLM Responses elements, SSE messages where each event is a complete row, paginated REST results streamed in.
 
-The package depends on `@pretable/react` (for the grid surface) and exposes a small public API:
+    ```ts
+    import { connectElementStream } from "@pretable/stream-adapter";
 
-| Helper                 | When to use                                                               |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `connectElementStream` | Source emits one full row per chunk (LLM Responses, SSE, paginated REST). |
-| `connectPartialStream` | Source emits successive partial updates to a single row (token-by-token). |
-| `parseElementStream`   | Source emits raw JSON text chunks of an array; you need typed elements.   |
-| `parsePartialStream`   | Source emits raw JSON text chunks of an object; you need typed partials.  |
-| `createBatcher`        | Lower-level escape hatch; drive the lifecycle yourself.                   |
+    connectElementStream(stream, {
+      onElement: (row) => grid.applyTransaction({ add: [row] }),
+    });
+    ```
 
-## Quick example
+  </Tab>
+  <Tab label="Partial streams">
+    Use `connectPartialStream` when **a single row grows over time** — a token-streamed assistant message, an incrementally-parsed JSON object, a row whose `latencyMs` ticks up as the request is in-flight.
 
-```tsx
-"use client";
-import { useEffect, useState } from "react";
-import { connectElementStream } from "@pretable/stream-adapter";
-import { Pretable } from "@pretable/react";
-import { columns, type ChatRow } from "./columns";
-import { openai } from "./openai-client";
+    ```ts
+    import { connectPartialStream } from "@pretable/stream-adapter";
 
-export function ChatGrid({ prompt }: { prompt: string }) {
-  const [rows, setRows] = useState<ChatRow[]>([]);
-  useEffect(() => {
-    void (async () => {
-      const stream = await openai.responses.stream({
-        model: "gpt-5",
-        input: prompt,
-      });
-      connectElementStream(
-        {
-          applyTransaction: (tx) =>
-            tx.add && setRows((r) => [...r, ...tx.add!]),
-        },
-        stream,
-      );
-    })();
-  }, [prompt]);
-  return <Pretable rows={rows} columns={columns} getRowId={(r) => r.id} />;
-}
-```
+    connectPartialStream(stream, {
+      getRowId: (chunk) => chunk.id,
+      onPatch: (patch) => grid.applyTransaction({ update: [patch] }),
+    });
+    ```
 
-## Continue
+  </Tab>
+</Tabs>
 
-- [Element streams →](/docs/streaming/element-streams) — full reference for `connectElementStream`.
-- [Partial streams →](/docs/streaming/partial-streams) — token-by-token row growth.
-- [Parsers →](/docs/streaming/parsers) — raw-JSON-string streams.
-- [API reference →](/docs/streaming/api-reference) — types and the `createBatcher` escape hatch.
+<Callout type="tip">
+  Both helpers share the same back-pressure model: the engine batches
+  transactions to one render per animation frame. Selection survives every
+  patch.
+</Callout>
+
+## Next
+
+<CardGroup cols={3}>
+  <Card title="Element streams" href="/docs/streaming/element-streams">
+    The full `connectElementStream` API and reconnect semantics.
+  </Card>
+  <Card title="Partial streams" href="/docs/streaming/partial-streams">
+    `connectPartialStream`, patching a row as it grows.
+  </Card>
+  <Card title="Parsers" href="/docs/streaming/parsers">
+    Lower-level `parseElement` / `parsePartial` if you're feeding the engine
+    yourself.
+  </Card>
+</CardGroup>
