@@ -2288,24 +2288,185 @@ Visual customization via `--pt-color-checkbox-*` tokens.
 
 ---
 
-## Phase 5 — Copy contract: TSV + overrides (OUTLINE)
+## Phase 5 — Copy contract: TSV + overrides (DETAILED)
 
-**Branch:** `b5-copy`. **Detail:** added when Phase 4 merges.
+**Branch:** `b5-copy`. **Worktree:** `.worktrees/b5-copy`.
 
-**Work items:**
+**Phase exit criteria:**
 
-- New module `packages/react/src/copy.ts` with `serializeRangesAsTsv(args)` returning `{ text, html? }`.
-- Per-block, row-major iteration over visible cells in each range. Multi-range: blocks separated by `\n\n`.
-- Per-column `formatForCopy?: (value, row) => string` consulted before the default coercion (`defaultCoerceForCopy`: primitives → string, Date → ISO, plain objects → JSON, null/undefined → empty).
-- Grid-level `onCopy?: (args) => string | { text, html? }` overrides the default. Returning the object form writes both `text/plain` and `text/html` to the clipboard.
-- `copyWithHeaders?: boolean` (default false) prepends each block with a header row; blank line between header and body.
-- Surface-level `keydown` handler for Cmd/Ctrl+C: collect ranges from `state.selection`, build the TSV (or call `onCopy`), call `navigator.clipboard.writeText` (and `.write(new ClipboardItem(...))` if HTML is present).
-- jsdom tests: single range, multi-range, formatForCopy, onCopy override, copyWithHeaders, default coercion (numbers, dates, null, JSON objects).
+- New module `packages/react/src/copy.ts` exports `serializeRangesAsTsv(args)` and `defaultCoerceForCopy(value)`. Pure functions; engine-coordinate-free (operates on snapshot + columns).
+- New `formatForCopy?` field on `PretableColumn<TRow>` (added in `@pretable-internal/grid-core` and re-exported through `@pretable/core`). Optional. When provided, called per cell before the default coercion.
+- New props on `<PretableSurface>`: `copyWithHeaders?: boolean` (default `false`), `onCopy?: (args) => CopyResult` (overrides the default TSV serialization).
+- New surface keydown handler for `Cmd/Ctrl+C`: builds TSV via `serializeRangesAsTsv` (or calls `onCopy`), writes to clipboard.
+- Test-only seam `copyToClipboard?: (payload) => Promise<void>` on the surface, defaulting to a real-navigator implementation. jsdom tests inject a stub.
+- jsdom tests cover serialization (single + multi range, headers opt-in, formatForCopy, onCopy override) and the keydown→clipboard flow.
+- `pnpm -w typecheck` / `test` / `lint` / `format` clean.
 
-**Open questions to resolve when detailing:**
+### Resolved open questions
 
-- jsdom does not implement `navigator.clipboard` reliably. Use a stub injected via a test-only seam (`copyToClipboard?: (data) => Promise<void>` on the surface, defaulting to the real navigator API). This is also the seam Phase 6 uses for announcement testing.
-- What happens on copy failure (clipboard API rejects)? Announce via the live region in Phase 6; in Phase 5 just `console.warn` and `return`.
+- **jsdom clipboard**: the surface accepts a `copyToClipboard` prop (test-only). Default implementation:
+  ```ts
+  async function defaultCopyToClipboard(payload: {
+    text: string;
+    html?: string;
+  }) {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    if (payload.html && typeof ClipboardItem !== "undefined") {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([payload.text], { type: "text/plain" }),
+          "text/html": new Blob([payload.html], { type: "text/html" }),
+        }),
+      ]);
+    } else {
+      await navigator.clipboard.writeText(payload.text);
+    }
+  }
+  ```
+  Tests inject a `copyToClipboard={vi.fn()}` and assert it was called with the expected payload.
+- **Copy failure**: the surface wraps the clipboard call in `try/catch`. On failure, `console.warn("[pretable] clipboard copy failed", err)` and return. Phase 6 will hook the announcement.
+- **Synthetic row-select column exclusion**: `serializeRangesAsTsv` filters out the reserved id `__pretable_row_select__` from the columns it iterates over. This also addresses the Phase 4 follow-up concern: the synthetic column shouldn't appear in copy output even if it shows up in `selection.ranges`.
+- **Empty selection**: if no selection exists or the selection has zero overlap with visible rows × data columns, do nothing. No clipboard write, no warn.
+- **Cell value resolution order** (per cell): `column.formatForCopy?.(value, row) ?? defaultCoerceForCopy(column.getValue?.(row) ?? row[column.id])`. The default coercion: `null|undefined → ""`, `Date → ISO`, `string|number|boolean|bigint → String(value)`, `object → JSON.stringify(value)`, fallback `String(value)`.
+
+### Tasks
+
+#### Task 1 — Engine: add `formatForCopy` to column type
+
+**Files:**
+
+- `packages/grid-core/src/types.ts` — add `formatForCopy?: (value: unknown, row: TRow) => string` to `GridCoreColumn<TRow>`.
+- `packages/core/src/types.ts` — verify the column type re-export carries it through (it should, since `PretableColumn = GridCoreColumn`).
+
+Tests: no new tests; the field is optional and inert until Phase 5 consumes it.
+
+**Commit:** `feat(grid-core): add optional formatForCopy field on column type`
+
+#### Task 2 — `copy.ts` module with serializer + coercion
+
+**Files:**
+
+- Create `packages/react/src/copy.ts`.
+
+Public API:
+
+```ts
+export interface SerializeRangesArgs<TRow extends PretableRow> {
+  ranges: PretableCellRange[];
+  visibleRows: PretableVisibleRow<TRow>[];
+  columns: PretableColumn<TRow>[];
+  copyWithHeaders?: boolean;
+}
+
+export interface CopyPayload {
+  text: string;
+  html?: string;
+}
+
+export function serializeRangesAsTsv<TRow extends PretableRow>(
+  args: SerializeRangesArgs<TRow>,
+): CopyPayload | null;
+
+export function defaultCoerceForCopy(value: unknown): string;
+```
+
+Implementation rules:
+
+- Filter `args.columns` to drop any column with id `ROW_SELECT_COLUMN_ID` ("**pretable_row_select**"). Define this id in a shared constants module or import from `pretable-surface.tsx` if already exported.
+- Build column-id → index map and row-id → index map (over visible rows). For each range:
+  - Resolve start/end row + column indices in the visible/data space; clamp inverted ranges (start > end after clamp → swap).
+  - If a range maps to zero rows or columns after clamping (e.g., all rows filtered out, or only the synthetic column was in the range), skip it.
+- Emit one block per non-empty range. Cells in row-major order. Cell delimiter `\t`, row delimiter `\n`. Block separator: `\n\n` between blocks (only if more than one).
+- If `copyWithHeaders`, prepend each block with a header row (column headers using `column.header ?? column.id`), separated from the body by a blank line (`\n`).
+- Cell value: `column.formatForCopy?.(value, row) ?? defaultCoerceForCopy(value)` where `value = column.getValue?.(row) ?? row[column.id as keyof TRow]`.
+- Return `null` if no non-empty blocks were produced.
+- HTML: not produced by default. Phase 5 emits `text` only; HTML comes via the `onCopy` override path.
+
+Inline unit tests in a new test file `packages/react/src/__tests__/copy.test.ts`:
+
+- Single range, single column, single row.
+- Multi-row range.
+- Multi-range (separated by `\n\n`).
+- `formatForCopy` overrides default coercion.
+- `defaultCoerceForCopy` shape: numbers, Date, null, undefined, plain object, boolean.
+- `copyWithHeaders` prepends headers + blank line.
+- Synthetic column filtered out.
+- Filtered-row range returns `null` (range exists but no visible rows match).
+- Empty range list returns `null`.
+
+**Commit:** `feat(react): copy.ts — TSV serialization + default coercion`
+
+#### Task 3 — Surface: Cmd+C handler + props + clipboard seam
+
+**Files:**
+
+- `packages/react/src/pretable-surface.tsx` — add new props, keydown handler, default clipboard impl.
+- `packages/react/src/index.ts` — export `CopyPayload`, `SerializeRangesArgs`, `defaultCoerceForCopy` if useful.
+
+New props on `PretableSurfaceProps<TRow>`:
+
+```ts
+copyWithHeaders?: boolean;
+onCopy?: (args: SerializeRangesArgs<TRow>) => CopyPayload;
+copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
+```
+
+Default `copyToClipboard` written as a top-level helper (not inline in component) so it's tree-shakeable.
+
+In the keydown handler (after the existing `handleSurfaceKeyDown` integration), check for `Cmd/Ctrl+C` (key === "c" || "C", `event.metaKey || event.ctrlKey`, no shift, no alt). If matched:
+
+1. Call `event.preventDefault()`.
+2. Build `SerializeRangesArgs` from the current snapshot + columns + `copyWithHeaders` prop.
+3. If `onCopy` is provided, use its return value; otherwise call `serializeRangesAsTsv(args)`.
+4. If the result is `null`, do nothing.
+5. Call `(copyToClipboard ?? defaultCopyToClipboard)(payload)`. Wrap in try/catch; on rejection log a warn and return.
+
+Notes:
+
+- The event handler doesn't fire `onSelectionChange` / `onFocusChange` (copy doesn't change state).
+- `Cmd+C` should not fire when the user has clicked into an `<input>` inside the grid (Phase 1 doesn't have any but Phase 4's checkboxes are buttons — they ignore Cmd+C natively). Only intercept when the event target is the grid root or a cell — guard via `event.currentTarget === event.target` or check the event target's tag (rough OK heuristic).
+
+**Commit:** `feat(react): Cmd+C copy handler with onCopy override and clipboard seam`
+
+#### Task 4 — Forward new props through composition components
+
+**Files:** `packages/react/src/pretable.tsx`, `inspection-grid.tsx`, `labeled-grid-surface.tsx`.
+
+Add `copyWithHeaders`, `onCopy`, and `copyToClipboard` to the prop types and forwarding lists. `Pretable` (simple drop-in): expose all three with defaults.
+
+**Commit:** `feat(react): forward copy props through composition components`
+
+#### Task 5 — jsdom integration tests
+
+**Files:** `packages/react/src/__tests__/pretable-surface.test.tsx`.
+
+New `describe("copy", ...)` block:
+
+- Cmd+C with a single-cell selection writes single-cell TSV via the injected `copyToClipboard` mock.
+- Cmd+C with a multi-row range writes row-major TSV.
+- Cmd+C with multiple discontiguous ranges separates blocks by `\n\n`.
+- `copyWithHeaders={true}` prepends headers.
+- `onCopy` override receives the args and its return value is what gets written.
+- `formatForCopy` per column overrides default coercion in the output.
+- `Cmd+C` with empty selection does NOT call `copyToClipboard`.
+- Synthetic row-select column does NOT appear in the TSV output (with `rowSelectionColumn={{enabled:true}}` and a full-row selection).
+- Failed clipboard write logs a warn and doesn't throw.
+
+Target test count: 131 → ~145+.
+
+**Commit:** `test(react): copy contract integration coverage`
+
+#### Task 6 — Doc updates
+
+**Files:** `apps/website/content/docs/grid/pretable-surface.mdx`.
+
+Add a `## Copy` section after the row-select section. Document the `Cmd+C` default, `copyWithHeaders`, `onCopy`, `formatForCopy`, the synthetic-column exclusion, the no-paste-yet note (Phase 2 follow-up).
+
+**Commit:** `docs(website): document Cmd+C copy contract`
+
+#### Task 7 — Repo-wide gates + PR
+
+`pnpm -w typecheck` / `test` / `lint` / `format` all clean. Push, open PR titled `feat(react): TSV copy with overrides (Phase 5 of B)`.
 
 ---
 
