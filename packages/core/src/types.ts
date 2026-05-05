@@ -1,12 +1,17 @@
 export type PretableRow = Record<string, unknown>;
 export type {
+  GridCoreCellAddress as PretableCellAddress,
+  GridCoreCellRange as PretableCellRange,
+  GridCoreFocusDirection as PretableFocusDirection,
   GridCoreFocusState as PretableFocusState,
+  GridCoreMoveFocusOptions as PretableMoveFocusOptions,
   GridCoreRowModel as PretableVisibleRow,
   GridCoreSelectionState as PretableSelectionState,
   GridCoreSnapshot as PretableGridSnapshot,
   GridCoreSortDirection as PretableSortDirection,
   GridCoreSortState as PretableSortState,
   GridCoreViewportState as PretableViewportState,
+  RowSelectionTriState as PretableRowSelectionTriState,
 } from "@pretable-internal/grid-core";
 import type {
   AutosizeOptions,
