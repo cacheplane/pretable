@@ -1,0 +1,43 @@
+---
+title: API reference
+description: | Type                       | Shape                                                             |
+nav: Streaming
+order: 5
+---
+---
+title: API reference
+description: Type signatures for stream-adapter and the createBatcher escape hatch.
+---
+
+## Types
+
+| Type                       | Shape                                                             |
+| -------------------------- | ----------------------------------------------------------------- |
+| `GridLike<TRow>`           | `{ applyTransaction({ add?, update?, remove? }): void }`          |
+| `StreamConnection`         | `{ done: Promise<void>; dispose(): void }`                        |
+| `TransactionBatcher<TRow>` | `{ add(rows), update(patches), remove(ids), flush(), dispose() }` |
+| `PartialStreamOptions`     | `{ rowId: string }`                                               |
+
+`GridLike` is structural — anything with an `applyTransaction` method that accepts `{ add?, update?, remove? }` works. The Pretable engine implements it directly; for React-state-driven scenarios you can supply a shim that pipes transactions into `setRows`.
+
+## `createBatcher(grid): TransactionBatcher<TRow>`
+
+Lower-level escape hatch when the connect helpers don't fit. Same batching semantics as the `connect*` helpers — transactions coalesce per microtask via `queueMicrotask` — but you drive the lifecycle yourself.
+
+```ts
+import { createBatcher } from "@pretable/stream-adapter";
+
+const batcher = createBatcher(grid);
+batcher.add([{ id: "1", role: "user", content: "Hello" }]);
+batcher.update([{ id: "1", content: "Hello, world" }]);
+batcher.flush(); // force the next tick's commit synchronously
+batcher.dispose(); // release the queued microtask
+```
+
+Use this when you need to interleave streaming patches with imperative grid mutations (e.g. user-driven row removal during a stream), or when you're wiring an exotic source that doesn't fit the async-iterable shape.
+
+## See also
+
+- [Element streams](/docs/streaming/element-streams) — `connectElementStream`
+- [Partial streams](/docs/streaming/partial-streams) — `connectPartialStream`
+- [Parsers](/docs/streaming/parsers) — `parseElementStream` / `parsePartialStream`
