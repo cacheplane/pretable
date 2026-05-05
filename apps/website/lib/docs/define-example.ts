@@ -1,13 +1,6 @@
 import type { ReactNode } from "react";
 
-export type ExampleLang =
-  | "ts"
-  | "tsx"
-  | "js"
-  | "jsx"
-  | "css"
-  | "json"
-  | "bash";
+export type ExampleLang = "ts" | "tsx" | "js" | "jsx" | "css" | "json" | "bash";
 
 export interface ExampleFile {
   path: string;

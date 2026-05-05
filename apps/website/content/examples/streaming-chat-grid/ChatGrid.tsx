@@ -1,3 +1,4 @@
+// @ts-nocheck — sample source for docs; not compiled as app code.
 "use client";
 
 import { connectElementStream } from "@pretable/stream-adapter";

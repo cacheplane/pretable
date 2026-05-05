@@ -105,15 +105,15 @@ Next.js cannot route a literal `.md` file extension via folder naming. Strategy:
 
 ```ts
 // middleware.ts
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from "next/server";
 
-export const config = { matcher: '/docs/:path*' };
+export const config = { matcher: "/docs/:path*" };
 
 export function middleware(req: NextRequest) {
   const url = req.nextUrl.clone();
-  if (url.pathname.endsWith('.md')) {
-    url.pathname = url.pathname.replace(/\.md$/, '');
-    url.searchParams.set('format', 'md');
+  if (url.pathname.endsWith(".md")) {
+    url.pathname = url.pathname.replace(/\.md$/, "");
+    url.searchParams.set("format", "md");
     return NextResponse.rewrite(url);
   }
 }
@@ -140,12 +140,12 @@ NavBar (sticky, h-11, full-width)
 
 ### Dimensions
 
-| Breakpoint | Sidebar | Content | TOC | Gap | Padding |
-|---|---|---|---|---|---|
-| ≥1280px | 260px | `minmax(0,1fr)` (article `max-w-72ch` self-centered) | 220px | 48px | `px-8` |
-| 1024–1279px | 240px | `minmax(0,1fr)` | hidden | 40px | `px-8` |
-| 768–1023px | 200px | `minmax(0,1fr)` | hidden | 32px | `px-6` |
-| <768px | drawer | full | hidden | — | `px-5` |
+| Breakpoint  | Sidebar | Content                                              | TOC    | Gap  | Padding |
+| ----------- | ------- | ---------------------------------------------------- | ------ | ---- | ------- |
+| ≥1280px     | 260px   | `minmax(0,1fr)` (article `max-w-72ch` self-centered) | 220px  | 48px | `px-8`  |
+| 1024–1279px | 240px   | `minmax(0,1fr)`                                      | hidden | 40px | `px-8`  |
+| 768–1023px  | 200px   | `minmax(0,1fr)`                                      | hidden | 32px | `px-6`  |
+| <768px      | drawer  | full                                                 | hidden | —    | `px-5`  |
 
 Inner grid centered in `mx-auto max-w-[1440px]`.
 
@@ -179,14 +179,14 @@ Server-rendered via RSC.
 
 ```ts
 // lib/docs/load.ts
-import { compileMDX } from 'next-mdx-remote/rsc';
-import remarkGfm from 'remark-gfm';
-import rehypeSlug from 'rehype-slug';
-import rehypePrettyCode from 'rehype-pretty-code';
+import { compileMDX } from "next-mdx-remote/rsc";
+import remarkGfm from "remark-gfm";
+import rehypeSlug from "rehype-slug";
+import rehypePrettyCode from "rehype-pretty-code";
 
 export async function loadDocsPage(slug: string[]) {
   const filePath = resolveContentPath(slug); // → content/docs/<...>.mdx
-  const raw = await fs.readFile(filePath, 'utf8');
+  const raw = await fs.readFile(filePath, "utf8");
 
   const { content, frontmatter } = await compileMDX<DocsFrontmatter>({
     source: raw,
@@ -196,7 +196,7 @@ export async function loadDocsPage(slug: string[]) {
         remarkPlugins: [remarkGfm],
         rehypePlugins: [
           rehypeSlug,
-          [rehypePrettyCode, { theme: 'github-light' }],
+          [rehypePrettyCode, { theme: "github-light" }],
         ],
       },
     },
@@ -214,32 +214,32 @@ export async function loadDocsPage(slug: string[]) {
 ---
 title: <Pretable> component
 description: The drop-in grid component with built-in streaming support.
-nav: Grid                # group label, must match _nav.ts
-order: 2                 # within group; tiebreaker for sort
+nav: Grid # group label, must match _nav.ts
+order: 2 # within group; tiebreaker for sort
 ---
 ```
 
 ### Component registry (v1)
 
-| Component | Purpose |
-|---|---|
-| `Callout` | `type: "note" \| "warning" \| "tip" \| "info" \| "check"` |
-| `Steps` / `Step` | Numbered procedures with vertical connector |
-| `Tabs` / `Tab` | Generic tabbed content |
-| `CodeGroup` | Multi-language code (curl/JS/Python). Tab labels = language |
-| `Card` / `CardGroup` | Linked tiles, 1/2/3-col responsive grid |
-| `Prompt` | Copyable AI prompt block (uses `CopyPromptButton`) |
-| `Frame` | Bordered/captioned wrapper for images and live demos |
-| `Example` | **Live demo + source files**. See below. |
+| Component            | Purpose                                                     |
+| -------------------- | ----------------------------------------------------------- |
+| `Callout`            | `type: "note" \| "warning" \| "tip" \| "info" \| "check"`   |
+| `Steps` / `Step`     | Numbered procedures with vertical connector                 |
+| `Tabs` / `Tab`       | Generic tabbed content                                      |
+| `CodeGroup`          | Multi-language code (curl/JS/Python). Tab labels = language |
+| `Card` / `CardGroup` | Linked tiles, 1/2/3-col responsive grid                     |
+| `Prompt`             | Copyable AI prompt block (uses `CopyPromptButton`)          |
+| `Frame`              | Bordered/captioned wrapper for images and live demos        |
+| `Example`            | **Live demo + source files**. See below.                    |
 
 ### HTML element overrides
 
-| Element | Override behavior |
-|---|---|
-| `pre` | Rendered as `CodeBlock` — copy button (top-right), optional language label, optional file title (parsed from fence info string after the language: ` ```ts lib/columns.ts `) |
-| `h2` / `h3` | `id` injected by `rehype-slug`. Visually unchanged |
-| `a` | If external (starts with `http`), append `↗` icon and `target="_blank" rel="noopener"` |
-| `table` | Wrapped in `<div class="overflow-x-auto">` so reference tables scroll horizontally without breaking layout |
+| Element     | Override behavior                                                                                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pre`       | Rendered as `CodeBlock` — copy button (top-right), optional language label, optional file title (parsed from fence info string after the language: ` ```ts lib/columns.ts `) |
+| `h2` / `h3` | `id` injected by `rehype-slug`. Visually unchanged                                                                                                                           |
+| `a`         | If external (starts with `http`), append `↗` icon and `target="_blank" rel="noopener"`                                                                                       |
+| `table`     | Wrapped in `<div class="overflow-x-auto">` so reference tables scroll horizontally without breaking layout                                                                   |
 
 ## `<Example>` component — live + source
 
@@ -284,15 +284,15 @@ export const streamingChatGrid = defineExample({
 ```ts
 interface ExampleProps {
   example: ExampleDef;
-  defaultOpen?: boolean;     // disclosure default; default false
-  showLive?: boolean;        // default true
+  defaultOpen?: boolean; // disclosure default; default false
+  showLive?: boolean; // default true
 }
 ```
 
 In MDX:
 
 ```mdx
-import { streamingChatGrid } from '@/content/examples/streaming-chat-grid';
+import { streamingChatGrid } from "@/content/examples/streaming-chat-grid";
 
 <Example example={streamingChatGrid} />
 ```
@@ -339,7 +339,7 @@ export function CodeExample() {
 }
 ```
 
-Marketing landing page now shows a *real running grid* instead of static syntax-highlighted strings. Eliminates duplication.
+Marketing landing page now shows a _real running grid_ instead of static syntax-highlighted strings. Eliminates duplication.
 
 ## Sidebar (`DocsSidebar`)
 
@@ -451,8 +451,8 @@ Add to docs `<head>` (in `app/docs/layout.tsx`):
 
 ```mdx
 <Prompt>
-  Build a streaming grid that displays incidents as they arrive from
-  an OpenAI Responses stream. Use @pretable/react and connectElementStream.
+  Build a streaming grid that displays incidents as they arrive from an OpenAI
+  Responses stream. Use @pretable/react and connectElementStream.
 </Prompt>
 ```
 
@@ -466,13 +466,13 @@ Sits in `DocsPageHeader` next to H1. Single action button in v1, but built as a 
 
 24 existing pages move from `app/docs/<group>/<slug>/page.mdx` → `content/docs/<group>/<slug>.mdx`.
 
-| From | To |
-|---|---|
-| `app/docs/getting-started/page.mdx` | `content/docs/getting-started/index.mdx` |
+| From                                         | To                                          |
+| -------------------------------------------- | ------------------------------------------- |
+| `app/docs/getting-started/page.mdx`          | `content/docs/getting-started/index.mdx`    |
 | `app/docs/getting-started/concepts/page.mdx` | `content/docs/getting-started/concepts.mdx` |
-| `app/docs/grid/page.mdx` | `content/docs/grid/index.mdx` |
-| `app/docs/grid/pretable-component/page.mdx` | `content/docs/grid/pretable-component.mdx` |
-| (and the rest, same pattern) | |
+| `app/docs/grid/page.mdx`                     | `content/docs/grid/index.mdx`               |
+| `app/docs/grid/pretable-component/page.mdx`  | `content/docs/grid/pretable-component.mdx`  |
+| (and the rest, same pattern)                 |                                             |
 
 Each migrated file gets frontmatter (`title`, `description`, `nav`, `order`). Then the old `app/docs/<group>/[*]` page files are deleted; the new `app/docs/[[...slug]]/page.tsx` catch-all takes over. URLs unchanged → no redirects.
 

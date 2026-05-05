@@ -1,3 +1,4 @@
+// @ts-nocheck — sample source for docs; not compiled as app code.
 import { ChatGrid } from "./ChatGrid";
 
 export default function Page() {

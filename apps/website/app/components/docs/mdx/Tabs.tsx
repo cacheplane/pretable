@@ -13,7 +13,9 @@ interface TabProps {
   children: ReactNode;
 }
 
-export function Tab(_: TabProps): ReactNode {
+// Tab is a marker component — Tabs reads its props directly via Children.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function Tab(props: TabProps): ReactNode {
   return null;
 }
 

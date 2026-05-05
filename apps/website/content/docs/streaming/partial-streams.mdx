@@ -1,12 +1,8 @@
 ---
 title: Partial streams
-description: Use connectPartialStream when a single row grows over time.
+description: "Use connectPartialStream when a single row grows over time."
 nav: Streaming
 order: 3
----
----
-title: Partial streams
-description: connectPartialStream — token-by-token row growth for LLM streaming.
 ---
 
 Use `connectPartialStream` when a single row grows over time. The canonical case: an assistant chat row whose `content` field accumulates token by token; `tokens` and `latencyMs` updated each chunk.

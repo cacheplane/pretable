@@ -5,8 +5,7 @@ export const config = { matcher: "/docs/:path*" };
 export function middleware(req: NextRequest) {
   const url = req.nextUrl.clone();
   if (url.pathname.endsWith(".md")) {
-    url.pathname = url.pathname.replace(/\.md$/, "");
-    url.searchParams.set("format", "md");
+    url.pathname = "/docs-md" + url.pathname.slice(5).replace(/\.md$/, "");
     return NextResponse.rewrite(url);
   }
 }
