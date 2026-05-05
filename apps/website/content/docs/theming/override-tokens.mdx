@@ -1,0 +1,137 @@
+---
+title: Override tokens
+description: The override story is plain CSS cascade.
+nav: Theming
+order: 3
+---
+---
+title: Override tokens
+description: Customize @pretable/ui by redefining --pretable-* CSS variables in your stylesheet — no rebuild, no fork, cascade-driven.
+---
+
+The override story is plain CSS cascade. Pick a theme, redefine any of its 24 tokens in your own stylesheet, and your values win because they load after the theme.
+
+## The basic pattern
+
+```css
+@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/grid.css";
+
+:root {
+  --pretable-accent: #ff5722;
+  --pretable-rule: #cccccc;
+}
+```
+
+Both your `:root` block and Excel's `:root` block declare CSS variables at the same specificity. Source order wins: your stylesheet imports after Excel's, so your values override.
+
+## Worked examples
+
+### Tweak the accent color
+
+Most apps want the grid's accent to match their brand. Override one token:
+
+```css
+@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/grid.css";
+
+:root {
+  --pretable-accent: var(--brand-primary);
+}
+```
+
+The accent appears on focus rings, sort indicators, and selection highlights. One override, brand-consistent across the grid.
+
+### Swap the entire color palette
+
+Pretable ships Excel and Material as concrete themes, but the token contract works for any palette. Define all the surface/text/line/state tokens to your brand:
+
+```css
+@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/grid.css";
+
+:root {
+  /* Surfaces */
+  --pretable-bg-grid: #0d1117;
+  --pretable-bg-grid-alt: #161b22;
+  --pretable-bg-header: #161b22;
+
+  /* Text */
+  --pretable-text-cell: #c9d1d9;
+  --pretable-text-header: #8b949e;
+
+  /* Lines */
+  --pretable-rule: #30363d;
+  --pretable-rule-strong: #484f58;
+
+  /* State */
+  --pretable-bg-hover: #161b22;
+  --pretable-bg-selected: rgba(56, 139, 253, 0.15);
+
+  /* Accent */
+  --pretable-accent: #58a6ff;
+}
+```
+
+You're effectively building a third theme on top of Excel as a base. If this is more than a one-off, see [Custom themes](/docs/theming/custom-themes) for the cleaner pattern.
+
+### Change the corner radius
+
+Excel ships with `--pretable-radius: 0` (sharp corners). To round the grid container without writing a new theme:
+
+```css
+@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/grid.css";
+
+:root {
+  --pretable-radius: 8px;
+}
+```
+
+The grid container's outer border radius now reflects your value. Cells stay square — the radius applies only to the outermost wrapper.
+
+### Change density values
+
+Density tokens follow the same rule. Override them at `:root` to tweak the dimensions a theme ships:
+
+```css
+@import "@pretable/ui/themes/material.css";
+@import "@pretable/ui/grid.css";
+
+:root {
+  /* Material's standard density is 48px row; tighten to 36px globally */
+  --pretable-row-height: 36px;
+  --pretable-header-height: 40px;
+  --pretable-cell-padding-x: 12px;
+  --pretable-cell-padding-y: 6px;
+}
+```
+
+The engine's `useResolvedHeights` hook reads `--pretable-row-height` and `--pretable-header-height` directly from CSS, so the virtualizer respects your values without you passing props.
+
+## Token groups
+
+The 24 tokens group by purpose. When overriding, think in groups:
+
+- **Surfaces** drive cell, header, and chrome backgrounds.
+- **Text** drives readable content color.
+- **Lines** drive gridline and container borders.
+- **State** drives hover, selection, focus interaction.
+- **Accent** is one token used in multiple places — sort indicators, focus rings, active filter tags.
+- **Density** drives row heights, padding, and font sizes.
+- **Typography** drives font family stacks (sans for chrome, mono for numeric cells).
+
+See [Token reference](/docs/theming/token-reference) for the full list with descriptions, types, and example values.
+
+## Specificity tips
+
+- **Override at `:root`** — matches the theme's specificity, source order decides.
+- **Don't use `!important`** unless something else is fighting you. Cascade order should win cleanly.
+- **Scope overrides if needed** — to override per-section of your app, scope to a class or attribute: `.dashboard { --pretable-accent: red; } .reports { --pretable-accent: blue; }`. The grid inside each scope reads the locally scoped value.
+
+## Where to go next
+
+- [Token reference](/docs/theming/token-reference) — the canonical 24-token table.
+- [Light / dark switching](/docs/theming/light-dark) — runtime variant toggle.
+- [Density switching](/docs/theming/density) — runtime density toggle.
+- [Custom themes](/docs/theming/custom-themes) — when overrides grow into a full theme, switch to authoring one.
