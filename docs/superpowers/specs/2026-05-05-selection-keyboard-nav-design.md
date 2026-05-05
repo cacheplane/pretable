@@ -42,7 +42,7 @@ interface GridCoreCellRange {
 }
 
 interface GridCoreSelectionState {
-  ranges: GridCoreCellRange[];     // discontiguous, in selection order
+  ranges: GridCoreCellRange[]; // discontiguous, in selection order
   anchor: GridCoreCellAddress | null; // for shift+arrow extend
 }
 ```
@@ -55,25 +55,25 @@ interface GridCoreSelectionState {
 
 **Selected-row derivation (pure function over snapshot):**
 
-| Row state | Coverage of row's cells by some range |
-|---|---|
-| Selected | All cells in the row are inside at least one range |
-| Indeterminate | Some but not all cells are inside any range |
-| Unselected | No cells are inside any range |
+| Row state     | Coverage of row's cells by some range              |
+| ------------- | -------------------------------------------------- |
+| Selected      | All cells in the row are inside at least one range |
+| Indeterminate | Some but not all cells are inside any range        |
+| Unselected    | No cells are inside any range                      |
 
 This is what powers the checkbox column's three-state visual.
 
 ## Click Contract (Excel-style)
 
-| Gesture | Effect |
-|---|---|
-| Click body cell | Move focus to cell; collapse selection to that single cell. |
-| Shift+click body cell | Extend range from current anchor to clicked cell (replaces the active range; keeps discontiguous extras). |
-| Cmd/Ctrl+click body cell | Add a new single-cell range (discontiguous). New anchor = clicked cell. |
-| Drag body cell → body cell | Marquee select; final range replaces the active range. |
-| Click checkbox in selection column | Toggle full-row range membership for that row (additive — does not collapse other ranges, does not move focus). |
-| Shift+click checkbox | Range-toggle full-row ranges from last-checked checkbox anchor to this row. |
-| Click select-all header checkbox | Toggle "all currently visible rows are full-row ranges". When mixed (indeterminate), first click selects all visible. |
+| Gesture                            | Effect                                                                                                                |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Click body cell                    | Move focus to cell; collapse selection to that single cell.                                                           |
+| Shift+click body cell              | Extend range from current anchor to clicked cell (replaces the active range; keeps discontiguous extras).             |
+| Cmd/Ctrl+click body cell           | Add a new single-cell range (discontiguous). New anchor = clicked cell.                                               |
+| Drag body cell → body cell         | Marquee select; final range replaces the active range.                                                                |
+| Click checkbox in selection column | Toggle full-row range membership for that row (additive — does not collapse other ranges, does not move focus).       |
+| Shift+click checkbox               | Range-toggle full-row ranges from last-checked checkbox anchor to this row.                                           |
+| Click select-all header checkbox   | Toggle "all currently visible rows are full-row ranges". When mixed (indeterminate), first click selects all visible. |
 
 Pretable does not currently render a separate row-header gutter; the selection column is the only row-level click target in v1. Click-row-to-select-row behavior is reachable by consumers via `onSelectionChange` + a row-click handler if desired, and can be elevated to a built-in gesture later without breaking this contract.
 
@@ -83,22 +83,22 @@ The selection column does not move focus when clicked — checkbox interaction i
 
 ARIA grid pattern: the entire grid is a single tab stop. Focus enters lands on the focused cell (or first cell if none yet). Arrow keys navigate inside.
 
-| Key | Action |
-|---|---|
-| ↑ / ↓ / ← / → | Move focus by one cell. Collapses range to focused cell. |
-| Shift + arrow | Extend active range from anchor by one cell. |
-| Cmd/Ctrl + arrow | Jump focus to grid edge in arrow direction. Collapses range to focused cell. |
-| Cmd/Ctrl + Shift + arrow | Extend active range from anchor to grid edge. |
-| Home / End | Move focus to first / last column in current row. |
-| Cmd/Ctrl + Home / End | Move focus to first / last cell in grid. |
-| Page Up / Page Down | Move focus by one viewport height. |
-| Shift + Page Up / Page Down | Extend range by one viewport height. |
-| Tab | Move focus right; wrap to first cell of next row at end. **Default**: `tabBehavior: "wrap-rows"`. |
-| Shift + Tab | Move focus left; wrap to last cell of previous row at start. |
-| Cmd/Ctrl + A | Select all cells (single full-grid range). |
-| Esc | Collapse range to focused cell. Discards discontiguous ranges. |
-| Cmd/Ctrl + C | Copy selection per the copy contract below. |
-| Space | (Reserved for future row-toggle when focus is in selection column.) |
+| Key                         | Action                                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------------------------- |
+| ↑ / ↓ / ← / →               | Move focus by one cell. Collapses range to focused cell.                                          |
+| Shift + arrow               | Extend active range from anchor by one cell.                                                      |
+| Cmd/Ctrl + arrow            | Jump focus to grid edge in arrow direction. Collapses range to focused cell.                      |
+| Cmd/Ctrl + Shift + arrow    | Extend active range from anchor to grid edge.                                                     |
+| Home / End                  | Move focus to first / last column in current row.                                                 |
+| Cmd/Ctrl + Home / End       | Move focus to first / last cell in grid.                                                          |
+| Page Up / Page Down         | Move focus by one viewport height.                                                                |
+| Shift + Page Up / Page Down | Extend range by one viewport height.                                                              |
+| Tab                         | Move focus right; wrap to first cell of next row at end. **Default**: `tabBehavior: "wrap-rows"`. |
+| Shift + Tab                 | Move focus left; wrap to last cell of previous row at start.                                      |
+| Cmd/Ctrl + A                | Select all cells (single full-grid range).                                                        |
+| Esc                         | Collapse range to focused cell. Discards discontiguous ranges.                                    |
+| Cmd/Ctrl + C                | Copy selection per the copy contract below.                                                       |
+| Space                       | (Reserved for future row-toggle when focus is in selection column.)                               |
 
 **Configuration:**
 
@@ -117,10 +117,10 @@ Grid-level config:
 ```ts
 type RowSelectionColumnConfig = {
   enabled: true;
-  position?: "left";          // v1: left only
-  pinned?: boolean;           // default true
-  headerCheckbox?: boolean;   // default true
-  width?: number;             // default 36
+  position?: "left"; // v1: left only
+  pinned?: boolean; // default true
+  headerCheckbox?: boolean; // default true
+  width?: number; // default 36
 };
 ```
 
@@ -151,9 +151,7 @@ type PretableSelectionConfig = {
   rowSelectionColumn?: RowSelectionColumnConfig;
   tabBehavior?: TabBehavior;
   copyWithHeaders?: boolean;
-  onCopy?: (
-    args: { ranges, snapshot }
-  ) => CopyResult;
+  onCopy?: (args: { ranges; snapshot }) => CopyResult;
 };
 ```
 
@@ -210,18 +208,18 @@ Announcement strings are exposed via a `messages?` prop for i18n (matching Grid 
 
 `GridCoreStore` additions / changes:
 
-| Action | Description |
-|---|---|
-| `setSelection(state)` | Imperative replace, used by controlled-mode adapters. |
-| `setFocus(addr)` | Existing; now also collapses ranges to focused cell and updates anchor. |
+| Action                                                           | Description                                                                                          |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `setSelection(state)`                                            | Imperative replace, used by controlled-mode adapters.                                                |
+| `setFocus(addr)`                                                 | Existing; now also collapses ranges to focused cell and updates anchor.                              |
 | `moveFocus(direction, opts?: { extend?, jumpToEdge?, byPage? })` | Generalizes the current 1D `moveFocus(delta)`. `direction` is `"up" \| "down" \| "left" \| "right"`. |
-| `selectAll()` | Single full-grid range; anchor at top-left. |
-| `clearSelection()` | Collapse to focused cell. |
-| `addRange(range)` | Append a discontiguous range; updates anchor to range start. |
-| `extendRangeFromAnchor(addr)` | Replace active range with `[anchor…addr]`. |
-| `toggleRowSelection(rowId)` | Add or remove a full-row range. Used by the checkbox column. |
-| `setSelectAllVisible(checked)` | Header-checkbox semantics; replaces or removes all visible-row full-row ranges. |
-| ~~`selectRow`~~ | Removed. |
+| `selectAll()`                                                    | Single full-grid range; anchor at top-left.                                                          |
+| `clearSelection()`                                               | Collapse to focused cell.                                                                            |
+| `addRange(range)`                                                | Append a discontiguous range; updates anchor to range start.                                         |
+| `extendRangeFromAnchor(addr)`                                    | Replace active range with `[anchor…addr]`.                                                           |
+| `toggleRowSelection(rowId)`                                      | Add or remove a full-row range. Used by the checkbox column.                                         |
+| `setSelectAllVisible(checked)`                                   | Header-checkbox semantics; replaces or removes all visible-row full-row ranges.                      |
+| ~~`selectRow`~~                                                  | Removed.                                                                                             |
 
 The legacy 1D `moveFocus(delta)` is replaced by the generalized form. Existing call sites update.
 

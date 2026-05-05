@@ -8,12 +8,7 @@ const columns = [
   { id: "c3", header: "C3" },
 ] as const;
 
-const rows = [
-  { id: "r1" },
-  { id: "r2" },
-  { id: "r3" },
-  { id: "r4" },
-];
+const rows = [{ id: "r1" }, { id: "r2" }, { id: "r3" }, { id: "r4" }];
 
 function makeGrid() {
   return createGridCore({

@@ -18,16 +18,16 @@
 
 Each phase below ships as one PR, merged on green before the next starts. Detail is filled in just-in-time: Phase 1 is fully task-decomposed in this document; subsequent phases have structured outlines and become fully detailed (appended to this same plan file) when their predecessor merges.
 
-| # | Phase | Branch / worktree | Mergeable test surface |
-|---|---|---|---|
-| 1 | Engine state foundation | `b1-engine-state` | grid-core unit tests, all in-repo callsites compile and existing tests still pass |
-| 2 | React adapter — keyboard nav (2D + page/home/end) + `state` prop rename | `b2-keyboard-nav` | jsdom component tests for every key in the keyboard contract; controlled & uncontrolled modes |
-| 3 | React adapter — click + cell-range selection (incl. marquee drag) | `b3-cell-range-clicks` | jsdom component tests for click, shift+click, cmd+click, drag-marquee; visual selection styling renders |
-| 4 | Built-in checkbox column + select-all | `b4-checkbox-column` | jsdom component tests for column injection, three-state derivation, header checkbox semantics; hero demo wired |
-| 5 | Copy contract — TSV + overrides | `b5-copy` | jsdom tests for TSV serialization (single + multi-range, headers opt-in, `formatForCopy`, `onCopy`, no-paste-yet) |
-| 6 | ARIA live region + announcements | `b6-aria-live` | jsdom tests assert the live-region's textContent after Cmd+A and Cmd+C; `messages` prop overrides |
-| 7 | Bench Slab 1 — H13/H14/H15 | `b7-bench-slab1` | repeated Chromium S2/hypothesis runs satisfy H13, H14, H15 with evidence in `status/runsets/` |
-| 8 | Documentation surface | `b8-docs` | new pages render; existing MDX example pipeline still typechecks |
+| #   | Phase                                                                   | Branch / worktree      | Mergeable test surface                                                                                            |
+| --- | ----------------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 1   | Engine state foundation                                                 | `b1-engine-state`      | grid-core unit tests, all in-repo callsites compile and existing tests still pass                                 |
+| 2   | React adapter — keyboard nav (2D + page/home/end) + `state` prop rename | `b2-keyboard-nav`      | jsdom component tests for every key in the keyboard contract; controlled & uncontrolled modes                     |
+| 3   | React adapter — click + cell-range selection (incl. marquee drag)       | `b3-cell-range-clicks` | jsdom component tests for click, shift+click, cmd+click, drag-marquee; visual selection styling renders           |
+| 4   | Built-in checkbox column + select-all                                   | `b4-checkbox-column`   | jsdom component tests for column injection, three-state derivation, header checkbox semantics; hero demo wired    |
+| 5   | Copy contract — TSV + overrides                                         | `b5-copy`              | jsdom tests for TSV serialization (single + multi-range, headers opt-in, `formatForCopy`, `onCopy`, no-paste-yet) |
+| 6   | ARIA live region + announcements                                        | `b6-aria-live`         | jsdom tests assert the live-region's textContent after Cmd+A and Cmd+C; `messages` prop overrides                 |
+| 7   | Bench Slab 1 — H13/H14/H15                                              | `b7-bench-slab1`       | repeated Chromium S2/hypothesis runs satisfy H13, H14, H15 with evidence in `status/runsets/`                     |
+| 8   | Documentation surface                                                   | `b8-docs`              | new pages render; existing MDX example pipeline still typechecks                                                  |
 
 **Worktree per phase:** Implementation for each phase happens in `~/.worktrees/pretable-<branch>` (created via `superpowers:using-git-worktrees`). The plan file itself lives on `plan/selection-keyboard-nav` (the branch this is being written on); subsequent updates to this plan also commit there.
 
@@ -111,6 +111,7 @@ apps/bench/src/
 **Branch:** `b1-engine-state`. **Worktree:** `~/.worktrees/pretable-b1-engine-state`.
 
 **Phase exit criteria:**
+
 - New types exported from `@pretable-internal/grid-core` and re-exported from `@pretable/core` as documented in Architectural Notes.
 - New actions implemented on `GridCoreStore`. Old `selectRow` and 1D `moveFocus(delta)` are **removed** (not aliased).
 - All in-repo callsites compile against the new API. Existing behavior is preserved (single-row click still selects via `toggleRowSelection`; ArrowUp/Down still moves focus via `moveFocus("up" | "down")`).
@@ -141,6 +142,7 @@ Expected: clean working tree; pnpm install completes with no errors.
 ### Task 1: Replace selection state types in `grid-core/types.ts`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts`
 
 - [ ] **Step 1.1.1: Add new cell-address and cell-range types; replace `GridCoreSelectionState`**
@@ -176,9 +178,9 @@ In the same file, append a `GridCoreFocusDirection` type and a `GridCoreMoveFocu
 export type GridCoreFocusDirection = "up" | "down" | "left" | "right";
 
 export interface GridCoreMoveFocusOptions {
-  extend?: boolean;        // shift+arrow
-  jumpToEdge?: boolean;    // cmd/ctrl+arrow
-  byPage?: boolean;        // page up/down (only "up" or "down" direction)
+  extend?: boolean; // shift+arrow
+  jumpToEdge?: boolean; // cmd/ctrl+arrow
+  byPage?: boolean; // page up/down (only "up" or "down" direction)
 }
 ```
 
@@ -215,6 +217,7 @@ Expected: errors in `create-grid-core.ts` because the implementation hasn't caug
 ### Task 2: Implement new selection state + actions in `create-grid-core.ts`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 - Create: `packages/grid-core/src/derived-selection.ts`
 
@@ -268,10 +271,7 @@ export function rangeContainsCell(
       : [endColIdx, startColIdx];
 
   return (
-    rowIdx >= rowLo &&
-    rowIdx <= rowHi &&
-    colIdx >= colLo &&
-    colIdx <= colHi
+    rowIdx >= rowLo && rowIdx <= rowHi && colIdx >= colLo && colIdx <= colHi
   );
 }
 
@@ -319,7 +319,7 @@ export function deriveSelectedRows<TRow extends GridCoreRow>(args: {
 Open `packages/grid-core/src/create-grid-core.ts`. At line 71, replace the selection initializer:
 
 ```ts
-  let selection: GridCoreSelectionState = { ranges: [], anchor: null };
+let selection: GridCoreSelectionState = { ranges: [], anchor: null };
 ```
 
 Delete the entire `selectRow` method (lines 149–160).
@@ -748,6 +748,7 @@ Co-Authored-By: Assistant Opus 4.7 <noreply@anthropic.com>"
 ### Task 3: Export new types from `grid-core/index.ts`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/index.ts`
 
 - [ ] **Step 1.3.1: Add new type exports**
@@ -803,6 +804,7 @@ Co-Authored-By: Assistant Opus 4.7 <noreply@anthropic.com>"
 ### Task 4: Migrate existing `grid-core.test.ts` and add new test files
 
 **Files:**
+
 - Modify: `packages/grid-core/src/__tests__/grid-core.test.ts`
 - Create: `packages/grid-core/src/__tests__/selection-state.test.ts`
 - Create: `packages/grid-core/src/__tests__/move-focus.test.ts`
@@ -812,14 +814,14 @@ Co-Authored-By: Assistant Opus 4.7 <noreply@anthropic.com>"
 In `packages/grid-core/src/__tests__/grid-core.test.ts`, replace `grid.selectRow("b")` with `grid.toggleRowSelection("b")` and replace the assertion `expect(snapshot.selection.rowIds).toEqual(["b"])` with the new shape:
 
 ```ts
-    expect(snapshot.selection.ranges).toEqual([
-      {
-        startRowId: "b",
-        endRowId: "b",
-        startColumnId: "name",
-        endColumnId: "message",
-      },
-    ]);
+expect(snapshot.selection.ranges).toEqual([
+  {
+    startRowId: "b",
+    endRowId: "b",
+    startColumnId: "name",
+    endColumnId: "message",
+  },
+]);
 ```
 
 Apply the same change at line ~49 (`grid.selectRow("c")`) and update its assertion analogously (`startRowId: "c"`, `endRowId: "c"`, etc.).
@@ -889,7 +891,10 @@ describe("selection state", () => {
       endColumnId: "status",
     };
 
-    grid.setSelection({ ranges: [range], anchor: { rowId: "a", columnId: "name" } });
+    grid.setSelection({
+      ranges: [range],
+      anchor: { rowId: "a", columnId: "name" },
+    });
 
     expect(grid.getSnapshot().selection.ranges).toEqual([range]);
     expect(grid.getSnapshot().selection.anchor).toEqual({
@@ -1151,12 +1156,7 @@ const columns = [
   { id: "c3", header: "C3" },
 ] as const;
 
-const rows = [
-  { id: "r1" },
-  { id: "r2" },
-  { id: "r3" },
-  { id: "r4" },
-];
+const rows = [{ id: "r1" }, { id: "r2" }, { id: "r3" }, { id: "r4" }];
 
 function makeGrid() {
   return createGridCore({
@@ -1314,6 +1314,7 @@ Co-Authored-By: Assistant Opus 4.7 <noreply@anthropic.com>"
 ### Task 5: Update `@pretable/core` facade and re-exports
 
 **Files:**
+
 - Modify: `packages/core/src/types.ts`
 - Modify: `packages/core/src/create-grid.ts`
 
@@ -1400,6 +1401,7 @@ Co-Authored-By: Assistant Opus 4.7 <noreply@anthropic.com>"
 ### Task 6: Update `@pretable/react` callsites (preserve existing behavior)
 
 **Files:**
+
 - Modify: `packages/react/src/pretable-surface.tsx`
 - Modify: `packages/react/src/use-pretable.ts`
 
@@ -1410,24 +1412,24 @@ This task does **not** add new features. It updates existing callers to compile 
 In `packages/react/src/pretable-surface.tsx`, locate the keyboard handler around lines 304–335. Replace the existing logic with:
 
 ```tsx
-        // Phase 1: preserve current behavior — ArrowUp/Down moves focus, Enter toggles row select.
-        // Phase 2 will replace this with the full keyboard contract.
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          event.preventDefault();
-          grid.moveFocus(event.key === "ArrowDown" ? "down" : "up");
-        } else if (event.key === "Home" || event.key === "End") {
-          // existing Home/End logic kept; update to new setFocus signature
-          const nextFocus = grid.getSnapshot().focus;
-          if (columns[0] && nextFocus.rowId) {
-            grid.setFocus({ rowId: nextFocus.rowId, columnId: columns[0].id });
-          }
-        } else if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          const focusedRowId = grid.getSnapshot().focus.rowId;
-          if (focusedRowId) {
-            grid.toggleRowSelection(focusedRowId);
-          }
-        }
+// Phase 1: preserve current behavior — ArrowUp/Down moves focus, Enter toggles row select.
+// Phase 2 will replace this with the full keyboard contract.
+if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+  event.preventDefault();
+  grid.moveFocus(event.key === "ArrowDown" ? "down" : "up");
+} else if (event.key === "Home" || event.key === "End") {
+  // existing Home/End logic kept; update to new setFocus signature
+  const nextFocus = grid.getSnapshot().focus;
+  if (columns[0] && nextFocus.rowId) {
+    grid.setFocus({ rowId: nextFocus.rowId, columnId: columns[0].id });
+  }
+} else if (event.key === "Enter" || event.key === " ") {
+  event.preventDefault();
+  const focusedRowId = grid.getSnapshot().focus.rowId;
+  if (focusedRowId) {
+    grid.toggleRowSelection(focusedRowId);
+  }
+}
 ```
 
 (Where the existing logic differs from the snippet above, prefer the snippet — the goal is to compile with the new API while keeping ArrowUp/Down and Enter doing the same user-visible thing.)
@@ -1437,38 +1439,38 @@ In `packages/react/src/pretable-surface.tsx`, locate the keyboard handler around
 Find the row-click handler that currently calls `grid.setFocus(id, columns[0]?.id ?? null); grid.selectRow(id);`. Replace with:
 
 ```tsx
-                grid.setFocus({ rowId: id, columnId: columns[0]?.id ?? null });
-                grid.toggleRowSelection(id);
+grid.setFocus({ rowId: id, columnId: columns[0]?.id ?? null });
+grid.toggleRowSelection(id);
 ```
 
 `toggleRowSelection` differs from `selectRow(id)` in that clicking a selected row deselects it. For Phase 1 we keep the existing user-visible behavior by only calling `toggleRowSelection` when the row is **not** already selected. Wrap the call:
 
 ```tsx
-                grid.setFocus({ rowId: id, columnId: columns[0]?.id ?? null });
-                const snapshot = grid.getSnapshot();
-                const alreadySelected = snapshot.selection.ranges.some(
-                  (r) =>
-                    r.startRowId === id &&
-                    r.endRowId === id &&
-                    r.startColumnId === columns[0]?.id &&
-                    r.endColumnId === columns[columns.length - 1]?.id,
-                );
-                if (!alreadySelected) {
-                  // Replace any existing selection with this row.
-                  if (columns[0] && columns[columns.length - 1]) {
-                    grid.setSelection({
-                      ranges: [
-                        {
-                          startRowId: id,
-                          endRowId: id,
-                          startColumnId: columns[0].id,
-                          endColumnId: columns[columns.length - 1].id,
-                        },
-                      ],
-                      anchor: { rowId: id, columnId: columns[0].id },
-                    });
-                  }
-                }
+grid.setFocus({ rowId: id, columnId: columns[0]?.id ?? null });
+const snapshot = grid.getSnapshot();
+const alreadySelected = snapshot.selection.ranges.some(
+  (r) =>
+    r.startRowId === id &&
+    r.endRowId === id &&
+    r.startColumnId === columns[0]?.id &&
+    r.endColumnId === columns[columns.length - 1]?.id,
+);
+if (!alreadySelected) {
+  // Replace any existing selection with this row.
+  if (columns[0] && columns[columns.length - 1]) {
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: id,
+          endRowId: id,
+          startColumnId: columns[0].id,
+          endColumnId: columns[columns.length - 1].id,
+        },
+      ],
+      anchor: { rowId: id, columnId: columns[0].id },
+    });
+  }
+}
 ```
 
 This faithfully reproduces the old `selectRow` behavior (single-row replace; clicking the same row again is a no-op).
@@ -1480,38 +1482,38 @@ In `packages/react/src/use-pretable.ts`, locate `interactionOverrides` (around l
 Update the `setFocus` call:
 
 ```ts
-      grid.setFocus(
-        interactionOverrides.focusedRowId !== undefined
-          ? {
-              rowId: interactionOverrides.focusedRowId,
-              columnId: grid.getSnapshot().focus.columnId,
-            }
-          : null,
-      );
+grid.setFocus(
+  interactionOverrides.focusedRowId !== undefined
+    ? {
+        rowId: interactionOverrides.focusedRowId,
+        columnId: grid.getSnapshot().focus.columnId,
+      }
+    : null,
+);
 ```
 
 Replace the `selectRow` call:
 
 ```ts
-      const selectedRowId = interactionOverrides.selectedRowId;
-      if (selectedRowId === null) {
-        grid.setSelection({ ranges: [], anchor: null });
-      } else if (selectedRowId !== undefined) {
-        const cols = grid.options.columns;
-        if (cols[0] && cols[cols.length - 1]) {
-          grid.setSelection({
-            ranges: [
-              {
-                startRowId: selectedRowId,
-                endRowId: selectedRowId,
-                startColumnId: cols[0].id,
-                endColumnId: cols[cols.length - 1].id,
-              },
-            ],
-            anchor: { rowId: selectedRowId, columnId: cols[0].id },
-          });
-        }
-      }
+const selectedRowId = interactionOverrides.selectedRowId;
+if (selectedRowId === null) {
+  grid.setSelection({ ranges: [], anchor: null });
+} else if (selectedRowId !== undefined) {
+  const cols = grid.options.columns;
+  if (cols[0] && cols[cols.length - 1]) {
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: selectedRowId,
+          endRowId: selectedRowId,
+          startColumnId: cols[0].id,
+          endColumnId: cols[cols.length - 1].id,
+        },
+      ],
+      anchor: { rowId: selectedRowId, columnId: cols[0].id },
+    });
+  }
+}
 ```
 
 - [ ] **Step 1.6.4: Typecheck and run react tests**
@@ -1540,6 +1542,7 @@ Co-Authored-By: Assistant Opus 4.7 <noreply@anthropic.com>"
 ### Task 7: Update bench adapter (if it touches selection)
 
 **Files:**
+
 - Inspect: `apps/bench/src/pretable-adapter.tsx`
 
 - [ ] **Step 1.7.1: Search for any selection/focus calls in bench**
@@ -1565,6 +1568,7 @@ If Step 1.7.1 produced no matches in pretable-adapter.tsx, there is nothing to c
 ### Task 8: Update website hero demo callsites
 
 **Files:**
+
 - Inspect: `apps/website/app/components/heroGrid/HeroGrid.tsx`
 - Modify (if needed): the same file
 
@@ -1673,6 +1677,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 **Branch:** `b2-keyboard-nav`. **Detail:** added when Phase 1 merges.
 
 **Work items:**
+
 - Rename `interactionState` prop to `state` across `usePretable`, `usePretableModel`, `Pretable`, `PretableSurface`, `InspectionGrid`, `LabeledGridSurface`. Update all in-repo callsites in the same PR (no alias).
 - Add `state.selection` and `state.focus` slices to `UsePretableOptions` and `UsePretableModelOptions`. Add `onSelectionChange` and `onFocusChange` callbacks. Wire controlled-mode reading and uncontrolled-mode writing.
 - Replace the Phase-1 minimal keyboard handler in `pretable-surface.tsx` with the full keyboard contract from the spec: 2D arrows, shift+arrow extend, cmd/ctrl+arrow jumpToEdge, Home/End, Cmd/Ctrl+Home/End, PageUp/PageDown, shift variants, Tab `wrap-rows` default, Esc, Cmd+A. Cmd+C is wired in Phase 5.
@@ -1681,6 +1686,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 - jsdom component tests: one test per key in the contract (cover both uncontrolled and a controlled-mode round-trip for selection and focus).
 
 **Open questions to resolve when detailing:**
+
 - PageUp/Down step accuracy: should the React surface override the engine's `byPage` step with a real row-height-aware estimate? Likely yes; the engine's estimate is a fallback.
 - Tab handling when `tabBehavior: "exit"`: whose responsibility to advance focus to the next page-level tabbable element? Browser default — the surface just doesn't preventDefault.
 - Does focus follow programmatic `setFocus` from controlled-mode parents? Should the surface call `cellElement.focus()` when the focused cell changes? Most likely yes, behind a `requestAnimationFrame` to avoid scroll thrashing.
@@ -1692,6 +1698,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 **Branch:** `b3-cell-range-clicks`. **Detail:** added when Phase 2 merges.
 
 **Work items:**
+
 - Click handler on cells: plain click → `setFocus(addr) + clearSelection`; shift+click → `extendRangeFromAnchor(addr)`; cmd/ctrl+click → `addRange(single-cell-range) + setFocus(addr)`.
 - Marquee drag: pointer-down on a cell starts a drag; pointer-move over other cells calls `extendRangeFromAnchor`; pointer-up commits. Cancel on Esc.
 - CSS for selected cell visuals: subtle background (`--pt-color-selection-bg`), 1px active-range border (`--pt-color-selection-border`), 2px focus ring (`--pt-color-focus-ring`). New tokens added to `@pretable/ui/tokens.css` deliberately.
@@ -1699,6 +1706,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 - jsdom tests: click, shift+click, cmd+click, drag from cell to cell, Esc cancel of drag, click outside grid does not affect selection.
 
 **Open questions to resolve when detailing:**
+
 - Should marquee drag auto-scroll the viewport when the pointer leaves the visible area? (Likely yes; Grid Alpha does. Implementation lands in Phase 3 or punts to a follow-up.)
 - Hit-testing during drag: rely on `pointermove` over cell elements (simple, reliable in jsdom too) vs. `elementFromPoint` (more accurate near gaps). Default to the former.
 
@@ -1709,6 +1717,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 **Branch:** `b4-checkbox-column`. **Detail:** added when Phase 3 merges.
 
 **Work items:**
+
 - Add `rowSelectionColumn?: RowSelectionColumnConfig` to the surface props (and corresponding controlled-state mirroring if any state needs to live in `state`).
 - In the React rendering layer, inject a synthetic column at `position` (left only in v1) when `rowSelectionColumn.enabled` is true. The column renders a checkbox cell whose three-state value derives from `deriveSelectedRows`.
 - Render header checkbox if `headerCheckbox: true` (default). Wire to `setSelectAllVisible(checked)`. Indeterminate visual when some-but-not-all visible rows are fully selected.
@@ -1719,6 +1728,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 - Smoke test (`apps/website/e2e/smoke.spec.ts`): the hero demo's checkbox column is visible and clickable.
 
 **Open questions to resolve when detailing:**
+
 - Where exactly does the synthetic column live in the column array passed to `deriveVisibleRows` and to the layout engine? It needs to participate in widths and pinning but **not** in the user's column ID space (it should not conflict with a user column whose id is `_select`). Choose a reserved-symbol id like `__pretable_row_select__`.
 - Should the synthetic column appear in `state.sort` / `state.filters` keys? No — it must be filtered out before any sort/filter consideration.
 - How do consumers customize the checkbox visual in v1 without cell renderers? CSS-only via the rendered `<button role="checkbox">`'s class; provide `--pt-color-checkbox-*` tokens and document. Full renderer customization lands in D.
@@ -1730,6 +1740,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 **Branch:** `b5-copy`. **Detail:** added when Phase 4 merges.
 
 **Work items:**
+
 - New module `packages/react/src/copy.ts` with `serializeRangesAsTsv(args)` returning `{ text, html? }`.
 - Per-block, row-major iteration over visible cells in each range. Multi-range: blocks separated by `\n\n`.
 - Per-column `formatForCopy?: (value, row) => string` consulted before the default coercion (`defaultCoerceForCopy`: primitives → string, Date → ISO, plain objects → JSON, null/undefined → empty).
@@ -1739,6 +1750,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 - jsdom tests: single range, multi-range, formatForCopy, onCopy override, copyWithHeaders, default coercion (numbers, dates, null, JSON objects).
 
 **Open questions to resolve when detailing:**
+
 - jsdom does not implement `navigator.clipboard` reliably. Use a stub injected via a test-only seam (`copyToClipboard?: (data) => Promise<void>` on the surface, defaulting to the real navigator API). This is also the seam Phase 6 uses for announcement testing.
 - What happens on copy failure (clipboard API rejects)? Announce via the live region in Phase 6; in Phase 5 just `console.warn` and `return`.
 
@@ -1749,6 +1761,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 **Branch:** `b6-aria-live`. **Detail:** added when Phase 5 merges.
 
 **Work items:**
+
 - Off-screen `<div role="status" aria-live="polite" />` rendered inside the surface root.
 - After Cmd+A, after `selectAll()`, after `setSelectAllVisible(true)`: announce "{n} rows × {m} columns selected" (or "all rows selected" if all visible).
 - After successful Cmd+C: announce "{n} rows × {m} columns copied". After failure: "Copy failed".
@@ -1756,6 +1769,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 - jsdom tests: assert `screen.getByRole("status").textContent` after each event.
 
 **Open questions to resolve when detailing:**
+
 - Debouncing rapid announcements (e.g., shift+arrow held down): probably yes, suppress repeated extend announcements; only announce on a "selection settled" boundary (debounced ~500ms after the last keydown).
 - Should we announce on every `setSelection` programmatic call? No — only on user-initiated extend / select-all / copy.
 
@@ -1766,6 +1780,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 **Branch:** `b7-bench-slab1`. **Detail:** added when Phase 6 merges.
 
 **Work items:**
+
 - New scripts under `apps/bench/src/scripts/`: `select-range-extend.ts`, `select-all.ts`, `keyboard-nav-row.ts`. Each follows the existing pattern (set up grid, dispatch keyboard events, capture per-step interaction latency).
 - `apps/bench/src/evaluate.ts`: add evaluators for H13 (extend p95 < 16ms over 30 extensions), H14 (arrow nav p95 < 16ms over 60 navs), H15 (Cmd+A end-to-end < 33ms).
 - New scenarios registered: `S2/select-range-extend`, `S2/select-all`, `S2/keyboard-nav-row`.
@@ -1773,6 +1788,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 - Update `docs/research/repo-memory.md` with the new checkpoint.
 
 **Open questions to resolve when detailing:**
+
 - Threshold realism: 16ms is the single-frame budget at 60Hz. If real measurements come in materially over (e.g., 25ms for shift+arrow), do we adjust threshold or fix the cause? Per the project's discipline: fix the cause. This may mean a small Phase 7.5 to address slow paths before the hypothesis can ship.
 - Comparators: out of scope per the spec — Slab 2 / sub-project B2.
 
@@ -1783,6 +1799,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 **Branch:** `b8-docs`. **Detail:** added when Phase 7 merges.
 
 **Work items:**
+
 - Three new pages under `apps/website/app/docs/grid/`:
   - `selection/page.mdx` — selection model overview, IDs-not-indices invariant, derived row state, three-state checkbox semantics, controlled vs uncontrolled, runnable example.
   - `keyboard/page.mdx` — full keyboard contract table, `tabBehavior` config, ARIA notes.
@@ -1797,6 +1814,7 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 - Each phase's PR should already have updated any docs it directly invalidated; this phase consolidates and adds the three new pages.
 
 **Open questions to resolve when detailing:**
+
 - Should the `selection` page demo embed the live hero grid component or a smaller standalone example? Smaller standalone keeps page-level state simple; the hero demo is the "big proof" already linked from `/`.
 
 ---
@@ -1805,25 +1823,26 @@ Per the standing workflow preference, the user merges the PR. Notify with the PR
 
 **Spec coverage check** (against `2026-05-05-selection-keyboard-nav-design.md`):
 
-| Spec section | Covered by |
-|---|---|
-| Selection model (cell-range, IDs not indices, filtered-row invariant, derivation) | Phase 1 (engine + tests), Phase 4 (checkbox derivation visual) |
-| Click contract (Excel-style click/shift/cmd/drag/header-checkbox/select-all) | Phase 3 (cell clicks/drag), Phase 4 (checkbox column clicks) |
-| Keyboard contract (full table) | Phase 1 (2D moveFocus engine), Phase 2 (full surface wiring), Phase 5 (Cmd+C) |
-| Built-in checkbox column | Phase 4 |
-| Copy-to-clipboard (TSV + overrides + paste-deferred note) | Phase 5 |
-| Controlled vs uncontrolled (`state` prop rename) | Phase 2 |
-| ARIA & accessibility (roles, live region, messages prop) | Phase 2 (roles/tabIndex), Phase 3 (aria-selected on cells/rows), Phase 6 (live region) |
-| New engine actions table | Phase 1 |
-| Bench Slab 1 (H13/H14/H15) | Phase 7 |
-| Hero demo update | Phase 4 |
-| Visual defaults / new tokens | Phase 3 (cell-range visuals), Phase 4 (checkbox tokens) |
-| Documentation surface | Phase 8 (consolidated) + each phase's local doc updates |
-| Exit criteria (all bullets) | Cumulatively across phases 1–8 |
+| Spec section                                                                      | Covered by                                                                             |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Selection model (cell-range, IDs not indices, filtered-row invariant, derivation) | Phase 1 (engine + tests), Phase 4 (checkbox derivation visual)                         |
+| Click contract (Excel-style click/shift/cmd/drag/header-checkbox/select-all)      | Phase 3 (cell clicks/drag), Phase 4 (checkbox column clicks)                           |
+| Keyboard contract (full table)                                                    | Phase 1 (2D moveFocus engine), Phase 2 (full surface wiring), Phase 5 (Cmd+C)          |
+| Built-in checkbox column                                                          | Phase 4                                                                                |
+| Copy-to-clipboard (TSV + overrides + paste-deferred note)                         | Phase 5                                                                                |
+| Controlled vs uncontrolled (`state` prop rename)                                  | Phase 2                                                                                |
+| ARIA & accessibility (roles, live region, messages prop)                          | Phase 2 (roles/tabIndex), Phase 3 (aria-selected on cells/rows), Phase 6 (live region) |
+| New engine actions table                                                          | Phase 1                                                                                |
+| Bench Slab 1 (H13/H14/H15)                                                        | Phase 7                                                                                |
+| Hero demo update                                                                  | Phase 4                                                                                |
+| Visual defaults / new tokens                                                      | Phase 3 (cell-range visuals), Phase 4 (checkbox tokens)                                |
+| Documentation surface                                                             | Phase 8 (consolidated) + each phase's local doc updates                                |
+| Exit criteria (all bullets)                                                       | Cumulatively across phases 1–8                                                         |
 
 **Placeholder scan:** None remain. The phase outlines are explicitly outlines (not bite-sized tasks); they will be detailed before their phase begins. The "Open questions to resolve when detailing" sections are deliberate — they record decisions to make at detail-time, not skipped detail.
 
 **Type consistency check:**
+
 - `GridCoreCellAddress` vs `GridCoreCellRange` vs `GridCoreSelectionState` are used consistently across Tasks 1–4 and the helpers in `derived-selection.ts`.
 - `setFocus(addr: GridCoreCellAddress | null)` signature is consistent in the type definition (Task 1.1.2), the implementation (Task 1.2.4), and all callsites (Tasks 1.6.1, 1.6.3).
 - `moveFocus(direction, options?)` signature matches between type, implementation, and call sites (Task 1.6.1).

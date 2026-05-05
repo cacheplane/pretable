@@ -34,26 +34,26 @@ Your row type extends this. The engine treats rows as opaque records; only `getR
 
 The `grid` returned by `usePretable` and `usePretableModel`.
 
-| Method                                                                        | Description                                                                          |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `getSnapshot(): PretableGridSnapshot<TRow>`                                   | Read the current state.                                                              |
-| `subscribe(listener: () => void): () => void`                                 | Subscribe to state changes. Returns an unsubscribe fn.                               |
-| `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Set the sort state. Pass `null` to clear.                                            |
-| `setFilter(columnId: string, value: string): void`                            | Set a filter value for one column.                                                   |
-| `clearFilters(): void`                                                        | Remove all filters.                                                                  |
-| `replaceFilters(map: Record<string, string>): void`                           | Replace all filters with a new map.                                                  |
-| `setSelection(state): void`                                                   | Replace the full selection state ({ ranges, anchor }).                               |
-| `selectAll(): void`                                                           | Select every visible cell as a single full-grid range.                               |
-| `clearSelection(): void`                                                      | Collapse selection to the focused cell (or empty if no focus).                       |
-| `addRange(range): void`                                                       | Append a discontiguous cell range; updates the anchor to the range start.            |
-| `extendRangeFromAnchor(addr): void`                                           | Replace the active range with one spanning anchor → addr.                            |
-| `toggleRowSelection(rowId: string): void`                                     | Add or remove a full-row range for the given row.                                    |
-| `setSelectAllVisible(checked: boolean): void`                                 | Toggle full-row ranges across all currently visible rows.                            |
-| `setFocus(addr: { rowId, columnId } \| null): void`                           | Set the focused cell.                                                                |
+| Method                                                                        | Description                                                                                     |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `getSnapshot(): PretableGridSnapshot<TRow>`                                   | Read the current state.                                                                         |
+| `subscribe(listener: () => void): () => void`                                 | Subscribe to state changes. Returns an unsubscribe fn.                                          |
+| `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Set the sort state. Pass `null` to clear.                                                       |
+| `setFilter(columnId: string, value: string): void`                            | Set a filter value for one column.                                                              |
+| `clearFilters(): void`                                                        | Remove all filters.                                                                             |
+| `replaceFilters(map: Record<string, string>): void`                           | Replace all filters with a new map.                                                             |
+| `setSelection(state): void`                                                   | Replace the full selection state ({ ranges, anchor }).                                          |
+| `selectAll(): void`                                                           | Select every visible cell as a single full-grid range.                                          |
+| `clearSelection(): void`                                                      | Collapse selection to the focused cell (or empty if no focus).                                  |
+| `addRange(range): void`                                                       | Append a discontiguous cell range; updates the anchor to the range start.                       |
+| `extendRangeFromAnchor(addr): void`                                           | Replace the active range with one spanning anchor → addr.                                       |
+| `toggleRowSelection(rowId: string): void`                                     | Add or remove a full-row range for the given row.                                               |
+| `setSelectAllVisible(checked: boolean): void`                                 | Toggle full-row ranges across all currently visible rows.                                       |
+| `setFocus(addr: { rowId, columnId } \| null): void`                           | Set the focused cell.                                                                           |
 | `moveFocus(direction, options?): void`                                        | Move focus in `"up" \| "down" \| "left" \| "right"`; options: `extend`, `jumpToEdge`, `byPage`. |
-| `setViewport({scrollTop, scrollLeft, height, width}): void`                   | Update viewport metrics. Wire to your scroll container's `onScroll`.                 |
-| `applyTransaction({add?, update?, remove?}): void`                            | Live-update rows. `add` appends, `update` patches by `id`, `remove` deletes by `id`. |
-| `autosizeColumns(opts?): void`                                                | Resize columns to content. Optional `AutosizeOptions` controls the algorithm.        |
+| `setViewport({scrollTop, scrollLeft, height, width}): void`                   | Update viewport metrics. Wire to your scroll container's `onScroll`.                            |
+| `applyTransaction({add?, update?, remove?}): void`                            | Live-update rows. `add` appends, `update` patches by `id`, `remove` deletes by `id`.            |
+| `autosizeColumns(opts?): void`                                                | Resize columns to content. Optional `AutosizeOptions` controls the algorithm.                   |
 
 ## `PretableGridSnapshot<TRow>`
 

@@ -168,7 +168,10 @@ export function MyGrid({ rows }: { rows: Person[] }) {
               }}
               onClick={() => {
                 grid.toggleRowSelection(row.id);
-                grid.setFocus({ rowId: row.id, columnId: columns[0]?.id ?? null });
+                grid.setFocus({
+                  rowId: row.id,
+                  columnId: columns[0]?.id ?? null,
+                });
               }}
             >
               {renderSnapshot.columns.map((col) => {

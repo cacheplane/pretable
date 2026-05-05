@@ -51,7 +51,10 @@ describe("selection state", () => {
       endColumnId: "status",
     };
 
-    grid.setSelection({ ranges: [range], anchor: { rowId: "a", columnId: "name" } });
+    grid.setSelection({
+      ranges: [range],
+      anchor: { rowId: "a", columnId: "name" },
+    });
 
     expect(grid.getSnapshot().selection.ranges).toEqual([range]);
     expect(grid.getSnapshot().selection.anchor).toEqual({
