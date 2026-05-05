@@ -33,6 +33,7 @@ gh pr merge --squash --auto
 ## File Structure
 
 **PR A: Example polish**
+
 - Modify: `apps/website/lib/docs/define-example.ts` — add `htmlSource` field
 - Modify: `apps/website/content/examples/streaming-chat-grid/index.tsx` — pre-highlight via Shiki, deterministic mock Demo
 - Modify: `apps/website/app/components/docs/mdx/Example.tsx` — render `htmlSource` when present, fallback to plain `<pre>`
@@ -40,15 +41,18 @@ gh pr merge --squash --auto
 - Modify: `apps/website/__tests__/components/CodeExample.test.tsx` — assert mock demo renders rows
 
 **PR B: Content quality**
+
 - Modify: 24 files under `apps/website/content/docs/**/*.mdx` — hand-authored `description:` frontmatter
 - Modify: `apps/website/content/docs/getting-started/index.mdx` — convert install steps to `<Steps>`, swap callouts for `<Callout>`
 - Modify: `apps/website/content/docs/streaming/index.mdx` — convert "the two paths" intro to `<Tabs>` and use `<Card>` for Pages cross-links
 
 **PR C: Discoverability**
+
 - Modify: `apps/website/app/components/docs/DocsSearch.tsx` — exact-title boost, recent-page first when query is empty
 - Modify: `apps/website/app/docs/[[...slug]]/page.tsx` — extend `generateMetadata` with `openGraph` and `twitter`
 
 **PR D: E2E hardening**
+
 - Modify: `apps/website/e2e/docs.spec.ts` — fix selectors against deployed preview, add baseURL fallback
 - Modify: `apps/website/playwright.config.ts` — keep behavior, add note for PR-preview override
 - Add: `.github/workflows/playwright-docs.yml` — run docs e2e on PR previews
@@ -62,6 +66,7 @@ gh pr merge --squash --auto
 ## Task A1: `htmlSource` field on `ExampleDef`
 
 **Files:**
+
 - Modify: `apps/website/lib/docs/define-example.ts`
 - Test: `apps/website/lib/docs/__tests__/define-example.test.tsx`
 
@@ -112,14 +117,7 @@ Expected: FAIL — `htmlSource` not on type.
 // apps/website/lib/docs/define-example.ts
 import type { ReactNode } from "react";
 
-export type ExampleLang =
-  | "ts"
-  | "tsx"
-  | "js"
-  | "jsx"
-  | "css"
-  | "json"
-  | "bash";
+export type ExampleLang = "ts" | "tsx" | "js" | "jsx" | "css" | "json" | "bash";
 
 export interface ExampleFile {
   path: string;
@@ -155,6 +153,7 @@ git commit -m "feat(website): add htmlSource field to ExampleDef"
 ## Task A2: `<Example>` renders `htmlSource` when present
 
 **Files:**
+
 - Modify: `apps/website/app/components/docs/mdx/Example.tsx`
 - Test: `apps/website/app/components/docs/mdx/__tests__/Example.test.tsx`
 
@@ -172,7 +171,7 @@ it("renders htmlSource markup when provided", () => {
         path: "a.ts",
         lang: "ts",
         source: "const a = 1;",
-        htmlSource: '<pre data-shiki><code>highlighted</code></pre>',
+        htmlSource: "<pre data-shiki><code>highlighted</code></pre>",
       },
     ],
   });
@@ -194,16 +193,18 @@ Expected: FAIL — `pre[data-shiki]` not found.
 Replace the `<pre>` block in `apps/website/app/components/docs/mdx/Example.tsx` (the one currently rendering `{file.source}`) with:
 
 ```tsx
-{file.htmlSource ? (
-  <div
-    className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55] [&_pre]:m-0 [&_pre]:bg-transparent [&_code]:bg-transparent"
-    dangerouslySetInnerHTML={{ __html: file.htmlSource }}
-  />
-) : (
-  <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55]">
-    {file.source}
-  </pre>
-)}
+{
+  file.htmlSource ? (
+    <div
+      className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55] [&_pre]:m-0 [&_pre]:bg-transparent [&_code]:bg-transparent"
+      dangerouslySetInnerHTML={{ __html: file.htmlSource }}
+    />
+  ) : (
+    <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55]">
+      {file.source}
+    </pre>
+  );
+}
 ```
 
 - [ ] **Step 4: Run, verify PASS**
@@ -221,6 +222,7 @@ git commit -m "feat(website): Example renders pre-highlighted htmlSource when pr
 ## Task A3: Pre-highlight streaming-chat-grid source via Shiki at module load
 
 **Files:**
+
 - Modify: `apps/website/content/examples/streaming-chat-grid/index.tsx`
 
 - [ ] **Step 1: Replace `index.tsx` with Shiki-pre-highlighted version**
@@ -294,6 +296,7 @@ This task does not commit yet — A4 creates `MockChatGrid.tsx` and they ship to
 ## Task A4: Deterministic mock streaming demo
 
 **Files:**
+
 - Create: `apps/website/content/examples/streaming-chat-grid/MockChatGrid.tsx`
 - Test: `apps/website/content/examples/streaming-chat-grid/__tests__/MockChatGrid.test.tsx`
 
@@ -418,9 +421,7 @@ export function MockChatGrid({
           <tr key={r.id} className="border-b border-rule-soft">
             <td className="px-3 py-1.5 text-text-primary">{r.role}</td>
             <td className="px-3 py-1.5 text-text-primary">{r.content}</td>
-            <td className="px-3 py-1.5 text-right text-text-dim">
-              {r.tokens}
-            </td>
+            <td className="px-3 py-1.5 text-right text-text-dim">{r.tokens}</td>
             <td className="px-3 py-1.5 text-right text-text-dim">
               {r.latencyMs}ms
             </td>
@@ -449,7 +450,9 @@ Expected: success. The streaming-chat-grid index now produces highlighted source
 it("renders the mock chat grid demo with header row", () => {
   render(<CodeExample />);
   // Mock demo renders a table with header columns
-  expect(screen.getByRole("columnheader", { name: /role/i })).toBeInTheDocument();
+  expect(
+    screen.getByRole("columnheader", { name: /role/i }),
+  ).toBeInTheDocument();
   expect(
     screen.getByRole("columnheader", { name: /content/i }),
   ).toBeInTheDocument();
@@ -522,35 +525,36 @@ git checkout -B claude/docs-v2-b-content-quality
 ## Task B1: Hand-author descriptions for all 24 docs pages
 
 **Files:**
+
 - Modify: 24 files in `apps/website/content/docs/`
 
 - [ ] **Step 1: Write descriptions inline**
 
 For each file, replace the `description:` frontmatter line with a hand-authored sentence. Use the canonical descriptions below — they are scoped to ~80–140 chars, declarative, and avoid restating the title.
 
-| File | New description |
-|---|---|
-| `getting-started/index.mdx` | `Install @pretable/react and render your first three-column grid in five minutes.` |
-| `getting-started/concepts.mdx` | `One-page mental model: engine, theming, and streaming as three composable layers.` |
-| `grid/index.mdx` | `Two paths for using the engine: the <Pretable> drop-in or the usePretable hooks for custom rendering.` |
-| `grid/pretable-component.mdx` | `<Pretable> is the simplest way to render a grid — pass rows, columns, and getRowId, get a working table.` |
-| `grid/pretable-surface.mdx` | `<PretableSurface> is the unopinionated grid component — bring your own header and chrome.` |
-| `grid/custom-rendering.mdx` | `usePretableModel exposes the engine state so you can render rows your own way.` |
-| `grid/density-helpers.mdx` | `Read density tokens (compact, standard, spacious) into JavaScript at runtime.` |
-| `grid/api-reference.mdx` | `Type signatures for the public exports of @pretable/react.` |
-| `streaming/index.mdx` | `@pretable/stream-adapter wires any async data source to a grid — one reducer, one render path.` |
-| `streaming/element-streams.mdx` | `connectElementStream emits one full row per chunk — for SSE, LLM Responses elements, and paginated REST.` |
-| `streaming/partial-streams.mdx` | `connectPartialStream is for sources where a single row grows over time, like token-streamed assistant replies.` |
-| `streaming/parsers.mdx` | `Lower-level parse* helpers if you need to feed the engine yourself.` |
-| `streaming/api-reference.mdx` | `Type signatures for @pretable/stream-adapter.` |
-| `theming/index.mdx` | `Three cooperating layers: the prebuilt themes, the override CSS, and the density toggle.` |
-| `theming/pick-a-theme.mdx` | `Two prebuilt themes ship with @pretable/ui — Excel for dense technical, Material 3 for modern.` |
-| `theming/override-tokens.mdx` | `Override individual --pretable-* tokens with plain CSS cascade — no preprocessor required.` |
-| `theming/light-dark.mdx` | `Material 3 ships both light and dark variants — toggle by setting data-theme on <html>.` |
-| `theming/density.mdx` | `Three density tiers — compact, standard, spacious — selected by data-density on <html>.` |
-| `theming/custom-themes.mdx` | `Author a theme file from a template when overrides grow beyond a handful of tokens.` |
-| `theming/tailwind-css-in-js.mdx` | `@pretable/ui ships pure CSS, so it works in any styling toolchain.` |
-| `theming/token-reference.mdx` | `The 24-token --pretable-* surface, with shape, default, and purpose for each.` |
+| File                             | New description                                                                                                  |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `getting-started/index.mdx`      | `Install @pretable/react and render your first three-column grid in five minutes.`                               |
+| `getting-started/concepts.mdx`   | `One-page mental model: engine, theming, and streaming as three composable layers.`                              |
+| `grid/index.mdx`                 | `Two paths for using the engine: the <Pretable> drop-in or the usePretable hooks for custom rendering.`          |
+| `grid/pretable-component.mdx`    | `<Pretable> is the simplest way to render a grid — pass rows, columns, and getRowId, get a working table.`       |
+| `grid/pretable-surface.mdx`      | `<PretableSurface> is the unopinionated grid component — bring your own header and chrome.`                      |
+| `grid/custom-rendering.mdx`      | `usePretableModel exposes the engine state so you can render rows your own way.`                                 |
+| `grid/density-helpers.mdx`       | `Read density tokens (compact, standard, spacious) into JavaScript at runtime.`                                  |
+| `grid/api-reference.mdx`         | `Type signatures for the public exports of @pretable/react.`                                                     |
+| `streaming/index.mdx`            | `@pretable/stream-adapter wires any async data source to a grid — one reducer, one render path.`                 |
+| `streaming/element-streams.mdx`  | `connectElementStream emits one full row per chunk — for SSE, LLM Responses elements, and paginated REST.`       |
+| `streaming/partial-streams.mdx`  | `connectPartialStream is for sources where a single row grows over time, like token-streamed assistant replies.` |
+| `streaming/parsers.mdx`          | `Lower-level parse* helpers if you need to feed the engine yourself.`                                            |
+| `streaming/api-reference.mdx`    | `Type signatures for @pretable/stream-adapter.`                                                                  |
+| `theming/index.mdx`              | `Three cooperating layers: the prebuilt themes, the override CSS, and the density toggle.`                       |
+| `theming/pick-a-theme.mdx`       | `Two prebuilt themes ship with @pretable/ui — Excel for dense technical, Material 3 for modern.`                 |
+| `theming/override-tokens.mdx`    | `Override individual --pretable-* tokens with plain CSS cascade — no preprocessor required.`                     |
+| `theming/light-dark.mdx`         | `Material 3 ships both light and dark variants — toggle by setting data-theme on <html>.`                        |
+| `theming/density.mdx`            | `Three density tiers — compact, standard, spacious — selected by data-density on <html>.`                        |
+| `theming/custom-themes.mdx`      | `Author a theme file from a template when overrides grow beyond a handful of tokens.`                            |
+| `theming/tailwind-css-in-js.mdx` | `@pretable/ui ships pure CSS, so it works in any styling toolchain.`                                             |
+| `theming/token-reference.mdx`    | `The 24-token --pretable-* surface, with shape, default, and purpose for each.`                                  |
 
 For each file, edit only the line `description: "..."` (or unquoted variant) to the value above, preserving surrounding frontmatter and body.
 
@@ -574,13 +578,14 @@ git commit -m "docs(website): hand-author frontmatter descriptions for all 24 pa
 ## Task B2: Use `<Steps>` and `<Callout>` in Getting Started
 
 **Files:**
+
 - Modify: `apps/website/content/docs/getting-started/index.mdx`
 
 - [ ] **Step 1: Rewrite the install + first grid flow as Steps**
 
 Replace the body (everything after the closing `---`) of `apps/website/content/docs/getting-started/index.mdx` with:
 
-```mdx
+````mdx
 This guide installs `@pretable/react` and renders a three-column, five-row grid.
 
 <Steps>
@@ -596,6 +601,7 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
     ```
 
     The theme file declares all `--pretable-*` tokens at `:root`; `grid.css` is the selector-based skin that targets the engine's `[data-pretable-*]` data attributes. Two themes ship today — `excel.css` (gray, dense, technical, light-only) and `material.css` (Material 3 light + dark; toggle dark mode by setting `data-theme="dark"` on `<html>`). If you only need the engine, skip both imports and the grid renders unstyled (functional but no visual chrome).
+
   </Step>
   <Step title="Render your first grid">
     ```tsx
@@ -623,6 +629,7 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
       return <Pretable rows={rows} columns={columns} />;
     }
     ```
+
   </Step>
 </Steps>
 
@@ -635,7 +642,7 @@ That's the full surface for a static grid. Sort, filter, selection, and streamin
 ## What's next
 
 API reference and recipes are in flight. For now, browse the [public exports](https://github.com/cacheplane/pretable/blob/main/packages/react/src/index.ts) and [/docs/streaming](/docs/streaming) for the streaming-adapter API.
-```
+````
 
 - [ ] **Step 2: Verify renders**
 
@@ -652,6 +659,7 @@ git commit -m "docs(website): Getting Started uses Steps + Callout"
 ## Task B3: Use `<Tabs>` and `<Card>` in Streaming overview
 
 **Files:**
+
 - Modify: `apps/website/content/docs/streaming/index.mdx`
 
 - [ ] **Step 1: Read current content** to preserve the existing prose structure
@@ -664,7 +672,7 @@ cat apps/website/content/docs/streaming/index.mdx
 
 Replace the body (after frontmatter `---`) with:
 
-```mdx
+````mdx
 `@pretable/stream-adapter` wires any async data source to a Pretable grid. It treats a 1,000-patch/sec stream and a static array of rows as the same input shape — one reducer, one render path, one selection model. There's no "streaming mode" toggle.
 
 ## Pick the shape that matches your source
@@ -680,6 +688,7 @@ Replace the body (after frontmatter `---`) with:
       onElement: (row) => grid.applyTransaction({ add: [row] }),
     });
     ```
+
   </Tab>
   <Tab label="Partial streams">
     Use `connectPartialStream` when **a single row grows over time** — a token-streamed assistant message, an incrementally-parsed JSON object, a row whose `latencyMs` ticks up as the request is in-flight.
@@ -692,11 +701,14 @@ Replace the body (after frontmatter `---`) with:
       onPatch: (patch) => grid.applyTransaction({ update: [patch] }),
     });
     ```
+
   </Tab>
 </Tabs>
 
 <Callout type="tip">
-  Both helpers share the same back-pressure model: the engine batches transactions to one render per animation frame. Selection survives every patch.
+  Both helpers share the same back-pressure model: the engine batches
+  transactions to one render per animation frame. Selection survives every
+  patch.
 </Callout>
 
 ## Next
@@ -709,10 +721,11 @@ Replace the body (after frontmatter `---`) with:
     `connectPartialStream`, patching a row as it grows.
   </Card>
   <Card title="Parsers" href="/docs/streaming/parsers">
-    Lower-level `parseElement` / `parsePartial` if you're feeding the engine yourself.
+    Lower-level `parseElement` / `parsePartial` if you're feeding the engine
+    yourself.
   </Card>
 </CardGroup>
-```
+````
 
 - [ ] **Step 3: Run build to verify**
 
@@ -778,6 +791,7 @@ git checkout -B claude/docs-v2-c-discoverability
 ## Task C1: Search — exact-title boost
 
 **Files:**
+
 - Modify: `apps/website/app/components/docs/DocsSearch.tsx`
 - Test: `apps/website/app/components/docs/__tests__/DocsSearch.test.tsx`
 
@@ -871,6 +885,7 @@ git commit -m "feat(website): docs search — exact-title-prefix boost"
 ## Task C2: OG + Twitter metadata for docs pages
 
 **Files:**
+
 - Modify: `apps/website/app/docs/[[...slug]]/page.tsx`
 
 - [ ] **Step 1: Extend `generateMetadata`**
@@ -985,6 +1000,7 @@ git checkout -B claude/docs-v2-d-e2e-hardening
 ## Task D1: Audit existing `e2e/docs.spec.ts` against the merged docs site
 
 **Files:**
+
 - Modify: `apps/website/e2e/docs.spec.ts`
 
 - [ ] **Step 1: Inspect current spec**
@@ -1004,9 +1020,15 @@ Replace `apps/website/e2e/docs.spec.ts` with:
 ```ts
 import { expect, test } from "@playwright/test";
 
-test("docs page renders sidebar, content, and active state", async ({ page }) => {
-  await page.goto("/docs/grid/pretable-component", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Pretable");
+test("docs page renders sidebar, content, and active state", async ({
+  page,
+}) => {
+  await page.goto("/docs/grid/pretable-component", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Pretable",
+  );
   // Sidebar link to current page is marked aria-current="page"
   const active = page.locator('a[aria-current="page"]');
   await expect(active).toHaveCount(1);
@@ -1014,7 +1036,9 @@ test("docs page renders sidebar, content, and active state", async ({ page }) =>
 });
 
 test("Copy as Markdown button is visible on docs pages", async ({ page }) => {
-  await page.goto("/docs/grid/pretable-component", { waitUntil: "domcontentloaded" });
+  await page.goto("/docs/grid/pretable-component", {
+    waitUntil: "domcontentloaded",
+  });
   await expect(
     page.getByRole("button", { name: /copy as markdown/i }),
   ).toBeVisible();
@@ -1068,6 +1092,7 @@ BASE_URL=https://pretable.vercel.app pnpm exec playwright test e2e/docs.spec.ts 
 Expected: all 7 tests pass.
 
 If any fail, read the trace, fix the selector, re-run. Common fixes:
+
 - If `aria-current` count is 2 — desktop sidebar + mobile drawer both rendered. Add a more specific locator (e.g. `nav[aria-label="Docs sections"] a[aria-current]`).
 - If `/docs/grid` redirects (302) — `maxRedirects: 0` already prevents follow; the `Link` header should still be present on the 308.
 
@@ -1082,6 +1107,7 @@ git commit -m "test(website): tighten docs e2e selectors against deployed previe
 ## Task D2: Add CI workflow for docs e2e on PR previews
 
 **Files:**
+
 - Create: `.github/workflows/playwright-docs.yml`
 
 - [ ] **Step 1: Inspect existing workflows for the repo's pattern**
@@ -1172,6 +1198,7 @@ gh pr merge --squash --auto
 ## Self-Review
 
 **Spec coverage check:**
+
 - ✅ Item #2 (Shiki highlighting in `<Example>`) — Tasks A1, A2, A3
 - ✅ Item #3 (real live demo for streaming-chat-grid) — Task A4
 - ✅ Item #4 (hand-authored descriptions) — Task B1

@@ -77,9 +77,7 @@ export function MockChatGrid({
           <tr key={r.id} className="border-b border-rule-soft">
             <td className="px-3 py-1.5 text-text-primary">{r.role}</td>
             <td className="px-3 py-1.5 text-text-primary">{r.content}</td>
-            <td className="px-3 py-1.5 text-right text-text-dim">
-              {r.tokens}
-            </td>
+            <td className="px-3 py-1.5 text-right text-text-dim">{r.tokens}</td>
             <td className="px-3 py-1.5 text-right text-text-dim">
               {r.latencyMs}ms
             </td>
