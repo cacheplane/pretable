@@ -43,10 +43,7 @@ export function rangeContainsCell(
       : [endColIdx, startColIdx];
 
   return (
-    rowIdx >= rowLo &&
-    rowIdx <= rowHi &&
-    colIdx >= colLo &&
-    colIdx <= colHi
+    rowIdx >= rowLo && rowIdx <= rowHi && colIdx >= colLo && colIdx <= colHi
   );
 }
 

@@ -113,7 +113,10 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
       const firstColumnId = columns[0]?.id ?? null;
       grid.setFocus(
         interactionOverrides.focusedRowId
-          ? { rowId: interactionOverrides.focusedRowId, columnId: firstColumnId }
+          ? {
+              rowId: interactionOverrides.focusedRowId,
+              columnId: firstColumnId,
+            }
           : null,
       );
     }

@@ -193,9 +193,10 @@ export function createGridCore<TRow extends GridCoreRow>(
       emit();
     },
     clearSelection() {
-      const focusAddr = focus.rowId && focus.columnId
-        ? { rowId: focus.rowId, columnId: focus.columnId }
-        : null;
+      const focusAddr =
+        focus.rowId && focus.columnId
+          ? { rowId: focus.rowId, columnId: focus.columnId }
+          : null;
       const next: GridCoreSelectionState = focusAddr
         ? {
             ranges: [
@@ -294,19 +295,20 @@ export function createGridCore<TRow extends GridCoreRow>(
       let next: GridCoreSelectionState;
 
       if (checked) {
-        const newRanges = snapshot.visibleRows.map<GridCoreCellRange>((row) => ({
-          startRowId: row.id,
-          endRowId: row.id,
-          startColumnId: firstColumn.id,
-          endColumnId: lastColumn.id,
-        }));
+        const newRanges = snapshot.visibleRows.map<GridCoreCellRange>(
+          (row) => ({
+            startRowId: row.id,
+            endRowId: row.id,
+            startColumnId: firstColumn.id,
+            endColumnId: lastColumn.id,
+          }),
+        );
 
         next = {
           ranges: [...nonRowRanges, ...newRanges],
-          anchor:
-            snapshot.visibleRows[0]
-              ? { rowId: snapshot.visibleRows[0].id, columnId: firstColumn.id }
-              : selection.anchor,
+          anchor: snapshot.visibleRows[0]
+            ? { rowId: snapshot.visibleRows[0].id, columnId: firstColumn.id }
+            : selection.anchor,
         };
       } else {
         next = { ranges: nonRowRanges, anchor: selection.anchor };
@@ -371,7 +373,11 @@ export function createGridCore<TRow extends GridCoreRow>(
           } else if (!hasRowFocus) {
             nextRowIndex = visibleRows.length - 1;
           } else if (moveOptions.byPage) {
-            nextRowIndex = clamp(baseRowIndex - pageStep, 0, visibleRows.length - 1);
+            nextRowIndex = clamp(
+              baseRowIndex - pageStep,
+              0,
+              visibleRows.length - 1,
+            );
           } else {
             nextRowIndex = clamp(baseRowIndex - 1, 0, visibleRows.length - 1);
           }
@@ -382,7 +388,11 @@ export function createGridCore<TRow extends GridCoreRow>(
           } else if (!hasRowFocus) {
             nextRowIndex = 0;
           } else if (moveOptions.byPage) {
-            nextRowIndex = clamp(baseRowIndex + pageStep, 0, visibleRows.length - 1);
+            nextRowIndex = clamp(
+              baseRowIndex + pageStep,
+              0,
+              visibleRows.length - 1,
+            );
           } else {
             nextRowIndex = clamp(baseRowIndex + 1, 0, visibleRows.length - 1);
           }
@@ -393,7 +403,11 @@ export function createGridCore<TRow extends GridCoreRow>(
           } else if (!hasColumnFocus) {
             nextColumnIndex = columnList.length - 1;
           } else {
-            nextColumnIndex = clamp(baseColumnIndex - 1, 0, columnList.length - 1);
+            nextColumnIndex = clamp(
+              baseColumnIndex - 1,
+              0,
+              columnList.length - 1,
+            );
           }
           break;
         case "right":
@@ -402,7 +416,11 @@ export function createGridCore<TRow extends GridCoreRow>(
           } else if (!hasColumnFocus) {
             nextColumnIndex = 0;
           } else {
-            nextColumnIndex = clamp(baseColumnIndex + 1, 0, columnList.length - 1);
+            nextColumnIndex = clamp(
+              baseColumnIndex + 1,
+              0,
+              columnList.length - 1,
+            );
           }
           break;
       }
