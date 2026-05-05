@@ -341,7 +341,7 @@ describe("PretableSurface", () => {
     expect(renderedRows[0]).toHaveAttribute("data-selected", "false");
   });
 
-  it("emits selected row id changes for click and keyboard-driven selection", () => {
+  it("emits selected row id changes for keyboard-driven full-row selection", () => {
     const onSelectedRowIdChange = vi.fn();
     const view = render(
       <PretableSurface
@@ -356,13 +356,16 @@ describe("PretableSurface", () => {
       />,
     );
 
-    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
-
+    // selectFocusedRowOnArrowKey: ArrowDown selects the focused row's full
+    // range, which the surface forwards as a row-id change.
     const viewport = view.getByRole("grid", { name: "Inspection grid" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
     fireEvent.keyDown(viewport, { key: "ArrowUp" });
 
-    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(1, "evt-002");
-    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(2, "evt-001");
+    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(1, "evt-001");
+    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(2, "evt-002");
+    expect(onSelectedRowIdChange).toHaveBeenNthCalledWith(3, "evt-001");
   });
 
   it("reports internal telemetry without forcing DOM scraping in the parent surface", async () => {
@@ -395,7 +398,10 @@ describe("PretableSurface", () => {
       );
     });
 
-    fireEvent.click(view.getAllByTestId("pretable-row")[1]!);
+    // Drive selection via keyboard (Phase 3 cell-click no longer full-row-selects).
+    const viewport = view.getByRole("grid", { name: "Inspection grid" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
+    fireEvent.keyDown(viewport, { key: "ArrowDown" });
 
     await waitFor(() => {
       expect(onTelemetryChange).toHaveBeenLastCalledWith(
