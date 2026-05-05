@@ -105,8 +105,17 @@ interface UsePretableModelOptions<TRow> extends UsePretableOptions<TRow> {
   viewportHeight: number;
   viewportWidth?: number;
   overscan?: number; // default 6
-  interactionOverrides?: PretableInteractionOverrides | null;
+  state?: PretableSurfaceState | null;
   measuredHeights?: Record<string, number>;
+  onSelectionChange?: (next: PretableSelectionState) => void;
+  onFocusChange?: (next: PretableFocusState) => void;
+}
+
+interface PretableSurfaceState {
+  sort?: PretableSortState;
+  filters?: Record<string, string>;
+  selection?: PretableSelectionState;
+  focus?: PretableFocusState;
 }
 ```
 

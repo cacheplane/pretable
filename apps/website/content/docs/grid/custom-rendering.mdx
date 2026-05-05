@@ -30,8 +30,10 @@ const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
   // optional:
   viewportWidth,
   overscan,
-  interactionOverrides,
+  state, // { sort?, filters?, selection?, focus? } — controlled state
   measuredHeights,
+  onSelectionChange,
+  onFocusChange,
 });
 ```
 
