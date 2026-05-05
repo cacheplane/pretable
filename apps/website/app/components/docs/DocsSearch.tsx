@@ -13,6 +13,30 @@ interface SearchEntry {
   body: string;
 }
 
+function rankResults(query: string, idx: SearchEntry[]): SearchEntry[] {
+  if (!query) return idx.slice(0, 8);
+  const q = query.toLowerCase();
+  const fuzzy = fuzzysort.go(query, idx, {
+    keys: ["title", "headings", "description", "body"],
+    scoreFn: (a) =>
+      Math.max(
+        (a[0]?.score ?? -1000) * 4,
+        (a[1]?.score ?? -1000) * 2,
+        a[2]?.score ?? -1000,
+        (a[3]?.score ?? -1000) * 0.5,
+      ),
+  });
+  const out = fuzzy.map((r) => r.obj);
+  // Stable boost: pages whose title starts with the literal query string
+  // jump to the front, in their existing relative order.
+  out.sort((a, b) => {
+    const aPrefix = a.title.toLowerCase().startsWith(q) ? 0 : 1;
+    const bPrefix = b.title.toLowerCase().startsWith(q) ? 0 : 1;
+    return aPrefix - bPrefix;
+  });
+  return out.slice(0, 8);
+}
+
 export function DocsSearch() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -45,23 +69,7 @@ export function DocsSearch() {
 
   if (!open) return null;
 
-  const results = index
-    ? q
-      ? fuzzysort
-          .go(q, index, {
-            keys: ["title", "headings", "description", "body"],
-            scoreFn: (a) =>
-              Math.max(
-                (a[0]?.score ?? -1000) * 4,
-                (a[1]?.score ?? -1000) * 2,
-                a[2]?.score ?? -1000,
-                (a[3]?.score ?? -1000) * 0.5,
-              ),
-          })
-          .map((r) => r.obj)
-          .slice(0, 8)
-      : index.slice(0, 8)
-    : [];
+  const results = index ? rankResults(q, index) : [];
 
   return (
     <div
