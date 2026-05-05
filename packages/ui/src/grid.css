@@ -85,6 +85,21 @@
   outline-offset: -2px;
 }
 
+/**
+ * Theme-agnostic cell-range selection visuals (Phase 3).
+ * Targets the ARIA role + aria-selected attribute exposed by @pretable/react,
+ * so consumers using only @pretable/ui's tokens.css (no theme file) still get
+ * a usable visual. Theme-prefixed rules above take precedence when a theme is
+ * loaded.
+ */
+[role="gridcell"][aria-selected="true"] {
+  background: var(--pt-color-selection-bg);
+}
+
+[role="gridcell"][data-focused="true"] {
+  box-shadow: inset 0 0 0 2px var(--pt-color-focus-ring);
+}
+
 /* Numeric cells (opt-in via [data-pretable-numeric="true"]) */
 [data-pretable-cell][data-pretable-numeric="true"] {
   font-family: var(--pretable-font-mono);
