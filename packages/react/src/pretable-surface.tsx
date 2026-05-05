@@ -206,6 +206,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const viewportRef = useRef<HTMLDivElement>(null);
+  const dragAnchorRef = useRef<PretableCellAddress | null>(null);
+  const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
   const { headerHeight } = useResolvedHeights();
   const bodyViewportHeight = Math.max(viewportHeight - headerHeight, 0);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
@@ -412,6 +414,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       role="grid"
       tabIndex={-1}
       onKeyDown={(event) => {
+        // Esc cancels an in-flight marquee drag by restoring the pre-drag selection.
+        if (
+          (event.key === "Escape" || event.key === "Esc") &&
+          dragAnchorRef.current !== null &&
+          dragStartSelectionRef.current !== null
+        ) {
+          const before = grid.getSnapshot();
+          grid.setSelection(dragStartSelectionRef.current);
+          dragAnchorRef.current = null;
+          dragStartSelectionRef.current = null;
+          const after = grid.getSnapshot();
+          if (
+            JSON.stringify(before.selection) !== JSON.stringify(after.selection)
+          ) {
+            onSelectionChange?.(after.selection);
+          }
+          event.preventDefault();
+          return;
+        }
+
         const before = grid.getSnapshot();
         const handled = handleSurfaceKeyDown(event, {
           bodyViewportHeight,
@@ -595,25 +617,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               data-testid="pretable-row"
               key={id}
               role="row"
-              onClick={() => {
-                const before = grid.getSnapshot();
-                grid.setFocus({ rowId: id, columnId: columns[0]?.id ?? null });
-                replaceSelectionWithFullRow(grid, id, columns);
-                onSelectedRowIdChange?.(id);
-                const after = grid.getSnapshot();
-                if (
-                  before.focus.rowId !== after.focus.rowId ||
-                  before.focus.columnId !== after.focus.columnId
-                ) {
-                  onFocusChange?.(after.focus);
-                }
-                if (
-                  JSON.stringify(before.selection) !==
-                  JSON.stringify(after.selection)
-                ) {
-                  onSelectionChange?.(after.selection);
-                }
-              }}
               ref={(node) => {
                 if (node) {
                   rowNodesRef.current.set(id, node);
@@ -667,6 +670,87 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     data-pretable-wrap={column.wrap ? "true" : undefined}
                     data-selected={cellIsSelected ? "true" : "false"}
                     key={`${id}:${column.id}`}
+                    onClick={(event) => {
+                      handleCellClick({
+                        cmd: event.metaKey || event.ctrlKey,
+                        columnId: column.id,
+                        columns,
+                        grid,
+                        onFocusChange,
+                        onSelectedRowIdChange,
+                        onSelectionChange,
+                        rowId: id,
+                        shift: event.shiftKey,
+                      });
+                    }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      const cmd = event.metaKey || event.ctrlKey;
+                      if (event.shiftKey || cmd) return;
+
+                      dragStartSelectionRef.current =
+                        grid.getSnapshot().selection;
+                      dragAnchorRef.current = {
+                        rowId: id,
+                        columnId: column.id,
+                      };
+                      handleCellClick({
+                        cmd: false,
+                        columnId: column.id,
+                        columns,
+                        grid,
+                        onFocusChange,
+                        onSelectedRowIdChange,
+                        onSelectionChange,
+                        rowId: id,
+                        shift: false,
+                      });
+                      try {
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      } catch {
+                        // jsdom / older browsers may not support pointer capture
+                      }
+                    }}
+                    onPointerEnter={() => {
+                      if (!dragAnchorRef.current) return;
+                      const before = grid.getSnapshot();
+                      const addr: PretableCellAddress = {
+                        rowId: id,
+                        columnId: column.id,
+                      };
+                      grid.extendRangeFromAnchor(addr);
+                      grid.setFocus(addr);
+                      const after = grid.getSnapshot();
+                      if (
+                        before.focus.rowId !== after.focus.rowId ||
+                        before.focus.columnId !== after.focus.columnId
+                      ) {
+                        onFocusChange?.(after.focus);
+                      }
+                      if (
+                        JSON.stringify(before.selection) !==
+                        JSON.stringify(after.selection)
+                      ) {
+                        onSelectionChange?.(after.selection);
+                        const beforeFullRow = singleFullRowSelection(
+                          before.selection,
+                          columns,
+                        );
+                        const afterFullRow = singleFullRowSelection(
+                          after.selection,
+                          columns,
+                        );
+                        if (beforeFullRow !== afterFullRow) {
+                          onSelectedRowIdChange?.(afterFullRow);
+                        }
+                      }
+                    }}
+                    onPointerUp={() => {
+                      dragAnchorRef.current = null;
+                    }}
+                    onPointerCancel={() => {
+                      dragAnchorRef.current = null;
+                    }}
                     ref={(node) => {
                       if (node) {
                         cellNodesRef.current.set(cellKey, node);
@@ -721,6 +805,114 @@ function replaceSelectionWithFullRow<TRow extends PretableRow>(
     ],
     anchor: { rowId, columnId: firstColumn.id },
   });
+}
+
+interface HandleCellClickArgs<TRow extends PretableRow> {
+  cmd: boolean;
+  columnId: string;
+  columns: PretableColumn<TRow>[];
+  grid: PretableGrid<TRow>;
+  onFocusChange?: (next: PretableFocusState) => void;
+  onSelectedRowIdChange?: (rowId: string | null) => void;
+  onSelectionChange?: (next: PretableSelectionState) => void;
+  rowId: string;
+  shift: boolean;
+}
+
+function handleCellClick<TRow extends PretableRow>(
+  args: HandleCellClickArgs<TRow>,
+): void {
+  const {
+    cmd,
+    columnId,
+    columns,
+    grid,
+    onFocusChange,
+    onSelectedRowIdChange,
+    onSelectionChange,
+    rowId,
+    shift,
+  } = args;
+
+  const before = grid.getSnapshot();
+  const addr: PretableCellAddress = { rowId, columnId };
+
+  if (shift && !cmd && before.selection.anchor) {
+    grid.extendRangeFromAnchor(addr);
+    grid.setFocus(addr);
+  } else if (cmd) {
+    grid.addRange({
+      startRowId: rowId,
+      endRowId: rowId,
+      startColumnId: columnId,
+      endColumnId: columnId,
+    });
+    grid.setFocus(addr);
+  } else {
+    // Plain click (or shift+click with no anchor — falls back to plain click).
+    grid.setFocus(addr);
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: rowId,
+          endRowId: rowId,
+          startColumnId: columnId,
+          endColumnId: columnId,
+        },
+      ],
+      anchor: addr,
+    });
+  }
+
+  const after = grid.getSnapshot();
+
+  if (
+    before.focus.rowId !== after.focus.rowId ||
+    before.focus.columnId !== after.focus.columnId
+  ) {
+    onFocusChange?.(after.focus);
+  }
+
+  const selectionChanged =
+    JSON.stringify(before.selection) !== JSON.stringify(after.selection);
+
+  if (selectionChanged) {
+    onSelectionChange?.(after.selection);
+
+    const beforeFullRow = singleFullRowSelection(before.selection, columns);
+    const afterFullRow = singleFullRowSelection(after.selection, columns);
+
+    if (beforeFullRow !== afterFullRow) {
+      onSelectedRowIdChange?.(afterFullRow);
+    }
+  }
+}
+
+function singleFullRowSelection<TRow extends PretableRow>(
+  selection: PretableSelectionState,
+  columns: PretableColumn<TRow>[],
+): string | null {
+  if (selection.ranges.length !== 1 || columns.length === 0) {
+    return null;
+  }
+  const range = selection.ranges[0];
+  if (!range) return null;
+  if (range.startRowId !== range.endRowId) return null;
+
+  const firstColumn = columns[0];
+  const lastColumn = columns[columns.length - 1];
+  if (!firstColumn || !lastColumn) return null;
+
+  const startMatchesFirst = range.startColumnId === firstColumn.id;
+  const endMatchesLast = range.endColumnId === lastColumn.id;
+  const startMatchesLast = range.startColumnId === lastColumn.id;
+  const endMatchesFirst = range.endColumnId === firstColumn.id;
+
+  const coversAllColumns =
+    (startMatchesFirst && endMatchesLast) ||
+    (startMatchesLast && endMatchesFirst);
+
+  return coversAllColumns ? range.startRowId : null;
 }
 
 function getRowMeasurementKey(rowNode: HTMLDivElement) {

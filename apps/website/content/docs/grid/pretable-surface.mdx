@@ -98,6 +98,22 @@ export function EventStream({ events }: { events: Event[] }) {
 
 `Cmd/Ctrl + C` (copy) is wired in a follow-up phase.
 
+## Click + Drag Selection
+
+Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pt-color-selection-bg`) and the focused cell shows a 2px inset ring (`--pt-color-focus-ring`).
+
+| Gesture                                | Effect                                                                                                     |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Click body cell                        | Move focus to the cell; collapse selection to that single cell.                                            |
+| Shift+click                            | Extend the active range from the anchor to the clicked cell. With no prior anchor, behaves as plain click. |
+| Cmd/Ctrl+click                         | Add a discontiguous single-cell range; anchor moves to the clicked cell.                                   |
+| Drag (pointer down → enter cells → up) | Marquee selection from the drag-start cell to the cell under the pointer at release.                       |
+| Esc during drag                        | Revert to the pre-drag selection.                                                                          |
+
+Drag is suppressed when shift or cmd/ctrl is held on pointer-down — those click variants apply instead.
+
+A built-in checkbox column for explicit row-select (independent of cell-range gestures) lands in a follow-up phase.
+
 ## Telemetry
 
 `onTelemetryChange` is how you observe the grid from outside React renders. The shape:
