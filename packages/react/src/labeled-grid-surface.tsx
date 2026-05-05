@@ -36,6 +36,8 @@ export interface LabeledGridSurfaceProps<
   labelClassName?: string;
   overscan?: number;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  onSelectionChange?: PretableSurfaceProps<TRow>["onSelectionChange"];
+  onFocusChange?: PretableSurfaceProps<TRow>["onFocusChange"];
   onSortChange?: PretableSurfaceProps<TRow>["onSortChange"];
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   pinnedClassName?: string;
@@ -59,6 +61,8 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   labelClassName,
   overscan,
   onSelectedRowIdChange,
+  onSelectionChange,
+  onFocusChange,
   onSortChange,
   onTelemetryChange,
   pinnedClassName,
@@ -123,6 +127,8 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       state={state}
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
+      onSelectionChange={onSelectionChange}
+      onFocusChange={onFocusChange}
       onSortChange={onSortChange}
       onTelemetryChange={onTelemetryChange}
       renderBodyCell={({ column, row, value }) => (
