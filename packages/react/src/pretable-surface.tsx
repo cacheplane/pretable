@@ -432,8 +432,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             onFocusChange?.(after.focus);
           }
           if (
-            JSON.stringify(before.selection) !==
-            JSON.stringify(after.selection)
+            JSON.stringify(before.selection) !== JSON.stringify(after.selection)
           ) {
             onSelectionChange?.(after.selection);
           }

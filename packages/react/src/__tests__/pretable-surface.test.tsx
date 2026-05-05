@@ -11,10 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
 import * as rowHeight from "../row-height";
-import {
-  type PretableSurfaceState,
-  usePretableModel,
-} from "../use-pretable";
+import { type PretableSurfaceState, usePretableModel } from "../use-pretable";
 import type {
   PretableFocusState,
   PretableSelectionState,
@@ -128,7 +125,9 @@ describe("PretableSurface", () => {
       "[data-pretable-scroll-content]",
     );
     const renderedRows = view.getAllByTestId("pretable-row");
-    const headerButton = view.getByRole("columnheader", { name: "Sort Timestamp" });
+    const headerButton = view.getByRole("columnheader", {
+      name: "Sort Timestamp",
+    });
     const firstPinnedCell = renderedRows[0]?.querySelectorAll(
       "[data-pretable-cell]",
     )[0];
@@ -165,12 +164,16 @@ describe("PretableSurface", () => {
       />,
     );
 
-    const pinnedHeader = view.getByRole("columnheader", { name: "Sort Timestamp" });
+    const pinnedHeader = view.getByRole("columnheader", {
+      name: "Sort Timestamp",
+    });
     const headerRow = pinnedHeader.parentElement!;
     const allHeaderButtons = view.getAllByRole("columnheader", {
       name: /^Sort /,
     });
-    const absoluteHeader = view.getByRole("columnheader", { name: "Sort Tags" });
+    const absoluteHeader = view.getByRole("columnheader", {
+      name: "Sort Tags",
+    });
 
     expect(headerRow).toHaveStyle({ display: "flex" });
     expect(headerRow).toHaveStyle({ height: "52px" });
@@ -206,7 +209,9 @@ describe("PretableSurface", () => {
       />,
     );
 
-    const severityButton = view.getByRole("columnheader", { name: "Sort Severity" });
+    const severityButton = view.getByRole("columnheader", {
+      name: "Sort Severity",
+    });
 
     expect(severityButton).toHaveTextContent("Sort");
 
@@ -1043,7 +1048,11 @@ function seedFocus(
   return grid;
 }
 
-function getCell(view: ReturnType<typeof render>, rowId: string, colId: string) {
+function getCell(
+  view: ReturnType<typeof render>,
+  rowId: string,
+  colId: string,
+) {
   return view.container.querySelector<HTMLDivElement>(
     `[data-pretable-row][data-row-id="${rowId}"] [data-column-id="${colId}"]`,
   );
@@ -1514,11 +1523,7 @@ describe("controlled-mode round-trips", () => {
   });
 
   it("state.focus: rerendering with an updated controlled focus prop forces the rendered focus to match the prop", () => {
-    function ControlledFocusHarness({
-      focus,
-    }: {
-      focus: PretableFocusState;
-    }) {
+    function ControlledFocusHarness({ focus }: { focus: PretableFocusState }) {
       return (
         <PretableSurface
           ariaLabel="controlled-grid"
@@ -1551,10 +1556,7 @@ describe("ARIA grid attributes", () => {
     const grid = view.getByRole("grid");
     expect(grid).toHaveAttribute("aria-multiselectable", "true");
     // aria-rowcount = totalRowCount + 1 (header)
-    expect(grid).toHaveAttribute(
-      "aria-rowcount",
-      String(gridRows.length + 1),
-    );
+    expect(grid).toHaveAttribute("aria-rowcount", String(gridRows.length + 1));
     expect(grid).toHaveAttribute("aria-colcount", String(gridColumns.length));
     expect(grid).toHaveAttribute("aria-label", "test-grid");
   });
@@ -1578,9 +1580,7 @@ describe("ARIA grid attributes", () => {
     const allCells = view.container.querySelectorAll<HTMLElement>(
       "[data-pretable-cell]",
     );
-    const tabStops = Array.from(allCells).filter(
-      (c) => c.tabIndex === 0,
-    );
+    const tabStops = Array.from(allCells).filter((c) => c.tabIndex === 0);
     expect(tabStops).toHaveLength(1);
     expect(tabStops[0]?.getAttribute("data-column-id")).toBe("b");
     expect(
