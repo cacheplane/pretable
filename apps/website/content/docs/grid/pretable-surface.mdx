@@ -72,6 +72,8 @@ export function EventStream({ events }: { events: Event[] }) {
 | `onSelectionChange`                             | `(next: PretableSelectionState) => void`                | no       | Fired on user-induced selection changes (keyboard, click). In controlled mode (`state.selection` provided), the consumer reads this to update their own state.                                     |
 | `onFocusChange`                                 | `(next: PretableFocusState) => void`                    | no       | Fired on user-induced focus changes. Same controlled-mode pattern as `onSelectionChange`.                                                                                                          |
 | `onColumnWidthsChange`                          | `(next: Record<string, number>) => void`                | no       | Fired on drag-end after a user resizes a column (or on dblclick autosize). Programmatic `grid.setColumnWidth` does not fire this. Payload is the full widths map for all data columns.             |
+| `onColumnOrderChange`                           | `(next: readonly string[]) => void`                     | no       | Fires on user-initiated reorder drag-end. Payload is the new column id order (excluding the synthetic row-select column).                                                                          |
+| `onColumnPinnedChange`                          | `(next: Record<string, "left" \| null>) => void`        | no       | Fires when pin state changes (e.g., cross-boundary reorder). Payload is the full pinned map for data columns.                                                                                      |
 | `onSelectedRowIdChange`                         | `(rowId: string \| null) => void`                       | no       | Fired when single-row selection changes (Phase 1 compatibility helper).                                                                                                                            |
 | `tabBehavior`                                   | `"wrap-rows" \| "exit"`                                 | no       | Tab key behavior. `"wrap-rows"` (default) moves Tab right and wraps to next row at end; `"exit"` lets Tab leave the grid (strict ARIA grid).                                                       |
 | `selectFocusedRowOnArrowKey`                    | `boolean`                                               | no       | Make ArrowUp / ArrowDown move both focus AND selection. Defaults to `false`.                                                                                                                       |
@@ -83,6 +85,10 @@ export function EventStream({ events }: { events: Event[] }) {
 - [Selection](/docs/grid/selection) — cell-range model, click + drag, three-state checkbox column, controlled state.
 - [Keyboard](/docs/grid/keyboard) — full keyboard contract, `tabBehavior` config, ARIA grid pattern.
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C with TSV defaults, `formatForCopy`, `onCopy` override, `aria-live` announcements.
+
+## Column layout
+
+- [Column layout](/docs/grid/column-layout) — resize, reorder, pin, autosize, controlled state.
 
 ## Telemetry
 

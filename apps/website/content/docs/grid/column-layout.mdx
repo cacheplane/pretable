@@ -1,0 +1,107 @@
+---
+title: Column Layout
+description: "Resize, reorder, pin, and autosize columns; per-column min/max; controlled state."
+nav: Grid
+order: 7
+---
+
+Pretable supports column resize, reorder, pin, and autosize out of the box. Width and order live behind narrow controlled-state slices that mirror the established pattern (`state.sort`, `state.selection`, etc.).
+
+## Resize
+
+Every header where `column.resizable !== false` exposes a 4px hit-target on its right edge. Pointer-down on the handle starts a drag; the engine commits the new width on pointer-up. `onColumnWidthsChange` fires once per drag-end with the full widths map for all data columns — there is no per-frame chatter during the drag.
+
+Per-column `minWidthPx` and `maxWidthPx` clamp the result. Engine-wide defaults are 40px min and 800px max; supply tighter bounds on the column when the data has known constraints.
+
+Double-clicking the resize handle calls `grid.autosizeColumn(columnId)` — the keyboard-free shortcut for "fit this column to its content."
+
+The synthetic row-select column has no resize handle. Set `resizable: false` on any other column to opt it out.
+
+## Reorder
+
+Pointer-down on the header itself (anywhere except the resize handle) starts a reorder gesture. A 5px movement threshold disambiguates from sort clicks — short drags still trigger sort, longer drags trigger reorder.
+
+While dragging, a ghost element follows the cursor and a 2px drop indicator snaps to the nearest column boundary. `onColumnOrderChange` fires once on drag-end with the new id order.
+
+**Cross-boundary auto-pin.** Dragging a column into the leftmost pinned region pins it there; dragging a pinned column out unpins it. When pin state changes alongside the reorder, `onColumnPinnedChange` fires alongside `onColumnOrderChange` in the same commit.
+
+Per-column `reorderable: false` opts out. The synthetic row-select column is never reorderable.
+
+## Pin
+
+Programmatic pinning is `grid.setColumnPinned(columnId, "left" | null)`. Setting a pin repositions the column to the pin-region boundary; unpinning leaves it at the current boundary position.
+
+The synthetic row-select column is always at position 0; it is never pinnable, reorderable, or resizable through the gesture or programmatic APIs.
+
+## Autosize
+
+- `grid.autosizeColumn(columnId, options?)` — fit one column to its measured content width.
+- `grid.autosizeColumns(options?)` — fit every column.
+- Double-click on a column's resize handle is the keyboard-free shortcut for the single-column form.
+
+`AutosizeOptions` controls the algorithm (sample size, padding, header inclusion). Defaults are sensible; reach for the options when you need to constrain measurement on very long datasets.
+
+## Reset
+
+`grid.resetColumnLayout()` restores order, widths, and pinned state to the original `columns` prop snapshot taken at mount. Useful for "Reset layout" toolbar buttons that recover after a user has rearranged the grid.
+
+## Controlled state
+
+Three independently-controlled slices on `state`:
+
+- `columnWidths: Record<string, number>`
+- `columnOrder: readonly string[]`
+- `columnPinned: Record<string, "left" | null>`
+
+Three matching callbacks:
+
+- `onColumnWidthsChange`
+- `onColumnOrderChange`
+- `onColumnPinnedChange`
+
+**Drag-end-only emission.** Programmatic mutations from controlled-prop reapply do not fire callbacks; only user-initiated commits do. This matches the established pattern from sub-project B (selection, focus, sort) — controlled props are a one-way push from consumer to engine, callbacks are a one-way push from user gesture to consumer.
+
+Each slice is independent: pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices.
+
+## Code example
+
+```tsx
+import { useState } from "react";
+import { PretableSurface, type PretableColumn } from "@pretable/react";
+
+interface Row extends Record<string, unknown> {
+  id: string;
+  name: string;
+  city: string;
+}
+
+const columns: PretableColumn<Row>[] = [
+  { id: "name", header: "Name", widthPx: 200, minWidthPx: 80 },
+  { id: "city", header: "City", widthPx: 160 },
+];
+
+export function ResizableGrid({ rows }: { rows: Row[] }) {
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  return (
+    <PretableSurface<Row>
+      ariaLabel="Resizable grid"
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      state={{ columnWidths }}
+      onColumnWidthsChange={setColumnWidths}
+      viewportHeight={420}
+    />
+  );
+}
+```
+
+The same pattern extends to `columnOrder` and `columnPinned` — pair each slice with its `useState` and the matching `onColumn*Change` callback.
+
+## See also
+
+- [Selection](/docs/grid/selection) — cell-range model, controlled state for the selection slice.
+- [Keyboard](/docs/grid/keyboard) — full keyboard contract.
+- [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
+- [API reference](/docs/grid/api-reference) — complete type signatures.
