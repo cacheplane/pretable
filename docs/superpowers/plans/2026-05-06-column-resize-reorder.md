@@ -18,11 +18,11 @@
 
 Each phase below ships as one PR, merged on green before the next starts. Detail is filled in just-in-time: Phase C1 is fully task-decomposed in this document; subsequent phases have structured outlines and become fully detailed (appended to this same plan file) when their predecessor merges.
 
-| # | Phase | Branch / worktree | Mergeable test surface |
-|---|---|---|---|
-| C1 | Engine state foundation: types + 5 actions + prop-merge | `c1-engine-column-state` | grid-core unit tests, all in-repo callsites compile, existing tests pass |
-| C2 | React adapter — resize gesture + double-click autosize | `c2-resize` | jsdom tests for resize drag, drag-live preview, commit-on-drag-end, double-click autosize, controlled `state.columnWidths` round-trip |
-| C3 | React adapter — reorder gesture + cross-boundary auto-pin + docs | `c3-reorder` | jsdom tests for reorder ghost, drop indicator, threshold-based start, Esc cancel, cross-boundary pin auto-update, controlled `state.columnOrder` + `state.columnPinned`; new `column-layout.mdx` docs page |
+| #   | Phase                                                            | Branch / worktree        | Mergeable test surface                                                                                                                                                                                     |
+| --- | ---------------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | Engine state foundation: types + 5 actions + prop-merge          | `c1-engine-column-state` | grid-core unit tests, all in-repo callsites compile, existing tests pass                                                                                                                                   |
+| C2  | React adapter — resize gesture + double-click autosize           | `c2-resize`              | jsdom tests for resize drag, drag-live preview, commit-on-drag-end, double-click autosize, controlled `state.columnWidths` round-trip                                                                      |
+| C3  | React adapter — reorder gesture + cross-boundary auto-pin + docs | `c3-reorder`             | jsdom tests for reorder ghost, drop indicator, threshold-based start, Esc cancel, cross-boundary pin auto-update, controlled `state.columnOrder` + `state.columnPinned`; new `column-layout.mdx` docs page |
 
 **Worktree per phase:** Implementation for each phase happens in `.worktrees/<branch-name>` (project-local convention, gitignored). The plan file itself lives on `c1-engine-column-state` (the branch this is being written on); subsequent updates to this plan also commit there until C1 merges, then C2 and C3 each carry their own plan-detail commit on their own branches.
 
@@ -149,6 +149,7 @@ Expected: 55 grid-core tests pass.
 ### Task 1 — Extend `GridCoreColumn` type with min/max/resizable/reorderable
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts`
 
 - [ ] **Step C1.1.1: Add four new optional fields**
@@ -167,10 +168,10 @@ export interface GridCoreColumn<TRow extends GridCoreRow = GridCoreRow> {
   getValue?: (row: TRow) => unknown;
   formatForCopy?: (value: unknown, row: TRow) => string;
   // new in sub-project C:
-  minWidthPx?: number;     // default 40 (engine-applied)
-  maxWidthPx?: number;     // default undefined (no max)
-  resizable?: boolean;     // default true
-  reorderable?: boolean;   // default true
+  minWidthPx?: number; // default 40 (engine-applied)
+  maxWidthPx?: number; // default undefined (no max)
+  resizable?: boolean; // default true
+  reorderable?: boolean; // default true
 }
 ```
 
@@ -185,6 +186,7 @@ Expected: passes.
 ### Task 2 — Add 5 new action signatures to `GridCoreStore`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts`
 
 - [ ] **Step C1.2.1: Add the new method signatures to `GridCoreStore<TRow>`**
@@ -211,6 +213,7 @@ Expected: errors in `create-grid-core.ts` because the new methods are declared b
 ### Task 3 — Implement `setColumnWidth` and clamp helper
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 
 - [ ] **Step C1.3.1: Add the synthetic column id constant + clamp helper**
@@ -237,9 +240,11 @@ function clampColumnWidth(
 In `packages/grid-core/src/create-grid-core.ts`, after the `applyAutosize` call (around line 60-ish), add:
 
 ```ts
-const originalColumns: GridCoreColumn<TRow>[] = inputOptions.columns.map((c) => ({
-  ...c,
-}));
+const originalColumns: GridCoreColumn<TRow>[] = inputOptions.columns.map(
+  (c) => ({
+    ...c,
+  }),
+);
 ```
 
 This snapshot is the source of truth for `resetColumnLayout`. Wrap it in a `let` because `mergeColumnsFromProps` (Task 8) updates it.
@@ -282,6 +287,7 @@ Expected: still errors for `moveColumn`, `setColumnPinned`, `autosizeColumn`, `r
 ### Task 4 — Implement `moveColumn` with cross-boundary pin auto-update
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 
 - [ ] **Step C1.4.1: Add a `pinnedRegionEnd` helper at the bottom of the file**
@@ -392,6 +398,7 @@ Expected: errors only for the remaining unimplemented actions.
 ### Task 5 — Implement `setColumnPinned`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 
 - [ ] **Step C1.5.1: Implement `setColumnPinned` action**
@@ -458,6 +465,7 @@ Expected: errors only for `autosizeColumn` and `resetColumnLayout`.
 ### Task 6 — Implement `autosizeColumn`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 
 - [ ] **Step C1.6.1: Implement `autosizeColumn` action**
@@ -496,6 +504,7 @@ Inside the `store` object literal:
 ### Task 7 — Implement `resetColumnLayout`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 
 - [ ] **Step C1.7.1: Implement `resetColumnLayout` action**
@@ -562,6 +571,7 @@ Expected: 55 existing tests pass (no regressions). New tests come in Task 9.
 ### Task 8 — Add `mergeColumnsFromProps` for structural prop changes
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 
 This action lets the React adapter detect a `columns` prop change and re-sync the engine's column state, preserving widths/order for surviving columns.
@@ -630,6 +640,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ### Task 9 — Unit tests for column-layout actions
 
 **Files:**
+
 - Create: `packages/grid-core/src/__tests__/column-layout.test.ts`
 
 - [ ] **Step C1.9.1: Create the test file**
@@ -873,8 +884,12 @@ describe("resetColumnLayout", () => {
     grid.setColumnPinned("c", "left");
     grid.resetColumnLayout();
     expect(grid.options.columns.map((col) => col.id)).toEqual(["a", "b", "c"]);
-    expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(100);
-    expect(grid.options.columns.find((col) => col.id === "c")?.pinned).toBeUndefined();
+    expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(
+      100,
+    );
+    expect(
+      grid.options.columns.find((col) => col.id === "c")?.pinned,
+    ).toBeUndefined();
   });
 });
 
@@ -888,7 +903,9 @@ describe("mergeColumnsFromProps", () => {
       { id: "c", header: "C", widthPx: 100 },
       { id: "d", header: "D", widthPx: 100 },
     ]);
-    expect(grid.options.columns.find((col) => col.id === "b")?.widthPx).toBe(250);
+    expect(grid.options.columns.find((col) => col.id === "b")?.widthPx).toBe(
+      250,
+    );
   });
 
   test("adds new columns at their prop position with prop widthPx", () => {
@@ -929,7 +946,9 @@ describe("mergeColumnsFromProps", () => {
     grid.setColumnWidth("a", 250);
     grid.resetColumnLayout();
     expect(grid.options.columns.map((col) => col.id)).toEqual(["a", "x"]);
-    expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(100);
+    expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(
+      100,
+    );
   });
 });
 ```
@@ -962,6 +981,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ### Task 10 — Forward new actions through `@pretable/core`
 
 **Files:**
+
 - Modify: `packages/core/src/create-grid.ts`
 
 The `PretableGrid` interface uses `Omit<GridCoreStore<TRow>, "options">` so new methods inherit automatically through the type. But the runtime `createGrid` function explicitly forwards each method, so we need to add the 6 new ones (5 user-facing + `mergeColumnsFromProps`).
@@ -1151,20 +1171,20 @@ Use `gh pr checks <pr-number> --watch` or set auto-merge with `gh pr merge <pr-n
 
 **Spec coverage check** (against `2026-05-06-column-resize-reorder-design.md`):
 
-| Spec section | Covered by |
-|---|---|
-| Engine state + actions (5 actions + mergeColumnsFromProps) | C1 Tasks 3-8 (one task per action + the snapshot/merge helpers) |
-| Column type extension (minWidthPx/maxWidthPx/resizable/reorderable) | C1 Task 1 |
-| Synthetic row-select column exclusion | C1 Tasks 3, 4, 5, 6, 9 (each action's no-op branch + tests) |
-| Min/max width clamping | C1 Tasks 3, 9 |
-| Pinned-region boundary semantics | C1 Tasks 4, 9 |
-| Drag-end-only callback emission | C2/C3 Outlines (callbacks fire from event handlers, not engine emits) |
-| Prop-merge semantics on column add/remove | C1 Tasks 8, 9 |
-| Controlled state slices (columnWidths/Order/Pinned) | C2/C3 Outlines |
-| Resize gesture | C2 Outline |
-| Reorder gesture + cross-boundary auto-pin | C3 Outline |
-| Per-column resizable/reorderable opt-out | C2/C3 Outlines + tests |
-| Documentation (column-layout.mdx) | C3 Outline |
+| Spec section                                                        | Covered by                                                            |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Engine state + actions (5 actions + mergeColumnsFromProps)          | C1 Tasks 3-8 (one task per action + the snapshot/merge helpers)       |
+| Column type extension (minWidthPx/maxWidthPx/resizable/reorderable) | C1 Task 1                                                             |
+| Synthetic row-select column exclusion                               | C1 Tasks 3, 4, 5, 6, 9 (each action's no-op branch + tests)           |
+| Min/max width clamping                                              | C1 Tasks 3, 9                                                         |
+| Pinned-region boundary semantics                                    | C1 Tasks 4, 9                                                         |
+| Drag-end-only callback emission                                     | C2/C3 Outlines (callbacks fire from event handlers, not engine emits) |
+| Prop-merge semantics on column add/remove                           | C1 Tasks 8, 9                                                         |
+| Controlled state slices (columnWidths/Order/Pinned)                 | C2/C3 Outlines                                                        |
+| Resize gesture                                                      | C2 Outline                                                            |
+| Reorder gesture + cross-boundary auto-pin                           | C3 Outline                                                            |
+| Per-column resizable/reorderable opt-out                            | C2/C3 Outlines + tests                                                |
+| Documentation (column-layout.mdx)                                   | C3 Outline                                                            |
 
 All spec sections are covered.
 

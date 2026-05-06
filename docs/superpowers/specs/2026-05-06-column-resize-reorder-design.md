@@ -64,10 +64,10 @@ The synthetic row-select column from sub-project B is excluded from all of the a
 ```ts
 interface GridCoreColumn<TRow> {
   // existing: id, header, wrap, widthPx, pinned, sortable, filterable, getValue, formatForCopy
-  minWidthPx?: number;       // default: 40 (engine-applied)
-  maxWidthPx?: number;       // default: undefined (no max)
-  resizable?: boolean;       // default: true
-  reorderable?: boolean;     // default: true
+  minWidthPx?: number; // default: 40 (engine-applied)
+  maxWidthPx?: number; // default: undefined (no max)
+  resizable?: boolean; // default: true
+  reorderable?: boolean; // default: true
 }
 ```
 
@@ -91,8 +91,8 @@ interface PretableSurfaceProps<TRow> {
 ```ts
 interface PretableSurfaceState {
   // existing: sort, filters, selection, focus
-  columnWidths?: Record<string, number>;        // columnId → widthPx
-  columnOrder?: readonly string[];              // display order, all column ids
+  columnWidths?: Record<string, number>; // columnId → widthPx
+  columnOrder?: readonly string[]; // display order, all column ids
   columnPinned?: Record<string, "left" | null>; // explicit pin overrides
 }
 ```
@@ -156,11 +156,11 @@ Entire header cell where `column.reorderable !== false` is the drag source, exce
 
 Sub-project C ships as 3 PRs, each merged on green before the next:
 
-| # | Branch | Scope |
-|---|---|---|
-| C1 | `c1-engine-column-state` | Engine: new types, all 5 actions, column-merge logic on prop change, unit tests in `grid-core`, public-type re-exports through `@pretable/core`. No React adapter changes. |
-| C2 | `c2-resize` | React adapter: resize gesture (pointer events, drag-live width, commit on drag-end), double-click autosize, `state.columnWidths` controlled mode, `onColumnWidthsChange` callback, jsdom tests, partial doc updates. |
-| C3 | `c3-reorder` | React adapter: reorder gesture (ghost + drop indicator + cross-boundary auto-pin), `state.columnOrder` + `state.columnPinned` controlled modes, two callbacks, jsdom tests, full `column-layout.mdx` docs page, `_nav.ts` entry. |
+| #   | Branch                   | Scope                                                                                                                                                                                                                            |
+| --- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | `c1-engine-column-state` | Engine: new types, all 5 actions, column-merge logic on prop change, unit tests in `grid-core`, public-type re-exports through `@pretable/core`. No React adapter changes.                                                       |
+| C2  | `c2-resize`              | React adapter: resize gesture (pointer events, drag-live width, commit on drag-end), double-click autosize, `state.columnWidths` controlled mode, `onColumnWidthsChange` callback, jsdom tests, partial doc updates.             |
+| C3  | `c3-reorder`             | React adapter: reorder gesture (ghost + drop indicator + cross-boundary auto-pin), `state.columnOrder` + `state.columnPinned` controlled modes, two callbacks, jsdom tests, full `column-layout.mdx` docs page, `_nav.ts` entry. |
 
 Each phase's PR carries the spec on its first commit (this file, ported into the worktree at `docs/superpowers/specs/`); the master plan lands in C1's PR; C2 and C3 append phase-specific plan detail to the master plan in their own PRs (the just-in-time pattern established in sub-project B).
 
