@@ -48,4 +48,10 @@ export default tseslint.config(
       "react-refresh/only-export-components": "warn",
     },
   },
+  {
+    files: ["apps/website/app/**/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 );

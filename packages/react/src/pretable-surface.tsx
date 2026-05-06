@@ -364,6 +364,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     onSelectionChange,
     onFocusChange,
   });
+  const focusedRowId = snapshot.focus.rowId;
+  const focusedColumnId = snapshot.focus.columnId;
   const pinnedOffsets = useMemo(
     () => getPinnedLeftOffsets(effectiveColumns),
     [effectiveColumns],
@@ -455,10 +457,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   useLayoutEffect(() => {
     const el = viewportRef.current;
     if (el && viewportWidth === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: measuring DOM width in useLayoutEffect requires synchronous state update
       setViewportWidth(el.clientWidth);
     }
-  });
+  }, [viewportWidth]);
 
   useLayoutEffect(() => {
     onTelemetryChange?.(telemetry);
@@ -472,18 +473,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // browser focus to the corresponding cell DOM node so keyboard handlers
   // continue to fire and screen readers track the focused cell.
   useLayoutEffect(() => {
-    const { rowId, columnId } = snapshot.focus;
-
-    if (!rowId || !columnId) {
+    if (!focusedRowId || !focusedColumnId) {
       return;
     }
 
-    const cellNode = cellNodesRef.current.get(`${rowId}::${columnId}`);
+    const cellNode = cellNodesRef.current.get(
+      `${focusedRowId}::${focusedColumnId}`,
+    );
 
     if (cellNode && document.activeElement !== cellNode) {
       cellNode.focus({ preventScroll: true });
     }
-  }, [snapshot.focus.rowId, snapshot.focus.columnId]);
+  }, [focusedRowId, focusedColumnId]);
 
   useLayoutEffect(() => {
     const injectedSelectedRowId =
@@ -635,7 +636,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 );
               })
               .catch((err) => {
-                // eslint-disable-next-line no-console
                 console.warn("[pretable] clipboard copy failed", err);
                 scheduleAnnouncement(
                   effectiveMessages.copyFailedAnnouncement(),
