@@ -185,6 +185,25 @@ button[data-pretable-row-select-all][aria-checked="mixed"] {
   background: var(--pt-color-resize-handle-hover);
 }
 
+/* Column reorder gesture (sub-project C) */
+[data-pretable-reorder-ghost] {
+  position: fixed;
+  pointer-events: none;
+  background: var(--pt-color-reorder-ghost-bg);
+  box-shadow: var(--pt-color-reorder-ghost-shadow);
+  opacity: 0.6;
+  z-index: 10;
+  user-select: none;
+}
+[data-pretable-reorder-drop-indicator] {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  background: var(--pt-color-reorder-drop-indicator);
+  z-index: 9;
+  pointer-events: none;
+}
+
 /* Tooltip / popover */
 [data-pretable-popover] {
   background: var(--pretable-bg-tooltip);
