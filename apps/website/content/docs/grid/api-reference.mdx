@@ -2,7 +2,7 @@
 title: Grid API reference
 description: "Type signatures for the public exports of @pretable/react."
 nav: Grid
-order: 9
+order: 10
 ---
 
 Type signatures for the public API of `@pretable/react`. Hand-authored from the source at `packages/core/src/types.ts` and `packages/react-surface/src/use-pretable.ts`. Pre-1.0 — names may rename or remove in patch releases.
@@ -11,16 +11,20 @@ Type signatures for the public API of `@pretable/react`. Hand-authored from the 
 
 A column definition. Generic over your row type.
 
-| Field        | Type                     | Required | Description                                                                                        |
-| ------------ | ------------------------ | -------- | -------------------------------------------------------------------------------------------------- |
-| `id`         | `string`                 | yes      | Unique column identifier. Used as React key, sort target, filter target, focus target.             |
-| `header`     | `string`                 | no       | Column header label. Defaults to the column `id` if omitted.                                       |
-| `wrap`       | `boolean`                | no       | If `true`, cells in this column wrap content vertically (sets `[data-pretable-wrap="true"]`).      |
-| `widthPx`    | `number`                 | no       | Fixed pixel width. Defaults to 220 for wrapping columns, 140 for non-wrapping.                     |
-| `pinned`     | `"left"`                 | no       | Pinned positioning. Currently only `"left"` is supported. Sets `[data-pinned="left"]` on the cell. |
-| `sortable`   | `boolean`                | no       | Whether the column can be sorted. Defaults to `true` if a `getValue` is provided.                  |
-| `filterable` | `boolean`                | no       | Whether the column can be filtered. Defaults to `true` if a `getValue` is provided.                |
-| `getValue`   | `(row: TRow) => unknown` | no       | Extract the cell value from the row. If omitted, the column has no sortable/filterable value.      |
+| Field         | Type                     | Required | Description                                                                                        |
+| ------------- | ------------------------ | -------- | -------------------------------------------------------------------------------------------------- |
+| `id`          | `string`                 | yes      | Unique column identifier. Used as React key, sort target, filter target, focus target.             |
+| `header`      | `string`                 | no       | Column header label. Defaults to the column `id` if omitted.                                       |
+| `wrap`        | `boolean`                | no       | If `true`, cells in this column wrap content vertically (sets `[data-pretable-wrap="true"]`).      |
+| `widthPx`     | `number`                 | no       | Fixed pixel width. Defaults to 220 for wrapping columns, 140 for non-wrapping.                     |
+| `pinned`      | `"left"`                 | no       | Pinned positioning. Currently only `"left"` is supported. Sets `[data-pinned="left"]` on the cell. |
+| `sortable`    | `boolean`                | no       | Whether the column can be sorted. Defaults to `true` if a `getValue` is provided.                  |
+| `filterable`  | `boolean`                | no       | Whether the column can be filtered. Defaults to `true` if a `getValue` is provided.                |
+| `getValue`    | `(row: TRow) => unknown` | no       | Extract the cell value from the row. If omitted, the column has no sortable/filterable value.      |
+| `minWidthPx`  | `number`                 | no       | Per-column minimum width clamp. Applied during resize and autosize. Engine default min is 40.      |
+| `maxWidthPx`  | `number`                 | no       | Per-column maximum width clamp. Applied during resize and autosize. Engine default max is 800.     |
+| `resizable`   | `boolean`                | no       | If `false`, the column has no resize handle and `setColumnWidth` is a no-op for it. Defaults true. |
+| `reorderable` | `boolean`                | no       | If `false`, header drag does not trigger reorder for this column. Defaults true.                   |
 
 ## `PretableRow`
 
@@ -85,6 +89,8 @@ interface PretableSurfaceState {
   selection?: PretableSelectionState;
   focus?: PretableFocusState;
   columnWidths?: Record<string, number>;
+  columnOrder?: readonly string[];
+  columnPinned?: Record<string, "left" | null>;
 }
 
 interface RowSelectionColumnConfig {
@@ -157,6 +163,17 @@ The `grid` returned by `usePretable` and `usePretableModel`.
 | `applyTransaction({add?, update?, remove?}): void`                            | Live-update rows. `add` appends, `update` patches by `id`, `remove` deletes by `id`.            |
 | `autosizeColumns(opts?): void`                                                | Resize columns to content. Optional `AutosizeOptions` controls the algorithm.                   |
 
+### Column layout actions
+
+| Method                                                              | Description                                                                                     |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `setColumnWidth(columnId: string, width: number): void`             | Set a column's width. Clamps to per-column `minWidthPx` / `maxWidthPx` and engine-wide bounds.  |
+| `moveColumn(columnId: string, toIndex: number): void`               | Reposition a column. Cross-boundary lands auto-pin/unpin to match the destination region.       |
+| `setColumnPinned(columnId: string, pinned: "left" \| null): void`   | Explicit pin/unpin. Repositions the column to the pin-region boundary.                          |
+| `autosizeColumn(columnId: string, options?: AutosizeOptions): void` | Autosize a single column to its measured content width.                                         |
+| `resetColumnLayout(): void`                                         | Restore order, widths, and pinned state to the original `columns` prop snapshot taken at mount. |
+| `mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void`  | Internal: called by `usePretableModel` when the columns prop's id list changes structurally.    |
+
 ## `PretableGridSnapshot<TRow>`
 
 ```ts
@@ -219,6 +236,8 @@ interface PretableSurfaceState {
   selection?: PretableSelectionState;
   focus?: PretableFocusState;
   columnWidths?: Record<string, number>;
+  columnOrder?: readonly string[];
+  columnPinned?: Record<string, "left" | null>;
 }
 ```
 

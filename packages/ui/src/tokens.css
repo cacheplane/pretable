@@ -72,6 +72,11 @@
   --pt-color-resize-handle: transparent;
   --pt-color-resize-handle-hover: var(--pt-color-selection-border);
 
+  /* Column reorder ghost + drop indicator (sub-project C) */
+  --pt-color-reorder-ghost-bg: var(--pt-color-surface, #fff);
+  --pt-color-reorder-ghost-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --pt-color-reorder-drop-indicator: var(--pt-color-focus-ring);
+
   /* Row-selection checkbox column (Phase 4) */
   --pt-color-checkbox-bg: #fff;
   --pt-color-checkbox-border: #d1d5db;

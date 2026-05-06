@@ -31,6 +31,7 @@ export const docsNav: DocsNavSection[] = [
       { title: "Selection", href: "/docs/grid/selection" },
       { title: "Keyboard", href: "/docs/grid/keyboard" },
       { title: "Clipboard", href: "/docs/grid/clipboard" },
+      { title: "Column layout", href: "/docs/grid/column-layout" },
       {
         title: "Custom rendering",
         href: "/docs/grid/custom-rendering",

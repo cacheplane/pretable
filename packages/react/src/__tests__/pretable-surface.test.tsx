@@ -3347,3 +3347,429 @@ describe("column resize", () => {
     expect(snapshotAfter).toBe(snapshotBefore);
   });
 });
+
+describe("column reorder", () => {
+  function getHeaderButton(view: ReturnType<typeof render>, label: string) {
+    return view.getByLabelText(`Sort ${label}`) as HTMLButtonElement;
+  }
+
+  it("pointerDown + small move (<5px) + pointerUp + click triggers sort, not reorder", () => {
+    const onColumnOrderChange = vi.fn();
+    const onSortChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        onSortChange={onSortChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const header = getHeaderButton(view, "A");
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+      clientY: 50,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 1,
+      clientX: 102,
+      clientY: 50,
+    });
+    fireEvent.pointerUp(header, {
+      pointerId: 1,
+      clientX: 102,
+      clientY: 50,
+    });
+    fireEvent.click(header);
+
+    expect(onColumnOrderChange).not.toHaveBeenCalled();
+    expect(onSortChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("pointerDown + 6+px move + pointerUp triggers reorder", () => {
+    const onColumnOrderChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const header = getHeaderButton(view, "A");
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 1,
+      clientX: 50,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(header, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+
+    expect(onColumnOrderChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("reorder fires onColumnOrderChange with the post-move ordering", () => {
+    const onColumnOrderChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    // Drag column "a" (mid 50) to past mid of column "c" (mid 250) → drop at end (index 2).
+    const header = getHeaderButton(view, "A");
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 1,
+      clientX: 50,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 1,
+      clientX: 260,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(header, {
+      pointerId: 1,
+      clientX: 260,
+      clientY: 10,
+    });
+
+    expect(onColumnOrderChange).toHaveBeenCalledTimes(1);
+    const payload = onColumnOrderChange.mock.calls[0]?.[0] as readonly string[];
+    expect(payload).not.toContain(ROW_SELECT_COLUMN_ID);
+    expect(Array.from(payload).sort()).toEqual(["a", "b", "c"]);
+    // "a" should no longer be first.
+    expect(payload[0]).not.toBe("a");
+  });
+
+  it("cross-boundary auto-pin: dragging unpinned into pinned region fires both callbacks", () => {
+    const onColumnOrderChange = vi.fn();
+    const onColumnPinnedChange = vi.fn();
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, pinned: "left" as const },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        onColumnPinnedChange={onColumnPinnedChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    // Drag unpinned "c" (sits at index 2, mid 250) leftward to position 0.
+    const header = getHeaderButton(view, "C");
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(header, {
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+
+    expect(onColumnOrderChange).toHaveBeenCalledTimes(1);
+    expect(onColumnPinnedChange).toHaveBeenCalledTimes(1);
+    const pinnedPayload = onColumnPinnedChange.mock.calls[0]?.[0] as Record<
+      string,
+      "left" | null
+    >;
+    expect(pinnedPayload.c).toBe("left");
+  });
+
+  it("cross-boundary auto-unpin: dragging pinned into unpinned region fires both callbacks", () => {
+    const onColumnOrderChange = vi.fn();
+    const onColumnPinnedChange = vi.fn();
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, pinned: "left" as const },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        onColumnPinnedChange={onColumnPinnedChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    // Drag pinned "a" (index 0) rightward past column "c" (mid 250) → drops in unpinned region.
+    const header = getHeaderButton(view, "A");
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 1,
+      clientX: 50,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 1,
+      clientX: 280,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(header, {
+      pointerId: 1,
+      clientX: 280,
+      clientY: 10,
+    });
+
+    expect(onColumnOrderChange).toHaveBeenCalledTimes(1);
+    expect(onColumnPinnedChange).toHaveBeenCalledTimes(1);
+    const pinnedPayload = onColumnPinnedChange.mock.calls[0]?.[0] as Record<
+      string,
+      "left" | null
+    >;
+    expect(pinnedPayload.a).toBeNull();
+  });
+
+  it("Escape during drag cancels reorder without engine mutation", () => {
+    const onColumnOrderChange = vi.fn();
+    let capturedGrid: PretableGrid<GridRow> | null = null;
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const orderBefore = capturedGrid!.options.columns.map((c) => c.id);
+
+    const header = getHeaderButton(view, "A");
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 1,
+      clientX: 50,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+    expect(
+      view.container.querySelector("[data-pretable-reorder-ghost]"),
+    ).toBeTruthy();
+
+    const grid = view.getByRole("grid");
+    fireEvent.keyDown(grid, { key: "Escape" });
+
+    expect(onColumnOrderChange).not.toHaveBeenCalled();
+    expect(
+      view.container.querySelector("[data-pretable-reorder-ghost]"),
+    ).toBeNull();
+    const orderAfter = capturedGrid!.options.columns.map((c) => c.id);
+    expect(orderAfter).toEqual(orderBefore);
+  });
+
+  it("synthetic row-select column header is non-draggable", () => {
+    const onColumnOrderChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        overscan={0}
+        rows={gridRows}
+        rowSelectionColumn={{ enabled: true }}
+        viewportHeight={300}
+      />,
+    );
+    const synthetic = view.container.querySelector<HTMLElement>(
+      "[data-pretable-row-select-header]",
+    );
+    expect(synthetic).toBeTruthy();
+    if (!synthetic) return;
+    fireEvent.pointerDown(synthetic, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(synthetic, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(synthetic, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+    expect(onColumnOrderChange).not.toHaveBeenCalled();
+  });
+
+  it("column.reorderable === false skips reorder", () => {
+    const onColumnOrderChange = vi.fn();
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, reorderable: false },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const header = getHeaderButton(view, "A");
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 1,
+      clientX: 50,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 1,
+      clientX: 260,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(header, {
+      pointerId: 1,
+      clientX: 260,
+      clientY: 10,
+    });
+    expect(onColumnOrderChange).not.toHaveBeenCalled();
+  });
+
+  it("programmatic grid.moveColumn does not fire reorder callbacks", () => {
+    const onColumnOrderChange = vi.fn();
+    const onColumnPinnedChange = vi.fn();
+    let capturedGrid: PretableGrid<GridRow> | null = null;
+    render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        onColumnPinnedChange={onColumnPinnedChange}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    expect(capturedGrid).not.toBeNull();
+    act(() => {
+      capturedGrid!.moveColumn("a", 2);
+    });
+    expect(onColumnOrderChange).not.toHaveBeenCalled();
+    expect(onColumnPinnedChange).not.toHaveBeenCalled();
+  });
+
+  it("controlled state.columnOrder round-trip drives engine column order", () => {
+    let capturedGrid: PretableGrid<GridRow> | null = null;
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={0}
+        rows={gridRows}
+        state={{ columnOrder: ["b", "a", "c"] }}
+        viewportHeight={300}
+      />,
+    );
+    expect(capturedGrid!.options.columns.map((c) => c.id)).toEqual([
+      "b",
+      "a",
+      "c",
+    ]);
+
+    view.rerender(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={0}
+        rows={gridRows}
+        state={{ columnOrder: ["c", "b", "a"] }}
+        viewportHeight={300}
+      />,
+    );
+    expect(capturedGrid!.options.columns.map((c) => c.id)).toEqual([
+      "c",
+      "b",
+      "a",
+    ]);
+  });
+
+  it("controlled state.columnPinned round-trip pins the column in the engine", () => {
+    let capturedGrid: PretableGrid<GridRow> | null = null;
+    render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={0}
+        rows={gridRows}
+        state={{ columnPinned: { c: "left" } }}
+        viewportHeight={300}
+      />,
+    );
+    const colC = capturedGrid!.options.columns.find((c) => c.id === "c");
+    expect(colC?.pinned).toBe("left");
+  });
+});
