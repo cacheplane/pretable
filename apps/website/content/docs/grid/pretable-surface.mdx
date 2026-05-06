@@ -75,130 +75,13 @@ export function EventStream({ events }: { events: Event[] }) {
 | `tabBehavior`                                   | `"wrap-rows" \| "exit"`                                 | no       | Tab key behavior. `"wrap-rows"` (default) moves Tab right and wraps to next row at end; `"exit"` lets Tab leave the grid (strict ARIA grid).                                                       |
 | `selectFocusedRowOnArrowKey`                    | `boolean`                                               | no       | Make ArrowUp / ArrowDown move both focus AND selection. Defaults to `false`.                                                                                                                       |
 
-## Keyboard Contract
+## Selection, keyboard, clipboard
 
-`<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. Modifier keys: `Cmd/Ctrl` is treated as either platform's primary modifier.
+`<PretableSurface>` ships full selection, keyboard navigation, and clipboard support out of the box. Each has its own page:
 
-| Key                               | Action                                            |
-| --------------------------------- | ------------------------------------------------- |
-| `↑ / ↓ / ← / →`                   | Move focus by one cell. Collapses selection.      |
-| `Shift + Arrow`                   | Extend the active range by one cell.              |
-| `Cmd/Ctrl + Arrow`                | Jump focus to grid edge in arrow direction.       |
-| `Cmd/Ctrl + Shift + Arrow`        | Extend range to grid edge.                        |
-| `Home` / `End`                    | Move focus to first / last column in current row. |
-| `Cmd/Ctrl + Home` / `End`         | Move focus to first / last cell in grid.          |
-| `PageUp` / `PageDown`             | Move focus by viewport height.                    |
-| `Shift + PageUp/Down`             | Extend range by viewport height.                  |
-| `Tab` (default `"wrap-rows"`)     | Move right, wrap to next row at end.              |
-| `Shift + Tab`                     | Move left, wrap to prev row at start.             |
-| `Tab` (when `tabBehavior="exit"`) | Browser default — focus leaves the grid.          |
-| `Cmd/Ctrl + A`                    | Select all cells.                                 |
-| `Esc`                             | Collapse selection to focused cell.               |
-| `Enter` / `Space`                 | Toggle full-row selection on focused row.         |
-
-`Cmd/Ctrl + C` (copy) is wired in a follow-up phase.
-
-## Row-Selection Checkbox Column
-
-Set `rowSelectionColumn={{ enabled: true }}` for a left-pinned checkbox column with three-state header checkbox + per-row toggles.
-
-```tsx
-<PretableSurface
-  ariaLabel="Inspection grid"
-  columns={columns}
-  rows={rows}
-  getRowId={(row) => row.id}
-  rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
-  viewportHeight={520}
-/>
-```
-
-| Config option    | Default | Effect                                       |
-| ---------------- | ------- | -------------------------------------------- |
-| `enabled`        | —       | Required. Pass `true` to inject the column.  |
-| `headerCheckbox` | `true`  | Show the select-all-visible header checkbox. |
-| `pinned`         | `true`  | Pin the column to the left.                  |
-| `width`          | `36`    | Column width in pixels.                      |
-
-The checkbox column is independent from cell-range gestures: clicking a checkbox toggles the row's full-row range without moving focus or collapsing other selections. Shift+click on a body checkbox extends the range from the last-checked anchor to the clicked row.
-
-Per-row checkbox state derives from the cell-range model:
-
-- `aria-checked="true"` — every cell in the row is in some selected range.
-- `aria-checked="mixed"` — some-but-not-all cells in the row are selected.
-- `aria-checked="false"` — no cells in the row are selected.
-
-The header checkbox uses the same three-state derivation across visible rows.
-
-Visual customization via `--pt-color-checkbox-bg`, `--pt-color-checkbox-border`, `--pt-color-checkbox-checked-bg`, `--pt-color-checkbox-checked-fg` tokens.
-
-## Copy
-
-`Cmd/Ctrl + C` copies the current selection as **TSV** (tab-separated rows, newline-separated rows, multi-range blocks separated by a blank line). Default cell coercion: `null/undefined → ""`, `Date → ISO`, primitives → `String()`, plain objects → `JSON.stringify`. The synthetic row-select column never appears in the output.
-
-```tsx
-<PretableSurface
-  ariaLabel="Inspection grid"
-  columns={columns}
-  rows={rows}
-  getRowId={(row) => row.id}
-  copyWithHeaders
-  onCopy={(args) => myCustomSerializer(args)}
-/>
-```
-
-| Prop / column field | Where      | Effect                                                                                             |
-| ------------------- | ---------- | -------------------------------------------------------------------------------------------------- |
-| `copyWithHeaders`   | surface    | When `true`, prepends each block with column headers (separated from the body by a blank line).    |
-| `onCopy`            | surface    | Override the default TSV serializer entirely. Returning `null` skips the clipboard write.          |
-| `copyToClipboard`   | surface    | Override the clipboard sink (test seam). Defaults to `navigator.clipboard.writeText` / `write`.    |
-| `formatForCopy`     | per-column | Per-cell value formatter, called before `defaultCoerceForCopy`. Useful for date/number formatting. |
-
-`onCopy` returns a `{ text, html? }` payload. When `html` is present, the surface writes both `text/plain` and `text/html` to the clipboard via the Clipboard API.
-
-`Cmd+Shift+C`, `Cmd+Alt+C`, etc. are not intercepted — the browser's default behavior applies. Paste is not yet wired; it lands in a Phase 2 follow-up of the copy strand and will mirror this shape (`parseFromCopy?` per column, `onPaste?` at the surface level).
-
-### Live-region announcements
-
-The surface renders an off-screen `aria-live="polite"` region that announces selection and copy events for assistive technology. Defaults are English; pass a `messages?: PretableSurfaceMessages` prop to override:
-
-```tsx
-<PretableSurface
-  messages={{
-    selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
-      isAll
-        ? "Tutto selezionato"
-        : `${rowCount} righe × ${columnCount} colonne selezionate`,
-    copyAnnouncement: ({ rowCount, columnCount }) =>
-      `Copiato ${rowCount} × ${columnCount}`,
-    copyFailedAnnouncement: () => "Copia non riuscita",
-  }}
-/>
-```
-
-| Event                                      | Default announcement                                                            |
-| ------------------------------------------ | ------------------------------------------------------------------------------- |
-| Cmd/Ctrl+A (or header-checkbox select-all) | "All rows selected" (or `{n} rows × {m} columns selected` for partial coverage) |
-| Cmd/Ctrl+C success                         | `{n} rows × {m} columns copied`                                                 |
-| Cmd/Ctrl+C failure (clipboard rejects)     | "Copy failed"                                                                   |
-
-Announcements are debounced (~500ms) to avoid screen-reader thrashing on held shift+arrow extends. Programmatic mutations via `state.selection` do **not** announce — only user-triggered events do.
-
-## Click + Drag Selection
-
-Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pt-color-selection-bg`) and the focused cell shows a 2px inset ring (`--pt-color-focus-ring`).
-
-| Gesture                                | Effect                                                                                                     |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Click body cell                        | Move focus to the cell; collapse selection to that single cell.                                            |
-| Shift+click                            | Extend the active range from the anchor to the clicked cell. With no prior anchor, behaves as plain click. |
-| Cmd/Ctrl+click                         | Add a discontiguous single-cell range; anchor moves to the clicked cell.                                   |
-| Drag (pointer down → enter cells → up) | Marquee selection from the drag-start cell to the cell under the pointer at release.                       |
-| Esc during drag                        | Revert to the pre-drag selection.                                                                          |
-
-Drag is suppressed when shift or cmd/ctrl is held on pointer-down — those click variants apply instead.
-
-A built-in checkbox column for explicit row-select (independent of cell-range gestures) lands in a follow-up phase.
+- [Selection](/docs/grid/selection) — cell-range model, click + drag, three-state checkbox column, controlled state.
+- [Keyboard](/docs/grid/keyboard) — full keyboard contract, `tabBehavior` config, ARIA grid pattern.
+- [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C with TSV defaults, `formatForCopy`, `onCopy` override, `aria-live` announcements.
 
 ## Telemetry
 
@@ -304,6 +187,9 @@ If your use case looks like log inspection, start with `<InspectionGrid>`. Other
 ## Where to go next
 
 - [`<Pretable>` component](/docs/grid/pretable-component) — the simpler preset.
+- [Selection](/docs/grid/selection) — cell-range model and checkbox column.
+- [Keyboard](/docs/grid/keyboard) — the full keyboard contract.
+- [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
 - [Custom rendering](/docs/grid/custom-rendering) — `usePretableModel` walkthrough for headless control.
 - [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` for density-aware row sizing.
 - [API reference](/docs/grid/api-reference) — full type signatures.

@@ -1,0 +1,166 @@
+---
+title: Selection
+description: "Cell-range selection model, row selection, controlled state, and three-state checkbox column."
+nav: Grid
+order: 4
+---
+
+Pretable's selection model is **cell-range first** — Excel/Sheets semantics. Row selection is derived from the cell-range state, exposed via a built-in three-state checkbox column. The same engine state powers `<Pretable>`, `<PretableSurface>`, and the `usePretableModel` hook.
+
+## Selection model
+
+Engine selection state is two slices:
+
+```ts
+interface PretableSelectionState {
+  ranges: PretableCellRange[];
+  anchor: PretableCellAddress | null;
+}
+
+interface PretableCellRange {
+  startRowId: string;
+  endRowId: string;
+  startColumnId: string;
+  endColumnId: string;
+}
+
+interface PretableCellAddress {
+  rowId: string;
+  columnId: string;
+}
+```
+
+A few invariants worth knowing:
+
+- **IDs, not indices.** Ranges reference rows and columns by stable id (`getRowId`, `column.id`). Sort, filter, and column reorder do not invalidate the selection — the cells you selected stay selected even when their visual position changes.
+- **Focus has its own slice.** `PretableFocusState` is `{ rowId, columnId }`. The focused cell is always part of some range; there is no "focused with empty selection" state. Collapsing selection (Esc, plain click) reduces ranges to a single cell at the focused address.
+- **Multiple ranges allowed.** Cmd/Ctrl+click adds discontiguous ranges. The anchor moves to the most recent range start.
+
+## Click + drag
+
+Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pt-color-selection-bg`) and the focused cell shows a 2px inset ring (`--pt-color-focus-ring`).
+
+| Gesture                                | Effect                                                                                                     |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Click body cell                        | Move focus to the cell; collapse selection to that single cell.                                            |
+| Shift+click                            | Extend the active range from the anchor to the clicked cell. With no prior anchor, behaves as plain click. |
+| Cmd/Ctrl+click                         | Add a discontiguous single-cell range; anchor moves to the clicked cell.                                   |
+| Drag (pointer down → enter cells → up) | Marquee selection from the drag-start cell to the cell under the pointer at release.                       |
+| Esc during drag                        | Revert to the pre-drag selection.                                                                          |
+
+Drag is suppressed when shift or cmd/ctrl is held on pointer-down — those click variants apply instead.
+
+## Checkbox column
+
+Set `rowSelectionColumn={{ enabled: true }}` on `<PretableSurface>` for a left-pinned checkbox column with three-state header checkbox + per-row toggles.
+
+```tsx
+<PretableSurface
+  ariaLabel="Inspection grid"
+  columns={columns}
+  rows={rows}
+  getRowId={(row) => row.id}
+  rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
+  viewportHeight={520}
+/>
+```
+
+| Config option    | Default | Effect                                       |
+| ---------------- | ------- | -------------------------------------------- |
+| `enabled`        | —       | Required. Pass `true` to inject the column.  |
+| `headerCheckbox` | `true`  | Show the select-all-visible header checkbox. |
+| `pinned`         | `true`  | Pin the column to the left.                  |
+| `width`          | `36`    | Column width in pixels.                      |
+
+The checkbox column is independent from cell-range gestures: clicking a checkbox toggles the row's full-row range without moving focus or collapsing other selections. Shift+click on a body checkbox extends the range from the last-checked anchor to the clicked row.
+
+Per-row checkbox state derives from the cell-range model:
+
+- `aria-checked="true"` — every cell in the row is in some selected range.
+- `aria-checked="mixed"` — some-but-not-all cells in the row are selected.
+- `aria-checked="false"` — no cells in the row are selected.
+
+The header checkbox uses the same three-state derivation across visible rows.
+
+Visual customization via `--pt-color-checkbox-bg`, `--pt-color-checkbox-border`, `--pt-color-checkbox-checked-bg`, `--pt-color-checkbox-checked-fg` tokens.
+
+## Controlled vs uncontrolled
+
+By default `<PretableSurface>` owns the selection slice — the engine maintains state internally and emits user-driven changes via `onSelectionChange`. To control it, pass the `state.selection` slice:
+
+```tsx
+import { useState } from "react";
+import { PretableSurface, type PretableSelectionState } from "@pretable/react";
+
+const initialSelection: PretableSelectionState = { ranges: [], anchor: null };
+
+export function ControlledGrid({ rows, columns }) {
+  const [selection, setSelection] =
+    useState<PretableSelectionState>(initialSelection);
+
+  return (
+    <PretableSurface
+      ariaLabel="Controlled selection"
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      state={{ selection }}
+      onSelectionChange={setSelection}
+    />
+  );
+}
+```
+
+Each slice in `state` (`sort`, `filters`, `selection`, `focus`) is independently controlled — pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices.
+
+## Runnable example
+
+Cell-range selection + checkbox column + controlled state, in one piece:
+
+```tsx
+import { useState } from "react";
+import {
+  PretableSurface,
+  type PretableColumn,
+  type PretableSelectionState,
+} from "@pretable/react";
+
+interface Row extends Record<string, unknown> {
+  id: string;
+  name: string;
+  city: string;
+  status: "ok" | "warn" | "error";
+}
+
+const columns: PretableColumn<Row>[] = [
+  { id: "name", header: "Name", widthPx: 200, getValue: (r) => r.name },
+  { id: "city", header: "City", widthPx: 160, getValue: (r) => r.city },
+  { id: "status", header: "Status", widthPx: 100, getValue: (r) => r.status },
+];
+
+export function SelectionDemo({ rows }: { rows: Row[] }) {
+  const [selection, setSelection] = useState<PretableSelectionState>({
+    ranges: [],
+    anchor: null,
+  });
+
+  return (
+    <PretableSurface<Row>
+      ariaLabel="Selection demo"
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      rowSelectionColumn={{ enabled: true }}
+      state={{ selection }}
+      onSelectionChange={setSelection}
+      viewportHeight={420}
+    />
+  );
+}
+```
+
+## See also
+
+- [Keyboard](/docs/grid/keyboard) — full keyboard contract for navigating and extending the selection.
+- [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
+- [API reference](/docs/grid/api-reference) — complete type signatures.
