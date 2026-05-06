@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -107,6 +108,8 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
+
+const REORDER_THRESHOLD_PX = 5;
 
 interface PretableSurfaceHeaderCellRenderInput<
   TRow extends PretableRow = PretableRow,
@@ -306,6 +309,23 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     pointerId: number;
   } | null>(null);
   const wasResizingRef = useRef(false);
+  const wasReorderingRef = useRef(false);
+  const reorderStateRef = useRef<{
+    columnId: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    dragging: boolean;
+  } | null>(null);
+  const [reorderDrag, setReorderDrag] = useState<{
+    columnId: string;
+    cursorX: number;
+    cursorY: number;
+    dropIndex: number;
+    ghostWidth: number;
+    ghostHeight: number;
+    ghostHeader: string;
+  } | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [liveMessage, setLiveMessage] = useState<string>("");
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -385,6 +405,31 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     () => getPinnedLeftOffsets(effectiveColumns),
     [effectiveColumns],
   );
+
+  // Build per-column left/width arrays indexed by effectiveColumn index.
+  // Used by the reorder gesture to compute drop positions without DOM
+  // measurement (so it works in jsdom). Pulled from renderSnapshot.columns
+  // where available; columns outside the rendered window fall back to the
+  // accumulated width sum.
+  const { columnLefts, columnWidths } = useMemo(() => {
+    const lefts = new Array<number>(effectiveColumns.length).fill(0);
+    const widths = new Array<number>(effectiveColumns.length).fill(0);
+    for (const planned of renderSnapshot.columns) {
+      lefts[planned.index] = planned.left;
+      widths[planned.index] = planned.width;
+    }
+    // Fill any gaps (off-screen columns) by accumulating widths in order.
+    let acc = 0;
+    for (let i = 0; i < effectiveColumns.length; i += 1) {
+      const col = effectiveColumns[i]!;
+      if (widths[i] === 0) {
+        widths[i] = col.widthPx ?? 0;
+        lefts[i] = acc;
+      }
+      acc = lefts[i]! + widths[i]!;
+    }
+    return { columnLefts: lefts, columnWidths: widths };
+  }, [renderSnapshot.columns, effectiveColumns]);
 
   const columnIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -593,6 +638,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       role="grid"
       tabIndex={-1}
       onKeyDown={(event) => {
+        // Esc during reorder drag cancels without engine mutation.
+        if (
+          (event.key === "Escape" || event.key === "Esc") &&
+          reorderStateRef.current?.dragging
+        ) {
+          reorderStateRef.current = null;
+          setReorderDrag(null);
+          event.preventDefault();
+          return;
+        }
         // Esc cancels an in-flight marquee drag by restoring the pre-drag selection.
         if (
           (event.key === "Escape" || event.key === "Esc") &&
@@ -888,7 +943,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               data-pinned={plannedCol.pinned === "left" ? "left" : undefined}
               key={column.id}
               role="columnheader"
-              onClick={() => {
+              onClick={(event) => {
+                if (wasReorderingRef.current) {
+                  event.preventDefault();
+                  wasReorderingRef.current = false;
+                  return;
+                }
                 const nextDirection = getNextSortDirection(sortDirection);
                 grid.setSort(column.id, nextDirection);
                 if (nextDirection) {
@@ -900,6 +960,117 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   onSortChange?.(null);
                 }
               }}
+              {...(column.id !== ROW_SELECT_COLUMN_ID &&
+              column.reorderable !== false
+                ? {
+                    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
+                      if (event.button !== 0) return;
+                      if (event.shiftKey || event.metaKey || event.ctrlKey)
+                        return;
+                      reorderStateRef.current = {
+                        columnId: column.id,
+                        pointerId: event.pointerId,
+                        startX: event.clientX,
+                        startY: event.clientY,
+                        dragging: false,
+                      };
+                    },
+                    onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => {
+                      const drag = reorderStateRef.current;
+                      if (!drag || drag.columnId !== column.id) return;
+                      if (event.pointerId !== drag.pointerId) return;
+
+                      const dx = event.clientX - drag.startX;
+                      const dy = event.clientY - drag.startY;
+                      const dist = Math.hypot(dx, dy);
+
+                      const surfaceRect =
+                        viewportRef.current?.getBoundingClientRect();
+                      const surfaceLeft = surfaceRect?.left ?? 0;
+
+                      if (!drag.dragging) {
+                        if (dist < REORDER_THRESHOLD_PX) return;
+                        drag.dragging = true;
+                        try {
+                          event.currentTarget.setPointerCapture(
+                            event.pointerId,
+                          );
+                        } catch {
+                          // jsdom — no-op
+                        }
+                        const headerEl = event.currentTarget as HTMLElement;
+                        const rect = headerEl.getBoundingClientRect();
+                        setReorderDrag({
+                          columnId: column.id,
+                          cursorX: event.clientX,
+                          cursorY: event.clientY,
+                          dropIndex: computeDropIndex(
+                            event.clientX,
+                            effectiveColumns.length,
+                            columnLefts,
+                            columnWidths,
+                            surfaceLeft,
+                          ),
+                          ghostWidth: rect.width || effWidth,
+                          ghostHeight: rect.height || headerHeight,
+                          ghostHeader: String(column.header ?? column.id),
+                        });
+                        return;
+                      }
+
+                      setReorderDrag((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              cursorX: event.clientX,
+                              cursorY: event.clientY,
+                              dropIndex: computeDropIndex(
+                                event.clientX,
+                                effectiveColumns.length,
+                                columnLefts,
+                                columnWidths,
+                                surfaceLeft,
+                              ),
+                            }
+                          : null,
+                      );
+                    },
+                    onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => {
+                      const drag = reorderStateRef.current;
+                      if (!drag || drag.columnId !== column.id) return;
+                      if (event.pointerId !== drag.pointerId) return;
+
+                      const current = reorderDrag;
+                      if (drag.dragging && current) {
+                        wasReorderingRef.current = true;
+                        const beforePinned = buildPinnedMap(grid);
+                        grid.moveColumn(column.id, current.dropIndex);
+                        const afterOrder = grid.options.columns
+                          .map((c) => c.id)
+                          .filter((id) => id !== ROW_SELECT_COLUMN_ID);
+                        onColumnOrderChange?.(afterOrder);
+                        const afterPinned = buildPinnedMap(grid);
+                        if (!pinnedMapsEqual(beforePinned, afterPinned)) {
+                          onColumnPinnedChange?.(afterPinned);
+                        }
+                      }
+
+                      try {
+                        event.currentTarget.releasePointerCapture(
+                          event.pointerId,
+                        );
+                      } catch {
+                        // jsdom — no-op
+                      }
+                      reorderStateRef.current = null;
+                      setReorderDrag(null);
+                    },
+                    onPointerCancel: () => {
+                      reorderStateRef.current = null;
+                      setReorderDrag(null);
+                    },
+                  }
+                : {})}
               style={{
                 alignItems: "start",
                 border: 0,
@@ -1300,6 +1471,35 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           );
         })}
       </div>
+      {reorderDrag ? (
+        <>
+          <div
+            data-pretable-reorder-ghost=""
+            style={{
+              left: reorderDrag.cursorX + 8,
+              top: reorderDrag.cursorY + 8,
+              width: reorderDrag.ghostWidth,
+              height: reorderDrag.ghostHeight,
+              display: "flex",
+              alignItems: "center",
+              paddingLeft: 12,
+            }}
+          >
+            {reorderDrag.ghostHeader}
+          </div>
+          <div
+            data-pretable-reorder-drop-indicator=""
+            style={{
+              left: computeDropIndicatorLeft(
+                reorderDrag.dropIndex,
+                columnLefts,
+                columnWidths,
+              ),
+              height: reorderDrag.ghostHeight + bodyViewportHeight,
+            }}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -1804,4 +2004,61 @@ function buildWidthsMap<TRow extends PretableRow>(
     }
   }
   return result;
+}
+
+function buildPinnedMap<TRow extends PretableRow>(
+  grid: PretableGrid<TRow>,
+): Record<string, "left" | null> {
+  const result: Record<string, "left" | null> = {};
+  for (const col of grid.options.columns) {
+    if (col.id === ROW_SELECT_COLUMN_ID) continue;
+    result[col.id] = col.pinned === "left" ? "left" : null;
+  }
+  return result;
+}
+
+function pinnedMapsEqual(
+  a: Record<string, "left" | null>,
+  b: Record<string, "left" | null>,
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (a[k] !== b[k]) return false;
+  }
+  return true;
+}
+
+function computeDropIndex(
+  cursorX: number,
+  columnCount: number,
+  columnLefts: number[],
+  columnWidths: number[],
+  surfaceLeft: number,
+): number {
+  // Cursor X is in viewport coordinates. Convert to surface-relative.
+  const x = cursorX - surfaceLeft;
+  for (let i = 0; i < columnCount; i += 1) {
+    const left = columnLefts[i] ?? 0;
+    const width = columnWidths[i] ?? 0;
+    const mid = left + width / 2;
+    if (x < mid) {
+      return i;
+    }
+  }
+  return Math.max(0, columnCount - 1);
+}
+
+function computeDropIndicatorLeft(
+  dropIndex: number,
+  columnLefts: number[],
+  columnWidths: number[],
+): number {
+  if (dropIndex >= columnLefts.length) {
+    const lastIdx = columnLefts.length - 1;
+    if (lastIdx < 0) return 0;
+    return (columnLefts[lastIdx] ?? 0) + (columnWidths[lastIdx] ?? 0);
+  }
+  return columnLefts[dropIndex] ?? 0;
 }
