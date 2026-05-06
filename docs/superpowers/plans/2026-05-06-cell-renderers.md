@@ -18,11 +18,11 @@
 
 Each phase below ships as one PR, merged on green before the next starts. Detail is filled in just-in-time: Phase D1 is fully task-decomposed in this document; subsequent phases have structured outlines and become fully detailed (appended to this file) when their predecessor merges.
 
-| # | Phase | Branch / worktree | Mergeable test surface |
-|---|---|---|---|
-| D1 | Engine + types: rename `getValue` → `value`, add `format` field, remove `formatForCopy` | `d1-engine-format` | grid-core / layout-core / renderer-dom unit tests; copy serializer migrated to `format`; all in-repo callsites updated; existing 75+ grid-core tests still pass |
-| D2 | React adapter: extend `PretableColumn` with `render` + `renderHeader`, wire format → render pipeline, implement `React.memo`'d cells with custom `areEqual` | `d2-react-render` | jsdom tests for format pipeline, render override, renderHeader, memo bailout (cell DOM identity preserved across irrelevant parent re-renders), synthetic column ignores renderers |
-| D3 | Bench Slab 1: H19 (format-only), H20 (cheap render), H21 (heavy render) | `d3-bench` | repeated Chromium S2/hypothesis runs satisfy H19, H20, H21 with evidence in `status/runsets/` |
+| #   | Phase                                                                                                                                                       | Branch / worktree  | Mergeable test surface                                                                                                                                                             |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Engine + types: rename `getValue` → `value`, add `format` field, remove `formatForCopy`                                                                     | `d1-engine-format` | grid-core / layout-core / renderer-dom unit tests; copy serializer migrated to `format`; all in-repo callsites updated; existing 75+ grid-core tests still pass                    |
+| D2  | React adapter: extend `PretableColumn` with `render` + `renderHeader`, wire format → render pipeline, implement `React.memo`'d cells with custom `areEqual` | `d2-react-render`  | jsdom tests for format pipeline, render override, renderHeader, memo bailout (cell DOM identity preserved across irrelevant parent re-renders), synthetic column ignores renderers |
+| D3  | Bench Slab 1: H19 (format-only), H20 (cheap render), H21 (heavy render)                                                                                     | `d3-bench`         | repeated Chromium S2/hypothesis runs satisfy H19, H20, H21 with evidence in `status/runsets/`                                                                                      |
 
 **Worktree per phase:** Implementation for each phase happens in `.worktrees/<branch-name>` (project-local, gitignored). The plan file lives on `d1-engine-format` for now; subsequent phases append their detail to the plan file in their own PRs.
 
@@ -95,6 +95,7 @@ apps/website/content/docs/
 **Branch:** `d1-engine-format`. **Worktree:** `.worktrees/d1-engine-format`.
 
 **Phase exit criteria:**
+
 - `column.getValue` renamed to `column.value` across every package + app + test + doc. No `getValue` references remain in active code.
 - New `column.format` field on `GridCoreColumn` — optional, returns string. Engine doesn't consume it directly; copy and (in D2) display use it.
 - `column.formatForCopy` field removed from `GridCoreColumn`. `serializeRangesAsTsv` uses `column.format` instead.
@@ -125,6 +126,7 @@ Expected: 76 grid-core tests pass.
 ### Task 1 — Update `GridCoreColumn` type
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts`
 
 - [ ] **Step D1.1.1: Rename `getValue` → `value`, add `format`, remove `formatForCopy`**
@@ -178,6 +180,7 @@ Expected: errors in `derived-rows.ts` (uses `column.getValue`). Tasks 2+ fix the
 ### Task 2 — Update `derived-rows.ts`
 
 **Files:**
+
 - Modify: `packages/grid-core/src/derived-rows.ts`
 
 - [ ] **Step D1.2.1: Rename `column.getValue` to `column.value`**
@@ -215,6 +218,7 @@ Expected: 76 tests pass (no test changes needed — none of the existing grid-co
 ### Task 3 — Update layout-core
 
 **Files:**
+
 - Modify: `packages/layout-core/src/types.ts`
 - Modify: `packages/layout-core/src/autosize-columns.ts`
 - Modify: `packages/layout-core/src/__tests__/autosize-columns.test.ts`
@@ -265,6 +269,7 @@ Expected: typecheck passes; layout-core tests pass.
 ### Task 4 — Update renderer-dom
 
 **Files:**
+
 - Modify: `packages/renderer-dom/src/create-renderer.ts`
 
 - [ ] **Step D1.4.1: Rename in `create-renderer.ts`**
@@ -293,6 +298,7 @@ Expected: passes.
 ### Task 5 — Update React rendering helper
 
 **Files:**
+
 - Modify: `packages/react/src/rendering.ts`
 
 - [ ] **Step D1.5.1: Rename in `resolveCellValue`**
@@ -321,6 +327,7 @@ Expected: typecheck passes (other react files still compile against the renamed 
 ### Task 6 — Update copy serializer to use `format`
 
 **Files:**
+
 - Modify: `packages/react/src/copy.ts`
 
 This is the most substantive change in D1: the copy path moves from `column.formatForCopy` to `column.format`.
@@ -372,6 +379,7 @@ Expected: tests fail because they still reference `formatForCopy`. Task 8 migrat
 ### Task 7 — Update scenario-data + bench
 
 **Files:**
+
 - Modify: `packages/scenario-data/src/inspection-profile.ts`
 
 - [ ] **Step D1.7.1: Rename in `inspection-profile.ts`**
@@ -410,6 +418,7 @@ Expected: typecheck passes for all packages and apps. Tests still need migration
 ### Task 8 — Migrate tests
 
 **Files:**
+
 - Modify: `packages/react/src/__tests__/copy.test.ts`
 - Modify: `packages/react/src/__tests__/pretable-surface.test.tsx`
 - Modify: `packages/react/src/__tests__/labeled-grid-surface.test.tsx`
@@ -498,6 +507,7 @@ pnpm -w test
 ```
 
 Expected: passes. Test counts:
+
 - grid-core: 76
 - layout-core: existing count, unchanged
 - renderer-dom: existing count, unchanged
@@ -508,6 +518,7 @@ Expected: passes. Test counts:
 ### Task 9 — Update website docs
 
 **Files:**
+
 - Modify: `apps/website/content/docs/getting-started/index.mdx`
 - Modify: `apps/website/content/docs/grid/clipboard.mdx`
 
@@ -530,16 +541,19 @@ Change to:
 Open `apps/website/content/docs/grid/clipboard.mdx`. The page describes per-column `formatForCopy` extensively. Replace the per-column section heading and prose with the new model:
 
 Find the section `## Per-column formatForCopy` (around line 21) and:
+
 - Rename the heading to `## Per-column format`.
 - Update the description to: "For domain-specific formatting (a Date that should copy as `YYYY-MM-DD` instead of full ISO, a number with grouping separators, a status enum that should copy as a label), supply `format` on the column. The same formatter drives display rendering (in a follow-up phase) and copy serialization, so consumers configure it once."
 - Update any code examples in the section: `formatForCopy: (value) =>` → `format: ({ value }) =>`.
 
 The frontmatter `description` (line 3) reads:
+
 ```
 description: "Cmd+C copy with TSV defaults, per-column formatForCopy, grid-level onCopy override."
 ```
 
 Update to:
+
 ```
 description: "Cmd+C copy with TSV defaults, per-column format, grid-level onCopy override."
 ```
@@ -713,21 +727,21 @@ Per the standing workflow preference, the user merges (auto-merge fires once CI 
 
 **Spec coverage check** (against `2026-05-06-cell-renderers-design.md`):
 
-| Spec section | Covered by |
-|---|---|
-| Goal: layered hooks (format, render, renderHeader) | D1 (engine field), D2 (React surface + render path) |
-| Engine vs React separation | D1 (engine GridCoreColumn), D2 (PretableColumn extends) |
-| Column type: rename getValue→value, add format | D1 Tasks 1-7 |
-| `formatForCopy` removal; copy uses format | D1 Task 6 |
-| Synthetic row-select column ignores renderers | D2 Outline + tests |
-| Render pipeline (value → format → render) | D1 sets up format; D2 wires the pipeline |
-| Engine-enforced memoization with custom areEqual | D2 Outline |
-| Interaction with grid-level renderBodyCell | D2 Outline (precedence: per-column → grid-level → default) |
-| Phase structure (D1/D2/D3) | This plan's roadmap |
-| Bench plan (H19/H20/H21) | D3 Outline |
-| Test layering (engine, adapter, bench) | D1 Tasks 8-9, D2 Outline, D3 Outline |
-| Documentation (cell-renderers.mdx + api-reference) | D2 Outline (docs land alongside React adapter) |
-| Exit criteria | Cumulative across D1-D3 |
+| Spec section                                       | Covered by                                                 |
+| -------------------------------------------------- | ---------------------------------------------------------- |
+| Goal: layered hooks (format, render, renderHeader) | D1 (engine field), D2 (React surface + render path)        |
+| Engine vs React separation                         | D1 (engine GridCoreColumn), D2 (PretableColumn extends)    |
+| Column type: rename getValue→value, add format     | D1 Tasks 1-7                                               |
+| `formatForCopy` removal; copy uses format          | D1 Task 6                                                  |
+| Synthetic row-select column ignores renderers      | D2 Outline + tests                                         |
+| Render pipeline (value → format → render)          | D1 sets up format; D2 wires the pipeline                   |
+| Engine-enforced memoization with custom areEqual   | D2 Outline                                                 |
+| Interaction with grid-level renderBodyCell         | D2 Outline (precedence: per-column → grid-level → default) |
+| Phase structure (D1/D2/D3)                         | This plan's roadmap                                        |
+| Bench plan (H19/H20/H21)                           | D3 Outline                                                 |
+| Test layering (engine, adapter, bench)             | D1 Tasks 8-9, D2 Outline, D3 Outline                       |
+| Documentation (cell-renderers.mdx + api-reference) | D2 Outline (docs land alongside React adapter)             |
+| Exit criteria                                      | Cumulative across D1-D3                                    |
 
 All spec sections are covered.
 

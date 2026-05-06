@@ -683,7 +683,9 @@ export function TrustStrip() {
                 key={logo.name}
                 className={logo.className}
                 title={
-                  logo.name === "Grid Alpha" ? "yes, that Grid Alpha" : undefined
+                  logo.name === "Grid Alpha"
+                    ? "yes, that Grid Alpha"
+                    : undefined
                 }
               >
                 {logo.name}
@@ -697,8 +699,8 @@ export function TrustStrip() {
           {/* Cheeky Grid Alpha line */}
           <p className="mt-3.5 font-mono text-[11px] italic text-accent">
             <span className="text-text-dim not-italic">↳ </span>
-            yes, <em className="italic">that</em> Grid Alpha. We helped build the
-            grid we're now competing with.
+            yes, <em className="italic">that</em> Grid Alpha. We helped build
+            the grid we're now competing with.
           </p>
         </div>
       </div>

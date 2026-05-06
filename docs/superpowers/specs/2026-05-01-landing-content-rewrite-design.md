@@ -47,7 +47,7 @@ Out of scope: visual system tokens, MDX docs surface (already shipped), theming 
 | 3   | PlaygroundSection | keep as-is         | Live grid demo. No copy change.                                                      |
 | 4   | Problem           | rewrite            | Architectural-history narrative + timeline + 3 pain-point cards.                     |
 | 5   | UseCases          | **NEW**            | 3 use cases with chips. Financial card flagged as key ICP.                           |
-| 6   | TrustStrip        | **NEW**            | cacheplane / GDE attribution + financial logos + Grid Alpha cheeky.                     |
+| 6   | TrustStrip        | **NEW**            | cacheplane / GDE attribution + financial logos + Grid Alpha cheeky.                  |
 | 7   | ReceiptsBand      | keep               | Same 4 stats. Same headline ("Receipts, not claims.").                               |
 | 8   | ComparisonTable   | reframe            | Header → "How we compare." Body copy refreshed; drop "S5 hypothesis" jargon.         |
 | 9   | CodeExample       | reframe + relocate | Move below ComparisonTable. Header → "For engineers: how it looks in your codebase." |

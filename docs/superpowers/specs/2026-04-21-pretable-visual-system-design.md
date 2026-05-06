@@ -19,10 +19,10 @@ The goal is not a full corporate brand. It is a visual identity distinctive enou
 
 From competitor research conducted 2026-04-21 (see `/private/tmp/assistant-501/.../a5739ef0321dde6ab.output` for the raw report — will be cited in PR, not committed):
 
-| Competitor                                       | Visual posture                                                       | The opening they leave us                                                                  |
-| ------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Grid Alpha** (`gridalpha.com`)                      | Corporate, feature-matrix, `/performance` page returned 404 on fetch | Looks tired. Removed their own benchmark page. "Best in the world" without adjacent proof. |
-| **GridBeta Table** (`gridbeta.com/table`)        | Dark, cyan `#05BDBA`, sponsor-wall, no live product                  | Headless — nothing to see on landing. Reads as "solo project scaled up."                   |
+| Competitor                                                   | Visual posture                                                       | The opening they leave us                                                                  |
+| ------------------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Grid Alpha** (`gridalpha.com`)                             | Corporate, feature-matrix, `/performance` page returned 404 on fetch | Looks tired. Removed their own benchmark page. "Best in the world" without adjacent proof. |
+| **GridBeta Table** (`gridbeta.com/table`)                    | Dark, cyan `#05BDBA`, sponsor-wall, no live product                  | Headless — nothing to see on landing. Reads as "solo project scaled up."                   |
 | **GridGamma X DataGrid** (`gridgamma.com/x/react-data-grid`) | Docs-shell, Material blue, version pill `v9.0.2`                     | Reads as reference page, not pitch. No independent identity.                               |
 
 **Gaps worth owning, concretely:**

@@ -36,7 +36,7 @@ This factoring keeps `@pretable-internal/grid-core` React-free.
 interface GridCoreColumn<TRow> {
   // existing: id, header, wrap, widthPx, pinned, sortable, filterable,
   //           minWidthPx, maxWidthPx, resizable, reorderable
-  value?: (row: TRow) => unknown;                       // RENAMED from getValue
+  value?: (row: TRow) => unknown; // RENAMED from getValue
   format?: (input: GridCoreFormatInput<TRow>) => string; // NEW — string layer
 }
 
@@ -65,7 +65,7 @@ interface PretableCellRenderInput<TRow> extends PretableFormatInput<TRow> {
 
 interface PretableHeaderRenderInput<TRow> {
   column: PretableColumn<TRow>;
-  label: string;          // = column.header ?? column.id
+  label: string; // = column.header ?? column.id
   sortDirection: "asc" | "desc" | null;
   isSorted: boolean;
 }
@@ -82,6 +82,7 @@ For every visible body cell, on every render:
 3. **render**: if `column.render` is present, call it with the full `PretableCellRenderInput<TRow>` (including `formattedValue`); the returned `ReactNode` is rendered inside the memoized cell shell. Otherwise fall back to grid-level `renderBodyCell`. Otherwise render `formattedValue` as plain text inside the cell shell.
 
 For the header cell:
+
 - If `column.renderHeader` is present, call it; the return value renders inside the existing header `<button role="columnheader">` shell. Otherwise fall back to grid-level `renderHeaderCell`. Otherwise render the label string + sort indicator (the existing default).
 
 ### `formatForCopy` removal
@@ -89,6 +90,7 @@ For the header cell:
 The B Phase 5 per-column `formatForCopy` field is **removed**. Copy serialization (in `serializeRangesAsTsv`) uses `column.format` if present, else `defaultCoerceForCopy` (the existing copy default coercion). This unifies display and copy formatting under one prop.
 
 Per-cell serialization order in copy:
+
 1. `value = column.value ? column.value(row) : row[column.id]`.
 2. `text = column.format ? column.format({ value, row, column }) : defaultCoerceForCopy(value)`.
 
@@ -124,6 +126,7 @@ The comparison includes a `renderRef` that is the column's `render` function (or
 - **Intentional formatter changes (e.g., user toggles a "compact" view)**: changing the column array reference triggers re-render of all cells. Correct.
 
 `format` and `value` are **not** part of the memo key. They run unconditionally per cell per render at the parent level. This is acceptable because:
+
 - `value` is typically a property access — nanoseconds.
 - `format` is typically `Intl.NumberFormat.format` or `Date.toISOString` — microseconds.
 - The memo bails out further down based on the resulting `formattedValue` string equality, so the actual cell DOM is not re-rendered.
@@ -148,11 +151,11 @@ This keeps `<LabeledGridSurface>` working unchanged. Consumers can adopt per-col
 
 Sub-project D ships as 3 PRs, merged on green between phases:
 
-| # | Branch | Scope |
-|---|---|---|
-| D1 | `d1-engine-format` | Engine: rename `column.getValue` → `column.value` everywhere, add `column.format` field on `GridCoreColumn`, update all in-repo callsites (engine internals, copy serializer, react adapter, bench adapter, hero demo, tests). Remove `column.formatForCopy`; copy serializer uses `column.format`. Engine-level unit tests for the new shape. No React adapter render-path changes yet — `format` is recognized at the engine level but the surface's render path still uses the existing `formatCellValue` helper at this phase. |
-| D2 | `d2-react-render` | React adapter: extend `PretableColumn` with `render` + `renderHeader` (extends, not aliases, `PretableCoreColumn`). Wire format → render pipeline in `<PretableSurface>`'s body and header render paths. Implement `React.memo`'d `<MemoizedCell />` and `<MemoizedHeader />` with custom `areEqual`. jsdom tests for: format pipeline, render override, renderHeader, memo bailout (cell DOM identity preserved across irrelevant parent re-renders), synthetic column ignores renderers, fall-through to grid-level `renderBodyCell` when per-column render absent. Update docs. |
-| D3 | `d3-bench` | New bench scenarios that exercise format + render in the pretable adapter at S2/hypothesis. Three new hypotheses: H19 (format-only display), H20 (custom render returning a single `<span>`), H21 (heavier render returning a 3-element badge). Comparator adapters mark unsupported (Slab 1 only). Repeated Chromium runs at S2/hypothesis to capture evidence in `status/runsets/`. Updates `docs/research/repo-memory.md`. |
+| #   | Branch             | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | `d1-engine-format` | Engine: rename `column.getValue` → `column.value` everywhere, add `column.format` field on `GridCoreColumn`, update all in-repo callsites (engine internals, copy serializer, react adapter, bench adapter, hero demo, tests). Remove `column.formatForCopy`; copy serializer uses `column.format`. Engine-level unit tests for the new shape. No React adapter render-path changes yet — `format` is recognized at the engine level but the surface's render path still uses the existing `formatCellValue` helper at this phase.                                                 |
+| D2  | `d2-react-render`  | React adapter: extend `PretableColumn` with `render` + `renderHeader` (extends, not aliases, `PretableCoreColumn`). Wire format → render pipeline in `<PretableSurface>`'s body and header render paths. Implement `React.memo`'d `<MemoizedCell />` and `<MemoizedHeader />` with custom `areEqual`. jsdom tests for: format pipeline, render override, renderHeader, memo bailout (cell DOM identity preserved across irrelevant parent re-renders), synthetic column ignores renderers, fall-through to grid-level `renderBodyCell` when per-column render absent. Update docs. |
+| D3  | `d3-bench`         | New bench scenarios that exercise format + render in the pretable adapter at S2/hypothesis. Three new hypotheses: H19 (format-only display), H20 (custom render returning a single `<span>`), H21 (heavier render returning a 3-element badge). Comparator adapters mark unsupported (Slab 1 only). Repeated Chromium runs at S2/hypothesis to capture evidence in `status/runsets/`. Updates `docs/research/repo-memory.md`.                                                                                                                                                      |
 
 Each phase ships spec + plan-detail in its own PR. Master plan + Phase D1 detail land in D1's PR; D2 and D3 append their phase-specific detail to the plan file in their own PRs (the just-in-time pattern from sub-projects B and C).
 

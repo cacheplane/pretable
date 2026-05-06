@@ -47,7 +47,7 @@ export interface BenchAppProps {
 
 const allScenarios = listScenarios();
 const adapterRegistry = {
-  "gridalpha": {
+  gridalpha: {
     heading: "Grid Alpha harness",
     description:
       "Community baseline using the vendor-documented wrapped-text and auto-height path.",

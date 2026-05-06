@@ -352,7 +352,8 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
         deviceScaleFactor: 1,
         notes: [],
         status: "completed",
-        tracePath: "status/traces/chromium-gridalpha-default-s2-scroll.trace.zip",
+        tracePath:
+          "status/traces/chromium-gridalpha-default-s2-scroll.trace.zip",
         metrics: {
           scroll_frame_p95_ms: 26.2,
           blank_gap_frames: 0,

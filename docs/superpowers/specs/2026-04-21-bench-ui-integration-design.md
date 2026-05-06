@@ -192,13 +192,13 @@ No effect on `@pretable/*` packages, on `apps/playground`, or on published artif
 
 ## 9. Risks
 
-| Risk                                                                     | Mitigation                                                                                               |
-| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| Deep CSS selector specificity in current `app.css` missed during rewrite | Implementation does a systematic rule-by-rule rewrite; manual visual verification catches strays         |
-| Vendor CSS (Grid Alpha, GridGamma) clashes with `@pretable/ui/components.css`     | Scope vendor adapter renders under `.bench-adapter-*` wrapper if needed; `@pretable/ui` governs outside  |
-| Tailwind v4 `@theme inline` duplication with playground                  | Pure duplication is fine; the two apps are independent surfaces. Not worth DRY-extracting for two apps.  |
-| Visual regressions in a niche adapter render (e.g., GridGamma X hover state)   | Accept minor chrome mismatches; only fix the visual noise if it breaks function. Full polish is §6's job |
-| Bench tests assert on a removed class/color                              | Preserve behavior: if legit user-facing assertion, adjust token map; if implementation-coupled, update   |
+| Risk                                                                          | Mitigation                                                                                               |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Deep CSS selector specificity in current `app.css` missed during rewrite      | Implementation does a systematic rule-by-rule rewrite; manual visual verification catches strays         |
+| Vendor CSS (Grid Alpha, GridGamma) clashes with `@pretable/ui/components.css` | Scope vendor adapter renders under `.bench-adapter-*` wrapper if needed; `@pretable/ui` governs outside  |
+| Tailwind v4 `@theme inline` duplication with playground                       | Pure duplication is fine; the two apps are independent surfaces. Not worth DRY-extracting for two apps.  |
+| Visual regressions in a niche adapter render (e.g., GridGamma X hover state)  | Accept minor chrome mismatches; only fix the visual noise if it breaks function. Full polish is §6's job |
+| Bench tests assert on a removed class/color                                   | Preserve behavior: if legit user-facing assertion, adjust token map; if implementation-coupled, update   |
 
 ---
 

@@ -157,8 +157,8 @@ export default function BenchPage() {
         <strong className="text-text-primary">{speedup}× faster</strong> than{" "}
         gridalpha on the same dataset, with zero row-height error. gridbeta
         matches the speed but is a virtualization primitive — you assemble
-        sort/filter/selection yourself. gridalpha is a full grid but clips wrapped
-        content to a single line at hypothesis scale.
+        sort/filter/selection yourself. gridalpha is a full grid but clips
+        wrapped content to a single line at hypothesis scale.
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
@@ -190,8 +190,8 @@ export default function BenchPage() {
           <strong className="text-text-primary">
             No per-adapter optimizations.
           </strong>{" "}
-          Each adapter uses its library's idiomatic streaming pattern: gridalpha's{" "}
-          <code>applyTransaction</code>, gridbeta's
+          Each adapter uses its library's idiomatic streaming pattern:
+          gridalpha's <code>applyTransaction</code>, gridbeta's
           <code> useVirtualizer</code> + setState, pretable's RAF-batched{" "}
           <code>grid.applyTransaction</code> via{" "}
           <code>@pretable/stream-adapter</code>.

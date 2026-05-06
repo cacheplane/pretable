@@ -98,8 +98,7 @@ describe("autosizeColumns", () => {
         {
           id: "computed",
           header: "Computed",
-          value: (row: Record<string, unknown>) =>
-            `${row.name}-${row.status}`,
+          value: (row: Record<string, unknown>) => `${row.name}-${row.status}`,
         },
       ],
       rows,

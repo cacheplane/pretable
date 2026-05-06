@@ -1488,12 +1488,12 @@ Expected: FAIL.
 
 In `apps/website/app/components/ComparisonTable.tsx`, import `TrailMarker` and add a header row above the comparison rows that places markers next to each adapter name. Specifically: in the existing `<thead>` `<th>` for each adapter column, replace plain text with a flex container containing `<TrailMarker>` + name. Map:
 
-| Adapter  | Variant      | Label               |
-| -------- | ------------ | ------------------- |
-| pretable | green        | Recommended path    |
-| gridalpha  | blue         | Familiar but slower |
-| gridbeta | black        | Powerful but DIY    |
-| gridgamma-x    | double-black | Broken at scale     |
+| Adapter     | Variant      | Label               |
+| ----------- | ------------ | ------------------- |
+| pretable    | green        | Recommended path    |
+| gridalpha   | blue         | Familiar but slower |
+| gridbeta    | black        | Powerful but DIY    |
+| gridgamma-x | double-black | Broken at scale     |
 
 Add this `import` at the top of the file:
 
@@ -1755,8 +1755,8 @@ export function ReceiptsBand() {
 
       {/* Problem callout — new, absorbed from Problem */}
       <p className="mt-12 border-l-4 border-accent bg-accent-soft px-6 py-4 font-display text-[16px] text-text-primary">
-        Grid Alpha Community clips wrapped content to a single line at hypothesis
-        scale. We don't.
+        Grid Alpha Community clips wrapped content to a single line at
+        hypothesis scale. We don't.
       </p>
     </section>
   );

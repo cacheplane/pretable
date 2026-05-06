@@ -16,13 +16,13 @@ H1 becomes a composite gate with five absolute sub-criteria and a uniqueness gat
 
 ### Sub-criteria (pretable must meet all five)
 
-| Sub-criterion       | Metric                                | Threshold                                  | Rationale                                                |
-| ------------------- | ------------------------------------- | ------------------------------------------ | -------------------------------------------------------- |
-| Frame parity        | `scroll_frame_p95_ms`                 | ≤ 110% of best full-grid competitor median | Competitive, not dominant — honest about GridGamma's strength  |
+| Sub-criterion       | Metric                                | Threshold                                  | Rationale                                                         |
+| ------------------- | ------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------- |
+| Frame parity        | `scroll_frame_p95_ms`                 | ≤ 110% of best full-grid competitor median | Competitive, not dominant — honest about GridGamma's strength     |
 | Row height accuracy | `row_height_error_p95_px`             | ≤ 1px                                      | Sub-pixel accuracy; GridGamma fails at 1.1px, Grid Alpha at 153px |
-| Anchor stability    | `scroll_anchor_shift_backward_p95_px` | ≤ 16px                                     | Same threshold as former H3; GridBeta fails at 259px     |
-| Blank gap control   | `blank_gap_frames`                    | = 0 (max across repeats)                   | No visible scroll tearing                                |
-| Long task control   | `long_tasks_count`                    | = 0 (max across repeats)                   | No main-thread blocking during scroll                    |
+| Anchor stability    | `scroll_anchor_shift_backward_p95_px` | ≤ 16px                                     | Same threshold as former H3; GridBeta fails at 259px              |
+| Blank gap control   | `blank_gap_frames`                    | = 0 (max across repeats)                   | No visible scroll tearing                                         |
+| Long task control   | `long_tasks_count`                    | = 0 (max across repeats)                   | No main-thread blocking during scroll                             |
 
 ### Uniqueness gate
 
