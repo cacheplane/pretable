@@ -14,12 +14,7 @@ import {
   createDomRenderSnapshot,
   type PlannedColumn,
 } from "@pretable-internal/renderer-dom";
-import {
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useSyncExternalStore,
-} from "react";
+import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
   autosize?: boolean | AutosizeOptions;
