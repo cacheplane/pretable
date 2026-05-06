@@ -60,6 +60,7 @@ export interface PretableSurfaceState {
   focus?: PretableFocusState;
   selection?: PretableSelectionState;
   sort?: PretableSortState | null;
+  columnWidths?: Record<string, number>;
 }
 
 export interface UsePretableModelOptions<
@@ -122,6 +123,16 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
 
     if (state.filters !== undefined) {
       grid.replaceFilters(state.filters);
+    }
+
+    if (state.columnWidths !== undefined) {
+      const widths = state.columnWidths;
+      for (const column of grid.options.columns) {
+        const next = widths[column.id];
+        if (next !== undefined && next !== column.widthPx) {
+          grid.setColumnWidth(column.id, next);
+        }
+      }
     }
 
     if (state.selection !== undefined) {
