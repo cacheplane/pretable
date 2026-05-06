@@ -49,6 +49,7 @@ export interface LabeledGridSurfaceProps<
   copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
   onCopy?: PretableSurfaceProps<TRow>["onCopy"];
   copyToClipboard?: PretableSurfaceProps<TRow>["copyToClipboard"];
+  messages?: PretableSurfaceProps<TRow>["messages"];
   valueClassName?: string;
   viewportHeight: number;
 }
@@ -79,6 +80,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   copyWithHeaders,
   onCopy,
   copyToClipboard,
+  messages,
   valueClassName,
   viewportHeight,
 }: LabeledGridSurfaceProps<TRow>) {
@@ -170,6 +172,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       copyWithHeaders={copyWithHeaders}
       onCopy={onCopy}
       copyToClipboard={copyToClipboard}
+      messages={messages}
       viewportHeight={viewportHeight}
     />
   );

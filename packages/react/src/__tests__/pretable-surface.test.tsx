@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,11 +8,12 @@ import {
   within,
 } from "@testing-library/react";
 import * as React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   PretableSurface,
   ROW_SELECT_COLUMN_ID,
+  type PretableSurfaceMessages,
   type RowSelectionColumnConfig,
 } from "../pretable-surface";
 import type { CopyPayload, SerializeRangesArgs } from "../copy";
@@ -2718,5 +2720,296 @@ describe("PretableSurface copy", () => {
       "[pretable] clipboard copy failed",
       expect.any(Error),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 6 — ARIA live region announcement tests
+// ---------------------------------------------------------------------------
+
+interface RenderAnnounceHarnessOpts {
+  initialState?: PretableSurfaceState;
+  rowSelectionColumn?: RowSelectionColumnConfig;
+  copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
+  messages?: PretableSurfaceMessages;
+}
+
+function renderAnnounceHarness(opts: RenderAnnounceHarnessOpts = {}) {
+  return render(
+    <PretableSurface
+      ariaLabel="announce-grid"
+      columns={gridColumns}
+      copyToClipboard={opts.copyToClipboard}
+      getRowId={(row: GridRow) => row.id}
+      messages={opts.messages}
+      overscan={0}
+      rows={gridRows}
+      rowSelectionColumn={opts.rowSelectionColumn}
+      state={opts.initialState}
+      viewportHeight={300}
+    />,
+  );
+}
+
+function getLiveRegion(view: ReturnType<typeof render>) {
+  return view.container.querySelector(
+    "[data-pretable-live-region]",
+  ) as HTMLDivElement | null;
+}
+
+describe("aria-live announcements", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("Cmd+A announces 'All rows selected' after the debounce window", () => {
+    const view = renderAnnounceHarness();
+    const grid = view.getByRole("grid");
+    fireEvent.keyDown(grid, { key: "a", metaKey: true });
+
+    // Live region is empty before the debounce expires.
+    expect(getLiveRegion(view)).toHaveTextContent("");
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("All rows selected");
+  });
+
+  it("custom messages.selectAllAnnouncement overrides the default text", () => {
+    const view = renderAnnounceHarness({
+      messages: {
+        selectAllAnnouncement: () => "MOCK SELECTION",
+      },
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "a", metaKey: true });
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("MOCK SELECTION");
+  });
+
+  it("clicking the header checkbox to select all visible rows announces all-selected", () => {
+    const view = renderAnnounceHarness({
+      rowSelectionColumn: { enabled: true, headerCheckbox: true },
+    });
+    fireEvent.click(getHeaderCheckbox(view)!);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("All rows selected");
+  });
+
+  it("clicking the header checkbox to deselect does not announce", () => {
+    const view = renderAnnounceHarness({
+      rowSelectionColumn: { enabled: true, headerCheckbox: true },
+      initialState: {
+        focus: { rowId: null, columnId: null },
+        selection: {
+          ranges: gridRows.map((r) => fullRowRange(r.id)),
+          anchor: { rowId: "r1", columnId: ROW_SELECT_COLUMN_ID },
+        },
+      },
+    });
+
+    // Sanity: header checkbox is fully checked before click.
+    expect(getHeaderCheckbox(view)).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(getHeaderCheckbox(view)!);
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("");
+  });
+
+  it("Cmd+C success announces '{n} rows × {m} columns copied'", async () => {
+    const copyToClipboard = vi.fn().mockResolvedValue(undefined);
+    const view = renderAnnounceHarness({
+      initialState: {
+        focus: { rowId: "r1", columnId: "a" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r1",
+              endRowId: "r2",
+              startColumnId: "a",
+              endColumnId: "a",
+            },
+          ],
+          anchor: { rowId: "r1", columnId: "a" },
+        },
+      },
+      copyToClipboard,
+    });
+
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    // Let the resolved-promise .then handler run (which schedules announcement).
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("2 rows × 1 columns copied");
+  });
+
+  it("custom messages.copyAnnouncement overrides the default copy text", async () => {
+    const copyToClipboard = vi.fn().mockResolvedValue(undefined);
+    const view = renderAnnounceHarness({
+      initialState: singleCellSelection("r1", "a"),
+      copyToClipboard,
+      messages: {
+        copyAnnouncement: ({ rowCount, columnCount }) =>
+          `OVR ${rowCount}/${columnCount}`,
+      },
+    });
+
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("OVR 1/1");
+  });
+
+  it("Cmd+C failure announces 'Copy failed'", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const copyToClipboard = vi.fn().mockRejectedValue(new Error("boom"));
+    const view = renderAnnounceHarness({
+      initialState: singleCellSelection("r1", "a"),
+      copyToClipboard,
+    });
+
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("Copy failed");
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("custom messages.copyFailedAnnouncement overrides the failure text", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const copyToClipboard = vi.fn().mockRejectedValue(new Error("boom"));
+    const view = renderAnnounceHarness({
+      initialState: singleCellSelection("r1", "a"),
+      copyToClipboard,
+      messages: {
+        copyFailedAnnouncement: () => "NOPE",
+      },
+    });
+
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("NOPE");
+  });
+
+  it("programmatic state.selection updates do not announce", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="announce-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        state={{
+          focus: { rowId: "r1", columnId: "a" },
+          selection: {
+            ranges: [
+              {
+                startRowId: "r1",
+                endRowId: "r1",
+                startColumnId: "a",
+                endColumnId: "a",
+              },
+            ],
+            anchor: { rowId: "r1", columnId: "a" },
+          },
+        }}
+        viewportHeight={300}
+      />,
+    );
+
+    // Re-render with a much larger selection — programmatic, not user-driven.
+    view.rerender(
+      <PretableSurface
+        ariaLabel="announce-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        state={{
+          focus: { rowId: "r1", columnId: "a" },
+          selection: {
+            ranges: [
+              {
+                startRowId: "r1",
+                endRowId: "r5",
+                startColumnId: "a",
+                endColumnId: "c",
+              },
+            ],
+            anchor: { rowId: "r1", columnId: "a" },
+          },
+        }}
+        viewportHeight={300}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("");
+  });
+
+  it("Cmd+C with an empty selection does not announce", () => {
+    const copyToClipboard = vi.fn();
+    const view = renderAnnounceHarness({
+      initialState: {
+        focus: { rowId: null, columnId: null },
+        selection: { ranges: [], anchor: null },
+      },
+      copyToClipboard,
+    });
+
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(copyToClipboard).not.toHaveBeenCalled();
+    expect(getLiveRegion(view)).toHaveTextContent("");
   });
 });
