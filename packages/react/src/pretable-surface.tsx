@@ -977,7 +977,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               {...(column.id !== ROW_SELECT_COLUMN_ID &&
               column.reorderable !== false
                 ? {
-                    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
+                    onPointerDown: (
+                      event: ReactPointerEvent<HTMLButtonElement>,
+                    ) => {
                       if (event.button !== 0) return;
                       if (event.shiftKey || event.metaKey || event.ctrlKey)
                         return;
@@ -989,7 +991,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         dragging: false,
                       };
                     },
-                    onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => {
+                    onPointerMove: (
+                      event: ReactPointerEvent<HTMLButtonElement>,
+                    ) => {
                       const drag = reorderStateRef.current;
                       if (!drag || drag.columnId !== column.id) return;
                       if (event.pointerId !== drag.pointerId) return;
@@ -1049,7 +1053,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                           : null,
                       );
                     },
-                    onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => {
+                    onPointerUp: (
+                      event: ReactPointerEvent<HTMLButtonElement>,
+                    ) => {
                       const drag = reorderStateRef.current;
                       if (!drag || drag.columnId !== column.id) return;
                       if (event.pointerId !== drag.pointerId) return;

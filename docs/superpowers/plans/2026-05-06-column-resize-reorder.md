@@ -1435,8 +1435,8 @@ export interface PretableSurfaceState {
   selection?: PretableSelectionState;
   sort?: PretableSortState | null;
   columnWidths?: Record<string, number>;
-  columnOrder?: readonly string[];                         // NEW
-  columnPinned?: Record<string, "left" | null>;            // NEW
+  columnOrder?: readonly string[]; // NEW
+  columnPinned?: Record<string, "left" | null>; // NEW
 }
 ```
 
@@ -1686,31 +1686,33 @@ The `computeDropIndex` helper needs the per-column left positions and widths. Lo
 Render the ghost + drop indicator inside the surface root when `reorderDrag !== null`:
 
 ```tsx
-{reorderDrag && (
-  <>
-    <div
-      data-pretable-reorder-ghost=""
-      style={{
-        left: reorderDrag.cursorX + 8,
-        top: reorderDrag.cursorY + 8,
-        width: reorderDrag.ghostWidth,
-        height: reorderDrag.ghostHeight,
-        display: "flex",
-        alignItems: "center",
-        paddingLeft: 12,
-      }}
-    >
-      {reorderDrag.ghostHeader}
-    </div>
-    <div
-      data-pretable-reorder-drop-indicator=""
-      style={{
-        left: computeDropIndicatorLeft(reorderDrag.dropIndex, columnLefts),
-        height: reorderDrag.ghostHeight + bodyViewportHeight,
-      }}
-    />
-  </>
-)}
+{
+  reorderDrag && (
+    <>
+      <div
+        data-pretable-reorder-ghost=""
+        style={{
+          left: reorderDrag.cursorX + 8,
+          top: reorderDrag.cursorY + 8,
+          width: reorderDrag.ghostWidth,
+          height: reorderDrag.ghostHeight,
+          display: "flex",
+          alignItems: "center",
+          paddingLeft: 12,
+        }}
+      >
+        {reorderDrag.ghostHeader}
+      </div>
+      <div
+        data-pretable-reorder-drop-indicator=""
+        style={{
+          left: computeDropIndicatorLeft(reorderDrag.dropIndex, columnLefts),
+          height: reorderDrag.ghostHeight + bodyViewportHeight,
+        }}
+      />
+    </>
+  );
+}
 ```
 
 (The `computeDropIndicatorLeft` helper returns the X position for the indicator — the left edge of the column at `dropIndex`, or the right edge of the last column if `dropIndex === columns.length`.)
