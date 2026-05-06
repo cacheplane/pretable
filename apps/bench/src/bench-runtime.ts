@@ -137,11 +137,11 @@ const scrollRuntimeProfiles: Record<
   ScrollRuntimeProfile
 > = {
   "gridalpha": {
-    viewportSelector: ".ag-body-viewport",
-    rowSelector: ".ag-row",
-    cellSelector: ".ag-cell",
-    rowIdAttribute: "row-id",
-    rowIndexAttribute: "row-index",
+    viewportSelector: "[data-gridalpha-scroll-viewport]",
+    rowSelector: "[data-gridalpha-row]",
+    cellSelector: "[data-gridalpha-cell]",
+    rowIdAttribute: "data-row-id",
+    rowIndexAttribute: "data-row-index",
     maxSettleFrames: 1,
     // Unified with the other adapters: row.height vs max(cell.scrollHeight)
     // + padding + border. The previous Grid Alpha-specific formula (style.height
@@ -154,7 +154,11 @@ const scrollRuntimeProfiles: Record<
     // (cell.scrollHeight ≫ row.height) — that's user-visible behavior, not
     // a measurement artifact.
     measureRowHeightError: (row, renderedHeight) =>
-      measureWrappedCellRowHeightError(row, renderedHeight, ".ag-cell"),
+      measureWrappedCellRowHeightError(
+        row,
+        renderedHeight,
+        "[data-gridalpha-cell]",
+      ),
   },
   pretable: {
     viewportSelector: "[data-pretable-scroll-viewport]",
@@ -185,17 +189,17 @@ const scrollRuntimeProfiles: Record<
       ),
   },
   gridgamma: {
-    viewportSelector: ".GridGammaDataGrid-virtualScroller",
-    rowSelector: ".GridGammaDataGrid-row",
-    cellSelector: ".GridGammaDataGrid-cell",
-    rowIdAttribute: "data-id",
-    rowIndexAttribute: "data-rowindex",
+    viewportSelector: "[data-gridgamma-scroll-viewport]",
+    rowSelector: "[data-gridgamma-row]",
+    cellSelector: "[data-gridgamma-cell]",
+    rowIdAttribute: "data-row-id",
+    rowIndexAttribute: "data-row-index",
     maxSettleFrames: 4,
     measureRowHeightError: (row, renderedHeight) =>
       measureWrappedCellRowHeightError(
         row,
         renderedHeight,
-        ".GridGammaDataGrid-cell",
+        "[data-gridgamma-cell]",
       ),
   },
 };

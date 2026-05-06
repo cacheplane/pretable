@@ -244,7 +244,9 @@ body {
   padding: 18px;
 }
 
-.ag-body-viewport {
+[data-gridalpha-scroll-viewport],
+[data-gridbeta-scroll-viewport],
+[data-gridgamma-scroll-viewport] {
   overscroll-behavior: contain;
   overflow-anchor: none;
 }

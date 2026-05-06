@@ -849,12 +849,12 @@ describe("bench runtime", () => {
     document.body.innerHTML = `
         <div data-testid="root">
         <div aria-label="Grid Alpha Community adapter">
-          <div class="ag-body-viewport">
-            <div class="ag-row" row-index="0" style="height: 60px;">
-              <div class="ag-cell">row 0</div>
+          <div data-gridalpha-scroll-viewport="">
+            <div data-gridalpha-row="" data-row-index="0" data-row-height="60">
+              <div data-gridalpha-cell="">row 0</div>
             </div>
-            <div class="ag-row" row-index="1" style="height: 60px;">
-              <div class="ag-cell">row 1</div>
+            <div data-gridalpha-row="" data-row-index="1" data-row-height="60">
+              <div data-gridalpha-cell="">row 1</div>
             </div>
           </div>
         </div>
@@ -862,8 +862,12 @@ describe("bench runtime", () => {
     `;
 
     const root = document.querySelector<HTMLElement>('[data-testid="root"]');
-    const viewport = root?.querySelector<HTMLElement>(".ag-body-viewport");
-    const rows = [...root!.querySelectorAll<HTMLElement>(".ag-row")];
+    const viewport = root?.querySelector<HTMLElement>(
+      "[data-gridalpha-scroll-viewport]",
+    );
+    const rows = [
+      ...root!.querySelectorAll<HTMLElement>("[data-gridalpha-row]"),
+    ];
     const rafTimestamps = [0, 16, 32, 48, 64, 80];
     let rafIndex = 0;
     const OriginalPerformanceObserver = globalThis.PerformanceObserver;
