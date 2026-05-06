@@ -16,6 +16,7 @@ export type {
 import type {
   AutosizeOptions,
   GridCoreColumn,
+  GridCoreFormatInput,
   GridCoreOptions,
   GridCoreSnapshot,
   GridCoreSortDirection,
@@ -23,8 +24,11 @@ import type {
   GridCoreTransaction,
 } from "@pretable-internal/grid-core";
 
-export type PretableColumn<TRow extends PretableRow = PretableRow> =
+export type PretableCoreColumn<TRow extends PretableRow = PretableRow> =
   GridCoreColumn<TRow>;
+
+export type PretableFormatInput<TRow extends PretableRow = PretableRow> =
+  GridCoreFormatInput<TRow>;
 
 export type PretableGridOptions<TRow extends PretableRow = PretableRow> =
   GridCoreOptions<TRow>;

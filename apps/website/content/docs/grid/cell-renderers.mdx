@@ -1,0 +1,206 @@
+---
+title: Cell Renderers
+description: "Per-column display customization through layered format and render hooks; engine-enforced memoization."
+nav: Grid
+order: 8
+---
+
+Pretable supports per-column display customization through three optional hooks on `PretableColumn<TRow>`: `format` (value → string), `render` (returns `ReactNode`), and `renderHeader` (returns `ReactNode`). The pipeline runs `format` first, then `render` if provided, with sensible defaults for both. Every cell is wrapped in `React.memo` with a custom equality check, so unchanged cells skip re-render even when other parts of the grid update.
+
+## Pipeline
+
+For every visible body cell, on every render:
+
+1. **value extraction**: `value = column.value ? column.value(row) : row[column.id]`.
+2. **format**: `formattedValue = column.format ? column.format({ value, row, column }) : defaultFormat(value)`. The default joins arrays with `", "` and stringifies everything else.
+3. **render**: if `column.render` is present, it returns the cell's ReactNode. Otherwise the grid-level `renderBodyCell` prop on `<PretableSurface>` applies. Otherwise `formattedValue` is rendered as plain text.
+
+## `format`
+
+Per-column string formatter. Use it for date / number / status formatting that doesn't need JSX.
+
+```tsx
+import type { PretableColumn } from "@pretable/react";
+
+interface Order {
+  id: string;
+  total: number;
+  placedAt: Date;
+  status: "pending" | "shipped" | "delivered";
+}
+
+const columns: PretableColumn<Order>[] = [
+  {
+    id: "total",
+    header: "Total",
+    format: ({ value }) =>
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+      }).format(value as number),
+  },
+  {
+    id: "placedAt",
+    header: "Placed",
+    format: ({ value }) => (value as Date).toISOString().slice(0, 10),
+  },
+  {
+    id: "status",
+    header: "Status",
+    format: ({ value }) => {
+      switch (value) {
+        case "pending":
+          return "⏳ Pending";
+        case "shipped":
+          return "🚚 Shipped";
+        case "delivered":
+          return "✅ Delivered";
+        default:
+          return String(value);
+      }
+    },
+  },
+];
+```
+
+`format` is also used by `Cmd+C` copy serialization — set it once and both display and clipboard get consistent output.
+
+## `render`
+
+Per-column ReactNode renderer for full UI control. Use it when you need a badge, a button, an icon, or any non-text content.
+
+```tsx
+const columns: PretableColumn<Order>[] = [
+  {
+    id: "status",
+    header: "Status",
+    format: ({ value }) => String(value),
+    render: ({ value, formattedValue }) => (
+      <span
+        className={`status-badge status-${value}`}
+        data-status={value as string}
+      >
+        {formattedValue}
+      </span>
+    ),
+  },
+];
+```
+
+`render` receives `{ value, row, column, formattedValue, rowId, rowIndex, isFocused, isSelected }`. The `formattedValue` is the result of `format` (or the default formatter if `format` was not provided), so most renderers don't need to call `format` themselves.
+
+## `renderHeader`
+
+Per-column header renderer. Receives `{ column, label, sortDirection, isSorted }`.
+
+```tsx
+const columns: PretableColumn<Order>[] = [
+  {
+    id: "total",
+    header: "Total",
+    renderHeader: ({ label, isSorted }) => (
+      <span>
+        💰 {label} {isSorted && <span aria-hidden>•</span>}
+      </span>
+    ),
+  },
+];
+```
+
+## Memoization contract
+
+Every cell is wrapped in `React.memo` with a custom equality check. The cell skips re-render when the following are all reference-equal between renders:
+
+| Field            | Source                                              |
+| ---------------- | --------------------------------------------------- |
+| `rowId`          | the row's id                                        |
+| `columnId`       | the column's id                                     |
+| `value`          | result of `column.value(row)` (or `row[column.id]`) |
+| `formattedValue` | result of `column.format(...)` (or default)         |
+| `isFocused`      | engine focus state for this cell                    |
+| `isSelected`     | derived from selection ranges                       |
+| `width`          | column width (post-resize)                          |
+| `dataAttrs`      | per-cell HTML attributes from `getBodyCellProps`    |
+| `renderRef`      | `column.render` reference (or `null`)               |
+
+`format` and `column.value` are **not** in the memo key. They run unconditionally at the parent every render — but their cost is bounded by the cheapness contract:
+
+- `column.value` is typically a property access. Nanoseconds.
+- `column.format` is typically `Intl.NumberFormat.format(value)` or `(value as Date).toISOString()`. Microseconds.
+
+The memo bails out further down: if value didn't change AND `format` is pure, `formattedValue` is the same string, and the cell DOM is not re-rendered.
+
+### `useMemo` your column array
+
+The most common perf cliff is inline column definitions in a parent that re-renders frequently. Each render creates a new `column.render` reference, busting the per-cell memo for every cell.
+
+```tsx
+// ❌ inline — every parent render busts memo
+function MyGrid({ orders }) {
+  return (
+    <PretableSurface
+      columns={[
+        { id: "total", render: ({ value }) => <strong>{value}</strong> },
+      ]}
+      rows={orders}
+      // ...
+    />
+  );
+}
+
+// ✅ stable — memo bails out across parent re-renders
+const columns: PretableColumn<Order>[] = [
+  { id: "total", render: ({ value }) => <strong>{value as number}</strong> },
+];
+
+function MyGrid({ orders }) {
+  return <PretableSurface columns={columns} rows={orders} /* ... */ />;
+}
+
+// ✅ also stable — useMemo when columns depend on props
+function MyGrid({ orders, locale }: { orders: Order[]; locale: string }) {
+  const columns = React.useMemo<PretableColumn<Order>[]>(
+    () => [
+      {
+        id: "total",
+        format: ({ value }) =>
+          new Intl.NumberFormat(locale, {
+            style: "currency",
+            currency: "USD",
+          }).format(value as number),
+      },
+    ],
+    [locale],
+  );
+  return <PretableSurface columns={columns} rows={orders} /* ... */ />;
+}
+```
+
+Header memoization is parallel: `<MemoizedHeaderContent>` keyed on `(columnId, label, sortDirection, width, isSorted, isSortable, renderHeaderRef)`.
+
+## Interaction with grid-level `renderBodyCell` / `renderHeaderCell`
+
+`<PretableSurface>` retains its existing grid-level `renderBodyCell` and `renderHeaderCell` props. Lookup precedence per cell:
+
+1. `column.render` — if present, used.
+2. Grid-level `renderBodyCell` — if (1) absent, used.
+3. Default — `formattedValue` as plain text.
+
+Same for headers (`column.renderHeader` → `renderHeaderCell` → default label + sort indicator).
+
+`<LabeledGridSurface>` (the labeled cell variant) continues to use grid-level `renderBodyCell` for its label/value structure. No migration is required.
+
+## Synthetic row-select column
+
+The built-in row-selection checkbox column (id `__pretable_row_select__`, enabled via `rowSelectionColumn={{ enabled: true }}`) is non-overridable in v1. `format`, `render`, and `renderHeader` set on a column with that id are ignored — the synthetic column always renders the built-in three-state checkbox.
+
+## Cell editing
+
+Read-only display only in v1. Cell editing — type-to-edit, parse/format round-trips, validation, commit/cancel callbacks — is its own design problem and is deferred to a future sub-project.
+
+## See also
+
+- [Selection](/docs/grid/selection) — how `isSelected` is derived from cell-range selection.
+- [Keyboard](/docs/grid/keyboard) — how `isFocused` works.
+- [Clipboard](/docs/grid/clipboard) — `format` is reused as the copy serializer.
+- [API reference](/docs/grid/api-reference) — full type signatures for `PretableColumn`, `PretableCellRenderInput`, `PretableHeaderRenderInput`, `PretableFormatInput`.

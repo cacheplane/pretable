@@ -669,34 +669,304 @@ Per the standing workflow preference, the user merges (auto-merge fires once CI 
 
 ---
 
-## Phase D2 — React adapter: `render` + `renderHeader` + memoization (OUTLINE)
+## Phase D2 — React adapter: `render` + `renderHeader` + memoization (DETAILED)
 
-**Branch:** `d2-react-render`. **Detail:** added when D1 merges.
+**Branch:** `d2-react-render`. **Worktree:** `.worktrees/d2-react-render`.
 
-**Work items:**
+**Phase exit criteria:**
 
-- Restructure `PretableColumn<TRow>`: was `type PretableColumn<TRow> = GridCoreColumn<TRow>` (alias); becomes `interface PretableColumn<TRow> extends PretableCoreColumn<TRow>` with two new optional fields: `render?: (input: PretableCellRenderInput<TRow>) => ReactNode`, `renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode`.
-- New input types: `PretableCellRenderInput<TRow>` (extends `PretableFormatInput<TRow>` with `formattedValue`, `rowId`, `rowIndex`, `isFocused`, `isSelected`), `PretableHeaderRenderInput<TRow>` (`{ column, label, sortDirection, isSorted }`).
-- Wire format → render pipeline in `<PretableSurface>`'s body cell render path:
-  - Compute `formattedValue = column.format ? column.format({ value, row, column }) : defaultFormat(value)` per cell.
-  - If `column.render` present, call it with the full input. Otherwise fall back to grid-level `renderBodyCell`. Otherwise render `formattedValue` as plain text.
-- Same precedence for header rendering: `column.renderHeader` → grid-level `renderHeaderCell` → default label + sort indicator.
-- Implement `<MemoizedCell />` and `<MemoizedHeader />` components wrapped in `React.memo` with custom `areEqual` per the spec. Cell `areEqual` compares `(rowId, columnId, value, formattedValue, isFocused, isSelected, width, dataAttrs, renderRef)`.
-- Synthetic row-select column (`__pretable_row_select__`) ignores all three renderer hooks.
-- jsdom tests:
-  - `format` runs on every cell; `formattedValue` reaches the default render path.
-  - `render` returning a custom ReactNode renders correctly.
-  - `renderHeader` returning a custom ReactNode renders correctly.
-  - Per-column `render` overrides grid-level `renderBodyCell`.
-  - Memo bailout: parent re-renders without changing cell inputs → cell DOM identity preserved (use a `useRef`-tracked DOM node to verify).
-  - Synthetic row-select column ignores `format`, `render`, `renderHeader`.
-  - When `column.render` reference changes (parent passes a new column array each render), cells re-render — documented perf cliff.
+- `PretableColumn<TRow>` extends `PretableCoreColumn<TRow>` with optional `render` + `renderHeader` ReactNode-returning fields.
+- New input types: `PretableCellRenderInput<TRow>`, `PretableHeaderRenderInput<TRow>`, `PretableFormatInput<TRow>` (the React-side re-export of `GridCoreFormatInput`).
+- `<PretableSurface>` body cell render path runs `format → render` pipeline. Precedence: per-column `render` → grid-level `renderBodyCell` → default `formattedValue` text.
+- Header render path: per-column `renderHeader` → grid-level `renderHeaderCell` → default label + sort indicator.
+- `<MemoizedCell />` and `<MemoizedHeader />` wrap the inner cell/header content in `React.memo` with custom `areEqual` per the spec.
+- Synthetic row-select column ignores `format`, `render`, `renderHeader`.
+- jsdom test count: 192 → 205+. Includes a DOM-identity test for memo bailout.
+- `pnpm -w typecheck` / `test` / `lint` / `format` clean.
+- One PR opened, CI green, user merges.
 
-**Open questions to resolve when detailing:**
+### Resolved open questions
 
-- Memo prop shape: pass the `column` object directly, or destructure into stable primitive props? Direct is simpler and matches AG Grid's React adapter; destructure is safer for memo equality but requires more plumbing. Default to direct + customizable `areEqual`.
-- Should the cell renderer have access to engine-level row-state (selected row IDs etc.)? In v1: only the cell-level `isFocused` / `isSelected` flags. Row-state derivations stay at grid level.
-- DOM-identity test: how do we assert the cell DOM was reused vs remounted across renders? Pattern: render once, capture `nodeFromRef`; re-render with irrelevant prop change; verify the same DOM node instance. Use a `useEffect` count or `data-mount-count` to verify.
+- **Memo prop shape**: pass primitive props (rowId, columnId, value, formattedValue, isFocused, isSelected, width, dataAttrs, renderRef). Don't pass the full `column` object — its identity changes when consumer columns array changes, busting memo unnecessarily. The `renderRef` (= `column.render` or `null`) is the only column-derived reference compared.
+- **Cell renderer access to row-state**: only `isFocused` / `isSelected` (cell-level booleans). Engine-level row-state derivations (selected row IDs map, etc.) stay at the grid surface level. Consumers who need row-level context can derive from `row` (passed in input).
+- **DOM-identity test**: ref-capture the cell `<div>` DOM node on first render, force an irrelevant parent re-render (e.g., toggle a sibling state), assert the captured node is `===` the new render's node. Plus a mount-count counter via `useEffect(() => { mountsRef.current += 1; }, [])` that should stay at 1.
+
+### Tasks
+
+#### Task 1 — Restructure `PretableColumn` + new input types
+
+**Files:**
+
+- `packages/core/src/types.ts` — split out `PretableCoreColumn` from `PretableColumn`.
+- `packages/react/src/types.ts` (CREATE if it doesn't exist) — add React-only types.
+- `packages/react/src/index.ts` — export new types.
+
+In `packages/core/src/types.ts`, find the existing `PretableColumn = GridCoreColumn` alias. Replace with:
+
+```ts
+import type {
+  GridCoreColumn,
+  GridCoreFormatInput,
+} from "@pretable-internal/grid-core";
+
+// Re-export the engine-level column type (no React).
+export type PretableCoreColumn<TRow extends Record<string, unknown>> =
+  GridCoreColumn<TRow>;
+export type PretableFormatInput<TRow extends Record<string, unknown>> =
+  GridCoreFormatInput<TRow>;
+```
+
+`PretableColumn` moves to the React package. In `packages/react/src/types.ts` (CREATE):
+
+```ts
+import type { ReactNode } from "react";
+import type {
+  PretableCoreColumn,
+  PretableFormatInput,
+  PretableRow,
+} from "@pretable/core";
+
+export interface PretableColumn<
+  TRow extends PretableRow = PretableRow,
+> extends PretableCoreColumn<TRow> {
+  render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
+  renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
+}
+
+export interface PretableCellRenderInput<
+  TRow extends PretableRow = PretableRow,
+> extends PretableFormatInput<TRow> {
+  formattedValue: string;
+  rowId: string;
+  rowIndex: number;
+  isFocused: boolean;
+  isSelected: boolean;
+}
+
+export interface PretableHeaderRenderInput<
+  TRow extends PretableRow = PretableRow,
+> {
+  column: PretableColumn<TRow>;
+  label: string;
+  sortDirection: "asc" | "desc" | null;
+  isSorted: boolean;
+}
+
+// Re-export the format input under the React name for symmetry with cell/header.
+export type { PretableFormatInput };
+```
+
+In `packages/react/src/index.ts`, add the three new types to the exports. Move `PretableColumn` from being re-exported from `@pretable/core` to being defined in `./types` (the React package becomes the canonical source for `PretableColumn`).
+
+**Critical**: every existing `import { PretableColumn } from "@pretable/core"` inside the React package becomes `import { PretableColumn } from "./types"` (or wherever it's defined locally). Outside the React package, `PretableColumn` is no longer exported from `@pretable/core` — only `PretableCoreColumn`. Search for usages and migrate.
+
+In `packages/core/src/index.ts`, replace the `PretableColumn` export with `PretableCoreColumn` and `PretableFormatInput`.
+
+**Commit:** `feat(react): split PretableColumn from PretableCoreColumn`.
+
+#### Task 2 — Wire format → render pipeline
+
+**Files:**
+
+- `packages/react/src/pretable-surface.tsx`
+
+Around line 1480 (the body cell render path), the current code reads:
+
+```tsx
+) : renderBodyCell ? (
+  renderBodyCell(bodyInput)
+) : (
+  formatCellValue(value)
+)}
+```
+
+The new pipeline:
+
+```tsx
+const formattedValue = column.format
+  ? column.format({ value, row: row.row, column })
+  : formatCellValue(value);
+
+const cellRenderInput: PretableCellRenderInput<TRow> = {
+  value,
+  row: row.row,
+  column,
+  formattedValue,
+  rowId: row.id,
+  rowIndex: row.rowIndex,
+  isFocused,
+  isSelected,
+};
+
+// In the JSX:
+{
+  column.render
+    ? column.render(cellRenderInput)
+    : renderBodyCell
+      ? renderBodyCell(cellRenderInput)
+      : formattedValue;
+}
+```
+
+Note `renderBodyCell`'s input type changes from the old `PretableSurfaceBodyCellRenderInput` to the new `PretableCellRenderInput`. They're nearly the same — just renamed and `formattedValue` added.
+
+For headers, around line 1106:
+
+```tsx
+{
+  column.renderHeader ? (
+    column.renderHeader({ column, label, sortDirection, isSorted })
+  ) : renderHeaderCell ? (
+    renderHeaderCell({ column, label, sortDirection })
+  ) : (
+    <DefaultHeaderContent label={label} sortDirection={sortDirection} />
+  );
+}
+```
+
+(Where `DefaultHeaderContent` is the existing default header rendering — extract it from the current inline JSX if needed.)
+
+For the synthetic row-select column (`column.id === ROW_SELECT_COLUMN_ID`), skip the per-column render hooks entirely — render the existing checkbox path. Already true via the existing branch in pretable-surface.tsx that handles synthetic specially; verify and preserve.
+
+**Commit:** `feat(react): per-column format + render + renderHeader pipeline`.
+
+#### Task 3 — Memoized cell + header components
+
+**Files:**
+
+- `packages/react/src/pretable-surface.tsx`
+
+Extract the body cell rendering into a `<MemoizedCell />` component:
+
+```tsx
+interface MemoizedCellProps<TRow extends PretableRow> {
+  rowId: string;
+  columnId: string;
+  value: unknown;
+  formattedValue: string;
+  width: number;
+  isFocused: boolean;
+  isSelected: boolean;
+  dataAttrs: HTMLAttributes<HTMLDivElement> | undefined;
+  renderRef: ((input: PretableCellRenderInput<TRow>) => ReactNode) | null;
+  // The full cell render input — needed when render is invoked.
+  // Stable as long as the primitive props above are stable.
+  cellRenderInput: PretableCellRenderInput<TRow>;
+  // Existing surface-level fallback for when renderRef is null.
+  fallbackRender: (input: PretableCellRenderInput<TRow>) => ReactNode;
+  className: string | undefined;
+  style: CSSProperties;
+  onClick: ((event: ReactMouseEvent<HTMLDivElement>) => void) | undefined;
+  // ... any other DOM-attaching props from the existing rendering
+}
+
+function CellComp<TRow extends PretableRow>(props: MemoizedCellProps<TRow>) {
+  return (
+    <div
+      {...props.dataAttrs}
+      className={props.className}
+      style={props.style}
+      onClick={props.onClick}
+      role="gridcell"
+      aria-colindex={...}
+      tabIndex={props.isFocused ? 0 : -1}
+    >
+      {props.renderRef
+        ? props.renderRef(props.cellRenderInput)
+        : props.fallbackRender(props.cellRenderInput)}
+    </div>
+  );
+}
+
+const cellPropsEqual = <TRow extends PretableRow>(
+  prev: MemoizedCellProps<TRow>,
+  next: MemoizedCellProps<TRow>,
+) =>
+  prev.rowId === next.rowId &&
+  prev.columnId === next.columnId &&
+  prev.value === next.value &&
+  prev.formattedValue === next.formattedValue &&
+  prev.isFocused === next.isFocused &&
+  prev.isSelected === next.isSelected &&
+  prev.width === next.width &&
+  prev.dataAttrs === next.dataAttrs &&
+  prev.renderRef === next.renderRef &&
+  prev.className === next.className;
+
+const MemoizedCell = React.memo(CellComp, cellPropsEqual) as typeof CellComp;
+```
+
+In the existing render path, replace the inline cell `<div>` with `<MemoizedCell {...props} />`. The parent computes all props each render; React.memo bails out if the relevant fields are reference-equal.
+
+Do the same for `<MemoizedHeader />`. Header `areEqual`:
+
+```ts
+prev.columnId === next.columnId &&
+  prev.label === next.label &&
+  prev.sortDirection === next.sortDirection &&
+  prev.width === next.width &&
+  prev.isSorted === next.isSorted &&
+  prev.isSortable === next.isSortable &&
+  prev.renderHeaderRef === next.renderHeaderRef;
+```
+
+**Commit:** `feat(react): React.memo on cell + header with custom areEqual`.
+
+#### Task 4 — jsdom tests for the pipeline + memoization
+
+**Files:**
+
+- `packages/react/src/__tests__/pretable-surface.test.tsx` — extend with new `describe("cell renderers", ...)` block.
+
+Tests:
+
+1. **`column.format` runs on every cell** — column with `format: ({ value }) => \`F:\${value}\``; assert rendered cells contain `F:<value>` text.
+2. **`column.render` returning custom ReactNode** — `render: ({ formattedValue }) => <span data-testid="custom">{formattedValue}</span>`; assert `data-testid="custom"` element rendered for that column.
+3. **`column.renderHeader` returning custom ReactNode** — `renderHeader: ({ label }) => <em>{label}</em>`; assert `<em>` element in header.
+4. **Per-column `render` overrides grid-level `renderBodyCell`** — both provided; per-column wins for that column; grid-level applies to other columns.
+5. **`format` result reaches grid-level `renderBodyCell`** — column has `format` but no `render`; grid-level `renderBodyCell` receives `formattedValue` in its input.
+6. **Synthetic row-select column ignores `format`/`render`/`renderHeader`** — render with `rowSelectionColumn={{enabled:true}}` and a `render` set on the synthetic column id (which won't exist as the consumer can't define it, but verify via check that the synthetic column's checkbox cell ignores any per-column hook by inspecting the rendered DOM).
+7. **Memo bailout: cell DOM identity preserved across irrelevant parent re-renders** — render harness with a parent state toggle that doesn't affect cells; capture cell DOM via ref before toggle; toggle state; assert ref still points to the same DOM node. Augment with a mount-count `useEffect` counter inside a custom render function that asserts mount count stays at 1.
+8. **Memo busts when value changes** — change underlying row data (re-render with new rows array containing updated value for the cell); assert cell DOM identity changes (new mount) OR text content updates.
+9. **Memo busts when `column.render` reference changes** — re-render with a new column array containing a new (different reference) render function; assert cell re-renders.
+10. **Header memoization parallel** — analogous test for the header.
+11. **Default rendering uses `formattedValue`** — neither `render` nor grid-level `renderBodyCell`; column has `format`; rendered cell text is `format`'s output, not raw value.
+
+Test count target: 192 → 205+.
+
+**Commit:** `test(react): cell renderers pipeline + memoization coverage`.
+
+#### Task 5 — Doc updates
+
+**Files:**
+
+- Create: `apps/website/content/docs/grid/cell-renderers.mdx`
+- Modify: `apps/website/content/docs/grid/api-reference.mdx` (add new types)
+- Modify: `apps/website/app/docs/_nav.ts` (add nav entry)
+- Modify: `apps/website/content/docs/grid/custom-rendering.mdx` (point at per-column renderers as canonical)
+
+`cell-renderers.mdx` covers:
+
+- Pipeline overview (value → format → render → memo)
+- `format` examples (date ISO, number with units, status enum → label)
+- `render` examples (badge component, status with color)
+- `renderHeader` example (icon + label)
+- Memoization contract: `areEqual` fields, `useMemo` your column array
+- Perf warnings: heavy `format` / inline `render` in column defs
+- Synthetic row-select column note
+- Forward pointer to D2 editing (deferred)
+
+Frontmatter `nav: Grid`, `order: 8`. Bump existing pages: custom-rendering 8→9, density-helpers 9→10, api-reference 10→11.
+
+In `api-reference.mdx`, add `PretableColumn` (now React-package), `PretableCoreColumn` (engine), `PretableCellRenderInput`, `PretableHeaderRenderInput`, `PretableFormatInput` types.
+
+Update `_nav.ts` to insert `Cell renderers` between Column Layout and Custom Rendering.
+
+**Commit:** `docs(website): cell-renderers page + api-reference + nav`.
+
+#### Task 6 — Repo-wide gates + PR
+
+`pnpm -w typecheck` / `test` / `lint` / `format` clean. Push, open PR titled `feat(react): cell renderers — format + render + memoization (Phase D2 of D)`.
 
 ---
 

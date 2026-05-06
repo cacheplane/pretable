@@ -3773,3 +3773,442 @@ describe("column reorder", () => {
     expect(colC?.pinned).toBe("left");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase D2 Task 4 — cell renderers pipeline + React.memo bailout coverage
+// ---------------------------------------------------------------------------
+
+describe("cell renderers", () => {
+  it("column.format runs on every cell; formattedValue is the rendered text", () => {
+    const cols = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        format: ({ value }: { value: unknown }) => `F:${String(value)}`,
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="fmt-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    for (const row of gridRows) {
+      const cell = view.container.querySelector(
+        `[data-pretable-row][data-row-id="${row.id}"] [data-column-id="a"]`,
+      );
+      expect(cell?.textContent).toBe(`F:${row.a}`);
+    }
+  });
+
+  it("column.render returning a custom ReactNode renders correctly", () => {
+    const cols = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        render: ({ formattedValue }: { formattedValue: string }) => (
+          <span data-testid="custom-cell">{formattedValue}</span>
+        ),
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="render-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const customs = view.getAllByTestId("custom-cell");
+    expect(customs.length).toBe(gridRows.length);
+    expect(customs[0]?.textContent).toBe("a1");
+  });
+
+  it("column.renderHeader returning a custom ReactNode renders in the header", () => {
+    const cols = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        renderHeader: ({ label }: { label: string }) => (
+          <em data-testid="custom-header">{label}</em>
+        ),
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="header-render-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const headerEl = view.getByTestId("custom-header");
+    expect(headerEl.textContent).toBe("A");
+  });
+
+  it("per-column render overrides grid-level renderBodyCell", () => {
+    const cols = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        render: () => <span data-testid="per-col">P</span>,
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="precedence-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        renderBodyCell={() => <span data-testid="grid-level">G</span>}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    // Column "a" uses per-col
+    const aCell = view.container.querySelector(
+      `[data-pretable-row][data-row-id="r1"] [data-column-id="a"]`,
+    );
+    expect(aCell?.querySelector('[data-testid="per-col"]')).not.toBeNull();
+    expect(aCell?.querySelector('[data-testid="grid-level"]')).toBeNull();
+    // Column "b" uses grid-level fallback
+    const bCell = view.container.querySelector(
+      `[data-pretable-row][data-row-id="r1"] [data-column-id="b"]`,
+    );
+    expect(bCell?.querySelector('[data-testid="grid-level"]')).not.toBeNull();
+    expect(bCell?.querySelector('[data-testid="per-col"]')).toBeNull();
+  });
+
+  it("format result reaches grid-level renderBodyCell via formattedValue", () => {
+    const renderBodyCell = vi.fn(() => null);
+    const cols = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        format: ({ value }: { value: unknown }) => `F:${String(value)}`,
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    render(
+      <PretableSurface
+        ariaLabel="fmt-fallback-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        renderBodyCell={renderBodyCell}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const aCalls = renderBodyCell.mock.calls.filter(
+      ([input]) => (input as { column: { id: string } }).column.id === "a",
+    );
+    expect(aCalls.length).toBe(gridRows.length);
+    const firstA = aCalls[0]?.[0] as { formattedValue: string };
+    expect(firstA.formattedValue).toBe("F:a1");
+  });
+
+  it("synthetic row-select column ignores per-column hooks and renders the built-in checkbox", () => {
+    const view = renderHarness({ rowSelectionColumn: { enabled: true } });
+    const selectCells = view.container.querySelectorAll(
+      `[data-row-select-cell="true"]`,
+    );
+    expect(selectCells.length).toBe(gridRows.length);
+    for (const cell of selectCells) {
+      const btn = cell.querySelector('[data-pretable-row-select="true"]');
+      expect(btn).not.toBeNull();
+      expect(btn?.getAttribute("aria-checked")).toBe("false");
+      expect(btn?.getAttribute("aria-label")).toBe("Select row");
+    }
+  });
+
+  it("memo bailout: column.render is not called again on irrelevant parent re-render", () => {
+    const renderFn = vi.fn(({ formattedValue }: { formattedValue: string }) => (
+      <span>{formattedValue}</span>
+    ));
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, render: renderFn },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+
+    function Harness() {
+      const [tick, setTick] = React.useState(0);
+      return (
+        <>
+          <button data-testid="tick" onClick={() => setTick((t) => t + 1)}>
+            tick {tick}
+          </button>
+          <PretableSurface
+            ariaLabel="memo-bailout-grid"
+            columns={cols}
+            getRowId={(row: GridRow) => row.id}
+            overscan={0}
+            rows={gridRows}
+            viewportHeight={300}
+          />
+        </>
+      );
+    }
+
+    const view = render(<Harness />);
+    const initialCalls = renderFn.mock.calls.length;
+    expect(initialCalls).toBe(gridRows.length);
+    fireEvent.click(view.getByTestId("tick"));
+    expect(renderFn.mock.calls.length).toBe(initialCalls);
+  });
+
+  it("memo busts when value changes: cell text updates on rows re-render", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="value-change-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const targetCellSel = `[data-pretable-row][data-row-id="r1"] [data-column-id="a"]`;
+    expect(view.container.querySelector(targetCellSel)?.textContent).toBe("a1");
+    const updatedRows = gridRows.map((r) =>
+      r.id === "r1" ? { ...r, a: "a1-updated" } : r,
+    );
+    view.rerender(
+      <PretableSurface
+        ariaLabel="value-change-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={updatedRows}
+        viewportHeight={300}
+      />,
+    );
+    expect(view.container.querySelector(targetCellSel)?.textContent).toBe(
+      "a1-updated",
+    );
+  });
+
+  it("memo busts when column.render reference changes", () => {
+    const colsV1 = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        render: () => <span data-testid="v1">v1</span>,
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="render-ref-grid"
+        columns={colsV1}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    expect(view.queryAllByTestId("v1").length).toBe(gridRows.length);
+
+    const colsV2 = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        render: () => <span data-testid="v2">v2</span>,
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    view.rerender(
+      <PretableSurface
+        ariaLabel="render-ref-grid"
+        columns={colsV2}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    expect(view.queryAllByTestId("v1").length).toBe(0);
+    expect(view.queryAllByTestId("v2").length).toBe(gridRows.length);
+  });
+
+  it("memo busts when isFocused changes: render fn called again for newly focused cell", () => {
+    const renderFn = vi.fn(({ formattedValue }: { formattedValue: string }) => (
+      <span>{formattedValue}</span>
+    ));
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, render: renderFn },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+
+    function Harness({ focusRowId }: { focusRowId: string | null }) {
+      return (
+        <PretableSurface
+          ariaLabel="focus-memo-grid"
+          columns={cols}
+          getRowId={(row: GridRow) => row.id}
+          overscan={0}
+          rows={gridRows}
+          state={
+            focusRowId
+              ? { focus: { rowId: focusRowId, columnId: "a" } }
+              : undefined
+          }
+          viewportHeight={300}
+        />
+      );
+    }
+
+    const view = render(<Harness focusRowId="r1" />);
+    const initialCalls = renderFn.mock.calls.length;
+    expect(initialCalls).toBe(gridRows.length);
+
+    // Re-render with focus moved from r1 -> r2 (column "a"). r1 loses focus,
+    // r2 gains focus, both isFocused props change -> both should re-render.
+    view.rerender(<Harness focusRowId="r2" />);
+    const r1Calls = renderFn.mock.calls.filter(
+      ([input]) => (input as { rowId: string }).rowId === "r1",
+    );
+    const r2Calls = renderFn.mock.calls.filter(
+      ([input]) => (input as { rowId: string }).rowId === "r2",
+    );
+    expect(r1Calls.length).toBeGreaterThanOrEqual(2);
+    expect(r2Calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("default rendering uses formattedValue not raw value", () => {
+    const cols = [
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        format: ({ value }: { value: unknown }) => `F:${String(value)}`,
+      },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="default-fmt-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const cell = view.container.querySelector(
+      `[data-pretable-row][data-row-id="r1"] [data-column-id="a"]`,
+    );
+    expect(cell?.textContent).toBe("F:a1");
+    expect(cell?.textContent).not.toBe("a1");
+  });
+
+  it("memo bailout: column.renderHeader is not called again on irrelevant parent re-render", () => {
+    const renderHeaderFn = vi.fn(({ label }: { label: string }) => (
+      <em>{label}</em>
+    ));
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, renderHeader: renderHeaderFn },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+
+    function Harness() {
+      const [tick, setTick] = React.useState(0);
+      return (
+        <>
+          <button data-testid="htick" onClick={() => setTick((t) => t + 1)}>
+            tick {tick}
+          </button>
+          <PretableSurface
+            ariaLabel="header-memo-grid"
+            columns={cols}
+            getRowId={(row: GridRow) => row.id}
+            overscan={0}
+            rows={gridRows}
+            viewportHeight={300}
+          />
+        </>
+      );
+    }
+
+    const view = render(<Harness />);
+    const initialCalls = renderHeaderFn.mock.calls.length;
+    expect(initialCalls).toBe(1);
+    fireEvent.click(view.getByTestId("htick"));
+    expect(renderHeaderFn.mock.calls.length).toBe(initialCalls);
+  });
+
+  it("header memo busts when sortDirection changes", () => {
+    const renderHeaderFn = vi.fn(
+      ({
+        label,
+        sortDirection,
+      }: {
+        label: string;
+        sortDirection: "asc" | "desc" | null;
+      }) => <em data-testid={`hdr-${sortDirection ?? "none"}`}>{label}</em>,
+    );
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, renderHeader: renderHeaderFn },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="sort-bust-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        state={{ sort: { columnId: "a", direction: "desc" } }}
+        viewportHeight={300}
+      />,
+    );
+    const beforeCalls = renderHeaderFn.mock.calls.length;
+    expect(view.queryByTestId("hdr-desc")).not.toBeNull();
+
+    view.rerender(
+      <PretableSurface
+        ariaLabel="sort-bust-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        state={{ sort: { columnId: "a", direction: "asc" } }}
+        viewportHeight={300}
+      />,
+    );
+    expect(renderHeaderFn.mock.calls.length).toBeGreaterThan(beforeCalls);
+    expect(view.queryByTestId("hdr-asc")).not.toBeNull();
+    expect(view.queryByTestId("hdr-desc")).toBeNull();
+  });
+});
