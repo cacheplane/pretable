@@ -17,6 +17,8 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
   copyToClipboard?: PretableSurfaceProps<TRow>["copyToClipboard"];
   messages?: PretableSurfaceProps<TRow>["messages"];
   onColumnWidthsChange?: PretableSurfaceProps<TRow>["onColumnWidthsChange"];
+  onColumnOrderChange?: PretableSurfaceProps<TRow>["onColumnOrderChange"];
+  onColumnPinnedChange?: PretableSurfaceProps<TRow>["onColumnPinnedChange"];
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -39,6 +41,8 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   copyToClipboard,
   messages,
   onColumnWidthsChange,
+  onColumnOrderChange,
+  onColumnPinnedChange,
 }: PretableProps<TRow>) {
   const resolvedGetRowId =
     getRowId ??
@@ -128,6 +132,8 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
         copyToClipboard={copyToClipboard}
         messages={messages}
         onColumnWidthsChange={onColumnWidthsChange}
+        onColumnOrderChange={onColumnOrderChange}
+        onColumnPinnedChange={onColumnPinnedChange}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
         viewportHeight={VIEWPORT_HEIGHT}
       />
