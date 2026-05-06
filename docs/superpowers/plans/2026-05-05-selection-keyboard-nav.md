@@ -2653,28 +2653,52 @@ Append a brief note in the existing Copy section about the announcement, plus ad
 
 ---
 
-## Phase 8 — Documentation surface (OUTLINE)
+## Phase 8 — Documentation surface (DETAILED)
 
-**Branch:** `b8-docs`. **Detail:** added when Phase 7 merges.
+**Branch:** `b8-docs`. **Worktree:** `.worktrees/b8-docs`.
 
-**Work items:**
+**Phase exit criteria:**
 
-- Three new pages under `apps/website/app/docs/grid/`:
-  - `selection/page.mdx` — selection model overview, IDs-not-indices invariant, derived row state, three-state checkbox semantics, controlled vs uncontrolled, runnable example.
-  - `keyboard/page.mdx` — full keyboard contract table, `tabBehavior` config, ARIA notes.
-  - `clipboard/page.mdx` — copy contract: TSV defaults, `formatForCopy`, `onCopy`, `copyWithHeaders`, multi-range serialization. Forward-pointer to Phase-2 paste.
-- Updates to existing pages:
-  - `apps/website/app/docs/grid/page.mdx` — feature list updated.
-  - `apps/website/app/docs/grid/pretable-component/page.mdx` and `…/pretable-surface/page.mdx` — new `state` prop, `onSelectionChange`, `onFocusChange`, `rowSelectionColumn`, `tabBehavior`, `copyWithHeaders`, `onCopy`, `messages`.
-  - `apps/website/app/docs/grid/api-reference/page.mdx` — full type reference for `PretableSelectionState`, `PretableCellRange`, `PretableCellAddress`, `PretableFocusState`, `PretableFocusDirection`, `PretableMoveFocusOptions`, `RowSelectionColumnConfig`, `CopyResult`, `RowSelectionTriState`. New / changed engine actions.
-  - `apps/website/app/docs/getting-started/concepts/page.mdx` — selection added to the conceptual model.
-  - `apps/website/app/docs/_nav.ts` — new entries; ordering: Pretable component → Surface → Selection → Keyboard → Clipboard → Custom rendering → Density helpers → API reference.
-- Verify: every public type / prop introduced or changed has a one-sentence purpose, exact type, and ≥1 usage snippet in `api-reference`. Existing MDX example pipeline still typechecks.
-- Each phase's PR should already have updated any docs it directly invalidated; this phase consolidates and adds the three new pages.
+- Three new MDX pages under `apps/website/content/docs/grid/`:
+  - `selection.mdx` — selection model overview, IDs-not-indices invariant, derived row state, three-state checkbox, controlled vs uncontrolled, click + drag, runnable example.
+  - `keyboard.mdx` — full keyboard contract, `tabBehavior` config, ARIA notes, focus model.
+  - `clipboard.mdx` — copy contract, TSV defaults, `formatForCopy` per column, `onCopy` override, `copyWithHeaders`, multi-range serialization, paste-deferred note.
+- `pretable-surface.mdx` is **trimmed** so it doesn't duplicate the new pages. Replace the verbose Selection / Keyboard / Copy / Click+Drag sections with brief summaries that link out. Keep the props table intact.
+- `api-reference.mdx` is updated with full type signatures for every public type added or changed in Phases 1-6: `PretableSelectionState`, `PretableCellRange`, `PretableCellAddress`, `PretableFocusState`, `PretableFocusDirection`, `PretableMoveFocusOptions`, `PretableSurfaceState`, `RowSelectionColumnConfig`, `RowSelectionTriState`, `CopyPayload`, `SerializeRangesArgs`, `PretableSurfaceMessages`, plus the new actions on `PretableGrid` (`setSelection`, `selectAll`, `clearSelection`, `addRange`, `extendRangeFromAnchor`, `toggleRowSelection`, `setSelectAllVisible`).
+- `_nav.ts` updated with the three new pages, ordered: Pretable component → PretableSurface → Selection → Keyboard → Clipboard → Custom rendering → Density helpers → API reference.
+- `index.mdx` (Grid overview): brief feature mention with links to the new pages.
+- `getting-started/concepts.mdx`: selection added to the conceptual model alongside sort and filter.
+- Build clean (`pnpm --filter @pretable/app-website build`); existing MDX example pipeline still typechecks; smoke test still passes.
+- One PR opened, CI green, user merges.
 
-**Open questions to resolve when detailing:**
+### Resolved open questions
 
-- Should the `selection` page demo embed the live hero grid component or a smaller standalone example? Smaller standalone keeps page-level state simple; the hero demo is the "big proof" already linked from `/`.
+- **Selection page demo**: smaller standalone example. The hero demo is linked from `/` already; readers exploring docs want a focused snippet, not the full hero. The example demonstrates: cell-range selection via click + drag, checkbox column, controlled-state round-trip via `useState` + `onSelectionChange`. Keep ≤ 50 lines so it's readable in one screen.
+- **Keyboard page demo**: not needed — the contract table is self-explanatory. A short standalone example showing `tabBehavior` would be nice; skip if it adds friction.
+- **Clipboard page demo**: a small snippet showing `formatForCopy` per column for a date column, plus `onCopy` for "JSON instead of TSV". No live demo needed.
+- **Trim depth in `pretable-surface.mdx`**: replace the long sections with a one-paragraph summary + link. Keep the props table — it's the canonical reference for the surface's props. The link-out replaces the inline detail.
+
+### Single-task structure
+
+Phase 8 is a doc-only PR; one implementer subagent handles the whole thing in a single dispatch. Tasks 1-6 below are the work items, but they ship as one commit (or one commit per file, whatever the implementer judges cleanest).
+
+#### Work items
+
+1. **Create `selection.mdx`** with frontmatter `title: Selection`, `description: ...`, `nav: Grid`, `order: 4`. Sections: Selection model, IDs-not-indices, click + drag, checkbox column, controlled/uncontrolled, three-state derivation, runnable example. Pull content from the spec's "Selection Model", "Click Contract", "Built-in Checkbox Column", "Controlled vs Uncontrolled" sections — adapt to docs voice.
+2. **Create `keyboard.mdx`** (frontmatter `order: 5`). Sections: Keyboard contract (full table), `tabBehavior` config, ARIA notes, single-tab-stop pattern, focus follow.
+3. **Create `clipboard.mdx`** (frontmatter `order: 6`). Sections: Default TSV, per-column `formatForCopy`, grid-level `onCopy` override, `copyWithHeaders`, multi-range serialization, copy failure / `aria-live` announcement, paste-deferred note.
+4. **Trim `pretable-surface.mdx`** — replace the long Selection / Keyboard / Click+Drag / Copy / Row-Selection / Live-region sections with brief summaries that say "see [Selection](/docs/grid/selection), [Keyboard](/docs/grid/keyboard), [Clipboard](/docs/grid/clipboard)". Keep the props table intact (with new props added in earlier phases).
+5. **Update `api-reference.mdx`** — add a new section "Selection types" (with all the new types and their full signatures), update the `PretableGrid` actions table to include the new selection/focus actions, and add a "Copy types" section.
+6. **Update `_nav.ts`** — add three new entries in the Grid section between PretableSurface and Custom rendering.
+7. **Update `index.mdx`** — add a brief mention of selection / keyboard / clipboard in the feature list.
+8. **Update `getting-started/concepts.mdx`** — add a paragraph on the selection model after the existing sort/filter content (look at the file first to see what already exists).
+9. **Bump existing pages' `order` frontmatter** if needed to leave room for selection/keyboard/clipboard at orders 4-6 between Surface (3) and Custom rendering (currently 4).
+
+After implementation: run `pnpm --filter @pretable/app-website build` to verify MDX compiles, `pnpm -w typecheck` / `test` / `lint` / `format` clean.
+
+**Commit message** (single commit recommended):
+
+> `docs(website): selection / keyboard / clipboard pages + surface trim + api ref update`
 
 ---
 
