@@ -16,6 +16,11 @@ export interface GridCoreColumn<TRow extends GridCoreRow = GridCoreRow> {
   filterable?: boolean;
   getValue?: (row: TRow) => unknown;
   formatForCopy?: (value: unknown, row: TRow) => string;
+  // new in sub-project C:
+  minWidthPx?: number;
+  maxWidthPx?: number;
+  resizable?: boolean;
+  reorderable?: boolean;
 }
 
 export interface GridCoreOptions<TRow extends GridCoreRow = GridCoreRow> {
@@ -108,6 +113,14 @@ export interface GridCoreStore<TRow extends GridCoreRow = GridCoreRow> {
   setViewport(viewport: GridCoreViewportState): void;
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
   applyTransaction(transaction: GridCoreTransaction<TRow>): void;
+
+  // column-layout actions (sub-project C):
+  setColumnWidth(columnId: string, width: number): void;
+  moveColumn(columnId: string, toIndex: number): void;
+  setColumnPinned(columnId: string, pinned: "left" | null): void;
+  autosizeColumn(columnId: string, options?: AutosizeOptions): void;
+  resetColumnLayout(): void;
+  mergeColumnsFromProps(nextColumns: GridCoreColumn<TRow>[]): void;
 }
 
 export type GridCoreFocusDirection = "up" | "down" | "left" | "right";
