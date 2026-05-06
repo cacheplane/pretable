@@ -599,8 +599,7 @@ export function createGridCore<TRow extends GridCoreRow>(
         return;
       }
       const column = options.columns[idx]!;
-      const nextPinnedValue =
-        pinned === "left" ? ("left" as const) : undefined;
+      const nextPinnedValue = pinned === "left" ? ("left" as const) : undefined;
       if (column.pinned === nextPinnedValue) {
         return;
       }

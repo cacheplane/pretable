@@ -234,8 +234,12 @@ describe("resetColumnLayout", () => {
     grid.setColumnPinned("c", "left");
     grid.resetColumnLayout();
     expect(grid.options.columns.map((col) => col.id)).toEqual(["a", "b", "c"]);
-    expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(100);
-    expect(grid.options.columns.find((col) => col.id === "c")?.pinned).toBeUndefined();
+    expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(
+      100,
+    );
+    expect(
+      grid.options.columns.find((col) => col.id === "c")?.pinned,
+    ).toBeUndefined();
   });
 });
 
@@ -249,7 +253,9 @@ describe("mergeColumnsFromProps", () => {
       { id: "c", header: "C", widthPx: 100 },
       { id: "d", header: "D", widthPx: 100 },
     ]);
-    expect(grid.options.columns.find((col) => col.id === "b")?.widthPx).toBe(250);
+    expect(grid.options.columns.find((col) => col.id === "b")?.widthPx).toBe(
+      250,
+    );
   });
 
   test("adds new columns at their prop position with prop widthPx", () => {
@@ -290,6 +296,8 @@ describe("mergeColumnsFromProps", () => {
     grid.setColumnWidth("a", 250);
     grid.resetColumnLayout();
     expect(grid.options.columns.map((col) => col.id)).toEqual(["a", "x"]);
-    expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(100);
+    expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(
+      100,
+    );
   });
 });
