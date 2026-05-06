@@ -5,21 +5,28 @@
   "files": [
     "dist"
   ],
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "dependencies": {
     "@cacheplane/json-stream": "workspace:*"
   },
   "scripts": {
-    "build": "pnpm --filter @cacheplane/json-stream build && tsc -b",
+    "build": "pnpm --filter @cacheplane/json-stream build && tsup",
     "lint": "eslint src --ext .ts",
+    "lint:packaging": "publint --strict && attw --pack",
     "test": "pnpm --filter @cacheplane/json-stream build && vitest run --passWithNoTests",
     "typecheck": "pnpm --filter @cacheplane/json-stream build && tsc -b --pretty false"
   }

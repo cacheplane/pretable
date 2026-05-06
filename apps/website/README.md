@@ -115,10 +115,11 @@ Two jobs in `ci.yml` handle this:
 
 - `deploy-prod` — runs on push to `main`, gated on `test`, `typecheck`, `lint`, `format`, `build` passing. Calls `vercel pull --environment=production` → `vercel build --prod` → `vercel deploy --prebuilt --prod`, waits for the public alias `pretable.vercel.app` to atomically swap, then runs the Playwright smoke against the live origin. Traces are uploaded as an artifact on failure.
 - `deploy-preview` — runs on `pull_request` events. Calls `vercel pull --environment=preview` → `vercel build` → `vercel deploy --prebuilt`, then posts (or updates) a sticky comment on the PR with the preview URL. Preview URLs (`*-cacheplane.vercel.app`) are gated by Vercel deployment protection — load them while signed into the `cacheplane` Vercel team.
+- `smoke-preview` — verifies the preview deployment after `deploy-preview`. If `VERCEL_AUTOMATION_BYPASS_SECRET` is configured, it sends Vercel's protection-bypass headers through Playwright and runs the Chromium smoke suite against the protected preview. Without that optional secret, it verifies protected-preview readiness with `vercel curl` and records the browser-smoke skip in the job summary.
 
 Live origins:
 
 - Production alias: <https://pretable.vercel.app>
 - Custom domain: <https://pretable.ai> (added to the project; DNS via Vercel nameservers)
 
-Required GitHub secrets (managed at the repo level): `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`.
+Required GitHub secrets (managed at the repo level): `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`. Optional for browser smoke against protected previews: `VERCEL_AUTOMATION_BYPASS_SECRET`.

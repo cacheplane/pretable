@@ -11,6 +11,7 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "pnpm -r lint",
+    "lint:packaging": "pnpm --filter @pretable/core lint:packaging && pnpm --filter @pretable/react lint:packaging && pnpm --filter @cacheplane/json-stream lint:packaging && pnpm --filter @pretable/stream-adapter lint:packaging && pnpm --filter @pretable/ui lint:packaging",
     "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs && pnpm -r --filter './packages/*' test && pnpm -r --workspace-concurrency=1 --filter './apps/*' test",
     "typecheck": "pnpm -r --filter './packages/*' typecheck && pnpm -r --workspace-concurrency=1 --filter './apps/*' typecheck"
   },
