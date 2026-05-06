@@ -377,10 +377,7 @@ function headerContentPropsEqual(
   );
 }
 
-const MemoizedHeaderContent = memo(
-  HeaderContentImpl,
-  headerContentPropsEqual,
-);
+const MemoizedHeaderContent = memo(HeaderContentImpl, headerContentPropsEqual);
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,

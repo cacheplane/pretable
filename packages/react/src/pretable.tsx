@@ -1,7 +1,4 @@
-import {
-  type PretableGridOptions,
-  type PretableRow,
-} from "@pretable/core";
+import { type PretableGridOptions, type PretableRow } from "@pretable/core";
 
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 import type { PretableColumn } from "./types";

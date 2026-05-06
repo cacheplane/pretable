@@ -3781,7 +3781,12 @@ describe("column reorder", () => {
 describe("cell renderers", () => {
   it("column.format runs on every cell; formattedValue is the rendered text", () => {
     const cols = [
-      { id: "a", header: "A", widthPx: 100, format: ({ value }: { value: unknown }) => `F:${String(value)}` },
+      {
+        id: "a",
+        header: "A",
+        widthPx: 100,
+        format: ({ value }: { value: unknown }) => `F:${String(value)}`,
+      },
       { id: "b", header: "B", widthPx: 100 },
       { id: "c", header: "C", widthPx: 100 },
     ];
@@ -4164,9 +4169,13 @@ describe("cell renderers", () => {
 
   it("header memo busts when sortDirection changes", () => {
     const renderHeaderFn = vi.fn(
-      ({ label, sortDirection }: { label: string; sortDirection: "asc" | "desc" | null }) => (
-        <em data-testid={`hdr-${sortDirection ?? "none"}`}>{label}</em>
-      ),
+      ({
+        label,
+        sortDirection,
+      }: {
+        label: string;
+        sortDirection: "asc" | "desc" | null;
+      }) => <em data-testid={`hdr-${sortDirection ?? "none"}`}>{label}</em>,
     );
     const cols = [
       { id: "a", header: "A", widthPx: 100, renderHeader: renderHeaderFn },

@@ -5,14 +5,16 @@ import type {
   PretableRow,
 } from "@pretable/core";
 
-export interface PretableColumn<TRow extends PretableRow = PretableRow>
-  extends PretableCoreColumn<TRow> {
+export interface PretableColumn<
+  TRow extends PretableRow = PretableRow,
+> extends PretableCoreColumn<TRow> {
   render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
   renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
 }
 
-export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow>
-  extends PretableFormatInput<TRow> {
+export interface PretableCellRenderInput<
+  TRow extends PretableRow = PretableRow,
+> extends PretableFormatInput<TRow> {
   formattedValue: string;
   rowId: string;
   rowIndex: number;

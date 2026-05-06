@@ -696,6 +696,7 @@ Per the standing workflow preference, the user merges (auto-merge fires once CI 
 #### Task 1 — Restructure `PretableColumn` + new input types
 
 **Files:**
+
 - `packages/core/src/types.ts` — split out `PretableCoreColumn` from `PretableColumn`.
 - `packages/react/src/types.ts` (CREATE if it doesn't exist) — add React-only types.
 - `packages/react/src/index.ts` — export new types.
@@ -703,11 +704,16 @@ Per the standing workflow preference, the user merges (auto-merge fires once CI 
 In `packages/core/src/types.ts`, find the existing `PretableColumn = GridCoreColumn` alias. Replace with:
 
 ```ts
-import type { GridCoreColumn, GridCoreFormatInput } from "@pretable-internal/grid-core";
+import type {
+  GridCoreColumn,
+  GridCoreFormatInput,
+} from "@pretable-internal/grid-core";
 
 // Re-export the engine-level column type (no React).
-export type PretableCoreColumn<TRow extends Record<string, unknown>> = GridCoreColumn<TRow>;
-export type PretableFormatInput<TRow extends Record<string, unknown>> = GridCoreFormatInput<TRow>;
+export type PretableCoreColumn<TRow extends Record<string, unknown>> =
+  GridCoreColumn<TRow>;
+export type PretableFormatInput<TRow extends Record<string, unknown>> =
+  GridCoreFormatInput<TRow>;
 ```
 
 `PretableColumn` moves to the React package. In `packages/react/src/types.ts` (CREATE):
@@ -720,14 +726,16 @@ import type {
   PretableRow,
 } from "@pretable/core";
 
-export interface PretableColumn<TRow extends PretableRow = PretableRow>
-  extends PretableCoreColumn<TRow> {
+export interface PretableColumn<
+  TRow extends PretableRow = PretableRow,
+> extends PretableCoreColumn<TRow> {
   render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
   renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
 }
 
-export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow>
-  extends PretableFormatInput<TRow> {
+export interface PretableCellRenderInput<
+  TRow extends PretableRow = PretableRow,
+> extends PretableFormatInput<TRow> {
   formattedValue: string;
   rowId: string;
   rowIndex: number;
@@ -735,7 +743,9 @@ export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow>
   isSelected: boolean;
 }
 
-export interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRow> {
+export interface PretableHeaderRenderInput<
+  TRow extends PretableRow = PretableRow,
+> {
   column: PretableColumn<TRow>;
   label: string;
   sortDirection: "asc" | "desc" | null;
@@ -757,6 +767,7 @@ In `packages/core/src/index.ts`, replace the `PretableColumn` export with `Preta
 #### Task 2 — Wire format → render pipeline
 
 **Files:**
+
 - `packages/react/src/pretable-surface.tsx`
 
 Around line 1480 (the body cell render path), the current code reads:
@@ -788,13 +799,13 @@ const cellRenderInput: PretableCellRenderInput<TRow> = {
 };
 
 // In the JSX:
-{column.render ? (
-  column.render(cellRenderInput)
-) : renderBodyCell ? (
-  renderBodyCell(cellRenderInput)
-) : (
-  formattedValue
-)}
+{
+  column.render
+    ? column.render(cellRenderInput)
+    : renderBodyCell
+      ? renderBodyCell(cellRenderInput)
+      : formattedValue;
+}
 ```
 
 Note `renderBodyCell`'s input type changes from the old `PretableSurfaceBodyCellRenderInput` to the new `PretableCellRenderInput`. They're nearly the same — just renamed and `formattedValue` added.
@@ -802,11 +813,14 @@ Note `renderBodyCell`'s input type changes from the old `PretableSurfaceBodyCell
 For headers, around line 1106:
 
 ```tsx
-{column.renderHeader
-  ? column.renderHeader({ column, label, sortDirection, isSorted })
-  : renderHeaderCell
-    ? renderHeaderCell({ column, label, sortDirection })
-    : <DefaultHeaderContent label={label} sortDirection={sortDirection} />
+{
+  column.renderHeader ? (
+    column.renderHeader({ column, label, sortDirection, isSorted })
+  ) : renderHeaderCell ? (
+    renderHeaderCell({ column, label, sortDirection })
+  ) : (
+    <DefaultHeaderContent label={label} sortDirection={sortDirection} />
+  );
 }
 ```
 
@@ -819,6 +833,7 @@ For the synthetic row-select column (`column.id === ROW_SELECT_COLUMN_ID`), skip
 #### Task 3 — Memoized cell + header components
 
 **Files:**
+
 - `packages/react/src/pretable-surface.tsx`
 
 Extract the body cell rendering into a `<MemoizedCell />` component:
@@ -887,12 +902,12 @@ Do the same for `<MemoizedHeader />`. Header `areEqual`:
 
 ```ts
 prev.columnId === next.columnId &&
-prev.label === next.label &&
-prev.sortDirection === next.sortDirection &&
-prev.width === next.width &&
-prev.isSorted === next.isSorted &&
-prev.isSortable === next.isSortable &&
-prev.renderHeaderRef === next.renderHeaderRef
+  prev.label === next.label &&
+  prev.sortDirection === next.sortDirection &&
+  prev.width === next.width &&
+  prev.isSorted === next.isSorted &&
+  prev.isSortable === next.isSortable &&
+  prev.renderHeaderRef === next.renderHeaderRef;
 ```
 
 **Commit:** `feat(react): React.memo on cell + header with custom areEqual`.
@@ -900,6 +915,7 @@ prev.renderHeaderRef === next.renderHeaderRef
 #### Task 4 — jsdom tests for the pipeline + memoization
 
 **Files:**
+
 - `packages/react/src/__tests__/pretable-surface.test.tsx` — extend with new `describe("cell renderers", ...)` block.
 
 Tests:
@@ -923,12 +939,14 @@ Test count target: 192 → 205+.
 #### Task 5 — Doc updates
 
 **Files:**
+
 - Create: `apps/website/content/docs/grid/cell-renderers.mdx`
 - Modify: `apps/website/content/docs/grid/api-reference.mdx` (add new types)
 - Modify: `apps/website/app/docs/_nav.ts` (add nav entry)
 - Modify: `apps/website/content/docs/grid/custom-rendering.mdx` (point at per-column renderers as canonical)
 
 `cell-renderers.mdx` covers:
+
 - Pipeline overview (value → format → render → memo)
 - `format` examples (date ISO, number with units, status enum → label)
 - `render` examples (badge component, status with color)
