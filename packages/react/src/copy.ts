@@ -1,11 +1,11 @@
 import type {
   PretableCellRange,
-  PretableColumn,
   PretableRow,
   PretableVisibleRow,
 } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
+import type { PretableColumn } from "./types";
 
 export interface SerializeRangesArgs<TRow extends PretableRow> {
   ranges: readonly PretableCellRange[];

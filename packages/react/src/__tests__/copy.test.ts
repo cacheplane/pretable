@@ -6,11 +6,8 @@ import {
   type SerializeRangesArgs,
 } from "../copy";
 import { ROW_SELECT_COLUMN_ID } from "../pretable-surface";
-import type {
-  PretableCellRange,
-  PretableColumn,
-  PretableVisibleRow,
-} from "@pretable/core";
+import type { PretableCellRange, PretableVisibleRow } from "@pretable/core";
+import type { PretableColumn } from "../types";
 
 type Row = { id: string; a: string; b: string; c: string };
 

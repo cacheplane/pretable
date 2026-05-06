@@ -1,7 +1,6 @@
 import {
   type AutosizeOptions,
   createGrid,
-  type PretableColumn,
   type PretableFocusState,
   type PretableGrid,
   type PretableGridOptions,
@@ -10,6 +9,7 @@ import {
   type PretableSelectionState,
   type PretableSortState,
 } from "@pretable/core";
+import type { PretableColumn } from "./types";
 import {
   createDomRenderSnapshot,
   type PlannedColumn,

@@ -45,9 +45,17 @@ export type { DensityHeights } from "./density";
 
 // Re-exports from @pretable/core
 export type {
-  PretableColumn,
+  PretableCoreColumn,
   PretableGrid,
   PretableGridOptions,
   PretableGridSnapshot,
   PretableRow,
 } from "@pretable/core";
+
+// React-extended column type + render-input shapes
+export type {
+  PretableCellRenderInput,
+  PretableColumn,
+  PretableFormatInput,
+  PretableHeaderRenderInput,
+} from "./types";

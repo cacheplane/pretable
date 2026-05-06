@@ -15,7 +15,6 @@ import type {
   AutosizeOptions,
   PretableCellAddress,
   PretableCellRange,
-  PretableColumn,
   PretableFocusState,
   PretableGrid,
   PretableGridOptions,
@@ -23,6 +22,11 @@ import type {
   PretableRow,
   PretableSelectionState,
 } from "@pretable/core";
+import type {
+  PretableCellRenderInput,
+  PretableColumn,
+  PretableHeaderRenderInput,
+} from "./types";
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
 

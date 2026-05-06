@@ -1,8 +1,5 @@
-import type {
-  PretableColumn,
-  PretableRow,
-  PretableSortDirection,
-} from "@pretable/core";
+import type { PretableRow, PretableSortDirection } from "@pretable/core";
+import type { PretableColumn } from "./types";
 
 export const DEFAULT_ROW_HEIGHT = 44;
 export const DEFAULT_WRAPPED_COLUMN_WIDTH = 220;

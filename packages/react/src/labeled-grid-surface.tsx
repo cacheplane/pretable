@@ -1,12 +1,9 @@
-import type {
-  PretableColumn,
-  PretableGridOptions,
-  PretableRow,
-} from "@pretable/core";
+import type { PretableGridOptions, PretableRow } from "@pretable/core";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./use-pretable";
 
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
+import type { PretableColumn } from "./types";
 
 export interface LabeledGridSurfaceFormatValueInput<
   TRow extends PretableRow = PretableRow,

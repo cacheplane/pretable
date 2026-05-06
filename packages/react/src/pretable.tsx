@@ -1,10 +1,10 @@
 import {
-  type PretableColumn,
   type PretableGridOptions,
   type PretableRow,
 } from "@pretable/core";
 
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
+import type { PretableColumn } from "./types";
 
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
