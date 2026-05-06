@@ -61,6 +61,8 @@ export interface PretableSurfaceState {
   selection?: PretableSelectionState;
   sort?: PretableSortState | null;
   columnWidths?: Record<string, number>;
+  columnOrder?: readonly string[];
+  columnPinned?: Record<string, "left" | null>;
 }
 
 export interface UsePretableModelOptions<
@@ -147,6 +149,38 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
         const next = widths[column.id];
         if (next !== undefined && next !== column.widthPx) {
           grid.setColumnWidth(column.id, next);
+        }
+      }
+    }
+
+    if (state.columnOrder !== undefined) {
+      // Apply order by repositioning each column to its position in the
+      // requested order. Missing ids are appended at the end (engine
+      // contract).
+      const targetOrder = state.columnOrder;
+      const currentIds = grid.options.columns.map((c) => c.id);
+      const targetIds = [
+        ...targetOrder.filter((id) => currentIds.includes(id)),
+        ...currentIds.filter((id) => !targetOrder.includes(id)),
+      ];
+      for (let i = 0; i < targetIds.length; i += 1) {
+        const id = targetIds[i]!;
+        const currentIdx = grid.options.columns.findIndex((c) => c.id === id);
+        if (currentIdx !== i && id !== "__pretable_row_select__") {
+          grid.moveColumn(id, i);
+        }
+      }
+    }
+
+    if (state.columnPinned !== undefined) {
+      const pinned = state.columnPinned;
+      for (const [id, value] of Object.entries(pinned)) {
+        const column = grid.options.columns.find((c) => c.id === id);
+        if (!column) continue;
+        const targetPinned = value === "left" ? "left" : null;
+        const currentPinned = column.pinned ?? null;
+        if (currentPinned !== targetPinned) {
+          grid.setColumnPinned(id, targetPinned);
         }
       }
     }
