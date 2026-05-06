@@ -1,0 +1,81 @@
+---
+title: Keyboard
+description: "Full keyboard contract — 2D arrow nav, shift-extend, cmd-jump, Tab wrap, Cmd+A, Esc."
+nav: Grid
+order: 5
+---
+
+`<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. The grid is a single tab stop in the page tab order — once focus enters, every key below works without additional wiring. `Cmd/Ctrl` is treated as either platform's primary modifier.
+
+## Full keyboard contract
+
+| Key                               | Action                                                          |
+| --------------------------------- | --------------------------------------------------------------- |
+| `↑ / ↓ / ← / →`                   | Move focus by one cell. Collapses selection.                    |
+| `Shift + Arrow`                   | Extend the active range by one cell.                            |
+| `Cmd/Ctrl + Arrow`                | Jump focus to grid edge in arrow direction.                     |
+| `Cmd/Ctrl + Shift + Arrow`        | Extend range to grid edge.                                      |
+| `Home` / `End`                    | Move focus to first / last column in current row.               |
+| `Cmd/Ctrl + Home` / `End`         | Move focus to first / last cell in grid.                        |
+| `PageUp` / `PageDown`             | Move focus by viewport height.                                  |
+| `Shift + PageUp/Down`             | Extend range by viewport height.                                |
+| `Tab` (default `"wrap-rows"`)     | Move right, wrap to next row at end.                            |
+| `Shift + Tab`                     | Move left, wrap to prev row at start.                           |
+| `Tab` (when `tabBehavior="exit"`) | Browser default — focus leaves the grid.                        |
+| `Cmd/Ctrl + A`                    | Select all cells.                                               |
+| `Cmd/Ctrl + C`                    | Copy current selection (see [Clipboard](/docs/grid/clipboard)). |
+| `Esc`                             | Collapse selection to focused cell.                             |
+| `Enter` / `Space`                 | Toggle full-row selection on focused row.                       |
+
+## `tabBehavior` config
+
+`tabBehavior` controls what `Tab` and `Shift+Tab` do inside the grid:
+
+- **`"wrap-rows"` (default)** — Tab moves focus right; at the last column it wraps to the first column of the next row. Shift+Tab is the reverse. Tab never leaves the grid via this path; use the browser's normal focus order from outside.
+- **`"exit"`** — strict ARIA grid behavior. Tab and Shift+Tab fall through to the browser's default focus traversal, leaving the grid entirely. Use this when the grid sits inside a form and Tab should advance to the next field.
+
+```tsx
+<PretableSurface tabBehavior="exit" /* ... */ />
+```
+
+Both behaviors preserve the single-tab-stop model — once Tab leaves, the grid keeps its last focused cell. Coming back via Shift+Tab restores focus to that cell.
+
+## Single tab stop / focus model
+
+`<PretableSurface>` follows the [ARIA grid roving tabindex pattern](https://www.w3.org/WAI/ARIA/apg/patterns/grid/). At any moment exactly one cell has `tabIndex={0}`; every other cell has `tabIndex={-1}`. The 0-tabindex cell is the focused cell from `snapshot.focus`.
+
+When the focused address changes (via keyboard, click, or programmatic `grid.setFocus`), a `useLayoutEffect` calls `.focus()` on the new cell's DOM node, so the browser's focus ring follows the engine state without flicker. Scrolling adjusts to keep the focused cell on-screen if needed.
+
+This means consumers don't have to manage `tabIndex` themselves when using `<PretableSurface>`. If you're building with `usePretableModel` and rendering your own JSX, mirror the pattern:
+
+```tsx
+const isFocused =
+  snapshot.focus.rowId === row.id && snapshot.focus.columnId === col.id;
+
+<div data-pretable-cell="" tabIndex={isFocused ? 0 : -1} /* ... */>
+  …
+</div>;
+```
+
+## Customizing key behavior
+
+Pretable doesn't expose individual key handlers — there's no `onArrowDown` or `onCopyKey` prop. If you need to intercept (for example, to add Vim-style `j`/`k` bindings, or to swallow `Cmd+A` in a specific mode), wrap the surface in your own keydown listener and call `event.preventDefault()` on the keys you handle. Most consumers don't need this.
+
+For programmatic moves from outside the grid (a button, a command palette, telemetry replay), call the model directly:
+
+```ts
+grid.setFocus({ rowId, columnId });
+grid.moveFocus("down");
+grid.moveFocus("right", { extend: true }); // shift+right equivalent
+grid.moveFocus("down", { jumpToEdge: true }); // cmd+down equivalent
+grid.selectAll();
+grid.clearSelection();
+```
+
+See [API reference](/docs/grid/api-reference) for the full method list.
+
+## See also
+
+- [Selection](/docs/grid/selection) — the cell-range model the keyboard mutates.
+- [Clipboard](/docs/grid/clipboard) — `Cmd/Ctrl + C` semantics and overrides.
+- [API reference](/docs/grid/api-reference) — `moveFocus`, `setFocus`, `selectAll`, `clearSelection` signatures.

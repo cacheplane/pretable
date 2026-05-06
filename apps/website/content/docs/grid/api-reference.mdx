@@ -2,7 +2,7 @@
 title: Grid API reference
 description: "Type signatures for the public exports of @pretable/react."
 nav: Grid
-order: 6
+order: 9
 ---
 
 Type signatures for the public API of `@pretable/react`. Hand-authored from the source at `packages/core/src/types.ts` and `packages/react-surface/src/use-pretable.ts`. Pre-1.0 — names may rename or remove in patch releases.
@@ -29,6 +29,107 @@ type PretableRow = Record<string, unknown>;
 ```
 
 Your row type extends this. The engine treats rows as opaque records; only `getRowId` and `getValue` access fields.
+
+## Selection types
+
+The cell-range selection model. See [Selection](/docs/grid/selection) for the conceptual overview.
+
+```ts
+interface PretableCellAddress {
+  rowId: string;
+  columnId: string;
+}
+
+interface PretableCellRange {
+  startRowId: string;
+  endRowId: string;
+  startColumnId: string;
+  endColumnId: string;
+}
+
+interface PretableSelectionState {
+  ranges: PretableCellRange[];
+  anchor: PretableCellAddress | null;
+}
+
+interface PretableFocusState {
+  rowId: string | null;
+  columnId: string | null;
+}
+
+type PretableFocusDirection = "up" | "down" | "left" | "right";
+
+interface PretableMoveFocusOptions {
+  extend?: boolean; // shift+arrow
+  jumpToEdge?: boolean; // cmd/ctrl+arrow
+  byPage?: boolean; // page up/down
+}
+
+type RowSelectionTriState = "selected" | "indeterminate";
+```
+
+- `PretableCellAddress` — a single cell, identified by stable row + column id.
+- `PretableCellRange` — a rectangular range over ids; survives sort/filter/reorder.
+- `PretableSelectionState` — the engine's full selection slice (ranges plus the anchor for shift-extends).
+- `PretableFocusState` — the focused cell address; nullable on each axis when focus has not landed yet.
+- `PretableFocusDirection` — direction argument for `grid.moveFocus`.
+- `PretableMoveFocusOptions` — modifier flags that turn `moveFocus` into shift-extend, edge-jump, or page-step.
+- `RowSelectionTriState` — derived per-row state for the checkbox column header (full = `"selected"`, mixed = `"indeterminate"`; absent means unchecked).
+
+## Surface configuration types
+
+```ts
+interface PretableSurfaceState {
+  sort?: PretableSortState;
+  filters?: Record<string, string>;
+  selection?: PretableSelectionState;
+  focus?: PretableFocusState;
+}
+
+interface RowSelectionColumnConfig {
+  enabled: true;
+  position?: "left"; // v1: left only
+  pinned?: boolean; // default true
+  headerCheckbox?: boolean; // default true
+  width?: number; // default 36
+}
+
+interface PretableSurfaceMessages {
+  selectAllAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+    isAll: boolean;
+  }) => string;
+  copyAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+  }) => string;
+  copyFailedAnnouncement?: () => string;
+}
+```
+
+- `PretableSurfaceState` — the slice-based controlled-state shape passed via the surface's `state` prop. Each slice is independently controlled.
+- `RowSelectionColumnConfig` — opts for the built-in checkbox column. Pass to `<PretableSurface>`'s `rowSelectionColumn` prop.
+- `PretableSurfaceMessages` — overrides for the polite `aria-live` announcements (select-all and copy success/failure).
+
+## Copy types
+
+```ts
+interface CopyPayload {
+  text: string;
+  html?: string;
+}
+
+interface SerializeRangesArgs<TRow> {
+  ranges: readonly PretableCellRange[];
+  visibleRows: readonly PretableVisibleRow<TRow>[];
+  columns: readonly PretableColumn<TRow>[];
+  copyWithHeaders?: boolean;
+}
+```
+
+- `CopyPayload` — the return shape from `onCopy`. When `html` is present, the surface writes both `text/plain` and `text/html` to the clipboard.
+- `SerializeRangesArgs<TRow>` — argument shape for `serializeRangesAsTsv` and any custom serializer.
 
 ## `PretableGrid<TRow>` — model methods
 

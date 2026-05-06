@@ -93,9 +93,16 @@ The engine has more capabilities than this section covers:
 
 These ship as part of `@pretable/react` today; full doc coverage lands in subsequent releases.
 
+## Selection, keyboard, clipboard
+
+The engine ships full cell-range selection (Excel/Sheets semantics with shift-extend, drag, Cmd/Ctrl+click), the ARIA grid keyboard pattern, and `Cmd/Ctrl+C` copy with TSV defaults — all wired by `<Pretable>` and `<PretableSurface>` out of the box. See [Selection](/docs/grid/selection), [Keyboard](/docs/grid/keyboard), and [Clipboard](/docs/grid/clipboard).
+
 ## Where to go next
 
 - [\<Pretable\> component](/docs/grid/pretable-component) — drop-in recipe with the 3-prop API.
+- [Selection](/docs/grid/selection) — cell-range model and three-state checkbox column.
+- [Keyboard](/docs/grid/keyboard) — full keyboard contract.
+- [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
 - [Custom rendering](/docs/grid/custom-rendering) — `usePretableModel` walkthrough with code.
 - [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
 - [API reference](/docs/grid/api-reference) — model methods + types.
