@@ -83,8 +83,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' build
-      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' lint:packaging
+      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' --filter '@pretable/stream-adapter' --filter '@pretable/ui' build
+      - run: pnpm lint:packaging
 
   deploy-prod:
     name: Deploy → Vercel (production)
@@ -197,6 +197,9 @@ jobs:
     needs: deploy-preview
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    env:
+      PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview_url }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v5
@@ -205,23 +208,55 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Choose preview verification mode
+        id: preview-access
+        run: |
+          if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            echo "mode=browser" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=vercel-curl" >> "$GITHUB_OUTPUT"
+            echo "No VERCEL_AUTOMATION_BYPASS_SECRET repository secret is configured; verifying protected preview readiness with vercel curl instead of browser smoke." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Install Playwright browser
+        if: steps.preview-access.outputs.mode == 'browser'
         run: pnpm exec playwright install --with-deps chromium
       - name: Wait for preview to respond
-        env:
-          PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview_url }}
+        if: steps.preview-access.outputs.mode == 'browser'
         run: |
           for i in 1 2 3 4 5 6; do
-            code=$(curl -sS -o /dev/null -w "%{http_code}" "$PREVIEW_URL" || true)
+            code=$(curl -sS -o /dev/null -w "%{http_code}" \
+              -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+              -H "x-vercel-set-bypass-cookie: true" \
+              "$PREVIEW_URL" || true)
             echo "Attempt $i: HTTP $code"
             if [ "$code" = "200" ]; then exit 0; fi
             sleep 5
           done
           echo "Preview did not return 200"
           exit 1
+      - name: Verify protected preview readiness with Vercel CLI
+        if: steps.preview-access.outputs.mode == 'vercel-curl'
+        run: |
+          for i in 1 2 3 4 5 6; do
+            code=$(npx --yes vercel@latest curl / \
+              --deployment "$PREVIEW_URL" \
+              --token=${{ secrets.VERCEL_TOKEN }} \
+              --yes \
+              -- \
+              --silent \
+              --show-error \
+              --output /dev/null \
+              --write-out "%{http_code}" || true)
+            echo "Attempt $i: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 5
+          done
+          echo "Protected preview did not return 200 through vercel curl"
+          exit 1
       - name: Smoke test preview with Playwright
+        if: steps.preview-access.outputs.mode == 'browser'
         env:
-          BASE_URL: ${{ needs.deploy-preview.outputs.preview_url }}
+          BASE_URL: ${{ env.PREVIEW_URL }}
         run: pnpm --filter @pretable/app-website exec playwright test --project=chromium
       - name: Upload Playwright traces on failure
         if: failure()

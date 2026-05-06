@@ -25,9 +25,11 @@ test("Copy as Markdown button is visible", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("Cmd+K opens search palette and focuses input", async ({ page }) => {
-  await page.goto("/docs", { waitUntil: "domcontentloaded" });
-  await page.keyboard.press("Meta+k");
+test("keyboard shortcut opens search palette and focuses input", async ({
+  page,
+}) => {
+  await page.goto("/docs");
+  await page.keyboard.press("Control+K");
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("combobox")).toBeFocused();
 });
