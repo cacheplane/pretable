@@ -14,13 +14,19 @@ export interface GridCoreColumn<TRow extends GridCoreRow = GridCoreRow> {
   pinned?: "left";
   sortable?: boolean;
   filterable?: boolean;
-  getValue?: (row: TRow) => unknown;
-  formatForCopy?: (value: unknown, row: TRow) => string;
+  value?: (row: TRow) => unknown;
+  format?: (input: GridCoreFormatInput<TRow>) => string;
   // new in sub-project C:
   minWidthPx?: number;
   maxWidthPx?: number;
   resizable?: boolean;
   reorderable?: boolean;
+}
+
+export interface GridCoreFormatInput<TRow extends GridCoreRow = GridCoreRow> {
+  value: unknown;
+  row: TRow;
+  column: GridCoreColumn<TRow>;
 }
 
 export interface GridCoreOptions<TRow extends GridCoreRow = GridCoreRow> {

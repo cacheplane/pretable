@@ -182,7 +182,7 @@ function readCellValue<TRow extends GridCoreRow>(
   row: TRow,
   column: GridCoreColumn<TRow>,
 ): unknown {
-  return column.getValue ? column.getValue(row) : row[column.id];
+  return column.value ? column.value(row) : row[column.id];
 }
 
 function getColumnWidth<TRow extends GridCoreRow>(

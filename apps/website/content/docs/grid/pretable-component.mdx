@@ -18,9 +18,9 @@ interface Person extends Record<string, unknown> {
 }
 
 const columns: PretableColumn<Person>[] = [
-  { id: "name", header: "Name", getValue: (r) => r.name },
-  { id: "role", header: "Role", getValue: (r) => r.role },
-  { id: "city", header: "City", getValue: (r) => r.city },
+  { id: "name", header: "Name", value: (r) => r.name },
+  { id: "role", header: "Role", value: (r) => r.role },
+  { id: "city", header: "City", value: (r) => r.city },
 ];
 
 const rows: Person[] = [

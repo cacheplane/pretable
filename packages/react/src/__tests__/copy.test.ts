@@ -120,12 +120,12 @@ describe("serializeRangesAsTsv", () => {
     expect(out).toEqual({ text: "A\tB\n\na1\tb1\na2\tb2" });
   });
 
-  it("formatForCopy on a column overrides default coercion", () => {
+  it("format on a column overrides default coercion", () => {
     const cols: PretableColumn<Row>[] = [
       {
         id: "a",
         header: "A",
-        formatForCopy: (value) => `[${String(value)}]`,
+        format: ({ value }) => `[${String(value)}]`,
       },
       { id: "b", header: "B" },
     ];

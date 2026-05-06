@@ -50,7 +50,7 @@ const columns = [
     id: "tags",
     header: "Tags",
     widthPx: 200,
-    getValue: (row: DemoRow) => row.tags.join(" / "),
+    value: (row: DemoRow) => row.tags.join(" / "),
   },
   { id: "message", header: "Message", wrap: true, widthPx: 320 },
 ];
@@ -2615,14 +2615,14 @@ describe("PretableSurface copy", () => {
     expect(copyToClipboard).not.toHaveBeenCalled();
   });
 
-  it("formatForCopy on a column overrides default coercion in the body", () => {
+  it("format on a column overrides default coercion in the body", () => {
     const copyToClipboard = vi.fn();
     const customColumns = [
       {
         id: "a",
         header: "A",
         widthPx: 100,
-        formatForCopy: (value: unknown) => `FORMATTED:${String(value)}`,
+        format: ({ value }: { value: unknown }) => `FORMATTED:${String(value)}`,
       },
       { id: "b", header: "B", widthPx: 100 },
       { id: "c", header: "C", widthPx: 100 },

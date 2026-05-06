@@ -82,7 +82,7 @@ export interface AutosizeColumnDef<
   header?: string;
   widthPx?: number;
   wrap?: boolean;
-  getValue?: (row: TRow) => unknown;
+  value?: (row: TRow) => unknown;
 }
 
 export interface AutosizeOptions {

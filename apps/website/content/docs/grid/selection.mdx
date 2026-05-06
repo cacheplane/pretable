@@ -133,9 +133,9 @@ interface Row extends Record<string, unknown> {
 }
 
 const columns: PretableColumn<Row>[] = [
-  { id: "name", header: "Name", widthPx: 200, getValue: (r) => r.name },
-  { id: "city", header: "City", widthPx: 160, getValue: (r) => r.city },
-  { id: "status", header: "Status", widthPx: 100, getValue: (r) => r.status },
+  { id: "name", header: "Name", widthPx: 200, value: (r) => r.name },
+  { id: "city", header: "City", widthPx: 160, value: (r) => r.city },
+  { id: "status", header: "Status", widthPx: 100, value: (r) => r.status },
 ];
 
 export function SelectionDemo({ rows }: { rows: Row[] }) {

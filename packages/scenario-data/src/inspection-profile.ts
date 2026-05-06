@@ -33,7 +33,7 @@ export interface InspectionColumn {
   pinned?: "left";
   widthPx: number;
   wrap?: boolean;
-  getValue?: (row: InspectionRow) => string;
+  value?: (row: InspectionRow) => string;
 }
 
 export interface InspectionDataset {
@@ -53,7 +53,7 @@ export const inspectionColumns: readonly InspectionColumn[] = [
     id: "tags",
     header: "Tags",
     widthPx: 200,
-    getValue: (row) => row.tags.join(", "),
+    value: (row) => row.tags.join(", "),
   },
   { id: "message", header: "Message", wrap: true, widthPx: 480 },
 ];

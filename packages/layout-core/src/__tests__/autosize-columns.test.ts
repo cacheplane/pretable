@@ -92,13 +92,13 @@ describe("autosizeColumns", () => {
     expect(width).toBeLessThanOrEqual(400);
   });
 
-  test("uses getValue when provided", () => {
+  test("uses value when provided", () => {
     const result = autosizeColumns({
       columns: [
         {
           id: "computed",
           header: "Computed",
-          getValue: (row: Record<string, unknown>) =>
+          value: (row: Record<string, unknown>) =>
             `${row.name}-${row.status}`,
         },
       ],
