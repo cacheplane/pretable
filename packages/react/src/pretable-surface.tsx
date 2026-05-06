@@ -123,17 +123,9 @@ interface PretableSurfaceHeaderCellRenderInput<
   sortDirection: "asc" | "desc" | null;
 }
 
-interface PretableSurfaceBodyCellRenderInput<
+type PretableSurfaceBodyCellRenderInput<
   TRow extends PretableRow = PretableRow,
-> {
-  column: PretableColumn<TRow>;
-  isFocused: boolean;
-  isSelected: boolean;
-  row: TRow;
-  rowId: string;
-  rowIndex: number;
-  value: unknown;
-}
+> = PretableCellRenderInput<TRow>;
 
 interface PretableSurfaceRowClassNameInput<
   TRow extends PretableRow = PretableRow,
@@ -1107,7 +1099,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               }}
               type="button"
             >
-              {renderHeaderCell ? (
+              {column.renderHeader ? (
+                column.renderHeader({
+                  column,
+                  label,
+                  sortDirection,
+                  isSorted: sortDirection !== null,
+                } satisfies PretableHeaderRenderInput<TRow>)
+              ) : renderHeaderCell ? (
                 renderHeaderCell({
                   column,
                   label,
@@ -1277,8 +1276,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 const cellIsFocused =
                   isFocused && snapshot.focus.columnId === column.id;
                 const cellIsSelected = selectedCellKeys.has(cellKey);
+                const formattedValue = column.format
+                  ? column.format({ value, row, column })
+                  : formatCellValue(value);
                 const bodyInput = {
                   column,
+                  formattedValue,
                   isFocused: cellIsFocused,
                   isSelected: cellIsSelected,
                   row,
@@ -1483,10 +1486,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             ? "–"
                             : ""}
                       </button>
+                    ) : column.render ? (
+                      column.render(bodyInput)
                     ) : renderBodyCell ? (
                       renderBodyCell(bodyInput)
                     ) : (
-                      formatCellValue(value)
+                      formattedValue
                     )}
                   </div>
                 );
