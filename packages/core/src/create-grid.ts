@@ -29,6 +29,12 @@ export function createGrid<TRow extends Record<string, unknown>>(
     moveFocus: gridCore.moveFocus,
     setViewport: gridCore.setViewport,
     autosizeColumns: gridCore.autosizeColumns,
+    setColumnWidth: gridCore.setColumnWidth,
+    moveColumn: gridCore.moveColumn,
+    setColumnPinned: gridCore.setColumnPinned,
+    autosizeColumn: gridCore.autosizeColumn,
+    resetColumnLayout: gridCore.resetColumnLayout,
+    mergeColumnsFromProps: gridCore.mergeColumnsFromProps,
     applyTransaction: gridCore.applyTransaction,
   };
 }

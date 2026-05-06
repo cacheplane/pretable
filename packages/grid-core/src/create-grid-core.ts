@@ -8,6 +8,7 @@ import {
 import type {
   GridCoreCellAddress,
   GridCoreCellRange,
+  GridCoreColumn,
   GridCoreFocusDirection,
   GridCoreFocusState,
   GridCoreMoveFocusOptions,
@@ -22,6 +23,17 @@ import type {
   GridCoreTransaction,
   GridCoreViewportState,
 } from "./types";
+
+const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
+
+function clampColumnWidth<TRow extends GridCoreRow>(
+  width: number,
+  column: GridCoreColumn<TRow>,
+): number {
+  const min = column.minWidthPx ?? 40;
+  const max = column.maxWidthPx ?? Infinity;
+  return Math.max(min, Math.min(max, width));
+}
 
 function applyAutosize<TRow extends GridCoreRow>(
   options: GridCoreOptions<TRow>,
@@ -62,6 +74,9 @@ export function createGridCore<TRow extends GridCoreRow>(
           : undefined,
       )
     : inputOptions;
+  let originalColumns: GridCoreColumn<TRow>[] = inputOptions.columns.map(
+    (c) => ({ ...c }),
+  );
   let sourceRows = createSourceRows(options);
   const sourceRowIndex = new Map<string, SourceRow<TRow>>(
     sourceRows.map((entry) => [entry.id, entry]),
@@ -502,6 +517,194 @@ export function createGridCore<TRow extends GridCoreRow>(
       }
 
       options = nextOptions;
+      emit();
+    },
+    setColumnWidth(columnId: string, width: number) {
+      if (columnId === ROW_SELECT_COLUMN_ID) {
+        return;
+      }
+      const idx = options.columns.findIndex((c) => c.id === columnId);
+      if (idx === -1) {
+        return;
+      }
+      const column = options.columns[idx]!;
+      const clamped = clampColumnWidth(width, column);
+      if (column.widthPx === clamped) {
+        return;
+      }
+      const nextColumns = options.columns.slice();
+      nextColumns[idx] = { ...column, widthPx: clamped };
+      options = { ...options, columns: nextColumns };
+      emit();
+    },
+    moveColumn(columnId: string, toIndex: number) {
+      if (columnId === ROW_SELECT_COLUMN_ID) {
+        return;
+      }
+      const fromIndex = options.columns.findIndex((c) => c.id === columnId);
+      if (fromIndex === -1) {
+        return;
+      }
+      const synthAtZero = options.columns[0]?.id === ROW_SELECT_COLUMN_ID;
+      const minIndex = synthAtZero ? 1 : 0;
+      const maxIndex = options.columns.length - 1;
+      const clampedTo = Math.max(minIndex, Math.min(maxIndex, toIndex));
+      if (fromIndex === clampedTo) {
+        return;
+      }
+
+      const nextColumns = options.columns.slice();
+      const [moved] = nextColumns.splice(fromIndex, 1);
+      if (!moved) {
+        return;
+      }
+      nextColumns.splice(clampedTo, 0, moved);
+
+      // Compute pin boundary on the post-move array, EXCLUDING the moved
+      // column's own pin state. The boundary is the index (in the full
+      // nextColumns array) of the first non-pinned, non-synthetic column
+      // when the moved column is skipped.
+      let boundary = synthAtZero ? 1 : 0;
+      for (let i = synthAtZero ? 1 : 0; i < nextColumns.length; i += 1) {
+        if (i === clampedTo) {
+          continue;
+        }
+        if (nextColumns[i]?.pinned === "left") {
+          boundary = i + 1;
+        } else {
+          break;
+        }
+      }
+      // boundary is now the index in nextColumns where the pinned region
+      // ends (excluding the moved column). The moved column lands in the
+      // pinned region iff clampedTo < boundary.
+      const landsInPinned = clampedTo < boundary;
+
+      const wasPinned = moved.pinned === "left";
+      const nextPinned: "left" | undefined = landsInPinned ? "left" : undefined;
+
+      if (nextPinned !== moved.pinned || wasPinned !== landsInPinned) {
+        nextColumns[clampedTo] = { ...moved, pinned: nextPinned };
+      }
+
+      options = { ...options, columns: nextColumns };
+      emit();
+    },
+    setColumnPinned(columnId: string, pinned: "left" | null) {
+      if (columnId === ROW_SELECT_COLUMN_ID) {
+        return;
+      }
+      const idx = options.columns.findIndex((c) => c.id === columnId);
+      if (idx === -1) {
+        return;
+      }
+      const column = options.columns[idx]!;
+      const nextPinnedValue = pinned === "left" ? ("left" as const) : undefined;
+      if (column.pinned === nextPinnedValue) {
+        return;
+      }
+
+      const nextColumns = options.columns.slice();
+      nextColumns.splice(idx, 1);
+
+      const synthAtZero = nextColumns[0]?.id === ROW_SELECT_COLUMN_ID;
+      const baseStart = synthAtZero ? 1 : 0;
+      let boundary = baseStart;
+      while (
+        boundary < nextColumns.length &&
+        nextColumns[boundary]?.pinned === "left"
+      ) {
+        boundary += 1;
+      }
+
+      const insertAt = boundary;
+      const nextColumn: GridCoreColumn<TRow> = {
+        ...column,
+        pinned: nextPinnedValue,
+      };
+      nextColumns.splice(insertAt, 0, nextColumn);
+
+      options = { ...options, columns: nextColumns };
+      emit();
+    },
+    autosizeColumn(columnId: string, autosizeOptions?: AutosizeOptions) {
+      if (columnId === ROW_SELECT_COLUMN_ID) {
+        return;
+      }
+      const idx = options.columns.findIndex((c) => c.id === columnId);
+      if (idx === -1) {
+        return;
+      }
+      const column = options.columns[idx]!;
+      const probeColumns = options.columns.slice();
+      probeColumns[idx] = { ...column, widthPx: undefined };
+      const probedOptions = { ...options, columns: probeColumns };
+      const probed = applyAutosize(probedOptions, autosizeOptions);
+      const nextWidth = probed.columns[idx]?.widthPx;
+      if (nextWidth === undefined || nextWidth === column.widthPx) {
+        return;
+      }
+      const clamped = clampColumnWidth(nextWidth, column);
+      const nextColumns = options.columns.slice();
+      nextColumns[idx] = { ...column, widthPx: clamped };
+      options = { ...options, columns: nextColumns };
+      emit();
+    },
+    resetColumnLayout() {
+      const restored = inputOptions.autosize
+        ? applyAutosize(
+            {
+              ...inputOptions,
+              columns: originalColumns.map((c) => ({ ...c })),
+            },
+            typeof inputOptions.autosize === "object"
+              ? inputOptions.autosize
+              : undefined,
+          )
+        : {
+            ...inputOptions,
+            columns: originalColumns.map((c) => ({ ...c })),
+          };
+
+      const current = options.columns;
+      const next = restored.columns;
+      if (current.length === next.length) {
+        let same = true;
+        for (let i = 0; i < current.length; i += 1) {
+          const c = current[i]!;
+          const n = next[i]!;
+          if (
+            c.id !== n.id ||
+            c.widthPx !== n.widthPx ||
+            c.pinned !== n.pinned
+          ) {
+            same = false;
+            break;
+          }
+        }
+        if (same) {
+          return;
+        }
+      }
+
+      options = { ...options, columns: next };
+      emit();
+    },
+    mergeColumnsFromProps(nextColumns: GridCoreColumn<TRow>[]) {
+      const currentById = new Map(options.columns.map((c) => [c.id, c]));
+      const merged = nextColumns.map((newCol) => {
+        const existing = currentById.get(newCol.id);
+        if (existing) {
+          return {
+            ...newCol,
+            widthPx: existing.widthPx ?? newCol.widthPx,
+            pinned: existing.pinned ?? newCol.pinned,
+          };
+        }
+        return { ...newCol };
+      });
+      originalColumns = nextColumns.map((c) => ({ ...c }));
+      options = { ...options, columns: merged };
       emit();
     },
     applyTransaction(transaction: GridCoreTransaction<TRow>) {
