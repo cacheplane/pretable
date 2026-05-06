@@ -21,6 +21,7 @@ import * as rowHeight from "../row-height";
 import { type PretableSurfaceState, usePretableModel } from "../use-pretable";
 import type {
   PretableFocusState,
+  PretableGrid,
   PretableSelectionState,
 } from "@pretable/core";
 
@@ -3011,5 +3012,341 @@ describe("aria-live announcements", () => {
 
     expect(copyToClipboard).not.toHaveBeenCalled();
     expect(getLiveRegion(view)).toHaveTextContent("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Column resize gesture
+// ---------------------------------------------------------------------------
+
+describe("column resize", () => {
+  function getResizeHandle(
+    view: ReturnType<typeof render>,
+    columnId: string,
+  ) {
+    return view.container.querySelector<HTMLDivElement>(
+      `[data-pretable-resize-handle][data-column-id="${columnId}"]`,
+    );
+  }
+
+  it("renders a resize handle for each non-synthetic resizable column", () => {
+    const view = renderHarness();
+    expect(getResizeHandle(view, "a")).toBeTruthy();
+    expect(getResizeHandle(view, "b")).toBeTruthy();
+    expect(getResizeHandle(view, "c")).toBeTruthy();
+  });
+
+  it("does not render a handle for column.resizable === false", () => {
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, resizable: false },
+      { id: "b", header: "B", widthPx: 100 },
+    ];
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    expect(getResizeHandle(view, "a")).toBeNull();
+    expect(getResizeHandle(view, "b")).toBeTruthy();
+  });
+
+  it("does not render a handle for the synthetic row-select column", () => {
+    const view = renderHarness({
+      rowSelectionColumn: { enabled: true },
+    });
+    expect(
+      view.container.querySelector(
+        `[data-pretable-resize-handle][data-column-id="${ROW_SELECT_COLUMN_ID}"]`,
+      ),
+    ).toBeNull();
+    // sanity: real columns still have handles
+    expect(getResizeHandle(view, "a")).toBeTruthy();
+  });
+
+  it("pointerDown + pointerMove + pointerUp commits the new width", () => {
+    const onColumnWidthsChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnWidthsChange={onColumnWidthsChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+
+    const handle = getResizeHandle(view, "a");
+    expect(handle).toBeTruthy();
+    if (!handle) return;
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+    });
+    expect(onColumnWidthsChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 150 });
+    expect(onColumnWidthsChange).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 150 });
+
+    expect(onColumnWidthsChange).toHaveBeenCalledTimes(1);
+    const payload = onColumnWidthsChange.mock.calls[0]?.[0] as Record<
+      string,
+      number
+    >;
+    expect(payload.a).toBe(150);
+  });
+
+  it("resize honors per-column minWidthPx", () => {
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, minWidthPx: 80 },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const onColumnWidthsChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        onColumnWidthsChange={onColumnWidthsChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+
+    const handle = getResizeHandle(view, "a");
+    if (!handle) throw new Error("handle missing");
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+    });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: -100 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: -100 });
+
+    const payload = onColumnWidthsChange.mock.calls[0]?.[0] as Record<
+      string,
+      number
+    >;
+    expect(payload.a).toBe(80);
+  });
+
+  it("resize honors per-column maxWidthPx", () => {
+    const cols = [
+      { id: "a", header: "A", widthPx: 100, maxWidthPx: 200 },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+    ];
+    const onColumnWidthsChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={cols}
+        getRowId={(row: GridRow) => row.id}
+        onColumnWidthsChange={onColumnWidthsChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+
+    const handle = getResizeHandle(view, "a");
+    if (!handle) throw new Error("handle missing");
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+    });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 600 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 600 });
+
+    const payload = onColumnWidthsChange.mock.calls[0]?.[0] as Record<
+      string,
+      number
+    >;
+    expect(payload.a).toBe(200);
+  });
+
+  it("drag-live width re-renders the cell during pointerMove", () => {
+    const view = renderHarness();
+    const handle = getResizeHandle(view, "a");
+    if (!handle) throw new Error("handle missing");
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+    });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 175 });
+
+    const cell = getCell(view, "r1", "a");
+    expect(cell).toBeTruthy();
+    // Live drag width should be reflected in the cell's inline width.
+    expect(cell?.style.width).toBe("175px");
+    expect(handle.getAttribute("data-dragging")).toBe("true");
+  });
+
+  it("double-click on handle calls autosize and fires onColumnWidthsChange", () => {
+    const onColumnWidthsChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnWidthsChange={onColumnWidthsChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const handle = getResizeHandle(view, "a");
+    if (!handle) throw new Error("handle missing");
+
+    fireEvent.doubleClick(handle);
+
+    expect(onColumnWidthsChange).toHaveBeenCalledTimes(1);
+    const payload = onColumnWidthsChange.mock.calls[0]?.[0] as Record<
+      string,
+      number
+    >;
+    expect(payload.a).toBeDefined();
+    expect(payload.a).not.toBe(100);
+  });
+
+  it("drag followed by dblclick suppresses autosize (single onColumnWidthsChange call)", () => {
+    const onColumnWidthsChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnWidthsChange={onColumnWidthsChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const handle = getResizeHandle(view, "a");
+    if (!handle) throw new Error("handle missing");
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+    });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 150 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 150 });
+    // dblclick that immediately follows should be suppressed
+    fireEvent.doubleClick(handle);
+
+    expect(onColumnWidthsChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("programmatic grid.setColumnWidth does not fire onColumnWidthsChange", () => {
+    const onColumnWidthsChange = vi.fn();
+    let capturedGrid: PretableGrid<GridRow> | null = null;
+    render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnWidthsChange={onColumnWidthsChange}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+
+    expect(capturedGrid).not.toBeNull();
+    act(() => {
+      capturedGrid!.setColumnWidth("a", 250);
+    });
+
+    expect(onColumnWidthsChange).not.toHaveBeenCalled();
+  });
+
+  it("controlled state.columnWidths round-trip drives cell width", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        state={{ columnWidths: { a: 250 } }}
+        viewportHeight={300}
+      />,
+    );
+    let cell = getCell(view, "r1", "a");
+    expect(cell?.style.width).toBe("250px");
+
+    view.rerender(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        state={{ columnWidths: { a: 320 } }}
+        viewportHeight={300}
+      />,
+    );
+    cell = getCell(view, "r1", "a");
+    expect(cell?.style.width).toBe("320px");
+  });
+
+  it("pointer events on the resize handle do not trigger column sort", () => {
+    const onSortChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onSortChange={onSortChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const handle = getResizeHandle(view, "a");
+    if (!handle) throw new Error("handle missing");
+    const grid = view.getByRole("grid");
+    const snapshotBefore = JSON.stringify(
+      // header-row sort attribute proxy — none should be ascending/descending
+      Array.from(
+        grid.querySelectorAll<HTMLElement>("[data-pretable-header-cell]"),
+      ).map((h) => h.getAttribute("aria-sort")),
+    );
+
+    fireEvent.pointerDown(handle, {
+      button: 0,
+      pointerId: 1,
+      clientX: 100,
+    });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 100 });
+
+    expect(onSortChange).not.toHaveBeenCalled();
+    const snapshotAfter = JSON.stringify(
+      Array.from(
+        grid.querySelectorAll<HTMLElement>("[data-pretable-header-cell]"),
+      ).map((h) => h.getAttribute("aria-sort")),
+    );
+    expect(snapshotAfter).toBe(snapshotBefore);
   });
 });
