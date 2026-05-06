@@ -14,6 +14,7 @@ export { measureRenderedRowHeight } from "./row-height";
 // Component prop types
 export type { PretableProps } from "./pretable";
 export type {
+  PretableSurfaceMessages,
   PretableSurfaceProps,
   RowSelectionColumnConfig,
 } from "./pretable-surface";

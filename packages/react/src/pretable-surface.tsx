@@ -3,6 +3,8 @@ import {
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -16,6 +18,7 @@ import type {
   PretableFocusState,
   PretableGrid,
   PretableGridOptions,
+  PretableGridSnapshot,
   PretableRow,
   PretableSelectionState,
 } from "@pretable/core";
@@ -79,6 +82,31 @@ export interface RowSelectionColumnConfig {
   headerCheckbox?: boolean;
   width?: number;
 }
+
+export interface PretableSurfaceMessages {
+  selectAllAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+    isAll: boolean;
+  }) => string;
+  copyAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+  }) => string;
+  copyFailedAnnouncement?: () => string;
+}
+
+const defaultMessages: Required<PretableSurfaceMessages> = {
+  selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
+    isAll
+      ? "All rows selected"
+      : `${rowCount} rows × ${columnCount} columns selected`,
+  copyAnnouncement: ({ rowCount, columnCount }) =>
+    `${rowCount} rows × ${columnCount} columns copied`,
+  copyFailedAnnouncement: () => "Copy failed",
+};
+
+const ANNOUNCE_DEBOUNCE_MS = 500;
 
 interface PretableSurfaceHeaderCellRenderInput<
   TRow extends PretableRow = PretableRow,
@@ -218,6 +246,12 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * `payload.text` (and `payload.html` if present) via `navigator.clipboard`.
    */
   copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
+  /**
+   * Localized message factories for ARIA live announcements (select-all,
+   * copy success, copy failure). Each entry is optional; missing entries
+   * fall back to English defaults.
+   */
+  messages?: PretableSurfaceMessages;
 }
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
@@ -250,11 +284,51 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   copyWithHeaders,
   onCopy,
   copyToClipboard,
+  messages,
 }: PretableSurfaceProps<TRow>) {
   const [measuredHeights, setMeasuredHeights] = useState<
     Record<string, number>
   >({});
   const [viewportWidth, setViewportWidth] = useState(0);
+  const [liveMessage, setLiveMessage] = useState<string>("");
+  const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingAnnouncementRef = useRef<string | null>(null);
+
+  const scheduleAnnouncement = useCallback((message: string) => {
+    pendingAnnouncementRef.current = message;
+    if (announceTimerRef.current !== null) {
+      clearTimeout(announceTimerRef.current);
+    }
+    announceTimerRef.current = setTimeout(() => {
+      if (pendingAnnouncementRef.current !== null) {
+        setLiveMessage(pendingAnnouncementRef.current);
+        pendingAnnouncementRef.current = null;
+      }
+      announceTimerRef.current = null;
+    }, ANNOUNCE_DEBOUNCE_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (announceTimerRef.current !== null) {
+        clearTimeout(announceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const effectiveMessages = useMemo(
+    () => ({
+      selectAllAnnouncement:
+        messages?.selectAllAnnouncement ??
+        defaultMessages.selectAllAnnouncement,
+      copyAnnouncement:
+        messages?.copyAnnouncement ?? defaultMessages.copyAnnouncement,
+      copyFailedAnnouncement:
+        messages?.copyFailedAnnouncement ??
+        defaultMessages.copyFailedAnnouncement,
+    }),
+    [messages],
+  );
   const measuredHeightsRef = useRef<Record<string, number>>({});
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -533,6 +607,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         ) {
           event.preventDefault();
           const snap = grid.getSnapshot();
+          if (snap.selection.ranges.length === 0) {
+            return;
+          }
           const args: SerializeRangesArgs<TRow> = {
             ranges: snap.selection.ranges,
             visibleRows: snap.visibleRows,
@@ -541,15 +618,38 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           };
           const payload = onCopy ? onCopy(args) : serializeRangesAsTsv(args);
           if (payload) {
+            const extent = computeSelectionExtent(
+              snap.selection.ranges,
+              snap,
+              effectiveColumns,
+            );
             Promise.resolve(
               (copyToClipboard ?? defaultCopyToClipboard)(payload),
-            ).catch((err) => {
-              // eslint-disable-next-line no-console
-              console.warn("[pretable] clipboard copy failed", err);
-            });
+            )
+              .then(() => {
+                scheduleAnnouncement(
+                  effectiveMessages.copyAnnouncement({
+                    rowCount: extent.rowCount,
+                    columnCount: extent.columnCount,
+                  }),
+                );
+              })
+              .catch((err) => {
+                // eslint-disable-next-line no-console
+                console.warn("[pretable] clipboard copy failed", err);
+                scheduleAnnouncement(
+                  effectiveMessages.copyFailedAnnouncement(),
+                );
+              });
           }
           return;
         }
+
+        const isSelectAll =
+          (event.metaKey || event.ctrlKey) &&
+          (event.key === "a" || event.key === "A") &&
+          !event.shiftKey &&
+          !event.altKey;
 
         const before = grid.getSnapshot();
         const handled = handleSurfaceKeyDown(event, {
@@ -564,6 +664,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         if (handled) {
           event.preventDefault();
           const after = grid.getSnapshot();
+          if (isSelectAll) {
+            const extent = computeSelectionExtent(
+              after.selection.ranges,
+              after,
+              effectiveColumns,
+            );
+            scheduleAnnouncement(
+              effectiveMessages.selectAllAnnouncement({
+                rowCount: extent.rowCount,
+                columnCount: extent.columnCount,
+                isAll: extent.isAll,
+              }),
+            );
+          }
           if (
             before.focus.rowId !== after.focus.rowId ||
             before.focus.columnId !== after.focus.columnId
@@ -594,6 +708,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         ...viewportStyle,
       }}
     >
+      <div
+        aria-atomic="true"
+        aria-live="polite"
+        className="pt-sr-only"
+        data-pretable-live-region=""
+        role="status"
+      >
+        {liveMessage}
+      </div>
       <div
         aria-rowindex={1}
         data-pretable-header-row=""
@@ -653,13 +776,28 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     onClick={(event) => {
                       event.stopPropagation();
                       const before = grid.getSnapshot();
-                      grid.setSelectAllVisible(!allFullySelected);
+                      const setting = !allFullySelected;
+                      grid.setSelectAllVisible(setting);
                       const after = grid.getSnapshot();
                       if (
                         JSON.stringify(before.selection) !==
                         JSON.stringify(after.selection)
                       ) {
                         onSelectionChange?.(after.selection);
+                      }
+                      if (setting) {
+                        const extent = computeSelectionExtent(
+                          after.selection.ranges,
+                          after,
+                          effectiveColumns,
+                        );
+                        scheduleAnnouncement(
+                          effectiveMessages.selectAllAnnouncement({
+                            rowCount: extent.rowCount,
+                            columnCount: extent.columnCount,
+                            isAll: extent.isAll,
+                          }),
+                        );
                       }
                     }}
                     role="checkbox"
@@ -1210,6 +1348,70 @@ function normalizeStyleSignature(styleValue: string) {
     .filter(Boolean)
     .filter((declaration) => !/^top\s*:/i.test(declaration))
     .join(";");
+}
+
+function computeSelectionExtent<TRow extends PretableRow>(
+  ranges: readonly PretableCellRange[],
+  snapshot: PretableGridSnapshot<TRow>,
+  effectiveColumns: readonly PretableColumn<TRow>[],
+): { rowCount: number; columnCount: number; isAll: boolean } {
+  const visibleRows = snapshot.visibleRows;
+  const dataColumns = effectiveColumns.filter(
+    (c) => c.id !== ROW_SELECT_COLUMN_ID,
+  );
+
+  if (
+    ranges.length === 0 ||
+    visibleRows.length === 0 ||
+    dataColumns.length === 0
+  ) {
+    return { rowCount: 0, columnCount: 0, isAll: false };
+  }
+
+  const rowOrder = new Map<string, number>();
+  for (let i = 0; i < visibleRows.length; i += 1) {
+    const r = visibleRows[i];
+    if (r) rowOrder.set(r.id, i);
+  }
+  const columnOrder = new Map<string, number>();
+  for (let i = 0; i < effectiveColumns.length; i += 1) {
+    const c = effectiveColumns[i];
+    if (c) columnOrder.set(c.id, i);
+  }
+
+  const coveredRows = new Set<string>();
+  const coveredCols = new Set<string>();
+
+  for (const range of ranges) {
+    // Synthetic row-select column expands to cover all data columns when it
+    // is part of the range — that's how full-row selection encodes itself.
+    const rangeColumnIds: string[] = [];
+    if (
+      range.startColumnId === ROW_SELECT_COLUMN_ID ||
+      range.endColumnId === ROW_SELECT_COLUMN_ID
+    ) {
+      for (const c of dataColumns) rangeColumnIds.push(c.id);
+    }
+
+    for (const row of visibleRows) {
+      for (const col of dataColumns) {
+        if (
+          rangeContainsCellLocal(range, row.id, col.id, rowOrder, columnOrder)
+        ) {
+          coveredRows.add(row.id);
+          coveredCols.add(col.id);
+        }
+      }
+    }
+    for (const id of rangeColumnIds) coveredCols.add(id);
+  }
+
+  const rowCount = coveredRows.size;
+  const columnCount = coveredCols.size;
+  const isAll =
+    rowCount === visibleRows.length && columnCount === dataColumns.length;
+
+  return { rowCount, columnCount, isAll };
 }
 
 function rangeContainsCellLocal(

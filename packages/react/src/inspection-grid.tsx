@@ -34,6 +34,7 @@ export interface InspectionGridProps {
   copyWithHeaders?: PretableSurfaceProps<InspectionRow>["copyWithHeaders"];
   onCopy?: PretableSurfaceProps<InspectionRow>["onCopy"];
   copyToClipboard?: PretableSurfaceProps<InspectionRow>["copyToClipboard"];
+  messages?: PretableSurfaceProps<InspectionRow>["messages"];
   viewportHeight: number;
 }
 
@@ -53,6 +54,7 @@ export function InspectionGrid({
   copyWithHeaders,
   onCopy,
   copyToClipboard,
+  messages,
   viewportHeight,
 }: InspectionGridProps) {
   const filterableColumns = new Set<string>(filterableColumnIds);
@@ -88,6 +90,7 @@ export function InspectionGrid({
       copyWithHeaders={copyWithHeaders}
       onCopy={onCopy}
       copyToClipboard={copyToClipboard}
+      messages={messages}
       valueClassName="inspection-cell-value"
       viewportHeight={viewportHeight}
     />
