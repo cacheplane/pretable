@@ -211,6 +211,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   onSortChange?: (
     sort: { columnId: string; direction: "asc" | "desc" } | null,
   ) => void;
+  onColumnWidthsChange?: (next: Record<string, number>) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   onGridReady?: (grid: PretableGrid<TRow>) => void;
   renderBodyCell?: (
@@ -272,6 +273,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   onSelectionChange,
   onFocusChange,
   onSortChange,
+  onColumnWidthsChange,
   onTelemetryChange,
   renderBodyCell,
   renderHeaderCell,
