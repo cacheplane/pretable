@@ -1,0 +1,126 @@
+---
+title: Clipboard
+description: "Cmd+C copy with TSV defaults, per-column formatForCopy, grid-level onCopy override."
+nav: Grid
+order: 6
+---
+
+`Cmd/Ctrl+C` copies the current selection as TSV. The synthetic row-select column is filtered out of the output, so a copy from a checkbox-enabled grid produces the same text as the same selection from an unchecked grid.
+
+## Default TSV format
+
+The default serializer emits tab-separated cells, newline-separated rows, with a blank line between blocks for multi-range selections. Default cell coercion:
+
+- `null` / `undefined` → `""`
+- `Date` → `value.toISOString()`
+- `string` / `number` / `boolean` / `bigint` → `String(value)`
+- plain object → `JSON.stringify(value)` (best-effort fallback)
+
+This matches what Excel and Sheets accept on paste, so a copy out of a Pretable grid pastes cleanly into a spreadsheet.
+
+## Per-column `formatForCopy`
+
+For domain-specific formatting (a Date that should copy as `YYYY-MM-DD` instead of full ISO, a number with grouping separators, a status enum that should copy as a label), supply `formatForCopy` on the column:
+
+```tsx
+const columns: PretableColumn<Event>[] = [
+  {
+    id: "timestamp",
+    header: "Time",
+    getValue: (r) => r.timestamp,
+    formatForCopy: (value) =>
+      value instanceof Date ? value.toISOString().slice(0, 10) : String(value),
+  },
+  // ...
+];
+```
+
+`formatForCopy(value, row)` is called per cell before the default coercion runs. Return a string. If you don't supply one, the default coercion above applies.
+
+## Grid-level `onCopy` override
+
+For full control — a custom delimiter, a JSON payload, an HTML clipboard payload alongside the TSV — pass `onCopy` on the surface:
+
+```tsx
+<PretableSurface
+  ariaLabel="Inspection grid"
+  columns={columns}
+  rows={rows}
+  getRowId={(row) => row.id}
+  onCopy={({ ranges, snapshot }) => ({
+    text: serializeAsTsv({ ranges, snapshot }),
+    html: serializeAsHtmlTable({ ranges, snapshot }),
+  })}
+/>
+```
+
+`onCopy` returns:
+
+- `string` — written to the clipboard as `text/plain`.
+- `{ text, html? }` — when `html` is present, the surface writes both `text/plain` and `text/html` via the Clipboard API. Excel and Sheets prefer `text/html` when present.
+- `null` — skip the clipboard write entirely (suppress copy in this mode).
+
+The `serializeRangesAsTsv` helper from `@pretable/react` is the same function the default uses; call it directly when you only want to wrap the TSV output.
+
+## `copyWithHeaders`
+
+When `copyWithHeaders` is `true`, each block in the output is prefixed with a row of column headers, separated from the body by a blank line:
+
+```tsx
+<PretableSurface copyWithHeaders /* ... */ />
+```
+
+Use this when consumers paste into a spreadsheet that needs labeled columns, or into a doc where the data wants a built-in legend. Off by default — most copies want the body only.
+
+## Multi-range serialization
+
+A discontiguous selection (Cmd/Ctrl+click, multiple drags) serializes as **one block per range**, blocks separated by a blank line:
+
+```text
+A1\tB1\nA2\tB2
+
+D5\tE5\nD6\tE6
+```
+
+Each block is its own TSV grid; range order matches the order the ranges were added. With `copyWithHeaders`, the header row is repeated at the top of each block.
+
+## `aria-live` announcements
+
+The surface renders an off-screen `aria-live="polite"` region that announces copy and select-all events for assistive technology. Defaults are English; pass a `messages?: PretableSurfaceMessages` prop to override:
+
+```tsx
+<PretableSurface
+  messages={{
+    selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
+      isAll
+        ? "Tutto selezionato"
+        : `${rowCount} righe × ${columnCount} colonne selezionate`,
+    copyAnnouncement: ({ rowCount, columnCount }) =>
+      `Copiato ${rowCount} × ${columnCount}`,
+    copyFailedAnnouncement: () => "Copia non riuscita",
+  }}
+/>
+```
+
+| Event                                      | Default announcement                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------------------- |
+| Cmd/Ctrl+A (or header-checkbox select-all) | "All rows selected" (or `{n} rows × {m} columns selected` for partial coverage) |
+| Cmd/Ctrl+C success                         | `{n} rows × {m} columns copied`                                                 |
+| Cmd/Ctrl+C failure (clipboard rejects)     | "Copy failed"                                                                   |
+
+Announcements are debounced (~500ms) to avoid screen-reader thrashing on held shift+arrow extends. Programmatic mutations via `state.selection` do **not** announce — only user-triggered events do.
+
+## Paste (deferred)
+
+Paste lands in a follow-up phase. The shape will mirror this one symmetrically:
+
+- `parseFromCopy?(text, row): unknown` per column — inverse of `formatForCopy`.
+- `onPaste?({ text, html, target })` at the surface — full override, returning the rows to apply.
+
+Until paste ships, the browser's default paste applies (which means nothing happens in the grid).
+
+## See also
+
+- [Selection](/docs/grid/selection) — what gets serialized when you copy.
+- [Keyboard](/docs/grid/keyboard) — the `Cmd/Ctrl+C` binding lives here too.
+- [API reference](/docs/grid/api-reference) — `CopyPayload`, `SerializeRangesArgs`, `PretableSurfaceMessages` types.
