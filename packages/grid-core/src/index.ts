@@ -10,6 +10,7 @@ export type {
   GridCoreColumn,
   GridCoreFocusDirection,
   GridCoreFocusState,
+  GridCoreFormatInput,
   GridCoreFrame,
   GridCoreMoveFocusOptions,
   GridCoreOptions,

@@ -28,7 +28,7 @@ const columns = [
     id: "tags",
     header: "Tags",
     widthPx: 200,
-    getValue: (row: DemoRow) => row.tags,
+    value: (row: DemoRow) => row.tags,
   },
   { id: "message", header: "Message", wrap: true, widthPx: 320 },
 ];

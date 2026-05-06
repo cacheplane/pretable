@@ -70,7 +70,10 @@ describe("BenchApp", () => {
 
   test("renders the requested competitor surface instead of relabeling Pretable", async () => {
     render(
-      <BenchApp search="?adapter=gridalpha&scenario=S2" browserVersion="123.0" />,
+      <BenchApp
+        search="?adapter=gridalpha&scenario=S2"
+        browserVersion="123.0"
+      />,
     );
 
     expect(screen.getByText("Grid Alpha harness")).toBeTruthy();
@@ -93,11 +96,16 @@ describe("BenchApp", () => {
 
   test("renders the requested gridgamma competitor surface", async () => {
     render(
-      <BenchApp search="?adapter=gridgamma&scenario=S2" browserVersion="123.0" />,
+      <BenchApp
+        search="?adapter=gridgamma&scenario=S2"
+        browserVersion="123.0"
+      />,
     );
 
     expect(screen.getByText("GridGamma Data Grid harness")).toBeTruthy();
-    expect(screen.getByText("GridGamma Data Grid Community adapter")).toBeTruthy();
+    expect(
+      screen.getByText("GridGamma Data Grid Community adapter"),
+    ).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 

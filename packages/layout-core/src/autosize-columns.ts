@@ -29,7 +29,7 @@ export function autosizeColumns<
     }
 
     for (const row of input.rows) {
-      const rawValue = column.getValue ? column.getValue(row) : row[column.id];
+      const rawValue = column.value ? column.value(row) : row[column.id];
       const text = String(rawValue ?? "");
 
       if (text.length === 0) {

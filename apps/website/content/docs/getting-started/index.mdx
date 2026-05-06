@@ -31,9 +31,9 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
     } from "@pretable/react";
 
     const columns: Array<PretableColumn> = [
-      { id: "name", header: "Name", getValue: (r) => r.name },
-      { id: "role", header: "Role", getValue: (r) => r.role },
-      { id: "city", header: "City", getValue: (r) => r.city },
+      { id: "name", header: "Name", value: (r) => r.name },
+      { id: "role", header: "Role", value: (r) => r.role },
+      { id: "city", header: "City", value: (r) => r.city },
     ];
 
     const rows: Array<PretableRow> = [

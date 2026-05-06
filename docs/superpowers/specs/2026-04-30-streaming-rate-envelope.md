@@ -38,58 +38,58 @@ Metrics captured (PR #25):
 
 ### Frame p95 (ms) — median across 3 repeats
 
-| Rate   | Pretable | Grid Alpha | GridBeta |     GridGamma X |
-| ------ | -------: | ------: | -------: | --------: |
-| 100    |      9.8 |     9.9 |     10.0 |      10.1 |
-| 500    |     10.0 |     9.8 |      9.8 |  **51.6** |
-| 1,000  |      9.9 |     9.7 |      9.8 |   **100** |
-| 5,000  |      9.9 |     9.8 |      9.7 |   **475** |
-| 10,000 |      9.9 |     9.8 |     10.1 | timed out |
-| 25,000 |     10.0 |    10.1 |      9.9 | timed out |
+| Rate   | Pretable | Grid Alpha | GridBeta | GridGamma X |
+| ------ | -------: | ---------: | -------: | ----------: |
+| 100    |      9.8 |        9.9 |     10.0 |        10.1 |
+| 500    |     10.0 |        9.8 |      9.8 |    **51.6** |
+| 1,000  |      9.9 |        9.7 |      9.8 |     **100** |
+| 5,000  |      9.9 |        9.8 |      9.7 |     **475** |
+| 10,000 |      9.9 |        9.8 |     10.1 |   timed out |
+| 25,000 |     10.0 |       10.1 |      9.9 |   timed out |
 
 ### Frame max (ms) — median across 3 repeats
 
-| Rate   | Pretable | Grid Alpha | GridBeta |     GridGamma X |
-| ------ | -------: | ------: | -------: | --------: |
-| 100    |     17.1 |    10.3 |     16.8 |      33.3 |
-| 500    |     10.4 |    10.4 |     16.1 |      58.5 |
-| 1,000  |     16.3 |    10.4 |     16.6 |       101 |
-| 5,000  |     10.4 |    10.4 |     16.5 |       485 |
-| 10,000 |     10.4 |    10.4 |     16.6 | timed out |
-| 25,000 |     10.4 |    10.4 |     16.7 | timed out |
+| Rate   | Pretable | Grid Alpha | GridBeta | GridGamma X |
+| ------ | -------: | ---------: | -------: | ----------: |
+| 100    |     17.1 |       10.3 |     16.8 |        33.3 |
+| 500    |     10.4 |       10.4 |     16.1 |        58.5 |
+| 1,000  |     16.3 |       10.4 |     16.6 |         101 |
+| 5,000  |     10.4 |       10.4 |     16.5 |         485 |
+| 10,000 |     10.4 |       10.4 |     16.6 |   timed out |
+| 25,000 |     10.4 |       10.4 |     16.7 |   timed out |
 
 ### Long task wall-clock (ms total) — median across 3 repeats
 
-| Rate  | Pretable | Grid Alpha | GridBeta |      GridGamma X |
-| ----- | -------: | ------: | -------: | ---------: |
-| 100   |        0 |       0 |        0 |          0 |
-| 500   |        0 |       0 |        0 |        369 |
-| 1,000 |        0 |       0 |        0 |  **5,341** |
-| 5,000 |        0 |       0 |        0 | **26,233** |
+| Rate  | Pretable | Grid Alpha | GridBeta | GridGamma X |
+| ----- | -------: | ---------: | -------: | ----------: |
+| 100   |        0 |          0 |        0 |           0 |
+| 500   |        0 |          0 |        0 |         369 |
+| 1,000 |        0 |          0 |        0 |   **5,341** |
+| 5,000 |        0 |          0 |        0 |  **26,233** |
 
 > **GridGamma X at 1k/sec accumulates 5.3 seconds of blocking work in a 3-second test. At 5k/sec, 26 seconds.** The page is essentially unresponsive. At 10k+ the test times out before completing.
 
 ### Visible-row count drift — median across 3 repeats
 
-| Rate   | Pretable | Grid Alpha | GridBeta |     GridGamma X |
-| ------ | -------: | ------: | -------: | --------: |
-| 100    |        0 |  **28** |        0 |         2 |
-| 500    |        0 |  **26** |        0 |         2 |
-| 1,000  |        0 |  **22** |        0 |         2 |
-| 5,000  |        0 |       4 |        1 |         2 |
-| 10,000 |        0 |       0 |        1 | timed out |
-| 25,000 |        0 |       0 |        1 | timed out |
+| Rate   | Pretable | Grid Alpha | GridBeta | GridGamma X |
+| ------ | -------: | ---------: | -------: | ----------: |
+| 100    |        0 |     **28** |        0 |           2 |
+| 500    |        0 |     **26** |        0 |           2 |
+| 1,000  |        0 |     **22** |        0 |           2 |
+| 5,000  |        0 |          4 |        1 |           2 |
+| 10,000 |        0 |          0 |        1 |   timed out |
+| 25,000 |        0 |          0 |        1 |   timed out |
 
 ### Streaming CLS — median across 3 repeats
 
-| Rate   | Pretable | Grid Alpha | GridBeta |     GridGamma X |
-| ------ | -------: | ------: | -------: | --------: |
-| 100    |   0.0007 |  0.0000 |   0.0007 |    0.0007 |
-| 500    |   0.0007 |  0.0000 |   0.0007 |    0.0007 |
-| 1,000  |   0.0007 |  0.0000 |   0.0007 |    0.0007 |
-| 5,000  |   0.0007 |  0.0000 |   0.0007 |    0.0007 |
-| 10,000 |   0.0007 |  0.0000 |   0.0007 | timed out |
-| 25,000 |   0.0007 |  0.0000 |   0.0007 | timed out |
+| Rate   | Pretable | Grid Alpha | GridBeta | GridGamma X |
+| ------ | -------: | ---------: | -------: | ----------: |
+| 100    |   0.0007 |     0.0000 |   0.0007 |      0.0007 |
+| 500    |   0.0007 |     0.0000 |   0.0007 |      0.0007 |
+| 1,000  |   0.0007 |     0.0000 |   0.0007 |      0.0007 |
+| 5,000  |   0.0007 |     0.0000 |   0.0007 |      0.0007 |
+| 10,000 |   0.0007 |     0.0000 |   0.0007 |   timed out |
+| 25,000 |   0.0007 |     0.0000 |   0.0007 |   timed out |
 
 > Grid Alpha has zero CLS — its layout doesn't shift at all. The other three have a small steady CLS (~0.0007), well under Chrome's "good" threshold of 0.1.
 
@@ -101,11 +101,11 @@ All adapters: **0 px** at every rate. Streaming doesn't cause unwanted scroll on
 
 **Highest rate at which median frame p95 ≤ 16 ms AND median long_tasks_count == 0:**
 
-| Adapter         | Highest passing rate | First failing rate | What broke                   |
-| --------------- | -------------------- | ------------------ | ---------------------------- |
-| Pretable        | 25,000               | none observed      | —                            |
-| Grid Alpha         | 25,000               | none observed      | —                            |
-| GridBeta        | 25,000               | none observed      | —                            |
+| Adapter               | Highest passing rate | First failing rate | What broke                   |
+| --------------------- | -------------------- | ------------------ | ---------------------------- |
+| Pretable              | 25,000               | none observed      | —                            |
+| Grid Alpha            | 25,000               | none observed      | —                            |
+| GridBeta              | 25,000               | none observed      | —                            |
 | GridGamma X Community | 100                  | 500                | fp95 = 51.6 ms; 7 long tasks |
 
 ## Analysis

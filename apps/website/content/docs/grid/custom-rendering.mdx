@@ -60,9 +60,9 @@ interface Person extends PretableRow {
 }
 
 const columns: PretableColumn<Person>[] = [
-  { id: "name", header: "Name", getValue: (r) => r.name, widthPx: 200 },
-  { id: "role", header: "Role", getValue: (r) => r.role, widthPx: 200 },
-  { id: "city", header: "City", getValue: (r) => r.city, widthPx: 160 },
+  { id: "name", header: "Name", value: (r) => r.name, widthPx: 200 },
+  { id: "role", header: "Role", value: (r) => r.role, widthPx: 200 },
+  { id: "city", header: "City", value: (r) => r.city, widthPx: 160 },
 ];
 
 export function MyGrid({ rows }: { rows: Person[] }) {
@@ -178,7 +178,7 @@ export function MyGrid({ rows }: { rows: Person[] }) {
             >
               {renderSnapshot.columns.map((col) => {
                 const column = columns.find((c) => c.id === col.id);
-                const value = column?.getValue?.(row.row) ?? "";
+                const value = column?.value?.(row.row) ?? "";
 
                 return (
                   <div

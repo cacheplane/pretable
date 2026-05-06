@@ -52,7 +52,7 @@ export function resolveCellValue<TRow extends PretableRow = PretableRow>(
   row: TRow,
   column: PretableColumn<TRow>,
 ) {
-  return column.getValue ? column.getValue(row) : row[column.id];
+  return column.value ? column.value(row) : row[column.id];
 }
 
 export function formatCellValue(value: unknown) {

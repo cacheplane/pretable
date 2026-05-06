@@ -136,7 +136,7 @@ const scrollRuntimeProfiles: Record<
   BenchQueryState["adapterId"],
   ScrollRuntimeProfile
 > = {
-  "gridalpha": {
+  gridalpha: {
     viewportSelector: "[data-gridalpha-scroll-viewport]",
     rowSelector: "[data-gridalpha-row]",
     cellSelector: "[data-gridalpha-cell]",

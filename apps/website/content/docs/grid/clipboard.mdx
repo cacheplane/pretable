@@ -1,6 +1,6 @@
 ---
 title: Clipboard
-description: "Cmd+C copy with TSV defaults, per-column formatForCopy, grid-level onCopy override."
+description: "Cmd+C copy with TSV defaults, per-column format, grid-level onCopy override."
 nav: Grid
 order: 6
 ---
@@ -18,24 +18,24 @@ The default serializer emits tab-separated cells, newline-separated rows, with a
 
 This matches what Excel and Sheets accept on paste, so a copy out of a Pretable grid pastes cleanly into a spreadsheet.
 
-## Per-column `formatForCopy`
+## Per-column `format`
 
-For domain-specific formatting (a Date that should copy as `YYYY-MM-DD` instead of full ISO, a number with grouping separators, a status enum that should copy as a label), supply `formatForCopy` on the column:
+For domain-specific formatting (a Date that should copy as `YYYY-MM-DD` instead of full ISO, a number with grouping separators, a status enum that should copy as a label), supply `format` on the column:
 
 ```tsx
 const columns: PretableColumn<Event>[] = [
   {
     id: "timestamp",
     header: "Time",
-    getValue: (r) => r.timestamp,
-    formatForCopy: (value) =>
+    value: (r) => r.timestamp,
+    format: ({ value }) =>
       value instanceof Date ? value.toISOString().slice(0, 10) : String(value),
   },
   // ...
 ];
 ```
 
-`formatForCopy(value, row)` is called per cell before the default coercion runs. Return a string. If you don't supply one, the default coercion above applies.
+`format({ value, row, column })` is called per cell before the default coercion runs. Return a string. The same `format` function drives display rendering (in a follow-up phase) and copy serialization, so a single definition keeps the on-screen text and the clipboard text in sync. If you don't supply one, the default coercion above applies.
 
 ## Grid-level `onCopy` override
 
@@ -114,7 +114,7 @@ Announcements are debounced (~500ms) to avoid screen-reader thrashing on held sh
 
 Paste lands in a follow-up phase. The shape will mirror this one symmetrically:
 
-- `parseFromCopy?(text, row): unknown` per column — inverse of `formatForCopy`.
+- `parseFromCopy?(text, row): unknown` per column — inverse of `format`.
 - `onPaste?({ text, html, target })` at the surface — full override, returning the rows to apply.
 
 Until paste ships, the browser's default paste applies (which means nothing happens in the grid).

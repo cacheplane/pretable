@@ -89,7 +89,7 @@ it("renders accessor-driven values correctly through the public wrapper", () => 
         {
           id: "fullName",
           header: "Full name",
-          getValue: (row: { firstName: string; lastName: string }) =>
+          value: (row: { firstName: string; lastName: string }) =>
             `${row.firstName} ${row.lastName}`,
         },
       ]}

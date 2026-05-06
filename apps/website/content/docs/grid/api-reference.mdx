@@ -18,9 +18,9 @@ A column definition. Generic over your row type.
 | `wrap`        | `boolean`                | no       | If `true`, cells in this column wrap content vertically (sets `[data-pretable-wrap="true"]`).      |
 | `widthPx`     | `number`                 | no       | Fixed pixel width. Defaults to 220 for wrapping columns, 140 for non-wrapping.                     |
 | `pinned`      | `"left"`                 | no       | Pinned positioning. Currently only `"left"` is supported. Sets `[data-pinned="left"]` on the cell. |
-| `sortable`    | `boolean`                | no       | Whether the column can be sorted. Defaults to `true` if a `getValue` is provided.                  |
-| `filterable`  | `boolean`                | no       | Whether the column can be filtered. Defaults to `true` if a `getValue` is provided.                |
-| `getValue`    | `(row: TRow) => unknown` | no       | Extract the cell value from the row. If omitted, the column has no sortable/filterable value.      |
+| `sortable`    | `boolean`                | no       | Whether the column can be sorted. Defaults to `true` if a `value` is provided.                     |
+| `filterable`  | `boolean`                | no       | Whether the column can be filtered. Defaults to `true` if a `value` is provided.                   |
+| `value`       | `(row: TRow) => unknown` | no       | Extract the cell value from the row. If omitted, the column has no sortable/filterable value.      |
 | `minWidthPx`  | `number`                 | no       | Per-column minimum width clamp. Applied during resize and autosize. Engine default min is 40.      |
 | `maxWidthPx`  | `number`                 | no       | Per-column maximum width clamp. Applied during resize and autosize. Engine default max is 800.     |
 | `resizable`   | `boolean`                | no       | If `false`, the column has no resize handle and `setColumnWidth` is a no-op for it. Defaults true. |
@@ -32,7 +32,7 @@ A column definition. Generic over your row type.
 type PretableRow = Record<string, unknown>;
 ```
 
-Your row type extends this. The engine treats rows as opaque records; only `getRowId` and `getValue` access fields.
+Your row type extends this. The engine treats rows as opaque records; only `getRowId` and `value` access fields.
 
 ## Selection types
 

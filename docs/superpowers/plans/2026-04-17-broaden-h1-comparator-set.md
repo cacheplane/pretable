@@ -58,7 +58,9 @@ Add a new test to `apps/bench/src/__tests__/query-state.test.ts` after the GridB
 ```typescript
 test("accepts the gridgamma competitor adapter without relaxing other defaults", () => {
   expect(
-    parseBenchQuery("?adapter=gridgamma&scenario=S2&scale=hypothesis&script=scroll"),
+    parseBenchQuery(
+      "?adapter=gridgamma&scenario=S2&scale=hypothesis&script=scroll",
+    ),
   ).toEqual({
     adapterId: "gridgamma",
     scenarioId: "S2",

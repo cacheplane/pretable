@@ -110,11 +110,11 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
       const cells: string[] = [];
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;
-        const raw = col.getValue
-          ? col.getValue(row.row)
+        const raw = col.value
+          ? col.value(row.row)
           : (row.row as Record<string, unknown>)[col.id];
-        const text = col.formatForCopy
-          ? col.formatForCopy(raw, row.row)
+        const text = col.format
+          ? col.format({ value: raw, row: row.row, column: col })
           : defaultCoerceForCopy(raw);
         cells.push(text);
       }
