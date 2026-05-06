@@ -1391,37 +1391,409 @@ In `api-reference.mdx`, add the new `state.columnWidths` slice to the `PretableS
 
 ---
 
-## Phase C3 — React adapter: reorder gesture + docs (OUTLINE)
+## Phase C3 — React adapter: reorder gesture + docs (DETAILED)
 
-**Branch:** `c3-reorder`. **Detail:** added when C2 merges.
+**Branch:** `c3-reorder`. **Worktree:** `.worktrees/c3-reorder`.
 
-**Work items:**
+**Phase exit criteria:**
 
-- New surface props: `onColumnOrderChange?`, `onColumnPinnedChange?`, `state.columnOrder` (controlled), `state.columnPinned` (controlled).
-- Pointer events on header body (where `column.reorderable !== false`):
-  - `onPointerDown` (button 0, no modifiers): set `reorderState` ref with start position; do NOT start drag yet.
-  - `onPointerMove`: if distance from start > 5px, start drag — `setPointerCapture`, render ghost (clone of the header, follows cursor with low opacity), render drop-indicator vertical line at the nearest column boundary.
-  - `onPointerUp`: if dragging, call `grid.moveColumn(columnId, toIndex)` (engine handles cross-boundary auto-pin and emits both `onColumnOrderChange` and `onColumnPinnedChange` if pin changed). Clear ghost + indicator. If not dragging, let the click event fire normally (sort).
-  - `Esc` during drag: cancel without calling the engine.
-- CSS tokens: `--pt-color-reorder-ghost-bg`, `--pt-color-reorder-ghost-shadow`, `--pt-color-reorder-drop-indicator`.
-- jsdom tests:
-  - Threshold-based drag start: pointerDown + small move + pointerUp triggers sort click; pointerDown + 6px move + pointerUp triggers reorder.
-  - Reorder fires `onColumnOrderChange` once on drag-end.
-  - Cross-boundary reorder: dragging unpinned → pinned region fires both callbacks; pin state updates.
-  - Esc cancels.
-  - Synthetic row-select column is non-draggable.
-  - Reorder respects `column.reorderable === false`.
-  - Controlled `state.columnOrder` round-trip.
-  - Controlled `state.columnPinned` round-trip.
-- Forward `onColumnOrderChange` and `onColumnPinnedChange` through composition components.
-- New docs page: `apps/website/content/docs/grid/column-layout.mdx` — covers resize, reorder, pin, autosize, controlled state. Linked from `_nav.ts` after Clipboard.
-- Update `api-reference.mdx` with the new types, actions, surface props, and callbacks.
-- Surface page (`pretable-surface.mdx`) gains a brief Column Layout section linking out, plus new props in the props table.
+- New surface props: `onColumnOrderChange?: (next: readonly string[]) => void`, `onColumnPinnedChange?: (next: Record<string, "left" | null>) => void`, `state.columnOrder?: readonly string[]`, `state.columnPinned?: Record<string, "left" | null>`. Forwarded through `Pretable`, `InspectionGrid`, `LabeledGridSurface`.
+- Reorder pointer-event sequence on header buttons where `column.reorderable !== false` and id is not `__pretable_row_select__`:
+  - 5px threshold disambiguates click-for-sort from drag-for-reorder.
+  - Ghost element follows cursor while dragging (low-opacity clone of the header).
+  - Drop indicator (2px vertical line) snaps to the nearest column boundary based on cursor X.
+  - `pointerUp` over a valid drop position calls `grid.moveColumn(columnId, toIndex)`. Engine handles cross-boundary auto-pin.
+  - `Esc` during drag cancels without engine mutation.
+- Both callbacks fire on user-initiated drag-end, not on programmatic engine mutations or controlled-prop reapply.
+- jsdom tests for: threshold-based drag start, drag commit, cross-boundary auto-pin (callbacks for both order AND pin), Esc cancel, synthetic column non-draggable, `column.reorderable === false` skip, controlled-state round-trips for order and pin.
+- New `apps/website/content/docs/grid/column-layout.mdx` page covers the full surface (resize, reorder, pin, autosize, controlled state). Linked from `_nav.ts` between Clipboard and Custom rendering.
+- `api-reference.mdx` gets updated `PretableSurfaceState` shape (adds `columnOrder` + `columnPinned`) and `PretableGrid` actions table (5 column-layout actions + `mergeColumnsFromProps`).
+- `pretable-surface.mdx` props table adds the two new callbacks; brief Column Layout section links to the new page.
+- `pnpm -w typecheck` / `test` / `lint` / `format` clean.
+- One PR opened, CI green, user merges.
 
-**Open questions to resolve when detailing:**
+### Resolved open questions
 
-- Ghost element positioning: `position: fixed` in document body (portal) vs absolute inside the surface root. Portal is more correct (follows cursor across other layout) but adds a portal dep. Default to `position: fixed` inside the surface; if cursor leaves the surface, the ghost stays at the boundary.
-- Auto-scroll during reorder drag: if cursor is near the viewport edge, do we scroll the column container? Grid Alpha does. Defer to a follow-up unless trivial — the surface's column container isn't always horizontally scrollable.
+- **Ghost positioning**: `position: fixed` inside the surface root. The ghost is rendered via React (no portal). Coordinates come from pointer events. If the cursor leaves the surface, the ghost simply stays at the last in-bounds position — releasing outside the surface bounds cancels the drag (treated as `pointerCancel`).
+- **Auto-scroll during reorder drag**: deferred. The horizontal-scroll case is uncommon for the existing demos; a follow-up can add it once we have a real consumer with a wide grid + many overflow columns.
+- **Drop indicator snap targets**: between every pair of adjacent visible columns. With N columns there are N+1 snap positions (left of col 0, between 0/1, ..., right of col N-1). When the synthetic row-select column is at position 0, the leftmost valid snap is at index 1 (cursor between synth and first user column).
+- **Threshold of 5px**: matches Grid Alpha / common drag UX. Pure-click pointerDown→pointerUp without movement passes through to the existing sort-click handler.
+- **Controlled `state.columnPinned`**: a `Record<string, "left" | null>` where `"left"` means pinned and `null` means explicitly unpinned. A column id absent from the record falls back to whatever the engine currently has.
+
+### Tasks
+
+#### Task 1 — Surface props + state slices + callback forwarding
+
+**Files:** `packages/react/src/use-pretable.ts`, `packages/react/src/pretable-surface.tsx`, `packages/react/src/pretable.tsx`, `packages/react/src/labeled-grid-surface.tsx`, `packages/react/src/inspection-grid.tsx`.
+
+In `use-pretable.ts`, extend `PretableSurfaceState`:
+
+```ts
+export interface PretableSurfaceState {
+  filters?: Record<string, string>;
+  focus?: PretableFocusState;
+  selection?: PretableSelectionState;
+  sort?: PretableSortState | null;
+  columnWidths?: Record<string, number>;
+  columnOrder?: readonly string[];                         // NEW
+  columnPinned?: Record<string, "left" | null>;            // NEW
+}
+```
+
+In `usePretableModel`, inside the `if (state)` block, add controlled-state injection for the two new slices (after the existing `columnWidths` injection):
+
+```ts
+if (state.columnOrder !== undefined) {
+  // Apply order by repositioning each column to its position in the
+  // requested order. Missing ids are appended at the end (engine
+  // contract).
+  const targetOrder = state.columnOrder;
+  const currentIds = grid.options.columns.map((c) => c.id);
+  const targetIds = [
+    ...targetOrder.filter((id) => currentIds.includes(id)),
+    ...currentIds.filter((id) => !targetOrder.includes(id)),
+  ];
+  for (let i = 0; i < targetIds.length; i += 1) {
+    const id = targetIds[i]!;
+    const currentIdx = grid.options.columns.findIndex((c) => c.id === id);
+    if (currentIdx !== i && id !== "__pretable_row_select__") {
+      grid.moveColumn(id, i);
+    }
+  }
+}
+
+if (state.columnPinned !== undefined) {
+  const pinned = state.columnPinned;
+  for (const [id, value] of Object.entries(pinned)) {
+    const column = grid.options.columns.find((c) => c.id === id);
+    if (!column) continue;
+    const targetPinned = value === "left" ? "left" : null;
+    const currentPinned = column.pinned ?? null;
+    if (currentPinned !== targetPinned) {
+      grid.setColumnPinned(id, targetPinned);
+    }
+  }
+}
+```
+
+In `pretable-surface.tsx`, add to `PretableSurfaceProps<TRow>`:
+
+```ts
+onColumnOrderChange?: (next: readonly string[]) => void;
+onColumnPinnedChange?: (next: Record<string, "left" | null>) => void;
+```
+
+Forward through `Pretable`, `LabeledGridSurface`, `InspectionGrid` per the established pattern.
+
+Verify: `pnpm --filter "@pretable*" build && pnpm -w typecheck && pnpm --filter @pretable/react test`. Existing 181 tests still pass.
+
+**Commit:** `feat(react): state.columnOrder + state.columnPinned + reorder callbacks`.
+
+#### Task 2 — Reorder gesture: pointer events, ghost, drop indicator
+
+**Files:** `packages/react/src/pretable-surface.tsx`, `packages/ui/src/tokens.css`, `packages/ui/src/grid.css`.
+
+Add CSS tokens to `tokens.css`:
+
+```css
+--pt-color-reorder-ghost-bg: var(--pt-color-surface, #fff);
+--pt-color-reorder-ghost-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+--pt-color-reorder-drop-indicator: var(--pt-color-focus-ring);
+```
+
+Add to `grid.css`:
+
+```css
+[data-pretable-reorder-ghost] {
+  position: fixed;
+  pointer-events: none;
+  background: var(--pt-color-reorder-ghost-bg);
+  box-shadow: var(--pt-color-reorder-ghost-shadow);
+  opacity: 0.6;
+  z-index: 10;
+  user-select: none;
+}
+[data-pretable-reorder-drop-indicator] {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  background: var(--pt-color-reorder-drop-indicator);
+  z-index: 9;
+  pointer-events: none;
+}
+```
+
+In `pretable-surface.tsx`, add reorder state to the component body:
+
+```ts
+const reorderStateRef = useRef<{
+  columnId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  dragging: boolean;
+} | null>(null);
+const [reorderDrag, setReorderDrag] = useState<{
+  columnId: string;
+  cursorX: number;
+  cursorY: number;
+  dropIndex: number; // target index in effectiveColumns
+  ghostWidth: number;
+  ghostHeight: number;
+  ghostHeader: string;
+} | null>(null);
+
+const REORDER_THRESHOLD_PX = 5;
+```
+
+For each header button render where `column.reorderable !== false` AND `column.id !== ROW_SELECT_COLUMN_ID`, attach pointer handlers to the header BUTTON itself (not the resize handle). The resize handle's `stopPropagation` already prevents resize-pointer events from triggering reorder.
+
+Handler shape:
+
+```tsx
+onPointerDown={(event) => {
+  if (event.button !== 0) return;
+  if (event.shiftKey || event.metaKey || event.ctrlKey) return;
+  reorderStateRef.current = {
+    columnId: column.id,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    dragging: false,
+  };
+}}
+onPointerMove={(event) => {
+  const drag = reorderStateRef.current;
+  if (!drag || drag.columnId !== column.id) return;
+  if (event.pointerId !== drag.pointerId) return;
+
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  const dist = Math.hypot(dx, dy);
+
+  if (!drag.dragging) {
+    if (dist < REORDER_THRESHOLD_PX) return;
+    drag.dragging = true;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // jsdom — no-op
+    }
+    // Capture ghost dimensions from the header element.
+    const headerEl = event.currentTarget as HTMLElement;
+    const rect = headerEl.getBoundingClientRect();
+    setReorderDrag({
+      columnId: column.id,
+      cursorX: event.clientX,
+      cursorY: event.clientY,
+      dropIndex: computeDropIndex(event.clientX, effectiveColumns, /* layout info */),
+      ghostWidth: rect.width,
+      ghostHeight: rect.height,
+      ghostHeader: column.header ?? column.id,
+    });
+    return;
+  }
+
+  setReorderDrag((prev) =>
+    prev
+      ? {
+          ...prev,
+          cursorX: event.clientX,
+          cursorY: event.clientY,
+          dropIndex: computeDropIndex(event.clientX, effectiveColumns, /* layout info */),
+        }
+      : null,
+  );
+}}
+onPointerUp={(event) => {
+  const drag = reorderStateRef.current;
+  if (!drag || drag.columnId !== column.id) return;
+  if (event.pointerId !== drag.pointerId) return;
+
+  if (drag.dragging && reorderDrag) {
+    const before = grid.getSnapshot();
+    const beforePinned = buildPinnedMap(grid);
+    grid.moveColumn(column.id, reorderDrag.dropIndex);
+    const after = grid.getSnapshot();
+    const afterOrder = grid.options.columns.map((c) => c.id);
+    onColumnOrderChange?.(afterOrder);
+    const afterPinned = buildPinnedMap(grid);
+    if (!pinnedMapsEqual(beforePinned, afterPinned)) {
+      onColumnPinnedChange?.(afterPinned);
+    }
+  }
+
+  reorderStateRef.current = null;
+  setReorderDrag(null);
+}}
+onPointerCancel={() => {
+  reorderStateRef.current = null;
+  setReorderDrag(null);
+}}
+```
+
+Helper functions at the bottom of the file:
+
+```ts
+function buildPinnedMap<TRow extends PretableRow>(
+  grid: PretableGrid<TRow>,
+): Record<string, "left" | null> {
+  const result: Record<string, "left" | null> = {};
+  for (const col of grid.options.columns) {
+    if (col.id === ROW_SELECT_COLUMN_ID) continue;
+    result[col.id] = col.pinned === "left" ? "left" : null;
+  }
+  return result;
+}
+
+function pinnedMapsEqual(
+  a: Record<string, "left" | null>,
+  b: Record<string, "left" | null>,
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (a[k] !== b[k]) return false;
+  }
+  return true;
+}
+
+function computeDropIndex(
+  cursorX: number,
+  columns: PretableColumn<unknown>[],
+  /* layout: pass the renderSnapshot's column left positions */
+  columnLefts: number[],
+  columnWidths: number[],
+  surfaceLeft: number,
+): number {
+  // Cursor X is in viewport coordinates. Convert to surface-relative.
+  const x = cursorX - surfaceLeft;
+  for (let i = 0; i < columns.length; i += 1) {
+    const left = columnLefts[i] ?? 0;
+    const width = columnWidths[i] ?? 0;
+    const mid = left + width / 2;
+    if (x < mid) {
+      return i;
+    }
+  }
+  return columns.length - 1;
+}
+```
+
+The `computeDropIndex` helper needs the per-column left positions and widths. Look at how the existing rendering computes column lefts (`getPinnedLeftOffsets`, `renderSnapshot.columns`). The simplest path: at render time, capture an array of `[left, width]` pairs from `renderSnapshot.columns` (or compute from `effectiveColumns` if pinned offsets are needed). Pass that array into `computeDropIndex` along with the cursor X.
+
+Render the ghost + drop indicator inside the surface root when `reorderDrag !== null`:
+
+```tsx
+{reorderDrag && (
+  <>
+    <div
+      data-pretable-reorder-ghost=""
+      style={{
+        left: reorderDrag.cursorX + 8,
+        top: reorderDrag.cursorY + 8,
+        width: reorderDrag.ghostWidth,
+        height: reorderDrag.ghostHeight,
+        display: "flex",
+        alignItems: "center",
+        paddingLeft: 12,
+      }}
+    >
+      {reorderDrag.ghostHeader}
+    </div>
+    <div
+      data-pretable-reorder-drop-indicator=""
+      style={{
+        left: computeDropIndicatorLeft(reorderDrag.dropIndex, columnLefts),
+        height: reorderDrag.ghostHeight + bodyViewportHeight,
+      }}
+    />
+  </>
+)}
+```
+
+(The `computeDropIndicatorLeft` helper returns the X position for the indicator — the left edge of the column at `dropIndex`, or the right edge of the last column if `dropIndex === columns.length`.)
+
+**Esc cancellation**: extend the existing `onKeyDown` handler near the surface root. If `reorderStateRef.current?.dragging` is true, set both refs to null without calling `grid.moveColumn`.
+
+Verify: `pnpm --filter "@pretable*" build && pnpm -w typecheck && pnpm --filter @pretable/react test`. Existing 181 tests still pass.
+
+**Commit:** `feat(react+ui): reorder gesture with ghost and drop indicator`.
+
+#### Task 3 — jsdom tests for reorder
+
+**Files:** `packages/react/src/__tests__/pretable-surface.test.tsx`.
+
+Add a new `describe("column reorder", ...)` block. Tests:
+
+1. **PointerDown + small move (<5px) + pointerUp triggers sort, not reorder** — fire pointerDown on the column header button, then a 2px pointerMove, then pointerUp + click. Assert sort changed; `onColumnOrderChange` was NOT called.
+2. **PointerDown + 6px move + pointerUp triggers reorder** — fire pointerDown, pointerMove with clientX shifted +6, pointerUp at the new position. Assert `onColumnOrderChange` fires once with the new order.
+3. **Reorder fires `onColumnOrderChange` with the post-move order** — drag column "a" past column "b". Assert callback payload is the reordered ids.
+4. **Cross-boundary auto-pin: dragging unpinned into pinned region fires both `onColumnOrderChange` and `onColumnPinnedChange`** — set up grid with column "a" pinned, "b" unpinned. Drag "b" to position 0 (or wherever lands in pinned region). Assert both callbacks fire; pinned map shows "b" pinned.
+5. **Cross-boundary auto-unpin** — opposite direction. Drag pinned "a" out into unpinned region. Both callbacks fire; "a" is unpinned.
+6. **Esc during drag cancels** — pointerDown + 6px pointerMove (drag started) + Escape keydown. Assert `onColumnOrderChange` was NOT called; engine state unchanged.
+7. **Synthetic row-select column has no reorder handlers** — render with `rowSelectionColumn={{enabled:true}}`. Try to fire pointerDown on the synthetic column's header. Assert no reorder state is set (look at the impl — probably no handlers attached, so the test asserts the synthetic column doesn't render a reorderable header).
+8. **`column.reorderable === false` skips reorder** — column with the flag. Drag past threshold; assert `onColumnOrderChange` was NOT called.
+9. **Programmatic `grid.moveColumn` does NOT fire callbacks** — call directly via `onGridReady`. Assert callbacks not called.
+10. **Controlled `state.columnOrder` round-trip** — render with `state={{ columnOrder: ["b", "a", "c"] }}`. Assert rendered column order matches. Re-render with different order; assert it follows.
+11. **Controlled `state.columnPinned` round-trip** — render with `state={{ columnPinned: { c: "left" } }}`. Assert column "c" is pinned.
+
+Test count target: 181 → 192+.
+
+For pointer events use `fireEvent.pointerDown/Move/Up` with appropriate `pointerId`, `button: 0`, `clientX/Y`. For Esc cancel: `fireEvent.keyDown(grid, { key: "Escape" })`.
+
+**Commit:** `test(react): column reorder gesture coverage`.
+
+#### Task 4 — New `column-layout.mdx` docs page
+
+**Files:** Create `apps/website/content/docs/grid/column-layout.mdx`. Update `apps/website/app/docs/_nav.ts`. Update `apps/website/content/docs/grid/api-reference.mdx`.
+
+Frontmatter for the new page:
+
+```
+---
+title: Column Layout
+description: "Resize, reorder, pin, and autosize columns; per-column min/max; controlled state."
+nav: Grid
+order: 7
+---
+```
+
+Content sections:
+
+- Opening paragraph: "Pretable supports column resize, reorder, pin, and autosize out of the box. All three live behind narrow controlled-state slices that mirror the established pattern."
+- **Resize**: 4px right-edge handle, drag commits on release, double-click autosizes one column. Per-column `minWidthPx`/`maxWidthPx`/`resizable`.
+- **Reorder**: drag the header. 5px threshold disambiguates from sort click. Cross-boundary auto-pin: dragging into the leftmost pinned region pins; dragging out unpins. Per-column `reorderable`.
+- **Pin**: explicit `grid.setColumnPinned(id, "left" | null)`. Repositions to the pin-region boundary. Synthetic row-select column always at position 0; never reorderable / pinnable / resizable.
+- **Autosize**: `grid.autosizeColumn(id)` for one column; `grid.autosizeColumns()` for all. Double-click on the resize handle is the keyboard-free shortcut.
+- **Reset**: `grid.resetColumnLayout()` restores order, widths, pinned to the original `columns` prop snapshot.
+- **Controlled state**: three slices (`columnWidths`, `columnOrder`, `columnPinned`) and three callbacks (`onColumnWidthsChange`, `onColumnOrderChange`, `onColumnPinnedChange`). Drag-end-only emission. Programmatic mutations do not fire callbacks.
+- **Code example**: a small `<PretableSurface>` snippet with `state.columnWidths` + `useState` round-trip. ≤30 lines.
+- **See also**: link to selection, keyboard, clipboard.
+
+Bump `order` on subsequent pages: custom-rendering 7→8, density-helpers 8→9, api-reference 9→10. Update `_nav.ts` to insert `Column layout` between `Clipboard` and `Custom rendering`.
+
+In `api-reference.mdx`, add the column-layout types section:
+
+```ts
+interface PretableSurfaceState {
+  // ... existing slices
+  columnWidths?: Record<string, number>;
+  columnOrder?: readonly string[];
+  columnPinned?: Record<string, "left" | null>;
+}
+```
+
+Add the 5 new actions + `mergeColumnsFromProps` to the `PretableGrid` actions table.
+
+In `pretable-surface.mdx`, add the two new callbacks to the props table (alongside the existing `onColumnWidthsChange` from C2).
+
+**Commit:** `docs(website): column-layout page + api-reference + nav integration`.
+
+#### Task 5 — Repo-wide gates + PR
+
+`pnpm -w typecheck` / `test` / `lint` / `format` clean. Push, open PR titled `feat(react): column reorder + cross-boundary auto-pin (Phase C3 of C)`. Body explains the threshold-based drag start, the ghost + drop indicator, cross-boundary auto-pin via the C1 engine action, the new docs page, and that this completes sub-project C.
 
 ---
 
