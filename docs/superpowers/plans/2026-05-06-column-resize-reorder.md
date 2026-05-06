@@ -1142,7 +1142,7 @@ export interface PretableSurfaceState {
   focus?: PretableFocusState;
   selection?: PretableSelectionState;
   sort?: PretableSortState | null;
-  columnWidths?: Record<string, number>;  // NEW
+  columnWidths?: Record<string, number>; // NEW
 }
 ```
 
@@ -1261,8 +1261,7 @@ For each rendered header cell where the column has `resizable !== false` AND id 
   onPointerDown={(event) => {
     if (event.button !== 0) return;
     event.stopPropagation();
-    const startWidth =
-      column.widthPx ?? Math.max(column.minWidthPx ?? 40, 80);
+    const startWidth = column.widthPx ?? Math.max(column.minWidthPx ?? 40, 80);
     resizeStateRef.current = {
       columnId: column.id,
       startX: event.clientX,
@@ -1342,9 +1341,7 @@ Recommended approach: compute `columnWidthOverrides: Record<string, number>` onc
 ```ts
 const columnWidthOverrides = useMemo(
   () =>
-    dragLiveWidth
-      ? { [dragLiveWidth.columnId]: dragLiveWidth.width }
-      : null,
+    dragLiveWidth ? { [dragLiveWidth.columnId]: dragLiveWidth.width } : null,
   [dragLiveWidth],
 );
 ```

@@ -3020,10 +3020,7 @@ describe("aria-live announcements", () => {
 // ---------------------------------------------------------------------------
 
 describe("column resize", () => {
-  function getResizeHandle(
-    view: ReturnType<typeof render>,
-    columnId: string,
-  ) {
+  function getResizeHandle(view: ReturnType<typeof render>, columnId: string) {
     return view.container.querySelector<HTMLDivElement>(
       `[data-pretable-resize-handle][data-column-id="${columnId}"]`,
     );
