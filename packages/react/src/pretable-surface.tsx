@@ -407,21 +407,35 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   );
 
   // Build per-column left/width arrays indexed by effectiveColumn index.
+  // After a reorder, grid.options.columns (engine state, used to build
+  // renderSnapshot) and effectiveColumns (prop-derived) diverge in order.
+  // Look up columns by id so render aligns with the engine's order.
+  const columnsById = useMemo(() => {
+    const map = new Map<string, PretableColumn<TRow>>();
+    for (const col of effectiveColumns) {
+      map.set(col.id, col);
+    }
+    return map;
+  }, [effectiveColumns]);
+
   // Used by the reorder gesture to compute drop positions without DOM
   // measurement (so it works in jsdom). Pulled from renderSnapshot.columns
   // where available; columns outside the rendered window fall back to the
-  // accumulated width sum.
+  // accumulated width sum. Indexed by renderSnapshot column position
+  // (= engine order), NOT by effectiveColumns position.
   const { columnLefts, columnWidths } = useMemo(() => {
-    const lefts = new Array<number>(effectiveColumns.length).fill(0);
-    const widths = new Array<number>(effectiveColumns.length).fill(0);
+    const engineColumns = grid.options.columns;
+    const lefts = new Array<number>(engineColumns.length).fill(0);
+    const widths = new Array<number>(engineColumns.length).fill(0);
     for (const planned of renderSnapshot.columns) {
       lefts[planned.index] = planned.left;
       widths[planned.index] = planned.width;
     }
-    // Fill any gaps (off-screen columns) by accumulating widths in order.
+    // Fill any gaps (off-screen columns) by accumulating widths in
+    // engine order.
     let acc = 0;
-    for (let i = 0; i < effectiveColumns.length; i += 1) {
-      const col = effectiveColumns[i]!;
+    for (let i = 0; i < engineColumns.length; i += 1) {
+      const col = engineColumns[i]!;
       if (widths[i] === 0) {
         widths[i] = col.widthPx ?? 0;
         lefts[i] = acc;
@@ -429,7 +443,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       acc = lefts[i]! + widths[i]!;
     }
     return { columnLefts: lefts, columnWidths: widths };
-  }, [renderSnapshot.columns, effectiveColumns]);
+  }, [renderSnapshot.columns, grid.options.columns]);
 
   const columnIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -796,7 +810,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         style={getHeaderRowStyle(renderSnapshot.totalWidth, headerHeight)}
       >
         {renderSnapshot.columns.flatMap((plannedCol) => {
-          const column = effectiveColumns[plannedCol.index];
+          const column = columnsById.get(plannedCol.id);
 
           if (!column) {
             return [];
@@ -1242,7 +1256,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               style={getRowStyle(top, height)}
             >
               {renderSnapshot.columns.map((plannedCol) => {
-                const column = effectiveColumns[plannedCol.index];
+                const column = columnsById.get(plannedCol.id);
 
                 if (!column) {
                   return null;
