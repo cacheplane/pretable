@@ -1105,31 +1105,289 @@ Use `gh pr checks <pr-number> --watch` or set auto-merge with `gh pr merge <pr-n
 
 ---
 
-## Phase C2 — React adapter: resize gesture (OUTLINE)
+## Phase C2 — React adapter: resize gesture (DETAILED)
 
-**Branch:** `c2-resize`. **Detail:** added when C1 merges.
+**Branch:** `c2-resize`. **Worktree:** `.worktrees/c2-resize`.
 
-**Work items:**
+**Phase exit criteria:**
 
-- New surface props: `onColumnWidthsChange?`, `state.columnWidths` (controlled).
-- 4px resize hit area on every header cell where `column.resizable !== false`.
-- Pointer events: `onPointerDown` captures initial width; `onPointerMove` updates a `dragLiveWidth` ref + forces re-render with that width applied; `onPointerUp` calls `grid.setColumnWidth(columnId, dragLiveWidth)` (which fires `onColumnWidthsChange`); clear ref.
-- `onDoubleClick` on the resize handle calls `grid.autosizeColumn(columnId)`.
-- CSS tokens: `--pt-color-resize-handle` (transparent default), `--pt-color-resize-handle-hover` (selection-border accent).
-- jsdom tests:
-  - pointerDown/move/up sequence — assert `onColumnWidthsChange` fires once at end with the post-clamp width.
-  - Resize honors per-column min/max.
-  - Resize handle absent when `column.resizable === false`.
-  - Double-click on the handle calls autosize.
-  - Synthetic row-select column has no resize handle.
-  - Controlled `state.columnWidths` round-trip: consumer commits via `useState` setter, rendered widths follow.
-- Forward `onColumnWidthsChange` through `Pretable`, `InspectionGrid`, `LabeledGridSurface`.
-- Detect structural `columns` prop changes in `usePretableModel` and call `grid.mergeColumnsFromProps(newColumns)`.
+- New props on `<PretableSurface>`: `onColumnWidthsChange?`, `state.columnWidths?` (controlled), forwarded through `Pretable`, `InspectionGrid`, `LabeledGridSurface`.
+- 4px resize hit area on every header cell where `column.resizable !== false`. Synthetic row-select column has no handle.
+- Pointer events: `onPointerDown` captures initial width + pointer X; `onPointerMove` updates internal `dragLiveWidth` state and re-renders the cell + header at that width (engine state untouched); `onPointerUp` / `onPointerCancel` calls `grid.setColumnWidth(columnId, dragLiveWidth.width)`, which is the single commit point that fires `onColumnWidthsChange`. Drag-live width is React state (option A from open questions) — switch to ref-and-style-mutation only if profiling reveals real latency.
+- `onDoubleClick` on the resize handle calls `grid.autosizeColumn(columnId)`. The dblclick listener guards against firing during/after a drag (a `wasDraggingRef` prevents the implicit dblclick that follows a quick down-up).
+- New CSS tokens added to `packages/ui/src/tokens.css` and styled in `packages/ui/src/grid.css`. Hover state shows the handle; active drag adds `cursor: col-resize` to body.
+- `usePretableModel` detects structural changes to the `columns` prop (column added/removed by id) via a ref-tracked previous id list; on change, calls `grid.mergeColumnsFromProps(newColumns)`.
+- jsdom test coverage for: drag sequence (down/move/up), drag-end fires once, min/max clamp, handle absent for non-resizable columns, double-click autosizes, synthetic column has no handle, controlled `state.columnWidths` round-trip.
+- `pnpm -w typecheck` / `test` / `lint` / `format` clean.
 
-**Open questions to resolve when detailing:**
+### Resolved open questions
 
-- Resize handle's position: absolute inside the header cell, anchored right edge — interaction with the existing header `<button role="columnheader">` click for sort. Likely the handle is a sibling `<div>` with higher `z-index` and `event.stopPropagation()` on `onPointerDown`.
-- Drag-live width: stored as React state (re-renders) or as a ref + manual style mutation (avoids re-render thrash). Default to React state; switch to ref if profiling reveals latency.
+- **Handle placement vs sort button**: the resize handle is a sibling `<div>` rendered alongside the existing `<button role="columnheader">`, absolutely positioned at the cell's right edge with a higher `z-index` than the button. `onPointerDown` on the handle calls `event.stopPropagation()` so the click doesn't reach the sort button. This keeps the existing sort-click behavior untouched.
+- **Drag-live width state**: React state stored on the surface (`useState<{ columnId, width } | null>`). Re-renders during drag are scoped to the affected cell + header (existing layout already keys per column). Profile-driven optimization to ref + imperative style mutation can come later if needed; not in this phase.
+- **Pointer capture for jsdom**: wrap `setPointerCapture` in `try/catch` so jsdom's no-op stub doesn't throw (consistent with Phase 3's marquee drag).
+- **`onColumnWidthsChange` payload**: a `Record<string, number>` of every column's current `widthPx` (not just the changed one). This matches the established controlled-state pattern (consumer can persist the whole state in one setState).
+- **Programmatic `setColumnWidth` from outside**: does NOT fire `onColumnWidthsChange`. Same pattern as Phase 6 announcements — only user-initiated commits fire callbacks. The keystone is firing the callback from inside the `onPointerUp` handler (and the dblclick autosize handler), not from a snapshot-diff effect.
+
+### Tasks
+
+#### Task 1 — Surface props + types
+
+**Files:** `packages/react/src/use-pretable.ts`, `packages/react/src/pretable-surface.tsx`.
+
+In `use-pretable.ts`, extend `PretableSurfaceState`:
+
+```ts
+export interface PretableSurfaceState {
+  filters?: Record<string, string>;
+  focus?: PretableFocusState;
+  selection?: PretableSelectionState;
+  sort?: PretableSortState | null;
+  columnWidths?: Record<string, number>; // NEW
+}
+```
+
+In `pretable-surface.tsx`, add to `PretableSurfaceProps<TRow>`:
+
+```ts
+onColumnWidthsChange?: (next: Record<string, number>) => void;
+```
+
+Forward through `pretable.tsx`, `labeled-grid-surface.tsx`, `inspection-grid.tsx` like other prop-forwarding patterns established in earlier phases.
+
+In `usePretableModel` (in `use-pretable.ts`), inside the `if (state)` block, add the columnWidths apply step (after the existing filters step):
+
+```ts
+if (state.columnWidths !== undefined) {
+  const widths = state.columnWidths;
+  for (const column of grid.options.columns) {
+    const next = widths[column.id];
+    if (next !== undefined && next !== column.widthPx) {
+      grid.setColumnWidth(column.id, next);
+    }
+  }
+}
+```
+
+This is the controlled-mode injection: when consumer provides `state.columnWidths`, force the engine to it on every render.
+
+**Commit:** `feat(react): state.columnWidths + onColumnWidthsChange prop`.
+
+#### Task 2 — Detect structural columns prop changes
+
+**Files:** `packages/react/src/use-pretable.ts`.
+
+In `usePretableModel`, add a `useLayoutEffect` that compares the columns array's ids against the previous render's ids. If they differ, call `grid.mergeColumnsFromProps(columns)`.
+
+```ts
+const lastColumnIdsRef = useRef<readonly string[] | null>(null);
+
+useLayoutEffect(() => {
+  const currentIds = columns.map((c) => c.id);
+  const prevIds = lastColumnIdsRef.current;
+  if (
+    prevIds === null ||
+    prevIds.length !== currentIds.length ||
+    prevIds.some((id, i) => id !== currentIds[i])
+  ) {
+    if (prevIds !== null) {
+      grid.mergeColumnsFromProps(columns);
+    }
+    lastColumnIdsRef.current = currentIds;
+  }
+}, [columns, grid]);
+```
+
+The first render sets the ref but does NOT call merge (engine already initialized from these columns). Subsequent renders with structural differences trigger a merge.
+
+Note: a "structural difference" means id-list mismatch. Per-column changes to `header`, `widthPx`, etc. without an id change do NOT trigger a merge (the engine already preserves its mutated state across non-structural prop updates because we never re-init from prop after the first render).
+
+**Commit:** `feat(react): merge columns from prop on structural change`.
+
+#### Task 3 — Resize handle DOM + pointer events
+
+**Files:** `packages/react/src/pretable-surface.tsx`, `packages/ui/src/tokens.css`, `packages/ui/src/grid.css`.
+
+Add to `tokens.css`:
+
+```css
+--pt-color-resize-handle: transparent;
+--pt-color-resize-handle-hover: var(--pt-color-selection-border);
+```
+
+Add to `grid.css`:
+
+```css
+[data-pretable-resize-handle] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: var(--pt-color-resize-handle);
+  z-index: 2;
+  user-select: none;
+  touch-action: none;
+}
+[data-pretable-resize-handle]:hover,
+[data-pretable-resize-handle][data-dragging="true"] {
+  background: var(--pt-color-resize-handle-hover);
+}
+```
+
+In `pretable-surface.tsx`, add the resize state:
+
+```ts
+const [dragLiveWidth, setDragLiveWidth] = useState<{
+  columnId: string;
+  width: number;
+} | null>(null);
+const resizeStateRef = useRef<{
+  columnId: string;
+  startX: number;
+  startWidth: number;
+  pointerId: number;
+} | null>(null);
+const wasResizingRef = useRef(false);
+```
+
+For each rendered header cell where the column has `resizable !== false` AND id is not `ROW_SELECT_COLUMN_ID`, render a sibling element next to the header button:
+
+```tsx
+<div
+  data-pretable-resize-handle=""
+  data-column-id={column.id}
+  data-dragging={dragLiveWidth?.columnId === column.id ? "true" : "false"}
+  onPointerDown={(event) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const startWidth = column.widthPx ?? Math.max(column.minWidthPx ?? 40, 80);
+    resizeStateRef.current = {
+      columnId: column.id,
+      startX: event.clientX,
+      startWidth,
+      pointerId: event.pointerId,
+    };
+    wasResizingRef.current = false;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // jsdom — no-op
+    }
+    setDragLiveWidth({ columnId: column.id, width: startWidth });
+  }}
+  onPointerMove={(event) => {
+    const drag = resizeStateRef.current;
+    if (!drag || drag.columnId !== column.id) return;
+    const min = column.minWidthPx ?? 40;
+    const max = column.maxWidthPx ?? Infinity;
+    const next = Math.max(
+      min,
+      Math.min(max, drag.startWidth + (event.clientX - drag.startX)),
+    );
+    if (Math.abs(next - drag.startWidth) > 0) {
+      wasResizingRef.current = true;
+    }
+    setDragLiveWidth({ columnId: column.id, width: next });
+  }}
+  onPointerUp={(event) => {
+    const drag = resizeStateRef.current;
+    if (!drag || drag.columnId !== column.id) return;
+    const finalWidth = dragLiveWidth?.width ?? drag.startWidth;
+    grid.setColumnWidth(column.id, finalWidth);
+    onColumnWidthsChange?.(buildWidthsMap(grid));
+    resizeStateRef.current = null;
+    setDragLiveWidth(null);
+  }}
+  onPointerCancel={() => {
+    resizeStateRef.current = null;
+    setDragLiveWidth(null);
+    wasResizingRef.current = false;
+  }}
+  onDoubleClick={(event) => {
+    if (wasResizingRef.current) {
+      // Suppress dblclick that fires after a drag-resize.
+      event.preventDefault();
+      wasResizingRef.current = false;
+      return;
+    }
+    grid.autosizeColumn(column.id);
+    onColumnWidthsChange?.(buildWidthsMap(grid));
+  }}
+/>
+```
+
+Helper at the bottom of the file:
+
+```ts
+function buildWidthsMap<TRow extends PretableRow>(
+  grid: PretableGrid<TRow>,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const col of grid.options.columns) {
+    if (col.id === ROW_SELECT_COLUMN_ID) continue;
+    if (typeof col.widthPx === "number") {
+      result[col.id] = col.widthPx;
+    }
+  }
+  return result;
+}
+```
+
+For the cell render path (body cells AND header cells), if `dragLiveWidth?.columnId === column.id`, override the rendered width with `dragLiveWidth.width`. The simplest way is to pass an override into the existing `getCellStyle`/`getHeaderCellStyle` callsites, OR compute the column's effective width once per render and use it everywhere.
+
+Recommended approach: compute `columnWidthOverrides: Record<string, number>` once per render at the top of the component:
+
+```ts
+const columnWidthOverrides = useMemo(
+  () =>
+    dragLiveWidth ? { [dragLiveWidth.columnId]: dragLiveWidth.width } : null,
+  [dragLiveWidth],
+);
+```
+
+Then wherever the rendering reads `column.widthPx`, prefer `columnWidthOverrides?.[column.id] ?? column.widthPx`.
+
+**Commit:** `feat(react+ui): resize handle + drag-live width preview`.
+
+#### Task 4 — jsdom tests
+
+**Files:** `packages/react/src/__tests__/pretable-surface.test.tsx`.
+
+Add a new `describe("column resize", ...)` block. Tests:
+
+1. **Resize handle renders for resizable columns** — render harness with default columns; assert `[data-pretable-resize-handle]` exists for each column.
+2. **No handle for `column.resizable === false`** — column with the flag, assert no handle for that column.
+3. **No handle for synthetic row-select column** — `rowSelectionColumn={{enabled:true}}`, assert handle is absent on the synthetic column's header.
+4. **PointerDown + Move + Up commits the new width** — fire `pointerDown` on a handle, then `pointerMove` with `clientX` shifted +50, then `pointerUp`. Assert `onColumnWidthsChange` fires exactly once at the end with the new width for that column.
+5. **Resize honors per-column min** — column with `minWidthPx: 80`. Drag with delta -200; assert final width is 80.
+6. **Resize honors per-column max** — column with `maxWidthPx: 200`. Drag with delta +500; assert final width is 200.
+7. **Drag-live width re-renders the cell** — after `pointerMove` (without `pointerUp`), query the cell's `style.width` and assert it reflects the live drag width, NOT the original.
+8. **Double-click on handle calls autosize** — fire `dblClick` on handle; assert `onColumnWidthsChange` fires once and the column's width changes (compared against original).
+9. **Drag followed by dblclick suppresses autosize** — pointerDown + tiny pointerMove (>0px) + pointerUp + immediate dblclick. The dblclick must NOT trigger autosize (verified by stable width or `onColumnWidthsChange` only firing once for the resize commit, not twice).
+10. **Programmatic `grid.setColumnWidth` from outside does NOT fire `onColumnWidthsChange`** — render with the callback as a vi.fn(); call `grid.setColumnWidth` directly via `onGridReady`; assert callback was not called.
+11. **Controlled `state.columnWidths` round-trip** — render with `state.columnWidths={{ a: 250 }}`; assert column "a" renders at 250. Re-render with `state.columnWidths={{ a: 320 }}`; assert column "a" renders at 320.
+12. **Resize handle stopPropagation does not break sort** — pointerDown on handle, pointerUp without movement; the column header sort button must NOT have triggered a sort change. (Tests the stopPropagation contract.)
+
+Use `fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: ... })` and friends, consistent with Phase 3's marquee tests.
+
+For the drag-live-width re-render test: the cell's width is set inline via the existing `getCellStyle` which takes `width` from the column. After `pointerMove`, the affected cell's `style.width` should reflect the live drag width.
+
+**Commit:** `test(react): column resize gesture coverage`.
+
+#### Task 5 — Doc updates
+
+**Files:** `apps/website/content/docs/grid/pretable-surface.mdx`, `apps/website/content/docs/grid/api-reference.mdx`.
+
+In `pretable-surface.mdx`, add `onColumnWidthsChange` to the props table. The full `column-layout.mdx` docs page lands in C3.
+
+In `api-reference.mdx`, add the new `state.columnWidths` slice to the `PretableSurfaceState` interface. The C3 docs page is the canonical reference for the full column-layout surface.
+
+**Commit:** `docs(website): document onColumnWidthsChange + state.columnWidths`.
+
+#### Task 6 — Repo-wide gates + PR
+
+`pnpm -w typecheck` / `test` / `lint` / `format` clean. Push, open PR titled `feat(react): column resize gesture (Phase C2 of C)`. Body explains the resize-handle DOM + pointer events, drag-live preview state, drag-end commit semantics, the synthetic-column exclusion, the dblclick-autosize guard, and the structural-prop-change merge.
 
 ---
 
