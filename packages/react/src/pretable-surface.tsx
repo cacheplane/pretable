@@ -211,6 +211,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   onSortChange?: (
     sort: { columnId: string; direction: "asc" | "desc" } | null,
   ) => void;
+  onColumnWidthsChange?: (next: Record<string, number>) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   onGridReady?: (grid: PretableGrid<TRow>) => void;
   renderBodyCell?: (
@@ -272,6 +273,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   onSelectionChange,
   onFocusChange,
   onSortChange,
+  onColumnWidthsChange,
   onTelemetryChange,
   renderBodyCell,
   renderHeaderCell,
@@ -289,6 +291,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const [measuredHeights, setMeasuredHeights] = useState<
     Record<string, number>
   >({});
+  const [dragLiveWidth, setDragLiveWidth] = useState<{
+    columnId: string;
+    width: number;
+  } | null>(null);
+  const resizeStateRef = useRef<{
+    columnId: string;
+    startX: number;
+    startWidth: number;
+    pointerId: number;
+  } | null>(null);
+  const wasResizingRef = useRef(false);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [liveMessage, setLiveMessage] = useState<string>("");
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -723,12 +736,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         role="row"
         style={getHeaderRowStyle(renderSnapshot.totalWidth, headerHeight)}
       >
-        {renderSnapshot.columns.map((plannedCol) => {
+        {renderSnapshot.columns.flatMap((plannedCol) => {
           const column = effectiveColumns[plannedCol.index];
 
           if (!column) {
-            return null;
+            return [];
           }
+
+          const effWidth =
+            dragLiveWidth?.columnId === column.id
+              ? dragLiveWidth.width
+              : plannedCol.width;
 
           if (column.id === ROW_SELECT_COLUMN_ID) {
             const pinnedOffset = pinnedOffsets[column.id];
@@ -828,10 +846,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           const positionStyle =
             plannedCol.pinned === "left" && pinnedOffset !== undefined
               ? {
-                  ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
+                  ...getHeaderCellStyle(plannedCol.left, effWidth),
                   ...getPinnedCellStyle(pinnedOffset),
                 }
-              : getHeaderCellStyle(plannedCol.left, plannedCol.width);
+              : getHeaderCellStyle(plannedCol.left, effWidth);
 
           const ariaSort: "ascending" | "descending" | "none" =
             sortDirection === "asc"
@@ -840,7 +858,19 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 ? "descending"
                 : "none";
 
-          return (
+          const showResizeHandle = column.resizable !== false;
+          const isDragging = dragLiveWidth?.columnId === column.id;
+          const handleLeft = plannedCol.left + effWidth - 4;
+          const handlePinnedStyle =
+            plannedCol.pinned === "left" && pinnedOffset !== undefined
+              ? {
+                  position: "sticky" as const,
+                  zIndex: 3,
+                  left: pinnedOffset + effWidth - 4,
+                }
+              : null;
+
+          return [
             <button
               {...headerProps}
               aria-colindex={plannedCol.index + 1}
@@ -896,8 +926,94 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   </strong>
                 </>
               )}
-            </button>
-          );
+            </button>,
+            showResizeHandle ? (
+              <div
+                key={`${column.id}::resize-handle`}
+                data-pretable-resize-handle=""
+                data-column-id={column.id}
+                data-dragging={isDragging ? "true" : "false"}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  height: "100%",
+                  width: 4,
+                  left: handleLeft,
+                  cursor: "col-resize",
+                  zIndex: 4,
+                  touchAction: "none",
+                  userSelect: "none",
+                  ...(handlePinnedStyle ?? {}),
+                }}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
+                  event.stopPropagation();
+                  const startWidth =
+                    column.widthPx ??
+                    plannedCol.width ??
+                    Math.max(column.minWidthPx ?? 40, 80);
+                  resizeStateRef.current = {
+                    columnId: column.id,
+                    startX: event.clientX,
+                    startWidth,
+                    pointerId: event.pointerId,
+                  };
+                  wasResizingRef.current = false;
+                  try {
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  } catch {
+                    // jsdom — no-op
+                  }
+                  setDragLiveWidth({ columnId: column.id, width: startWidth });
+                }}
+                onPointerMove={(event) => {
+                  const drag = resizeStateRef.current;
+                  if (!drag || drag.columnId !== column.id) return;
+                  const min = column.minWidthPx ?? 40;
+                  const max = column.maxWidthPx ?? Infinity;
+                  const next = Math.max(
+                    min,
+                    Math.min(
+                      max,
+                      drag.startWidth + (event.clientX - drag.startX),
+                    ),
+                  );
+                  if (Math.abs(next - drag.startWidth) > 0) {
+                    wasResizingRef.current = true;
+                  }
+                  setDragLiveWidth({ columnId: column.id, width: next });
+                }}
+                onPointerUp={(event) => {
+                  const drag = resizeStateRef.current;
+                  if (!drag || drag.columnId !== column.id) return;
+                  const finalWidth = dragLiveWidth?.width ?? drag.startWidth;
+                  try {
+                    event.currentTarget.releasePointerCapture(drag.pointerId);
+                  } catch {
+                    // jsdom — no-op
+                  }
+                  grid.setColumnWidth(column.id, finalWidth);
+                  onColumnWidthsChange?.(buildWidthsMap(grid));
+                  resizeStateRef.current = null;
+                  setDragLiveWidth(null);
+                }}
+                onPointerCancel={() => {
+                  resizeStateRef.current = null;
+                  setDragLiveWidth(null);
+                  wasResizingRef.current = false;
+                }}
+                onDoubleClick={(event) => {
+                  if (wasResizingRef.current) {
+                    event.preventDefault();
+                    wasResizingRef.current = false;
+                    return;
+                  }
+                  grid.autosizeColumn(column.id);
+                  onColumnWidthsChange?.(buildWidthsMap(grid));
+                }}
+              />
+            ) : null,
+          ];
         })}
       </div>
 
@@ -973,13 +1089,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 } satisfies PretableSurfaceBodyCellRenderInput<TRow>;
                 const bodyProps = getBodyCellProps?.(bodyInput) ?? {};
                 const pinnedOffset = pinnedOffsets[column.id];
+                const cellEffWidth =
+                  dragLiveWidth?.columnId === column.id
+                    ? dragLiveWidth.width
+                    : plannedCol.width;
                 const positionStyle =
                   plannedCol.pinned === "left" && pinnedOffset !== undefined
                     ? {
-                        ...getCellStyle(plannedCol.left, plannedCol.width),
+                        ...getCellStyle(plannedCol.left, cellEffWidth),
                         ...getPinnedCellStyle(pinnedOffset),
                       }
-                    : getCellStyle(plannedCol.left, plannedCol.width);
+                    : getCellStyle(plannedCol.left, cellEffWidth);
 
                 const isRowSelectCell = column.id === ROW_SELECT_COLUMN_ID;
                 const rowCheckState: "true" | "false" | "mixed" =
@@ -1667,4 +1787,17 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   }
 
   return false;
+}
+
+function buildWidthsMap<TRow extends PretableRow>(
+  grid: PretableGrid<TRow>,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const col of grid.options.columns) {
+    if (col.id === ROW_SELECT_COLUMN_ID) continue;
+    if (typeof col.widthPx === "number") {
+      result[col.id] = col.widthPx;
+    }
+  }
+  return result;
 }

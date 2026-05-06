@@ -68,6 +68,10 @@
   --pt-color-selection-border: rgb(234 88 12 / 0.6);
   --pt-color-focus-ring: var(--pt-accent);
 
+  /* Column resize handle (sub-project C) */
+  --pt-color-resize-handle: transparent;
+  --pt-color-resize-handle-hover: var(--pt-color-selection-border);
+
   /* Row-selection checkbox column (Phase 4) */
   --pt-color-checkbox-bg: #fff;
   --pt-color-checkbox-border: #d1d5db;

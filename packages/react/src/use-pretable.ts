@@ -14,7 +14,7 @@ import {
   createDomRenderSnapshot,
   type PlannedColumn,
 } from "@pretable-internal/renderer-dom";
-import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
   autosize?: boolean | AutosizeOptions;
@@ -60,6 +60,7 @@ export interface PretableSurfaceState {
   focus?: PretableFocusState;
   selection?: PretableSelectionState;
   sort?: PretableSortState | null;
+  columnWidths?: Record<string, number>;
 }
 
 export interface UsePretableModelOptions<
@@ -108,6 +109,22 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
 }: UsePretableModelOptions<TRow>): PretableModel<TRow> {
   const grid = usePretable({ autosize, columns, rows, getRowId });
 
+  const lastColumnIdsRef = useRef<readonly string[] | null>(null);
+  useLayoutEffect(() => {
+    const currentIds = columns.map((c) => c.id);
+    const prevIds = lastColumnIdsRef.current;
+    if (
+      prevIds === null ||
+      prevIds.length !== currentIds.length ||
+      prevIds.some((id, i) => id !== currentIds[i])
+    ) {
+      if (prevIds !== null) {
+        grid.mergeColumnsFromProps(columns);
+      }
+      lastColumnIdsRef.current = currentIds;
+    }
+  }, [columns, grid]);
+
   // onSelectionChange / onFocusChange callbacks are wired in the surface's
   // event handlers (keyboard, click) directly. This keeps callbacks firing
   // for user-induced changes even when the corresponding slice is controlled
@@ -122,6 +139,16 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
 
     if (state.filters !== undefined) {
       grid.replaceFilters(state.filters);
+    }
+
+    if (state.columnWidths !== undefined) {
+      const widths = state.columnWidths;
+      for (const column of grid.options.columns) {
+        const next = widths[column.id];
+        if (next !== undefined && next !== column.widthPx) {
+          grid.setColumnWidth(column.id, next);
+        }
+      }
     }
 
     if (state.selection !== undefined) {

@@ -26,6 +26,7 @@ export interface InspectionGridProps {
   onSelectionChange?: PretableSurfaceProps<InspectionRow>["onSelectionChange"];
   onFocusChange?: PretableSurfaceProps<InspectionRow>["onFocusChange"];
   onSortChange?: PretableSurfaceProps<InspectionRow>["onSortChange"];
+  onColumnWidthsChange?: PretableSurfaceProps<InspectionRow>["onColumnWidthsChange"];
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   overscan?: number;
   rows: InspectionRow[];
@@ -46,6 +47,7 @@ export function InspectionGrid({
   onSelectionChange,
   onFocusChange,
   onSortChange,
+  onColumnWidthsChange,
   onTelemetryChange,
   overscan,
   rows,
@@ -80,6 +82,7 @@ export function InspectionGrid({
       onSelectionChange={onSelectionChange}
       onFocusChange={onFocusChange}
       onSortChange={onSortChange}
+      onColumnWidthsChange={onColumnWidthsChange}
       onTelemetryChange={onTelemetryChange}
       pinnedClassName="is-pinned"
       rowClassName="inspection-row"

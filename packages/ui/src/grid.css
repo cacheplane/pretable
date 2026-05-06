@@ -167,6 +167,24 @@ button[data-pretable-row-select-all][aria-checked="mixed"] {
   color: var(--pt-color-checkbox-checked-fg);
 }
 
+/* Column resize handle (sub-project C) */
+[data-pretable-resize-handle] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: var(--pt-color-resize-handle);
+  z-index: 2;
+  user-select: none;
+  touch-action: none;
+}
+[data-pretable-resize-handle]:hover,
+[data-pretable-resize-handle][data-dragging="true"] {
+  background: var(--pt-color-resize-handle-hover);
+}
+
 /* Tooltip / popover */
 [data-pretable-popover] {
   background: var(--pretable-bg-tooltip);
