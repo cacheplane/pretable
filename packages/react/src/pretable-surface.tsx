@@ -2,6 +2,7 @@ import {
   type CSSProperties,
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
+  memo,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   useCallback,
@@ -255,6 +256,131 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    */
   messages?: PretableSurfaceMessages;
 }
+
+interface MemoizedCellContentProps {
+  rowId: string;
+  columnId: string;
+  value: unknown;
+  formattedValue: string;
+  isFocused: boolean;
+  isSelected: boolean;
+  renderRef:
+    | ((input: PretableCellRenderInput<PretableRow>) => ReactNode)
+    | null;
+  fallbackRenderRef:
+    | ((input: PretableCellRenderInput<PretableRow>) => ReactNode)
+    | null;
+  cellRenderInput: PretableCellRenderInput<PretableRow>;
+}
+
+function CellContentImpl({
+  formattedValue,
+  renderRef,
+  fallbackRenderRef,
+  cellRenderInput,
+}: MemoizedCellContentProps) {
+  if (renderRef) {
+    return <>{renderRef(cellRenderInput)}</>;
+  }
+  if (fallbackRenderRef) {
+    return <>{fallbackRenderRef(cellRenderInput)}</>;
+  }
+  return <>{formattedValue}</>;
+}
+
+function cellContentPropsEqual(
+  prev: MemoizedCellContentProps,
+  next: MemoizedCellContentProps,
+): boolean {
+  return (
+    prev.rowId === next.rowId &&
+    prev.columnId === next.columnId &&
+    prev.value === next.value &&
+    prev.formattedValue === next.formattedValue &&
+    prev.isFocused === next.isFocused &&
+    prev.isSelected === next.isSelected &&
+    prev.renderRef === next.renderRef &&
+    prev.fallbackRenderRef === next.fallbackRenderRef
+  );
+}
+
+const MemoizedCellContent = memo(CellContentImpl, cellContentPropsEqual);
+
+interface MemoizedHeaderContentProps {
+  columnId: string;
+  label: string;
+  sortDirection: "asc" | "desc" | null;
+  isSorted: boolean;
+  width: number;
+  isSortable: boolean;
+  renderHeaderRef:
+    | ((input: PretableHeaderRenderInput<PretableRow>) => ReactNode)
+    | null;
+  fallbackRenderHeaderRef:
+    | ((input: {
+        column: PretableColumn<PretableRow>;
+        label: string;
+        sortDirection: "asc" | "desc" | null;
+      }) => ReactNode)
+    | null;
+  headerRenderInput: PretableHeaderRenderInput<PretableRow>;
+}
+
+function HeaderContentImpl({
+  label,
+  sortDirection,
+  renderHeaderRef,
+  fallbackRenderHeaderRef,
+  headerRenderInput,
+}: MemoizedHeaderContentProps) {
+  if (renderHeaderRef) {
+    return <>{renderHeaderRef(headerRenderInput)}</>;
+  }
+  if (fallbackRenderHeaderRef) {
+    return (
+      <>
+        {fallbackRenderHeaderRef({
+          column: headerRenderInput.column,
+          label,
+          sortDirection,
+        })}
+      </>
+    );
+  }
+  return (
+    <>
+      <span>{label}</span>
+      <strong>
+        {sortDirection === "desc"
+          ? "Newest"
+          : sortDirection === "asc"
+            ? "Oldest"
+            : "Sort"}
+      </strong>
+    </>
+  );
+}
+
+function headerContentPropsEqual(
+  prev: MemoizedHeaderContentProps,
+  next: MemoizedHeaderContentProps,
+): boolean {
+  return (
+    prev.columnId === next.columnId &&
+    prev.label === next.label &&
+    prev.sortDirection === next.sortDirection &&
+    prev.isSorted === next.isSorted &&
+    prev.width === next.width &&
+    prev.isSortable === next.isSortable &&
+    prev.renderHeaderRef === next.renderHeaderRef &&
+    prev.fallbackRenderHeaderRef === next.fallbackRenderHeaderRef
+  );
+}
+
+const MemoizedHeaderContent = memo(
+  HeaderContentImpl,
+  headerContentPropsEqual,
+);
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,
@@ -1099,31 +1225,38 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               }}
               type="button"
             >
-              {column.renderHeader ? (
-                column.renderHeader({
-                  column,
-                  label,
-                  sortDirection,
-                  isSorted: sortDirection !== null,
-                } satisfies PretableHeaderRenderInput<TRow>)
-              ) : renderHeaderCell ? (
-                renderHeaderCell({
-                  column,
-                  label,
-                  sortDirection,
-                })
-              ) : (
-                <>
-                  <span>{label}</span>
-                  <strong>
-                    {sortDirection === "desc"
-                      ? "Newest"
-                      : sortDirection === "asc"
-                        ? "Oldest"
-                        : "Sort"}
-                  </strong>
-                </>
-              )}
+              <MemoizedHeaderContent
+                columnId={column.id}
+                label={label}
+                sortDirection={sortDirection}
+                isSorted={sortDirection !== null}
+                width={effWidth}
+                isSortable={column.sortable !== false}
+                renderHeaderRef={
+                  (column.renderHeader as
+                    | ((
+                        input: PretableHeaderRenderInput<PretableRow>,
+                      ) => ReactNode)
+                    | undefined) ?? null
+                }
+                fallbackRenderHeaderRef={
+                  (renderHeaderCell as
+                    | ((input: {
+                        column: PretableColumn<PretableRow>;
+                        label: string;
+                        sortDirection: "asc" | "desc" | null;
+                      }) => ReactNode)
+                    | undefined) ?? null
+                }
+                headerRenderInput={
+                  {
+                    column,
+                    label,
+                    sortDirection,
+                    isSorted: sortDirection !== null,
+                  } as unknown as PretableHeaderRenderInput<PretableRow>
+                }
+              />
             </button>,
             showResizeHandle ? (
               <div
@@ -1486,12 +1619,32 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             ? "–"
                             : ""}
                       </button>
-                    ) : column.render ? (
-                      column.render(bodyInput)
-                    ) : renderBodyCell ? (
-                      renderBodyCell(bodyInput)
                     ) : (
-                      formattedValue
+                      <MemoizedCellContent
+                        rowId={id}
+                        columnId={column.id}
+                        value={value}
+                        formattedValue={formattedValue}
+                        isFocused={cellIsFocused}
+                        isSelected={cellIsSelected}
+                        renderRef={
+                          (column.render as
+                            | ((
+                                input: PretableCellRenderInput<PretableRow>,
+                              ) => ReactNode)
+                            | undefined) ?? null
+                        }
+                        fallbackRenderRef={
+                          (renderBodyCell as
+                            | ((
+                                input: PretableCellRenderInput<PretableRow>,
+                              ) => ReactNode)
+                            | undefined) ?? null
+                        }
+                        cellRenderInput={
+                          bodyInput as unknown as PretableCellRenderInput<PretableRow>
+                        }
+                      />
                     )}
                   </div>
                 );
