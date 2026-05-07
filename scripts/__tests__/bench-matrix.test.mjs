@@ -1530,7 +1530,7 @@ test("composite H1 fails when pretable backward anchor shift exceeds threshold",
   assert.match(h1?.summary ?? "", /anchor shift/i);
 });
 
-test("hypothesis array has 12 entries: H1-H13 (no H2/H3/H4) plus H14/H15 for streaming envelope and row stability", () => {
+test("hypothesis array has 18 entries: H1-H21 (no H2/H3/H4) covering scroll quality, interactions, streaming, and Bench Slab 1 selection/nav/format/render wedges", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-50-00-000z",
     generatedAt: "2026-04-20T10:51:00.000Z",
@@ -1538,7 +1538,7 @@ test("hypothesis array has 12 entries: H1-H13 (no H2/H3/H4) plus H14/H15 for str
     runs: [],
   });
 
-  assert.equal(report.hypotheses.length, 12);
+  assert.equal(report.hypotheses.length, 18);
   assert.ok(report.hypotheses.find((h) => h.id === "H1"));
   assert.equal(
     report.hypotheses.find((h) => h.id === "H3"),
@@ -1555,6 +1555,12 @@ test("hypothesis array has 12 entries: H1-H13 (no H2/H3/H4) plus H14/H15 for str
   assert.ok(report.hypotheses.find((h) => h.id === "H13"));
   assert.ok(report.hypotheses.find((h) => h.id === "H14"));
   assert.ok(report.hypotheses.find((h) => h.id === "H15"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H16"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H17"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H18"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H19"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H20"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H21"));
 });
 
 test("H9 satisfied when S7 scroll quality passes all thresholds with failing competitor", () => {
