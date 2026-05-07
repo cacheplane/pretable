@@ -117,7 +117,7 @@ The only failure modes inside this sub-project are tooling and process:
 
 Per-package PRs run the existing repo-wide gates: `pnpm -w typecheck`, `pnpm -w test`, `pnpm -w lint`, `pnpm format`, plus the new `pnpm api` step. No new test categories.
 
-The audits intentionally do not change runtime behavior — they're rename/reshape/demote at the type and export level. Existing test coverage continues to gate against accidental behavior change. Where a cleanup *does* change behavior (e.g., consolidating overlapping snapshot types may shift what a hook returns), the audit PR adds or updates the relevant test.
+The audits intentionally do not change runtime behavior — they're rename/reshape/demote at the type and export level. Existing test coverage continues to gate against accidental behavior change. Where a cleanup _does_ change behavior (e.g., consolidating overlapping snapshot types may shift what a hook returns), the audit PR adds or updates the relevant test.
 
 ## PR sequence
 

@@ -14,27 +14,27 @@
 
 ## File Structure
 
-| Path | Responsibility | Action |
-|---|---|---|
-| `package.json` | Add devDeps (`@microsoft/api-extractor`, `@microsoft/tsdoc`) + root `api` script | Modify |
-| `api-extractor.base.json` | Shared api-extractor config: TSDoc reporting levels, report mode, newline, `bundledPackages` | Create |
-| `packages/core/api-extractor.json` | Core's extractor config; extends base; points at `dist/index.d.ts` | Create |
-| `packages/core/tsconfig.docs.json` | Tsconfig for api-extractor's compiler (extends base, includes `dist`) | Create |
-| `packages/core/core.api.md` | Generated baseline public-API report | Create |
-| `packages/core/package.json` | Add `api` script | Modify |
-| `packages/react/api-extractor.json` | React's extractor config | Create |
-| `packages/react/tsconfig.docs.json` | React's docs tsconfig | Create |
-| `packages/react/react.api.md` | Generated baseline | Create |
-| `packages/react/package.json` | Add `api` script | Modify |
-| `packages/ui/api-extractor.json` | UI's extractor config | Create |
-| `packages/ui/tsconfig.docs.json` | UI's docs tsconfig | Create |
-| `packages/ui/ui.api.md` | Generated baseline | Create |
-| `packages/ui/package.json` | Add `api` script | Modify |
-| `packages/stream-adapter/api-extractor.json` | stream-adapter's extractor config | Create |
-| `packages/stream-adapter/tsconfig.docs.json` | stream-adapter's docs tsconfig | Create |
-| `packages/stream-adapter/stream-adapter.api.md` | Generated baseline | Create |
-| `packages/stream-adapter/package.json` | Add `api` script | Modify |
-| `.github/workflows/ci.yml` | Add `api-report` job that runs `pnpm api:check` after build | Modify |
+| Path                                            | Responsibility                                                                               | Action |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------- | ------ |
+| `package.json`                                  | Add devDeps (`@microsoft/api-extractor`, `@microsoft/tsdoc`) + root `api` script             | Modify |
+| `api-extractor.base.json`                       | Shared api-extractor config: TSDoc reporting levels, report mode, newline, `bundledPackages` | Create |
+| `packages/core/api-extractor.json`              | Core's extractor config; extends base; points at `dist/index.d.ts`                           | Create |
+| `packages/core/tsconfig.docs.json`              | Tsconfig for api-extractor's compiler (extends base, includes `dist`)                        | Create |
+| `packages/core/core.api.md`                     | Generated baseline public-API report                                                         | Create |
+| `packages/core/package.json`                    | Add `api` script                                                                             | Modify |
+| `packages/react/api-extractor.json`             | React's extractor config                                                                     | Create |
+| `packages/react/tsconfig.docs.json`             | React's docs tsconfig                                                                        | Create |
+| `packages/react/react.api.md`                   | Generated baseline                                                                           | Create |
+| `packages/react/package.json`                   | Add `api` script                                                                             | Modify |
+| `packages/ui/api-extractor.json`                | UI's extractor config                                                                        | Create |
+| `packages/ui/tsconfig.docs.json`                | UI's docs tsconfig                                                                           | Create |
+| `packages/ui/ui.api.md`                         | Generated baseline                                                                           | Create |
+| `packages/ui/package.json`                      | Add `api` script                                                                             | Modify |
+| `packages/stream-adapter/api-extractor.json`    | stream-adapter's extractor config                                                            | Create |
+| `packages/stream-adapter/tsconfig.docs.json`    | stream-adapter's docs tsconfig                                                               | Create |
+| `packages/stream-adapter/stream-adapter.api.md` | Generated baseline                                                                           | Create |
+| `packages/stream-adapter/package.json`          | Add `api` script                                                                             | Modify |
+| `.github/workflows/ci.yml`                      | Add `api-report` job that runs `pnpm api:check` after build                                  | Modify |
 
 `.api.md` files are **not** added to any `files` array because each package's `files: ["dist"]` already excludes everything outside `dist/`. The reports stay in the repo, not in the published tarball.
 
@@ -43,6 +43,7 @@
 ## Task 1: Install api-extractor + TSDoc dev dependencies
 
 **Files:**
+
 - Modify: `package.json` (root)
 
 - [ ] **Step 1: Add devDependencies**
@@ -82,6 +83,7 @@ git commit -m "chore(deps): add @microsoft/api-extractor and @microsoft/tsdoc de
 ## Task 2: Create the root api-extractor base config
 
 **Files:**
+
 - Create: `api-extractor.base.json`
 
 - [ ] **Step 1: Write the base config**
@@ -137,6 +139,7 @@ Create `api-extractor.base.json` at the repo root with this exact content:
 ```
 
 Notes on the choices:
+
 - `apiReport.enabled: true` — generates `<unscopedPackageName>.api.md` per package.
 - `docModel`, `dtsRollup` disabled — we only need the report.
 - `tsdocMetadata: false` — pretable doesn't ship a `tsdoc-metadata.json` file in published packages (hashbrown does because it advertises TSDoc support; we can add later).
@@ -156,6 +159,7 @@ git commit -m "chore(api): add repo-root api-extractor base config"
 ## Task 3: Wire `@pretable/core`
 
 **Files:**
+
 - Create: `packages/core/tsconfig.docs.json`
 - Create: `packages/core/api-extractor.json`
 - Create: `packages/core/core.api.md`
@@ -247,6 +251,7 @@ git commit -m "chore(core): wire api-extractor; commit baseline core.api.md"
 ## Task 4: Wire `@pretable/react`
 
 **Files:**
+
 - Create: `packages/react/tsconfig.docs.json`
 - Create: `packages/react/api-extractor.json`
 - Create: `packages/react/react.api.md`
@@ -334,6 +339,7 @@ git commit -m "chore(react): wire api-extractor; commit baseline react.api.md"
 ## Task 5: Wire `@pretable/ui`
 
 **Files:**
+
 - Create: `packages/ui/tsconfig.docs.json`
 - Create: `packages/ui/api-extractor.json`
 - Create: `packages/ui/ui.api.md`
@@ -417,6 +423,7 @@ git commit -m "chore(ui): wire api-extractor; commit baseline ui.api.md"
 ## Task 6: Wire `@pretable/stream-adapter`
 
 **Files:**
+
 - Create: `packages/stream-adapter/tsconfig.docs.json`
 - Create: `packages/stream-adapter/api-extractor.json`
 - Create: `packages/stream-adapter/stream-adapter.api.md`
@@ -502,6 +509,7 @@ git commit -m "chore(stream-adapter): wire api-extractor; commit baseline stream
 ## Task 7: Add root-level `api` and `api:check` scripts
 
 **Files:**
+
 - Modify: `package.json` (root)
 
 - [ ] **Step 1: Add the aggregating scripts**
@@ -561,6 +569,7 @@ git commit -m "chore(api): add root-level pnpm api and api:check scripts"
 ## Task 8: Add the CI gate
 
 **Files:**
+
 - Modify: `.github/workflows/ci.yml`
 
 - [ ] **Step 1: Read the existing `packaging` job structure**
@@ -572,20 +581,20 @@ Run the equivalent of `Read .github/workflows/ci.yml` and locate the `packaging:
 Insert the following block immediately after the `packaging:` job in `.github/workflows/ci.yml`. The build deps mirror the `packaging` job because api-extractor reads each package's `dist/index.d.ts`:
 
 ```yaml
-  api-report:
-    name: API Extractor — report freshness
-    runs-on: ubuntu-latest
-    needs: [build]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@pretable/stream-adapter' --filter '@pretable/ui' build
-      - run: pnpm api:check
+api-report:
+  name: API Extractor — report freshness
+  runs-on: ubuntu-latest
+  needs: [build]
+  steps:
+    - uses: actions/checkout@v6
+    - uses: pnpm/action-setup@v5
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 22
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@pretable/stream-adapter' --filter '@pretable/ui' build
+    - run: pnpm api:check
 ```
 
 - [ ] **Step 3: Add the new job to the deploy gate**
