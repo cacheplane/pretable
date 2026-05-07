@@ -291,52 +291,52 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 tracePath,
                 notes: [
                   ...keySequenceRun.notes,
-                  ...createPretableTelemetryNotes(
-                    pretableTelemetryRef.current,
-                  ),
+                  ...createPretableTelemetryNotes(pretableTelemetryRef.current),
                 ],
                 metrics: keySequenceRun.metrics,
               })
             : scriptName === "updates" && updatesRun
-            ? createBenchRunSummary({
-                request,
-                status: updatesRun.status,
-                timestamp,
-                tracePath,
-                notes: [
-                  ...updatesRun.notes,
-                  ...createPretableTelemetryNotes(pretableTelemetryRef.current),
-                ],
-                metrics: updatesRun.metrics,
-              })
-            : interactionRun
               ? createBenchRunSummary({
                   request,
-                  status: interactionRun.status,
+                  status: updatesRun.status,
                   timestamp,
                   tracePath,
                   notes: [
-                    ...interactionRun.notes,
+                    ...updatesRun.notes,
                     ...createPretableTelemetryNotes(
                       pretableTelemetryRef.current,
                     ),
                   ],
-                  metrics: interactionRun.metrics,
+                  metrics: updatesRun.metrics,
                 })
-              : createBenchRunSummary({
-                  request,
-                  status: "completed",
-                  timestamp,
-                  tracePath,
-                  notes: createPretableTelemetryNotes(
-                    pretableTelemetryRef.current,
-                  ),
-                  metrics: {
-                    mount_ms: performance.now() - startedAt,
-                    first_stable_viewport_ms: performance.now() - startedAt,
-                    dom_nodes_peak: domNodesPeak,
-                  },
-                });
+              : interactionRun
+                ? createBenchRunSummary({
+                    request,
+                    status: interactionRun.status,
+                    timestamp,
+                    tracePath,
+                    notes: [
+                      ...interactionRun.notes,
+                      ...createPretableTelemetryNotes(
+                        pretableTelemetryRef.current,
+                      ),
+                    ],
+                    metrics: interactionRun.metrics,
+                  })
+                : createBenchRunSummary({
+                    request,
+                    status: "completed",
+                    timestamp,
+                    tracePath,
+                    notes: createPretableTelemetryNotes(
+                      pretableTelemetryRef.current,
+                    ),
+                    metrics: {
+                      mount_ms: performance.now() - startedAt,
+                      first_stable_viewport_ms: performance.now() - startedAt,
+                      dom_nodes_peak: domNodesPeak,
+                    },
+                  });
 
       setResult(nextResult);
       publishBenchResult(nextResult);

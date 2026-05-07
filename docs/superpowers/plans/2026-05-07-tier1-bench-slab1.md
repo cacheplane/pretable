@@ -48,6 +48,7 @@ docs/research/
 ## Task 1 — Add 6 new `BenchScriptName` values
 
 **Files:**
+
 - Modify: `packages/bench-runner/src/index.ts`
 - Modify: `apps/bench/src/bench-types.ts`
 
@@ -64,11 +65,11 @@ export type BenchScriptName =
   | "filter-text"
   | "updates"
   | "autosize"
-  | "select-range-extend"      // B Phase 7
-  | "keyboard-nav-row"          // B Phase 7
-  | "select-all"                // B Phase 7
-  | "scroll-with-format"        // D3
-  | "scroll-with-render"        // D3
+  | "select-range-extend" // B Phase 7
+  | "keyboard-nav-row" // B Phase 7
+  | "select-all" // B Phase 7
+  | "scroll-with-format" // D3
+  | "scroll-with-render" // D3
   | "scroll-with-heavy-render"; // D3
 ```
 
@@ -89,12 +90,7 @@ Open `apps/bench/src/bench-types.ts`. Replace:
 ```ts
 scriptName: Extract<
   BenchScriptName,
-  | "initial"
-  | "scroll"
-  | "sort"
-  | "filter-metadata"
-  | "filter-text"
-  | "updates"
+  "initial" | "scroll" | "sort" | "filter-metadata" | "filter-text" | "updates"
 >;
 ```
 
@@ -145,6 +141,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 2 — Implement `measureBenchKeySequenceRun` helper
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-runtime.ts`
 
 This helper is shared by `select-range-extend` and `keyboard-nav-row` (and select-all, optionally). It dispatches N keystrokes spaced one frame apart, captures per-event latency from event-dispatch to next paint, and returns p95 as `interaction_latency_ms`.
@@ -212,9 +209,10 @@ export async function measureBenchKeySequenceRun(
 
   // Allow the grid to settle and ensure focus is on a body cell.
   await waitForAnimationFrame();
-  const firstCell = viewport.querySelector<HTMLElement>(
-    `${profile.cellSelector}[tabindex="0"]`,
-  ) ?? viewport.querySelector<HTMLElement>(profile.cellSelector);
+  const firstCell =
+    viewport.querySelector<HTMLElement>(
+      `${profile.cellSelector}[tabindex="0"]`,
+    ) ?? viewport.querySelector<HTMLElement>(profile.cellSelector);
 
   if (!firstCell) {
     return {
@@ -279,7 +277,11 @@ export async function measureBenchKeySequenceRun(
 
   return {
     status: "completed",
-    notes: [...viewportPolicyNotes, `script: ${scriptName}`, `events: ${options.count}`],
+    notes: [
+      ...viewportPolicyNotes,
+      `script: ${scriptName}`,
+      `events: ${options.count}`,
+    ],
     metrics: {
       interaction_latency_ms:
         options.count === 1 ? latencies[0] : percentile(latencies, 0.95),
@@ -293,6 +295,7 @@ export async function measureBenchKeySequenceRun(
 ```
 
 The helper:
+
 - Focuses the first body cell that has `tabindex="0"` (the ARIA grid pattern's tabbable cell from sub-project B Phase 2).
 - Loops the keystroke dispatch, captures per-event latency, reports p95 (or single value if count === 1).
 - Uses the existing `scrollRuntimeProfiles[adapterId]` for selector specs.
@@ -324,6 +327,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 3 — Wire bench-app dispatch for selection/nav scripts
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-app.tsx`
 
 - [ ] **Step 3.1: Read the existing dispatch (around line 158–250)**
@@ -418,6 +422,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 4 — Cell-renderer column flavors in the pretable adapter
 
 **Files:**
+
 - Modify: `apps/bench/src/pretable-adapter.tsx`
 
 The three D3 scripts reuse `measureBenchScrollRun`. The only difference is the column configuration the pretable adapter mounts with. We thread `scriptName` to drive the column flavor.
@@ -503,7 +508,10 @@ Helper to detect cell-renderer scripts:
 ```ts
 function isCellRendererScript(
   s: string,
-): s is "scroll-with-format" | "scroll-with-render" | "scroll-with-heavy-render" {
+): s is
+  | "scroll-with-format"
+  | "scroll-with-render"
+  | "scroll-with-heavy-render" {
   return (
     s === "scroll-with-format" ||
     s === "scroll-with-render" ||
@@ -539,6 +547,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 5 — Wire bench-app dispatch for cell-renderer scripts
 
 **Files:**
+
 - Modify: `apps/bench/src/bench-app.tsx`
 
 The three cell-renderer scripts reuse `measureBenchScrollRun`. The dispatch is simpler than Task 3 — same scroll measurement, just for additional script names.
@@ -611,6 +620,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 6 — Comparator adapters return `unsupported` for new scripts
 
 **Files:**
+
 - Modify: `apps/bench/src/ag-grid-adapter.tsx` (or whatever the renamed `gridalpha` file is)
 - Modify: `apps/bench/src/tanstack-adapter.tsx` (`gridbeta`)
 - Modify: `apps/bench/src/mui-adapter.tsx` (`gridgamma`)
@@ -651,6 +661,7 @@ If no changes were needed (the existing default branch already handles the new s
 ## Task 7 — Add `evaluateH16`–`evaluateH21` in `bench-matrix.mjs`
 
 **Files:**
+
 - Modify: `scripts/bench-matrix.mjs`
 
 - [ ] **Step 7.1: Read the existing evaluator pattern**
@@ -1030,6 +1041,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 8 — Unit tests for the new helpers and evaluators
 
 **Files:**
+
 - Modify: `apps/bench/src/__tests__/bench-runtime.test.ts`
 - Modify: `scripts/__tests__/bench-matrix.test.mjs`
 
@@ -1059,12 +1071,17 @@ describe("measureBenchKeySequenceRun", () => {
       dispatched.push(event.key);
     });
 
-    const result = await measureBenchKeySequenceRun(root, "pretable", "select-range-extend", {
-      key: "ArrowDown",
-      shiftKey: true,
-      count: 5,
-      framesBetween: 1,
-    });
+    const result = await measureBenchKeySequenceRun(
+      root,
+      "pretable",
+      "select-range-extend",
+      {
+        key: "ArrowDown",
+        shiftKey: true,
+        count: 5,
+        framesBetween: 1,
+      },
+    );
 
     expect(result.status).toBe("completed");
     expect(dispatched.length).toBe(5);
@@ -1078,13 +1095,20 @@ describe("measureBenchKeySequenceRun", () => {
     const root = document.createElement("div");
     document.body.appendChild(root);
 
-    const result = await measureBenchKeySequenceRun(root, "pretable", "keyboard-nav-row", {
-      key: "ArrowDown",
-      count: 10,
-    });
+    const result = await measureBenchKeySequenceRun(
+      root,
+      "pretable",
+      "keyboard-nav-row",
+      {
+        key: "ArrowDown",
+        count: 10,
+      },
+    );
 
     expect(result.status).toBe("partial");
-    expect(result.notes.some((n) => n.includes("viewport unavailable"))).toBe(true);
+    expect(result.notes.some((n) => n.includes("viewport unavailable"))).toBe(
+      true,
+    );
 
     document.body.removeChild(root);
   });
@@ -1096,6 +1120,7 @@ describe("measureBenchKeySequenceRun", () => {
 - [ ] **Step 8.2: Add tests for the new evaluators in `scripts/__tests__/bench-matrix.test.mjs`**
 
 Mirror the existing evaluator tests. For each new H16–H21:
+
 - Synthetic-runset fixture exercises the satisfied / failing / insufficient paths.
 - Threshold values match the spec.
 
@@ -1164,6 +1189,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 9 — Run the matrix and capture evidence
 
 **Files:**
+
 - Add: `status/runsets/<runset-id>/...` (output files generated by the run)
 
 - [ ] **Step 9.1: Verify the bench harness is in a clean state**
@@ -1196,6 +1222,7 @@ ls -lt status/runsets/ | head
 ```
 
 The most recent runset directory contains:
+
 - `runs.json` or per-run summary files
 - `hypotheses.json` with the evaluated H16–H21 results
 
@@ -1224,6 +1251,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 10 — Update repo-memory checkpoint
 
 **Files:**
+
 - Modify: `docs/research/repo-memory.md`
 
 - [ ] **Step 10.1: Append a new milestone entry**
@@ -1351,22 +1379,22 @@ Per the standing workflow, the user merges (auto-merge fires once CI passes; if 
 
 **Spec coverage check** (against `2026-05-07-tier1-bench-slab1-design.md`):
 
-| Spec section | Covered by |
-|---|---|
-| Six new BenchScriptName values | Task 1 |
-| measureBenchKeySequenceRun helper | Task 2 |
-| Bench-app dispatch for selection/nav scripts | Task 3 |
-| Cell-renderer column flavors in pretable adapter | Task 4 |
-| Bench-app dispatch for cell-renderer scripts | Task 5 |
-| Comparator adapters mark unsupported | Task 6 |
-| evaluateH16–H21 in bench-matrix.mjs | Task 7 |
-| Unit tests for helper + evaluators | Task 8 |
-| Run matrix + commit evidence | Task 9 |
-| Update repo-memory.md | Task 10 |
-| Phase structure (single PR, 8+ commits-of-record) | Tasks 1-11 each commit |
+| Spec section                                         | Covered by                               |
+| ---------------------------------------------------- | ---------------------------------------- |
+| Six new BenchScriptName values                       | Task 1                                   |
+| measureBenchKeySequenceRun helper                    | Task 2                                   |
+| Bench-app dispatch for selection/nav scripts         | Task 3                                   |
+| Cell-renderer column flavors in pretable adapter     | Task 4                                   |
+| Bench-app dispatch for cell-renderer scripts         | Task 5                                   |
+| Comparator adapters mark unsupported                 | Task 6                                   |
+| evaluateH16–H21 in bench-matrix.mjs                  | Task 7                                   |
+| Unit tests for helper + evaluators                   | Task 8                                   |
+| Run matrix + commit evidence                         | Task 9                                   |
+| Update repo-memory.md                                | Task 10                                  |
+| Phase structure (single PR, 8+ commits-of-record)    | Tasks 1-11 each commit                   |
 | Threshold realism (fix the cause, not the threshold) | Task 9 Step 9.3 STOP-and-fix instruction |
-| Hypothesis numbering H16-H21 | Task 7 |
-| Single matrix invocation | Task 9 Step 9.2 |
+| Hypothesis numbering H16-H21                         | Task 7                                   |
+| Single matrix invocation                             | Task 9 Step 9.2                          |
 
 All spec sections covered.
 

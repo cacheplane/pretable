@@ -78,14 +78,14 @@ The cell-renderer scripts reuse the existing `scroll` script's interaction seque
 
 Added to `scripts/bench-matrix.mjs`. Numbering: H1–H15 used (H1=scroll wedge, H5=update durability, H6/H7/H8=interaction at S2, H9–H12=S7 mirrors, H13–H15=S5 streaming). Selection/nav gets H16–H18; cell renderers get H19–H21.
 
-| # | Slice | Threshold | Rationale |
-|---|---|---|---|
-| H16 | `S2/hypothesis/pretable/select-range-extend` | `interaction_latency_ms` p95 across 30 extends < 16ms | Single-frame budget at 60Hz |
-| H17 | `S2/hypothesis/pretable/keyboard-nav-row` | `interaction_latency_ms` p95 across 60 navs < 16ms | Single-frame budget |
-| H18 | `S2/hypothesis/pretable/select-all` | `interaction_latency_ms` < 33ms | Two-frame budget — one-time event |
-| H19 | `S2/hypothesis/pretable/scroll-with-format` | `scroll_frame_p95_ms` ≤ baseline (`S2/scroll/pretable`) + 2ms | Format overhead bound |
-| H20 | `S2/hypothesis/pretable/scroll-with-render` | `scroll_frame_p95_ms` ≤ 16ms | Cell-level memo holds with cheap render |
-| H21 | `S2/hypothesis/pretable/scroll-with-heavy-render` | `scroll_frame_p95_ms` ≤ 20ms | Heavier render degrades gracefully (≤ 25% above frame budget) |
+| #   | Slice                                             | Threshold                                                     | Rationale                                                     |
+| --- | ------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
+| H16 | `S2/hypothesis/pretable/select-range-extend`      | `interaction_latency_ms` p95 across 30 extends < 16ms         | Single-frame budget at 60Hz                                   |
+| H17 | `S2/hypothesis/pretable/keyboard-nav-row`         | `interaction_latency_ms` p95 across 60 navs < 16ms            | Single-frame budget                                           |
+| H18 | `S2/hypothesis/pretable/select-all`               | `interaction_latency_ms` < 33ms                               | Two-frame budget — one-time event                             |
+| H19 | `S2/hypothesis/pretable/scroll-with-format`       | `scroll_frame_p95_ms` ≤ baseline (`S2/scroll/pretable`) + 2ms | Format overhead bound                                         |
+| H20 | `S2/hypothesis/pretable/scroll-with-render`       | `scroll_frame_p95_ms` ≤ 16ms                                  | Cell-level memo holds with cheap render                       |
+| H21 | `S2/hypothesis/pretable/scroll-with-heavy-render` | `scroll_frame_p95_ms` ≤ 20ms                                  | Heavier render degrades gracefully (≤ 25% above frame budget) |
 
 H19's baseline is computed inline from the sibling `S2/scroll/pretable` slice in the same runset. No external state, no historical comparison — same matrix invocation. The evaluator pulls both slices and computes the diff.
 
