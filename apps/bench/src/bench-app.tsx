@@ -164,7 +164,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         viewportRef.current?.querySelectorAll("*").length ?? 0;
 
       const scrollRun =
-        scriptName === "scroll"
+        scriptName === "scroll" ||
+        scriptName === "scroll-with-format" ||
+        scriptName === "scroll-with-render" ||
+        scriptName === "scroll-with-heavy-render"
           ? await measureBenchScrollRun(
               viewportRef.current ?? document.body,
               query.adapterId,
@@ -261,7 +264,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
           : null;
 
       const nextResult =
-        scriptName === "scroll" && scrollRun
+        (scriptName === "scroll" ||
+          scriptName === "scroll-with-format" ||
+          scriptName === "scroll-with-render" ||
+          scriptName === "scroll-with-heavy-render") &&
+        scrollRun
           ? createBenchRunSummary({
               request,
               status: scrollRun.status,
@@ -454,6 +461,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 }}
                 onUpdateApiReady={handleUpdateApiReady}
                 runKey={runKey}
+                scriptName={query.scriptName}
               />
             ) : (
               <AdapterSurface
