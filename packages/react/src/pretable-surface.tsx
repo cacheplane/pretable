@@ -609,29 +609,70 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         };
       }
 
-      for (const row of snapshot.visibleRows) {
-        let coveredCount = 0;
+      // Per-row tracking of which data-column indices are covered by some
+      // range. Avoids the O(rows × cols × ranges) full grid sweep that the
+      // earlier implementation did — instead we expand each range over its
+      // span and union the covered column indices per row.
+      const dataColIdxByColId = new Map<string, number>();
+      const dataColIds: string[] = [];
+      for (let i = 0; i < dataColumns.length; i += 1) {
+        const col = dataColumns[i]!;
+        dataColIdxByColId.set(col.id, i);
+        dataColIds.push(col.id);
+      }
 
-        for (const column of dataColumns) {
-          const inAny = ranges.some((range) =>
-            rangeContainsCellLocal(
-              range,
-              row.id,
-              column.id,
-              visibleRowIndexById,
-              columnIndexById,
-            ),
-          );
+      const visibleRows = snapshot.visibleRows;
+      const rowCoverage = new Map<number, Set<number>>();
 
-          if (inAny) {
-            cellKeys.add(`${row.id}::${column.id}`);
-            coveredCount += 1;
-          }
+      for (const range of ranges) {
+        const r1 = visibleRowIndexById.get(range.startRowId);
+        const r2 = visibleRowIndexById.get(range.endRowId);
+        if (r1 === undefined || r2 === undefined) continue;
+        const rowLo = Math.min(r1, r2);
+        const rowHi = Math.max(r1, r2);
+
+        const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+        const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+        let dataColLo: number;
+        let dataColHi: number;
+
+        if (startSynth && endSynth) {
+          continue;
+        }
+        if (startSynth || endSynth) {
+          // Synthetic bound expands across all data columns.
+          dataColLo = 0;
+          dataColHi = dataColumns.length - 1;
+        } else {
+          const a = dataColIdxByColId.get(range.startColumnId);
+          const b = dataColIdxByColId.get(range.endColumnId);
+          if (a === undefined || b === undefined) continue;
+          dataColLo = Math.min(a, b);
+          dataColHi = Math.max(a, b);
         }
 
-        if (coveredCount === dataColumns.length) {
+        for (let rowIdx = rowLo; rowIdx <= rowHi; rowIdx += 1) {
+          const row = visibleRows[rowIdx];
+          if (!row) continue;
+          let cov = rowCoverage.get(rowIdx);
+          if (!cov) {
+            cov = new Set<number>();
+            rowCoverage.set(rowIdx, cov);
+          }
+          for (let colIdx = dataColLo; colIdx <= dataColHi; colIdx += 1) {
+            cov.add(colIdx);
+            cellKeys.add(`${row.id}::${dataColIds[colIdx]!}`);
+          }
+        }
+      }
+
+      for (const [rowIdx, cov] of rowCoverage) {
+        const row = visibleRows[rowIdx];
+        if (!row) continue;
+        if (cov.size === 0) continue;
+        if (cov.size === dataColumns.length) {
           fullyRows.add(row.id);
-        } else if (coveredCount > 0) {
+        } else {
           indeterminateRows.add(row.id);
         }
       }
@@ -646,7 +687,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       snapshot.visibleRows,
       effectiveColumns,
       visibleRowIndexById,
-      columnIndexById,
     ]);
 
   useLayoutEffect(() => {
