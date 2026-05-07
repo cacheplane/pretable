@@ -1074,7 +1074,7 @@ function evaluateH15(runs) {
  * - failing: any repeat exceeds 16ms.
  * - insufficient: no completed runs.
  */
-function evaluateH16(runs) {
+export function evaluateH16(runs) {
   const series = findRunSeries(runs, {
     adapterId: "pretable",
     scenarioId: "S2",
@@ -1115,7 +1115,7 @@ function evaluateH16(runs) {
 /**
  * H17 — keyboard nav latency. Same shape as H16, different script.
  */
-function evaluateH17(runs) {
+export function evaluateH17(runs) {
   const series = findRunSeries(runs, {
     adapterId: "pretable",
     scenarioId: "S2",
@@ -1157,7 +1157,7 @@ function evaluateH17(runs) {
  * H18 — select-all end-to-end latency. Single event; threshold 33ms (two-frame
  * budget — one-time cost is acceptable).
  */
-function evaluateH18(runs) {
+export function evaluateH18(runs) {
   const series = findRunSeries(runs, {
     adapterId: "pretable",
     scenarioId: "S2",
@@ -1200,7 +1200,7 @@ function evaluateH18(runs) {
  * S2/hypothesis/pretable/scroll slice in the same runset. Threshold: format
  * adds at most 2ms to scroll p95.
  */
-function evaluateH19(runs) {
+export function evaluateH19(runs) {
   const formatSeries = findRunSeries(runs, {
     adapterId: "pretable",
     scenarioId: "S2",
@@ -1270,7 +1270,7 @@ function evaluateH19(runs) {
 /**
  * H20 — cheap render holds single-frame budget.
  */
-function evaluateH20(runs) {
+export function evaluateH20(runs) {
   const series = findRunSeries(runs, {
     adapterId: "pretable",
     scenarioId: "S2",
@@ -1311,7 +1311,7 @@ function evaluateH20(runs) {
 /**
  * H21 — heavy render degrades gracefully.
  */
-function evaluateH21(runs) {
+export function evaluateH21(runs) {
   const series = findRunSeries(runs, {
     adapterId: "pretable",
     scenarioId: "S2",
