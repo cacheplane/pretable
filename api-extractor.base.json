@@ -1,0 +1,45 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
+  "compiler": {
+    "tsconfigFilePath": "<projectFolder>/tsconfig.docs.json"
+  },
+  "messages": {
+    "tsdocMessageReporting": {
+      "default": {
+        "logLevel": "warning"
+      },
+      "tsdoc-undefined-tag": {
+        "logLevel": "none"
+      }
+    },
+    "extractorMessageReporting": {
+      "default": {
+        "logLevel": "warning"
+      },
+      "ae-missing-release-tag": {
+        "logLevel": "warning"
+      }
+    }
+  },
+  "tsdocMetadata": {
+    "enabled": false
+  },
+  "apiReport": {
+    "enabled": true,
+    "reportFolder": "<projectFolder>",
+    "reportFileName": "<unscopedPackageName>.api.md"
+  },
+  "docModel": {
+    "enabled": false
+  },
+  "dtsRollup": {
+    "enabled": false
+  },
+  "newlineKind": "lf",
+  "bundledPackages": [
+    "@pretable/core",
+    "@pretable/react",
+    "@pretable/ui",
+    "@pretable/stream-adapter"
+  ]
+}
