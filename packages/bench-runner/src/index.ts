@@ -272,11 +272,26 @@ export function validateSupportedP0aRequest(
   }
 
   const interactionScripts = ["sort", "filter-metadata", "filter-text"];
+  // Slab 1: pretable-internal absolute thresholds. Comparators are
+  // intentionally unsupported until a future Slab 2 sub-project ships
+  // comparative wiring.
+  const selectionNavScripts = [
+    "select-range-extend",
+    "keyboard-nav-row",
+    "select-all",
+  ];
+  const cellRendererScripts = [
+    "scroll-with-format",
+    "scroll-with-render",
+    "scroll-with-heavy-render",
+  ];
   const supportedScripts = [
     "initial",
     "scroll",
     "updates",
     ...interactionScripts,
+    ...selectionNavScripts,
+    ...cellRendererScripts,
   ];
 
   if (!supportedScripts.includes(request.scriptName)) {
@@ -310,6 +325,25 @@ export function validateSupportedP0aRequest(
       return {
         ok: false,
         reason: `Unsupported scenario for interaction script ${request.scriptName}: ${request.scenarioId}`,
+      };
+    }
+  }
+
+  if (
+    selectionNavScripts.includes(request.scriptName) ||
+    cellRendererScripts.includes(request.scriptName)
+  ) {
+    if (request.adapterId !== "pretable") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (Slab 1 — pretable only)`,
+      };
+    }
+
+    if (request.scenarioId !== "S2") {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for ${request.scriptName}: ${request.scenarioId} (Slab 1 — S2 only)`,
       };
     }
   }

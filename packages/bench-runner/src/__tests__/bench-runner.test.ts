@@ -68,6 +68,12 @@ describe("bench-runner contract", () => {
       "filter-text",
       "updates",
       "autosize",
+      "select-range-extend",
+      "keyboard-nav-row",
+      "select-all",
+      "scroll-with-format",
+      "scroll-with-render",
+      "scroll-with-heavy-render",
     ]);
   });
 
