@@ -33,6 +33,8 @@
     "@pretable-internal/renderer-dom": "workspace:*"
   },
   "scripts": {
+    "api": "api-extractor run --local --config api-extractor.json",
+    "api:check": "api-extractor run --config api-extractor.json",
     "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:packaging": "publint --strict && attw --pack",
