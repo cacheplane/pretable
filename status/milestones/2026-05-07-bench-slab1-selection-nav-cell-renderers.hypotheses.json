@@ -8,12 +8,8 @@
     }
   ],
   "matrix": {
-    "adapters": [
-      "pretable"
-    ],
-    "scenarios": [
-      "S2"
-    ],
+    "adapters": ["pretable"],
+    "scenarios": ["S2"],
     "scripts": [
       "initial",
       "scroll",
@@ -30,9 +26,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "initial",
-      "adapterIds": [
-        "pretable"
-      ],
+      "adapterIds": ["pretable"],
       "policyNotes": {
         "common": [
           "internal telemetry rendered rows: 6",
@@ -58,9 +52,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "scroll",
-      "adapterIds": [
-        "pretable"
-      ],
+      "adapterIds": ["pretable"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -96,9 +88,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "select-range-extend",
-      "adapterIds": [
-        "pretable"
-      ],
+      "adapterIds": ["pretable"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -138,9 +128,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "keyboard-nav-row",
-      "adapterIds": [
-        "pretable"
-      ],
+      "adapterIds": ["pretable"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -180,9 +168,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "select-all",
-      "adapterIds": [
-        "pretable"
-      ],
+      "adapterIds": ["pretable"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -222,9 +208,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "scroll-with-format",
-      "adapterIds": [
-        "pretable"
-      ],
+      "adapterIds": ["pretable"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -260,9 +244,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "scroll-with-render",
-      "adapterIds": [
-        "pretable"
-      ],
+      "adapterIds": ["pretable"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -298,9 +280,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "scroll-with-heavy-render",
-      "adapterIds": [
-        "pretable"
-      ],
+      "adapterIds": ["pretable"],
       "policyNotes": {
         "common": [
           "contain: none",
