@@ -1886,27 +1886,51 @@ function computeSelectionExtent<TRow extends PretableRow>(
   const coveredCols = new Set<string>();
 
   for (const range of ranges) {
-    // Synthetic row-select column expands to cover all data columns when it
-    // is part of the range — that's how full-row selection encodes itself.
-    const rangeColumnIds: string[] = [];
-    if (
-      range.startColumnId === ROW_SELECT_COLUMN_ID ||
-      range.endColumnId === ROW_SELECT_COLUMN_ID
-    ) {
-      for (const c of dataColumns) rangeColumnIds.push(c.id);
+    // Resolve row span from range bounds. O(span), not O(rows × cols).
+    const r1 = rowOrder.get(range.startRowId);
+    const r2 = rowOrder.get(range.endRowId);
+    if (r1 === undefined || r2 === undefined) continue;
+    const rowLo = Math.min(r1, r2);
+    const rowHi = Math.max(r1, r2);
+
+    // Resolve column span. The synthetic row-select column expands to "all
+    // data columns" when it appears as a range bound (this is how full-row
+    // selections encode themselves).
+    const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+    const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+    let colsForRange: PretableColumn<TRow>[];
+
+    if (startSynth && endSynth) {
+      // Range spans only the synthetic column — no data cells covered.
+      continue;
     }
 
-    for (const row of visibleRows) {
-      for (const col of dataColumns) {
-        if (
-          rangeContainsCellLocal(range, row.id, col.id, rowOrder, columnOrder)
-        ) {
-          coveredRows.add(row.id);
-          coveredCols.add(col.id);
+    if (startSynth || endSynth) {
+      colsForRange = dataColumns.slice();
+    } else {
+      const c1 = columnOrder.get(range.startColumnId);
+      const c2 = columnOrder.get(range.endColumnId);
+      if (c1 === undefined || c2 === undefined) continue;
+      const colLo = Math.min(c1, c2);
+      const colHi = Math.max(c1, c2);
+      colsForRange = [];
+      for (let i = colLo; i <= colHi; i += 1) {
+        const col = effectiveColumns[i];
+        if (col && col.id !== ROW_SELECT_COLUMN_ID) {
+          colsForRange.push(col);
         }
       }
     }
-    for (const id of rangeColumnIds) coveredCols.add(id);
+
+    if (colsForRange.length === 0) continue;
+
+    for (let i = rowLo; i <= rowHi; i += 1) {
+      const row = visibleRows[i];
+      if (row) coveredRows.add(row.id);
+    }
+    for (const col of colsForRange) {
+      coveredCols.add(col.id);
+    }
   }
 
   const rowCount = coveredRows.size;
