@@ -1135,3 +1135,137 @@ function measureWrappedCellRowHeightError(
 
   return Math.abs(expectedHeight - renderedHeight);
 }
+
+export interface KeySequenceBenchRunResult {
+  status: "completed" | "partial" | "failed";
+  notes: string[];
+  metrics: {
+    interaction_latency_ms?: number;
+    settle_duration_ms?: number;
+    dom_nodes_peak?: number;
+    rendered_rows_peak?: number;
+    rendered_cells_peak?: number;
+  };
+}
+
+interface KeySequenceOptions {
+  key: string;
+  shiftKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  count: number;
+  /** Minimum frames between keystrokes to ensure each one renders. Default 1. */
+  framesBetween?: number;
+}
+
+export async function measureBenchKeySequenceRun(
+  root: HTMLElement,
+  adapterId: BenchQueryState["adapterId"],
+  scriptName: "select-range-extend" | "keyboard-nav-row" | "select-all",
+  options: KeySequenceOptions,
+): Promise<KeySequenceBenchRunResult> {
+  const profile = scrollRuntimeProfiles[adapterId];
+  const viewport = await waitForScrollViewport(root, profile.viewportSelector);
+  const viewportPolicyNotes = viewport
+    ? detectViewportPolicyNotes(viewport)
+    : [];
+
+  if (!viewport) {
+    return {
+      status: "partial",
+      notes: [
+        ...viewportPolicyNotes,
+        `script: ${scriptName}`,
+        `viewport unavailable for ${adapterId} in current runtime`,
+      ],
+      metrics: {
+        dom_nodes_peak: root.querySelectorAll("*").length,
+      },
+    };
+  }
+
+  // Allow the grid to settle and ensure focus is on a body cell.
+  await waitForAnimationFrame();
+  const firstCell =
+    viewport.querySelector<HTMLElement>(
+      `${profile.cellSelector}[tabindex="0"]`,
+    ) ?? viewport.querySelector<HTMLElement>(profile.cellSelector);
+
+  if (!firstCell) {
+    return {
+      status: "partial",
+      notes: [
+        ...viewportPolicyNotes,
+        `script: ${scriptName}`,
+        `no body cell available for keyboard focus`,
+      ],
+      metrics: {
+        dom_nodes_peak: root.querySelectorAll("*").length,
+      },
+    };
+  }
+
+  firstCell.focus();
+  await waitForAnimationFrame();
+
+  let domNodesPeak = root.querySelectorAll("*").length;
+  let renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
+  let renderedCellsPeak = root.querySelectorAll(profile.cellSelector).length;
+  const latencies: number[] = [];
+  const framesBetween = options.framesBetween ?? 1;
+
+  for (let i = 0; i < options.count; i += 1) {
+    const start = performance.now();
+    const target = (document.activeElement as HTMLElement) ?? firstCell;
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key: options.key,
+        shiftKey: options.shiftKey ?? false,
+        ctrlKey: options.ctrlKey ?? false,
+        metaKey: options.metaKey ?? false,
+      }),
+    );
+
+    // Wait for at least one paint to capture the frame the dispatch produced.
+    for (let f = 0; f < framesBetween; f += 1) {
+      await waitForAnimationFrame();
+    }
+    latencies.push(performance.now() - start);
+
+    domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
+    renderedRowsPeak = Math.max(
+      renderedRowsPeak,
+      root.querySelectorAll(profile.rowSelector).length,
+    );
+    renderedCellsPeak = Math.max(
+      renderedCellsPeak,
+      root.querySelectorAll(profile.cellSelector).length,
+    );
+  }
+
+  // Settle: wait a few frames to ensure no late commits.
+  const settleStart = performance.now();
+  for (let f = 0; f < 5; f += 1) {
+    await waitForAnimationFrame();
+  }
+  const settleDuration = performance.now() - settleStart;
+
+  return {
+    status: "completed",
+    notes: [
+      ...viewportPolicyNotes,
+      `script: ${scriptName}`,
+      `events: ${options.count}`,
+    ],
+    metrics: {
+      interaction_latency_ms:
+        options.count === 1 ? latencies[0] : percentile(latencies, 0.95),
+      settle_duration_ms: settleDuration,
+      dom_nodes_peak: domNodesPeak,
+      rendered_rows_peak: renderedRowsPeak,
+      rendered_cells_peak: renderedCellsPeak,
+    },
+  };
+}
