@@ -18,3 +18,5 @@ status/runsets/*.json
 status/snapshots/*.tgz
 status/traces/*.zip
 .vercel
+# api-extractor working directory
+**/temp/

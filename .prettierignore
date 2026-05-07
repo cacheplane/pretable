@@ -10,3 +10,6 @@ status/snapshots
 status/traces
 pnpm-lock.yaml
 *.tsbuildinfo
+
+# api-extractor generates these — prettier would reformat and break api:check
+*.api.md

@@ -45,6 +45,8 @@
     "./package.json": "./package.json"
   },
   "scripts": {
+    "api": "api-extractor run --local --config api-extractor.json",
+    "api:check": "api-extractor run --config api-extractor.json",
     "build": "tsup && node ./scripts/copy-css-assets.mjs",
     "lint": "eslint src --ext .ts",
     "lint:packaging": "publint --strict && attw --pack --exclude-entrypoints ./themes/excel.css ./themes/material.css ./grid.css ./tailwind.css ./tokens.css",
