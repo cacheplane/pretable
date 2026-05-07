@@ -29,6 +29,7 @@ import {
   createPretableTelemetryNotes,
   createBenchRequest,
   measureBenchInteractionRun,
+  measureBenchKeySequenceRun,
   measureBenchScrollRun,
   measureBenchUpdatesRun,
   publishBenchResult,
@@ -205,6 +206,36 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             : null
           : null;
 
+      const keySequenceRun =
+        scriptName === "select-range-extend"
+          ? query.adapterId === "pretable"
+            ? await measureBenchKeySequenceRun(
+                viewportRef.current ?? document.body,
+                query.adapterId,
+                scriptName,
+                { key: "ArrowDown", shiftKey: true, count: 30 },
+              )
+            : null
+          : scriptName === "keyboard-nav-row"
+            ? query.adapterId === "pretable"
+              ? await measureBenchKeySequenceRun(
+                  viewportRef.current ?? document.body,
+                  query.adapterId,
+                  scriptName,
+                  { key: "ArrowDown", count: 60 },
+                )
+              : null
+            : scriptName === "select-all"
+              ? query.adapterId === "pretable"
+                ? await measureBenchKeySequenceRun(
+                    viewportRef.current ?? document.body,
+                    query.adapterId,
+                    scriptName,
+                    { key: "a", metaKey: true, count: 1 },
+                  )
+                : null
+              : null;
+
       // Wait up to ~1s for the current adapter to publish its update API.
       // Grid Alpha in particular fires onGridReady asynchronously a few RAFs
       // after mount, so kicking off the updates script in the very next
@@ -242,7 +273,24 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               ],
               metrics: scrollRun.metrics,
             })
-          : scriptName === "updates" && updatesRun
+          : (scriptName === "select-range-extend" ||
+                scriptName === "keyboard-nav-row" ||
+                scriptName === "select-all") &&
+              keySequenceRun
+            ? createBenchRunSummary({
+                request,
+                status: keySequenceRun.status,
+                timestamp,
+                tracePath,
+                notes: [
+                  ...keySequenceRun.notes,
+                  ...createPretableTelemetryNotes(
+                    pretableTelemetryRef.current,
+                  ),
+                ],
+                metrics: keySequenceRun.metrics,
+              })
+            : scriptName === "updates" && updatesRun
             ? createBenchRunSummary({
                 request,
                 status: updatesRun.status,
