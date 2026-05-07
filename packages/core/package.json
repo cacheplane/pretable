@@ -26,6 +26,8 @@
     "@pretable-internal/grid-core": "workspace:*"
   },
   "scripts": {
+    "api": "api-extractor run --local --config api-extractor.json",
+    "api:check": "api-extractor run --config api-extractor.json",
     "build": "pnpm --filter @pretable-internal/grid-core build && tsup",
     "lint": "eslint src --ext .ts",
     "lint:packaging": "publint --strict && attw --pack",
