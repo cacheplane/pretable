@@ -157,6 +157,12 @@ export function createHypothesisReport(input) {
       evaluateH13(input.runs),
       evaluateH14(input.runs),
       evaluateH15(input.runs),
+      evaluateH16(input.runs),
+      evaluateH17(input.runs),
+      evaluateH18(input.runs),
+      evaluateH19(input.runs),
+      evaluateH20(input.runs),
+      evaluateH21(input.runs),
     ],
   };
 }
@@ -1055,6 +1061,291 @@ function evaluateH15(runs) {
     status: "satisfied",
     summary: `Streaming row stability holds for pretable (max drift: ${pretableMaxDrift} rows across the operating envelope). ${worstCompetitor.adapterId} drifts up to ${worstCompetitor.drift} rows during streaming — a real differentiator vs that adapter's row recycling behavior.`,
     evidence: [],
+  };
+}
+
+/**
+ * H16 — selection extend latency. The S2/hypothesis pretable
+ * select-range-extend slice's interaction_latency_ms p95 must stay
+ * within a single 60Hz frame (≤ 16ms).
+ *
+ * Status:
+ * - satisfied: p95 ≤ 16ms across all repeats.
+ * - failing: any repeat exceeds 16ms.
+ * - insufficient: no completed runs.
+ */
+export function evaluateH16(runs) {
+  const series = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scale: "hypothesis",
+    scriptName: "select-range-extend",
+  });
+
+  if (series.length === 0) {
+    return {
+      id: "H16",
+      status: "insufficient",
+      summary:
+        "No completed S2/hypothesis pretable select-range-extend runs available.",
+      evidence: [],
+    };
+  }
+
+  const evidence = summarizeRunSeriesEvidence(series);
+  const latency = evidence.metrics.interaction_latency_ms;
+
+  if (latency === undefined || latency > 16) {
+    return {
+      id: "H16",
+      status: "failing",
+      summary: `Selection extend latency p95 is ${latency ?? "missing"}ms (threshold: ≤ 16ms).`,
+      evidence: [evidence],
+    };
+  }
+
+  return {
+    id: "H16",
+    status: "satisfied",
+    summary: `Selection extend p95 is ${latency}ms (≤ 16ms single-frame budget).`,
+    evidence: [evidence],
+  };
+}
+
+/**
+ * H17 — keyboard nav latency. Same shape as H16, different script.
+ */
+export function evaluateH17(runs) {
+  const series = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scale: "hypothesis",
+    scriptName: "keyboard-nav-row",
+  });
+
+  if (series.length === 0) {
+    return {
+      id: "H17",
+      status: "insufficient",
+      summary:
+        "No completed S2/hypothesis pretable keyboard-nav-row runs available.",
+      evidence: [],
+    };
+  }
+
+  const evidence = summarizeRunSeriesEvidence(series);
+  const latency = evidence.metrics.interaction_latency_ms;
+
+  if (latency === undefined || latency > 16) {
+    return {
+      id: "H17",
+      status: "failing",
+      summary: `Keyboard nav latency p95 is ${latency ?? "missing"}ms (threshold: ≤ 16ms).`,
+      evidence: [evidence],
+    };
+  }
+
+  return {
+    id: "H17",
+    status: "satisfied",
+    summary: `Keyboard nav p95 is ${latency}ms (≤ 16ms single-frame budget).`,
+    evidence: [evidence],
+  };
+}
+
+/**
+ * H18 — select-all end-to-end latency. Single event; threshold 33ms (two-frame
+ * budget — one-time cost is acceptable).
+ */
+export function evaluateH18(runs) {
+  const series = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scale: "hypothesis",
+    scriptName: "select-all",
+  });
+
+  if (series.length === 0) {
+    return {
+      id: "H18",
+      status: "insufficient",
+      summary: "No completed S2/hypothesis pretable select-all runs available.",
+      evidence: [],
+    };
+  }
+
+  const evidence = summarizeRunSeriesEvidence(series);
+  const latency = evidence.metrics.interaction_latency_ms;
+
+  if (latency === undefined || latency > 33) {
+    return {
+      id: "H18",
+      status: "failing",
+      summary: `Select-all latency is ${latency ?? "missing"}ms (threshold: ≤ 33ms).`,
+      evidence: [evidence],
+    };
+  }
+
+  return {
+    id: "H18",
+    status: "satisfied",
+    summary: `Select-all latency is ${latency}ms (≤ 33ms two-frame budget).`,
+    evidence: [evidence],
+  };
+}
+
+/**
+ * H19 — format overhead bound. The S2/hypothesis/pretable/scroll-with-format
+ * slice's scroll_frame_p95_ms is compared to the sibling
+ * S2/hypothesis/pretable/scroll slice in the same runset. Threshold: format
+ * adds at most 2ms to scroll p95.
+ */
+export function evaluateH19(runs) {
+  const formatSeries = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scale: "hypothesis",
+    scriptName: "scroll-with-format",
+  });
+  const baselineSeries = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scale: "hypothesis",
+    scriptName: "scroll",
+  });
+
+  if (formatSeries.length === 0) {
+    return {
+      id: "H19",
+      status: "insufficient",
+      summary:
+        "No completed S2/hypothesis pretable scroll-with-format runs available.",
+      evidence: [],
+    };
+  }
+
+  if (baselineSeries.length === 0) {
+    return {
+      id: "H19",
+      status: "insufficient",
+      summary:
+        "No completed S2/hypothesis pretable scroll baseline available — H19 requires both.",
+      evidence: [],
+    };
+  }
+
+  const formatEvidence = summarizeRunSeriesEvidence(formatSeries);
+  const baselineEvidence = summarizeRunSeriesEvidence(baselineSeries);
+  const formatP95 = formatEvidence.metrics.scroll_frame_p95_ms;
+  const baselineP95 = baselineEvidence.metrics.scroll_frame_p95_ms;
+
+  if (formatP95 === undefined || baselineP95 === undefined) {
+    return {
+      id: "H19",
+      status: "insufficient",
+      summary:
+        "scroll_frame_p95_ms missing from format or baseline run — cannot evaluate.",
+      evidence: [formatEvidence, baselineEvidence],
+    };
+  }
+
+  const overhead = formatP95 - baselineP95;
+  if (overhead > 2) {
+    return {
+      id: "H19",
+      status: "failing",
+      summary: `Format overhead is ${overhead.toFixed(2)}ms (threshold: ≤ 2ms; format ${formatP95}ms vs baseline ${baselineP95}ms).`,
+      evidence: [formatEvidence, baselineEvidence],
+    };
+  }
+
+  return {
+    id: "H19",
+    status: "satisfied",
+    summary: `Format overhead is ${overhead.toFixed(2)}ms (≤ 2ms; format ${formatP95}ms, baseline ${baselineP95}ms).`,
+    evidence: [formatEvidence, baselineEvidence],
+  };
+}
+
+/**
+ * H20 — cheap render holds single-frame budget.
+ */
+export function evaluateH20(runs) {
+  const series = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scale: "hypothesis",
+    scriptName: "scroll-with-render",
+  });
+
+  if (series.length === 0) {
+    return {
+      id: "H20",
+      status: "insufficient",
+      summary:
+        "No completed S2/hypothesis pretable scroll-with-render runs available.",
+      evidence: [],
+    };
+  }
+
+  const evidence = summarizeRunSeriesEvidence(series);
+  const p95 = evidence.metrics.scroll_frame_p95_ms;
+
+  if (p95 === undefined || p95 > 16) {
+    return {
+      id: "H20",
+      status: "failing",
+      summary: `scroll_frame_p95_ms with cheap render is ${p95 ?? "missing"}ms (threshold: ≤ 16ms).`,
+      evidence: [evidence],
+    };
+  }
+
+  return {
+    id: "H20",
+    status: "satisfied",
+    summary: `Cheap render scroll p95 is ${p95}ms (≤ 16ms single-frame budget).`,
+    evidence: [evidence],
+  };
+}
+
+/**
+ * H21 — heavy render degrades gracefully.
+ */
+export function evaluateH21(runs) {
+  const series = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scale: "hypothesis",
+    scriptName: "scroll-with-heavy-render",
+  });
+
+  if (series.length === 0) {
+    return {
+      id: "H21",
+      status: "insufficient",
+      summary:
+        "No completed S2/hypothesis pretable scroll-with-heavy-render runs available.",
+      evidence: [],
+    };
+  }
+
+  const evidence = summarizeRunSeriesEvidence(series);
+  const p95 = evidence.metrics.scroll_frame_p95_ms;
+
+  if (p95 === undefined || p95 > 20) {
+    return {
+      id: "H21",
+      status: "failing",
+      summary: `scroll_frame_p95_ms with heavy render is ${p95 ?? "missing"}ms (threshold: ≤ 20ms).`,
+      evidence: [evidence],
+    };
+  }
+
+  return {
+    id: "H21",
+    status: "satisfied",
+    summary: `Heavy render scroll p95 is ${p95}ms (≤ 20ms; ≤ 25% above single-frame budget).`,
+    evidence: [evidence],
   };
 }
 

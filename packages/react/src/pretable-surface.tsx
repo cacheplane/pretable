@@ -566,17 +566,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return { columnLefts: lefts, columnWidths: widths };
   }, [renderSnapshot.columns, grid.options.columns]);
 
-  const columnIndexById = useMemo(() => {
-    const map = new Map<string, number>();
-    for (let i = 0; i < effectiveColumns.length; i += 1) {
-      const col = effectiveColumns[i];
-      if (col) {
-        map.set(col.id, i);
-      }
-    }
-    return map;
-  }, [effectiveColumns]);
-
   const visibleRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
     for (let i = 0; i < snapshot.visibleRows.length; i += 1) {
@@ -588,66 +577,163 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return map;
   }, [snapshot.visibleRows]);
 
-  const { selectedCellKeys, fullySelectedRowIds, indeterminateRowIds } =
-    useMemo(() => {
-      const cellKeys = new Set<string>();
-      const fullyRows = new Set<string>();
-      const indeterminateRows = new Set<string>();
-      const ranges = snapshot.selection.ranges;
+  const dataColumnIndex = useMemo(() => {
+    const dataColumns = effectiveColumns.filter(
+      (c) => c.id !== ROW_SELECT_COLUMN_ID,
+    );
+    const idxById = new Map<string, number>();
+    for (let i = 0; i < dataColumns.length; i += 1) {
+      idxById.set(dataColumns[i]!.id, i);
+    }
+    return { dataColumns, idxById };
+  }, [effectiveColumns]);
 
-      // Exclude the synthetic row-select column from the "fully selected"
-      // calculation — it doesn't participate in cell-range selection.
-      const dataColumns = effectiveColumns.filter(
-        (c) => c.id !== ROW_SELECT_COLUMN_ID,
-      );
+  const { fullySelectedRowIds, indeterminateRowIds } = useMemo(() => {
+    const fullyRows = new Set<string>();
+    const indeterminateRows = new Set<string>();
+    const ranges = snapshot.selection.ranges;
+    const { dataColumns, idxById: dataColIdxByColId } = dataColumnIndex;
 
-      if (ranges.length === 0 || dataColumns.length === 0) {
-        return {
-          selectedCellKeys: cellKeys,
-          fullySelectedRowIds: fullyRows,
-          indeterminateRowIds: indeterminateRows,
-        };
-      }
-
-      for (const row of snapshot.visibleRows) {
-        let coveredCount = 0;
-
-        for (const column of dataColumns) {
-          const inAny = ranges.some((range) =>
-            rangeContainsCellLocal(
-              range,
-              row.id,
-              column.id,
-              visibleRowIndexById,
-              columnIndexById,
-            ),
-          );
-
-          if (inAny) {
-            cellKeys.add(`${row.id}::${column.id}`);
-            coveredCount += 1;
-          }
-        }
-
-        if (coveredCount === dataColumns.length) {
-          fullyRows.add(row.id);
-        } else if (coveredCount > 0) {
-          indeterminateRows.add(row.id);
-        }
-      }
-
+    if (ranges.length === 0 || dataColumns.length === 0) {
       return {
-        selectedCellKeys: cellKeys,
         fullySelectedRowIds: fullyRows,
         indeterminateRowIds: indeterminateRows,
       };
-    }, [
-      snapshot.selection.ranges,
-      snapshot.visibleRows,
-      effectiveColumns,
-      visibleRowIndexById,
-      columnIndexById,
-    ]);
+    }
+
+    const visibleRows = snapshot.visibleRows;
+    const colCount = dataColumns.length;
+
+    // Fast path: ≤30 data columns → 32-bit bitmask per row, single OR per
+    // range-row. Cmd+A on 3000 rows × 9 cols → 3000 Map ops, no Set
+    // allocations. Falls back to Set-based coverage for wider grids.
+    if (colCount <= 30) {
+      const rowMask = new Map<number, number>();
+      for (const range of ranges) {
+        const r1 = visibleRowIndexById.get(range.startRowId);
+        const r2 = visibleRowIndexById.get(range.endRowId);
+        if (r1 === undefined || r2 === undefined) continue;
+        const rowLo = Math.min(r1, r2);
+        const rowHi = Math.max(r1, r2);
+
+        const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+        const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+        let dataColLo: number;
+        let dataColHi: number;
+        if (startSynth && endSynth) {
+          continue;
+        }
+        if (startSynth || endSynth) {
+          dataColLo = 0;
+          dataColHi = colCount - 1;
+        } else {
+          const a = dataColIdxByColId.get(range.startColumnId);
+          const b = dataColIdxByColId.get(range.endColumnId);
+          if (a === undefined || b === undefined) continue;
+          dataColLo = Math.min(a, b);
+          dataColHi = Math.max(a, b);
+        }
+        const spanWidth = dataColHi - dataColLo + 1;
+        const spanMask =
+          ((spanWidth >= 30 ? 0x3fffffff : (1 << spanWidth) - 1) <<
+            dataColLo) >>>
+          0;
+        for (let rowIdx = rowLo; rowIdx <= rowHi; rowIdx += 1) {
+          rowMask.set(rowIdx, (rowMask.get(rowIdx) ?? 0) | spanMask);
+        }
+      }
+      const fullMask =
+        colCount >= 30 ? 0x3fffffff : ((1 << colCount) - 1) >>> 0;
+      for (const [rowIdx, mask] of rowMask) {
+        if (mask === 0) continue;
+        const row = visibleRows[rowIdx];
+        if (!row) continue;
+        if (mask === fullMask) fullyRows.add(row.id);
+        else indeterminateRows.add(row.id);
+      }
+    } else {
+      const rowCoverage = new Map<number, Set<number>>();
+      for (const range of ranges) {
+        const r1 = visibleRowIndexById.get(range.startRowId);
+        const r2 = visibleRowIndexById.get(range.endRowId);
+        if (r1 === undefined || r2 === undefined) continue;
+        const rowLo = Math.min(r1, r2);
+        const rowHi = Math.max(r1, r2);
+        const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+        const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+        let dataColLo: number;
+        let dataColHi: number;
+        if (startSynth && endSynth) continue;
+        if (startSynth || endSynth) {
+          dataColLo = 0;
+          dataColHi = colCount - 1;
+        } else {
+          const a = dataColIdxByColId.get(range.startColumnId);
+          const b = dataColIdxByColId.get(range.endColumnId);
+          if (a === undefined || b === undefined) continue;
+          dataColLo = Math.min(a, b);
+          dataColHi = Math.max(a, b);
+        }
+        for (let rowIdx = rowLo; rowIdx <= rowHi; rowIdx += 1) {
+          let cov = rowCoverage.get(rowIdx);
+          if (!cov) {
+            cov = new Set<number>();
+            rowCoverage.set(rowIdx, cov);
+          }
+          for (let colIdx = dataColLo; colIdx <= dataColHi; colIdx += 1) {
+            cov.add(colIdx);
+          }
+        }
+      }
+      for (const [rowIdx, cov] of rowCoverage) {
+        const row = visibleRows[rowIdx];
+        if (!row) continue;
+        if (cov.size === 0) continue;
+        if (cov.size === colCount) fullyRows.add(row.id);
+        else indeterminateRows.add(row.id);
+      }
+    }
+
+    return {
+      fullySelectedRowIds: fullyRows,
+      indeterminateRowIds: indeterminateRows,
+    };
+  }, [
+    snapshot.selection.ranges,
+    snapshot.visibleRows,
+    dataColumnIndex,
+    visibleRowIndexById,
+  ]);
+
+  // Per-cell selection check. Materializing a 27k-key Set on Cmd+A was the
+  // bottleneck — instead, scan the (typically ≤3) ranges per visible cell,
+  // and only the ~18 actually-rendered cells call this.
+  const isCellSelected = useCallback(
+    (rowId: string, columnId: string): boolean => {
+      const ranges = snapshot.selection.ranges;
+      if (ranges.length === 0) return false;
+      const rIdx = visibleRowIndexById.get(rowId);
+      if (rIdx === undefined) return false;
+      const cIdx = dataColumnIndex.idxById.get(columnId);
+      if (cIdx === undefined) return false;
+      for (const range of ranges) {
+        const r1 = visibleRowIndexById.get(range.startRowId);
+        const r2 = visibleRowIndexById.get(range.endRowId);
+        if (r1 === undefined || r2 === undefined) continue;
+        if (rIdx < Math.min(r1, r2) || rIdx > Math.max(r1, r2)) continue;
+        const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+        const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+        if (startSynth && endSynth) continue;
+        if (startSynth || endSynth) return true;
+        const a = dataColumnIndex.idxById.get(range.startColumnId);
+        const b = dataColumnIndex.idxById.get(range.endColumnId);
+        if (a === undefined || b === undefined) continue;
+        if (cIdx >= Math.min(a, b) && cIdx <= Math.max(a, b)) return true;
+      }
+      return false;
+    },
+    [snapshot.selection.ranges, visibleRowIndexById, dataColumnIndex],
+  );
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -1405,7 +1491,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 const cellKey = `${id}::${column.id}`;
                 const cellIsFocused =
                   isFocused && snapshot.focus.columnId === column.id;
-                const cellIsSelected = selectedCellKeys.has(cellKey);
+                const cellIsSelected = isCellSelected(id, column.id);
                 const formattedValue = column.format
                   ? column.format({ value, row, column })
                   : formatCellValue(value);
@@ -1886,27 +1972,51 @@ function computeSelectionExtent<TRow extends PretableRow>(
   const coveredCols = new Set<string>();
 
   for (const range of ranges) {
-    // Synthetic row-select column expands to cover all data columns when it
-    // is part of the range — that's how full-row selection encodes itself.
-    const rangeColumnIds: string[] = [];
-    if (
-      range.startColumnId === ROW_SELECT_COLUMN_ID ||
-      range.endColumnId === ROW_SELECT_COLUMN_ID
-    ) {
-      for (const c of dataColumns) rangeColumnIds.push(c.id);
+    // Resolve row span from range bounds. O(span), not O(rows × cols).
+    const r1 = rowOrder.get(range.startRowId);
+    const r2 = rowOrder.get(range.endRowId);
+    if (r1 === undefined || r2 === undefined) continue;
+    const rowLo = Math.min(r1, r2);
+    const rowHi = Math.max(r1, r2);
+
+    // Resolve column span. The synthetic row-select column expands to "all
+    // data columns" when it appears as a range bound (this is how full-row
+    // selections encode themselves).
+    const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+    const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+    let colsForRange: PretableColumn<TRow>[];
+
+    if (startSynth && endSynth) {
+      // Range spans only the synthetic column — no data cells covered.
+      continue;
     }
 
-    for (const row of visibleRows) {
-      for (const col of dataColumns) {
-        if (
-          rangeContainsCellLocal(range, row.id, col.id, rowOrder, columnOrder)
-        ) {
-          coveredRows.add(row.id);
-          coveredCols.add(col.id);
+    if (startSynth || endSynth) {
+      colsForRange = dataColumns.slice();
+    } else {
+      const c1 = columnOrder.get(range.startColumnId);
+      const c2 = columnOrder.get(range.endColumnId);
+      if (c1 === undefined || c2 === undefined) continue;
+      const colLo = Math.min(c1, c2);
+      const colHi = Math.max(c1, c2);
+      colsForRange = [];
+      for (let i = colLo; i <= colHi; i += 1) {
+        const col = effectiveColumns[i];
+        if (col && col.id !== ROW_SELECT_COLUMN_ID) {
+          colsForRange.push(col);
         }
       }
     }
-    for (const id of rangeColumnIds) coveredCols.add(id);
+
+    if (colsForRange.length === 0) continue;
+
+    for (let i = rowLo; i <= rowHi; i += 1) {
+      const row = visibleRows[i];
+      if (row) coveredRows.add(row.id);
+    }
+    for (const col of colsForRange) {
+      coveredCols.add(col.id);
+    }
   }
 
   const rowCount = coveredRows.size;
@@ -1915,45 +2025,6 @@ function computeSelectionExtent<TRow extends PretableRow>(
     rowCount === visibleRows.length && columnCount === dataColumns.length;
 
   return { rowCount, columnCount, isAll };
-}
-
-function rangeContainsCellLocal(
-  range: PretableCellRange,
-  rowId: string,
-  columnId: string,
-  rowOrder: ReadonlyMap<string, number>,
-  columnOrder: ReadonlyMap<string, number>,
-): boolean {
-  const rowIdx = rowOrder.get(rowId);
-  const startRowIdx = rowOrder.get(range.startRowId);
-  const endRowIdx = rowOrder.get(range.endRowId);
-  const colIdx = columnOrder.get(columnId);
-  const startColIdx = columnOrder.get(range.startColumnId);
-  const endColIdx = columnOrder.get(range.endColumnId);
-
-  if (
-    rowIdx === undefined ||
-    startRowIdx === undefined ||
-    endRowIdx === undefined ||
-    colIdx === undefined ||
-    startColIdx === undefined ||
-    endColIdx === undefined
-  ) {
-    return false;
-  }
-
-  const [rowLo, rowHi] =
-    startRowIdx <= endRowIdx
-      ? [startRowIdx, endRowIdx]
-      : [endRowIdx, startRowIdx];
-  const [colLo, colHi] =
-    startColIdx <= endColIdx
-      ? [startColIdx, endColIdx]
-      : [endColIdx, startColIdx];
-
-  return (
-    rowIdx >= rowLo && rowIdx <= rowHi && colIdx >= colLo && colIdx <= colHi
-  );
 }
 
 const ARROW_DIRECTIONS: Record<string, PretableFocusDirection> = {

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type {
+  PretableCellRenderInput,
   PretableColumn,
   PretableGrid,
+  PretableRow,
   PretableSurfaceState,
   PretableTelemetry,
 } from "@pretable/react";
@@ -15,6 +17,72 @@ import type {
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
 import type { BenchInteractionPlan } from "./interaction-plan";
+
+type CellRendererFlavor =
+  | "scroll-with-format"
+  | "scroll-with-render"
+  | "scroll-with-heavy-render";
+
+function isCellRendererScript(s: string): s is CellRendererFlavor {
+  return (
+    s === "scroll-with-format" ||
+    s === "scroll-with-render" ||
+    s === "scroll-with-heavy-render"
+  );
+}
+
+// Hoisted to module scope so every column shares the same function reference.
+// Per-column closures would give V8's call-site IC a different function per
+// cell column → polymorphic / megamorphic, no inlining. One shared fn → mono.
+const sharedFormat = <TRow extends PretableRow>({
+  value,
+}: PretableCellRenderInput<TRow>): string =>
+  Array.isArray(value) ? value.join(", ") : String(value ?? "");
+
+const sharedCheapRender = <TRow extends PretableRow>({
+  formattedValue,
+}: PretableCellRenderInput<TRow>) => (
+  <span data-bench-render="cheap">{formattedValue}</span>
+);
+
+const sharedHeavyRender = <TRow extends PretableRow>({
+  formattedValue,
+  value,
+}: PretableCellRenderInput<TRow>) => (
+  <span
+    data-bench-render="heavy"
+    data-bench-status={String(value)}
+    className="bench-status-badge"
+  >
+    <span className="bench-badge-dot" aria-hidden />
+    <span>{formattedValue}</span>
+  </span>
+);
+
+function applyCellRendererFlavor<TRow extends PretableRow>(
+  columns: readonly PretableColumn<TRow>[],
+  flavor: CellRendererFlavor | null,
+): PretableColumn<TRow>[] {
+  if (flavor === null) {
+    return [...columns];
+  }
+  if (flavor === "scroll-with-format") {
+    return columns.map((column) => ({
+      ...column,
+      format: sharedFormat as PretableColumn<TRow>["format"],
+    }));
+  }
+  if (flavor === "scroll-with-render") {
+    return columns.map((column) => ({
+      ...column,
+      render: sharedCheapRender as PretableColumn<TRow>["render"],
+    }));
+  }
+  return columns.map((column) => ({
+    ...column,
+    render: sharedHeavyRender as PretableColumn<TRow>["render"],
+  }));
+}
 
 export interface PretableAdapterProps {
   dataset: ScenarioDataset;
@@ -29,6 +97,13 @@ export interface PretableAdapterProps {
    */
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
   runKey: number;
+  /**
+   * Active bench script name. When this matches a cell-renderer flavor
+   * (scroll-with-format / scroll-with-render / scroll-with-heavy-render),
+   * the adapter wraps base columns with format / render configuration to
+   * exercise the D3 cell-renderer pipeline.
+   */
+  scriptName?: string;
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -51,9 +126,23 @@ export function PretableAdapter({
   onTelemetryChange,
   onUpdateApiReady,
   runKey,
+  scriptName,
 }: PretableAdapterProps) {
   const adapterRef = useRef<HTMLElement>(null);
-  const surfaceColumns = useMemo(() => [...dataset.columns], [dataset.columns]);
+  const baseColumns = useMemo<PretableColumn<ScenarioRow>[]>(
+    () => [...dataset.columns],
+    [dataset.columns],
+  );
+  const surfaceColumns = useMemo<PretableColumn<ScenarioRow>[]>(
+    () =>
+      applyCellRendererFlavor<ScenarioRow>(
+        baseColumns,
+        scriptName !== undefined && isCellRendererScript(scriptName)
+          ? scriptName
+          : null,
+      ),
+    [baseColumns, scriptName],
+  );
   const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
   const autosize = dataset.scenario.autosize_all_columns === true;
 

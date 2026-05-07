@@ -10,6 +10,7 @@ import {
   createBenchRequest,
   detectBlankGapFrame,
   measureBenchInteractionRun,
+  measureBenchKeySequenceRun,
   measureBenchScrollRun,
   measurePretableScrollRun,
   publishBenchResult,
@@ -1078,6 +1079,72 @@ describe("bench runtime", () => {
     expect(result.metrics.scroll_frame_p95_ms).toEqual(expect.any(Number));
     expect(result.metrics.blank_gap_frames).toBeGreaterThanOrEqual(0);
     expect(result.metrics.dom_nodes_peak).toEqual(expect.any(Number));
+  });
+
+  test("measureBenchKeySequenceRun dispatches the requested key the requested number of times and reports a non-negative p95", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="0">
+            <div data-pretable-cell="" tabindex="0">row 0</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    const cell = root?.querySelector<HTMLElement>("[data-pretable-cell]");
+
+    expect(root).toBeTruthy();
+    expect(cell).toBeTruthy();
+
+    const dispatched: string[] = [];
+    cell!.addEventListener("keydown", (event) => {
+      dispatched.push(event.key);
+    });
+
+    const result = await measureBenchKeySequenceRun(
+      root!,
+      "pretable",
+      "select-range-extend",
+      {
+        key: "ArrowDown",
+        shiftKey: true,
+        count: 5,
+        framesBetween: 1,
+      },
+    );
+
+    expect(result.status).toBe("completed");
+    expect(dispatched.length).toBe(5);
+    expect(dispatched.every((k) => k === "ArrowDown")).toBe(true);
+    expect(Number.isFinite(result.metrics.interaction_latency_ms ?? NaN)).toBe(
+      true,
+    );
+    expect(result.metrics.interaction_latency_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  test("measureBenchKeySequenceRun returns partial when no viewport is present", async () => {
+    document.body.innerHTML = `<div data-testid="root"></div>`;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+
+    expect(root).toBeTruthy();
+
+    const result = await measureBenchKeySequenceRun(
+      root!,
+      "pretable",
+      "keyboard-nav-row",
+      {
+        key: "ArrowDown",
+        count: 10,
+      },
+    );
+
+    expect(result.status).toBe("partial");
+    expect(result.notes.some((n) => n.includes("viewport unavailable"))).toBe(
+      true,
+    );
   });
 });
 

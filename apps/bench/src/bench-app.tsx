@@ -29,6 +29,7 @@ import {
   createPretableTelemetryNotes,
   createBenchRequest,
   measureBenchInteractionRun,
+  measureBenchKeySequenceRun,
   measureBenchScrollRun,
   measureBenchUpdatesRun,
   publishBenchResult,
@@ -163,7 +164,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         viewportRef.current?.querySelectorAll("*").length ?? 0;
 
       const scrollRun =
-        scriptName === "scroll"
+        scriptName === "scroll" ||
+        scriptName === "scroll-with-format" ||
+        scriptName === "scroll-with-render" ||
+        scriptName === "scroll-with-heavy-render"
           ? await measureBenchScrollRun(
               viewportRef.current ?? document.body,
               query.adapterId,
@@ -205,6 +209,36 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             : null
           : null;
 
+      const keySequenceRun =
+        scriptName === "select-range-extend"
+          ? query.adapterId === "pretable"
+            ? await measureBenchKeySequenceRun(
+                viewportRef.current ?? document.body,
+                query.adapterId,
+                scriptName,
+                { key: "ArrowDown", shiftKey: true, count: 30 },
+              )
+            : null
+          : scriptName === "keyboard-nav-row"
+            ? query.adapterId === "pretable"
+              ? await measureBenchKeySequenceRun(
+                  viewportRef.current ?? document.body,
+                  query.adapterId,
+                  scriptName,
+                  { key: "ArrowDown", count: 60 },
+                )
+              : null
+            : scriptName === "select-all"
+              ? query.adapterId === "pretable"
+                ? await measureBenchKeySequenceRun(
+                    viewportRef.current ?? document.body,
+                    query.adapterId,
+                    scriptName,
+                    { key: "a", metaKey: true, count: 1 },
+                  )
+                : null
+              : null;
+
       // Wait up to ~1s for the current adapter to publish its update API.
       // Grid Alpha in particular fires onGridReady asynchronously a few RAFs
       // after mount, so kicking off the updates script in the very next
@@ -230,7 +264,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
           : null;
 
       const nextResult =
-        scriptName === "scroll" && scrollRun
+        (scriptName === "scroll" ||
+          scriptName === "scroll-with-format" ||
+          scriptName === "scroll-with-render" ||
+          scriptName === "scroll-with-heavy-render") &&
+        scrollRun
           ? createBenchRunSummary({
               request,
               status: scrollRun.status,
@@ -242,46 +280,63 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               ],
               metrics: scrollRun.metrics,
             })
-          : scriptName === "updates" && updatesRun
+          : (scriptName === "select-range-extend" ||
+                scriptName === "keyboard-nav-row" ||
+                scriptName === "select-all") &&
+              keySequenceRun
             ? createBenchRunSummary({
                 request,
-                status: updatesRun.status,
+                status: keySequenceRun.status,
                 timestamp,
                 tracePath,
                 notes: [
-                  ...updatesRun.notes,
+                  ...keySequenceRun.notes,
                   ...createPretableTelemetryNotes(pretableTelemetryRef.current),
                 ],
-                metrics: updatesRun.metrics,
+                metrics: keySequenceRun.metrics,
               })
-            : interactionRun
+            : scriptName === "updates" && updatesRun
               ? createBenchRunSummary({
                   request,
-                  status: interactionRun.status,
+                  status: updatesRun.status,
                   timestamp,
                   tracePath,
                   notes: [
-                    ...interactionRun.notes,
+                    ...updatesRun.notes,
                     ...createPretableTelemetryNotes(
                       pretableTelemetryRef.current,
                     ),
                   ],
-                  metrics: interactionRun.metrics,
+                  metrics: updatesRun.metrics,
                 })
-              : createBenchRunSummary({
-                  request,
-                  status: "completed",
-                  timestamp,
-                  tracePath,
-                  notes: createPretableTelemetryNotes(
-                    pretableTelemetryRef.current,
-                  ),
-                  metrics: {
-                    mount_ms: performance.now() - startedAt,
-                    first_stable_viewport_ms: performance.now() - startedAt,
-                    dom_nodes_peak: domNodesPeak,
-                  },
-                });
+              : interactionRun
+                ? createBenchRunSummary({
+                    request,
+                    status: interactionRun.status,
+                    timestamp,
+                    tracePath,
+                    notes: [
+                      ...interactionRun.notes,
+                      ...createPretableTelemetryNotes(
+                        pretableTelemetryRef.current,
+                      ),
+                    ],
+                    metrics: interactionRun.metrics,
+                  })
+                : createBenchRunSummary({
+                    request,
+                    status: "completed",
+                    timestamp,
+                    tracePath,
+                    notes: createPretableTelemetryNotes(
+                      pretableTelemetryRef.current,
+                    ),
+                    metrics: {
+                      mount_ms: performance.now() - startedAt,
+                      first_stable_viewport_ms: performance.now() - startedAt,
+                      dom_nodes_peak: domNodesPeak,
+                    },
+                  });
 
       setResult(nextResult);
       publishBenchResult(nextResult);
@@ -406,6 +461,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 }}
                 onUpdateApiReady={handleUpdateApiReady}
                 runKey={runKey}
+                scriptName={query.scriptName}
               />
             ) : (
               <AdapterSurface

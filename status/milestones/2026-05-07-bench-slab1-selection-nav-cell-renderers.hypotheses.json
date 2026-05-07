@@ -1,0 +1,1385 @@
+{
+  "runsetId": "2026-05-07t18-23-59-958z",
+  "generatedAt": "2026-05-07T18:25:03.816Z",
+  "adapters": [
+    {
+      "adapterId": "pretable",
+      "adapterFamily": "candidate"
+    }
+  ],
+  "matrix": {
+    "adapters": ["pretable"],
+    "scenarios": ["S2"],
+    "scripts": [
+      "initial",
+      "scroll",
+      "select-range-extend",
+      "keyboard-nav-row",
+      "select-all",
+      "scroll-with-format",
+      "scroll-with-render",
+      "scroll-with-heavy-render"
+    ],
+    "repeats": 3
+  },
+  "slices": [
+    {
+      "scenarioId": "S2",
+      "scriptName": "initial",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "select-range-extend",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: select-range-extend",
+          "events: 30",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-0",
+          "internal telemetry focused row: S2-row-29"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: select-range-extend",
+          "events: 30",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-0",
+          "internal telemetry focused row: S2-row-29"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "keyboard-nav-row",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: keyboard-nav-row",
+          "events: 60",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-59",
+          "internal telemetry focused row: S2-row-59"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: keyboard-nav-row",
+          "events: 60",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-59",
+          "internal telemetry focused row: S2-row-59"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "select-all",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: select-all",
+          "events: 1",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-0",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: select-all",
+          "events: 1",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-0",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll-with-format",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll-with-render",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll-with-heavy-render",
+      "adapterIds": ["pretable"],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "H1",
+      "status": "directional",
+      "summary": "Wrapped-text scrolling meets all absolute quality thresholds, but the comparative uniqueness claim is unmeasured — no full-grid competitor data is available.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.199999999999989,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 98,
+            "scroll_viewport_nodes_peak": 93,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9.100000000000023,
+              "median": 9.199999999999989,
+              "max": 9.300000000000011
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 98,
+              "median": 98,
+              "max": 98
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 93,
+              "median": 93,
+              "max": 93
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H6",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H7",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H8",
+      "status": "insufficient",
+      "summary": "Missing a completed S2 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H5",
+      "status": "satisfied",
+      "summary": "The matrix run writes summary JSON, trace artifacts, and a machine-readable hypothesis report from one command.",
+      "evidence": [
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-initial-2026-05-07t18-24-14-361z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-07t18-24-16-351z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-range-extend-2026-05-07t18-24-18-571z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-keyboard-nav-row-2026-05-07t18-24-20-759z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-all-2026-05-07t18-24-23-234z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-format-2026-05-07t18-24-25-163z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-render-2026-05-07t18-24-27-311z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-heavy-render-2026-05-07t18-24-29-464z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-initial-2026-05-07t18-24-31-600z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-07t18-24-33-417z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-range-extend-2026-05-07t18-24-35-588z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-keyboard-nav-row-2026-05-07t18-24-37-706z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-all-2026-05-07t18-24-40-070z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-format-2026-05-07t18-24-41-921z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-render-2026-05-07t18-24-44-120z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-heavy-render-2026-05-07t18-24-46-355z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-initial-2026-05-07t18-24-48-505z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-07t18-24-50-375z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-range-extend-2026-05-07t18-24-52-577z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-keyboard-nav-row-2026-05-07t18-24-54-663z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-all-2026-05-07t18-24-57-000z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-format-2026-05-07t18-24-58-842z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-render-2026-05-07t18-25-01-223z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-heavy-render-2026-05-07t18-25-03-325z.summary.json"
+        }
+      ]
+    },
+    {
+      "id": "H9",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 scroll run, so composite scroll quality cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H10",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H11",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H12",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H13",
+      "status": "insufficient",
+      "summary": "Missing a completed S5 updates run, so streaming update frame budget proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H14",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so the streaming operating envelope cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H15",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so streaming row stability cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H16",
+      "status": "satisfied",
+      "summary": "Selection extend p95 is 9.399999856948853ms (≤ 16ms single-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: select-range-extend",
+              "events: 30",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-0",
+              "internal telemetry focused row: S2-row-29"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: select-range-extend",
+              "events: 30",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-0",
+              "internal telemetry focused row: S2-row-29"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 9.399999856948853,
+            "settle_duration_ms": 41.59999990463257,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 9.299999952316284,
+              "median": 9.399999856948853,
+              "max": 10.099999904632568
+            },
+            "settle_duration_ms": {
+              "min": 40.09999990463257,
+              "median": 41.59999990463257,
+              "max": 41.700000047683716
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H17",
+      "status": "satisfied",
+      "summary": "Keyboard nav p95 is 9.299999952316284ms (≤ 16ms single-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: keyboard-nav-row",
+              "events: 60",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-59",
+              "internal telemetry focused row: S2-row-59"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: keyboard-nav-row",
+              "events: 60",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-59",
+              "internal telemetry focused row: S2-row-59"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 9.299999952316284,
+            "settle_duration_ms": 42.10000014305115,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 9.299999952316284,
+              "median": 9.299999952316284,
+              "max": 9.300000190734863
+            },
+            "settle_duration_ms": {
+              "min": 41.69999980926514,
+              "median": 42.10000014305115,
+              "max": 42.89999985694885
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H18",
+      "status": "satisfied",
+      "summary": "Select-all latency is 9.699999809265137ms (≤ 33ms two-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: select-all",
+              "events: 1",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-0",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: select-all",
+              "events: 1",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-0",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 9.699999809265137,
+            "settle_duration_ms": 39.30000019073486,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 9.199999809265137,
+              "median": 9.699999809265137,
+              "max": 11
+            },
+            "settle_duration_ms": {
+              "min": 38.80000019073486,
+              "median": 39.30000019073486,
+              "max": 40.5
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H19",
+      "status": "satisfied",
+      "summary": "Format overhead is 0.10ms (≤ 2ms; format 9.299999999999955ms, baseline 9.199999999999989ms).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.299999999999955,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 98,
+            "scroll_viewport_nodes_peak": 93,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9.200000000000017,
+              "median": 9.299999999999955,
+              "max": 16.80000000000001
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 98,
+              "median": 98,
+              "max": 98
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 93,
+              "median": 93,
+              "max": 93
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.199999999999989,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 98,
+            "scroll_viewport_nodes_peak": 93,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9.100000000000023,
+              "median": 9.199999999999989,
+              "max": 9.300000000000011
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 98,
+              "median": 98,
+              "max": 98
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 93,
+              "median": 93,
+              "max": 93
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H20",
+      "status": "satisfied",
+      "summary": "Cheap render scroll p95 is 9.300000000000011ms (≤ 16ms single-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.300000000000011,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 164,
+            "scroll_viewport_nodes_peak": 159,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9.299999999999955,
+              "median": 9.300000000000011,
+              "max": 9.300000000000011
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 164,
+              "median": 164,
+              "max": 164
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 159,
+              "median": 159,
+              "max": 159
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H21",
+      "status": "satisfied",
+      "summary": "Heavy render scroll p95 is 9.300000000000011ms (≤ 20ms; ≤ 25% above single-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.300000000000011,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 296,
+            "scroll_viewport_nodes_peak": 291,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9.200000000000017,
+              "median": 9.300000000000011,
+              "max": 9.399999999999977
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 296,
+              "median": 296,
+              "max": 296
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 291,
+              "median": 291,
+              "max": 291
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

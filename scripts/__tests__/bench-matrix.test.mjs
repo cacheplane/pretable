@@ -6,6 +6,12 @@ import {
   createBenchRunsetManifest,
   createBenchMatrixEntries,
   createHypothesisReport,
+  evaluateH16,
+  evaluateH17,
+  evaluateH18,
+  evaluateH19,
+  evaluateH20,
+  evaluateH21,
   parseBenchMatrixArgs,
 } from "../bench-matrix.mjs";
 
@@ -1530,7 +1536,7 @@ test("composite H1 fails when pretable backward anchor shift exceeds threshold",
   assert.match(h1?.summary ?? "", /anchor shift/i);
 });
 
-test("hypothesis array has 12 entries: H1-H13 (no H2/H3/H4) plus H14/H15 for streaming envelope and row stability", () => {
+test("hypothesis array has 18 entries: H1-H21 (no H2/H3/H4) covering scroll quality, interactions, streaming, and Bench Slab 1 selection/nav/format/render wedges", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-50-00-000z",
     generatedAt: "2026-04-20T10:51:00.000Z",
@@ -1538,7 +1544,7 @@ test("hypothesis array has 12 entries: H1-H13 (no H2/H3/H4) plus H14/H15 for str
     runs: [],
   });
 
-  assert.equal(report.hypotheses.length, 12);
+  assert.equal(report.hypotheses.length, 18);
   assert.ok(report.hypotheses.find((h) => h.id === "H1"));
   assert.equal(
     report.hypotheses.find((h) => h.id === "H3"),
@@ -1555,6 +1561,12 @@ test("hypothesis array has 12 entries: H1-H13 (no H2/H3/H4) plus H14/H15 for str
   assert.ok(report.hypotheses.find((h) => h.id === "H13"));
   assert.ok(report.hypotheses.find((h) => h.id === "H14"));
   assert.ok(report.hypotheses.find((h) => h.id === "H15"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H16"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H17"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H18"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H19"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H20"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H21"));
 });
 
 test("H9 satisfied when S7 scroll quality passes all thresholds with failing competitor", () => {
@@ -2350,3 +2362,204 @@ function createUpdatesRun({
     },
   };
 }
+
+function makeKeySequenceRun({
+  scriptName,
+  metrics,
+  scenarioId = "S2",
+  scale = "hypothesis",
+  adapterId = "pretable",
+  timestamp = "2026-05-07T12:00:00.000Z",
+}) {
+  return {
+    adapterId,
+    profile: "default",
+    scenarioId,
+    scale,
+    scriptName,
+    browserName: "chromium",
+    browserVersion: "123.0",
+    timestamp,
+    seed: 909,
+    viewport: { width: 1440, height: 900 },
+    fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+    deviceScaleFactor: 1,
+    notes: [],
+    status: "completed",
+    tracePath: `status/traces/chromium-${adapterId}-default-${scenarioId.toLowerCase()}-${scriptName}.trace.zip`,
+    metrics,
+  };
+}
+
+test("evaluateH16 satisfied when interaction latency p95 < 16ms", () => {
+  const result = evaluateH16([
+    makeKeySequenceRun({
+      scriptName: "select-range-extend",
+      metrics: { interaction_latency_ms: 12 },
+    }),
+  ]);
+  assert.equal(result.id, "H16");
+  assert.equal(result.status, "satisfied");
+});
+
+test("evaluateH16 failing when interaction latency exceeds 16ms threshold", () => {
+  const result = evaluateH16([
+    makeKeySequenceRun({
+      scriptName: "select-range-extend",
+      metrics: { interaction_latency_ms: 22 },
+    }),
+  ]);
+  assert.equal(result.id, "H16");
+  assert.equal(result.status, "failing");
+});
+
+test("evaluateH16 insufficient when no runs", () => {
+  const result = evaluateH16([]);
+  assert.equal(result.id, "H16");
+  assert.equal(result.status, "insufficient");
+});
+
+test("evaluateH17 satisfied when keyboard nav latency p95 < 16ms", () => {
+  const result = evaluateH17([
+    makeKeySequenceRun({
+      scriptName: "keyboard-nav-row",
+      metrics: { interaction_latency_ms: 8 },
+    }),
+  ]);
+  assert.equal(result.id, "H17");
+  assert.equal(result.status, "satisfied");
+});
+
+test("evaluateH17 failing when keyboard nav latency exceeds 16ms threshold", () => {
+  const result = evaluateH17([
+    makeKeySequenceRun({
+      scriptName: "keyboard-nav-row",
+      metrics: { interaction_latency_ms: 18 },
+    }),
+  ]);
+  assert.equal(result.status, "failing");
+});
+
+test("evaluateH17 insufficient when no runs", () => {
+  assert.equal(evaluateH17([]).status, "insufficient");
+});
+
+test("evaluateH18 satisfied when select-all latency < 33ms", () => {
+  const result = evaluateH18([
+    makeKeySequenceRun({
+      scriptName: "select-all",
+      metrics: { interaction_latency_ms: 24 },
+    }),
+  ]);
+  assert.equal(result.id, "H18");
+  assert.equal(result.status, "satisfied");
+});
+
+test("evaluateH18 failing when select-all latency exceeds 33ms threshold", () => {
+  const result = evaluateH18([
+    makeKeySequenceRun({
+      scriptName: "select-all",
+      metrics: { interaction_latency_ms: 41 },
+    }),
+  ]);
+  assert.equal(result.status, "failing");
+});
+
+test("evaluateH18 insufficient when no runs", () => {
+  assert.equal(evaluateH18([]).status, "insufficient");
+});
+
+test("evaluateH19 satisfied when format overhead is within 2ms of baseline", () => {
+  const runs = [
+    makeKeySequenceRun({
+      scriptName: "scroll-with-format",
+      metrics: { scroll_frame_p95_ms: 9 },
+      timestamp: "2026-05-07T12:00:00.000Z",
+    }),
+    makeKeySequenceRun({
+      scriptName: "scroll",
+      metrics: { scroll_frame_p95_ms: 8 },
+      timestamp: "2026-05-07T12:01:00.000Z",
+    }),
+  ];
+  const result = evaluateH19(runs);
+  assert.equal(result.id, "H19");
+  assert.equal(result.status, "satisfied");
+});
+
+test("evaluateH19 failing when format overhead exceeds 2ms vs baseline", () => {
+  const runs = [
+    makeKeySequenceRun({
+      scriptName: "scroll-with-format",
+      metrics: { scroll_frame_p95_ms: 12 },
+      timestamp: "2026-05-07T12:00:00.000Z",
+    }),
+    makeKeySequenceRun({
+      scriptName: "scroll",
+      metrics: { scroll_frame_p95_ms: 8 },
+      timestamp: "2026-05-07T12:01:00.000Z",
+    }),
+  ];
+  const result = evaluateH19(runs);
+  assert.equal(result.status, "failing");
+});
+
+test("evaluateH19 insufficient when only one slice is present", () => {
+  const result = evaluateH19([
+    makeKeySequenceRun({
+      scriptName: "scroll-with-format",
+      metrics: { scroll_frame_p95_ms: 9 },
+    }),
+  ]);
+  assert.equal(result.status, "insufficient");
+});
+
+test("evaluateH20 satisfied when cheap render scroll p95 < 16ms", () => {
+  const result = evaluateH20([
+    makeKeySequenceRun({
+      scriptName: "scroll-with-render",
+      metrics: { scroll_frame_p95_ms: 12 },
+    }),
+  ]);
+  assert.equal(result.id, "H20");
+  assert.equal(result.status, "satisfied");
+});
+
+test("evaluateH20 failing when cheap render scroll p95 exceeds 16ms threshold", () => {
+  const result = evaluateH20([
+    makeKeySequenceRun({
+      scriptName: "scroll-with-render",
+      metrics: { scroll_frame_p95_ms: 22 },
+    }),
+  ]);
+  assert.equal(result.status, "failing");
+});
+
+test("evaluateH20 insufficient when no runs", () => {
+  assert.equal(evaluateH20([]).status, "insufficient");
+});
+
+test("evaluateH21 satisfied when heavy render scroll p95 < 20ms", () => {
+  const result = evaluateH21([
+    makeKeySequenceRun({
+      scriptName: "scroll-with-heavy-render",
+      metrics: { scroll_frame_p95_ms: 17 },
+    }),
+  ]);
+  assert.equal(result.id, "H21");
+  assert.equal(result.status, "satisfied");
+});
+
+test("evaluateH21 failing when heavy render scroll p95 exceeds 20ms threshold", () => {
+  const result = evaluateH21([
+    makeKeySequenceRun({
+      scriptName: "scroll-with-heavy-render",
+      metrics: { scroll_frame_p95_ms: 26 },
+    }),
+  ]);
+  assert.equal(result.status, "failing");
+});
+
+test("evaluateH21 insufficient when no runs", () => {
+  assert.equal(evaluateH21([]).status, "insufficient");
+});
