@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type {
+  PretableCellRenderInput,
   PretableColumn,
   PretableGrid,
   PretableRow,
@@ -30,6 +31,34 @@ function isCellRendererScript(s: string): s is CellRendererFlavor {
   );
 }
 
+// Hoisted to module scope so every column shares the same function reference.
+// Per-column closures would give V8's call-site IC a different function per
+// cell column → polymorphic / megamorphic, no inlining. One shared fn → mono.
+const sharedFormat = <TRow extends PretableRow>({
+  value,
+}: PretableCellRenderInput<TRow>): string =>
+  Array.isArray(value) ? value.join(", ") : String(value ?? "");
+
+const sharedCheapRender = <TRow extends PretableRow>({
+  formattedValue,
+}: PretableCellRenderInput<TRow>) => (
+  <span data-bench-render="cheap">{formattedValue}</span>
+);
+
+const sharedHeavyRender = <TRow extends PretableRow>({
+  formattedValue,
+  value,
+}: PretableCellRenderInput<TRow>) => (
+  <span
+    data-bench-render="heavy"
+    data-bench-status={String(value)}
+    className="bench-status-badge"
+  >
+    <span className="bench-badge-dot" aria-hidden />
+    <span>{formattedValue}</span>
+  </span>
+);
+
 function applyCellRendererFlavor<TRow extends PretableRow>(
   columns: readonly PretableColumn<TRow>[],
   flavor: CellRendererFlavor | null,
@@ -40,31 +69,18 @@ function applyCellRendererFlavor<TRow extends PretableRow>(
   if (flavor === "scroll-with-format") {
     return columns.map((column) => ({
       ...column,
-      format: ({ value }) =>
-        Array.isArray(value) ? value.join(", ") : String(value ?? ""),
+      format: sharedFormat as PretableColumn<TRow>["format"],
     }));
   }
   if (flavor === "scroll-with-render") {
     return columns.map((column) => ({
       ...column,
-      render: ({ formattedValue }) => (
-        <span data-bench-render="cheap">{formattedValue}</span>
-      ),
+      render: sharedCheapRender as PretableColumn<TRow>["render"],
     }));
   }
-  // scroll-with-heavy-render
   return columns.map((column) => ({
     ...column,
-    render: ({ formattedValue, value }) => (
-      <span
-        data-bench-render="heavy"
-        data-bench-status={String(value)}
-        className="bench-status-badge"
-      >
-        <span className="bench-badge-dot" aria-hidden />
-        <span>{formattedValue}</span>
-      </span>
-    ),
+    render: sharedHeavyRender as PretableColumn<TRow>["render"],
   }));
 }
 
