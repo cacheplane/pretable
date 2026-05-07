@@ -162,4 +162,23 @@ describe("parseBenchQuery", () => {
       scriptName: "filter-text",
     });
   });
+
+  test("accepts new selection-nav and cell-renderer scripts (Bench Slab 1)", () => {
+    for (const script of [
+      "select-range-extend",
+      "keyboard-nav-row",
+      "select-all",
+      "scroll-with-format",
+      "scroll-with-render",
+      "scroll-with-heavy-render",
+    ]) {
+      expect(
+        parseBenchQuery(`?scenario=S2&scale=hypothesis&script=${script}`),
+      ).toMatchObject({
+        scenarioId: "S2",
+        scale: "hypothesis",
+        scriptName: script,
+      });
+    }
+  });
 });

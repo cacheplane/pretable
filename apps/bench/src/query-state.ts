@@ -59,7 +59,13 @@ export function parseBenchQuery(
       script === "sort" ||
       script === "filter-metadata" ||
       script === "filter-text" ||
-      script === "updates"
+      script === "updates" ||
+      script === "select-range-extend" ||
+      script === "keyboard-nav-row" ||
+      script === "select-all" ||
+      script === "scroll-with-format" ||
+      script === "scroll-with-render" ||
+      script === "scroll-with-heavy-render"
         ? script
         : DEFAULT_QUERY_STATE.scriptName,
     autorun: searchParams.get("autorun") === "1",
