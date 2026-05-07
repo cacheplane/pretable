@@ -4,6 +4,8 @@
   "packageManager": "pnpm@10.12.1",
   "type": "module",
   "scripts": {
+    "api": "pnpm --filter @pretable/core api && pnpm --filter @pretable/react api && pnpm --filter @pretable/ui api && pnpm --filter @pretable/stream-adapter api",
+    "api:check": "pnpm --filter @pretable/core api:check && pnpm --filter @pretable/react api:check && pnpm --filter @pretable/ui api:check && pnpm --filter @pretable/stream-adapter api:check",
     "bench:e2e": "node ./scripts/bench-e2e.mjs",
     "bench:matrix": "node ./scripts/bench-matrix.mjs",
     "build": "pnpm -r --filter './packages/*' build && pnpm -r --workspace-concurrency=1 --filter './apps/*' build",
