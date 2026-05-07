@@ -13,6 +13,12 @@ export interface BenchQueryState {
     | "filter-metadata"
     | "filter-text"
     | "updates"
+    | "select-range-extend"
+    | "keyboard-nav-row"
+    | "select-all"
+    | "scroll-with-format"
+    | "scroll-with-render"
+    | "scroll-with-heavy-render"
   >;
   autorun: boolean;
   /**

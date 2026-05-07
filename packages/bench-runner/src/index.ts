@@ -71,7 +71,13 @@ export type BenchScriptName =
   | "filter-metadata"
   | "filter-text"
   | "updates"
-  | "autosize";
+  | "autosize"
+  | "select-range-extend"
+  | "keyboard-nav-row"
+  | "select-all"
+  | "scroll-with-format"
+  | "scroll-with-render"
+  | "scroll-with-heavy-render";
 
 export interface BenchViewport {
   width: number;
@@ -222,6 +228,12 @@ export const benchScriptNames: readonly BenchScriptName[] = [
   "filter-text",
   "updates",
   "autosize",
+  "select-range-extend",
+  "keyboard-nav-row",
+  "select-all",
+  "scroll-with-format",
+  "scroll-with-render",
+  "scroll-with-heavy-render",
 ];
 
 export function validateSupportedP0aRequest(
