@@ -226,3 +226,30 @@
 - Interaction: `H6`, `H7`, `H8` all satisfied at `S2/hypothesis` scale on Chromium.
 - The full `S2` proof surface (scroll + sort + filter-metadata + filter-text) is now clean at hypothesis scale.
 - Roadmap projects 1-4 are complete. The next highest-value work is Project 5 (Public API Stabilization) or the S3-S6 engine feature brainstorm.
+
+## 2026-05-07
+
+### Tier 1 Bench Slab 1: selection/nav + cell-renderer hypotheses (H16-H21)
+
+- Combined sub-project (B Phase 7 selection/nav + D3 cell-renderer bench validation) shipped as a single PR on `bench-slab1`.
+- Spec: `docs/superpowers/specs/2026-05-07-tier1-bench-slab1-design.md`. Plan: `docs/superpowers/plans/2026-05-07-tier1-bench-slab1.md`.
+- Six new BenchScriptName values: `select-range-extend`, `keyboard-nav-row`, `select-all`, `scroll-with-format`, `scroll-with-render`, `scroll-with-heavy-render`. All pretable+S2 only at Slab 1 — comparator adapters reject these scripts in `validateSupportedP0aRequest`.
+- New `measureBenchKeySequenceRun` helper drives the keyboard-driven scripts via the ARIA-grid `tabindex="0"` cell, captures per-event latency, reports p95 as `interaction_latency_ms`.
+- New `applyCellRendererFlavor` in `apps/bench/src/pretable-adapter.tsx` injects a shared `format`/`render` reference per flavor (NOT a per-column closure — see perf finding below).
+- Hypotheses H16-H21 added to `scripts/bench-matrix.mjs`. H19 compares `scroll-with-format` to the same-runset `scroll` baseline.
+
+### Two perf wins surfaced by the Slab 1 hypotheses
+
+- **selectedCellKeys Set elimination (H18).** Cmd+A on 3000 rows × 9 cols was materializing a 27,000-entry Set on every selection-change frame, dominating select-all latency. Replaced the precomputed Set with an `isCellSelected(rowId, columnId)` callback that scans the typically ≤3 ranges per visible cell. `fullySelectedRowIds` / `indeterminateRowIds` now track row coverage with a 32-bit bitmask per row (Set fallback for >30 data columns). Select-all p95: **38.4ms → 9.7ms** (under single-frame budget).
+- **Hoisted bench cell-render functions (H19).** `columns.map((column) => ({ ...column, format: ({value}) => ... }))` was allocating a fresh `format` closure per column. With 9 columns, the per-cell call site saw 9 different function references — megamorphic, no inlining. Hoisted `sharedFormat` / `sharedCheapRender` / `sharedHeavyRender` to module scope so V8's call-site IC goes monomorphic. Format overhead vs scroll baseline: **+7.30ms → +0.10ms**.
+
+### Final hypothesis status (S2/hypothesis/Chromium, 3 repeats)
+
+- H16 selection extend p95: 9.4ms ≤ 16ms ✓
+- H17 keyboard nav p95: 9.3ms ≤ 16ms ✓
+- H18 select-all latency: 9.7ms ≤ 33ms ✓
+- H19 format overhead: 0.10ms ≤ 2ms ✓
+- H20 cheap render scroll p95: 9.3ms ≤ 16ms ✓
+- H21 heavy render scroll p95: 9.3ms ≤ 20ms ✓
+- H1 (existing scroll wedge) directional, no regression on the same runset.
+- Committed milestone artifact: `status/milestones/2026-05-07-bench-slab1-selection-nav-cell-renderers.hypotheses.json`.
