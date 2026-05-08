@@ -1,4 +1,4 @@
-import type { PretableGridOptions, PretableRow } from "@pretable/core";
+import type { PretableGridOptions, PretableRow, PretableSortDirection } from "@pretable/core";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./use-pretable";
 
@@ -25,7 +25,7 @@ export interface LabeledGridSurfaceProps<
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   getHeaderCellProps?: (input: {
     column: PretableColumn<TRow>;
-    sortDirection: PretableSurfaceSortDirection;
+    sortDirection: PretableSortDirection;
   }) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
@@ -214,8 +214,3 @@ function formatDefaultValue(value: unknown) {
   return String(value ?? "");
 }
 
-type PretableSurfaceSortDirection = NonNullable<
-  Parameters<
-    NonNullable<PretableSurfaceProps["renderHeaderCell"]>
-  >[0]["sortDirection"]
-> | null;
