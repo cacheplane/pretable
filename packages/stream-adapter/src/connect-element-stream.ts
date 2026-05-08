@@ -1,6 +1,17 @@
 import type { GridLike, StreamConnection } from "./types";
 import { createBatcher } from "./create-batcher";
 
+/**
+ * Drive a grid from an `AsyncIterable<TRow>`. Each yielded row is added
+ * via a {@link createBatcher | RAF batcher}; the returned
+ * {@link StreamConnection} resolves `done` when the stream ends and
+ * supports `dispose()` for early cancellation.
+ *
+ * Pair with {@link parseElementStream} to turn a raw UTF-8 string stream
+ * (e.g., from `fetch().body`) into a row stream end-to-end.
+ *
+ * @public
+ */
 export function connectElementStream<TRow extends Record<string, unknown>>(
   grid: GridLike<TRow>,
   stream: AsyncIterable<TRow>,

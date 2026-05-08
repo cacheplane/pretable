@@ -7,6 +7,16 @@ import {
 } from "@cacheplane/json-stream";
 import type { StreamState } from "@cacheplane/json-stream";
 
+/**
+ * Parse a UTF-8 string stream into an `AsyncIterable<TRow>`. Built on
+ * `@cacheplane/json-stream`'s incremental JSON parser; emits each
+ * complete top-level array element as a typed row.
+ *
+ * Pair with {@link connectElementStream} for end-to-end element-stream
+ * → grid wiring.
+ *
+ * @public
+ */
 export async function* parseElementStream<TRow>(
   stream: AsyncIterable<string>,
 ): AsyncIterable<TRow> {

@@ -1,5 +1,22 @@
 import type { GridLike, TransactionBatcher } from "./types";
 
+/**
+ * Create a `requestAnimationFrame`-batched mutator that coalesces
+ * `add` / `update` / `remove` calls into a single `applyTransaction` per
+ * frame. Use this when driving a grid from a stream that emits faster
+ * than the browser can render — batching keeps DOM mutations to one per
+ * frame regardless of stream rate.
+ *
+ * @example
+ * ```ts
+ * const batcher = createBatcher(grid);
+ * batcher.add([{ id: "1", name: "Ada" }]);
+ * batcher.update([{ id: "1", age: 36 }]);
+ * batcher.flush(); // optional — RAF will flush automatically
+ * ```
+ *
+ * @public
+ */
 export function createBatcher<TRow extends Record<string, unknown>>(
   grid: GridLike<TRow>,
 ): TransactionBatcher<TRow> {
