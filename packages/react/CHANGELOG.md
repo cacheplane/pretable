@@ -1,5 +1,16 @@
 # @pretable/react
 
+## 0.0.2
+
+### Patch Changes
+
+- Add MIT license metadata, repository links, homepage links, and issue tracker ([#104](https://github.com/cacheplane/pretable/pull/104))
+  metadata to the public packages as part of the open-source community health
+  pass.
+- Updated dependencies [[`a63886d`](https://github.com/cacheplane/pretable/commit/a63886d2131150f810c5210e0e1861f3ac6f8d09)]:
+  - @pretable/core@0.0.2
+  - @pretable/ui@0.0.2
+
 ## 0.0.1
 
 ### Patch Changes
