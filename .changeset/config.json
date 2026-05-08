@@ -7,8 +7,13 @@
   ],
   "access": "public",
   "commit": false,
-  "fixed": [["@pretable/core", "@pretable/react", "@cacheplane/json-stream"]],
+  "fixed": [],
   "linked": [],
-  "ignore": [],
+  "ignore": [
+    "@cacheplane/json-stream",
+    "@pretable/react",
+    "@pretable/stream-adapter",
+    "@pretable/ui"
+  ],
   "updateInternalDependencies": "patch"
 }
