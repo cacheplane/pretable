@@ -1,10 +1,8 @@
 export const benchAdapterFamilies = {
   pretable: "candidate",
-  gridalpha: "full-grid",
-  gridbeta: "virtualization-primitive",
-  gridgamma: "full-grid",
-  glide: "full-grid",
-  handsontable: "full-grid",
+  "ag-grid": "full-grid",
+  tanstack: "virtualization-primitive",
+  mui: "full-grid",
 };
 
 export function getBenchAdapterFamily(adapterId) {

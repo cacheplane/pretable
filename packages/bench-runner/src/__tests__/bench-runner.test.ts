@@ -82,7 +82,7 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         scenarioId: "S2",
         scriptName: "scroll",
       }),
@@ -90,7 +90,7 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         scenarioId: "S2",
         scriptName: "scroll",
       }),
@@ -98,7 +98,7 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
-        adapterId: "gridgamma",
+        adapterId: "mui",
         scenarioId: "S2",
         scriptName: "scroll",
       }),
@@ -114,7 +114,7 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         scenarioId: "S2",
         scriptName: "filter-metadata",
       }),
@@ -125,7 +125,7 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         scenarioId: "S2",
         scriptName: "filter-text",
       }),
@@ -136,7 +136,7 @@ describe("bench-runner contract", () => {
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
-        adapterId: "gridgamma",
+        adapterId: "mui",
         scenarioId: "S2",
         scriptName: "sort",
       }),
@@ -199,7 +199,7 @@ describe("bench-runner contract", () => {
     // updates script supports all four adapters on S5 — comparative claim
     // shipped in PR #15 → comparative promotion (each adapter wires its
     // own idiomatic streaming path in apps/bench/src/*-adapter.tsx).
-    for (const adapterId of ["gridalpha", "gridbeta", "gridgamma"] as const) {
+    for (const adapterId of ["ag-grid", "tanstack", "mui"] as const) {
       expect(
         validateSupportedP0aRequest({
           ...baseRequest,
@@ -256,13 +256,13 @@ describe("bench-runner contract", () => {
       createBenchRunSummary({
         request: {
           ...baseRequest,
-          adapterId: "gridgamma",
+          adapterId: "mui",
           scenarioId: "S2",
           scriptName: "scroll",
         },
         status: "completed",
         timestamp: "2026-04-10T13:00:00.000Z",
-        tracePath: "status/traces/gridgamma-s2-default-scroll.trace.zip",
+        tracePath: "status/traces/mui-s2-default-scroll.trace.zip",
         metrics: {
           scroll_frame_p95_ms: 18,
           blank_gap_frames: 0,
@@ -271,7 +271,7 @@ describe("bench-runner contract", () => {
           dom_nodes_peak: 64,
         },
       }),
-    ).toMatchObject({ status: "completed", adapterId: "gridgamma" });
+    ).toMatchObject({ status: "completed", adapterId: "mui" });
 
     expect(() =>
       createBenchRunSummary({
@@ -397,9 +397,9 @@ describe("bench-runner contract", () => {
 
   test("serializes failed runs and aggregates dashboard entries deterministically", () => {
     expect(getBenchAdapterFamily("pretable")).toBe("candidate");
-    expect(getBenchAdapterFamily("gridalpha")).toBe("full-grid");
-    expect(getBenchAdapterFamily("gridbeta")).toBe("virtualization-primitive");
-    expect(getBenchAdapterFamily("gridgamma")).toBe("full-grid");
+    expect(getBenchAdapterFamily("ag-grid")).toBe("full-grid");
+    expect(getBenchAdapterFamily("tanstack")).toBe("virtualization-primitive");
+    expect(getBenchAdapterFamily("mui")).toBe("full-grid");
 
     const failed = createBenchRunSummary({
       request: baseRequest,
@@ -503,13 +503,13 @@ describe("bench-runner contract", () => {
     const gridAlphaCompleted = createBenchRunSummary({
       request: {
         ...baseRequest,
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         scenarioId: "S2",
       },
       status: "completed",
       timestamp: "2026-04-10T13:06:00.000Z",
       tracePath:
-        "status/traces/chromium-gridalpha-default-s2-dev-initial-2026-04-10t13-06-00-000z.trace.zip",
+        "status/traces/chromium-ag-grid-default-s2-dev-initial-2026-04-10t13-06-00-000z.trace.zip",
       metrics: {
         mount_ms: 30,
         first_stable_viewport_ms: 34,
@@ -522,7 +522,7 @@ describe("bench-runner contract", () => {
     ).toMatchObject({
       adapters: [
         {
-          adapterId: "gridalpha",
+          adapterId: "ag-grid",
           adapterFamily: "full-grid",
         },
         {

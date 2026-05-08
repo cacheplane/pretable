@@ -14,12 +14,12 @@ const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
 const updateRatePerSec = process.env.PRETABLE_BENCH_UPDATE_RATE_PER_SEC;
 const adapterLabel =
-  adapterId === "gridalpha"
-    ? "Grid Alpha Community adapter"
-    : adapterId === "gridbeta"
-      ? "GridBeta Virtual adapter"
-      : adapterId === "gridgamma"
-        ? "GridGamma Data Grid Community adapter"
+  adapterId === "ag-grid"
+    ? "AG Grid Community adapter"
+    : adapterId === "tanstack"
+      ? "TanStack Table adapter"
+      : adapterId === "mui"
+        ? "MUI X DataGrid adapter"
         : "Pretable React adapter";
 
 test("writes benchmark artifacts for the selected Pretable run", async ({

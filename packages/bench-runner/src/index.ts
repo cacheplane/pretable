@@ -7,13 +7,7 @@ import {
   getBenchAdapterFamily as getSharedBenchAdapterFamily,
 } from "../../../shared/bench-adapter-families.js";
 
-export type BenchAdapterId =
-  | "pretable"
-  | "gridalpha"
-  | "gridbeta"
-  | "gridgamma"
-  | "glide"
-  | "handsontable";
+export type BenchAdapterId = "pretable" | "ag-grid" | "tanstack" | "mui";
 
 export type BenchAdapterFamily =
   | "candidate"
@@ -239,11 +233,7 @@ export const benchScriptNames: readonly BenchScriptName[] = [
 export function validateSupportedP0aRequest(
   request: BenchRunRequest,
 ): { ok: true } | { ok: false; reason: string } {
-  if (
-    !["pretable", "gridalpha", "gridbeta", "gridgamma"].includes(
-      request.adapterId,
-    )
-  ) {
+  if (!["pretable", "ag-grid", "tanstack", "mui"].includes(request.adapterId)) {
     return {
       ok: false,
       reason: `Unsupported adapter for P0a: ${request.adapterId}`,
@@ -303,7 +293,7 @@ export function validateSupportedP0aRequest(
 
   if (request.scriptName === "updates") {
     // All four bench adapters wire their idiomatic streaming pattern (see
-    // apps/bench/src/{pretable,gridalpha,gridgamma,gridbeta}-adapter.tsx). The
+    // apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx). The
     // script remains S5-only — that's the streaming-updates scenario.
     if (request.scenarioId !== "S5") {
       return {

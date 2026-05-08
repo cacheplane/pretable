@@ -31,13 +31,13 @@ describe("parseBenchQuery", () => {
     });
   });
 
-  test("accepts a supported competitor adapter without relaxing other defaults", () => {
+  test("accepts the ag-grid competitor adapter without relaxing other defaults", () => {
     expect(
       parseBenchQuery(
-        "?adapter=gridalpha&scenario=S2&scale=hypothesis&script=scroll",
+        "?adapter=ag-grid&scenario=S2&scale=hypothesis&script=scroll",
       ),
     ).toEqual({
-      adapterId: "gridalpha",
+      adapterId: "ag-grid",
       scenarioId: "S2",
       profile: "default",
       scale: "hypothesis",
@@ -47,13 +47,13 @@ describe("parseBenchQuery", () => {
     });
   });
 
-  test("accepts the gridbeta competitor adapter without relaxing other defaults", () => {
+  test("accepts the tanstack competitor adapter without relaxing other defaults", () => {
     expect(
       parseBenchQuery(
-        "?adapter=gridbeta&scenario=S2&scale=hypothesis&script=scroll",
+        "?adapter=tanstack&scenario=S2&scale=hypothesis&script=scroll",
       ),
     ).toEqual({
-      adapterId: "gridbeta",
+      adapterId: "tanstack",
       scenarioId: "S2",
       profile: "default",
       scale: "hypothesis",
@@ -63,13 +63,13 @@ describe("parseBenchQuery", () => {
     });
   });
 
-  test("accepts the gridgamma competitor adapter without relaxing other defaults", () => {
+  test("accepts the mui competitor adapter without relaxing other defaults", () => {
     expect(
       parseBenchQuery(
-        "?adapter=gridgamma&scenario=S2&scale=hypothesis&script=scroll",
+        "?adapter=mui&scenario=S2&scale=hypothesis&script=scroll",
       ),
     ).toEqual({
-      adapterId: "gridgamma",
+      adapterId: "mui",
       scenarioId: "S2",
       profile: "default",
       scale: "hypothesis",

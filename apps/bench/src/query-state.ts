@@ -25,12 +25,12 @@ export function parseBenchQuery(
 
   return {
     adapterId:
-      adapter === "gridalpha"
-        ? "gridalpha"
-        : adapter === "gridbeta"
-          ? "gridbeta"
-          : adapter === "gridgamma"
-            ? "gridgamma"
+      adapter === "ag-grid"
+        ? "ag-grid"
+        : adapter === "tanstack"
+          ? "tanstack"
+          : adapter === "mui"
+            ? "mui"
             : adapter === "pretable"
               ? "pretable"
               : DEFAULT_QUERY_STATE.adapterId,

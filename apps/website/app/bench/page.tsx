@@ -31,7 +31,15 @@ interface MilestoneFile {
 }
 
 const REPO = "cacheplane/pretable";
-const ADAPTER_ORDER = ["pretable", "gridalpha", "gridbeta"] as const;
+const ADAPTER_ORDER = ["pretable", "ag-grid", "tanstack", "mui"] as const;
+// Historical adapter ids used in frozen milestone evidence files; mapped to
+// the current adapter ids for rendering. The B2 Phase 4 runset will replace
+// these milestone files with real-grid evidence under the new ids.
+const LEGACY_ADAPTER_ID_MAP: Record<string, string> = {
+  gridalpha: "ag-grid",
+  gridbeta: "tanstack",
+  gridgamma: "mui",
+};
 
 function repoRootRelative(...segments: string[]): string {
   // app/bench/page.tsx → ../../../  → apps/website root → ../../  → repo root
@@ -47,17 +55,24 @@ function loadH1(): {
   const data = JSON.parse(raw) as MilestoneFile;
   const h1 = data.hypotheses.find((h) => h.id === "H1");
   if (!h1) throw new Error("H1 not found in milestone file");
-  const rows = ADAPTER_ORDER.map((adapter) => {
-    const ev = h1.evidence.find(
-      (e) => e.adapterId === adapter && e.scenarioId === "S2",
-    );
-    if (!ev) throw new Error(`No H1/S2 evidence for ${adapter}`);
+  const rows = ADAPTER_ORDER.flatMap((adapter) => {
+    const ev = h1.evidence.find((e) => {
+      const mapped = LEGACY_ADAPTER_ID_MAP[e.adapterId] ?? e.adapterId;
+      return mapped === adapter && e.scenarioId === "S2";
+    });
+    if (!ev) {
+      // Phase 1 of B2 carries the BenchAdapterId rename ahead of the matrix
+      // re-run. Until Phase 4 publishes the comparative runset, the new
+      // adapter ids (tanstack, mui) won't have evidence rows yet — render
+      // only the adapters that do.
+      return [];
+    }
     const p95 = ev.metrics.scroll_frame_p95_ms;
     const rhe = ev.metrics.row_height_error_p95_px;
     if (p95 == null || rhe == null) {
       throw new Error(`Missing metrics for ${adapter}`);
     }
-    return { adapter, p95Ms: p95, rhePx: rhe };
+    return [{ adapter, p95Ms: p95, rhePx: rhe }];
   });
   return { rows, filename };
 }
@@ -144,9 +159,9 @@ export default function BenchPage() {
               </td>
               <td className="py-3 text-[13px] text-text-secondary">
                 {r.adapter === "pretable" && "fastest + zero clipping"}
-                {r.adapter === "gridalpha" &&
+                {r.adapter === "ag-grid" &&
                   `${(r.p95Ms / fastest.p95Ms).toFixed(1)}× slower; clips wrapped content (${r.rhePx}px)`}
-                {r.adapter === "gridbeta" && "fastest tied; needs DIY assembly"}
+                {r.adapter === "tanstack" && "fastest tied; needs DIY assembly"}
               </td>
             </tr>
           ))}

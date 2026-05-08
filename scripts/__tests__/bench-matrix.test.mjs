@@ -17,7 +17,7 @@ import {
 
 test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matrix", () => {
   assert.deepEqual(parseBenchMatrixArgs([]), {
-    adapters: ["pretable", "gridalpha"],
+    adapters: ["pretable", "ag-grid"],
     repeats: 1,
     scale: "dev",
     scenarios: ["S1", "S2", "S3", "S7"],
@@ -30,7 +30,7 @@ test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matr
 test("parseBenchMatrixArgs accepts explicit adapter, scenario, script, and playwright passthrough args", () => {
   assert.deepEqual(
     parseBenchMatrixArgs([
-      "--adapters=gridalpha",
+      "--adapters=ag-grid",
       "--repeats=3",
       "--scale=hypothesis",
       "--scenarios=S2",
@@ -38,7 +38,7 @@ test("parseBenchMatrixArgs accepts explicit adapter, scenario, script, and playw
       "--project=chromium",
     ]),
     {
-      adapters: ["gridalpha"],
+      adapters: ["ag-grid"],
       repeats: 3,
       scale: "hypothesis",
       scenarios: ["S2"],
@@ -70,7 +70,7 @@ test("parseBenchMatrixArgs falls back to default rate when --update-rates is mal
 test("createBenchMatrixEntries expands scenarios and scripts in stable order", () => {
   assert.deepEqual(
     createBenchMatrixEntries({
-      adapters: ["pretable", "gridalpha"],
+      adapters: ["pretable", "ag-grid"],
       repeats: 2,
       scale: "dev",
       scenarios: ["S1", "S2"],
@@ -143,7 +143,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         updateRatePerSec: 1000,
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scale: "dev",
         scenarioId: "S1",
@@ -151,7 +151,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         updateRatePerSec: 1000,
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scale: "dev",
         scenarioId: "S1",
@@ -159,7 +159,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         updateRatePerSec: 1000,
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scale: "dev",
         scenarioId: "S2",
@@ -167,7 +167,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         updateRatePerSec: 1000,
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scale: "dev",
         scenarioId: "S2",
@@ -175,7 +175,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         updateRatePerSec: 1000,
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 1,
         scale: "dev",
         scenarioId: "S1",
@@ -183,7 +183,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         updateRatePerSec: 1000,
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 1,
         scale: "dev",
         scenarioId: "S1",
@@ -191,7 +191,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         updateRatePerSec: 1000,
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 1,
         scale: "dev",
         scenarioId: "S2",
@@ -199,7 +199,7 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
         updateRatePerSec: 1000,
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 1,
         scale: "dev",
         scenarioId: "S2",
@@ -296,9 +296,9 @@ test("shared adapter-family source covers benchmark adapters", async () => {
     await import("../../shared/bench-adapter-families.js");
 
   assert.equal(getBenchAdapterFamily("pretable"), "candidate");
-  assert.equal(getBenchAdapterFamily("gridalpha"), "full-grid");
-  assert.equal(getBenchAdapterFamily("gridbeta"), "virtualization-primitive");
-  assert.equal(benchAdapterFamilies.gridgamma, "full-grid");
+  assert.equal(getBenchAdapterFamily("ag-grid"), "full-grid");
+  assert.equal(getBenchAdapterFamily("tanstack"), "virtualization-primitive");
+  assert.equal(benchAdapterFamilies.mui, "full-grid");
 });
 
 test("createHypothesisReport distinguishes directional evidence from missing proof", () => {
@@ -345,7 +345,7 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
         },
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         profile: "default",
         scenarioId: "S2",
         scriptName: "scroll",
@@ -358,8 +358,7 @@ test("createHypothesisReport distinguishes directional evidence from missing pro
         deviceScaleFactor: 1,
         notes: [],
         status: "completed",
-        tracePath:
-          "status/traces/chromium-gridalpha-default-s2-scroll.trace.zip",
+        tracePath: "status/traces/chromium-ag-grid-default-s2-scroll.trace.zip",
         metrics: {
           scroll_frame_p95_ms: 26.2,
           blank_gap_frames: 0,
@@ -429,12 +428,12 @@ test("createHypothesisReport emits H6 when sort interaction evidence exists", ()
           "status/chromium-pretable-default-s2-dev-sort-2026-04-14t21-00-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "sort",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-sort-2026-04-14t21-00-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-sort-2026-04-14t21-00-30-000z.summary.json",
       },
     ],
     runs: [
@@ -468,7 +467,7 @@ test("createHypothesisReport emits H6 when sort interaction evidence exists", ()
         },
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         profile: "default",
         scenarioId: "S2",
         scale: "dev",
@@ -483,7 +482,7 @@ test("createHypothesisReport emits H6 when sort interaction evidence exists", ()
         deviceScaleFactor: 1,
         status: "completed",
         notes: ["interaction mode: sort"],
-        tracePath: "status/traces/gridalpha-sort.trace.zip",
+        tracePath: "status/traces/ag-grid-sort.trace.zip",
         metrics: {
           interaction_latency_ms: 31,
           settle_duration_ms: 22,
@@ -723,28 +722,28 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-02-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-00-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-10t15-00-30-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 1,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-01-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-10t15-01-30-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 2,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-02-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-10t15-02-30-000z.summary.json",
       },
     ],
     runs: [
@@ -764,21 +763,21 @@ test("createHypothesisReport aggregates repeated runs by median instead of trust
         scroll_frame_p95_ms: 13.1,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-10T15:00:30.000Z",
         scroll_frame_p95_ms: 27.6,
         row_height_error_p95_px: 42,
         scroll_anchor_shift_px: 128,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-10T15:01:30.000Z",
         scroll_frame_p95_ms: 28.4,
         row_height_error_p95_px: 44,
         scroll_anchor_shift_px: 132,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-10T15:02:30.000Z",
         scroll_frame_p95_ms: 29.5,
         row_height_error_p95_px: 45,
@@ -840,12 +839,12 @@ test("createHypothesisReport exposes worst-case H1 threshold metrics alongside m
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-12-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-10-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-10t15-10-30-000z.summary.json",
       },
     ],
     runs: [
@@ -868,7 +867,7 @@ test("createHypothesisReport exposes worst-case H1 threshold metrics alongside m
         blank_gap_frames: 1,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-10T15:10:30.000Z",
         scroll_frame_p95_ms: 28.4,
       }),
@@ -902,20 +901,20 @@ test("createHypothesisReport prefers the best full-grid comparator for H1 while 
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-15-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-15-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-10t15-15-30-000z.summary.json",
       },
       {
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridbeta-default-s2-dev-scroll-2026-04-10t15-16-00-000z.summary.json",
+          "status/chromium-tanstack-default-s2-dev-scroll-2026-04-10t15-16-00-000z.summary.json",
       },
     ],
     runs: [
@@ -925,14 +924,14 @@ test("createHypothesisReport prefers the best full-grid comparator for H1 while 
         scroll_frame_p95_ms: 12.4,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-10T15:15:30.000Z",
         scroll_frame_p95_ms: 26.2,
         row_height_error_p95_px: 2,
         scroll_anchor_shift_px: 8,
       }),
       createScrollRun({
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         timestamp: "2026-04-10T15:16:00.000Z",
         scroll_frame_p95_ms: 20.1,
         scroll_anchor_shift_px: 96,
@@ -947,9 +946,9 @@ test("createHypothesisReport prefers the best full-grid comparator for H1 while 
   assert.match(h1?.summary ?? "", /zero-artifact|quality/i);
   assert.equal(h1?.evidence[0]?.adapterId, "pretable");
   assert.equal(h1?.evidence[0]?.adapterFamily, "candidate");
-  assert.equal(h1?.evidence[1]?.adapterId, "gridalpha");
+  assert.equal(h1?.evidence[1]?.adapterId, "ag-grid");
   assert.equal(h1?.evidence[1]?.adapterFamily, "full-grid");
-  assert.equal(h1?.evidence[2]?.adapterId, "gridbeta");
+  assert.equal(h1?.evidence[2]?.adapterId, "tanstack");
   assert.equal(h1?.evidence[2]?.adapterFamily, "virtualization-primitive");
 });
 
@@ -967,20 +966,20 @@ test("createHypothesisReport surfaces top-level adapter families and matrix scop
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-20-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-20-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-10t15-20-30-000z.summary.json",
       },
       {
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridbeta-default-s2-dev-scroll-2026-04-10t15-21-00-000z.summary.json",
+          "status/chromium-tanstack-default-s2-dev-scroll-2026-04-10t15-21-00-000z.summary.json",
       },
     ],
     runs: [
@@ -990,12 +989,12 @@ test("createHypothesisReport surfaces top-level adapter families and matrix scop
         scroll_frame_p95_ms: 12.4,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-10T15:20:30.000Z",
         scroll_frame_p95_ms: 26.2,
       }),
       createScrollRun({
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         timestamp: "2026-04-10T15:21:00.000Z",
         scroll_frame_p95_ms: 20.1,
       }),
@@ -1004,14 +1003,14 @@ test("createHypothesisReport surfaces top-level adapter families and matrix scop
 
   assert.deepEqual(report.adapters, [
     { adapterId: "pretable", adapterFamily: "candidate" },
-    { adapterId: "gridalpha", adapterFamily: "full-grid" },
+    { adapterId: "ag-grid", adapterFamily: "full-grid" },
     {
-      adapterId: "gridbeta",
+      adapterId: "tanstack",
       adapterFamily: "virtualization-primitive",
     },
   ]);
   assert.deepEqual(report.matrix, {
-    adapters: ["pretable", "gridalpha", "gridbeta"],
+    adapters: ["pretable", "ag-grid", "tanstack"],
     scenarios: ["S2"],
     scripts: ["scroll"],
     repeats: 1,
@@ -1032,20 +1031,20 @@ test("createHypothesisReport surfaces per-slice policy context across compared r
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-10t15-25-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-10t15-25-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-10t15-25-30-000z.summary.json",
       },
       {
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridbeta-default-s2-dev-scroll-2026-04-10t15-26-00-000z.summary.json",
+          "status/chromium-tanstack-default-s2-dev-scroll-2026-04-10t15-26-00-000z.summary.json",
       },
     ],
     runs: [
@@ -1055,12 +1054,12 @@ test("createHypothesisReport surfaces per-slice policy context across compared r
         scroll_frame_p95_ms: 12.4,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-10T15:25:30.000Z",
         scroll_frame_p95_ms: 26.2,
       }),
       createScrollRun({
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         timestamp: "2026-04-10T15:26:00.000Z",
         scroll_frame_p95_ms: 20.1,
         notes: [
@@ -1078,7 +1077,7 @@ test("createHypothesisReport surfaces per-slice policy context across compared r
     {
       scenarioId: "S2",
       scriptName: "scroll",
-      adapterIds: ["pretable", "gridalpha", "gridbeta"],
+      adapterIds: ["pretable", "ag-grid", "tanstack"],
       policyNotes: {
         common: [
           "content visibility: visible",
@@ -1260,12 +1259,12 @@ test("createHypothesisReport includes unsupported entries without erroring", () 
           "status/chromium-pretable-default-s2-dev-sort-2026-04-16t10-00-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "sort",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-sort-2026-04-16t10-00-00-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-sort-2026-04-16t10-00-00-000z.summary.json",
       },
     ],
     runs: [
@@ -1299,7 +1298,7 @@ test("createHypothesisReport includes unsupported entries without erroring", () 
         },
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         profile: "default",
         scenarioId: "S2",
         scale: "dev",
@@ -1315,11 +1314,11 @@ test("createHypothesisReport includes unsupported entries without erroring", () 
         status: "unsupported",
         notes: [],
         unsupported: {
-          adapterId: "gridalpha",
+          adapterId: "ag-grid",
           scenarioId: "S2",
           profile: "default",
           scriptName: "sort",
-          reason: "Unsupported adapter for interaction script sort: gridalpha",
+          reason: "Unsupported adapter for interaction script sort: ag-grid",
         },
       },
     ],
@@ -1345,12 +1344,12 @@ test("composite H1 fails when pretable exceeds absolute quality threshold", () =
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-00-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-20t10-00-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-20t10-00-30-000z.summary.json",
       },
     ],
     runs: [
@@ -1361,7 +1360,7 @@ test("composite H1 fails when pretable exceeds absolute quality threshold", () =
         row_height_error_p95_px: 2,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-20T10:00:30.000Z",
         scroll_frame_p95_ms: 28,
         row_height_error_p95_px: 150,
@@ -1390,12 +1389,12 @@ test("composite H1 fails when pretable frame parity exceeds 110%", () => {
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-10-00-000z.summary.json",
       },
       {
-        adapterId: "gridgamma",
+        adapterId: "mui",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridgamma-default-s2-dev-scroll-2026-04-20t10-10-30-000z.summary.json",
+          "status/chromium-mui-default-s2-dev-scroll-2026-04-20t10-10-30-000z.summary.json",
       },
     ],
     runs: [
@@ -1405,7 +1404,7 @@ test("composite H1 fails when pretable frame parity exceeds 110%", () => {
         scroll_frame_p95_ms: 30,
       }),
       createScrollRun({
-        adapterId: "gridgamma",
+        adapterId: "mui",
         timestamp: "2026-04-20T10:10:30.000Z",
         scroll_frame_p95_ms: 25,
         row_height_error_p95_px: 1.1,
@@ -1434,12 +1433,12 @@ test("composite H1 directional when all full-grid competitors also pass quality 
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-20-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s2-dev-scroll-2026-04-20t10-20-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-20t10-20-30-000z.summary.json",
       },
     ],
     runs: [
@@ -1449,7 +1448,7 @@ test("composite H1 directional when all full-grid competitors also pass quality 
         scroll_frame_p95_ms: 24,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-20T10:20:30.000Z",
         scroll_frame_p95_ms: 26,
       }),
@@ -1462,7 +1461,7 @@ test("composite H1 directional when all full-grid competitors also pass quality 
   assert.match(h1?.summary ?? "", /uniqueness/i);
 });
 
-test("composite H1 satisfied with GridGamma-like competitor failing row height accuracy", () => {
+test("composite H1 satisfied with MUI-like competitor failing row height accuracy", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-30-00-000z",
     generatedAt: "2026-04-20T10:31:00.000Z",
@@ -1476,12 +1475,12 @@ test("composite H1 satisfied with GridGamma-like competitor failing row height a
           "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-30-00-000z.summary.json",
       },
       {
-        adapterId: "gridgamma",
+        adapterId: "mui",
         repeatIndex: 0,
         scenarioId: "S2",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridgamma-default-s2-dev-scroll-2026-04-20t10-30-30-000z.summary.json",
+          "status/chromium-mui-default-s2-dev-scroll-2026-04-20t10-30-30-000z.summary.json",
       },
     ],
     runs: [
@@ -1491,7 +1490,7 @@ test("composite H1 satisfied with GridGamma-like competitor failing row height a
         scroll_frame_p95_ms: 24,
       }),
       createScrollRun({
-        adapterId: "gridgamma",
+        adapterId: "mui",
         timestamp: "2026-04-20T10:30:30.000Z",
         scroll_frame_p95_ms: 25,
         row_height_error_p95_px: 1.1,
@@ -1583,12 +1582,12 @@ test("H9 satisfied when S7 scroll quality passes all thresholds with failing com
           "status/chromium-pretable-default-s7-dev-scroll-2026-04-20t11-00-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S7",
         scriptName: "scroll",
         summaryPath:
-          "status/chromium-gridalpha-default-s7-dev-scroll-2026-04-20t11-00-30-000z.summary.json",
+          "status/chromium-ag-grid-default-s7-dev-scroll-2026-04-20t11-00-30-000z.summary.json",
       },
     ],
     runs: [
@@ -1599,7 +1598,7 @@ test("H9 satisfied when S7 scroll quality passes all thresholds with failing com
         scroll_frame_p95_ms: 14,
       }),
       createScrollRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         scenarioId: "S7",
         timestamp: "2026-04-20T11:00:30.000Z",
         scroll_frame_p95_ms: 28,
@@ -1861,20 +1860,20 @@ test("H13 satisfied when pretable beats best comparator on frame parity with at 
           "status/chromium-pretable-default-s5-updates-2026-04-30t10-10-00-000z.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S5",
         scriptName: "updates",
         summaryPath:
-          "status/chromium-gridalpha-default-s5-updates-2026-04-30t10-11-00-000z.summary.json",
+          "status/chromium-ag-grid-default-s5-updates-2026-04-30t10-11-00-000z.summary.json",
       },
       {
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         repeatIndex: 0,
         scenarioId: "S5",
         scriptName: "updates",
         summaryPath:
-          "status/chromium-gridbeta-default-s5-updates-2026-04-30t10-12-00-000z.summary.json",
+          "status/chromium-tanstack-default-s5-updates-2026-04-30t10-12-00-000z.summary.json",
       },
     ],
     runs: [
@@ -1885,13 +1884,13 @@ test("H13 satisfied when pretable beats best comparator on frame parity with at 
         long_tasks_count: 0,
       }),
       createUpdatesRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-30T10:11:00.000Z",
         scroll_frame_p95_ms: 14,
         long_tasks_count: 0,
       }),
       createUpdatesRun({
-        adapterId: "gridbeta",
+        adapterId: "tanstack",
         timestamp: "2026-04-30T10:12:00.000Z",
         scroll_frame_p95_ms: 38,
         long_tasks_count: 4,
@@ -1901,13 +1900,13 @@ test("H13 satisfied when pretable beats best comparator on frame parity with at 
 
   const h13 = report.hypotheses.find((h) => h.id === "H13");
 
-  // Pretable 9ms vs best comparator (gridalpha) 14ms → frame parity ratio
-  // 9/14 = 0.64, well within 1.10. GridBeta fails the absolute thresholds
+  // Pretable 9ms vs best comparator (ag-grid) 14ms → frame parity ratio
+  // 9/14 = 0.64, well within 1.10. TanStack fails the absolute thresholds
   // → uniqueness claim supported.
   assert.equal(h13?.status, "satisfied");
   assert.equal(h13?.evidence?.length, 2);
   assert.equal(h13?.evidence?.[0]?.adapterId, "pretable");
-  assert.equal(h13?.evidence?.[1]?.adapterId, "gridalpha");
+  assert.equal(h13?.evidence?.[1]?.adapterId, "ag-grid");
 });
 
 test("H13 directional when all comparators also pass absolute thresholds", () => {
@@ -1923,7 +1922,7 @@ test("H13 directional when all comparators also pass absolute thresholds", () =>
         summaryPath: "status/x.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S5",
         scriptName: "updates",
@@ -1938,7 +1937,7 @@ test("H13 directional when all comparators also pass absolute thresholds", () =>
         long_tasks_count: 0,
       }),
       createUpdatesRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-30T11:01:00.000Z",
         scroll_frame_p95_ms: 12,
         long_tasks_count: 0,
@@ -1965,7 +1964,7 @@ test("H13 failing when pretable parity ratio exceeds 110% of best comparator", (
         summaryPath: "status/x.summary.json",
       },
       {
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         repeatIndex: 0,
         scenarioId: "S5",
         scriptName: "updates",
@@ -1980,7 +1979,7 @@ test("H13 failing when pretable parity ratio exceeds 110% of best comparator", (
         long_tasks_count: 0,
       }),
       createUpdatesRun({
-        adapterId: "gridalpha",
+        adapterId: "ag-grid",
         timestamp: "2026-04-30T12:01:00.000Z",
         scroll_frame_p95_ms: 10,
         long_tasks_count: 0,
@@ -2068,7 +2067,7 @@ test("H14 insufficient when no rate-tagged S5 updates runs exist for pretable", 
 });
 
 test("H14 satisfied when pretable's envelope is 10x or more above the smallest comparator", () => {
-  // Pretable passes at 25k/sec; GridGamma fails at 500/sec. 25,000 / 500 = 50× gap.
+  // Pretable passes at 25k/sec; MUI fails at 500/sec. 25,000 / 500 = 50× gap.
   const runs = [];
   for (const rate of [1000, 5000, 25000]) {
     runs.push(
@@ -2081,11 +2080,11 @@ test("H14 satisfied when pretable's envelope is 10x or more above the smallest c
       }),
     );
   }
-  // GridGamma fails at all sampled rates.
+  // MUI fails at all sampled rates.
   for (const rate of [1000, 5000]) {
     runs.push(
       createUpdatesRun({
-        adapterId: "gridgamma",
+        adapterId: "mui",
         timestamp: `2026-04-30T20:02:0${rate}.000Z`,
         scroll_frame_p95_ms: 100,
         long_tasks_count: 59,
@@ -2093,10 +2092,10 @@ test("H14 satisfied when pretable's envelope is 10x or more above the smallest c
       }),
     );
   }
-  // Add one passing rate for GridGamma (envelope = 100/sec).
+  // Add one passing rate for MUI (envelope = 100/sec).
   runs.push(
     createUpdatesRun({
-      adapterId: "gridgamma",
+      adapterId: "mui",
       timestamp: "2026-04-30T20:02:100.000Z",
       scroll_frame_p95_ms: 10,
       long_tasks_count: 0,
@@ -2114,13 +2113,13 @@ test("H14 satisfied when pretable's envelope is 10x or more above the smallest c
   const h14 = report.hypotheses.find((h) => h.id === "H14");
   assert.equal(h14?.status, "satisfied");
   assert.match(h14?.summary ?? "", /25000/);
-  assert.match(h14?.summary ?? "", /gridgamma/);
+  assert.match(h14?.summary ?? "", /mui/);
 });
 
 test("H14 directional when pretable's envelope is within 10x of every comparator", () => {
   const runs = [];
-  // Pretable + gridalpha both pass at 1000 and 5000, fail at 25000.
-  for (const adapterId of ["pretable", "gridalpha"]) {
+  // Pretable + ag-grid both pass at 1000 and 5000, fail at 25000.
+  for (const adapterId of ["pretable", "ag-grid"]) {
     for (const rate of [1000, 5000]) {
       runs.push(
         createUpdatesRun({
@@ -2193,7 +2192,7 @@ test("H15 satisfied when pretable holds drift ≤ 1 and a comparator drifts > 5"
       updateRatePerSec: 1000,
     }),
     createUpdatesRun({
-      adapterId: "gridalpha",
+      adapterId: "ag-grid",
       timestamp: "2026-04-30T22:00:01.000Z",
       scroll_frame_p95_ms: 10,
       long_tasks_count: 0,
@@ -2209,7 +2208,7 @@ test("H15 satisfied when pretable holds drift ≤ 1 and a comparator drifts > 5"
   });
   const h15 = report.hypotheses.find((h) => h.id === "H15");
   assert.equal(h15?.status, "satisfied");
-  assert.match(h15?.summary ?? "", /gridalpha/);
+  assert.match(h15?.summary ?? "", /ag-grid/);
   assert.match(h15?.summary ?? "", /22/);
 });
 
@@ -2224,7 +2223,7 @@ test("H15 directional when pretable holds drift but no comparator exceeds thresh
       updateRatePerSec: 1000,
     }),
     createUpdatesRun({
-      adapterId: "gridbeta",
+      adapterId: "tanstack",
       timestamp: "2026-04-30T22:00:01.000Z",
       scroll_frame_p95_ms: 10,
       long_tasks_count: 0,

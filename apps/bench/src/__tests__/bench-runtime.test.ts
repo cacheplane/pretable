@@ -846,16 +846,16 @@ describe("bench runtime", () => {
     expect(result.metrics.blank_gap_frames).toBe(0);
   });
 
-  test("measures Grid Alpha scroll runs from the live viewport and row selectors", async () => {
+  test("measures AG Grid scroll runs from the live viewport and row selectors", async () => {
     document.body.innerHTML = `
         <div data-testid="root">
-        <div aria-label="Grid Alpha Community adapter">
-          <div data-gridalpha-scroll-viewport="">
-            <div data-gridalpha-row="" data-row-index="0" data-row-height="60">
-              <div data-gridalpha-cell="">row 0</div>
+        <div aria-label="AG Grid Community adapter">
+          <div class="ag-body-viewport">
+            <div class="ag-row" data-row-index="0" data-row-height="60">
+              <div class="ag-cell">row 0</div>
             </div>
-            <div data-gridalpha-row="" data-row-index="1" data-row-height="60">
-              <div data-gridalpha-cell="">row 1</div>
+            <div class="ag-row" data-row-index="1" data-row-height="60">
+              <div class="ag-cell">row 1</div>
             </div>
           </div>
         </div>
@@ -863,12 +863,8 @@ describe("bench runtime", () => {
     `;
 
     const root = document.querySelector<HTMLElement>('[data-testid="root"]');
-    const viewport = root?.querySelector<HTMLElement>(
-      "[data-gridalpha-scroll-viewport]",
-    );
-    const rows = [
-      ...root!.querySelectorAll<HTMLElement>("[data-gridalpha-row]"),
-    ];
+    const viewport = root?.querySelector<HTMLElement>(".ag-body-viewport");
+    const rows = [...root!.querySelectorAll<HTMLElement>(".ag-row")];
     const rafTimestamps = [0, 16, 32, 48, 64, 80];
     let rafIndex = 0;
     const OriginalPerformanceObserver = globalThis.PerformanceObserver;
@@ -937,7 +933,7 @@ describe("bench runtime", () => {
         bottom: 221 - viewport!.scrollTop,
       });
 
-    const result = await measureBenchScrollRun(root!, "gridalpha");
+    const result = await measureBenchScrollRun(root!, "ag-grid");
 
     Object.defineProperty(globalThis, "PerformanceObserver", {
       configurable: true,
@@ -958,16 +954,16 @@ describe("bench runtime", () => {
     expect(result.metrics.dom_nodes_peak).toEqual(expect.any(Number));
   });
 
-  test("measures GridBeta Virtual scroll runs from the live viewport and row selectors", async () => {
+  test("measures TanStack Table scroll runs from the live viewport and row selectors", async () => {
     document.body.innerHTML = `
         <div data-testid="root">
-          <div aria-label="GridBeta Virtual adapter">
-            <div data-gridbeta-scroll-viewport="">
-              <div data-gridbeta-row="" data-row-index="0" data-row-height="60">
-                <div data-gridbeta-cell="">row 0</div>
+          <div aria-label="TanStack Table adapter">
+            <div data-pretable-bench-tanstack-viewport="">
+              <div data-tanstack-row="" data-row-index="0" data-row-height="60">
+                <div data-tanstack-cell="">row 0</div>
               </div>
-              <div data-gridbeta-row="" data-row-index="1" data-row-height="60">
-                <div data-gridbeta-cell="">row 1 with longer content</div>
+              <div data-tanstack-row="" data-row-index="1" data-row-height="60">
+                <div data-tanstack-cell="">row 1 with longer content</div>
               </div>
             </div>
           </div>
@@ -976,13 +972,13 @@ describe("bench runtime", () => {
 
     const root = document.querySelector<HTMLElement>('[data-testid="root"]');
     const viewport = root?.querySelector<HTMLElement>(
-      "[data-gridbeta-scroll-viewport]",
+      "[data-pretable-bench-tanstack-viewport]",
     );
     const rows = [
-      ...root!.querySelectorAll<HTMLElement>("[data-gridbeta-row]"),
+      ...root!.querySelectorAll<HTMLElement>("[data-tanstack-row]"),
     ];
     const cells = [
-      ...root!.querySelectorAll<HTMLElement>("[data-gridbeta-cell]"),
+      ...root!.querySelectorAll<HTMLElement>("[data-tanstack-cell]"),
     ];
     const rafTimestamps = [0, 16, 32, 48, 64, 80];
     let rafIndex = 0;
@@ -1060,7 +1056,7 @@ describe("bench runtime", () => {
       value: 84,
     });
 
-    const result = await measureBenchScrollRun(root!, "gridbeta");
+    const result = await measureBenchScrollRun(root!, "tanstack");
 
     Object.defineProperty(globalThis, "PerformanceObserver", {
       configurable: true,

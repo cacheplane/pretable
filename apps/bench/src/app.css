@@ -244,9 +244,9 @@ body {
   padding: 18px;
 }
 
-[data-gridalpha-scroll-viewport],
-[data-gridbeta-scroll-viewport],
-[data-gridgamma-scroll-viewport] {
+[data-pretable-bench-tanstack-viewport],
+.ag-body-viewport,
+.MuiDataGrid-virtualScroller {
   overscroll-behavior: contain;
   overflow-anchor: none;
 }
