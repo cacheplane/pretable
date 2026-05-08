@@ -38,6 +38,7 @@ export function BaselineAdapter({
   onUpdateApiReadyRef.current = onUpdateApiReady;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset benchmark state when the scenario changes
     setDisplayRows(dataset.rows);
     setScrollTop(0);
     const viewport = viewportRef.current;
