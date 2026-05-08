@@ -857,7 +857,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     measuredRowKeysRef.current = nextKeys;
 
     if (changed) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: measuring DOM in useLayoutEffect requires synchronous state update
       setMeasuredHeights(nextHeights);
     }
     // Deps: only re-run when something that could legitimately change row
