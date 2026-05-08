@@ -257,9 +257,6 @@ importers:
       '@pretable/core':
         specifier: workspace:*
         version: link:../core
-      react:
-        specifier: ^19.0.0
-        version: 19.2.5
     devDependencies:
       '@pretable-internal/renderer-dom':
         specifier: workspace:*
@@ -267,6 +264,12 @@ importers:
       '@pretable-internal/scenario-data':
         specifier: workspace:*
         version: link:../scenario-data
+      react:
+        specifier: ^19.2.6
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.2.6
+        version: 19.2.6(react@19.2.6)
 
   packages/renderer-dom:
     dependencies:
@@ -3026,10 +3029,6 @@ packages:
 
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
-
-  react@19.2.5:
-    resolution: {integrity: sha512-llUJLzz1zTUBrskt2pwZgLq59AemifIftw4aB7JxOqf1HY2FDaGDxgwpAPVzHU1kdWabH7FauP4i1oEeer2WCA==}
-    engines: {node: '>=0.10.0'}
 
   react@19.2.6:
     resolution: {integrity: sha512-sfWGGfavi0xr8Pg0sVsyHMAOziVYKgPLNrS7ig+ivMNb3wbCBw3KxtflsGBAwD3gYQlE/AEZsTLgToRrSCjb0Q==}
@@ -6655,8 +6654,6 @@ snapshots:
       scheduler: 0.27.0
 
   react-is@17.0.2: {}
-
-  react@19.2.5: {}
 
   react@19.2.6: {}
 
