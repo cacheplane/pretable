@@ -1,10 +1,19 @@
-import type { PretableGridOptions, PretableRow } from "@pretable/core";
+import type {
+  PretableGridOptions,
+  PretableRow,
+  PretableSortDirection,
+} from "@pretable/core";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./use-pretable";
 
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 import type { PretableColumn } from "./types";
 
+/**
+ * Input passed to a {@link LabeledGridSurface} format function.
+ *
+ * @beta
+ */
 export interface LabeledGridSurfaceFormatValueInput<
   TRow extends PretableRow = PretableRow,
 > {
@@ -13,6 +22,11 @@ export interface LabeledGridSurfaceFormatValueInput<
   value: unknown;
 }
 
+/**
+ * Props for {@link LabeledGridSurface}.
+ *
+ * @beta
+ */
 export interface LabeledGridSurfaceProps<
   TRow extends PretableRow = PretableRow,
 > {
@@ -25,7 +39,7 @@ export interface LabeledGridSurfaceProps<
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   getHeaderCellProps?: (input: {
     column: PretableColumn<TRow>;
-    sortDirection: PretableSurfaceSortDirection;
+    sortDirection: PretableSortDirection;
   }) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
@@ -54,6 +68,11 @@ export interface LabeledGridSurfaceProps<
   viewportHeight: number;
 }
 
+/**
+ * Special-purpose surface for label/value-style table layouts. Experimental — shape may change before 1.0.
+ *
+ * @beta
+ */
 export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,
   bodyCellClassName,
@@ -213,9 +232,3 @@ function formatDefaultValue(value: unknown) {
 
   return String(value ?? "");
 }
-
-type PretableSurfaceSortDirection = NonNullable<
-  Parameters<
-    NonNullable<PretableSurfaceProps["renderHeaderCell"]>
-  >[0]["sortDirection"]
-> | null;

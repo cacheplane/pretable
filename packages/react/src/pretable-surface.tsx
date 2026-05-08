@@ -35,7 +35,7 @@ import { measureRenderedRowHeight } from "./row-height";
 import {
   type PretableSurfaceState,
   type PretableTelemetry,
-  usePretableModel,
+  usePretable,
 } from "./use-pretable";
 import { useResolvedHeights } from "./density";
 import {
@@ -81,6 +81,11 @@ async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
   }
 }
 
+/**
+ * Configuration for the synthetic row-select column rendered by {@link PretableSurface} when `rowSelectionColumn` is enabled.
+ *
+ * @public
+ */
 export interface RowSelectionColumnConfig {
   enabled: true;
   position?: "left";
@@ -89,6 +94,11 @@ export interface RowSelectionColumnConfig {
   width?: number;
 }
 
+/**
+ * Localizable user-facing strings rendered by {@link PretableSurface}. Pass to override the English defaults.
+ *
+ * @public
+ */
 export interface PretableSurfaceMessages {
   selectAllAnnouncement?: (args: {
     rowCount: number;
@@ -167,6 +177,11 @@ interface PretableSurfaceRowAttributesInput<
   rowIndex: number;
 }
 
+/**
+ * Props for {@link PretableSurface}.
+ *
+ * @public
+ */
 export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   ariaLabel: string;
   autosize?: boolean | AutosizeOptions;
@@ -379,6 +394,11 @@ function headerContentPropsEqual(
 
 const MemoizedHeaderContent = memo(HeaderContentImpl, headerContentPropsEqual);
 
+/**
+ * Controlled grid surface. The primary React component. Pass `state` to control any subset of sort/filter/selection/focus/column-layout from the outside; omit slices you want the grid to own.
+ *
+ * @public
+ */
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,
   autosize,
@@ -507,7 +527,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     };
     return [synth, ...columns];
   }, [columns, rowSelectionColumn]);
-  const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
+  const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
     autosize,
     columns: effectiveColumns,
     getRowId,

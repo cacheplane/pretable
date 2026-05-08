@@ -18,6 +18,11 @@ const filterableHeaderProps = {
   "data-filterable": "true",
 } as HTMLAttributes<HTMLButtonElement>;
 
+/**
+ * Props for {@link InspectionGrid}.
+ *
+ * @beta
+ */
 export interface InspectionGridProps {
   ariaLabel: string;
   filterableColumnIds: readonly InspectionFilterableColumnId[];
@@ -41,6 +46,11 @@ export interface InspectionGridProps {
   viewportHeight: number;
 }
 
+/**
+ * Special-purpose inspection surface that renders rows as labeled key/value pairs. Experimental — shape may change before 1.0.
+ *
+ * @beta
+ */
 export function InspectionGrid({
   ariaLabel,
   filterableColumnIds,

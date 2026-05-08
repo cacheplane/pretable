@@ -3,6 +3,11 @@ import { type PretableGridOptions, type PretableRow } from "@pretable/core";
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 import type { PretableColumn } from "./types";
 
+/**
+ * Props for the {@link Pretable} drop-in component.
+ *
+ * @public
+ */
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
   getRowId?: PretableGridOptions<TRow>["getRowId"];
@@ -27,6 +32,11 @@ const BENCHMARK_VIEWPORT_STYLE = {
   overscrollBehavior: "contain",
 } as const;
 
+/**
+ * Drop-in pretable component. Wraps {@link PretableSurface} with internal state — pass `columns` and `rows` and you're done. Reach for `PretableSurface` when you need to control state from the outside.
+ *
+ * @public
+ */
 export function Pretable<TRow extends PretableRow = PretableRow>({
   columns,
   getRowId,

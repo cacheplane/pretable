@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 
-import { Pretable, measureRenderedRowHeight, usePretableModel } from "../index";
+import { Pretable, usePretable } from "../index";
+import { measureRenderedRowHeight } from "../row-height";
 
 afterEach(() => {
   cleanup();
@@ -290,7 +291,7 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
   ];
   const getRowId = (row: { id: string }) => row.id;
   const HookProbe = () => {
-    const model = usePretableModel({
+    const model = usePretable({
       columns,
       getRowId,
       rows,
@@ -343,7 +344,7 @@ it("plans and reports visible rows from the provided body viewport height", () =
   const getRowId = (row: { id: string }) => row.id;
 
   const HookProbe = () => {
-    const model = usePretableModel({
+    const model = usePretable({
       columns,
       getRowId,
       rows,

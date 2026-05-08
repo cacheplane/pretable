@@ -174,7 +174,7 @@ interface SerializeRangesArgs<TRow> {
 
 ## `PretableGrid<TRow>` — model methods
 
-The `grid` returned by `usePretable` and `usePretableModel`.
+The `grid` returned by `usePretable`.
 
 | Method                                                                        | Description                                                                                     |
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -206,7 +206,7 @@ The `grid` returned by `usePretable` and `usePretableModel`.
 | `setColumnPinned(columnId: string, pinned: "left" \| null): void`   | Explicit pin/unpin. Repositions the column to the pin-region boundary.                          |
 | `autosizeColumn(columnId: string, options?: AutosizeOptions): void` | Autosize a single column to its measured content width.                                         |
 | `resetColumnLayout(): void`                                         | Restore order, widths, and pinned state to the original `columns` prop snapshot taken at mount. |
-| `mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void`  | Internal: called by `usePretableModel` when the columns prop's id list changes structurally.    |
+| `mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void`  | Internal: called by `usePretable` when the columns prop's id list changes structurally.         |
 
 ## `PretableGridSnapshot<TRow>`
 
@@ -236,7 +236,7 @@ interface PretableGridSnapshot<TRow> {
 }
 ```
 
-Read via `grid.getSnapshot()` or directly from the `usePretableModel` return value.
+Read via `grid.getSnapshot()` or directly from the `usePretable` return value.
 
 ## `UsePretableOptions<TRow>` — `usePretable` arguments
 
@@ -251,10 +251,10 @@ interface UsePretableOptions<TRow> {
 
 `usePretable` returns just the `grid` model. Use it when you only need interaction state, not virtualization.
 
-## `UsePretableModelOptions<TRow>` — `usePretableModel` arguments
+## `UsePretableOptions<TRow>` — `usePretable` arguments
 
 ```ts
-interface UsePretableModelOptions<TRow> extends UsePretableOptions<TRow> {
+interface UsePretableOptions<TRow> extends UsePretableOptions<TRow> {
   viewportHeight: number;
   viewportWidth?: number;
   overscan?: number; // default 6
@@ -275,9 +275,9 @@ interface PretableSurfaceState {
 }
 ```
 
-`usePretableModel` returns `{grid, snapshot, renderSnapshot, telemetry}`. Use it when you need virtualization metadata for custom rendering.
+`usePretable` returns `{grid, snapshot, renderSnapshot, telemetry}`. Use it when you need virtualization metadata for custom rendering.
 
-## `PretableModel<TRow>` — `usePretableModel` return
+## `PretableModel<TRow>` — `usePretable` return
 
 ```ts
 interface PretableModel<TRow> {
@@ -344,9 +344,7 @@ Useful for instrumentation (frame budget tracking, visible-row counts, focus sur
 ```ts
 function usePretable<TRow>(opts: UsePretableOptions<TRow>): PretableGrid<TRow>;
 
-function usePretableModel<TRow>(
-  opts: UsePretableModelOptions<TRow>,
-): PretableModel<TRow>;
+function usePretable<TRow>(opts: UsePretableOptions<TRow>): PretableModel<TRow>;
 
 function useResolvedHeights(
   rowHeightProp?: number,

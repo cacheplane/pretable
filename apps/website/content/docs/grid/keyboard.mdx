@@ -46,7 +46,7 @@ Both behaviors preserve the single-tab-stop model — once Tab leaves, the grid 
 
 When the focused address changes (via keyboard, click, or programmatic `grid.setFocus`), a `useLayoutEffect` calls `.focus()` on the new cell's DOM node, so the browser's focus ring follows the engine state without flicker. Scrolling adjusts to keep the focused cell on-screen if needed.
 
-This means consumers don't have to manage `tabIndex` themselves when using `<PretableSurface>`. If you're building with `usePretableModel` and rendering your own JSX, mirror the pattern:
+This means consumers don't have to manage `tabIndex` themselves when using `<PretableSurface>`. If you're building with `usePretable` and rendering your own JSX, mirror the pattern:
 
 ```tsx
 const isFocused =

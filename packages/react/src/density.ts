@@ -12,6 +12,11 @@ const FALLBACK_ROW_HEIGHT = 32;
 // is irrelevant.
 const FALLBACK_HEADER_HEIGHT = HEADER_HEIGHT;
 
+/**
+ * CSS-token-derived heights used by `<Pretable>` / `<PretableSurface>` to size header and rows. PR 4 may consolidate the source of truth between this package and `@pretable/ui`.
+ *
+ * @public
+ */
 export interface DensityHeights {
   rowHeight: number;
   headerHeight: number;
@@ -66,18 +71,9 @@ function subscribe(callback: () => void): () => void {
 }
 
 /**
- * React hook — reactive density values that update when `[data-density]`,
- * `[data-theme]`, `class`, or inline `style` change on `<html>`.
+ * React hook returning the current density heights derived from the active CSS theme. Internal — `<Pretable>` and `<PretableSurface>` use this; external consumers should reach for `getDensityHeights` from `@pretable/ui` when PR 4 lands.
  *
- * Numeric props win when passed; otherwise CSS variables; otherwise fallbacks.
- *
- * Currently the engine only uses `headerHeight` (replaces the legacy
- * HEADER_HEIGHT constant). The `rowHeight` value is exposed for API parity
- * with the spec's documented contract and for future use; row sizing in v0.0.1
- * remains measurement-driven via `measureRenderedRowHeight()` /
- * `estimateRowHeight()`.
- *
- * SSR-safe: server snapshot returns fallback values without DOM access.
+ * @internal
  */
 export function useResolvedHeights(
   rowHeightProp?: number,

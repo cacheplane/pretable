@@ -7,6 +7,11 @@ import type {
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import type { PretableColumn } from "./types";
 
+/**
+ * Input for {@link serializeRangesAsTsv}.
+ *
+ * @public
+ */
 export interface SerializeRangesArgs<TRow extends PretableRow> {
   ranges: readonly PretableCellRange[];
   visibleRows: readonly PretableVisibleRow<TRow>[];
@@ -14,11 +19,21 @@ export interface SerializeRangesArgs<TRow extends PretableRow> {
   copyWithHeaders?: boolean;
 }
 
+/**
+ * Plain-text + HTML pair returned by clipboard serializers and consumed by `onCopy` / `copyToClipboard` props.
+ *
+ * @public
+ */
 export interface CopyPayload {
   text: string;
   html?: string;
 }
 
+/**
+ * Default coerce-value-to-string used during clipboard serialization. Useful as a fallback inside custom serializers.
+ *
+ * @public
+ */
 export function defaultCoerceForCopy(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString();
@@ -36,6 +51,11 @@ export function defaultCoerceForCopy(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Serialize one or more `PretableCellRange`s to a tab-separated text + HTML payload suitable for clipboard write.
+ *
+ * @public
+ */
 export function serializeRangesAsTsv<TRow extends PretableRow>(
   args: SerializeRangesArgs<TRow>,
 ): CopyPayload | null {

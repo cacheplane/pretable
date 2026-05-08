@@ -40,11 +40,11 @@ export function EventStream({ events }: { events: Event[] }) {
 
 ## When to use this vs `<Pretable>`
 
-| You want…                                                                              | Reach for                                         |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| A grid in 3 props, sensible defaults                                                   | [`<Pretable>`](/docs/grid/pretable-component)     |
-| Custom cell renderers, telemetry, controlled interaction state, or fine-grained sizing | `<PretableSurface>`                               |
-| To drive everything yourself with hooks                                                | [`usePretableModel`](/docs/grid/custom-rendering) |
+| You want…                                                                              | Reach for                                     |
+| -------------------------------------------------------------------------------------- | --------------------------------------------- |
+| A grid in 3 props, sensible defaults                                                   | [`<Pretable>`](/docs/grid/pretable-component) |
+| Custom cell renderers, telemetry, controlled interaction state, or fine-grained sizing | `<PretableSurface>`                           |
+| To drive everything yourself with hooks                                                | [`usePretable`](/docs/grid/custom-rendering)  |
 
 `<Pretable>` is a 115-line wrapper around `<PretableSurface>` with hardcoded `viewportHeight={320}`, hardcoded cell renderers, and no telemetry. If any of that doesn't fit, drop down to the surface.
 
@@ -197,6 +197,6 @@ If your use case looks like log inspection, start with `<InspectionGrid>`. Other
 - [Selection](/docs/grid/selection) — cell-range model and checkbox column.
 - [Keyboard](/docs/grid/keyboard) — the full keyboard contract.
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
-- [Custom rendering](/docs/grid/custom-rendering) — `usePretableModel` walkthrough for headless control.
+- [Custom rendering](/docs/grid/custom-rendering) — `usePretable` walkthrough for headless control.
 - [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` for density-aware row sizing.
 - [API reference](/docs/grid/api-reference) — full type signatures.

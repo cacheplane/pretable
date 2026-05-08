@@ -74,13 +74,13 @@ The grid renders with Excel's surface tones, gridlines, accent. Toggle `data-den
 - **Focus / keyboard navigation** — wire `grid.setFocus({ rowId, columnId })` and `grid.moveFocus("up" | "down" | "left" | "right", options?)` to keyboard handlers.
 - **Custom cell components** — replace the default label/value layout. Custom rendering lets you render any React tree per cell.
 - **Pinned columns rendered as sticky** — set `column.pinned: "left"` and render with the data-pinned attribute.
-- **Per-row measured heights** — provide `measuredHeights: Record<string, number>` to `usePretableModel`.
+- **Per-row measured heights** — provide `measuredHeights: Record<string, number>` to `usePretable`.
 
-All of the above are available with `usePretable` or `usePretableModel`. The drop-in component just doesn't expose the API surface for it.
+All of the above are available with `usePretable`. The drop-in component just doesn't expose the API surface for it.
 
 ## Where to go next
 
-- [Custom rendering](/docs/grid/custom-rendering) — `usePretableModel` walkthrough with code.
+- [Custom rendering](/docs/grid/custom-rendering) — `usePretable` walkthrough with code.
 - [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
 - [API reference](/docs/grid/api-reference) — `PretableColumn`, `PretableGrid`, etc.
 - [Theming Overview](/docs/theming) — how to skin the grid.
