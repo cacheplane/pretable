@@ -69,41 +69,41 @@ export {
 
 ## Components — full audit decisions
 
-| Symbol | Decision | Notes |
-|---|---|---|
-| `Pretable` | `@public` | Wrapper around `PretableSurface`. Used in 4 website docs. |
-| `PretableSurface` | `@public` | Primary controlled component. |
-| `InspectionGrid` | `@beta` | Special-purpose surface; no docs page. |
-| `LabeledGridSurface` | `@beta` | Same. |
-| `usePretable` (old, returns `PretableGrid`) | **Delete** | Trivial; inline `useMemo` at call sites. |
-| `usePretableModel` | **Rename → `usePretable`** | Returns `PretableModel`. |
-| `useResolvedHeights` | `ɵ`-prefix at re-export | `@internal` tag on declaration. |
-| `measureRenderedRowHeight` | `ɵ`-prefix at re-export | `@internal` tag on declaration. |
-| `ROW_SELECT_COLUMN_ID` | `ɵ`-prefix at re-export | `@internal` tag on declaration. |
-| `defaultCoerceForCopy` | `@public` | Per user feedback — clipboard story is stable. |
-| `serializeRangesAsTsv` | `@public` | Per user feedback. |
-| `CopyPayload` | `@public` | Per user feedback. |
-| `SerializeRangesArgs` | `@public` | Per user feedback. |
-| `PretableColumn` | `@public` | React-extended (with `format`/`render`); imports core's `PretableColumn` as `PretableBaseColumn`. |
-| `PretableCoreColumn` (alias) | **Delete** | Use `PretableColumn` from `@pretable/core` if the base is needed. |
-| `PretableSurfaceSortDirection` (leak) | **Delete** | Replace usage with `PretableSortDirection` from core. |
-| `PretableModel` | `@public` | Hook output. TSDoc clarifies role. |
-| `PretableRenderSnapshot` | `@public` | Render-layout output. TSDoc clarifies role. |
-| `PretableRenderRow` | `@public` | Member of render snapshot. |
-| `PretableTelemetry` | `@public` | Hook output. |
-| `PretableSurfaceState` | `@public` | **Input** (controlled state shape). TSDoc explicitly says "controlled state input". |
-| `PretableProps` | `@public` | Component props. |
-| `PretableSurfaceProps` | `@public` | Component props. |
-| `PretableSurfaceMessages` | `@public` | i18n messages. |
-| `RowSelectionColumnConfig` | `@public` | Surface prop config. |
-| `InspectionGridProps` | `@beta` | Tracks `InspectionGrid`. |
-| `LabeledGridSurfaceProps` | `@beta` | Tracks `LabeledGridSurface`. |
-| `LabeledGridSurfaceFormatValueInput` | `@beta` | Tracks `LabeledGridSurface`. |
-| `PretableCellRenderInput` | `@public` | Render-input shape. |
-| `PretableHeaderRenderInput` | `@public` | Header render-input shape. |
-| `PretableFormatInput` | `@public` (re-export from core) | Already `@public` in core. |
-| `UsePretableOptions` (renamed from `UsePretableModelOptions`) | `@public` | New canonical hook options. |
-| `DensityHeights` | `@public` | Density type. PR 4 may consolidate the source-of-truth question. |
+| Symbol                                                        | Decision                        | Notes                                                                                             |
+| ------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `Pretable`                                                    | `@public`                       | Wrapper around `PretableSurface`. Used in 4 website docs.                                         |
+| `PretableSurface`                                             | `@public`                       | Primary controlled component.                                                                     |
+| `InspectionGrid`                                              | `@beta`                         | Special-purpose surface; no docs page.                                                            |
+| `LabeledGridSurface`                                          | `@beta`                         | Same.                                                                                             |
+| `usePretable` (old, returns `PretableGrid`)                   | **Delete**                      | Trivial; inline `useMemo` at call sites.                                                          |
+| `usePretableModel`                                            | **Rename → `usePretable`**      | Returns `PretableModel`.                                                                          |
+| `useResolvedHeights`                                          | `ɵ`-prefix at re-export         | `@internal` tag on declaration.                                                                   |
+| `measureRenderedRowHeight`                                    | `ɵ`-prefix at re-export         | `@internal` tag on declaration.                                                                   |
+| `ROW_SELECT_COLUMN_ID`                                        | `ɵ`-prefix at re-export         | `@internal` tag on declaration.                                                                   |
+| `defaultCoerceForCopy`                                        | `@public`                       | Per user feedback — clipboard story is stable.                                                    |
+| `serializeRangesAsTsv`                                        | `@public`                       | Per user feedback.                                                                                |
+| `CopyPayload`                                                 | `@public`                       | Per user feedback.                                                                                |
+| `SerializeRangesArgs`                                         | `@public`                       | Per user feedback.                                                                                |
+| `PretableColumn`                                              | `@public`                       | React-extended (with `format`/`render`); imports core's `PretableColumn` as `PretableBaseColumn`. |
+| `PretableCoreColumn` (alias)                                  | **Delete**                      | Use `PretableColumn` from `@pretable/core` if the base is needed.                                 |
+| `PretableSurfaceSortDirection` (leak)                         | **Delete**                      | Replace usage with `PretableSortDirection` from core.                                             |
+| `PretableModel`                                               | `@public`                       | Hook output. TSDoc clarifies role.                                                                |
+| `PretableRenderSnapshot`                                      | `@public`                       | Render-layout output. TSDoc clarifies role.                                                       |
+| `PretableRenderRow`                                           | `@public`                       | Member of render snapshot.                                                                        |
+| `PretableTelemetry`                                           | `@public`                       | Hook output.                                                                                      |
+| `PretableSurfaceState`                                        | `@public`                       | **Input** (controlled state shape). TSDoc explicitly says "controlled state input".               |
+| `PretableProps`                                               | `@public`                       | Component props.                                                                                  |
+| `PretableSurfaceProps`                                        | `@public`                       | Component props.                                                                                  |
+| `PretableSurfaceMessages`                                     | `@public`                       | i18n messages.                                                                                    |
+| `RowSelectionColumnConfig`                                    | `@public`                       | Surface prop config.                                                                              |
+| `InspectionGridProps`                                         | `@beta`                         | Tracks `InspectionGrid`.                                                                          |
+| `LabeledGridSurfaceProps`                                     | `@beta`                         | Tracks `LabeledGridSurface`.                                                                      |
+| `LabeledGridSurfaceFormatValueInput`                          | `@beta`                         | Tracks `LabeledGridSurface`.                                                                      |
+| `PretableCellRenderInput`                                     | `@public`                       | Render-input shape.                                                                               |
+| `PretableHeaderRenderInput`                                   | `@public`                       | Header render-input shape.                                                                        |
+| `PretableFormatInput`                                         | `@public` (re-export from core) | Already `@public` in core.                                                                        |
+| `UsePretableOptions` (renamed from `UsePretableModelOptions`) | `@public`                       | New canonical hook options.                                                                       |
+| `DensityHeights`                                              | `@public`                       | Density type. PR 4 may consolidate the source-of-truth question.                                  |
 
 Re-exports from `@pretable/core` continue to flow through react's public surface: `PretableGrid`, `PretableGridOptions`, `PretableGridSnapshot`, `PretableRow`. (No `PretableCoreColumn` re-export — deleted.)
 

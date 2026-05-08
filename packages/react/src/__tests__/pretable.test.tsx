@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 
-import { Pretable, measureRenderedRowHeight, usePretable } from "../index";
+import { Pretable, usePretable } from "../index";
+import { measureRenderedRowHeight } from "../row-height";
 
 afterEach(() => {
   cleanup();

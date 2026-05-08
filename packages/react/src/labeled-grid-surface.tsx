@@ -1,4 +1,8 @@
-import type { PretableGridOptions, PretableRow, PretableSortDirection } from "@pretable/core";
+import type {
+  PretableGridOptions,
+  PretableRow,
+  PretableSortDirection,
+} from "@pretable/core";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./use-pretable";
 
@@ -228,4 +232,3 @@ function formatDefaultValue(value: unknown) {
 
   return String(value ?? "");
 }
-

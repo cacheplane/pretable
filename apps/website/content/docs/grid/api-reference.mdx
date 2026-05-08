@@ -206,7 +206,7 @@ The `grid` returned by `usePretable`.
 | `setColumnPinned(columnId: string, pinned: "left" \| null): void`   | Explicit pin/unpin. Repositions the column to the pin-region boundary.                          |
 | `autosizeColumn(columnId: string, options?: AutosizeOptions): void` | Autosize a single column to its measured content width.                                         |
 | `resetColumnLayout(): void`                                         | Restore order, widths, and pinned state to the original `columns` prop snapshot taken at mount. |
-| `mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void`  | Internal: called by `usePretable` when the columns prop's id list changes structurally.    |
+| `mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void`  | Internal: called by `usePretable` when the columns prop's id list changes structurally.         |
 
 ## `PretableGridSnapshot<TRow>`
 
@@ -344,9 +344,7 @@ Useful for instrumentation (frame budget tracking, visible-row counts, focus sur
 ```ts
 function usePretable<TRow>(opts: UsePretableOptions<TRow>): PretableGrid<TRow>;
 
-function usePretable<TRow>(
-  opts: UsePretableOptions<TRow>,
-): PretableModel<TRow>;
+function usePretable<TRow>(opts: UsePretableOptions<TRow>): PretableModel<TRow>;
 
 function useResolvedHeights(
   rowHeightProp?: number,

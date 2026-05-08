@@ -40,11 +40,11 @@ export function EventStream({ events }: { events: Event[] }) {
 
 ## When to use this vs `<Pretable>`
 
-| You want…                                                                              | Reach for                                         |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| A grid in 3 props, sensible defaults                                                   | [`<Pretable>`](/docs/grid/pretable-component)     |
-| Custom cell renderers, telemetry, controlled interaction state, or fine-grained sizing | `<PretableSurface>`                               |
-| To drive everything yourself with hooks                                                | [`usePretable`](/docs/grid/custom-rendering) |
+| You want…                                                                              | Reach for                                     |
+| -------------------------------------------------------------------------------------- | --------------------------------------------- |
+| A grid in 3 props, sensible defaults                                                   | [`<Pretable>`](/docs/grid/pretable-component) |
+| Custom cell renderers, telemetry, controlled interaction state, or fine-grained sizing | `<PretableSurface>`                           |
+| To drive everything yourself with hooks                                                | [`usePretable`](/docs/grid/custom-rendering)  |
 
 `<Pretable>` is a 115-line wrapper around `<PretableSurface>` with hardcoded `viewportHeight={320}`, hardcoded cell renderers, and no telemetry. If any of that doesn't fit, drop down to the surface.
 

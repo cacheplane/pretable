@@ -14,31 +14,32 @@
 
 ## File Structure
 
-| Path | Responsibility | Action |
-|---|---|---|
-| `packages/react/src/use-pretable.ts` | Hook(s) | Rewrite (delete old `usePretable`, rename `usePretableModel` → `usePretable`, rename options type) |
-| `packages/react/src/pretable-surface.tsx` | Surface component | Modify (`usePretableModel` import + call site) + add TSDoc on `PretableSurface`, `PretableSurfaceProps`, `PretableSurfaceMessages`, `RowSelectionColumnConfig` |
-| `packages/react/src/pretable.tsx` | Drop-in component | Modify (TSDoc on `Pretable`, `PretableProps`) |
-| `packages/react/src/inspection-grid.tsx` | Inspection surface | Modify (`@beta` TSDoc on `InspectionGrid` + `InspectionGridProps`) |
-| `packages/react/src/labeled-grid-surface.tsx` | Labeled surface | Modify (`@beta` TSDoc on `LabeledGridSurface`, `LabeledGridSurfaceProps`, `LabeledGridSurfaceFormatValueInput`); replace local `PretableSurfaceSortDirection` alias with `PretableSortDirection` import from core |
-| `packages/react/src/types.ts` | React-extended column types | Modify (TSDoc on `PretableColumn`, `PretableCellRenderInput`, `PretableHeaderRenderInput`, re-export `PretableFormatInput` already there) |
-| `packages/react/src/density.ts` | Density hook | Modify (`@internal` on `useResolvedHeights`; TSDoc on `DensityHeights`) |
-| `packages/react/src/row-height.ts` | Measurement helper | Modify (`@internal` on `measureRenderedRowHeight`) |
-| `packages/react/src/copy.ts` | Clipboard helpers | Modify (TSDoc on `defaultCoerceForCopy`, `serializeRangesAsTsv`, `CopyPayload`, `SerializeRangesArgs`) |
-| `packages/react/src/constants.ts` | Constants | Modify (`@internal` on `ROW_SELECT_COLUMN_ID`) |
-| `packages/react/src/public_api.ts` | **NEW** curated public re-exports | Create |
-| `packages/react/src/index.ts` | Package entry | Collapse to `export * from './public_api';` |
-| `packages/react/src/__tests__/pretable-surface.test.tsx` | Tests | Modify (rename `usePretableModel` → `usePretable`) |
-| `packages/react/src/__tests__/pretable.test.tsx` | Tests | Modify (rename `usePretableModel` → `usePretable`) |
-| `apps/website/content/docs/grid/*.mdx` (8 files) | Docs | Modify (rename hook + options type references) |
-| `packages/react/react.api.md` | Generated baseline | Regenerate |
-| `packages/react/README.md` | **NEW** per-package README | Create |
+| Path                                                     | Responsibility                    | Action                                                                                                                                                                                                            |
+| -------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/react/src/use-pretable.ts`                     | Hook(s)                           | Rewrite (delete old `usePretable`, rename `usePretableModel` → `usePretable`, rename options type)                                                                                                                |
+| `packages/react/src/pretable-surface.tsx`                | Surface component                 | Modify (`usePretableModel` import + call site) + add TSDoc on `PretableSurface`, `PretableSurfaceProps`, `PretableSurfaceMessages`, `RowSelectionColumnConfig`                                                    |
+| `packages/react/src/pretable.tsx`                        | Drop-in component                 | Modify (TSDoc on `Pretable`, `PretableProps`)                                                                                                                                                                     |
+| `packages/react/src/inspection-grid.tsx`                 | Inspection surface                | Modify (`@beta` TSDoc on `InspectionGrid` + `InspectionGridProps`)                                                                                                                                                |
+| `packages/react/src/labeled-grid-surface.tsx`            | Labeled surface                   | Modify (`@beta` TSDoc on `LabeledGridSurface`, `LabeledGridSurfaceProps`, `LabeledGridSurfaceFormatValueInput`); replace local `PretableSurfaceSortDirection` alias with `PretableSortDirection` import from core |
+| `packages/react/src/types.ts`                            | React-extended column types       | Modify (TSDoc on `PretableColumn`, `PretableCellRenderInput`, `PretableHeaderRenderInput`, re-export `PretableFormatInput` already there)                                                                         |
+| `packages/react/src/density.ts`                          | Density hook                      | Modify (`@internal` on `useResolvedHeights`; TSDoc on `DensityHeights`)                                                                                                                                           |
+| `packages/react/src/row-height.ts`                       | Measurement helper                | Modify (`@internal` on `measureRenderedRowHeight`)                                                                                                                                                                |
+| `packages/react/src/copy.ts`                             | Clipboard helpers                 | Modify (TSDoc on `defaultCoerceForCopy`, `serializeRangesAsTsv`, `CopyPayload`, `SerializeRangesArgs`)                                                                                                            |
+| `packages/react/src/constants.ts`                        | Constants                         | Modify (`@internal` on `ROW_SELECT_COLUMN_ID`)                                                                                                                                                                    |
+| `packages/react/src/public_api.ts`                       | **NEW** curated public re-exports | Create                                                                                                                                                                                                            |
+| `packages/react/src/index.ts`                            | Package entry                     | Collapse to `export * from './public_api';`                                                                                                                                                                       |
+| `packages/react/src/__tests__/pretable-surface.test.tsx` | Tests                             | Modify (rename `usePretableModel` → `usePretable`)                                                                                                                                                                |
+| `packages/react/src/__tests__/pretable.test.tsx`         | Tests                             | Modify (rename `usePretableModel` → `usePretable`)                                                                                                                                                                |
+| `apps/website/content/docs/grid/*.mdx` (8 files)         | Docs                              | Modify (rename hook + options type references)                                                                                                                                                                    |
+| `packages/react/react.api.md`                            | Generated baseline                | Regenerate                                                                                                                                                                                                        |
+| `packages/react/README.md`                               | **NEW** per-package README        | Create                                                                                                                                                                                                            |
 
 ---
 
 ## Task 1: Hook rename — delete old `usePretable`, rename `usePretableModel` → `usePretable`
 
 **Files:**
+
 - Modify: `packages/react/src/use-pretable.ts`
 - Modify: `packages/react/src/pretable-surface.tsx`
 - Modify: `packages/react/src/__tests__/pretable-surface.test.tsx`
@@ -51,7 +52,7 @@ The hook source has both old `usePretable` (returns `PretableGrid`) and `usePret
 
 Replace ALL contents with:
 
-```ts
+````ts
 import {
   type AutosizeOptions,
   createGrid,
@@ -392,25 +393,30 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     telemetry,
   };
 }
-```
+````
 
 - [ ] **Step 2: Update `packages/react/src/pretable-surface.tsx`**
 
 Find the import (around line 38):
+
 ```ts
   usePretableModel,
 ```
+
 Rename to `usePretable`.
 
 Find the call site (around line 510):
+
 ```ts
   const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
 ```
+
 Rename to `usePretable`.
 
 - [ ] **Step 3: Update test files**
 
 In `packages/react/src/__tests__/pretable-surface.test.tsx`, change every occurrence of `usePretableModel` to `usePretable`. Specifically:
+
 - The import on line 21: `import { type PretableSurfaceState, usePretableModel } from "../use-pretable";` → `import { type PretableSurfaceState, usePretable } from "../use-pretable";`
 - The describe-block label on line 84 (`"exposes renderer telemetry from usePretableModel..."`) → `"exposes renderer telemetry from usePretable..."`
 - The call on line 86: `const model = usePretableModel({` → `const model = usePretable({`
@@ -440,7 +446,7 @@ for f in "${files[@]}"; do
 done
 ```
 
-Then specifically `apps/website/content/docs/grid/index.mdx` line 32 has a Markdown heading that mentions both names: `### Path 2: \`usePretable\` / \`usePretableModel\` hooks (custom rendering)`. The sed run above turns it into `### Path 2: \`usePretable\` / \`usePretable\` hooks (custom rendering)` — duplicate. Open the file and reduce that heading to `### Path 2: \`usePretable\` hook (custom rendering)`.
+Then specifically `apps/website/content/docs/grid/index.mdx` line 32 has a Markdown heading that mentions both names: `### Path 2: \`usePretable\` / \`usePretableModel\` hooks (custom rendering)`. The sed run above turns it into `### Path 2: \`usePretable\` / \`usePretable\` hooks (custom rendering)`— duplicate. Open the file and reduce that heading to`### Path 2: \`usePretable\` hook (custom rendering)`.
 
 Similarly line 90 reads "the `autosize` option on `usePretable` and `usePretableModel`" — after sed it becomes "the `autosize` option on `usePretable` and `usePretable`". Open and reduce to "the `autosize` option on `usePretable`".
 
@@ -479,6 +485,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 2: Fix `PretableSurfaceSortDirection` forgotten-export leak
 
 **Files:**
+
 - Modify: `packages/react/src/labeled-grid-surface.tsx`
 
 - [ ] **Step 1: Read the file's imports**
@@ -500,13 +507,13 @@ import type {
 Find line 28 (in interface `LabeledGridSurfaceFormatValueInput`):
 
 ```ts
-  sortDirection: PretableSurfaceSortDirection;
+sortDirection: PretableSurfaceSortDirection;
 ```
 
 Change to:
 
 ```ts
-  sortDirection: PretableSortDirection;
+sortDirection: PretableSortDirection;
 ```
 
 - [ ] **Step 3: Delete the local alias**
@@ -515,7 +522,9 @@ Find lines 217 region:
 
 ```ts
 type PretableSurfaceSortDirection = NonNullable<
-  Parameters<NonNullable<PretableSurfaceProps["renderHeaderCell"]>>[0]["sortDirection"]
+  Parameters<
+    NonNullable<PretableSurfaceProps["renderHeaderCell"]>
+  >[0]["sortDirection"]
 > | null;
 ```
 
@@ -546,6 +555,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 3: Add TSDoc + release tags on declarations
 
 **Files:**
+
 - Modify: `packages/react/src/pretable.tsx`
 - Modify: `packages/react/src/pretable-surface.tsx`
 - Modify: `packages/react/src/inspection-grid.tsx`
@@ -569,67 +579,67 @@ export <kind> <name> ...
 
 ### `packages/react/src/pretable.tsx`
 
-| Declaration | Summary | Tag |
-|---|---|---|
-| `export interface PretableProps<…>` | "Props for the {@link Pretable} drop-in component." | `@public` |
-| `export function Pretable<…>` | "Drop-in pretable component. Wraps {@link PretableSurface} with internal state — pass `columns` and `rows` and you're done. Reach for `PretableSurface` when you need to control state from the outside." | `@public` |
+| Declaration                         | Summary                                                                                                                                                                                                   | Tag       |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `export interface PretableProps<…>` | "Props for the {@link Pretable} drop-in component."                                                                                                                                                       | `@public` |
+| `export function Pretable<…>`       | "Drop-in pretable component. Wraps {@link PretableSurface} with internal state — pass `columns` and `rows` and you're done. Reach for `PretableSurface` when you need to control state from the outside." | `@public` |
 
 ### `packages/react/src/pretable-surface.tsx`
 
-| Declaration | Summary | Tag |
-|---|---|---|
-| `export interface PretableSurfaceProps<…>` | "Props for {@link PretableSurface}." | `@public` |
-| `export interface PretableSurfaceMessages` | "Localizable user-facing strings rendered by {@link PretableSurface}. Pass to override the English defaults." | `@public` |
-| `export interface RowSelectionColumnConfig` | "Configuration for the synthetic row-select column rendered by {@link PretableSurface} when `rowSelectionColumn` is enabled." | `@public` |
-| `export const ROW_SELECT_COLUMN_ID` | "Reserved column id for the synthetic row-select checkbox column. Internal use; surface authors shouldn't reference this directly." | `@internal` |
-| `export function PretableSurface<…>` | "Controlled grid surface. The primary React component. Pass `state` to control any subset of sort/filter/selection/focus/column-layout from the outside; omit slices you want the grid to own." | `@public` |
+| Declaration                                 | Summary                                                                                                                                                                                         | Tag         |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `export interface PretableSurfaceProps<…>`  | "Props for {@link PretableSurface}."                                                                                                                                                            | `@public`   |
+| `export interface PretableSurfaceMessages`  | "Localizable user-facing strings rendered by {@link PretableSurface}. Pass to override the English defaults."                                                                                   | `@public`   |
+| `export interface RowSelectionColumnConfig` | "Configuration for the synthetic row-select column rendered by {@link PretableSurface} when `rowSelectionColumn` is enabled."                                                                   | `@public`   |
+| `export const ROW_SELECT_COLUMN_ID`         | "Reserved column id for the synthetic row-select checkbox column. Internal use; surface authors shouldn't reference this directly."                                                             | `@internal` |
+| `export function PretableSurface<…>`        | "Controlled grid surface. The primary React component. Pass `state` to control any subset of sort/filter/selection/focus/column-layout from the outside; omit slices you want the grid to own." | `@public`   |
 
 ### `packages/react/src/inspection-grid.tsx`
 
-| Declaration | Summary | Tag |
-|---|---|---|
-| `export interface InspectionGridProps` | "Props for {@link InspectionGrid}." | `@beta` |
-| `export function InspectionGrid` | "Special-purpose inspection surface that renders rows as labeled key/value pairs. Experimental — shape may change before 1.0." | `@beta` |
+| Declaration                            | Summary                                                                                                                        | Tag     |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| `export interface InspectionGridProps` | "Props for {@link InspectionGrid}."                                                                                            | `@beta` |
+| `export function InspectionGrid`       | "Special-purpose inspection surface that renders rows as labeled key/value pairs. Experimental — shape may change before 1.0." | `@beta` |
 
 ### `packages/react/src/labeled-grid-surface.tsx`
 
-| Declaration | Summary | Tag |
-|---|---|---|
-| `export interface LabeledGridSurfaceFormatValueInput<…>` | "Input passed to a {@link LabeledGridSurface} format function." | `@beta` |
-| `export interface LabeledGridSurfaceProps<…>` | "Props for {@link LabeledGridSurface}." | `@beta` |
-| `export function LabeledGridSurface<…>` | "Special-purpose surface for label/value-style table layouts. Experimental — shape may change before 1.0." | `@beta` |
+| Declaration                                              | Summary                                                                                                    | Tag     |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------- |
+| `export interface LabeledGridSurfaceFormatValueInput<…>` | "Input passed to a {@link LabeledGridSurface} format function."                                            | `@beta` |
+| `export interface LabeledGridSurfaceProps<…>`            | "Props for {@link LabeledGridSurface}."                                                                    | `@beta` |
+| `export function LabeledGridSurface<…>`                  | "Special-purpose surface for label/value-style table layouts. Experimental — shape may change before 1.0." | `@beta` |
 
 ### `packages/react/src/types.ts`
 
-| Declaration | Summary | Tag |
-|---|---|---|
-| `export interface PretableColumn<…>` | "React-extended column definition. Adds the `render` and `renderHeader` JSX-typed callbacks on top of `@pretable/core`'s base column." | `@public` |
-| `export interface PretableCellRenderInput<…>` | "Input passed to a column's `render` function." | `@public` |
-| `export interface PretableHeaderRenderInput<…>` | "Input passed to a column's `renderHeader` function." | `@public` |
+| Declaration                                     | Summary                                                                                                                                | Tag       |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `export interface PretableColumn<…>`            | "React-extended column definition. Adds the `render` and `renderHeader` JSX-typed callbacks on top of `@pretable/core`'s base column." | `@public` |
+| `export interface PretableCellRenderInput<…>`   | "Input passed to a column's `render` function."                                                                                        | `@public` |
+| `export interface PretableHeaderRenderInput<…>` | "Input passed to a column's `renderHeader` function."                                                                                  | `@public` |
 
 The existing `export type { PretableFormatInput };` at the bottom is a re-export from core — its `@public` tag lives in core.
 
 ### `packages/react/src/density.ts`
 
-| Declaration | Summary | Tag |
-|---|---|---|
-| `export interface DensityHeights` | "CSS-token-derived heights used by `<Pretable>` / `<PretableSurface>` to size header and rows. PR 4 may consolidate the source of truth between this package and `@pretable/ui`." | `@public` |
+| Declaration                             | Summary                                                                                                                                                                                                                                      | Tag         |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `export interface DensityHeights`       | "CSS-token-derived heights used by `<Pretable>` / `<PretableSurface>` to size header and rows. PR 4 may consolidate the source of truth between this package and `@pretable/ui`."                                                            | `@public`   |
 | `export function useResolvedHeights(…)` | "React hook returning the current density heights derived from the active CSS theme. Internal — `<Pretable>` and `<PretableSurface>` use this; external consumers should reach for `getDensityHeights` from `@pretable/ui` when PR 4 lands." | `@internal` |
 
 ### `packages/react/src/row-height.ts`
 
-| Declaration | Summary | Tag |
-|---|---|---|
+| Declaration                                   | Summary                                                                                                           | Tag         |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------- |
 | `export function measureRenderedRowHeight(…)` | "DOM measurement helper used internally by the surface's row-height accounting. Not part of the user-facing API." | `@internal` |
 
 ### `packages/react/src/copy.ts`
 
-| Declaration | Summary | Tag |
-|---|---|---|
-| `export interface CopyPayload` | "Plain-text + HTML pair returned by clipboard serializers and consumed by `onCopy` / `copyToClipboard` props." | `@public` |
-| `export interface SerializeRangesArgs<…>` | "Input for {@link serializeRangesAsTsv}." | `@public` |
+| Declaration                               | Summary                                                                                                               | Tag       |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------- |
+| `export interface CopyPayload`            | "Plain-text + HTML pair returned by clipboard serializers and consumed by `onCopy` / `copyToClipboard` props."        | `@public` |
+| `export interface SerializeRangesArgs<…>` | "Input for {@link serializeRangesAsTsv}."                                                                             | `@public` |
 | `export function defaultCoerceForCopy(…)` | "Default coerce-value-to-string used during clipboard serialization. Useful as a fallback inside custom serializers." | `@public` |
-| `export function serializeRangesAsTsv(…)` | "Serialize one or more `PretableCellRange`s to a tab-separated text + HTML payload suitable for clipboard write." | `@public` |
+| `export function serializeRangesAsTsv(…)` | "Serialize one or more `PretableCellRange`s to a tab-separated text + HTML payload suitable for clipboard write."     | `@public` |
 
 ### `packages/react/src/constants.ts`
 
@@ -686,6 +696,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 4: Write `public_api.ts`; collapse `index.ts`; remove `PretableCoreColumn`
 
 **Files:**
+
 - Create: `packages/react/src/public_api.ts`
 - Modify: `packages/react/src/index.ts`
 
@@ -802,6 +813,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 5: Regenerate `react.api.md` and audit the diff
 
 **Files:**
+
 - Modify: `packages/react/react.api.md`
 
 - [ ] **Step 1: Regenerate**
@@ -860,11 +872,12 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 6: Write `packages/react/README.md`
 
 **Files:**
+
 - Create: `packages/react/README.md`
 
 - [ ] **Step 1: Write the README**
 
-```markdown
+````markdown
 # @pretable/react
 
 The React surface for [pretable](https://pretable.dev/). Ships three components and one hook on top of `@pretable/core`'s headless engine.
@@ -883,6 +896,7 @@ The React surface for [pretable](https://pretable.dev/). Ships three components 
 npm install @pretable/react @pretable/core @pretable/ui
 # or pnpm add … / yarn add …
 ```
+````
 
 `@pretable/ui` ships the CSS theme; import the stylesheet once at the root of your app.
 
@@ -915,7 +929,8 @@ See **[`react.api.md`](./react.api.md)** for every exported component, hook, typ
 ## License
 
 MIT — see [LICENSE](../../LICENSE).
-```
+
+````
 
 - [ ] **Step 2: Commit**
 
@@ -924,7 +939,7 @@ git add packages/react/README.md
 git commit -m "docs(react): add per-package README
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
-```
+````
 
 ---
 
