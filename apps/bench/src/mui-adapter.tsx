@@ -88,6 +88,8 @@ export function MuiAdapter({
       });
     };
     onUpdateApiReadyRef.current?.(apply);
+    // Re-publish only on runKey change; bench-app keeps onUpdateApiReady
+    // stable via useCallback, and the ref above always reads the latest.
   }, [runKey]);
 
   return (
