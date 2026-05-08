@@ -48,7 +48,7 @@ jobs:
         uses: changesets/action@v1
         with:
           version: pnpm exec changeset version
-          publish: pnpm exec changeset publish
+          publish: node ./scripts/publish-configured-packages.mjs
           title: "chore: version packages"
           commit: "chore: version packages"
         env:
