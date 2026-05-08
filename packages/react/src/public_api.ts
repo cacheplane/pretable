@@ -51,8 +51,8 @@ export type {
 export { defaultCoerceForCopy, serializeRangesAsTsv } from "./copy";
 export type { CopyPayload, SerializeRangesArgs } from "./copy";
 
-// Density
-export type { DensityHeights } from "./density";
+// Density (canonical home is @pretable/ui)
+export type { DensityHeights } from "@pretable/ui";
 
 // Re-exports from @pretable/core (the engine types react users typically
 // touch — full headless surface lives in @pretable/core)
