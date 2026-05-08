@@ -1,6 +1,26 @@
-import type { ScenarioDataset } from "@pretable-internal/scenario-data";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  flexRender,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
+  useReactTable,
+  type ColumnDef,
+  type SortingState,
+} from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
+
+import type {
+  ScenarioColumn,
+  ScenarioDataset,
+  ScenarioRow,
+} from "@pretable-internal/scenario-data";
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
+
+const VIEWPORT_HEIGHT = 320;
+const ROW_HEIGHT = 48;
+const OVERSCAN = 4;
 
 export interface TanstackAdapterProps {
   dataset: ScenarioDataset;
@@ -9,18 +29,227 @@ export interface TanstackAdapterProps {
   scriptName?: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- placeholder; props consumed in Phase 2
-export function TanstackAdapter(_props: TanstackAdapterProps) {
+function toColumnDef(
+  column: ScenarioColumn,
+  scriptName: string | undefined,
+): ColumnDef<ScenarioRow> {
+  const def: ColumnDef<ScenarioRow> = {
+    id: column.id,
+    accessorKey: column.id,
+    header: column.header ?? column.id,
+    size: column.widthPx ?? 140,
+    enableSorting: true,
+    enableColumnFilter: true,
+  };
+
+  if (scriptName === "scroll-with-format") {
+    def.cell = (info) => {
+      const value = info.getValue();
+      return Array.isArray(value) ? value.join(", ") : String(value ?? "");
+    };
+  } else if (scriptName === "scroll-with-render") {
+    def.cell = (info) => (
+      <span data-bench-render="cheap">{String(info.getValue() ?? "")}</span>
+    );
+  } else if (scriptName === "scroll-with-heavy-render") {
+    def.cell = (info) => (
+      <span data-bench-render="heavy" className="bench-status-badge">
+        <span className="bench-badge-dot" aria-hidden />
+        <span>{String(info.getValue() ?? "")}</span>
+      </span>
+    );
+  }
+
+  return def;
+}
+
+export function TanstackAdapter({
+  dataset,
+  onUpdateApiReady,
+  runKey,
+  scriptName,
+}: TanstackAdapterProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const onUpdateApiReadyRef = useRef(onUpdateApiReady);
+
+  useEffect(() => {
+    onUpdateApiReadyRef.current = onUpdateApiReady;
+  }, [onUpdateApiReady]);
+
+  const [data, setData] = useState<ScenarioRow[]>(() => dataset.rows.slice());
+  const [sorting, setSorting] = useState<SortingState>([]);
+
+  useEffect(() => {
+    setData(dataset.rows.slice());
+    setSorting([]);
+  }, [dataset.rows, runKey]);
+
+  const columns = useMemo(
+    () => dataset.columns.map((c) => toColumnDef(c, scriptName)),
+    [dataset.columns, scriptName],
+  );
+
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table's API is intentionally non-memoizable; this is the documented pattern.
+  const table = useReactTable({
+    data,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getRowId: (row) => String(row.id),
+  });
+
+  useEffect(() => {
+    const apply: ApplyBenchUpdates = (patches) => {
+      setData((prev) => {
+        const map = new Map(prev.map((r) => [String(r.id), r] as const));
+        for (const patch of patches) {
+          const id = String((patch as { id: unknown }).id);
+          const existing = map.get(id);
+          if (existing) map.set(id, { ...existing, ...(patch as ScenarioRow) });
+        }
+        return Array.from(map.values());
+      });
+    };
+    onUpdateApiReadyRef.current?.(apply);
+  }, [runKey]);
+
+  const rows = table.getRowModel().rows;
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => viewportRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: OVERSCAN,
+  });
+
+  const totalSize = virtualizer.getTotalSize();
+  const virtualRows = virtualizer.getVirtualItems();
+  const totalWidth = dataset.columns.reduce(
+    (sum, c) => sum + (c.widthPx ?? 140),
+    0,
+  );
+  const gridTemplateColumns = dataset.columns
+    .map((c) => `${c.widthPx ?? 140}px`)
+    .join(" ");
+
   return (
     <section
       aria-label="TanStack Table adapter"
       data-benchmark-adapter="tanstack"
-      style={{ padding: 16 }}
+      data-bench-result-row-count={String(data.length)}
+      style={{ display: "grid", gap: 12 }}
     >
-      <p style={{ margin: 0, fontWeight: 700 }}>TanStack Table v8</p>
-      <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-        Real adapter ships in Phase 2 of B2. Currently a placeholder.
-      </p>
+      <header>
+        <p style={{ margin: 0, fontWeight: 700 }}>TanStack Table v8</p>
+        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
+          Rows: {data.length} · Columns: {dataset.columns.length}
+        </p>
+      </header>
+      <div
+        key={runKey}
+        ref={viewportRef}
+        data-pretable-bench-tanstack-viewport=""
+        className="adapter-surface"
+        style={{
+          height: VIEWPORT_HEIGHT,
+          minWidth: 720,
+          overflow: "auto",
+          position: "relative",
+        }}
+      >
+        <div
+          role="table"
+          style={{
+            display: "grid",
+            gridTemplateColumns,
+            minWidth: totalWidth,
+          }}
+        >
+          {table.getHeaderGroups().map((headerGroup) => (
+            <div
+              key={headerGroup.id}
+              role="row"
+              style={{
+                display: "contents",
+              }}
+            >
+              {headerGroup.headers.map((header) => {
+                const canSort = header.column.getCanSort();
+                return (
+                  <button
+                    key={header.id}
+                    type="button"
+                    role="columnheader"
+                    onClick={
+                      canSort
+                        ? header.column.getToggleSortingHandler()
+                        : undefined
+                    }
+                    style={{
+                      textAlign: "left",
+                      padding: "8px 10px",
+                      borderBottom: "1px solid rgb(229 233 237)",
+                      background: "transparent",
+                      font: "inherit",
+                      cursor: canSort ? "pointer" : "default",
+                    }}
+                  >
+                    {flexRender(
+                      header.column.columnDef.header,
+                      header.getContext(),
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div
+          style={{
+            height: totalSize,
+            minWidth: totalWidth,
+            position: "relative",
+          }}
+        >
+          {virtualRows.map((vr) => {
+            const row = rows[vr.index];
+            return (
+              <div
+                key={row.id}
+                data-tanstack-row=""
+                data-row-id={row.id}
+                data-row-index={String(vr.index)}
+                style={{
+                  position: "absolute",
+                  top: vr.start,
+                  left: 0,
+                  width: totalWidth,
+                  height: ROW_HEIGHT,
+                  display: "grid",
+                  gridTemplateColumns,
+                }}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <div
+                    key={cell.id}
+                    data-tanstack-cell=""
+                    style={{
+                      padding: "8px 10px",
+                      borderRight: "1px solid rgb(229 233 237)",
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </section>
   );
 }
