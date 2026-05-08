@@ -40,7 +40,10 @@ await connection.done; // resolves when the server closes the response
 When an LLM is streaming partial JSON, every chunk is an incomplete row. `connectPartialStream` upserts by row id so each chunk visibly fills out the corresponding row.
 
 ```ts
-import { connectPartialStream, parsePartialStream } from "@pretable/stream-adapter";
+import {
+  connectPartialStream,
+  parsePartialStream,
+} from "@pretable/stream-adapter";
 
 const partialStream = parsePartialStream<MyRow>(stringStream);
 const connection = connectPartialStream(grid, partialStream, { rowId: "id" });

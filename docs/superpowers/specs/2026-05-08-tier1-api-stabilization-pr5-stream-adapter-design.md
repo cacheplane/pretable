@@ -38,23 +38,23 @@ src/
 
 PR 2 set this rule's `logLevel` to `none` because most packages had untagged baselines. PR 5 — once every `@pretable/*` package is fully tagged — flips it to `warning`. In api-extractor's non-local mode `warning` is fatal, which is exactly what we want post-tagging: any future PR that adds an export without a release tag fails CI until the author adds the tag.
 
-The flip happens in this PR's last task, *after* `pnpm api:check` has been verified clean across all 4 packages with the current `none` setting. Then we flip, regenerate, and confirm `api:check` still passes.
+The flip happens in this PR's last task, _after_ `pnpm api:check` has been verified clean across all 4 packages with the current `none` setting. Then we flip, regenerate, and confirm `api:check` still passes.
 
 ## Components — full audit decisions
 
 Every export gets `@public` + a one-line TSDoc summary. No release-tag variation.
 
-| Symbol | Summary |
-|---|---|
-| `createBatcher<TRow>(grid)` | "Create a `requestAnimationFrame`-batched mutator that coalesces add/update/remove calls into a single `applyTransaction` per frame." |
-| `connectElementStream<TRow>(grid, stream)` | "Drive a grid from an `AsyncIterable<TRow>` — every yielded row is added via the batcher." |
-| `connectPartialStream<TRow>(grid, stream, options)` | "Drive a grid from an `AsyncIterable<Partial<TRow>>` — partial rows are upserted by `options.rowId`." |
-| `parseElementStream<TRow>(stream)` | "Parse a UTF-8 string stream into an `AsyncIterable<TRow>` — pair with `connectElementStream` for end-to-end JSON-element streaming." |
-| `parsePartialStream<TRow>(stream)` | "Parse a UTF-8 string stream into an `AsyncIterable<Partial<TRow>>` — pair with `connectPartialStream` for partial-update streaming." |
-| `GridLike<TRow>` | "Structural type for any grid that supports `applyTransaction`. Avoids hard coupling to `@pretable-internal/grid-core`." (existing comment becomes the TSDoc.) |
-| `TransactionBatcher<TRow>` | "RAF-batched mutator returned by {@link createBatcher}. Buffer add/update/remove calls; the batcher flushes once per animation frame." |
-| `StreamConnection` | "Handle returned by the `connect*Stream` functions. `done` resolves when the source stream ends or `dispose()` is called." |
-| `PartialStreamOptions` | "Options for {@link connectPartialStream}. `rowId` names the field used to identify rows for upsert." |
+| Symbol                                              | Summary                                                                                                                                                        |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createBatcher<TRow>(grid)`                         | "Create a `requestAnimationFrame`-batched mutator that coalesces add/update/remove calls into a single `applyTransaction` per frame."                          |
+| `connectElementStream<TRow>(grid, stream)`          | "Drive a grid from an `AsyncIterable<TRow>` — every yielded row is added via the batcher."                                                                     |
+| `connectPartialStream<TRow>(grid, stream, options)` | "Drive a grid from an `AsyncIterable<Partial<TRow>>` — partial rows are upserted by `options.rowId`."                                                          |
+| `parseElementStream<TRow>(stream)`                  | "Parse a UTF-8 string stream into an `AsyncIterable<TRow>` — pair with `connectElementStream` for end-to-end JSON-element streaming."                          |
+| `parsePartialStream<TRow>(stream)`                  | "Parse a UTF-8 string stream into an `AsyncIterable<Partial<TRow>>` — pair with `connectPartialStream` for partial-update streaming."                          |
+| `GridLike<TRow>`                                    | "Structural type for any grid that supports `applyTransaction`. Avoids hard coupling to `@pretable-internal/grid-core`." (existing comment becomes the TSDoc.) |
+| `TransactionBatcher<TRow>`                          | "RAF-batched mutator returned by {@link createBatcher}. Buffer add/update/remove calls; the batcher flushes once per animation frame."                         |
+| `StreamConnection`                                  | "Handle returned by the `connect*Stream` functions. `done` resolves when the source stream ends or `dispose()` is called."                                     |
+| `PartialStreamOptions`                              | "Options for {@link connectPartialStream}. `rowId` names the field used to identify rows for upsert."                                                          |
 
 ## Data flow
 

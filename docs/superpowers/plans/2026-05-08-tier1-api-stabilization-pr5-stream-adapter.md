@@ -14,25 +14,26 @@
 
 ## File Structure
 
-| Path | Responsibility | Action |
-|---|---|---|
-| `packages/stream-adapter/src/types.ts` | `GridLike`, `TransactionBatcher`, `StreamConnection` | Modify (TSDoc + `@public` on each) |
-| `packages/stream-adapter/src/create-batcher.ts` | `createBatcher` | Modify (TSDoc + `@public`) |
-| `packages/stream-adapter/src/connect-element-stream.ts` | `connectElementStream` | Modify (TSDoc + `@public`) |
-| `packages/stream-adapter/src/connect-partial-stream.ts` | `connectPartialStream` + `PartialStreamOptions` | Modify (TSDoc + `@public` on each) |
-| `packages/stream-adapter/src/parse-element-stream.ts` | `parseElementStream` | Modify (TSDoc + `@public`) |
-| `packages/stream-adapter/src/parse-partial-stream.ts` | `parsePartialStream` | Modify (TSDoc + `@public`) |
-| `packages/stream-adapter/src/public_api.ts` | **NEW** curated public re-exports | Create |
-| `packages/stream-adapter/src/index.ts` | Package entry | Modify (collapse to `export * from './public_api'`) |
-| `packages/stream-adapter/README.md` | **NEW** per-package README | Create |
-| `packages/stream-adapter/stream-adapter.api.md` | Generated baseline | Regenerate |
-| `api-extractor.base.json` | Repo-root config | Modify (flip `ae-missing-release-tag` to `warning`) |
+| Path                                                    | Responsibility                                       | Action                                              |
+| ------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------- |
+| `packages/stream-adapter/src/types.ts`                  | `GridLike`, `TransactionBatcher`, `StreamConnection` | Modify (TSDoc + `@public` on each)                  |
+| `packages/stream-adapter/src/create-batcher.ts`         | `createBatcher`                                      | Modify (TSDoc + `@public`)                          |
+| `packages/stream-adapter/src/connect-element-stream.ts` | `connectElementStream`                               | Modify (TSDoc + `@public`)                          |
+| `packages/stream-adapter/src/connect-partial-stream.ts` | `connectPartialStream` + `PartialStreamOptions`      | Modify (TSDoc + `@public` on each)                  |
+| `packages/stream-adapter/src/parse-element-stream.ts`   | `parseElementStream`                                 | Modify (TSDoc + `@public`)                          |
+| `packages/stream-adapter/src/parse-partial-stream.ts`   | `parsePartialStream`                                 | Modify (TSDoc + `@public`)                          |
+| `packages/stream-adapter/src/public_api.ts`             | **NEW** curated public re-exports                    | Create                                              |
+| `packages/stream-adapter/src/index.ts`                  | Package entry                                        | Modify (collapse to `export * from './public_api'`) |
+| `packages/stream-adapter/README.md`                     | **NEW** per-package README                           | Create                                              |
+| `packages/stream-adapter/stream-adapter.api.md`         | Generated baseline                                   | Regenerate                                          |
+| `api-extractor.base.json`                               | Repo-root config                                     | Modify (flip `ae-missing-release-tag` to `warning`) |
 
 ---
 
 ## Task 1: TSDoc + `@public` on declarations across the 6 source files
 
 **Files:**
+
 - Modify: `packages/stream-adapter/src/types.ts`
 - Modify: `packages/stream-adapter/src/create-batcher.ts`
 - Modify: `packages/stream-adapter/src/connect-element-stream.ts`
@@ -47,6 +48,7 @@ For each declaration listed below, prepend the indicated TSDoc block immediately
 The file currently has three exported interfaces. The first (`GridLike`) already has a non-TSDoc `/** ... */` block — replace it with the structured version below.
 
 For `GridLike<TRow>`:
+
 ```ts
 /**
  * Structural type for any grid that supports `applyTransaction`. Avoids
@@ -60,6 +62,7 @@ export interface GridLike<TRow extends Record<string, unknown>> {
 ```
 
 For `TransactionBatcher<TRow>`:
+
 ```ts
 /**
  * RAF-batched mutator returned by {@link createBatcher}. Buffer
@@ -74,6 +77,7 @@ export interface TransactionBatcher<TRow extends Record<string, unknown>> {
 ```
 
 For `StreamConnection`:
+
 ```ts
 /**
  * Handle returned by the `connect*Stream` functions. `done` resolves
@@ -89,7 +93,7 @@ export interface StreamConnection {
 
 Above the existing `export function createBatcher<TRow ...>`:
 
-```ts
+````ts
 /**
  * Create a `requestAnimationFrame`-batched mutator that coalesces
  * `add` / `update` / `remove` calls into a single `applyTransaction` per
@@ -108,7 +112,7 @@ Above the existing `export function createBatcher<TRow ...>`:
  * @public
  */
 export function createBatcher<TRow extends Record<string, unknown>>(
-```
+````
 
 ### `packages/stream-adapter/src/connect-element-stream.ts`
 
@@ -234,6 +238,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 2: Write `public_api.ts`; collapse `index.ts`
 
 **Files:**
+
 - Create: `packages/stream-adapter/src/public_api.ts`
 - Modify: `packages/stream-adapter/src/index.ts`
 
@@ -253,11 +258,7 @@ export { connectPartialStream } from "./connect-partial-stream";
 export type { PartialStreamOptions } from "./connect-partial-stream";
 export { parseElementStream } from "./parse-element-stream";
 export { parsePartialStream } from "./parse-partial-stream";
-export type {
-  GridLike,
-  StreamConnection,
-  TransactionBatcher,
-} from "./types";
+export type { GridLike, StreamConnection, TransactionBatcher } from "./types";
 ```
 
 ### Step 2: Replace `packages/stream-adapter/src/index.ts` with one line
@@ -290,11 +291,12 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 3: Write `packages/stream-adapter/README.md`
 
 **Files:**
+
 - Create: `packages/stream-adapter/README.md`
 
 ### Step 1: Write the README
 
-```markdown
+````markdown
 # @pretable/stream-adapter
 
 RAF-batched streaming integration for [pretable](https://pretable.dev/). Bridges async streams (HTTP SSE, WebSocket, partial-JSON from LLMs) into the grid with predictable per-frame batching.
@@ -315,6 +317,7 @@ If you only need one-shot row mounting, use `<Pretable>` from `@pretable/react` 
 npm install @pretable/stream-adapter
 # or pnpm add @pretable/stream-adapter, yarn add @pretable/stream-adapter
 ```
+````
 
 ## Minimal example — element stream
 
@@ -337,7 +340,10 @@ await connection.done; // resolves when the server closes the response
 When an LLM is streaming partial JSON, every chunk is an incomplete row. `connectPartialStream` upserts by row id so each chunk visibly fills out the corresponding row.
 
 ```ts
-import { connectPartialStream, parsePartialStream } from "@pretable/stream-adapter";
+import {
+  connectPartialStream,
+  parsePartialStream,
+} from "@pretable/stream-adapter";
 
 const partialStream = parsePartialStream<MyRow>(stringStream);
 const connection = connectPartialStream(grid, partialStream, { rowId: "id" });
@@ -366,7 +372,8 @@ Same shape, but for incremental field updates: `parsePartialStream` emits `Parti
 ## License
 
 MIT — see [LICENSE](../../LICENSE).
-```
+
+````
 
 ### Step 2: Commit
 
@@ -375,13 +382,14 @@ git add packages/stream-adapter/README.md
 git commit -m "docs(stream-adapter): add per-package README
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
-```
+````
 
 ---
 
 ## Task 4: Regenerate `stream-adapter.api.md`; verify clean
 
 **Files:**
+
 - Modify: `packages/stream-adapter/stream-adapter.api.md`
 
 ### Step 1: Build and regenerate
@@ -426,6 +434,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 5: Flip `ae-missing-release-tag` to `warning`
 
 **Files:**
+
 - Modify: `api-extractor.base.json`
 - Modify (regenerate only, ideally no diff): all four `<package>.api.md` files
 
