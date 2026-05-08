@@ -168,7 +168,10 @@ jobs:
     name: Deploy → Vercel (preview)
     needs: [test, typecheck, lint, format, build, packaging, api-report]
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     permissions:
       contents: read
       pull-requests: write
@@ -214,7 +217,10 @@ jobs:
     name: Smoke test → Vercel preview (Playwright)
     needs: deploy-preview
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     env:
       PREVIEW_URL: ${{ needs.deploy-preview.outputs.preview_url }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
