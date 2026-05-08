@@ -1,149 +1,70 @@
 # @pretable/ui
 
-Public theming for the Pretable React grid. Two prebuilt themes (Excel default, Material 3 light + dark), runtime-switchable density (compact / standard / spacious), and an opt-in Tailwind v4 bridge.
-
-> **Status: 0.0.1 — pre-1.0 experimental.** Token names may rename or remove in any patch release. Override at your own risk. See [the design spec](../../docs/superpowers/specs/2026-05-01-pretable-theming-architecture-design.md) for the full architecture.
+CSS theme + a small JS helper for [pretable](https://pretable.dev/). Pair with [`@pretable/react`](../react) for the full surface, or use the JS helper standalone in non-React adapters.
 
 ## Install
 
-```bash
+```sh
 npm install @pretable/ui
+# or pnpm add @pretable/ui, yarn add @pretable/ui
 ```
 
-This package has no peer dependencies; it ships pure CSS plus one tiny TypeScript helper.
+## Minimal usage
 
-## Themes
+Import the CSS once at the root of your app:
 
-Two prebuilt themes ship in this package:
-
-- **Excel** (`@pretable/ui/themes/excel.css`) — gray, technical, dense. Aptos Narrow at 11pt, Excel-green active-cell border, no row hover. Light-only by design. Default density: compact.
-- **Material 3** (`@pretable/ui/themes/material.css`) — M3 baseline scheme (seed `#6750A4`). Light at `:root`; dark at `[data-theme="dark"]`. Default density: standard.
-
-## Recipes
-
-### Vanilla CSS, drop-in (Excel default)
-
-```css
-@import "@pretable/ui/themes/excel.css";
-@import "@pretable/ui/grid.css";
+```ts
+import "@pretable/ui/grid.css";
 ```
 
-```tsx
-import { PretableGrid } from "@pretable/react";
+Optionally layer a theme:
 
-<PretableGrid rows={rows} columns={columns} />;
+```ts
+import "@pretable/ui/themes/excel.css";
+import "@pretable/ui/grid.css";
 ```
 
-### Override individual tokens
+For tailwind users, swap `grid.css` for `tailwind.css` (both work; `tailwind.css` reads from your tailwind tokens).
 
-```css
-@import "@pretable/ui/themes/excel.css";
-@import "@pretable/ui/grid.css";
+## CSS API (v1 contract)
 
-:root {
-  --pretable-accent: #ff5722;
-  --pretable-rule: #cccccc;
-}
-```
+`@pretable/ui` ships five CSS entrypoints. Their selectors and CSS variables form the v1 styling contract — pretable's React components (`<Pretable>`, `<PretableSurface>`, `<InspectionGrid>`, `<LabeledGridSurface>`) emit the data attributes these stylesheets target.
 
-Cascade specificity: consumer overrides at `:root` land at the same level as the theme's `:root`, but the consumer's stylesheet imports later — last write wins.
+### Entrypoints
 
-### Material with runtime light/dark switching
+- `@pretable/ui/grid.css` — the default styles. Imports `tokens.css`. Use this in a vanilla CSS or Sass setup.
+- `@pretable/ui/tailwind.css` — same grid styles authored against tailwind tokens. Use this in a tailwind app.
+- `@pretable/ui/tokens.css` — the CSS-variable definitions only. Imported by `grid.css` automatically; use directly only when you want tokens without grid styles.
+- `@pretable/ui/themes/excel.css` — Excel-flavored theme. Layer on top of `grid.css`.
+- `@pretable/ui/themes/material.css` — Material-flavored theme. Layer on top of `grid.css`.
 
-```css
-@import "@pretable/ui/themes/material.css";
-@import "@pretable/ui/grid.css";
-```
+### Density CSS variables
 
-```tsx
-function App() {
-  const [mode, setMode] = useState<"light" | "dark">("light");
-  useEffect(() => {
-    document.documentElement.dataset.theme = mode === "dark" ? "dark" : "";
-  }, [mode]);
-  // ...
-}
-```
+The two density-related variables `getDensityHeights()` reads:
 
-OS-respect variant: derive `mode` from `matchMedia('(prefers-color-scheme: dark)')`.
+| Variable | Default (in `tokens.css`) | Purpose |
+|---|---|---|
+| `--pretable-row-height` | `32px` | Body row height. |
+| `--pretable-header-height` | `36px` | Header row height. |
 
-### Runtime density switching
+The full token set lives in [`src/tokens.css`](./src/tokens.css). Override any token at `:root` or on a scoped element to change the look.
 
-```tsx
-function DensityPicker() {
-  const setDensity = (mode: "compact" | "standard" | "spacious") => {
-    document.documentElement.dataset.density = mode;
-  };
-  return (
-    <div role="radiogroup" aria-label="Row density">
-      <button onClick={() => setDensity("compact")}>Compact</button>
-      <button onClick={() => setDensity("standard")}>Standard</button>
-      <button onClick={() => setDensity("spacious")}>Spacious</button>
-    </div>
-  );
-}
-```
+### Data-attribute hooks
 
-The grid auto-updates row positioning when the attribute changes (via `@pretable/react`'s built-in `useResolvedHeights` hook). Composes with `data-theme="dark"` independently.
+Pretable surfaces emit a stable set of data attributes on rendered DOM. The CSS files in this package target them; your custom styles can too. The full set lives in `grid.css` — common ones include `[data-pretable-cell]`, `[data-pretable-row]`, `[data-pretable-header]`, `[data-pretable-cell-focused]`, and `[data-pretable-cell-selected]`. Renaming or removing these attributes is a breaking change.
 
-### Tailwind v4
-
-```css
-@import "tailwindcss";
-@import "@pretable/ui/themes/material.css";
-@import "@pretable/ui/grid.css";
-@import "@pretable/ui/tailwind.css";
-```
-
-```tsx
-<aside className="bg-pt-bg-toolbar text-pt-text-dim p-4 border-b border-pt-rule">
-  <p className="font-pt-mono text-pt-accent">Filter active</p>
-</aside>
-```
-
-### CSS-in-JS
-
-```tsx
-const Toolbar = styled.div`
-  background: var(--pretable-bg-toolbar);
-  color: var(--pretable-text-dim);
-  border-bottom: 1px solid var(--pretable-rule);
-`;
-```
-
-CSS custom properties work in any CSS-emitting tool because they're a runtime feature.
-
-### Read density values in JS (tests, custom virtualizers, vanilla JS)
+## JS API
 
 ```ts
 import { getDensityHeights } from "@pretable/ui";
 
 const { rowHeight, headerHeight } = getDensityHeights();
-const visibleRows = Math.floor(viewportHeight / rowHeight);
 ```
 
-`getDensityHeights()` is a synchronous snapshot. SSR-safe (returns fallback values when `document` is undefined). For React consumers, the reactive `useResolvedHeights` hook in `@pretable/react` is preferable — it subscribes to attribute changes and re-renders.
+`getDensityHeights()` is a synchronous snapshot of `--pretable-row-height` and `--pretable-header-height` on `document.documentElement`, with fallbacks of 32 / 36. SSR-safe (returns fallback values when `document` is undefined).
 
-## Token contract (24 tokens)
-
-All tokens are `--pretable-*` prefixed.
-
-| Group      | Tokens                                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------------------------- |
-| Surfaces   | `bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip`                                       |
-| Text       | `text-cell`, `text-header`, `text-dim`                                                                  |
-| Lines      | `rule`, `rule-strong`, `radius`                                                                         |
-| State      | `bg-hover`, `bg-selected`, `text-selected`, `focus-ring`                                                |
-| Accent     | `accent`                                                                                                |
-| Density    | `row-height`, `header-height`, `cell-padding-x`, `cell-padding-y`, `font-size-cell`, `font-size-header` |
-| Typography | `font-sans`, `font-mono`                                                                                |
-
-The engine reads `--pretable-row-height` and `--pretable-header-height` directly from CSS at JS time. The other 22 tokens are CSS-only.
-
-## Visual regression
-
-Visual regression testing is deferred. The token contract smoke test catches missing tokens, unresolved `var()` references, and non-px density tiers. It does NOT catch tokens resolving to wrong values or unintended visual differences. When we onboard a non-internal consumer or otherwise need stronger guarantees, we add a Playwright reference scene rendering a 10-row × 5-column grid in each (theme × density × mode) combination.
+See **[`ui.api.md`](./ui.api.md)** for the generated public-API report.
 
 ## License
 
-See repository root.
+MIT — see [LICENSE](../../LICENSE).
