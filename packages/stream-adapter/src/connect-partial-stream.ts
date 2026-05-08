@@ -1,10 +1,30 @@
 import type { GridLike, StreamConnection } from "./types";
 import { createBatcher } from "./create-batcher";
 
+/**
+ * Options for {@link connectPartialStream}. `rowId` names the field on
+ * each partial row used to identify it for upsert (the field must be
+ * present in every emitted partial — partials missing the rowId are
+ * ignored).
+ *
+ * @public
+ */
 export interface PartialStreamOptions {
   rowId: string;
 }
 
+/**
+ * Drive a grid from an `AsyncIterable<Partial<TRow>>`. Each yielded
+ * partial is upserted by `options.rowId` — new rowIds are added,
+ * existing rowIds are merged via `applyTransaction.update`. Useful when
+ * a stream emits incremental field updates (e.g., partial JSON parses)
+ * rather than complete rows.
+ *
+ * Pair with {@link parsePartialStream} for end-to-end partial-update
+ * streaming over UTF-8 strings.
+ *
+ * @public
+ */
 export function connectPartialStream<
   TRow extends Record<string, unknown> & { id: string },
 >(

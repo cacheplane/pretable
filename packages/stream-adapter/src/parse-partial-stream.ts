@@ -1,6 +1,18 @@
 import { create, push, finish, isObjectNode } from "@cacheplane/json-stream";
 import type { StreamState } from "@cacheplane/json-stream";
 
+/**
+ * Parse a UTF-8 string stream into an `AsyncIterable<Partial<TRow>>`.
+ * Emits incremental partial rows as a streaming JSON parse fills out
+ * each top-level array element — useful when an LLM is streaming
+ * partial JSON and you want field-by-field updates instead of waiting
+ * for each row to complete.
+ *
+ * Pair with {@link connectPartialStream} for end-to-end partial-stream
+ * → grid wiring.
+ *
+ * @public
+ */
 export async function* parsePartialStream<TRow>(
   stream: AsyncIterable<string>,
 ): AsyncIterable<Partial<TRow>> {

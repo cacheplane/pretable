@@ -4,15 +4,15 @@
 
 ```ts
 
-// @public (undocumented)
+// @public
 export function connectElementStream<TRow extends Record<string, unknown>>(grid: GridLike<TRow>, stream: AsyncIterable<TRow>): StreamConnection;
 
-// @public (undocumented)
+// @public
 export function connectPartialStream<TRow extends Record<string, unknown> & {
     id: string;
 }>(grid: GridLike<TRow>, stream: AsyncIterable<Partial<TRow>>, options: PartialStreamOptions): StreamConnection;
 
-// @public (undocumented)
+// @public
 export function createBatcher<TRow extends Record<string, unknown>>(grid: GridLike<TRow>): TransactionBatcher<TRow>;
 
 // @public
@@ -25,19 +25,19 @@ export interface GridLike<TRow extends Record<string, unknown>> {
     }): void;
 }
 
-// @public (undocumented)
+// @public
 export function parseElementStream<TRow>(stream: AsyncIterable<string>): AsyncIterable<TRow>;
 
-// @public (undocumented)
+// @public
 export function parsePartialStream<TRow>(stream: AsyncIterable<string>): AsyncIterable<Partial<TRow>>;
 
-// @public (undocumented)
+// @public
 export interface PartialStreamOptions {
     // (undocumented)
     rowId: string;
 }
 
-// @public (undocumented)
+// @public
 export interface StreamConnection {
     // (undocumented)
     dispose(): void;
@@ -45,7 +45,7 @@ export interface StreamConnection {
     done: Promise<void>;
 }
 
-// @public (undocumented)
+// @public
 export interface TransactionBatcher<TRow extends Record<string, unknown>> {
     // (undocumented)
     add(rows: TRow[]): void;
