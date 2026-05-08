@@ -1,15 +1,15 @@
 import type {
-  GridCoreCellRange,
-  GridCoreColumn,
-  GridCoreRow,
-  GridCoreRowModel,
-  GridCoreSelectionState,
+  PretableCellRange,
+  PretableColumn,
+  PretableRow,
+  PretableVisibleRow,
+  PretableSelectionState,
 } from "./types";
 
-export type RowSelectionTriState = "selected" | "indeterminate";
+export type PretableRowSelectionTriState = "selected" | "indeterminate";
 
 export function rangeContainsCell(
-  range: GridCoreCellRange,
+  range: PretableCellRange,
   rowId: string,
   columnId: string,
   rowOrder: ReadonlyMap<string, number>,
@@ -47,13 +47,13 @@ export function rangeContainsCell(
   );
 }
 
-export function deriveSelectedRows<TRow extends GridCoreRow>(args: {
-  visibleRows: GridCoreRowModel<TRow>[];
-  columns: GridCoreColumn<TRow>[];
-  selection: GridCoreSelectionState;
-}): Map<string, RowSelectionTriState> {
+export function deriveSelectedRows<TRow extends PretableRow>(args: {
+  visibleRows: PretableVisibleRow<TRow>[];
+  columns: PretableColumn<TRow>[];
+  selection: PretableSelectionState;
+}): Map<string, PretableRowSelectionTriState> {
   const { visibleRows, columns, selection } = args;
-  const result = new Map<string, RowSelectionTriState>();
+  const result = new Map<string, PretableRowSelectionTriState>();
 
   if (selection.ranges.length === 0 || columns.length === 0) {
     return result;

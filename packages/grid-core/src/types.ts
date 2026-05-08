@@ -3,10 +3,10 @@ import type {
   PretableRowRange,
 } from "@pretable-internal/layout-core";
 
-export type GridCoreRow = Record<string, unknown>;
-export type GridCoreSortDirection = "asc" | "desc" | null;
+export type PretableRow = Record<string, unknown>;
+export type PretableSortDirection = "asc" | "desc" | null;
 
-export interface GridCoreColumn<TRow extends GridCoreRow = GridCoreRow> {
+export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   id: string;
   header?: string;
   wrap?: boolean;
@@ -15,7 +15,7 @@ export interface GridCoreColumn<TRow extends GridCoreRow = GridCoreRow> {
   sortable?: boolean;
   filterable?: boolean;
   value?: (row: TRow) => unknown;
-  format?: (input: GridCoreFormatInput<TRow>) => string;
+  format?: (input: PretableFormatInput<TRow>) => string;
   // new in sub-project C:
   minWidthPx?: number;
   maxWidthPx?: number;
@@ -23,102 +23,102 @@ export interface GridCoreColumn<TRow extends GridCoreRow = GridCoreRow> {
   reorderable?: boolean;
 }
 
-export interface GridCoreFormatInput<TRow extends GridCoreRow = GridCoreRow> {
+export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
   value: unknown;
   row: TRow;
-  column: GridCoreColumn<TRow>;
+  column: PretableColumn<TRow>;
 }
 
-export interface GridCoreOptions<TRow extends GridCoreRow = GridCoreRow> {
-  columns: GridCoreColumn<TRow>[];
+export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
+  columns: PretableColumn<TRow>[];
   rows: TRow[];
   getRowId?: (row: TRow, index: number) => string;
   autosize?: boolean | AutosizeOptions;
 }
 
-export interface GridCoreSortState {
+export interface PretableSortState {
   columnId: string | null;
-  direction: GridCoreSortDirection;
+  direction: PretableSortDirection;
 }
 
-export interface GridCoreCellAddress {
+export interface PretableCellAddress {
   rowId: string;
   columnId: string;
 }
 
-export interface GridCoreCellRange {
+export interface PretableCellRange {
   startRowId: string;
   endRowId: string;
   startColumnId: string;
   endColumnId: string;
 }
 
-export interface GridCoreSelectionState {
-  ranges: GridCoreCellRange[];
-  anchor: GridCoreCellAddress | null;
+export interface PretableSelectionState {
+  ranges: PretableCellRange[];
+  anchor: PretableCellAddress | null;
 }
 
-export interface GridCoreFocusState {
+export interface PretableFocusState {
   rowId: string | null;
   columnId: string | null;
 }
 
-export interface GridCoreViewportState {
+export interface PretableViewportState {
   scrollTop: number;
   scrollLeft: number;
   height: number;
   width: number;
 }
 
-export interface GridCoreTransaction<TRow extends GridCoreRow = GridCoreRow> {
+export interface PretableTransaction<TRow extends PretableRow = PretableRow> {
   add?: TRow[];
   update?: Partial<TRow>[];
   remove?: string[];
 }
 
-export interface GridCoreRowModel<TRow extends GridCoreRow = GridCoreRow> {
+export interface PretableVisibleRow<TRow extends PretableRow = PretableRow> {
   id: string;
   row: TRow;
   sourceIndex: number;
 }
 
-export interface GridCoreSnapshot<TRow extends GridCoreRow = GridCoreRow> {
-  viewport: GridCoreViewportState;
-  sort: GridCoreSortState;
+export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
+  viewport: PretableViewportState;
+  sort: PretableSortState;
   filters: Record<string, string>;
-  selection: GridCoreSelectionState;
-  focus: GridCoreFocusState;
+  selection: PretableSelectionState;
+  focus: PretableFocusState;
   totalRowCount: number;
-  visibleRows: GridCoreRowModel<TRow>[];
+  visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
 }
 
-export interface GridCoreStore<TRow extends GridCoreRow = GridCoreRow> {
-  options: GridCoreOptions<TRow>;
+export interface PretableEngine<TRow extends PretableRow = PretableRow> {
+  options: PretableGridOptions<TRow>;
   subscribe(listener: () => void): () => void;
-  getSnapshot(): GridCoreSnapshot<TRow>;
-  setSort(columnId: string | null, direction: GridCoreSortDirection): void;
+  getSnapshot(): PretableGridSnapshot<TRow>;
+  setSort(columnId: string | null, direction: PretableSortDirection): void;
   setFilter(columnId: string, value: string): void;
   clearFilters(): void;
   replaceFilters(nextFilters: Record<string, string>): void;
   // selection actions
-  setSelection(state: GridCoreSelectionState): void;
+  setSelection(state: PretableSelectionState): void;
   selectAll(): void;
   clearSelection(): void;
-  addRange(range: GridCoreCellRange): void;
-  extendRangeFromAnchor(addr: GridCoreCellAddress): void;
+  addRange(range: PretableCellRange): void;
+  extendRangeFromAnchor(addr: PretableCellAddress): void;
   toggleRowSelection(rowId: string): void;
   setSelectAllVisible(checked: boolean): void;
 
   // focus actions
-  setFocus(addr: GridCoreCellAddress | null): void;
+  setFocus(addr: PretableCellAddress | null): void;
   moveFocus(
-    direction: GridCoreFocusDirection,
-    options?: GridCoreMoveFocusOptions,
+    direction: PretableFocusDirection,
+    options?: PretableMoveFocusOptions,
   ): void;
-  setViewport(viewport: GridCoreViewportState): void;
+  setViewport(viewport: PretableViewportState): void;
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
-  applyTransaction(transaction: GridCoreTransaction<TRow>): void;
+  applyTransaction(transaction: PretableTransaction<TRow>): void;
 
   // column-layout actions (sub-project C):
   setColumnWidth(columnId: string, width: number): void;
@@ -126,17 +126,17 @@ export interface GridCoreStore<TRow extends GridCoreRow = GridCoreRow> {
   setColumnPinned(columnId: string, pinned: "left" | null): void;
   autosizeColumn(columnId: string, options?: AutosizeOptions): void;
   resetColumnLayout(): void;
-  mergeColumnsFromProps(nextColumns: GridCoreColumn<TRow>[]): void;
+  mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void;
 }
 
-export type GridCoreFocusDirection = "up" | "down" | "left" | "right";
+export type PretableFocusDirection = "up" | "down" | "left" | "right";
 
-export interface GridCoreMoveFocusOptions {
+export interface PretableMoveFocusOptions {
   extend?: boolean;
   jumpToEdge?: boolean;
   byPage?: boolean;
 }
 
-export interface GridCoreFrame<TRow extends GridCoreRow = GridCoreRow> {
-  snapshot: GridCoreSnapshot<TRow>;
+export interface PretableFrame<TRow extends PretableRow = PretableRow> {
+  snapshot: PretableGridSnapshot<TRow>;
 }
