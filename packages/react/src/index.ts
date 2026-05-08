@@ -45,7 +45,7 @@ export type { DensityHeights } from "./density";
 
 // Re-exports from @pretable/core
 export type {
-  PretableCoreColumn,
+  PretableColumn as PretableCoreColumn,
   PretableGrid,
   PretableGridOptions,
   PretableGridSnapshot,
