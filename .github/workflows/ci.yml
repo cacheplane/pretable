@@ -202,7 +202,7 @@ jobs:
           echo "preview_url=$url" >> "$GITHUB_OUTPUT"
           echo "Preview: $url"
       - name: Comment preview URL on PR
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: vercel-preview
           message: |
