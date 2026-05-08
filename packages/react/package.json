@@ -49,10 +49,10 @@
   "scripts": {
     "api": "api-extractor run --local --config api-extractor.json",
     "api:check": "api-extractor run --config api-extractor.json",
-    "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsup",
+    "build": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable/ui build && tsup",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:packaging": "publint --strict && attw --pack",
-    "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && vitest run --environment jsdom",
-    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && tsc -p tsconfig.typecheck.json --noEmit"
+    "test": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable/ui build && vitest run --environment jsdom",
+    "typecheck": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/renderer-dom build && pnpm --filter @pretable/core build && pnpm --filter @pretable/ui build && tsc -p tsconfig.typecheck.json --noEmit"
   }
 }
