@@ -35,7 +35,7 @@ import { measureRenderedRowHeight } from "./row-height";
 import {
   type PretableSurfaceState,
   type PretableTelemetry,
-  usePretableModel,
+  usePretable,
 } from "./use-pretable";
 import { useResolvedHeights } from "./density";
 import {
@@ -507,7 +507,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     };
     return [synth, ...columns];
   }, [columns, rowSelectionColumn]);
-  const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
+  const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
     autosize,
     columns: effectiveColumns,
     getRowId,

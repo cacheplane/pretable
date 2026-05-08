@@ -5,7 +5,7 @@ export { InspectionGrid } from "./inspection-grid";
 export { LabeledGridSurface } from "./labeled-grid-surface";
 
 // Hooks
-export { usePretable, usePretableModel } from "./use-pretable";
+export { usePretable } from "./use-pretable";
 export { useResolvedHeights } from "./density";
 
 // Helpers
@@ -36,7 +36,6 @@ export type {
   PretableRenderSnapshot,
   PretableSurfaceState,
   PretableTelemetry,
-  UsePretableModelOptions,
   UsePretableOptions,
 } from "./use-pretable";
 

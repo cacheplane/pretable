@@ -16,13 +16,11 @@ import {
 } from "@pretable-internal/renderer-dom";
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
-export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
-  autosize?: boolean | AutosizeOptions;
-  columns: PretableColumn<TRow>[];
-  rows: TRow[];
-  getRowId?: PretableGridOptions<TRow>["getRowId"];
-}
-
+/**
+ * One row of layout-derived render state for use during custom rendering.
+ *
+ * @public
+ */
 export interface PretableRenderRow<TRow extends PretableRow = PretableRow> {
   id: string;
   row: TRow;
@@ -31,6 +29,13 @@ export interface PretableRenderRow<TRow extends PretableRow = PretableRow> {
   height: number;
 }
 
+/**
+ * Layout-derived render snapshot returned by {@link usePretable}. Drives
+ * positioned-cell rendering — every column has a left + width, every visible
+ * row has a top + height.
+ *
+ * @public
+ */
 export interface PretableRenderSnapshot<
   TRow extends PretableRow = PretableRow,
 > {
@@ -41,6 +46,12 @@ export interface PretableRenderSnapshot<
   totalWidth: number;
 }
 
+/**
+ * Telemetry numbers about the current render — counts and ranges suitable
+ * for status bars, dev panels, or virtualization debugging.
+ *
+ * @public
+ */
 export interface PretableTelemetry {
   focusedRowId: string | null;
   rowModelRowCount: number;
@@ -55,6 +66,12 @@ export interface PretableTelemetry {
   };
 }
 
+/**
+ * **Input** shape for controlling a {@link PretableSurface} from the outside.
+ * Pass the slices you want to control; omit slices you want the grid to own.
+ *
+ * @public
+ */
 export interface PretableSurfaceState {
   filters?: Record<string, string>;
   focus?: PretableFocusState;
@@ -65,9 +82,16 @@ export interface PretableSurfaceState {
   columnPinned?: Record<string, "left" | null>;
 }
 
-export interface UsePretableModelOptions<
-  TRow extends PretableRow = PretableRow,
-> extends UsePretableOptions<TRow> {
+/**
+ * Options for the {@link usePretable} hook.
+ *
+ * @public
+ */
+export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
+  autosize?: boolean | AutosizeOptions;
+  columns: PretableColumn<TRow>[];
+  rows: TRow[];
+  getRowId?: PretableGridOptions<TRow>["getRowId"];
   viewportHeight: number;
   viewportWidth?: number;
   overscan?: number;
@@ -77,6 +101,12 @@ export interface UsePretableModelOptions<
   onFocusChange?: (next: PretableFocusState) => void;
 }
 
+/**
+ * Output of the {@link usePretable} hook — a stable handle plus the latest
+ * snapshot, render layout, and telemetry.
+ *
+ * @public
+ */
 export interface PretableModel<TRow extends PretableRow = PretableRow> {
   grid: PretableGrid<TRow>;
   snapshot: PretableGridSnapshot<TRow>;
@@ -84,19 +114,24 @@ export interface PretableModel<TRow extends PretableRow = PretableRow> {
   telemetry: PretableTelemetry;
 }
 
+/**
+ * The primary React hook. Creates a grid, applies optional controlled state,
+ * and returns the latest snapshot, layout-derived render snapshot, and
+ * telemetry. Suitable for custom rendering — `<PretableSurface>` itself is
+ * built on top of this hook.
+ *
+ * @example
+ * ```tsx
+ * const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
+ *   columns,
+ *   rows,
+ *   viewportHeight: 480,
+ * });
+ * ```
+ *
+ * @public
+ */
 export function usePretable<TRow extends PretableRow = PretableRow>({
-  autosize,
-  columns,
-  rows,
-  getRowId,
-}: UsePretableOptions<TRow>) {
-  return useMemo(
-    () => createGrid({ columns, rows, getRowId, autosize }),
-    [autosize, columns, getRowId, rows],
-  );
-}
-
-export function usePretableModel<TRow extends PretableRow = PretableRow>({
   autosize,
   columns,
   rows,
@@ -108,8 +143,11 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
   measuredHeights,
   onSelectionChange,
   onFocusChange,
-}: UsePretableModelOptions<TRow>): PretableModel<TRow> {
-  const grid = usePretable({ autosize, columns, rows, getRowId });
+}: UsePretableOptions<TRow>): PretableModel<TRow> {
+  const grid = useMemo(
+    () => createGrid({ columns, rows, getRowId, autosize }),
+    [autosize, columns, getRowId, rows],
+  );
 
   const lastColumnIdsRef = useRef<readonly string[] | null>(null);
   useLayoutEffect(() => {
@@ -154,9 +192,6 @@ export function usePretableModel<TRow extends PretableRow = PretableRow>({
     }
 
     if (state.columnOrder !== undefined) {
-      // Apply order by repositioning each column to its position in the
-      // requested order. Missing ids are appended at the end (engine
-      // contract).
       const targetOrder = state.columnOrder;
       const currentIds = grid.options.columns.map((c) => c.id);
       const targetIds = [

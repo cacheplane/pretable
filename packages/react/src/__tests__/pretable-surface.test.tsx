@@ -18,7 +18,7 @@ import {
 } from "../pretable-surface";
 import type { CopyPayload, SerializeRangesArgs } from "../copy";
 import * as rowHeight from "../row-height";
-import { type PretableSurfaceState, usePretableModel } from "../use-pretable";
+import { type PretableSurfaceState, usePretable } from "../use-pretable";
 import type {
   PretableFocusState,
   PretableGrid,
@@ -81,9 +81,9 @@ const rows: DemoRow[] = [
 const getDemoRowId = (row: DemoRow) => row.id;
 
 describe("PretableSurface", () => {
-  it("exposes renderer telemetry from usePretableModel for internal consumers", () => {
+  it("exposes renderer telemetry from usePretable for internal consumers", () => {
     function Harness() {
-      const model = usePretableModel({
+      const model = usePretable({
         columns,
         getRowId: getDemoRowId,
         overscan: 0,

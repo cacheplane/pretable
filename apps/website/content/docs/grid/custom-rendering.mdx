@@ -1,11 +1,11 @@
 ---
-title: Custom rendering with `usePretableModel`
-description: "usePretableModel exposes the engine state so you can render rows your own way."
+title: Custom rendering with `usePretable`
+description: "usePretable exposes the engine state so you can render rows your own way."
 nav: Grid
 order: 9
 ---
 
-`usePretableModel` returns the engine's full state: the grid model (with interaction methods), the snapshot (sort, filters, selection, focus), the render snapshot (which rows to render at what positions), and telemetry. You write your own JSX on top, applying the `[data-pretable-*]` attribute contract so `@pretable/ui/grid.css` styles the result.
+`usePretable` returns the engine's full state: the grid model (with interaction methods), the snapshot (sort, filters, selection, focus), the render snapshot (which rows to render at what positions), and telemetry. You write your own JSX on top, applying the `[data-pretable-*]` attribute contract so `@pretable/ui/grid.css` styles the result.
 
 This page walks through a minimal-but-complete example.
 
@@ -21,9 +21,9 @@ If none of these apply, the [\<Pretable\> drop-in](/docs/grid/pretable-component
 ## The hook
 
 ```ts
-import { usePretableModel } from "@pretable/react";
+import { usePretable } from "@pretable/react";
 
-const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
+const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
   columns,
   rows,
   viewportHeight,
@@ -49,7 +49,7 @@ See [API reference](/docs/grid/api-reference) for the full type signatures.
 ## A minimal working example
 
 ```tsx
-import { useResolvedHeights, usePretableModel } from "@pretable/react";
+import { useResolvedHeights, usePretable } from "@pretable/react";
 import type { PretableColumn, PretableRow } from "@pretable/react";
 
 interface Person extends PretableRow {
@@ -69,7 +69,7 @@ export function MyGrid({ rows }: { rows: Person[] }) {
   const { headerHeight } = useResolvedHeights();
   const viewportHeight = 480;
 
-  const { grid, snapshot, renderSnapshot } = usePretableModel({
+  const { grid, snapshot, renderSnapshot } = usePretable({
     columns,
     rows,
     viewportHeight,
@@ -220,7 +220,7 @@ The minimal example above is a starting point. For production grids, you'll like
 
 - **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus("up")` / `grid.moveFocus("down")`. The full keyboard contract (shift+arrow extend, Cmd/Ctrl+arrow jump, Tab wrap, Cmd+A, Esc) is wired by `<PretableSurface>` automatically.
 - **Pinned columns sticky positioning** — apply `position: sticky; left: ${pinnedOffset}px` to pinned cells. The bench's adapter computes pinned offsets via the same algorithm `<PretableSurface>` uses internally; see `packages/react-surface/src/rendering.ts` (function `getPinnedLeftOffsets`) for the canonical implementation.
-- **Per-row measured heights** — use `useLayoutEffect` to measure rendered row heights and pass `measuredHeights: Record<string, number>` to `usePretableModel` for content-aware sizing.
+- **Per-row measured heights** — use `useLayoutEffect` to measure rendered row heights and pass `measuredHeights: Record<string, number>` to `usePretable` for content-aware sizing.
 - **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setFilter(columnId, value)` per change.
 - **Telemetry instrumentation** — use the `telemetry` return value to track visible row counts, frame budget overruns, etc.
 

@@ -29,13 +29,13 @@ What `<Pretable>` does NOT support out of the box:
 
 If you need any of the above, jump to Path 2.
 
-### Path 2: `usePretable` / `usePretableModel` hooks (custom rendering)
+### Path 2: `usePretable` hook (custom rendering)
 
 ```tsx
-import { usePretableModel } from "@pretable/react";
+import { usePretable } from "@pretable/react";
 
 function MyGrid({ rows, columns }) {
-  const { grid, snapshot, renderSnapshot, telemetry } = usePretableModel({
+  const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
     columns,
     rows,
     viewportHeight: 480,
@@ -87,9 +87,9 @@ See [Density helpers](/docs/grid/density-helpers) for the hook API and SSR consi
 
 The engine has more capabilities than this section covers:
 
-- **Column autosize** — the `autosize` option on `usePretable` and `usePretableModel`; resizes columns to content. Not yet documented as a recipe.
+- **Column autosize** — the `autosize` option on `usePretable`; resizes columns to content. Not yet documented as a recipe.
 - **Streaming and transactions** — `grid.applyTransaction({add, update, remove})` for live row updates. Streaming Overview lands in a subsequent docs PR.
-- **Per-row measured heights** — pass `measuredHeights: Record<string, number>` to `usePretableModel` for content-aware row sizing. The bench's `pretable-adapter.tsx` shows this pattern.
+- **Per-row measured heights** — pass `measuredHeights: Record<string, number>` to `usePretable` for content-aware row sizing. The bench's `pretable-adapter.tsx` shows this pattern.
 
 These ship as part of `@pretable/react` today; full doc coverage lands in subsequent releases.
 
@@ -103,7 +103,7 @@ The engine ships full cell-range selection (Excel/Sheets semantics with shift-ex
 - [Selection](/docs/grid/selection) — cell-range model and three-state checkbox column.
 - [Keyboard](/docs/grid/keyboard) — full keyboard contract.
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
-- [Custom rendering](/docs/grid/custom-rendering) — `usePretableModel` walkthrough with code.
+- [Custom rendering](/docs/grid/custom-rendering) — `usePretable` walkthrough with code.
 - [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
 - [API reference](/docs/grid/api-reference) — model methods + types.
 - [Theming Overview](/docs/theming) — how the data-attribute contract gets styled.

@@ -49,7 +49,7 @@ The hook is SSR-safe. On the server (where `document` is undefined), the snapsho
 
 ### Used internally
 
-`<Pretable>` and `<PretableSurface>` (private) both use `useResolvedHeights` to compute the body viewport height (`viewportHeight - headerHeight`) and to size the sticky header. When you render with `usePretableModel`, you typically call `useResolvedHeights()` yourself to compute the same — see the example in [Custom rendering](/docs/grid/custom-rendering).
+`<Pretable>` and `<PretableSurface>` (private) both use `useResolvedHeights` to compute the body viewport height (`viewportHeight - headerHeight`) and to size the sticky header. When you render with `usePretable`, you typically call `useResolvedHeights()` yourself to compute the same — see the example in [Custom rendering](/docs/grid/custom-rendering).
 
 ## `getDensityHeights` — vanilla JS snapshot
 
@@ -76,10 +76,10 @@ Use this when:
 | React component that should re-render on density/theme change | `useResolvedHeights` from `@pretable/react`       |
 | Vanilla JS / non-React utility                                | `getDensityHeights` from `@pretable/ui`           |
 | One-shot read at component mount (no reactivity needed)       | Either; `getDensityHeights` is slightly leaner    |
-| Custom rendering with `usePretableModel`                      | `useResolvedHeights` (matches the engine's reads) |
+| Custom rendering with `usePretable`                      | `useResolvedHeights` (matches the engine's reads) |
 
 ## Where to go next
 
 - [Theming > Density switching](/docs/theming/density) — recipe for wiring `data-density` from React state.
-- [Custom rendering](/docs/grid/custom-rendering) — using `useResolvedHeights` with `usePretableModel`.
+- [Custom rendering](/docs/grid/custom-rendering) — using `useResolvedHeights` with `usePretable`.
 - [API reference](/docs/grid/api-reference) — full type signatures.
