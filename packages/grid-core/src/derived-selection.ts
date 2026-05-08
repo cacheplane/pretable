@@ -6,8 +6,14 @@ import type {
   PretableSelectionState,
 } from "./types";
 
+/**
+ * Per-row selection state — "selected" means fully, "indeterminate" means partial.
+ *
+ * @public
+ */
 export type PretableRowSelectionTriState = "selected" | "indeterminate";
 
+/** @internal */
 export function rangeContainsCell(
   range: PretableCellRange,
   rowId: string,
@@ -47,6 +53,7 @@ export function rangeContainsCell(
   );
 }
 
+/** @internal */
 export function deriveSelectedRows<TRow extends PretableRow>(args: {
   visibleRows: PretableVisibleRow<TRow>[];
   columns: PretableColumn<TRow>[];
