@@ -35,8 +35,8 @@ test("docs brand link returns to drawer when it was last open", async ({
 
   // Navigate to /docs via the in-drawer /docs link.
   await page
-    .getByRole("link", { name: /\/docs/i })
-    .first()
+    .getByTestId("drawer-shell")
+    .getByRole("link", { name: "/docs", exact: true })
     .click();
   await expect(page).toHaveURL(/\/docs/);
 

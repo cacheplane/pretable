@@ -28,8 +28,11 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      - name: Upgrade npm to 11.5.1+ (required for trusted publishing OIDC)
-        run: npm install -g npm@latest
+      - name: Install npm 11.14.1 for trusted publishing OIDC
+        run: |
+          npm_config_prefix="$RUNNER_TEMP/npm" npm install --global npm@11.14.1
+          echo "$RUNNER_TEMP/npm/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/npm/bin/npm" --version
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
