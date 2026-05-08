@@ -66,19 +66,19 @@ Renaming or removing any of those is a **breaking change** post-1.0; pre-1.0 we'
 
 ## Components — full audit decisions
 
-| Symbol / artifact | Decision | Notes |
-|---|---|---|
-| `getDensityHeights` (UI) | `@public` + TSDoc + defensive guard | Becomes canonical. |
-| `DensityHeights` (UI) | `@public` + TSDoc | Becomes canonical type. |
-| `getDensityHeights` (React) | **Delete** | Re-route through UI. |
-| `DensityHeights` (React) | **Delete declaration**, re-export from UI | React still exposes the type via `public_api.ts`. |
-| `parsePx` (React) | **Delete** | UI has its own. |
-| React's `FALLBACK_HEADER_HEIGHT` (52) | **Delete** | UI's 36 wins. |
-| `useResolvedHeights` (React, `ɵ`-prefixed publicly) | Refactor to wrap UI's `getDensityHeights` | Hook signature unchanged — only internals move. |
-| `HEADER_HEIGHT` constant (React's `rendering.ts`) | **Keep** | Used by `styles.ts`; separate from density story. |
-| `grid.css`, `tailwind.css`, `tokens.css` | Documented in README | Names locked. |
-| `themes/excel.css`, `themes/material.css` | Documented in README | Names locked. |
-| Tailwind entry semantics | Documented in README | Names locked. |
+| Symbol / artifact                                   | Decision                                  | Notes                                             |
+| --------------------------------------------------- | ----------------------------------------- | ------------------------------------------------- |
+| `getDensityHeights` (UI)                            | `@public` + TSDoc + defensive guard       | Becomes canonical.                                |
+| `DensityHeights` (UI)                               | `@public` + TSDoc                         | Becomes canonical type.                           |
+| `getDensityHeights` (React)                         | **Delete**                                | Re-route through UI.                              |
+| `DensityHeights` (React)                            | **Delete declaration**, re-export from UI | React still exposes the type via `public_api.ts`. |
+| `parsePx` (React)                                   | **Delete**                                | UI has its own.                                   |
+| React's `FALLBACK_HEADER_HEIGHT` (52)               | **Delete**                                | UI's 36 wins.                                     |
+| `useResolvedHeights` (React, `ɵ`-prefixed publicly) | Refactor to wrap UI's `getDensityHeights` | Hook signature unchanged — only internals move.   |
+| `HEADER_HEIGHT` constant (React's `rendering.ts`)   | **Keep**                                  | Used by `styles.ts`; separate from density story. |
+| `grid.css`, `tailwind.css`, `tokens.css`            | Documented in README                      | Names locked.                                     |
+| `themes/excel.css`, `themes/material.css`           | Documented in README                      | Names locked.                                     |
+| Tailwind entry semantics                            | Documented in README                      | Names locked.                                     |
 
 ## Data flow
 

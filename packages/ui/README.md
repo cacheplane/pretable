@@ -42,10 +42,10 @@ For tailwind users, swap `grid.css` for `tailwind.css` (both work; `tailwind.css
 
 The two density-related variables `getDensityHeights()` reads:
 
-| Variable | Default (in `tokens.css`) | Purpose |
-|---|---|---|
-| `--pretable-row-height` | `32px` | Body row height. |
-| `--pretable-header-height` | `36px` | Header row height. |
+| Variable                   | Default (in `tokens.css`) | Purpose            |
+| -------------------------- | ------------------------- | ------------------ |
+| `--pretable-row-height`    | `32px`                    | Body row height.   |
+| `--pretable-header-height` | `36px`                    | Header row height. |
 
 The full token set lives in [`src/tokens.css`](./src/tokens.css). Override any token at `:root` or on a scoped element to change the look.
 

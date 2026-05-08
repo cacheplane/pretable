@@ -14,23 +14,24 @@
 
 ## File Structure
 
-| Path | Responsibility | Action |
-|---|---|---|
-| `packages/ui/src/density.ts` | Canonical `getDensityHeights` + `DensityHeights` | Modify (defensive guard + TSDoc + `@public`) |
-| `packages/ui/src/public_api.ts` | **NEW** curated public surface | Create |
-| `packages/ui/src/index.ts` | Package entry | Modify (collapse to `export * from './public_api'`) |
-| `packages/ui/README.md` | **NEW** per-package README documenting CSS contract | Create |
-| `packages/react/src/density.ts` | React density story | Rewrite (delete local impl/type/parsePx/FALLBACK_*; `useResolvedHeights` wraps UI's function) |
-| `packages/react/src/public_api.ts` | React public surface | Modify (re-export `DensityHeights` from `@pretable/ui` instead of local) |
-| `packages/react/package.json` | React deps | Modify (add `@pretable/ui: workspace:*` to `dependencies`) |
-| `packages/ui/ui.api.md` | Generated baseline | Regenerate (annotation-only diff) |
-| `packages/react/react.api.md` | Generated baseline | Regenerate (`DensityHeights` now bundled-from-UI; impl differences invisible to report) |
+| Path                               | Responsibility                                      | Action                                                                                          |
+| ---------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `packages/ui/src/density.ts`       | Canonical `getDensityHeights` + `DensityHeights`    | Modify (defensive guard + TSDoc + `@public`)                                                    |
+| `packages/ui/src/public_api.ts`    | **NEW** curated public surface                      | Create                                                                                          |
+| `packages/ui/src/index.ts`         | Package entry                                       | Modify (collapse to `export * from './public_api'`)                                             |
+| `packages/ui/README.md`            | **NEW** per-package README documenting CSS contract | Create                                                                                          |
+| `packages/react/src/density.ts`    | React density story                                 | Rewrite (delete local impl/type/parsePx/FALLBACK\_\*; `useResolvedHeights` wraps UI's function) |
+| `packages/react/src/public_api.ts` | React public surface                                | Modify (re-export `DensityHeights` from `@pretable/ui` instead of local)                        |
+| `packages/react/package.json`      | React deps                                          | Modify (add `@pretable/ui: workspace:*` to `dependencies`)                                      |
+| `packages/ui/ui.api.md`            | Generated baseline                                  | Regenerate (annotation-only diff)                                                               |
+| `packages/react/react.api.md`      | Generated baseline                                  | Regenerate (`DensityHeights` now bundled-from-UI; impl differences invisible to report)         |
 
 ---
 
 ## Task 1: UI density helper — defensive guard + TSDoc + `@public`
 
 **Files:**
+
 - Modify: `packages/ui/src/density.ts`
 
 The current UI `getDensityHeights` lacks the defensive `getPropertyValue` guard that React's impl has (needed because some test environments mock `getComputedStyle` with plain objects that don't implement `getPropertyValue`). Pulling the guard into UI is part of the consolidation.
@@ -122,6 +123,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 2: UI `public_api.ts`; collapse `index.ts`
 
 **Files:**
+
 - Create: `packages/ui/src/public_api.ts`
 - Modify: `packages/ui/src/index.ts`
 
@@ -166,6 +168,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 3: React density refactor — delete local impl, wrap UI
 
 **Files:**
+
 - Modify: `packages/react/src/density.ts`
 - Modify: `packages/react/package.json` (add `@pretable/ui` dependency)
 
@@ -189,10 +192,7 @@ Then run `pnpm install` from the worktree root so the workspace symlink is creat
 ```ts
 import { useCallback, useRef, useSyncExternalStore } from "react";
 
-import {
-  type DensityHeights,
-  getDensityHeights,
-} from "@pretable/ui";
+import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
 export type { DensityHeights };
 
@@ -299,6 +299,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 4: React `public_api.ts` — re-export `DensityHeights` from UI
 
 **Files:**
+
 - Modify: `packages/react/src/public_api.ts`
 
 React's `public_api.ts` currently re-exports `DensityHeights` from `./density`. After Task 3 that file re-exports from `@pretable/ui`, but it's cleaner to source the public re-export directly from UI in the curated public surface so the dependency is explicit.
@@ -345,11 +346,12 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 5: Write `packages/ui/README.md`
 
 **Files:**
+
 - Create: `packages/ui/README.md`
 
 - [ ] **Step 1: Write the README**
 
-```markdown
+````markdown
 # @pretable/ui
 
 CSS theme + a small JS helper for [pretable](https://pretable.dev/). Pair with [`@pretable/react`](../react) for the full surface, or use the JS helper standalone in non-React adapters.
@@ -360,6 +362,7 @@ CSS theme + a small JS helper for [pretable](https://pretable.dev/). Pair with [
 npm install @pretable/ui
 # or pnpm add @pretable/ui, yarn add @pretable/ui
 ```
+````
 
 ## Minimal usage
 
@@ -394,10 +397,10 @@ For tailwind users, swap `grid.css` for `tailwind.css` (both work; `tailwind.css
 
 The two density-related variables `getDensityHeights()` reads:
 
-| Variable | Default (in `tokens.css`) | Purpose |
-|---|---|---|
-| `--pretable-row-height` | `32px` | Body row height. |
-| `--pretable-header-height` | `36px` | Header row height. |
+| Variable                   | Default (in `tokens.css`) | Purpose            |
+| -------------------------- | ------------------------- | ------------------ |
+| `--pretable-row-height`    | `32px`                    | Body row height.   |
+| `--pretable-header-height` | `36px`                    | Header row height. |
 
 The full token set lives in [`src/tokens.css`](./src/tokens.css). Override any token at `:root` or on a scoped element to change the look.
 
@@ -420,13 +423,14 @@ See **[`ui.api.md`](./ui.api.md)** for the generated public-API report.
 ## License
 
 MIT — see [LICENSE](../../LICENSE).
-```
+
+````
 
 - [ ] **Step 2: Verify the README's links**
 
 ```bash
 ls packages/ui/src/tokens.css && ls packages/ui/src/grid.css
-```
+````
 
 Both exist. The README references `./src/tokens.css` and links to `./ui.api.md` (regenerated in Task 6).
 
@@ -448,6 +452,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 6: Regenerate `ui.api.md` and `react.api.md`; audit
 
 **Files:**
+
 - Modify: `packages/ui/ui.api.md`
 - Modify: `packages/react/react.api.md`
 

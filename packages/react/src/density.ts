@@ -1,9 +1,6 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 
-import {
-  type DensityHeights,
-  getDensityHeights,
-} from "@pretable/ui";
+import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
 export type { DensityHeights };
 
