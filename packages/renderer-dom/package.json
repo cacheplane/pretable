@@ -2,6 +2,8 @@
   "name": "@pretable-internal/renderer-dom",
   "version": "0.0.0",
   "private": true,
+  "description": "Internal DOM renderer planning layer for Pretable.",
+  "license": "MIT",
   "type": "module",
   "files": [
     "dist"

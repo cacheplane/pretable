@@ -1,0 +1,85 @@
+name: Bug Report
+description: Report a reproducible Pretable bug.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail for maintainers to reproduce it.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - "@pretable/react"
+        - "@pretable/core"
+        - "@pretable/ui"
+        - "@pretable/stream-adapter"
+        - "@cacheplane/json-stream"
+        - apps/website
+        - apps/bench
+        - CI or release
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide a minimal reproduction, failing test, benchmark command, or repository link.
+      placeholder: |
+        1. Install ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include versions that matter for this bug.
+      value: |
+        - Pretable version or commit:
+        - React version:
+        - Node.js version:
+        - pnpm version:
+        - Browser and version:
+        - Operating system:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or artifacts
+      description: Paste relevant logs, screenshots, traces, benchmark output, or status artifact paths.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: I am not reporting a security vulnerability publicly.
+          required: true
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

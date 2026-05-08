@@ -1,6 +1,17 @@
 {
   "name": "@pretable/ui",
   "version": "0.0.1",
+  "description": "CSS themes, tokens, and grid styles for Pretable.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cacheplane/pretable.git",
+    "directory": "packages/ui"
+  },
+  "homepage": "https://pretable.ai/docs/theming",
+  "bugs": {
+    "url": "https://github.com/cacheplane/pretable/issues"
+  },
   "type": "module",
   "files": [
     "dist"

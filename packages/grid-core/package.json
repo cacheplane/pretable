@@ -2,6 +2,8 @@
   "name": "@pretable-internal/grid-core",
   "version": "0.0.0",
   "private": true,
+  "description": "Internal grid state engine for Pretable.",
+  "license": "MIT",
   "type": "module",
   "files": [
     "dist"

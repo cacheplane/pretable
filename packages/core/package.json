@@ -1,6 +1,17 @@
 {
   "name": "@pretable/core",
   "version": "0.0.1",
+  "description": "Framework-agnostic grid state primitives for Pretable.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cacheplane/pretable.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://pretable.ai/docs/grid/api-reference",
+  "bugs": {
+    "url": "https://github.com/cacheplane/pretable/issues"
+  },
   "type": "module",
   "files": [
     "dist"

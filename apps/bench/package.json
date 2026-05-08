@@ -2,6 +2,8 @@
   "name": "@pretable/app-bench",
   "private": true,
   "version": "0.0.1",
+  "description": "Pretable benchmark lab and browser test target.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable/stream-adapter build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build",
