@@ -14,35 +14,36 @@
 
 ## File Structure
 
-| Path | Responsibility | Action |
-|---|---|---|
-| `packages/layout-core/src/types.ts` | `LayoutSpan` interface | Modify (rename → `PretableRowRange`) |
-| `packages/layout-core/src/index.ts` | Layout-core barrel | Modify (rename in re-export) |
-| `packages/grid-core/src/types.ts` | All `GridCore*` types | Modify (rename → `Pretable*`) |
-| `packages/grid-core/src/index.ts` | Grid-core barrel | Modify (rename in re-exports) |
-| `packages/grid-core/src/create-grid-core.ts` | Engine factory | Modify (rename internal references) |
-| `packages/grid-core/src/derived-rows.ts` | Internal helper | Modify (rename internal references) |
-| `packages/grid-core/src/derived-selection.ts` | Internal helper | Modify (rename `RowSelectionTriState` → `PretableRowSelectionTriState`) |
-| `packages/grid-core/src/__tests__/selection-state.test.ts` | Test file | Modify (rename imports) |
-| `packages/renderer-dom/src/types.ts` | DOM render types | Modify (rename internal imports) |
-| `packages/renderer-dom/src/create-renderer.ts` | DOM renderer | Modify (rename internal imports) |
-| `packages/core/src/pretable-grid.ts` | **NEW** explicit `PretableGrid` interface | Create |
-| `packages/core/src/types.ts` | Re-export shell | Modify (collapse from ~50 lines to ~25) |
-| `packages/core/src/create-grid.ts` | `createGrid` factory | Modify (return type uses local `PretableGrid`) |
-| `packages/core/src/public_api.ts` | **NEW** curated public surface with TSDoc | Create |
-| `packages/core/src/index.ts` | Package entry | Modify (collapse to `export * from './public_api'`) |
-| `packages/react/src/types.ts` | React's column/render types | Modify (rename import alias) |
-| `packages/react/src/index.ts` | React barrel | Modify (rename one re-export) |
-| `api-extractor.base.json` | api-extractor config | Modify (`bundledPackages` + `ae-missing-release-tag`) |
-| `packages/core/core.api.md` | Generated baseline | Regenerate |
-| `packages/react/react.api.md` | Generated baseline | Regenerate (rename-only diff expected) |
-| `packages/core/README.md` | **NEW** per-package README | Create |
+| Path                                                       | Responsibility                            | Action                                                                  |
+| ---------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------- |
+| `packages/layout-core/src/types.ts`                        | `LayoutSpan` interface                    | Modify (rename → `PretableRowRange`)                                    |
+| `packages/layout-core/src/index.ts`                        | Layout-core barrel                        | Modify (rename in re-export)                                            |
+| `packages/grid-core/src/types.ts`                          | All `GridCore*` types                     | Modify (rename → `Pretable*`)                                           |
+| `packages/grid-core/src/index.ts`                          | Grid-core barrel                          | Modify (rename in re-exports)                                           |
+| `packages/grid-core/src/create-grid-core.ts`               | Engine factory                            | Modify (rename internal references)                                     |
+| `packages/grid-core/src/derived-rows.ts`                   | Internal helper                           | Modify (rename internal references)                                     |
+| `packages/grid-core/src/derived-selection.ts`              | Internal helper                           | Modify (rename `RowSelectionTriState` → `PretableRowSelectionTriState`) |
+| `packages/grid-core/src/__tests__/selection-state.test.ts` | Test file                                 | Modify (rename imports)                                                 |
+| `packages/renderer-dom/src/types.ts`                       | DOM render types                          | Modify (rename internal imports)                                        |
+| `packages/renderer-dom/src/create-renderer.ts`             | DOM renderer                              | Modify (rename internal imports)                                        |
+| `packages/core/src/pretable-grid.ts`                       | **NEW** explicit `PretableGrid` interface | Create                                                                  |
+| `packages/core/src/types.ts`                               | Re-export shell                           | Modify (collapse from ~50 lines to ~25)                                 |
+| `packages/core/src/create-grid.ts`                         | `createGrid` factory                      | Modify (return type uses local `PretableGrid`)                          |
+| `packages/core/src/public_api.ts`                          | **NEW** curated public surface with TSDoc | Create                                                                  |
+| `packages/core/src/index.ts`                               | Package entry                             | Modify (collapse to `export * from './public_api'`)                     |
+| `packages/react/src/types.ts`                              | React's column/render types               | Modify (rename import alias)                                            |
+| `packages/react/src/index.ts`                              | React barrel                              | Modify (rename one re-export)                                           |
+| `api-extractor.base.json`                                  | api-extractor config                      | Modify (`bundledPackages` + `ae-missing-release-tag`)                   |
+| `packages/core/core.api.md`                                | Generated baseline                        | Regenerate                                                              |
+| `packages/react/react.api.md`                              | Generated baseline                        | Regenerate (rename-only diff expected)                                  |
+| `packages/core/README.md`                                  | **NEW** per-package README                | Create                                                                  |
 
 ---
 
 ## Task 1: Rename `LayoutSpan` → `PretableRowRange` in `@pretable-internal/layout-core`
 
 **Files:**
+
 - Modify: `packages/layout-core/src/types.ts`
 - Modify: `packages/layout-core/src/index.ts`
 - Modify: `packages/grid-core/src/types.ts` (consumer)
@@ -51,13 +52,16 @@
 - [ ] **Step 1: Rename the interface in `packages/layout-core/src/types.ts`**
 
 Change line 1-4 from:
+
 ```ts
 export interface LayoutSpan {
   start: number;
   end: number;
 }
 ```
+
 to:
+
 ```ts
 /**
  * Half-open row index range — `start` inclusive, `end` exclusive — used to
@@ -80,13 +84,16 @@ Find the line `LayoutSpan,` inside the `export type` list and rename to `Pretabl
 - [ ] **Step 3: Update grid-core consumers**
 
 In `packages/grid-core/src/types.ts`, line 1-4 currently:
+
 ```ts
 import type {
   AutosizeOptions,
   LayoutSpan,
 } from "@pretable-internal/layout-core";
 ```
+
 becomes:
+
 ```ts
 import type {
   AutosizeOptions,
@@ -129,6 +136,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 2: Rename `GridCore*` → `Pretable*` at engine source
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts`
 - Modify: `packages/grid-core/src/index.ts`
 - Modify: `packages/grid-core/src/create-grid-core.ts`
@@ -252,6 +260,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 3: Define explicit `PretableGrid` in `@pretable/core`; rewrite `create-grid.ts`; collapse `types.ts`
 
 **Files:**
+
 - Create: `packages/core/src/pretable-grid.ts`
 - Modify: `packages/core/src/types.ts`
 - Modify: `packages/core/src/create-grid.ts`
@@ -369,7 +378,7 @@ Note: `PretableGrid` is not re-exported from here — it is defined in `pretable
 
 Overwrite with:
 
-```ts
+````ts
 import { createGridCore } from "@pretable-internal/grid-core";
 
 import type { PretableGrid } from "./pretable-grid";
@@ -427,7 +436,7 @@ export function createGrid<TRow extends PretableRow = PretableRow>(
     applyTransaction: engine.applyTransaction,
   };
 }
-```
+````
 
 - [ ] **Step 4: Verify typecheck**
 
@@ -455,12 +464,14 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 4: Update `@pretable/react` import alias and re-export
 
 **Files:**
+
 - Modify: `packages/react/src/types.ts`
 - Modify: `packages/react/src/index.ts`
 
 - [ ] **Step 1: Update import in `packages/react/src/types.ts`**
 
 Change lines 1-7 from:
+
 ```ts
 import type { ReactNode } from "react";
 import type {
@@ -469,7 +480,9 @@ import type {
   PretableRow,
 } from "@pretable/core";
 ```
+
 to:
+
 ```ts
 import type { ReactNode } from "react";
 import type {
@@ -480,16 +493,19 @@ import type {
 ```
 
 Then update the `extends` clause — find:
+
 ```ts
 export interface PretableColumn<
   TRow extends PretableRow = PretableRow,
 > extends PretableCoreColumn<TRow> {
 ```
+
 and change `extends PretableCoreColumn<TRow>` to `extends PretableBaseColumn<TRow>`.
 
 - [ ] **Step 2: Update re-export in `packages/react/src/index.ts`**
 
 Find the block (around lines 47-53):
+
 ```ts
 // Re-exports from @pretable/core
 export type {
@@ -500,6 +516,7 @@ export type {
   PretableRow,
 } from "@pretable/core";
 ```
+
 and change `PretableCoreColumn,` to `PretableColumn as PretableCoreColumn,`. The line becomes:
 
 ```ts
@@ -544,6 +561,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 5: Write `@pretable/core/src/public_api.ts` with TSDoc; collapse `index.ts`
 
 **Files:**
+
 - Create: `packages/core/src/public_api.ts`
 - Modify: `packages/core/src/index.ts`
 
@@ -610,7 +628,7 @@ export type {
 
 Note: api-extractor reads the `@public` from TSDoc; the `/** ... */` block must directly precede the symbol. Inline-comment `@public` placement (as written here) works because each symbol is on its own line with the comment directly above. If api-extractor flags any as missing, hoist the TSDoc to a separate `/** ... @public */` block above the symbol.
 
-Wait — TSDoc release tags must be on a doc comment attached to a *declaration*, not on a re-export line. Re-exports cannot carry release tags this way. Instead, the release tags must live on the original declarations in `@pretable-internal/grid-core/src/types.ts` and `@pretable-internal/layout-core/src/types.ts`. This step is updated below.
+Wait — TSDoc release tags must be on a doc comment attached to a _declaration_, not on a re-export line. Re-exports cannot carry release tags this way. Instead, the release tags must live on the original declarations in `@pretable-internal/grid-core/src/types.ts` and `@pretable-internal/layout-core/src/types.ts`. This step is updated below.
 
 - [ ] **Step 2: Replace `public_api.ts` with the simpler re-export shell**
 
@@ -665,26 +683,26 @@ This is where the tags actually attach. Apply this TSDoc above each exported sym
 
 The full set of additions follows. For each interface/type below, prepend the indicated TSDoc comment immediately above the declaration:
 
-| Symbol | TSDoc summary |
-|---|---|
-| `PretableRow` | "Base row constraint — every row is at minimum a string-keyed record." |
-| `PretableSortDirection` | "Sort direction — \`null\` means unsorted." |
-| `PretableColumn` | "Engine-level column definition. \`@pretable/react\` extends this with React-specific render fields." |
-| `PretableFormatInput` | "Input passed to a column's \`format\` function." |
-| `PretableGridOptions` | "Options accepted by \`createGrid\`." |
-| `PretableSortState` | "Active sort. \`columnId\` is null when no column is sorted." |
-| `PretableCellAddress` | "Cell address — the (rowId, columnId) pair that uniquely identifies a cell." |
-| `PretableCellRange` | "Inclusive cell range — both bounds (start and end) are inside the selection." |
-| `PretableSelectionState` | "Cell-range selection state including the optional anchor for shift-extension." |
-| `PretableFocusState` | "Currently focused cell — both fields are null when nothing is focused." |
-| `PretableViewportState` | "Viewport-level scroll + size state." |
-| `PretableTransaction` | "Streaming transaction — incremental row mutations applied via \`PretableGrid.applyTransaction\`." |
-| `PretableVisibleRow` | "A row currently in the visible window — includes its source-array index for stable identity." |
-| `PretableGridSnapshot` | "Read-only state observed via \`PretableGrid.getSnapshot\`." |
-| `PretableEngine` | "@internal" (this is intentionally not public — keeps it out of the report) |
-| `PretableFocusDirection` | "Direction passed to \`PretableGrid.moveFocus\`." |
-| `PretableMoveFocusOptions` | "Optional behavior modifiers for \`PretableGrid.moveFocus\`." |
-| `PretableFrame` | "@internal" (not public) |
+| Symbol                     | TSDoc summary                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `PretableRow`              | "Base row constraint — every row is at minimum a string-keyed record."                                |
+| `PretableSortDirection`    | "Sort direction — \`null\` means unsorted."                                                           |
+| `PretableColumn`           | "Engine-level column definition. \`@pretable/react\` extends this with React-specific render fields." |
+| `PretableFormatInput`      | "Input passed to a column's \`format\` function."                                                     |
+| `PretableGridOptions`      | "Options accepted by \`createGrid\`."                                                                 |
+| `PretableSortState`        | "Active sort. \`columnId\` is null when no column is sorted."                                         |
+| `PretableCellAddress`      | "Cell address — the (rowId, columnId) pair that uniquely identifies a cell."                          |
+| `PretableCellRange`        | "Inclusive cell range — both bounds (start and end) are inside the selection."                        |
+| `PretableSelectionState`   | "Cell-range selection state including the optional anchor for shift-extension."                       |
+| `PretableFocusState`       | "Currently focused cell — both fields are null when nothing is focused."                              |
+| `PretableViewportState`    | "Viewport-level scroll + size state."                                                                 |
+| `PretableTransaction`      | "Streaming transaction — incremental row mutations applied via \`PretableGrid.applyTransaction\`."    |
+| `PretableVisibleRow`       | "A row currently in the visible window — includes its source-array index for stable identity."        |
+| `PretableGridSnapshot`     | "Read-only state observed via \`PretableGrid.getSnapshot\`."                                          |
+| `PretableEngine`           | "@internal" (this is intentionally not public — keeps it out of the report)                           |
+| `PretableFocusDirection`   | "Direction passed to \`PretableGrid.moveFocus\`."                                                     |
+| `PretableMoveFocusOptions` | "Optional behavior modifiers for \`PretableGrid.moveFocus\`."                                         |
+| `PretableFrame`            | "@internal" (not public)                                                                              |
 
 The format for each comment block:
 
@@ -713,11 +731,13 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
 - [ ] **Step 4: Add `@public` + TSDoc to `PretableRowSelectionTriState` in `derived-selection.ts`**
 
 In `packages/grid-core/src/derived-selection.ts`, find:
+
 ```ts
 export type PretableRowSelectionTriState = "selected" | "indeterminate";
 ```
 
 Prepend:
+
 ```ts
 /**
  * Per-row selection state — "selected" means fully, "indeterminate" means partial.
@@ -791,6 +811,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 6: Update `api-extractor.base.json`
 
 **Files:**
+
 - Modify: `api-extractor.base.json`
 
 - [ ] **Step 1: Add internal packages to `bundledPackages`**
@@ -843,6 +864,7 @@ pnpm --filter @pretable/core api
 ```
 
 Expected: `API Extractor completed successfully`. The regenerated `core.api.md` should now show:
+
 - Zero `ae-forgotten-export` warnings.
 - Every public symbol annotated `// @public` (not `@public (undocumented)`).
 - `PretableGrid` rendered as a flat interface (not `extends Omit<...>`).
@@ -869,6 +891,7 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 7: Regenerate `.api.md` files
 
 **Files:**
+
 - Modify: `packages/core/core.api.md`
 - Modify: `packages/react/react.api.md`
 
@@ -887,7 +910,8 @@ head -30 packages/core/core.api.md
 ```
 
 Expected first lines:
-```
+
+````
 ## API Report File for "@pretable/core"
 
 > Do not edit this file. It is a report generated by [API Extractor](https://api-extractor.com/).
@@ -898,7 +922,7 @@ Expected first lines:
 export interface AutosizeOptions {
   ...
 }
-```
+````
 
 `AutosizeOptions`, `createGrid`, and every type should appear with `// @public` (not `@public (undocumented)`). Search for `(undocumented)` in the file:
 
@@ -948,13 +972,14 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
 ## Task 8: Write `packages/core/README.md`
 
 **Files:**
+
 - Create: `packages/core/README.md`
 
 - [ ] **Step 1: Write the README**
 
 Create `packages/core/README.md` with this content:
 
-```markdown
+````markdown
 # @pretable/core
 
 The headless engine for [pretable](https://pretable.dev/). Drives sort, filter, selection, focus, viewport, and streaming-transaction state for any table-shaped UI.
@@ -971,6 +996,7 @@ Most users want **[`@pretable/react`](../react)** instead. It bundles `@pretable
 npm install @pretable/core
 # or pnpm add @pretable/core, yarn add @pretable/core
 ```
+````
 
 ## Minimal example
 
@@ -1003,7 +1029,8 @@ See **[`core.api.md`](./core.api.md)** for every exported type, interface, and f
 ## License
 
 MIT — see [LICENSE](../../LICENSE).
-```
+
+````
 
 - [ ] **Step 2: Commit**
 
@@ -1012,7 +1039,7 @@ git add packages/core/README.md
 git commit -m "docs(core): add per-package README
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
-```
+````
 
 ---
 

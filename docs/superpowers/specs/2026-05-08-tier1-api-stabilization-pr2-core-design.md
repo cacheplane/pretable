@@ -39,7 +39,7 @@ src/
 
 ### `PretableGrid` interface
 
-The current `PretableGrid extends Omit<GridCoreStore<TRow>, "options">` is replaced with an explicit interface in `@pretable/core` that lists every method/property pretable promises. After rename, `GridCoreStore` becomes `PretableEngine` at the engine source — but `PretableGrid` becomes a *new, narrower* interface in `@pretable/core` that `createGrid` returns. The internal engine factory (`createGridCore`) returns `PretableEngine`; `createGrid` wraps/casts to the public `PretableGrid`.
+The current `PretableGrid extends Omit<GridCoreStore<TRow>, "options">` is replaced with an explicit interface in `@pretable/core` that lists every method/property pretable promises. After rename, `GridCoreStore` becomes `PretableEngine` at the engine source — but `PretableGrid` becomes a _new, narrower_ interface in `@pretable/core` that `createGrid` returns. The internal engine factory (`createGridCore`) returns `PretableEngine`; `createGrid` wraps/casts to the public `PretableGrid`.
 
 The rationale: `Omit<>` inheritance leaks the engine type into the public surface and forces every `.api.md` reader to mentally subtract a key. An explicit interface is what users will read in IDE tooltips.
 
@@ -49,32 +49,32 @@ The rationale: `Omit<>` inheritance leaks the engine type into the public surfac
 
 In `@pretable-internal/grid-core/src/types.ts` and `create-grid-core.ts`:
 
-| Internal (today) | After rename | Notes |
-|---|---|---|
-| `GridCoreCellAddress` | `PretableCellAddress` | Already aliased — absorb. |
-| `GridCoreCellRange` | `PretableCellRange` | Already aliased — absorb. |
-| `GridCoreColumn` | `PretableColumn` | Was `PretableCoreColumn`. React imports as `PretableBaseColumn` to disambiguate from its own `PretableColumn`. PR 3 fully resolves the naming. |
-| `GridCoreFocusDirection` | `PretableFocusDirection` | Already aliased — absorb. |
-| `GridCoreFocusState` | `PretableFocusState` | Already aliased — absorb. |
-| `GridCoreFormatInput` | `PretableFormatInput` | Was an alias — absorb. |
-| `GridCoreMoveFocusOptions` | `PretableMoveFocusOptions` | Already aliased — absorb. |
-| `GridCoreOptions` | `PretableGridOptions` | Was an alias — absorb. |
-| `GridCoreRow` | `PretableRow` | Was a `Record<string, unknown>` constraint; `PretableRow` already exists in `@pretable/core/types.ts`. Unify on the public name. |
-| `GridCoreRowModel` | `PretableVisibleRow` | Already aliased — absorb. |
-| `GridCoreSelectionState` | `PretableSelectionState` | Already aliased — absorb. |
-| `GridCoreSnapshot` | `PretableGridSnapshot` | Already aliased — absorb. |
-| `GridCoreSortDirection` | `PretableSortDirection` | Already aliased — absorb. |
-| `GridCoreSortState` | `PretableSortState` | Already aliased — absorb. |
-| `GridCoreStore` | `PretableEngine` | Internal engine handle returned by `createGridCore`. Distinct from public `PretableGrid` (see Architecture). |
-| `GridCoreTransaction` | `PretableTransaction` | Was an alias — absorb. |
-| `GridCoreViewportState` | `PretableViewportState` | Already aliased — absorb. |
-| `RowSelectionTriState` | `PretableRowSelectionTriState` | Already aliased — absorb. |
+| Internal (today)           | After rename                   | Notes                                                                                                                                          |
+| -------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GridCoreCellAddress`      | `PretableCellAddress`          | Already aliased — absorb.                                                                                                                      |
+| `GridCoreCellRange`        | `PretableCellRange`            | Already aliased — absorb.                                                                                                                      |
+| `GridCoreColumn`           | `PretableColumn`               | Was `PretableCoreColumn`. React imports as `PretableBaseColumn` to disambiguate from its own `PretableColumn`. PR 3 fully resolves the naming. |
+| `GridCoreFocusDirection`   | `PretableFocusDirection`       | Already aliased — absorb.                                                                                                                      |
+| `GridCoreFocusState`       | `PretableFocusState`           | Already aliased — absorb.                                                                                                                      |
+| `GridCoreFormatInput`      | `PretableFormatInput`          | Was an alias — absorb.                                                                                                                         |
+| `GridCoreMoveFocusOptions` | `PretableMoveFocusOptions`     | Already aliased — absorb.                                                                                                                      |
+| `GridCoreOptions`          | `PretableGridOptions`          | Was an alias — absorb.                                                                                                                         |
+| `GridCoreRow`              | `PretableRow`                  | Was a `Record<string, unknown>` constraint; `PretableRow` already exists in `@pretable/core/types.ts`. Unify on the public name.               |
+| `GridCoreRowModel`         | `PretableVisibleRow`           | Already aliased — absorb.                                                                                                                      |
+| `GridCoreSelectionState`   | `PretableSelectionState`       | Already aliased — absorb.                                                                                                                      |
+| `GridCoreSnapshot`         | `PretableGridSnapshot`         | Already aliased — absorb.                                                                                                                      |
+| `GridCoreSortDirection`    | `PretableSortDirection`        | Already aliased — absorb.                                                                                                                      |
+| `GridCoreSortState`        | `PretableSortState`            | Already aliased — absorb.                                                                                                                      |
+| `GridCoreStore`            | `PretableEngine`               | Internal engine handle returned by `createGridCore`. Distinct from public `PretableGrid` (see Architecture).                                   |
+| `GridCoreTransaction`      | `PretableTransaction`          | Was an alias — absorb.                                                                                                                         |
+| `GridCoreViewportState`    | `PretableViewportState`        | Already aliased — absorb.                                                                                                                      |
+| `RowSelectionTriState`     | `PretableRowSelectionTriState` | Already aliased — absorb.                                                                                                                      |
 
 In `@pretable-internal/layout-core/src/types.ts`:
 
-| Internal (today) | After rename | Notes |
-|---|---|---|
-| `LayoutSpan` | `PretableRowRange` | Semantic name — it represents the visible-row index range exposed via `PretableGridSnapshot.visibleRange`. |
+| Internal (today) | After rename       | Notes                                                                                                      |
+| ---------------- | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `LayoutSpan`     | `PretableRowRange` | Semantic name — it represents the visible-row index range exposed via `PretableGridSnapshot.visibleRange`. |
 
 `AutosizeOptions` keeps its name (already pretable-friendly).
 
