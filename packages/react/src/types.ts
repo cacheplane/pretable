@@ -5,6 +5,11 @@ import type {
   PretableRow,
 } from "@pretable/core";
 
+/**
+ * React-extended column definition. Adds the `render` and `renderHeader` JSX-typed callbacks on top of `@pretable/core`'s base column.
+ *
+ * @public
+ */
 export interface PretableColumn<
   TRow extends PretableRow = PretableRow,
 > extends PretableBaseColumn<TRow> {
@@ -12,6 +17,11 @@ export interface PretableColumn<
   renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
 }
 
+/**
+ * Input passed to a column's `render` function.
+ *
+ * @public
+ */
 export interface PretableCellRenderInput<
   TRow extends PretableRow = PretableRow,
 > extends PretableFormatInput<TRow> {
@@ -22,6 +32,11 @@ export interface PretableCellRenderInput<
   isSelected: boolean;
 }
 
+/**
+ * Input passed to a column's `renderHeader` function.
+ *
+ * @public
+ */
 export interface PretableHeaderRenderInput<
   TRow extends PretableRow = PretableRow,
 > {

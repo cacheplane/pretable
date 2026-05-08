@@ -8,6 +8,11 @@ function parsePxLength(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/**
+ * DOM measurement helper used internally by the surface's row-height accounting. Not part of the user-facing API.
+ *
+ * @internal
+ */
 export function measureRenderedRowHeight(row: HTMLElement) {
   const style = getComputedStyle(row);
   const verticalPadding =
