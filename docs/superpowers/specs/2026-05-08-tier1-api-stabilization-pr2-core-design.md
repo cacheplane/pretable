@@ -118,7 +118,9 @@ export type {
 
 ### `ae-missing-release-tag` config
 
-PR 1 set this rule's `logLevel` to `none` to allow undocumented baselines. PR 2 flips it to `warning` once core is fully tagged. The `warning` level surfaces coverage gaps (a developer adds a public symbol but forgets the `@public` tag) without blocking CI in non-local mode. (api-extractor's non-local mode treats configured-as-error issues as fatal but allows warnings; the `warning` level produces visibility, not enforcement.)
+PR 1 set this rule's `logLevel` to `none` to allow undocumented baselines. PR 2 keeps it at `none` because — as discovered during implementation — api-extractor's non-local mode treats `warning`-level extractor messages as **fatal** (exit 1), opposite of what the spec originally assumed. Flipping to `warning` would break `api:check` for `@pretable/react`, `@pretable/ui`, and `@pretable/stream-adapter` (which still have untagged symbols pending PRs 3–5). The flip moves to PR 5 once every package is fully tagged.
+
+Additionally, `ae-unresolved-link` is silenced (`logLevel: none`) because cross-package `{@link …}` references — e.g., a TSDoc in `@pretable/core`'s `pretable-grid.ts` linking to `createGrid` — cannot resolve when api-extractor processes a different package whose bundled report inlines the source. The links work fine in IDE tooltips; only the bundled-report resolver fails. Silencing avoids false-positive CI failures.
 
 ## Data flow
 
