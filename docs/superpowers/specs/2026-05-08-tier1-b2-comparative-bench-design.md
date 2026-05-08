@@ -24,12 +24,12 @@ The current state is a correctness problem: all three "comparator" adapters wrap
 
 ### Sub-project shape: four sequential PRs
 
-| PR | Scope |
-|---|---|
-| 1 | Replace `gridalpha` with a real `ag-grid` adapter (AG Grid Community). Carries the cross-cutting `BenchAdapterId` rename for all three new IDs. |
-| 2 | Replace `gridbeta` with a real `tanstack` adapter (TanStack Table v8 + `@tanstack/react-virtual`). |
-| 3 | Replace `gridgamma` with a real `mui` adapter (MUI X DataGrid Community). |
-| 4 | Run the comparative matrix, commit the runset, re-evaluate H1–H15, refresh `apps/website/app/bench/page.tsx` data + prose. |
+| PR  | Scope                                                                                                                                           |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Replace `gridalpha` with a real `ag-grid` adapter (AG Grid Community). Carries the cross-cutting `BenchAdapterId` rename for all three new IDs. |
+| 2   | Replace `gridbeta` with a real `tanstack` adapter (TanStack Table v8 + `@tanstack/react-virtual`).                                              |
+| 3   | Replace `gridgamma` with a real `mui` adapter (MUI X DataGrid Community).                                                                       |
+| 4   | Run the comparative matrix, commit the runset, re-evaluate H1–H15, refresh `apps/website/app/bench/page.tsx` data + prose.                      |
 
 Each adapter PR is independently mergeable: the adapter mounts, runs every script its library natively supports, and returns `unsupported` (with a reason) for the rest. Matrix evaluators are not modified in PRs 1–3; they only change in PR 4 if H1–H15 thresholds need recalibration based on real evidence — and only with documentation.
 
@@ -107,21 +107,21 @@ Per-adapter config is locked into this spec for reproducibility.
 
 ## Documented `unsupported` matrix
 
-| Script | ag-grid | tanstack | mui |
-|---|---|---|---|
-| initial | ✅ | ✅ | ✅ |
-| scroll | ✅ | ✅ | ✅ |
-| sort | ✅ | ✅ | ✅ |
-| filter-text | ✅ | ✅ | ✅ |
-| filter-metadata | ✅ | ✅ | ✅ |
-| updates | ✅ (transaction) | ✅ (setState — fairness asterisk) | ✅ (setState) |
-| autosize | ✅ (`autoSizeAllColumns`) | unsupported (headless, no autosize API) | ✅ (`autosizeOptions`) |
-| select-range-extend | unsupported (cell-range select is Enterprise) | unsupported | unsupported (range select is Pro tier) |
-| keyboard-nav-row | ✅ (built-in) | ⚠ provisional — wire `tabIndex` ourselves if cheap, otherwise unsupported | ✅ (built-in) |
-| select-all | unsupported (Community) | unsupported | unsupported (Community) |
-| scroll-with-format | ✅ | ✅ | ✅ |
-| scroll-with-render | ✅ | ✅ | ✅ |
-| scroll-with-heavy-render | ✅ | ✅ | ✅ |
+| Script                   | ag-grid                                       | tanstack                                                                  | mui                                    |
+| ------------------------ | --------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------- |
+| initial                  | ✅                                            | ✅                                                                        | ✅                                     |
+| scroll                   | ✅                                            | ✅                                                                        | ✅                                     |
+| sort                     | ✅                                            | ✅                                                                        | ✅                                     |
+| filter-text              | ✅                                            | ✅                                                                        | ✅                                     |
+| filter-metadata          | ✅                                            | ✅                                                                        | ✅                                     |
+| updates                  | ✅ (transaction)                              | ✅ (setState — fairness asterisk)                                         | ✅ (setState)                          |
+| autosize                 | ✅ (`autoSizeAllColumns`)                     | unsupported (headless, no autosize API)                                   | ✅ (`autosizeOptions`)                 |
+| select-range-extend      | unsupported (cell-range select is Enterprise) | unsupported                                                               | unsupported (range select is Pro tier) |
+| keyboard-nav-row         | ✅ (built-in)                                 | ⚠ provisional — wire `tabIndex` ourselves if cheap, otherwise unsupported | ✅ (built-in)                          |
+| select-all               | unsupported (Community)                       | unsupported                                                               | unsupported (Community)                |
+| scroll-with-format       | ✅                                            | ✅                                                                        | ✅                                     |
+| scroll-with-render       | ✅                                            | ✅                                                                        | ✅                                     |
+| scroll-with-heavy-render | ✅                                            | ✅                                                                        | ✅                                     |
 
 The selection / keyboard-nav row is the most opinionated. Range select and select-all are paid-tier features in both AG Grid and MUI; we don't fake them. The `keyboard-nav-row` cell for tanstack is provisional — final state is documented in PR 2's body when the implementation reveals whether it's cheap to plumb.
 

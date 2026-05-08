@@ -16,12 +16,12 @@
 
 ## Phase Map
 
-| Phase | PR Title | Branch |
-|---|---|---|
-| 1 | feat(bench): replace gridalpha stub with real AG Grid Community adapter | `b2-ag-grid` |
-| 2 | feat(bench): real TanStack Table comparator adapter | `b2-tanstack` |
-| 3 | feat(bench): real MUI X DataGrid Community comparator adapter | `b2-mui` |
-| 4 | feat(bench): comparative S2 runset + H1–H15 re-evaluation + /bench page refresh | `b2-runset` |
+| Phase | PR Title                                                                        | Branch        |
+| ----- | ------------------------------------------------------------------------------- | ------------- |
+| 1     | feat(bench): replace gridalpha stub with real AG Grid Community adapter         | `b2-ag-grid`  |
+| 2     | feat(bench): real TanStack Table comparator adapter                             | `b2-tanstack` |
+| 3     | feat(bench): real MUI X DataGrid Community comparator adapter                   | `b2-mui`      |
+| 4     | feat(bench): comparative S2 runset + H1–H15 re-evaluation + /bench page refresh | `b2-runset`   |
 
 Each phase is a separate PR. **Do not begin Phase 2 until Phase 1 has merged**, because Phase 1 carries the cross-cutting type-union rename. Phases 2 and 3 may run in parallel after Phase 1 merges. Phase 4 requires both 2 and 3 merged.
 
@@ -121,11 +121,7 @@ export type BenchAdapterId =
 Replace with:
 
 ```ts
-export type BenchAdapterId =
-  | "pretable"
-  | "ag-grid"
-  | "tanstack"
-  | "mui";
+export type BenchAdapterId = "pretable" | "ag-grid" | "tanstack" | "mui";
 ```
 
 - [ ] **Step 1.2.2: Edit `benchAdapterFamilies`**
@@ -133,12 +129,13 @@ export type BenchAdapterId =
 Find the `benchAdapterFamilies` Record (around line 184). Update keys to `ag-grid` / `tanstack` / `mui`. Update the `family` field on each entry to a real product name + license tier:
 
 ```ts
-export const benchAdapterFamilies: Record<BenchAdapterId, BenchAdapterFamily> = {
-  pretable: { id: "pretable", family: "pretable" },
-  "ag-grid": { id: "ag-grid", family: "AG Grid Community" },
-  tanstack: { id: "tanstack", family: "TanStack Table v8" },
-  mui: { id: "mui", family: "MUI X DataGrid Community" },
-};
+export const benchAdapterFamilies: Record<BenchAdapterId, BenchAdapterFamily> =
+  {
+    pretable: { id: "pretable", family: "pretable" },
+    "ag-grid": { id: "ag-grid", family: "AG Grid Community" },
+    tanstack: { id: "tanstack", family: "TanStack Table v8" },
+    mui: { id: "mui", family: "MUI X DataGrid Community" },
+  };
 ```
 
 (Inspect the existing entries — preserve any extra fields like `family`, `displayName`, `notes`. Update display strings to the real product names.)
@@ -426,7 +423,10 @@ export interface AgGridAdapterProps {
 const VIEWPORT_HEIGHT = 320;
 const ROW_HEIGHT = 48;
 
-function toColDef(column: ScenarioColumn, scriptName: string | undefined): ColDef {
+function toColDef(
+  column: ScenarioColumn,
+  scriptName: string | undefined,
+): ColDef {
   const def: ColDef = {
     field: column.id,
     headerName: column.label ?? column.id,
@@ -438,7 +438,9 @@ function toColDef(column: ScenarioColumn, scriptName: string | undefined): ColDe
 
   if (scriptName === "scroll-with-format") {
     def.valueFormatter = (params) =>
-      Array.isArray(params.value) ? params.value.join(", ") : String(params.value ?? "");
+      Array.isArray(params.value)
+        ? params.value.join(", ")
+        : String(params.value ?? "");
   } else if (scriptName === "scroll-with-render") {
     def.cellRenderer = (params: { value: unknown }) =>
       `<span data-bench-render="cheap">${String(params.value ?? "")}</span>`;
@@ -501,10 +503,7 @@ export function AgGridAdapter({
           Rows: {dataset.rows.length} · Columns: {dataset.columns.length}
         </p>
       </header>
-      <div
-        key={runKey}
-        style={{ height: VIEWPORT_HEIGHT, minWidth: 720 }}
-      >
+      <div key={runKey} style={{ height: VIEWPORT_HEIGHT, minWidth: 720 }}>
         <AgGridReact
           theme={themeQuartz}
           rowData={dataset.rows.slice()}
@@ -520,6 +519,7 @@ export function AgGridAdapter({
 ```
 
 Notes on the implementation:
+
 - `ModuleRegistry.registerModules([AllCommunityModule])` — required in AG Grid v33+ for tree-shakable module access. Idempotent across re-renders.
 - `getRowId` is required for `applyTransaction({ update })` to find the right row by id.
 - We thread `scriptName` from `bench-app` to drive the cell-renderer flavor (for `scroll-with-format/-render/-heavy-render`). If `bench-app.tsx` doesn't currently pass `scriptName` to adapters, add the prop in step 1.10.
@@ -569,6 +569,7 @@ The current rule selects on the old codename data-attrs. Replace with the new se
 ## Task 1.11 — Rename adapter tests
 
 **Files:**
+
 - Modify `apps/bench/src/__tests__/bench-app.test.tsx`
 - Delete (or rename + rewrite) `apps/bench/src/__tests__/gridalpha-adapter.test.tsx` if it exists; same for gridbeta/gridgamma test files.
 
@@ -632,11 +633,11 @@ grep -n "gridalpha\|gridbeta\|gridgamma" scripts/bench-matrix.mjs
 
 - [ ] **Step 1.12.2: Replace each occurrence**
 
-| Old | New |
-|---|---|
-| `gridalpha` | `ag-grid` |
-| `gridbeta` | `tanstack` |
-| `gridgamma` | `mui` |
+| Old         | New        |
+| ----------- | ---------- |
+| `gridalpha` | `ag-grid`  |
+| `gridbeta`  | `tanstack` |
+| `gridgamma` | `mui`      |
 
 (Hypothesis evaluator threshold values are NOT changed in this phase — only the adapter-id strings.)
 
@@ -1002,7 +1003,8 @@ export function TanstackAdapter({
 ```
 
 Notes:
-- `tabIndex={vr.index === 0 ? 0 : -1}` plumbs basic row tabbability so `keyboard-nav-row` is *provisional*-supported (per spec). If during implementation we discover the bench-runtime helper expects `tabindex="0"` on cells (not rows), revisit: either move tabIndex to cell divs or mark `keyboard-nav-row` as `unsupported` in `bench-app.tsx`'s dispatch. Document the decision in the PR body.
+
+- `tabIndex={vr.index === 0 ? 0 : -1}` plumbs basic row tabbability so `keyboard-nav-row` is _provisional_-supported (per spec). If during implementation we discover the bench-runtime helper expects `tabindex="0"` on cells (not rows), revisit: either move tabIndex to cell divs or mark `keyboard-nav-row` as `unsupported` in `bench-app.tsx`'s dispatch. Document the decision in the PR body.
 - Sort/filter is handled internally by TanStack. The `sort` script triggers via column-header click handlers — the bench script may need a tanstack-specific click target. Verify by running `pnpm --filter @pretable/app-bench dev` and exercising sort manually before the matrix.
 
 ## Task 2.3 — Smoke test for TanStack adapter
@@ -1064,6 +1066,7 @@ pnpm --filter @pretable/app-bench dev
 Outcome A: the script completes and `interaction_latency_ms` is reported. Provisional → **supported**. Move on.
 
 Outcome B: the script returns `partial` because `[data-pretable-cell][tabindex="0"]` doesn't resolve (bench-runtime selector). Adjust either:
+
 - The tanstack adapter to add `tabindex="0"` on the first cell of the first row instead of the row, or
 - The `bench-runtime`'s `measureBenchKeySequenceRun` to fall back to a row-level tabbable when cell-level isn't found, or
 - The `bench-app.tsx` dispatch to short-circuit `keyboard-nav-row` for tanstack and return `unsupported`.
@@ -1226,10 +1229,7 @@ export function MuiAdapter({
           Rows: {rows.length} · Columns: {dataset.columns.length}
         </p>
       </header>
-      <div
-        key={runKey}
-        style={{ height: VIEWPORT_HEIGHT, minWidth: 720 }}
-      >
+      <div key={runKey} style={{ height: VIEWPORT_HEIGHT, minWidth: 720 }}>
         <DataGrid
           rows={rows}
           columns={columns}
@@ -1254,9 +1254,15 @@ Same shape as `tanstack-adapter.test.tsx` but assert MUI selectors:
 
 ```tsx
 await waitFor(() => {
-  expect(container.querySelector(".MuiDataGrid-virtualScroller")).not.toBeNull();
-  expect(container.querySelectorAll(".MuiDataGrid-row").length).toBeGreaterThan(0);
-  expect(container.querySelectorAll(".MuiDataGrid-cell").length).toBeGreaterThan(0);
+  expect(
+    container.querySelector(".MuiDataGrid-virtualScroller"),
+  ).not.toBeNull();
+  expect(container.querySelectorAll(".MuiDataGrid-row").length).toBeGreaterThan(
+    0,
+  );
+  expect(
+    container.querySelectorAll(".MuiDataGrid-cell").length,
+  ).toBeGreaterThan(0);
 });
 ```
 
@@ -1341,7 +1347,7 @@ For each H1–H15, decide:
 - **Still failing (was failing before):** no change in narrative. Note in PR body.
 - **Now satisfied (was failing before):** real evidence improved the claim. Note in PR body.
 
-Do NOT modify evaluator threshold values to flip a status. The only acceptable evaluator change in this phase is updating the *rationale comment* to reflect the new comparator floor — and only when the threshold was already calibrated against `gridalpha` and now needs a rationale update for `ag-grid`.
+Do NOT modify evaluator threshold values to flip a status. The only acceptable evaluator change in this phase is updating the _rationale comment_ to reflect the new comparator floor — and only when the threshold was already calibrated against `gridalpha` and now needs a rationale update for `ag-grid`.
 
 - [ ] **Step 4.3.2: Optional — update threshold-rationale comments**
 
@@ -1488,20 +1494,20 @@ EOF
 
 **Spec coverage check** (against `2026-05-08-tier1-b2-comparative-bench-design.md`):
 
-| Spec section | Covered by |
-|---|---|
-| Goal: replace stubs with real grids | Phases 1–3 |
-| Non-goals (Webkit, Premium tier, etc.) | Out-of-scope notes in PR bodies |
-| Sub-project shape: 4 sequential PRs | Phase Map |
-| Adapter ID rename (cross-cutting in PR 1) | Tasks 1.2–1.6, 1.10–1.13 |
-| Runtime profiles per adapter | Task 1.5 (ag-grid + placeholders), 2.2/3.2 (data-attrs), 1.5/3.2 (mui) |
-| Per-adapter test surface | Tasks 1.11.3, 2.3, 3.3 |
-| Bundle/dep impact (apps/bench-only) | Tasks 1.8.2, 2.1.2, 3.1.2 (pnpm why guards) |
-| Idiomatic out-of-the-box config | Task 1.9 (ag-grid), 2.2 (tanstack), 3.2 (mui) |
-| Documented unsupported matrix | Per-adapter scriptName-driven branches in 1.9.2 / 2.2.1 / 3.2.1; selection scripts return unsupported via dispatch fall-through (existing harness behavior) |
-| PR 4: matrix run + evaluation + website refresh | Phase 4, all tasks |
-| Threshold-realism handling (don't mask regressions) | Task 4.3.1 (decision rules) + 4.3.2 (rationale-only edits) |
-| Open question deferred to PR 4 (prose draft) | Task 4.5.2 |
+| Spec section                                        | Covered by                                                                                                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Goal: replace stubs with real grids                 | Phases 1–3                                                                                                                                                  |
+| Non-goals (Webkit, Premium tier, etc.)              | Out-of-scope notes in PR bodies                                                                                                                             |
+| Sub-project shape: 4 sequential PRs                 | Phase Map                                                                                                                                                   |
+| Adapter ID rename (cross-cutting in PR 1)           | Tasks 1.2–1.6, 1.10–1.13                                                                                                                                    |
+| Runtime profiles per adapter                        | Task 1.5 (ag-grid + placeholders), 2.2/3.2 (data-attrs), 1.5/3.2 (mui)                                                                                      |
+| Per-adapter test surface                            | Tasks 1.11.3, 2.3, 3.3                                                                                                                                      |
+| Bundle/dep impact (apps/bench-only)                 | Tasks 1.8.2, 2.1.2, 3.1.2 (pnpm why guards)                                                                                                                 |
+| Idiomatic out-of-the-box config                     | Task 1.9 (ag-grid), 2.2 (tanstack), 3.2 (mui)                                                                                                               |
+| Documented unsupported matrix                       | Per-adapter scriptName-driven branches in 1.9.2 / 2.2.1 / 3.2.1; selection scripts return unsupported via dispatch fall-through (existing harness behavior) |
+| PR 4: matrix run + evaluation + website refresh     | Phase 4, all tasks                                                                                                                                          |
+| Threshold-realism handling (don't mask regressions) | Task 4.3.1 (decision rules) + 4.3.2 (rationale-only edits)                                                                                                  |
+| Open question deferred to PR 4 (prose draft)        | Task 4.5.2                                                                                                                                                  |
 
 All sections covered.
 
