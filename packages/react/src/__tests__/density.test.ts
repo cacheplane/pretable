@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 
-import { getDensityHeights, useResolvedHeights } from "../density";
+import { useResolvedHeights } from "../density";
+import { getDensityHeights } from "@pretable/ui";
 
 afterEach(() => {
   document.documentElement.removeAttribute("style");
@@ -13,7 +14,7 @@ describe("getDensityHeights snapshot", () => {
   test("returns fallback values when no CSS variables are set", () => {
     const heights = getDensityHeights();
     expect(heights.rowHeight).toBe(32);
-    expect(heights.headerHeight).toBe(52);
+    expect(heights.headerHeight).toBe(36);
   });
 
   test("reads numeric pixel values from the documented CSS variables", () => {
@@ -31,7 +32,7 @@ describe("getDensityHeights snapshot", () => {
     document.documentElement.style.setProperty("--pretable-row-height", "22px");
     const heights = getDensityHeights();
     expect(heights.rowHeight).toBe(22);
-    expect(heights.headerHeight).toBe(52);
+    expect(heights.headerHeight).toBe(36);
   });
 
   test("falls back when value is not parseable as <number>px", () => {
@@ -66,7 +67,7 @@ describe("useResolvedHeights hook", () => {
   test("returns fallbacks when neither props nor CSS variables are set", () => {
     const { result } = renderHook(() => useResolvedHeights());
     expect(result.current.rowHeight).toBe(32);
-    expect(result.current.headerHeight).toBe(52);
+    expect(result.current.headerHeight).toBe(36);
   });
 
   test("re-renders when [data-density] attribute changes on <html>", async () => {

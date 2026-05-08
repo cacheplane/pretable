@@ -184,7 +184,7 @@ describe("PretableSurface", () => {
     });
 
     expect(headerRow).toHaveStyle({ display: "flex" });
-    expect(headerRow).toHaveStyle({ height: "52px" });
+    expect(headerRow).toHaveStyle({ height: "36px" });
 
     for (const button of allHeaderButtons) {
       expect(button).toHaveStyle({ top: "0px" });

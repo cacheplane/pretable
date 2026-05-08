@@ -37,7 +37,8 @@
     "react": "^19.0.0"
   },
   "dependencies": {
-    "@pretable/core": "workspace:*"
+    "@pretable/core": "workspace:*",
+    "@pretable/ui": "workspace:*"
   },
   "devDependencies": {
     "@pretable-internal/scenario-data": "workspace:*",
