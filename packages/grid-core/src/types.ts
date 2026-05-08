@@ -1,6 +1,6 @@
 import type {
   AutosizeOptions,
-  LayoutSpan,
+  PretableRowRange,
 } from "@pretable-internal/layout-core";
 
 export type GridCoreRow = Record<string, unknown>;
@@ -90,7 +90,7 @@ export interface GridCoreSnapshot<TRow extends GridCoreRow = GridCoreRow> {
   focus: GridCoreFocusState;
   totalRowCount: number;
   visibleRows: GridCoreRowModel<TRow>[];
-  visibleRange: LayoutSpan;
+  visibleRange: PretableRowRange;
 }
 
 export interface GridCoreStore<TRow extends GridCoreRow = GridCoreRow> {

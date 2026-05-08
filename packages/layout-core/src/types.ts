@@ -1,4 +1,10 @@
-export interface LayoutSpan {
+/**
+ * Half-open row index range — `start` inclusive, `end` exclusive — used to
+ * describe the visible row window in {@link PretableGridSnapshot.visibleRange}.
+ *
+ * @public
+ */
+export interface PretableRowRange {
   start: number;
   end: number;
 }
@@ -39,7 +45,7 @@ export interface PlanViewportInput {
 }
 
 export interface ViewportPlan {
-  range: LayoutSpan;
+  range: PretableRowRange;
   rows: PlannedRow[];
   totalHeight: number;
   pinned: {
