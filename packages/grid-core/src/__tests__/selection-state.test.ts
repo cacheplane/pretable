@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   createGridCore,
   deriveSelectedRows,
-  type GridCoreCellRange,
+  type PretableCellRange,
 } from "../index";
 
 interface DemoRow {
@@ -44,7 +44,7 @@ describe("selection state", () => {
 
   test("setSelection replaces ranges and anchor", () => {
     const grid = makeGrid();
-    const range: GridCoreCellRange = {
+    const range: PretableCellRange = {
       startRowId: "a",
       endRowId: "b",
       startColumnId: "name",
@@ -103,13 +103,13 @@ describe("selection state", () => {
 
   test("addRange appends and updates anchor to range start", () => {
     const grid = makeGrid();
-    const r1: GridCoreCellRange = {
+    const r1: PretableCellRange = {
       startRowId: "a",
       endRowId: "a",
       startColumnId: "name",
       endColumnId: "name",
     };
-    const r2: GridCoreCellRange = {
+    const r2: PretableCellRange = {
       startRowId: "c",
       endRowId: "c",
       startColumnId: "message",

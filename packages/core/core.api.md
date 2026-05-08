@@ -4,7 +4,7 @@
 
 ```ts
 
-// @public (undocumented)
+// @public
 export interface AutosizeOptions {
     // (undocumented)
     averageCharWidth?: number;
@@ -16,10 +16,10 @@ export interface AutosizeOptions {
     minWidthPx?: number;
 }
 
-// @public (undocumented)
-export function createGrid<TRow extends Record<string, unknown>>(options: PretableGridOptions<TRow>): PretableGrid<TRow>;
+// @public
+export function createGrid<TRow extends PretableRow = PretableRow>(options: PretableGridOptions<TRow>): PretableGrid<TRow>;
 
-// @public (undocumented)
+// @public
 export interface PretableCellAddress {
     // (undocumented)
     columnId: string;
@@ -27,7 +27,7 @@ export interface PretableCellAddress {
     rowId: string;
 }
 
-// @public (undocumented)
+// @public
 export interface PretableCellRange {
     // (undocumented)
     endColumnId: string;
@@ -39,12 +39,40 @@ export interface PretableCellRange {
     startRowId: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "GridCoreColumn" needs to be exported by the entry point index.d.ts
-//
-// @public (undocumented)
-export type PretableCoreColumn<TRow extends PretableRow = PretableRow> = GridCoreColumn<TRow>;
+// @public
+export interface PretableColumn<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    filterable?: boolean;
+    // (undocumented)
+    format?: (input: PretableFormatInput<TRow>) => string;
+    // (undocumented)
+    header?: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    maxWidthPx?: number;
+    // (undocumented)
+    minWidthPx?: number;
+    // (undocumented)
+    pinned?: "left";
+    // (undocumented)
+    reorderable?: boolean;
+    // (undocumented)
+    resizable?: boolean;
+    // (undocumented)
+    sortable?: boolean;
+    // (undocumented)
+    value?: (row: TRow) => unknown;
+    // (undocumented)
+    widthPx?: number;
+    // (undocumented)
+    wrap?: boolean;
+}
 
-// @public (undocumented)
+// @public
+export type PretableFocusDirection = "up" | "down" | "left" | "right";
+
+// @public
 export interface PretableFocusState {
     // (undocumented)
     columnId: string | null;
@@ -52,38 +80,82 @@ export interface PretableFocusState {
     rowId: string | null;
 }
 
-// Warning: (ae-forgotten-export) The symbol "GridCoreFormatInput" needs to be exported by the entry point index.d.ts
-//
-// @public (undocumented)
-export type PretableFormatInput<TRow extends PretableRow = PretableRow> = GridCoreFormatInput<TRow>;
+// @public
+export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    column: PretableColumn<TRow>;
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    value: unknown;
+}
 
-// Warning: (ae-forgotten-export) The symbol "GridCoreStore" needs to be exported by the entry point index.d.ts
-//
-// @public (undocumented)
-export interface PretableGrid<TRow extends PretableRow = PretableRow> extends Omit<GridCoreStore<TRow>, "options"> {
+// @public
+export interface PretableGrid<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    addRange(range: PretableCellRange): void;
     // (undocumented)
     applyTransaction(transaction: PretableTransaction<TRow>): void;
     // (undocumented)
+    autosizeColumn(columnId: string, options?: AutosizeOptions): void;
+    // (undocumented)
     autosizeColumns(options?: AutosizeOptions): void;
     // (undocumented)
+    clearFilters(): void;
+    // (undocumented)
+    clearSelection(): void;
+    // (undocumented)
+    extendRangeFromAnchor(addr: PretableCellAddress): void;
     getSnapshot(): PretableGridSnapshot<TRow>;
+    readonly kind: "pretable-grid";
     // (undocumented)
-    kind: "pretable-grid";
+    mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void;
     // (undocumented)
-    options: PretableGridOptions<TRow>;
+    moveColumn(columnId: string, toIndex: number): void;
+    // (undocumented)
+    moveFocus(direction: PretableFocusDirection, options?: PretableMoveFocusOptions): void;
+    readonly options: PretableGridOptions<TRow>;
+    // (undocumented)
+    replaceFilters(nextFilters: Record<string, string>): void;
+    // (undocumented)
+    resetColumnLayout(): void;
+    // (undocumented)
+    selectAll(): void;
+    // (undocumented)
+    setColumnPinned(columnId: string, pinned: "left" | null): void;
+    // (undocumented)
+    setColumnWidth(columnId: string, width: number): void;
+    // (undocumented)
+    setFilter(columnId: string, value: string): void;
+    // (undocumented)
+    setFocus(addr: PretableCellAddress | null): void;
+    // (undocumented)
+    setSelectAllVisible(checked: boolean): void;
+    // (undocumented)
+    setSelection(state: PretableSelectionState): void;
     // (undocumented)
     setSort(columnId: string | null, direction: PretableSortDirection): void;
+    // (undocumented)
+    setViewport(viewport: PretableViewportState): void;
+    subscribe(listener: () => void): () => void;
+    // (undocumented)
+    toggleRowSelection(rowId: string): void;
 }
 
-// Warning: (ae-forgotten-export) The symbol "GridCoreOptions" needs to be exported by the entry point index.d.ts
-//
-// @public (undocumented)
-export type PretableGridOptions<TRow extends PretableRow = PretableRow> = GridCoreOptions<TRow>;
+// @public
+export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    autosize?: boolean | AutosizeOptions;
+    // (undocumented)
+    columns: PretableColumn<TRow>[];
+    // (undocumented)
+    getRowId?: (row: TRow, index: number) => string;
+    // (undocumented)
+    rows: TRow[];
+}
 
-// Warning: (ae-forgotten-export) The symbol "GridCoreRow" needs to be exported by the entry point index.d.ts
-//
-// @public (undocumented)
-export interface PretableGridSnapshot<TRow extends GridCoreRow = GridCoreRow> {
+// @public
+export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     filters: Record<string, string>;
     // (undocumented)
@@ -96,18 +168,37 @@ export interface PretableGridSnapshot<TRow extends GridCoreRow = GridCoreRow> {
     totalRowCount: number;
     // (undocumented)
     viewport: PretableViewportState;
-    // Warning: (ae-forgotten-export) The symbol "LayoutSpan" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    visibleRange: LayoutSpan;
+    visibleRange: PretableRowRange;
     // (undocumented)
     visibleRows: PretableVisibleRow<TRow>[];
 }
 
-// @public (undocumented)
+// @public
+export interface PretableMoveFocusOptions {
+    // (undocumented)
+    byPage?: boolean;
+    // (undocumented)
+    extend?: boolean;
+    // (undocumented)
+    jumpToEdge?: boolean;
+}
+
+// @public
 export type PretableRow = Record<string, unknown>;
 
-// @public (undocumented)
+// @public
+export interface PretableRowRange {
+    // (undocumented)
+    end: number;
+    // (undocumented)
+    start: number;
+}
+
+// @public
+export type PretableRowSelectionTriState = "selected" | "indeterminate";
+
+// @public
 export interface PretableSelectionState {
     // (undocumented)
     anchor: PretableCellAddress | null;
@@ -115,10 +206,10 @@ export interface PretableSelectionState {
     ranges: PretableCellRange[];
 }
 
-// @public (undocumented)
+// @public
 export type PretableSortDirection = "asc" | "desc" | null;
 
-// @public (undocumented)
+// @public
 export interface PretableSortState {
     // (undocumented)
     columnId: string | null;
@@ -126,12 +217,17 @@ export interface PretableSortState {
     direction: PretableSortDirection;
 }
 
-// Warning: (ae-forgotten-export) The symbol "GridCoreTransaction" needs to be exported by the entry point index.d.ts
-//
-// @public (undocumented)
-export type PretableTransaction<TRow extends PretableRow = PretableRow> = GridCoreTransaction<TRow>;
+// @public
+export interface PretableTransaction<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    add?: TRow[];
+    // (undocumented)
+    remove?: string[];
+    // (undocumented)
+    update?: Partial<TRow>[];
+}
 
-// @public (undocumented)
+// @public
 export interface PretableViewportState {
     // (undocumented)
     height: number;
@@ -143,8 +239,8 @@ export interface PretableViewportState {
     width: number;
 }
 
-// @public (undocumented)
-export interface PretableVisibleRow<TRow extends GridCoreRow = GridCoreRow> {
+// @public
+export interface PretableVisibleRow<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     id: string;
     // (undocumented)

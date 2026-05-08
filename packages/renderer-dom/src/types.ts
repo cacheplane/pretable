@@ -1,14 +1,14 @@
 import type {
-  GridCoreColumn,
-  GridCoreFrame,
-  GridCoreRow,
-  GridCoreSnapshot,
+  PretableColumn,
+  PretableFrame,
+  PretableRow,
+  PretableGridSnapshot,
 } from "@pretable-internal/grid-core";
 import type { PlannedColumn } from "@pretable-internal/layout-core";
 
-export interface DomRenderInput<TRow extends GridCoreRow = GridCoreRow> {
-  columns: GridCoreColumn<TRow>[];
-  snapshot: GridCoreSnapshot<TRow>;
+export interface DomRenderInput<TRow extends PretableRow = PretableRow> {
+  columns: PretableColumn<TRow>[];
+  snapshot: PretableGridSnapshot<TRow>;
   scrollTop: number;
   scrollLeft?: number;
   viewportHeight: number;
@@ -17,7 +17,7 @@ export interface DomRenderInput<TRow extends GridCoreRow = GridCoreRow> {
   measuredHeights?: Record<string, number>;
 }
 
-export interface DomRenderRow<TRow extends GridCoreRow = GridCoreRow> {
+export interface DomRenderRow<TRow extends PretableRow = PretableRow> {
   id: string;
   row: TRow;
   rowIndex: number;
@@ -25,8 +25,8 @@ export interface DomRenderRow<TRow extends GridCoreRow = GridCoreRow> {
   height: number;
 }
 
-export interface DomRenderSnapshot<TRow extends GridCoreRow = GridCoreRow> {
-  frame: GridCoreFrame<TRow>;
+export interface DomRenderSnapshot<TRow extends PretableRow = PretableRow> {
+  frame: PretableFrame<TRow>;
   rows: DomRenderRow<TRow>[];
   columns: PlannedColumn[];
   nodeCount: number;

@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import type {
-  PretableCoreColumn,
+  PretableColumn as PretableBaseColumn,
   PretableFormatInput,
   PretableRow,
 } from "@pretable/core";
 
 export interface PretableColumn<
   TRow extends PretableRow = PretableRow,
-> extends PretableCoreColumn<TRow> {
+> extends PretableBaseColumn<TRow> {
   render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
   renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
 }

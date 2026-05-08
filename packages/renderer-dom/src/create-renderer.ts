@@ -3,7 +3,7 @@ import {
   planColumns,
   planViewport,
 } from "@pretable-internal/layout-core";
-import type { GridCoreColumn, GridCoreRow } from "@pretable-internal/grid-core";
+import type { PretableColumn, PretableRow } from "@pretable-internal/grid-core";
 import { layoutPreparedText, prepareText } from "@pretable-internal/text-core";
 
 import type { DomRenderInput, DomRenderSnapshot } from "./types";
@@ -29,7 +29,7 @@ const estimatedRowHeightCache = new WeakMap<
   }
 >();
 
-export function createDomRenderSnapshot<TRow extends GridCoreRow>(
+export function createDomRenderSnapshot<TRow extends PretableRow>(
   input: DomRenderInput<TRow>,
 ): DomRenderSnapshot<TRow> {
   const rowHeights = input.snapshot.visibleRows.map((entry) => {
@@ -115,9 +115,9 @@ export function createDomRenderSnapshot<TRow extends GridCoreRow>(
   };
 }
 
-function estimateRowHeight<TRow extends GridCoreRow>(
+function estimateRowHeight<TRow extends PretableRow>(
   row: TRow,
-  columns: GridCoreColumn<TRow>[],
+  columns: PretableColumn<TRow>[],
 ): number {
   const cached = estimatedRowHeightCache.get(row);
 
@@ -164,9 +164,9 @@ function estimateRowHeight<TRow extends GridCoreRow>(
   return estimatedHeight;
 }
 
-function getEstimatedRowHeightSignature<TRow extends GridCoreRow>(
+function getEstimatedRowHeightSignature<TRow extends PretableRow>(
   row: TRow,
-  columns: GridCoreColumn<TRow>[],
+  columns: PretableColumn<TRow>[],
 ) {
   return columns
     .filter((column) => column.wrap)
@@ -178,15 +178,15 @@ function getEstimatedRowHeightSignature<TRow extends GridCoreRow>(
     .join("|");
 }
 
-function readCellValue<TRow extends GridCoreRow>(
+function readCellValue<TRow extends PretableRow>(
   row: TRow,
-  column: GridCoreColumn<TRow>,
+  column: PretableColumn<TRow>,
 ): unknown {
   return column.value ? column.value(row) : row[column.id];
 }
 
-function getColumnWidth<TRow extends GridCoreRow>(
-  column: GridCoreColumn<TRow>,
+function getColumnWidth<TRow extends PretableRow>(
+  column: PretableColumn<TRow>,
 ): number {
   return (
     column.widthPx ?? (column.wrap ? WRAPPED_COLUMN_WIDTH : FIXED_COLUMN_WIDTH)

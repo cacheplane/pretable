@@ -1,19 +1,19 @@
 import type {
-  GridCoreColumn,
-  GridCoreOptions,
-  GridCoreRow,
-  GridCoreRowModel,
-  GridCoreSortState,
+  PretableColumn,
+  PretableGridOptions,
+  PretableRow,
+  PretableVisibleRow,
+  PretableSortState,
 } from "./types";
 
-export interface SourceRow<TRow extends GridCoreRow> {
+export interface SourceRow<TRow extends PretableRow> {
   id: string;
   row: TRow;
   sourceIndex: number;
 }
 
-export function createSourceRows<TRow extends GridCoreRow>(
-  options: GridCoreOptions<TRow>,
+export function createSourceRows<TRow extends PretableRow>(
+  options: PretableGridOptions<TRow>,
 ): SourceRow<TRow>[] {
   return options.rows.map((row, index) => ({
     id: options.getRowId?.(row, index) ?? String(index),
@@ -22,12 +22,12 @@ export function createSourceRows<TRow extends GridCoreRow>(
   }));
 }
 
-export function deriveVisibleRows<TRow extends GridCoreRow>(input: {
-  columns: GridCoreColumn<TRow>[];
+export function deriveVisibleRows<TRow extends PretableRow>(input: {
+  columns: PretableColumn<TRow>[];
   filters: Record<string, string>;
   rows: SourceRow<TRow>[];
-  sort: GridCoreSortState;
-}): GridCoreRowModel<TRow>[] {
+  sort: PretableSortState;
+}): PretableVisibleRow<TRow>[] {
   const resolvedFilters = resolveFilters(input.columns, input.filters);
   const filtered = input.rows.filter((entry) =>
     matchesFilters(entry.row, resolvedFilters),
@@ -41,13 +41,13 @@ export function deriveVisibleRows<TRow extends GridCoreRow>(input: {
   }));
 }
 
-interface ResolvedFilter<TRow extends GridCoreRow> {
-  column: GridCoreColumn<TRow>;
+interface ResolvedFilter<TRow extends PretableRow> {
+  column: PretableColumn<TRow>;
   needle: string;
 }
 
-function resolveFilters<TRow extends GridCoreRow>(
-  columns: GridCoreColumn<TRow>[],
+function resolveFilters<TRow extends PretableRow>(
+  columns: PretableColumn<TRow>[],
   filters: Record<string, string>,
 ): ResolvedFilter<TRow>[] {
   const columnMap = new Map(columns.map((c) => [c.id, c]));
@@ -70,7 +70,7 @@ function resolveFilters<TRow extends GridCoreRow>(
   return resolved;
 }
 
-function matchesFilters<TRow extends GridCoreRow>(
+function matchesFilters<TRow extends PretableRow>(
   row: TRow,
   resolvedFilters: ResolvedFilter<TRow>[],
 ): boolean {
@@ -90,10 +90,10 @@ const collator = new Intl.Collator(undefined, {
   sensitivity: "base",
 });
 
-function sortRows<TRow extends GridCoreRow>(
+function sortRows<TRow extends PretableRow>(
   rows: SourceRow<TRow>[],
-  columns: GridCoreColumn<TRow>[],
-  sort: GridCoreSortState,
+  columns: PretableColumn<TRow>[],
+  sort: PretableSortState,
 ): SourceRow<TRow>[] {
   if (!sort.columnId || !sort.direction) {
     return [...rows];
@@ -136,9 +136,9 @@ function sortRows<TRow extends GridCoreRow>(
   return indexed.map((i) => rows[i]);
 }
 
-function readCellValue<TRow extends GridCoreRow>(
+function readCellValue<TRow extends PretableRow>(
   row: TRow,
-  column: GridCoreColumn<TRow>,
+  column: PretableColumn<TRow>,
 ): unknown {
   return column.value ? column.value(row) : row[column.id];
 }

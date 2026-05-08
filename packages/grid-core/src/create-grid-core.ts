@@ -6,39 +6,39 @@ import {
   type SourceRow,
 } from "./derived-rows";
 import type {
-  GridCoreCellAddress,
-  GridCoreCellRange,
-  GridCoreColumn,
-  GridCoreFocusDirection,
-  GridCoreFocusState,
-  GridCoreMoveFocusOptions,
-  GridCoreOptions,
-  GridCoreRow,
-  GridCoreRowModel,
-  GridCoreSelectionState,
-  GridCoreSnapshot,
-  GridCoreSortDirection,
-  GridCoreSortState,
-  GridCoreStore,
-  GridCoreTransaction,
-  GridCoreViewportState,
+  PretableCellAddress,
+  PretableCellRange,
+  PretableColumn,
+  PretableFocusDirection,
+  PretableFocusState,
+  PretableMoveFocusOptions,
+  PretableGridOptions,
+  PretableRow,
+  PretableVisibleRow,
+  PretableSelectionState,
+  PretableGridSnapshot,
+  PretableSortDirection,
+  PretableSortState,
+  PretableEngine,
+  PretableTransaction,
+  PretableViewportState,
 } from "./types";
 
 const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 
-function clampColumnWidth<TRow extends GridCoreRow>(
+function clampColumnWidth<TRow extends PretableRow>(
   width: number,
-  column: GridCoreColumn<TRow>,
+  column: PretableColumn<TRow>,
 ): number {
   const min = column.minWidthPx ?? 40;
   const max = column.maxWidthPx ?? Infinity;
   return Math.max(min, Math.min(max, width));
 }
 
-function applyAutosize<TRow extends GridCoreRow>(
-  options: GridCoreOptions<TRow>,
+function applyAutosize<TRow extends PretableRow>(
+  options: PretableGridOptions<TRow>,
   autosizeOptions?: AutosizeOptions,
-): GridCoreOptions<TRow> {
+): PretableGridOptions<TRow> {
   const result = autosizeColumns({
     columns: options.columns,
     rows: options.rows,
@@ -62,9 +62,9 @@ function applyAutosize<TRow extends GridCoreRow>(
   return { ...options, columns: nextColumns };
 }
 
-export function createGridCore<TRow extends GridCoreRow>(
-  inputOptions: GridCoreOptions<TRow>,
-): GridCoreStore<TRow> {
+export function createGridCore<TRow extends PretableRow>(
+  inputOptions: PretableGridOptions<TRow>,
+): PretableEngine<TRow> {
   const listeners = new Set<() => void>();
   let options = inputOptions.autosize
     ? applyAutosize(
@@ -74,22 +74,22 @@ export function createGridCore<TRow extends GridCoreRow>(
           : undefined,
       )
     : inputOptions;
-  let originalColumns: GridCoreColumn<TRow>[] = inputOptions.columns.map(
+  let originalColumns: PretableColumn<TRow>[] = inputOptions.columns.map(
     (c) => ({ ...c }),
   );
   let sourceRows = createSourceRows(options);
   const sourceRowIndex = new Map<string, SourceRow<TRow>>(
     sourceRows.map((entry) => [entry.id, entry]),
   );
-  let cachedSnapshot: GridCoreSnapshot<TRow> | null = null;
-  let cachedVisibleRows: GridCoreRowModel<TRow>[] | null = null;
-  let cachedDerivedSort: GridCoreSortState | null = null;
+  let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
+  let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
+  let cachedDerivedSort: PretableSortState | null = null;
   let cachedDerivedFilters: Record<string, string> | null = null;
-  let sort: GridCoreSortState = { columnId: null, direction: null };
+  let sort: PretableSortState = { columnId: null, direction: null };
   let filters: Record<string, string> = {};
-  let selection: GridCoreSelectionState = { ranges: [], anchor: null };
-  let focus: GridCoreFocusState = { rowId: null, columnId: null };
-  let viewport: GridCoreViewportState = {
+  let selection: PretableSelectionState = { ranges: [], anchor: null };
+  let focus: PretableFocusState = { rowId: null, columnId: null };
+  let viewport: PretableViewportState = {
     scrollTop: 0,
     scrollLeft: 0,
     height: 0,
@@ -108,7 +108,7 @@ export function createGridCore<TRow extends GridCoreRow>(
       };
     },
     getSnapshot,
-    setSort(columnId: string | null, direction: GridCoreSortDirection) {
+    setSort(columnId: string | null, direction: PretableSortDirection) {
       if (sort.columnId === columnId && sort.direction === direction) {
         return;
       }
@@ -165,7 +165,7 @@ export function createGridCore<TRow extends GridCoreRow>(
       filters = normalized;
       emit();
     },
-    setSelection(next: GridCoreSelectionState) {
+    setSelection(next: PretableSelectionState) {
       if (selectionsEqual(selection, next)) {
         return;
       }
@@ -187,18 +187,18 @@ export function createGridCore<TRow extends GridCoreRow>(
         return;
       }
 
-      const range: GridCoreCellRange = {
+      const range: PretableCellRange = {
         startRowId: firstRow.id,
         endRowId: lastRow.id,
         startColumnId: firstColumn.id,
         endColumnId: lastColumn.id,
       };
-      const anchor: GridCoreCellAddress = {
+      const anchor: PretableCellAddress = {
         rowId: firstRow.id,
         columnId: firstColumn.id,
       };
 
-      const next: GridCoreSelectionState = { ranges: [range], anchor };
+      const next: PretableSelectionState = { ranges: [range], anchor };
 
       if (selectionsEqual(selection, next)) {
         return;
@@ -212,7 +212,7 @@ export function createGridCore<TRow extends GridCoreRow>(
         focus.rowId && focus.columnId
           ? { rowId: focus.rowId, columnId: focus.columnId }
           : null;
-      const next: GridCoreSelectionState = focusAddr
+      const next: PretableSelectionState = focusAddr
         ? {
             ranges: [
               {
@@ -233,19 +233,19 @@ export function createGridCore<TRow extends GridCoreRow>(
       selection = next;
       emit();
     },
-    addRange(range: GridCoreCellRange) {
+    addRange(range: PretableCellRange) {
       selection = {
         ranges: [...selection.ranges, { ...range }],
         anchor: { rowId: range.startRowId, columnId: range.startColumnId },
       };
       emit();
     },
-    extendRangeFromAnchor(addr: GridCoreCellAddress) {
+    extendRangeFromAnchor(addr: PretableCellAddress) {
       if (!selection.anchor) {
         return;
       }
 
-      const newActive: GridCoreCellRange = {
+      const newActive: PretableCellRange = {
         startRowId: selection.anchor.rowId,
         endRowId: addr.rowId,
         startColumnId: selection.anchor.columnId,
@@ -268,7 +268,7 @@ export function createGridCore<TRow extends GridCoreRow>(
         return;
       }
 
-      const fullRowRange: GridCoreCellRange = {
+      const fullRowRange: PretableCellRange = {
         startRowId: rowId,
         endRowId: rowId,
         startColumnId: firstColumn.id,
@@ -307,10 +307,10 @@ export function createGridCore<TRow extends GridCoreRow>(
           !visibleIds.has(r.startRowId),
       );
 
-      let next: GridCoreSelectionState;
+      let next: PretableSelectionState;
 
       if (checked) {
-        const newRanges = snapshot.visibleRows.map<GridCoreCellRange>(
+        const newRanges = snapshot.visibleRows.map<PretableCellRange>(
           (row) => ({
             startRowId: row.id,
             endRowId: row.id,
@@ -336,7 +336,7 @@ export function createGridCore<TRow extends GridCoreRow>(
       selection = next;
       emit();
     },
-    setFocus(addr: GridCoreCellAddress | null) {
+    setFocus(addr: PretableCellAddress | null) {
       const nextRowId = addr?.rowId ?? null;
       const nextColumnId = addr?.columnId ?? null;
 
@@ -348,8 +348,8 @@ export function createGridCore<TRow extends GridCoreRow>(
       emit();
     },
     moveFocus(
-      direction: GridCoreFocusDirection,
-      moveOptions: GridCoreMoveFocusOptions = {},
+      direction: PretableFocusDirection,
+      moveOptions: PretableMoveFocusOptions = {},
     ) {
       const snapshot = getSnapshot();
       const visibleRows = snapshot.visibleRows;
@@ -447,7 +447,7 @@ export function createGridCore<TRow extends GridCoreRow>(
         return;
       }
 
-      const nextAddr: GridCoreCellAddress = {
+      const nextAddr: PretableCellAddress = {
         rowId: nextRow.id,
         columnId: nextColumn.id,
       };
@@ -468,7 +468,7 @@ export function createGridCore<TRow extends GridCoreRow>(
             anchor: nextAddr,
           };
         } else {
-          const newActive: GridCoreCellRange = {
+          const newActive: PretableCellRange = {
             startRowId: selection.anchor.rowId,
             endRowId: nextAddr.rowId,
             startColumnId: selection.anchor.columnId,
@@ -496,7 +496,7 @@ export function createGridCore<TRow extends GridCoreRow>(
 
       emit();
     },
-    setViewport(nextViewport: GridCoreViewportState) {
+    setViewport(nextViewport: PretableViewportState) {
       if (
         viewport.scrollTop === nextViewport.scrollTop &&
         viewport.scrollLeft === nextViewport.scrollLeft &&
@@ -618,7 +618,7 @@ export function createGridCore<TRow extends GridCoreRow>(
       }
 
       const insertAt = boundary;
-      const nextColumn: GridCoreColumn<TRow> = {
+      const nextColumn: PretableColumn<TRow> = {
         ...column,
         pinned: nextPinnedValue,
       };
@@ -690,7 +690,7 @@ export function createGridCore<TRow extends GridCoreRow>(
       options = { ...options, columns: next };
       emit();
     },
-    mergeColumnsFromProps(nextColumns: GridCoreColumn<TRow>[]) {
+    mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]) {
       const currentById = new Map(options.columns.map((c) => [c.id, c]));
       const merged = nextColumns.map((newCol) => {
         const existing = currentById.get(newCol.id);
@@ -707,10 +707,10 @@ export function createGridCore<TRow extends GridCoreRow>(
       options = { ...options, columns: merged };
       emit();
     },
-    applyTransaction(transaction: GridCoreTransaction<TRow>) {
+    applyTransaction(transaction: PretableTransaction<TRow>) {
       if (!options.getRowId) {
         throw new Error(
-          "applyTransaction requires getRowId on GridCoreOptions",
+          "applyTransaction requires getRowId on PretableGridOptions",
         );
       }
 
@@ -775,7 +775,7 @@ export function createGridCore<TRow extends GridCoreRow>(
 
   return store;
 
-  function getSnapshot(): GridCoreSnapshot<TRow> {
+  function getSnapshot(): PretableGridSnapshot<TRow> {
     if (cachedSnapshot) {
       return cachedSnapshot;
     }
@@ -829,9 +829,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function computePageStep<TRow extends GridCoreRow>(
+function computePageStep<TRow extends PretableRow>(
   viewport: { height: number },
-  visibleRows: GridCoreRowModel<TRow>[],
+  visibleRows: PretableVisibleRow<TRow>[],
 ): number {
   if (viewport.height <= 0 || visibleRows.length === 0) {
     return 1;
@@ -848,7 +848,7 @@ function computePageStep<TRow extends GridCoreRow>(
 }
 
 function isFullRowRange(
-  range: GridCoreCellRange,
+  range: PretableCellRange,
   rowId: string,
   firstColumnId: string,
   lastColumnId: string,
@@ -862,8 +862,8 @@ function isFullRowRange(
 }
 
 function selectionsEqual(
-  a: GridCoreSelectionState,
-  b: GridCoreSelectionState,
+  a: PretableSelectionState,
+  b: PretableSelectionState,
 ): boolean {
   if (a.ranges.length !== b.ranges.length) {
     return false;

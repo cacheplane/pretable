@@ -1,3 +1,14 @@
+/**
+ * Public API of `@pretable/core`. Hand-curated re-exports — do not edit
+ * `index.ts` directly. Internal symbols stay in their source files and
+ * are not re-exported here.
+ *
+ * @packageDocumentation
+ */
+
+export { createGrid } from "./create-grid";
+export type { PretableGrid } from "./pretable-grid";
+
 export type {
   AutosizeOptions,
   PretableCellAddress,
@@ -18,4 +29,4 @@ export type {
   PretableTransaction,
   PretableViewportState,
   PretableVisibleRow,
-} from "@pretable-internal/grid-core";
+} from "./types";

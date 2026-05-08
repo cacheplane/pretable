@@ -8,7 +8,7 @@ export type {
   AutosizeOptions,
   AutosizeResult,
   ColumnPlan,
-  LayoutSpan,
+  PretableRowRange,
   PinnedColumnInput,
   PlanColumnsColumnInput,
   PlanColumnsInput,

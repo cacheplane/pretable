@@ -21,6 +21,9 @@
       },
       "ae-missing-release-tag": {
         "logLevel": "none"
+      },
+      "ae-unresolved-link": {
+        "logLevel": "none"
       }
     }
   },
@@ -43,6 +46,8 @@
     "@pretable/core",
     "@pretable/react",
     "@pretable/ui",
-    "@pretable/stream-adapter"
+    "@pretable/stream-adapter",
+    "@pretable-internal/grid-core",
+    "@pretable-internal/layout-core"
   ]
 }

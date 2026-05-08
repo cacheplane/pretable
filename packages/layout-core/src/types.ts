@@ -1,8 +1,15 @@
-export interface LayoutSpan {
+/**
+ * Half-open row index range — `start` inclusive, `end` exclusive — used to
+ * describe the visible row window in {@link PretableGridSnapshot.visibleRange}.
+ *
+ * @public
+ */
+export interface PretableRowRange {
   start: number;
   end: number;
 }
 
+/** @internal */
 export interface RowMetricsIndex {
   readonly rowCount: number;
   getHeight(index: number): number;
@@ -12,23 +19,27 @@ export interface RowMetricsIndex {
   updateHeight(index: number, height: number): void;
 }
 
+/** @internal */
 export interface PinnedColumnInput {
   columnId: string;
   width: number;
 }
 
+/** @internal */
 export interface PlannedPinnedColumn extends PinnedColumnInput {
   side: "left" | "right";
   start: number;
   end: number;
 }
 
+/** @internal */
 export interface PlannedRow {
   index: number;
   top: number;
   height: number;
 }
 
+/** @internal */
 export interface PlanViewportInput {
   scrollTop: number;
   viewportHeight: number;
@@ -38,8 +49,9 @@ export interface PlanViewportInput {
   pinnedRight?: PinnedColumnInput[];
 }
 
+/** @internal */
 export interface ViewportPlan {
-  range: LayoutSpan;
+  range: PretableRowRange;
   rows: PlannedRow[];
   totalHeight: number;
   pinned: {
@@ -48,6 +60,7 @@ export interface ViewportPlan {
   };
 }
 
+/** @internal */
 export interface PlanColumnsInput {
   columns: readonly PlanColumnsColumnInput[];
   scrollLeft: number;
@@ -55,12 +68,14 @@ export interface PlanColumnsInput {
   overscan: number;
 }
 
+/** @internal */
 export interface PlanColumnsColumnInput {
   id: string;
   width: number;
   pinned?: "left";
 }
 
+/** @internal */
 export interface PlannedColumn {
   index: number;
   id: string;
@@ -69,12 +84,14 @@ export interface PlannedColumn {
   pinned?: "left";
 }
 
+/** @internal */
 export interface ColumnPlan {
   columns: PlannedColumn[];
   totalWidth: number;
   pinnedLeftWidth: number;
 }
 
+/** @internal */
 export interface AutosizeColumnDef<
   TRow extends Record<string, unknown> = Record<string, unknown>,
 > {
@@ -85,6 +102,11 @@ export interface AutosizeColumnDef<
   value?: (row: TRow) => unknown;
 }
 
+/**
+ * Tuning knobs for column autosize calculations.
+ *
+ * @public
+ */
 export interface AutosizeOptions {
   maxWidthPx?: number;
   minWidthPx?: number;
@@ -92,6 +114,7 @@ export interface AutosizeOptions {
   cellPaddingPx?: number;
 }
 
+/** @internal */
 export interface AutosizeColumnsInput<
   TRow extends Record<string, unknown> = Record<string, unknown>,
 > {
@@ -100,6 +123,7 @@ export interface AutosizeColumnsInput<
   options?: AutosizeOptions;
 }
 
+/** @internal */
 export interface AutosizeResult {
   widths: Map<string, number>;
 }
