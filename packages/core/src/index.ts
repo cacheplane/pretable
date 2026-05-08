@@ -1,14 +1,16 @@
 export { createGrid } from "./create-grid";
+export type { PretableGrid } from "./pretable-grid";
 export type {
+  AutosizeOptions,
   PretableCellAddress,
   PretableCellRange,
-  PretableCoreColumn,
+  PretableColumn,
   PretableFocusState,
   PretableFormatInput,
-  PretableGrid,
   PretableGridOptions,
   PretableGridSnapshot,
   PretableRow,
+  PretableRowRange,
   PretableSelectionState,
   PretableSortDirection,
   PretableSortState,
@@ -16,4 +18,3 @@ export type {
   PretableViewportState,
   PretableVisibleRow,
 } from "./types";
-export type { AutosizeOptions } from "@pretable-internal/grid-core";

@@ -1,48 +1,21 @@
-export type PretableRow = Record<string, unknown>;
 export type {
-  GridCoreCellAddress as PretableCellAddress,
-  GridCoreCellRange as PretableCellRange,
-  GridCoreFocusDirection as PretableFocusDirection,
-  GridCoreFocusState as PretableFocusState,
-  GridCoreMoveFocusOptions as PretableMoveFocusOptions,
-  GridCoreRowModel as PretableVisibleRow,
-  GridCoreSelectionState as PretableSelectionState,
-  GridCoreSnapshot as PretableGridSnapshot,
-  GridCoreSortDirection as PretableSortDirection,
-  GridCoreSortState as PretableSortState,
-  GridCoreViewportState as PretableViewportState,
-  RowSelectionTriState as PretableRowSelectionTriState,
-} from "@pretable-internal/grid-core";
-import type {
   AutosizeOptions,
-  GridCoreColumn,
-  GridCoreFormatInput,
-  GridCoreOptions,
-  GridCoreSnapshot,
-  GridCoreSortDirection,
-  GridCoreStore,
-  GridCoreTransaction,
+  PretableCellAddress,
+  PretableCellRange,
+  PretableColumn,
+  PretableFocusDirection,
+  PretableFocusState,
+  PretableFormatInput,
+  PretableGridOptions,
+  PretableGridSnapshot,
+  PretableMoveFocusOptions,
+  PretableRow,
+  PretableRowRange,
+  PretableRowSelectionTriState,
+  PretableSelectionState,
+  PretableSortDirection,
+  PretableSortState,
+  PretableTransaction,
+  PretableViewportState,
+  PretableVisibleRow,
 } from "@pretable-internal/grid-core";
-
-export type PretableCoreColumn<TRow extends PretableRow = PretableRow> =
-  GridCoreColumn<TRow>;
-
-export type PretableFormatInput<TRow extends PretableRow = PretableRow> =
-  GridCoreFormatInput<TRow>;
-
-export type PretableGridOptions<TRow extends PretableRow = PretableRow> =
-  GridCoreOptions<TRow>;
-
-export type PretableTransaction<TRow extends PretableRow = PretableRow> =
-  GridCoreTransaction<TRow>;
-
-export interface PretableGrid<
-  TRow extends PretableRow = PretableRow,
-> extends Omit<GridCoreStore<TRow>, "options"> {
-  kind: "pretable-grid";
-  options: PretableGridOptions<TRow>;
-  getSnapshot(): GridCoreSnapshot<TRow>;
-  setSort(columnId: string | null, direction: GridCoreSortDirection): void;
-  autosizeColumns(options?: AutosizeOptions): void;
-  applyTransaction(transaction: PretableTransaction<TRow>): void;
-}

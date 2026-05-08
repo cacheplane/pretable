@@ -24,4 +24,4 @@ export type {
   PretableTransaction,
   PretableViewportState,
 } from "./types";
-export type { AutosizeOptions } from "@pretable-internal/layout-core";
+export type { AutosizeOptions, PretableRowRange } from "@pretable-internal/layout-core";
