@@ -576,7 +576,7 @@ export interface UpdatesBenchRunResult {
 /**
  * Caller-supplied function that applies a batch of update patches to the
  * adapter's grid. Each adapter wires this to its idiomatic streaming
- * pattern (Pretable: stream-adapter batcher → applyTransaction; Grid Alpha:
+ * pattern (Pretable: stream-adapter batcher → applyTransaction;
  * AG Grid: gridApi.applyTransaction directly; MUI: setRows state merge;
  * TanStack: setData merge).
  */

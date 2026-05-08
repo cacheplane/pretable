@@ -240,7 +240,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               : null;
 
       // Wait up to ~1s for the current adapter to publish its update API.
-      // Grid Alpha in particular fires onGridReady asynchronously a few RAFs
+      // AG Grid in particular fires onGridReady asynchronously a few RAFs
       // after mount, so kicking off the updates script in the very next
       // frame after setRunKey would race past it and leave updateApiRef
       // null (no metrics get collected).

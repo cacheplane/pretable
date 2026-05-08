@@ -687,7 +687,7 @@ function evaluateH12(runs) {
  * structure as H1 for the scroll wedge.
  *
  * Each adapter wires its idiomatic streaming pattern in apps/bench/src/
- * (Pretable: stream-adapter batcher → applyTransaction; Grid Alpha: native
+ * (Pretable: stream-adapter batcher → applyTransaction; AG Grid: native
  * applyTransaction; MUI: apiRef.updateRows; TanStack: setRows merge).
  * If no comparator data is available, status falls back to "directional"
  * (absolute thresholds met but uniqueness unmeasured).
@@ -985,7 +985,7 @@ function evaluateH14(runs) {
  * The bench's `visible_row_count_drift` metric measures how many rows
  * the surface added or removed between the start and end of the
  * 3-second updates run. Pretable's stream-adapter holds drift at zero
- * across the operating envelope; Grid Alpha's row recycling makes its
+ * across the operating envelope; AG Grid's row recycling makes its
  * drift visible (22+ rows at sub-5k/sec rates).
  *
  * Status:
