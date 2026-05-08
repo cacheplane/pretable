@@ -257,6 +257,9 @@ importers:
       '@pretable/core':
         specifier: workspace:*
         version: link:../core
+      '@pretable/ui':
+        specifier: workspace:*
+        version: link:../ui
     devDependencies:
       '@pretable-internal/renderer-dom':
         specifier: workspace:*

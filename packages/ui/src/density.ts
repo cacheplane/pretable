@@ -1,6 +1,11 @@
 const FALLBACK_ROW_HEIGHT = 32;
 const FALLBACK_HEADER_HEIGHT = 36;
 
+/**
+ * Density-related heights (in CSS pixels) read from the active theme.
+ *
+ * @public
+ */
 export interface DensityHeights {
   rowHeight: number;
   headerHeight: number;
@@ -24,6 +29,8 @@ function parsePx(value: string): number | null {
  *
  * For non-React consumers, tests, custom virtualizers, and power users.
  * The reactive React hook (`useResolvedHeights`) lives in `@pretable/react`.
+ *
+ * @public
  */
 export function getDensityHeights(): DensityHeights {
   if (typeof document === "undefined") {
@@ -33,11 +40,16 @@ export function getDensityHeights(): DensityHeights {
     };
   }
   const styles = getComputedStyle(document.documentElement);
-  const rowHeight =
-    parsePx(styles.getPropertyValue("--pretable-row-height")) ??
-    FALLBACK_ROW_HEIGHT;
-  const headerHeight =
-    parsePx(styles.getPropertyValue("--pretable-header-height")) ??
-    FALLBACK_HEADER_HEIGHT;
-  return { rowHeight, headerHeight };
+  // Defensive: some test environments mock getComputedStyle with plain
+  // objects that don't implement getPropertyValue. Treat that as "unset"
+  // and fall back, instead of throwing.
+  const read = (name: string): string => {
+    if (typeof styles?.getPropertyValue !== "function") return "";
+    return styles.getPropertyValue(name);
+  };
+  return {
+    rowHeight: parsePx(read("--pretable-row-height")) ?? FALLBACK_ROW_HEIGHT,
+    headerHeight:
+      parsePx(read("--pretable-header-height")) ?? FALLBACK_HEADER_HEIGHT,
+  };
 }
