@@ -136,29 +136,19 @@ const scrollRuntimeProfiles: Record<
   BenchQueryState["adapterId"],
   ScrollRuntimeProfile
 > = {
-  gridalpha: {
-    viewportSelector: "[data-gridalpha-scroll-viewport]",
-    rowSelector: "[data-gridalpha-row]",
-    cellSelector: "[data-gridalpha-cell]",
-    rowIdAttribute: "data-row-id",
-    rowIndexAttribute: "data-row-index",
+  "ag-grid": {
+    viewportSelector: ".ag-body-viewport",
+    rowSelector: ".ag-row",
+    cellSelector: ".ag-cell",
+    rowIdAttribute: "row-id",
+    rowIndexAttribute: "row-index",
     maxSettleFrames: 1,
     // Unified with the other adapters: row.height vs max(cell.scrollHeight)
-    // + padding + border. The previous Grid Alpha-specific formula (style.height
-    // vs renderedHeight) was a different question — "did the grid library's
-    // intent match the actual render?" — and produced numbers not directly
-    // comparable to the wrapped-cell DOM-truth check used elsewhere. Honest
-    // cross-adapter comparison requires one formula. Grid Alpha still surfaces
-    // a large error here because its autoHeight + wrapText + virtualization
-    // at hypothesis scale leaves wrapped content clipped to a single line
-    // (cell.scrollHeight ≫ row.height) — that's user-visible behavior, not
-    // a measurement artifact.
+    // + padding + border. AG Grid's wrapped + virtualized rows can clip
+    // content (cell.scrollHeight ≫ row.height) — that's a user-visible
+    // behavior, not a measurement artifact.
     measureRowHeightError: (row, renderedHeight) =>
-      measureWrappedCellRowHeightError(
-        row,
-        renderedHeight,
-        "[data-gridalpha-cell]",
-      ),
+      measureWrappedCellRowHeightError(row, renderedHeight, ".ag-cell"),
   },
   pretable: {
     viewportSelector: "[data-pretable-scroll-viewport]",
@@ -174,10 +164,10 @@ const scrollRuntimeProfiles: Record<
         "[data-pretable-cell]",
       ),
   },
-  gridbeta: {
-    viewportSelector: "[data-gridbeta-scroll-viewport]",
-    rowSelector: "[data-gridbeta-row]",
-    cellSelector: "[data-gridbeta-cell]",
+  tanstack: {
+    viewportSelector: "[data-pretable-bench-tanstack-viewport]",
+    rowSelector: "[data-tanstack-row]",
+    cellSelector: "[data-tanstack-cell]",
     rowIdAttribute: "data-row-id",
     rowIndexAttribute: "data-row-index",
     maxSettleFrames: 4,
@@ -185,21 +175,21 @@ const scrollRuntimeProfiles: Record<
       measureWrappedCellRowHeightError(
         row,
         renderedHeight,
-        "[data-gridbeta-cell]",
+        "[data-tanstack-cell]",
       ),
   },
-  gridgamma: {
-    viewportSelector: "[data-gridgamma-scroll-viewport]",
-    rowSelector: "[data-gridgamma-row]",
-    cellSelector: "[data-gridgamma-cell]",
-    rowIdAttribute: "data-row-id",
-    rowIndexAttribute: "data-row-index",
+  mui: {
+    viewportSelector: ".MuiDataGrid-virtualScroller",
+    rowSelector: ".MuiDataGrid-row",
+    cellSelector: ".MuiDataGrid-cell",
+    rowIdAttribute: "data-id",
+    rowIndexAttribute: "data-rowindex",
     maxSettleFrames: 4,
     measureRowHeightError: (row, renderedHeight) =>
       measureWrappedCellRowHeightError(
         row,
         renderedHeight,
-        "[data-gridgamma-cell]",
+        ".MuiDataGrid-cell",
       ),
   },
 };
@@ -586,9 +576,9 @@ export interface UpdatesBenchRunResult {
 /**
  * Caller-supplied function that applies a batch of update patches to the
  * adapter's grid. Each adapter wires this to its idiomatic streaming
- * pattern (Pretable: stream-adapter batcher → applyTransaction; Grid Alpha:
- * gridApi.applyTransaction directly; GridGamma: apiRef.updateRows directly;
- * GridBeta: setRows merge).
+ * pattern (Pretable: stream-adapter batcher → applyTransaction;
+ * AG Grid: gridApi.applyTransaction directly; MUI: setRows state merge;
+ * TanStack: setData merge).
  */
 export type ApplyBenchUpdates = (
   patches: Record<string, unknown>[],

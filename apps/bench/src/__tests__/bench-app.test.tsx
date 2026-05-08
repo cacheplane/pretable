@@ -68,44 +68,36 @@ describe("BenchApp", () => {
     ).toBe(false);
   });
 
-  test("renders the requested competitor surface instead of relabeling Pretable", async () => {
+  test("renders the requested ag-grid competitor surface instead of relabeling Pretable", async () => {
     render(
-      <BenchApp
-        search="?adapter=gridalpha&scenario=S2"
-        browserVersion="123.0"
-      />,
+      <BenchApp search="?adapter=ag-grid&scenario=S2" browserVersion="123.0" />,
     );
 
-    expect(screen.getByText("Grid Alpha harness")).toBeTruthy();
-    expect(screen.getByText("Grid Alpha Community adapter")).toBeTruthy();
+    expect(screen.getByText("AG Grid Community harness")).toBeTruthy();
+    expect(screen.getByLabelText("AG Grid Community adapter")).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 
-  test("renders the requested gridbeta competitor surface", async () => {
+  test("renders the requested tanstack competitor surface", async () => {
     render(
       <BenchApp
-        search="?adapter=gridbeta&scenario=S2"
+        search="?adapter=tanstack&scenario=S2"
         browserVersion="123.0"
       />,
     );
 
-    expect(screen.getByText("GridBeta Virtual harness")).toBeTruthy();
-    expect(screen.getByText("GridBeta Virtual adapter")).toBeTruthy();
+    expect(screen.getByText("TanStack Table harness")).toBeTruthy();
+    expect(screen.getByLabelText("TanStack Table adapter")).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 
-  test("renders the requested gridgamma competitor surface", async () => {
+  test("renders the requested mui competitor surface", async () => {
     render(
-      <BenchApp
-        search="?adapter=gridgamma&scenario=S2"
-        browserVersion="123.0"
-      />,
+      <BenchApp search="?adapter=mui&scenario=S2" browserVersion="123.0" />,
     );
 
-    expect(screen.getByText("GridGamma Data Grid harness")).toBeTruthy();
-    expect(
-      screen.getByText("GridGamma Data Grid Community adapter"),
-    ).toBeTruthy();
+    expect(screen.getByText("MUI X DataGrid Community harness")).toBeTruthy();
+    expect(screen.getByLabelText("MUI X DataGrid adapter")).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 
@@ -200,7 +192,7 @@ describe("BenchApp", () => {
 
     render(
       <BenchApp
-        search="?adapter=gridalpha&scenario=S2&script=sort"
+        search="?adapter=ag-grid&scenario=S2&script=sort"
         browserVersion="123.0"
       />,
     );
@@ -211,7 +203,7 @@ describe("BenchApp", () => {
       expect(window[BENCH_RESULT_KEY]).toMatchObject({
         status: "unsupported",
         unsupported: {
-          adapterId: "gridalpha",
+          adapterId: "ag-grid",
           scenarioId: "S2",
           scriptName: "sort",
         },

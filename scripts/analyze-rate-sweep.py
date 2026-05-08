@@ -14,7 +14,7 @@ from pathlib import Path
 from collections import defaultdict
 
 STATUS_DIR = Path("status")
-ADAPTERS = ["pretable", "gridalpha", "gridbeta", "gridgamma"]
+ADAPTERS = ["pretable", "ag-grid", "tanstack", "mui"]
 ALL_RATES = [100, 500, 1000, 5000, 10000, 25000]
 METRICS = [
     "scroll_frame_p95_ms",

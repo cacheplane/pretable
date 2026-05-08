@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { getBenchAdapterFamily } from "../shared/bench-adapter-families.js";
 
-const DEFAULT_ADAPTERS = ["pretable", "gridalpha"];
+const DEFAULT_ADAPTERS = ["pretable", "ag-grid"];
 const DEFAULT_REPEATS = 1;
 const DEFAULT_SCALE = "dev";
 const DEFAULT_SCENARIOS = ["S1", "S2", "S3", "S7"];
@@ -687,8 +687,8 @@ function evaluateH12(runs) {
  * structure as H1 for the scroll wedge.
  *
  * Each adapter wires its idiomatic streaming pattern in apps/bench/src/
- * (Pretable: stream-adapter batcher → applyTransaction; Grid Alpha: native
- * applyTransaction; GridGamma: apiRef.updateRows; GridBeta: setRows merge).
+ * (Pretable: stream-adapter batcher → applyTransaction; AG Grid: native
+ * applyTransaction; MUI: apiRef.updateRows; TanStack: setRows merge).
  * If no comparator data is available, status falls back to "directional"
  * (absolute thresholds met but uniqueness unmeasured).
  */
@@ -889,7 +889,7 @@ function highestPassingStreamingRate(rateSeriesMap) {
  *   not supported).
  * - satisfied: Pretable passes at ≥ 1,000/sec AND at least one
  *   comparator's envelope is smaller than Pretable's by 10× or more
- *   (e.g., GridGamma tops out at < 500 while Pretable sustains 25,000+).
+ *   (e.g., MUI tops out at < 500 while Pretable sustains 25,000+).
  */
 function evaluateH14(runs) {
   const byAdapter = groupUpdatesRunsByAdapterAndRate(runs);
@@ -985,7 +985,7 @@ function evaluateH14(runs) {
  * The bench's `visible_row_count_drift` metric measures how many rows
  * the surface added or removed between the start and end of the
  * 3-second updates run. Pretable's stream-adapter holds drift at zero
- * across the operating envelope; Grid Alpha's row recycling makes its
+ * across the operating envelope; AG Grid's row recycling makes its
  * drift visible (22+ rows at sub-5k/sec rates).
  *
  * Status:

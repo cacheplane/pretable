@@ -1,10 +1,4 @@
-export type BenchAdapterId =
-  | "pretable"
-  | "gridalpha"
-  | "gridbeta"
-  | "gridgamma"
-  | "glide"
-  | "handsontable";
+export type BenchAdapterId = "pretable" | "ag-grid" | "tanstack" | "mui";
 
 export type BenchAdapterFamily =
   | "candidate"

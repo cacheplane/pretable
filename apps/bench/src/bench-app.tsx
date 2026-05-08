@@ -34,12 +34,12 @@ import {
   measureBenchUpdatesRun,
   publishBenchResult,
 } from "./bench-runtime";
-import { GridAlphaAdapter } from "./gridalpha-adapter";
+import { AgGridAdapter } from "./ag-grid-adapter";
 import { createBenchInteractionPlan } from "./interaction-plan";
-import { GridGammaAdapter } from "./gridgamma-adapter";
+import { MuiAdapter } from "./mui-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
-import { GridBetaAdapter } from "./gridbeta-adapter";
+import { TanstackAdapter } from "./tanstack-adapter";
 
 export interface BenchAppProps {
   search: string;
@@ -48,11 +48,11 @@ export interface BenchAppProps {
 
 const allScenarios = listScenarios();
 const adapterRegistry = {
-  gridalpha: {
-    heading: "Grid Alpha harness",
+  "ag-grid": {
+    heading: "AG Grid Community harness",
     description:
-      "Community baseline using the vendor-documented wrapped-text and auto-height path.",
-    render: GridAlphaAdapter,
+      "Community baseline using AG Grid v33 with themeQuartz, sortable + filter columns, and applyTransaction streaming updates.",
+    render: AgGridAdapter,
   },
   pretable: {
     heading: "Pretable harness",
@@ -60,17 +60,17 @@ const adapterRegistry = {
       "Deterministic `P0a` run surface for the public React adapter.",
     render: PretableAdapter,
   },
-  gridbeta: {
-    heading: "GridBeta Virtual harness",
+  tanstack: {
+    heading: "TanStack Table harness",
     description:
-      "Primitive virtualization baseline using GridBeta's measured dynamic-row path.",
-    render: GridBetaAdapter,
+      "Headless TanStack Table v8 + react-virtual baseline (real adapter ships in B2 Phase 2).",
+    render: TanstackAdapter,
   },
-  gridgamma: {
-    heading: "GridGamma Data Grid harness",
+  mui: {
+    heading: "MUI X DataGrid Community harness",
     description:
-      "Community baseline using the vendor-documented auto-height row path.",
-    render: GridGammaAdapter,
+      "Community baseline using MUI X DataGrid v7 (real adapter ships in B2 Phase 3).",
+    render: MuiAdapter,
   },
 } as const;
 
@@ -103,8 +103,8 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   /**
    * Adapter-agnostic update API ref. Each adapter wires its idiomatic
    * streaming pattern (Pretable: stream-adapter batcher → applyTransaction;
-   * Grid Alpha: gridApi.applyTransaction; GridGamma: apiRef.updateRows; GridBeta:
-   * setRows merge) and exposes a uniform `apply(patches)` callback here.
+   * AG Grid: gridApi.applyTransaction; MUI: setRows state merge; TanStack:
+   * setData merge) and exposes a uniform `apply(patches)` callback here.
    */
   const updateApiRef = useRef<ApplyBenchUpdates | null>(null);
   const handleUpdateApiReady = useCallback((apply: ApplyBenchUpdates) => {
@@ -240,7 +240,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               : null;
 
       // Wait up to ~1s for the current adapter to publish its update API.
-      // Grid Alpha in particular fires onGridReady asynchronously a few RAFs
+      // AG Grid in particular fires onGridReady asynchronously a few RAFs
       // after mount, so kicking off the updates script in the very next
       // frame after setRunKey would race past it and leave updateApiRef
       // null (no metrics get collected).
@@ -469,6 +469,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 key={runKey}
                 onUpdateApiReady={handleUpdateApiReady}
                 runKey={runKey}
+                scriptName={query.scriptName}
               />
             )}
           </div>
