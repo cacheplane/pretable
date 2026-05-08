@@ -1,0 +1,65 @@
+name: Feature Request
+description: Propose a focused Pretable improvement.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for concrete product or API improvements. Use Discussions for early exploration.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - "@pretable/react"
+        - "@pretable/core"
+        - "@pretable/ui"
+        - "@pretable/stream-adapter"
+        - "@cacheplane/json-stream"
+        - apps/website
+        - apps/bench
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What API, behavior, or documentation change do you want?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or other designs have you considered?
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Add examples, screenshots, benchmark context, product constraints, or related links.
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: This request is focused enough to discuss as one change.
+          required: true
+        - label: I agree to follow this project's Code of Conduct.
+          required: true

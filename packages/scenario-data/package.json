@@ -2,6 +2,8 @@
   "name": "@pretable-internal/scenario-data",
   "version": "0.0.0",
   "private": true,
+  "description": "Internal benchmark and demo scenario data for Pretable.",
+  "license": "MIT",
   "type": "module",
   "files": [
     "dist"

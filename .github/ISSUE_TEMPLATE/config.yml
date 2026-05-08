@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and design discussions
+    url: https://github.com/cacheplane/pretable/discussions
+    about: Use Discussions for usage help, integration questions, and exploratory ideas.
+  - name: Security vulnerability
+    url: https://github.com/cacheplane/pretable/security/advisories/new
+    about: Report vulnerabilities privately instead of opening a public issue.
+  - name: Documentation
+    url: https://pretable.ai/docs/getting-started
+    about: Read the public docs before opening a support issue.

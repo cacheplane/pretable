@@ -2,6 +2,8 @@
   "name": "@pretable-internal/bench-runner",
   "version": "0.0.0",
   "private": true,
+  "description": "Internal benchmark artifact and dashboard utilities for Pretable.",
+  "license": "MIT",
   "type": "module",
   "files": [
     "dist"

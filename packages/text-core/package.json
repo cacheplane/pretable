@@ -2,6 +2,8 @@
   "name": "@pretable-internal/text-core",
   "version": "0.0.0",
   "private": true,
+  "description": "Internal text measurement and layout helpers for Pretable.",
+  "license": "MIT",
   "type": "module",
   "files": [
     "dist"
