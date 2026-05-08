@@ -20,7 +20,10 @@
         "logLevel": "warning"
       },
       "ae-missing-release-tag": {
-        "logLevel": "warning"
+        "logLevel": "none"
+      },
+      "ae-unresolved-link": {
+        "logLevel": "none"
       }
     }
   },
