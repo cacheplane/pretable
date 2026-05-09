@@ -279,6 +279,7 @@ export function validateSupportedP0aRequest(
     "initial",
     "scroll",
     "updates",
+    "autosize",
     ...interactionScripts,
     ...selectionNavScripts,
     ...cellRendererScripts,
@@ -289,6 +290,22 @@ export function validateSupportedP0aRequest(
       ok: false,
       reason: `Unsupported script for P0a: ${request.scriptName}`,
     };
+  }
+
+  if (request.scriptName === "autosize") {
+    if (request.adapterId === "tanstack") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for autosize script: ${request.adapterId} (TanStack Table is headless; no autosize API)`,
+      };
+    }
+
+    if (request.scenarioId !== "S2") {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for autosize script: ${request.scenarioId}`,
+      };
+    }
   }
 
   if (request.scriptName === "updates") {
