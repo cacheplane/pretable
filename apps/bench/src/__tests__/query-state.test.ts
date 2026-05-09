@@ -18,7 +18,7 @@ describe("parseBenchQuery", () => {
   test("falls back to safe defaults for unsupported params", () => {
     expect(
       parseBenchQuery(
-        "?adapter=glide&scenario=S6&profile=tuned&script=autosize&autorun=1",
+        "?adapter=glide&scenario=S6&profile=tuned&script=bogus&autorun=1",
       ),
     ).toEqual({
       adapterId: "pretable",
