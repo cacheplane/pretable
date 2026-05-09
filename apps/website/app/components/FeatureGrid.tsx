@@ -11,7 +11,7 @@ const FEATURES: readonly Feature[] = [
   {
     title: "60fps performance",
     description:
-      "16ms p95 frame time on wrapped scroll. 4× faster than Grid Alpha Community on the same dataset.",
+      "Sub-frame scroll p95 on wrapped text — at parity with the best full-grid comparator (MUI X) and ~1.7× ahead of AG Grid Community and TanStack. Zero blank gaps, zero anchor shift, ≤1 px row-height drift.",
     marker: "green",
     markerLabel: "Beginner-friendly",
   },
