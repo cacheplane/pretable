@@ -1259,3 +1259,60 @@ export async function measureBenchKeySequenceRun(
     },
   };
 }
+
+export interface AutosizeBenchRunResult {
+  status: "completed" | "partial" | "failed";
+  notes: string[];
+  metrics: { interaction_latency_ms?: number; dom_nodes_peak?: number };
+}
+
+/**
+ * Measures the latency of a single autosize-all-columns event.
+ *
+ * The metric is "call-to-paint": we await the adapter's autosize callback
+ * (which may be async on MUI X DataGrid v7+ — `autosizeColumns` returns a
+ * Promise on some versions; AG Grid v33 is synchronous but defers layout
+ * to the next pass; pretable is synchronous) and then await one
+ * `requestAnimationFrame` so the timing captures the post-call paint.
+ */
+export async function measureBenchAutosizeRun(
+  root: HTMLElement,
+  adapterId: BenchQueryState["adapterId"],
+  autosize: (() => Promise<void> | void) | null,
+): Promise<AutosizeBenchRunResult> {
+  if (!autosize) {
+    return {
+      status: "partial",
+      notes: [
+        `script: autosize`,
+        `no autosize callback registered for ${adapterId}`,
+      ],
+      metrics: { dom_nodes_peak: root.querySelectorAll("*").length },
+    };
+  }
+  const profile = scrollRuntimeProfiles[adapterId];
+  const viewport = await waitForScrollViewport(root, profile.viewportSelector);
+  if (!viewport) {
+    return {
+      status: "partial",
+      notes: [
+        `script: autosize`,
+        `viewport unavailable for ${adapterId} in current runtime`,
+      ],
+      metrics: { dom_nodes_peak: root.querySelectorAll("*").length },
+    };
+  }
+  await waitForAnimationFrame();
+  const start = performance.now();
+  await autosize();
+  await waitForAnimationFrame();
+  const elapsed = performance.now() - start;
+  return {
+    status: "completed",
+    notes: [`script: autosize`],
+    metrics: {
+      interaction_latency_ms: elapsed,
+      dom_nodes_peak: root.querySelectorAll("*").length,
+    },
+  };
+}

@@ -12,6 +12,7 @@ import {
   evaluateH19,
   evaluateH20,
   evaluateH21,
+  evaluateH22,
   parseBenchMatrixArgs,
 } from "../bench-matrix.mjs";
 
@@ -1586,7 +1587,7 @@ test("composite H1 fails when pretable backward anchor shift exceeds threshold",
   assert.match(h1?.summary ?? "", /anchor shift/i);
 });
 
-test("hypothesis array has 18 entries: H1-H21 (no H2/H3/H4) covering scroll quality, interactions, streaming, and Bench Slab 1 selection/nav/format/render wedges", () => {
+test("hypothesis array has 19 entries: H1-H22 (no H2/H3/H4) covering scroll quality, interactions, streaming, Bench Slab 1 selection/nav/format/render wedges, and autosize comparator parity", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-50-00-000z",
     generatedAt: "2026-04-20T10:51:00.000Z",
@@ -1594,7 +1595,7 @@ test("hypothesis array has 18 entries: H1-H21 (no H2/H3/H4) covering scroll qual
     runs: [],
   });
 
-  assert.equal(report.hypotheses.length, 18);
+  assert.equal(report.hypotheses.length, 19);
   assert.ok(report.hypotheses.find((h) => h.id === "H1"));
   assert.equal(
     report.hypotheses.find((h) => h.id === "H3"),
@@ -1617,6 +1618,7 @@ test("hypothesis array has 18 entries: H1-H21 (no H2/H3/H4) covering scroll qual
   assert.ok(report.hypotheses.find((h) => h.id === "H19"));
   assert.ok(report.hypotheses.find((h) => h.id === "H20"));
   assert.ok(report.hypotheses.find((h) => h.id === "H21"));
+  assert.ok(report.hypotheses.find((h) => h.id === "H22"));
 });
 
 test("H9 satisfied when S7 scroll quality passes all thresholds with failing competitor", () => {
@@ -2612,4 +2614,113 @@ test("evaluateH21 failing when heavy render scroll p95 exceeds 20ms threshold", 
 
 test("evaluateH21 insufficient when no runs", () => {
   assert.equal(evaluateH21([]).status, "insufficient");
+});
+
+function makeAutosizeRun({
+  adapterId,
+  latency,
+  timestamp = "2026-05-09T12:00:00.000Z",
+}) {
+  return makeKeySequenceRun({
+    scriptName: "autosize",
+    adapterId,
+    metrics: { interaction_latency_ms: latency, dom_nodes_peak: 1000 },
+    timestamp,
+  });
+}
+
+test("evaluateH22 insufficient when no pretable runs", () => {
+  const result = evaluateH22([]);
+  assert.equal(result.id, "H22");
+  assert.equal(result.status, "insufficient");
+});
+
+test("evaluateH22 failing when pretable autosize > 16ms", () => {
+  const result = evaluateH22([
+    makeAutosizeRun({ adapterId: "pretable", latency: 22 }),
+  ]);
+  assert.equal(result.id, "H22");
+  assert.equal(result.status, "failing");
+});
+
+test("evaluateH22 failing when pretable parity > 110% outside tight zone", () => {
+  // ratio 12 / 4 = 3.0 — well outside the 0.9–1.2 tight zone, so the
+  // min-repeat gate does not apply and the verdict resolves immediately.
+  const runs = [];
+  for (let i = 0; i < 3; i += 1) {
+    runs.push(
+      makeAutosizeRun({
+        adapterId: "pretable",
+        latency: 12,
+        timestamp: `2026-05-09T12:0${i}:00.000Z`,
+      }),
+    );
+    runs.push(
+      makeAutosizeRun({
+        adapterId: "ag-grid",
+        latency: 4,
+        timestamp: `2026-05-09T12:0${i}:30.000Z`,
+      }),
+    );
+  }
+  const result = evaluateH22(runs);
+  assert.equal(result.id, "H22");
+  assert.equal(result.status, "failing");
+});
+
+test("evaluateH22 insufficient when tight zone and < 10 repeats", () => {
+  // ratio 5 / 5 = 1.0 — squarely in the tight zone with n=3 each side.
+  const runs = [];
+  for (let i = 0; i < 3; i += 1) {
+    runs.push(
+      makeAutosizeRun({
+        adapterId: "pretable",
+        latency: 5,
+        timestamp: `2026-05-09T12:0${i}:00.000Z`,
+      }),
+    );
+    runs.push(
+      makeAutosizeRun({
+        adapterId: "mui",
+        latency: 5,
+        timestamp: `2026-05-09T12:0${i}:30.000Z`,
+      }),
+    );
+  }
+  const result = evaluateH22(runs);
+  assert.equal(result.id, "H22");
+  assert.equal(result.status, "insufficient");
+  assert.match(result.summary, /≥10 repeats/);
+});
+
+test("evaluateH22 satisfied when pretable autosize at parity with mui at >=10 repeats", () => {
+  const runs = [];
+  for (let i = 0; i < 10; i += 1) {
+    const minute = String(i).padStart(2, "0");
+    runs.push(
+      makeAutosizeRun({
+        adapterId: "pretable",
+        latency: 5,
+        timestamp: `2026-05-09T12:${minute}:00.000Z`,
+      }),
+    );
+    runs.push(
+      makeAutosizeRun({
+        adapterId: "mui",
+        latency: 5,
+        timestamp: `2026-05-09T12:${minute}:30.000Z`,
+      }),
+    );
+  }
+  const result = evaluateH22(runs);
+  assert.equal(result.id, "H22");
+  assert.equal(result.status, "satisfied");
+});
+
+test("evaluateH22 directional when no comparator data", () => {
+  const result = evaluateH22([
+    makeAutosizeRun({ adapterId: "pretable", latency: 5 }),
+  ]);
+  assert.equal(result.id, "H22");
+  assert.equal(result.status, "directional");
 });

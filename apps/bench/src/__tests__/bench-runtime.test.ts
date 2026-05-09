@@ -9,6 +9,7 @@ import {
   createPretableTelemetryNotes,
   createBenchRequest,
   detectBlankGapFrame,
+  measureBenchAutosizeRun,
   measureBenchInteractionRun,
   measureBenchKeySequenceRun,
   measureBenchScrollRun,
@@ -1141,6 +1142,46 @@ describe("bench runtime", () => {
     expect(result.notes.some((n) => n.includes("viewport unavailable"))).toBe(
       true,
     );
+  });
+
+  test("measureBenchAutosizeRun calls the supplied autosize callback and returns a non-negative latency", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="0">
+            <div data-pretable-cell="">row 0</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    expect(root).toBeTruthy();
+
+    let invoked = 0;
+    const result = await measureBenchAutosizeRun(root!, "pretable", () => {
+      invoked += 1;
+    });
+
+    expect(invoked).toBe(1);
+    expect(result.status).toBe("completed");
+    expect(Number.isFinite(result.metrics.interaction_latency_ms ?? NaN)).toBe(
+      true,
+    );
+    expect(result.metrics.interaction_latency_ms).toBeGreaterThanOrEqual(0);
+  });
+
+  test("measureBenchAutosizeRun returns partial when no callback is registered", async () => {
+    document.body.innerHTML = `<div data-testid="root"></div>`;
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    expect(root).toBeTruthy();
+
+    const result = await measureBenchAutosizeRun(root!, "pretable", null);
+
+    expect(result.status).toBe("partial");
+    expect(
+      result.notes.some((n) => n.includes("no autosize callback registered")),
+    ).toBe(true);
   });
 });
 

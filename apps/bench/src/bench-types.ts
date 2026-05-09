@@ -16,6 +16,7 @@ export interface BenchQueryState {
     | "filter-metadata"
     | "filter-text"
     | "updates"
+    | "autosize"
     | "select-range-extend"
     | "keyboard-nav-row"
     | "select-all"

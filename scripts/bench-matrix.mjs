@@ -15,6 +15,13 @@ const DEFAULT_SCRIPTS = ["initial", "scroll"];
  * sweep matrix runs unchanged.
  */
 const DEFAULT_UPDATE_RATES = [1000];
+/**
+ * Minimum repeats per side for comparator-parity verdicts in the tight
+ * zone. p95 of 3 samples is essentially max-of-3, so a ±10% wobble can
+ * easily flip a real-parity result. Reused by H1 (frame p95 parity) and
+ * H22 (autosize latency parity).
+ */
+const COMPARATOR_PARITY_MIN_REPEATS = 10;
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 const BENCH_APP_ID = "@pretable/app-bench";
 
@@ -163,6 +170,7 @@ export function createHypothesisReport(input) {
       evaluateH19(input.runs),
       evaluateH20(input.runs),
       evaluateH21(input.runs),
+      evaluateH22(input.runs),
     ],
   };
 }
@@ -518,12 +526,10 @@ function evaluateH1(runs, scenarioId) {
     pretableEvidence.metrics.scroll_frame_p95_ms /
     bestFullGridEvidence.metrics.scroll_frame_p95_ms;
 
-  // Comparator-parity is sensitive to low-repeat noise around the 10% threshold:
-  // p95 of 3 samples is essentially max-of-3, so a ±10% wobble can easily flip
-  // a real-parity result to "failing". Require ≥10 repeats on both sides before
+  // Comparator-parity is sensitive to low-repeat noise around the 10% threshold.
+  // Require ≥COMPARATOR_PARITY_MIN_REPEATS repeats on both sides before
   // crowning a parity verdict in the tight zone (0.9 ≤ ratio ≤ 1.2). Outside
   // that band the gap is large enough to dominate noise.
-  const COMPARATOR_PARITY_MIN_REPEATS = 10;
   const ratioIsInTightZone = frameParityRatio >= 0.9 && frameParityRatio <= 1.2;
   const repeatsAreInsufficient =
     pretableEvidence.sampleCount < COMPARATOR_PARITY_MIN_REPEATS ||
@@ -1366,6 +1372,118 @@ export function evaluateH21(runs) {
     status: "satisfied",
     summary: `Heavy render scroll p95 is ${p95}ms (≤ 20ms; ≤ 25% above single-frame budget).`,
     evidence: [evidence],
+  };
+}
+
+/**
+ * H22 — autosize comparator parity on S2.
+ *
+ * Pretable's autosize must (a) complete within a single 60Hz frame
+ * (interaction_latency_ms ≤ 16) and (b) be within 10% of the best
+ * measured comparator (ag-grid | mui). Reuses the same min-repeat gate
+ * as H1: parity verdicts in the tight zone (0.9–1.2) require
+ * ≥COMPARATOR_PARITY_MIN_REPEATS samples on both sides.
+ */
+export function evaluateH22(runs) {
+  const pretableSeries = findRunSeries(runs, {
+    adapterId: "pretable",
+    scenarioId: "S2",
+    scriptName: "autosize",
+  });
+
+  if (pretableSeries.length === 0) {
+    return {
+      id: "H22",
+      status: "insufficient",
+      summary: "No completed pretable S2 autosize runs available.",
+      evidence: [],
+    };
+  }
+
+  const pretableEvidence = summarizeRunSeriesEvidence(pretableSeries);
+  const pretableLatency = pretableEvidence.metrics.interaction_latency_ms;
+
+  if (pretableLatency === undefined) {
+    return {
+      id: "H22",
+      status: "insufficient",
+      summary:
+        "pretable S2 autosize runs do not report interaction_latency_ms.",
+      evidence: [pretableEvidence],
+    };
+  }
+
+  if (pretableLatency > 16) {
+    return {
+      id: "H22",
+      status: "failing",
+      summary: `pretable autosize interaction_latency_ms is ${pretableLatency}ms (threshold: ≤ 16ms single-frame floor).`,
+      evidence: [pretableEvidence],
+    };
+  }
+
+  const comparatorSeries = groupRunSeries(runs, {
+    scenarioId: "S2",
+    scriptName: "autosize",
+  }).filter(
+    (series) =>
+      series[0]?.adapterId !== "pretable" &&
+      (series[0]?.adapterId === "ag-grid" || series[0]?.adapterId === "mui") &&
+      medianMetric(series, "interaction_latency_ms") !== undefined,
+  );
+
+  if (comparatorSeries.length === 0) {
+    return {
+      id: "H22",
+      status: "directional",
+      summary: `pretable autosize completes within the single-frame budget (${pretableLatency}ms ≤ 16ms), but the comparator-parity claim is unmeasured — no ag-grid or mui autosize data is available.`,
+      evidence: [pretableEvidence],
+    };
+  }
+
+  const bestComparatorSeries = comparatorSeries.reduce((best, current) =>
+    medianMetric(current, "interaction_latency_ms") <
+    medianMetric(best, "interaction_latency_ms")
+      ? current
+      : best,
+  );
+  const bestComparatorEvidence =
+    summarizeRunSeriesEvidence(bestComparatorSeries);
+  const comparatorLatency =
+    bestComparatorEvidence.metrics.interaction_latency_ms;
+  const evidenceArray = [pretableEvidence, bestComparatorEvidence];
+
+  const parityRatio = pretableLatency / comparatorLatency;
+  const ratioIsInTightZone = parityRatio >= 0.9 && parityRatio <= 1.2;
+  const repeatsAreInsufficient =
+    pretableEvidence.sampleCount < COMPARATOR_PARITY_MIN_REPEATS ||
+    bestComparatorEvidence.sampleCount < COMPARATOR_PARITY_MIN_REPEATS;
+
+  if (ratioIsInTightZone && repeatsAreInsufficient) {
+    return {
+      id: "H22",
+      status: "insufficient",
+      summary: `Autosize comparator-parity needs ≥${COMPARATOR_PARITY_MIN_REPEATS} repeats per adapter when the latency ratio is in the tight zone (got pretable n=${pretableEvidence.sampleCount}, ${bestComparatorEvidence.adapterId} n=${bestComparatorEvidence.sampleCount}; ratio = ${parityRatio.toFixed(3)}). Re-run with --repeats=${COMPARATOR_PARITY_MIN_REPEATS} or higher.`,
+      evidence: evidenceArray,
+    };
+  }
+
+  if (parityRatio > 1.1) {
+    const percentAbove = Math.round((parityRatio - 1) * 100);
+
+    return {
+      id: "H22",
+      status: "failing",
+      summary: `pretable autosize meets the single-frame floor, but interaction_latency_ms is ${percentAbove}% above the best comparator (${bestComparatorEvidence.adapterId}: ${comparatorLatency}ms vs pretable: ${pretableLatency}ms). The 10% parity threshold is not met.`,
+      evidence: evidenceArray,
+    };
+  }
+
+  return {
+    id: "H22",
+    status: "satisfied",
+    summary: `pretable autosize completes within the single-frame budget (${pretableLatency}ms ≤ 16ms) and within 10% of the best comparator (${bestComparatorEvidence.adapterId}: ${comparatorLatency}ms; ratio = ${parityRatio.toFixed(3)}).`,
+    evidence: evidenceArray,
   };
 }
 
