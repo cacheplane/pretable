@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-05-09T03:00:00.000Z",
+  "predecessor": "status/milestones/2026-05-08-b2-comparative-bench.hypotheses.json",
+  "evidenceSource": "status/milestones/2026-05-09-perf-diag-high-repeat.scroll.json",
+  "correctsHypothesis": "H1",
+  "reason": "The B2 comparative runset (n=3) reported H1 failing with pretable 11% above MUI on scroll_frame_p95_ms. The B2 follow-up #1 perf-diag rerun (n=20) shows the gap was sample noise: pretable 9.07ms ± 0.20 vs mui 9.14ms ± 0.19; mean diff -0.065ms is well inside the 2σ noise floor of 0.401ms. The original H1 flip did not survive higher-repeat scrutiny — pretable in fact comes in marginally faster on average.",
+  "highRepeatEvidence": {
+    "matrix": {
+      "project": "chromium",
+      "scenarioId": "S2",
+      "scriptName": "scroll",
+      "scale": "hypothesis",
+      "repeats": 20
+    },
+    "perAdapter": {
+      "pretable": {
+        "n": 20,
+        "mean_scroll_frame_p95_ms": 9.07,
+        "sd_scroll_frame_p95_ms": 0.2,
+        "min": 8.7,
+        "median": 9.1,
+        "max": 9.4
+      },
+      "mui": {
+        "n": 20,
+        "mean_scroll_frame_p95_ms": 9.135,
+        "sd_scroll_frame_p95_ms": 0.19,
+        "min": 8.6,
+        "median": 9.15,
+        "max": 9.3
+      }
+    },
+    "twoSigmaTest": {
+      "meanDiffPretableMinusMui": -0.065,
+      "noiseFloor": 0.401,
+      "rule": "real if abs(meanDiffPretableMinusMui) > 2 * max(sd_pretable, sd_mui)",
+      "verdict": "noise"
+    }
+  },
+  "correctedH1": {
+    "id": "H1",
+    "status": "satisfied",
+    "summary": "Corrected from B2 n=3 runset. At n=20 on Chromium S2/hypothesis, pretable's mean scroll_frame_p95_ms (9.07ms) is within the 10% parity band of MUI's mean (9.14ms) — and is in fact marginally faster. All H1 quality sub-criteria (zero blank gaps, zero anchor shift, ≤1px row-height error) remain satisfied. The original B2 'failing' verdict was a low-repeat sample artifact, not a real regression."
+  },
+  "tanstackAndAgGridUnchanged": {
+    "note": "AG Grid (16.7ms p95, 1 blank gap, 2px row-height drift) and TanStack (16.7ms p95, 1 blank gap) status from the B2 n=3 runset is not corrected here — both adapters were measured at large enough deltas (>50% above pretable) that low-repeat noise is unlikely to flip them. They remain ~1.7× pretable's scroll_frame_p95_ms with quality gaps that pretable does not have. A future high-repeat run including those adapters could refine the multipliers but would not change the qualitative conclusion."
+  }
+}

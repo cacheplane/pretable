@@ -1375,7 +1375,11 @@ test("composite H1 fails when pretable exceeds absolute quality threshold", () =
   assert.match(h1?.summary ?? "", /row height error/i);
 });
 
-test("composite H1 fails when pretable frame parity exceeds 110%", () => {
+test("composite H1 fails when pretable frame parity exceeds 110% outside the tight noise zone", () => {
+  // Ratio = 1.6 (pretable 40 / mui 25) is well outside the tight zone where
+  // low-repeat noise can flip results, so the n=1 sample is enough to declare
+  // failing. See the comparator-parity insufficient case below for the gated
+  // behavior at smaller ratios.
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-10-00-000z",
     generatedAt: "2026-04-20T10:11:00.000Z",
@@ -1401,7 +1405,7 @@ test("composite H1 fails when pretable frame parity exceeds 110%", () => {
       createScrollRun({
         adapterId: "pretable",
         timestamp: "2026-04-20T10:10:00.000Z",
-        scroll_frame_p95_ms: 30,
+        scroll_frame_p95_ms: 40,
       }),
       createScrollRun({
         adapterId: "mui",
@@ -1417,6 +1421,53 @@ test("composite H1 fails when pretable frame parity exceeds 110%", () => {
   assert.equal(h1?.status, "failing");
   assert.match(h1?.summary ?? "", /frame p95/i);
   assert.match(h1?.summary ?? "", /parity/i);
+});
+
+test("composite H1 returns insufficient when parity ratio is in the tight zone with too few repeats", () => {
+  // Ratio = 1.115 (pretable 9.7 / mui 8.7) is the actual B2 n=3 result that
+  // produced the H1 flip later overturned by the high-repeat (n=20) rerun.
+  // The gate prevents that class of low-sample artifact from declaring
+  // failing. Re-run with --repeats=10+ to evaluate.
+  const report = createHypothesisReport({
+    runsetId: "2026-05-09t00-00-00-000z",
+    generatedAt: "2026-05-09T00-01-00.000Z",
+    entries: [
+      {
+        adapterId: "pretable",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-09t00-00-00-000z.summary.json",
+      },
+      {
+        adapterId: "mui",
+        repeatIndex: 0,
+        scenarioId: "S2",
+        scriptName: "scroll",
+        summaryPath:
+          "status/chromium-mui-default-s2-hypothesis-scroll-2026-05-09t00-00-30-000z.summary.json",
+      },
+    ],
+    runs: [
+      createScrollRun({
+        adapterId: "pretable",
+        timestamp: "2026-05-09T00-00-00.000Z",
+        scroll_frame_p95_ms: 9.7,
+      }),
+      createScrollRun({
+        adapterId: "mui",
+        timestamp: "2026-05-09T00-00-30.000Z",
+        scroll_frame_p95_ms: 8.7,
+      }),
+    ],
+  });
+
+  const h1 = report.hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(h1?.status, "insufficient");
+  assert.match(h1?.summary ?? "", /≥10 repeats/i);
+  assert.match(h1?.summary ?? "", /tight zone/i);
 });
 
 test("composite H1 directional when all full-grid competitors also pass quality thresholds", () => {
