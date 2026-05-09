@@ -16,16 +16,18 @@ it("renders a comparison table with at least one row", () => {
 
 it("renders trail markers for each adapter", () => {
   render(<ComparisonTable />);
+  // Post-B2 trail-marker labels: each adapter described by the
+  // fact-checkable wedge from the comparative runset.
   expect(
     screen.getByRole("img", { name: /recommended path/i }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("img", { name: /familiar but slower/i }),
+    screen.getByRole("img", { name: /slower scroll.*row-height drift/i }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("img", { name: /powerful but diy/i }),
+    screen.getByRole("img", { name: /headless.*selection and nav/i }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("img", { name: /broken at scale/i }),
+    screen.getByRole("img", { name: /parity at scroll p95/i }),
   ).toBeInTheDocument();
 });

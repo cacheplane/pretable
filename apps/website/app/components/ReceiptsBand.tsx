@@ -5,21 +5,26 @@ interface Stat {
   accent?: boolean;
 }
 
-// Receipts snapshot — numbers from two committed milestone runsets:
+// Receipts snapshot — numbers from the committed B2 comparative runset
+// and its high-repeat correction:
 //
-//   status/milestones/2026-05-01-h1-satisfied.hypotheses.json
-//     S2/scroll/hypothesis × 5 repeats, unified row-height formula. H1
-//     satisfied. Pretable median 16ms vs Grid Alpha 67ms = 4× faster.
+//   status/milestones/2026-05-09-b2-h1-high-repeat-correction.json
+//     S2/hypothesis/scroll × 20 repeats. Pretable mean p95 = 9.07 ms ± 0.20;
+//     parity with MUI X DataGrid Community. Quality wedge: 0 blank gaps,
+//     0 anchor shift, ≤1 px row-height drift.
 //
 //   status/milestones/2026-05-01-streaming-revalidated.hypotheses.json
-//     S5/updates × 6 rates × 3 repeats. H15 satisfied.
+//     S5/updates × 6 rates × 3 repeats. Pretable max sustained update rate
+//     = 25k/sec (pretable's own — comparative S5 evidence pending; see
+//     project_b2_followups.md item 6).
 //
-// Bucket C: section flipped to an inverted slate band. The first stat
-// (4×) anchors with accent (warm orange); the rest are cream on slate.
+// First stat (0) anchors the quality wedge with accent (warm orange). All
+// numbers are pretable's own; the comparative ranking lives on the /bench
+// page and ComparisonTable.
 const STATS: readonly Stat[] = [
-  { value: "4×", caption: "faster scroll vs gridalpha", accent: true },
-  { value: "16ms", caption: "frame p95 / wrapped scroll" },
-  { value: "0", caption: "long tasks / streaming" },
+  { value: "0", caption: "blank gaps under scroll", accent: true },
+  { value: "9ms", caption: "frame p95 / wrapped scroll" },
+  { value: "≤1px", caption: "row-height fidelity" },
   { value: "25k/s", caption: "max sustained update rate" },
 ];
 

@@ -14,8 +14,9 @@ it("renders the receipts band with content", () => {
 
 it("renders the receipts headline numbers", () => {
   render(<ReceiptsBand />);
-  expect(screen.getByText("4×")).toBeInTheDocument();
-  expect(screen.getByText("16ms")).toBeInTheDocument();
+  // Quality-wedge anchor (post-B2 corrections): 0 blank gaps + 9ms frame p95.
+  expect(screen.getByText("0")).toBeInTheDocument();
+  expect(screen.getByText("9ms")).toBeInTheDocument();
 });
 
 it("does not render the positioning cards anymore (moved to CredibilityCards)", () => {
