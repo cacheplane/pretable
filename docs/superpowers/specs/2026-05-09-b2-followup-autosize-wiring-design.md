@@ -32,12 +32,12 @@ A new `measureBenchAutosizeRun(root, adapterId, autosize)` helper in `apps/bench
 
 ### Per-adapter wiring
 
-| Adapter | Autosize entry | Notes |
-|---|---|---|
-| `pretable` | `pretableGridRef.current?.autosizeColumns()` | Already exposed via the existing `onGridReady` ref in `bench-app.tsx`. |
-| `ag-grid` | `gridApi.autoSizeAllColumns(false)` | Already wired in `ag-grid-adapter.tsx`'s `onGridReady` (currently dead code). Needs to call back through a new `onAutosizeReady` prop. |
-| `tanstack` | n/a | Returns `unsupported` (`reason: "TanStack Table is headless; no autosize API"`). |
-| `mui` | `apiRef.current.autosizeColumns({ includeOutliers: true })` | New: the MUI adapter currently doesn't expose its `apiRef`; this PR adds the export. |
+| Adapter    | Autosize entry                                              | Notes                                                                                                                                  |
+| ---------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `pretable` | `pretableGridRef.current?.autosizeColumns()`                | Already exposed via the existing `onGridReady` ref in `bench-app.tsx`.                                                                 |
+| `ag-grid`  | `gridApi.autoSizeAllColumns(false)`                         | Already wired in `ag-grid-adapter.tsx`'s `onGridReady` (currently dead code). Needs to call back through a new `onAutosizeReady` prop. |
+| `tanstack` | n/a                                                         | Returns `unsupported` (`reason: "TanStack Table is headless; no autosize API"`).                                                       |
+| `mui`      | `apiRef.current.autosizeColumns({ includeOutliers: true })` | New: the MUI adapter currently doesn't expose its `apiRef`; this PR adds the export.                                                   |
 
 The pattern: each adapter accepts an optional `onAutosizeReady?: (autosize: () => Promise<void>) => void` prop. When the adapter has a usable autosize API, it calls back with a closure over the API. The `bench-app.tsx` family map captures the callback in an `autosizeApiRef` mirroring `updateApiRef`. The dispatch block calls `measureBenchAutosizeRun(viewport, adapterId, autosizeApiRef.current)` when `scriptName === "autosize"`.
 

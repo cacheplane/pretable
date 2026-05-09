@@ -1428,8 +1428,7 @@ export function evaluateH22(runs) {
   }).filter(
     (series) =>
       series[0]?.adapterId !== "pretable" &&
-      (series[0]?.adapterId === "ag-grid" ||
-        series[0]?.adapterId === "mui") &&
+      (series[0]?.adapterId === "ag-grid" || series[0]?.adapterId === "mui") &&
       medianMetric(series, "interaction_latency_ms") !== undefined,
   );
 

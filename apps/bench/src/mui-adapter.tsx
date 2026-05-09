@@ -1,9 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  DataGrid,
-  useGridApiRef,
-  type GridColDef,
-} from "@mui/x-data-grid";
+import { DataGrid, useGridApiRef, type GridColDef } from "@mui/x-data-grid";
 
 import type {
   ScenarioColumn,

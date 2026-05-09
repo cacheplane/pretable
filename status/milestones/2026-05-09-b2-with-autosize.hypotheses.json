@@ -20,15 +20,8 @@
     }
   ],
   "matrix": {
-    "adapters": [
-      "pretable",
-      "ag-grid",
-      "tanstack",
-      "mui"
-    ],
-    "scenarios": [
-      "S2"
-    ],
+    "adapters": ["pretable", "ag-grid", "tanstack", "mui"],
+    "scenarios": ["S2"],
     "scripts": [
       "initial",
       "scroll",
@@ -50,12 +43,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "initial",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [],
         "union": [
@@ -73,12 +61,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "scroll",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -107,12 +90,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "sort",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -150,12 +128,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "filter-text",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -193,12 +166,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "filter-metadata",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -236,12 +204,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "updates",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [],
         "union": [],
@@ -251,16 +214,9 @@
     {
       "scenarioId": "S2",
       "scriptName": "autosize",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
-        "common": [
-          "script: autosize"
-        ],
+        "common": ["script: autosize"],
         "union": [
           "script: autosize",
           "internal telemetry rendered rows: 6",
@@ -277,12 +233,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "select-range-extend",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -322,12 +273,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "keyboard-nav-row",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -367,12 +313,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "select-all",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -412,12 +353,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "scroll-with-format",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -453,12 +389,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "scroll-with-render",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -494,12 +425,7 @@
     {
       "scenarioId": "S2",
       "scriptName": "scroll-with-heavy-render",
-      "adapterIds": [
-        "pretable",
-        "ag-grid",
-        "tanstack",
-        "mui"
-      ],
+      "adapterIds": ["pretable", "ag-grid", "tanstack", "mui"],
       "policyNotes": {
         "common": [
           "contain: none",
@@ -2990,12 +2916,8 @@
           "status": "completed",
           "sampleCount": 3,
           "policyNotes": {
-            "common": [
-              "script: autosize"
-            ],
-            "union": [
-              "script: autosize"
-            ],
+            "common": ["script: autosize"],
+            "union": ["script: autosize"],
             "varying": {}
           },
           "metrics": {

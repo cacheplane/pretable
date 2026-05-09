@@ -363,33 +363,33 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                     metrics: autosizeRun.metrics,
                   })
                 : interactionRun
-                ? createBenchRunSummary({
-                    request,
-                    status: interactionRun.status,
-                    timestamp,
-                    tracePath,
-                    notes: [
-                      ...interactionRun.notes,
-                      ...createPretableTelemetryNotes(
+                  ? createBenchRunSummary({
+                      request,
+                      status: interactionRun.status,
+                      timestamp,
+                      tracePath,
+                      notes: [
+                        ...interactionRun.notes,
+                        ...createPretableTelemetryNotes(
+                          pretableTelemetryRef.current,
+                        ),
+                      ],
+                      metrics: interactionRun.metrics,
+                    })
+                  : createBenchRunSummary({
+                      request,
+                      status: "completed",
+                      timestamp,
+                      tracePath,
+                      notes: createPretableTelemetryNotes(
                         pretableTelemetryRef.current,
                       ),
-                    ],
-                    metrics: interactionRun.metrics,
-                  })
-                : createBenchRunSummary({
-                    request,
-                    status: "completed",
-                    timestamp,
-                    tracePath,
-                    notes: createPretableTelemetryNotes(
-                      pretableTelemetryRef.current,
-                    ),
-                    metrics: {
-                      mount_ms: performance.now() - startedAt,
-                      first_stable_viewport_ms: performance.now() - startedAt,
-                      dom_nodes_peak: domNodesPeak,
-                    },
-                  });
+                      metrics: {
+                        mount_ms: performance.now() - startedAt,
+                        first_stable_viewport_ms: performance.now() - startedAt,
+                        dom_nodes_peak: domNodesPeak,
+                      },
+                    });
 
       setResult(nextResult);
       publishBenchResult(nextResult);

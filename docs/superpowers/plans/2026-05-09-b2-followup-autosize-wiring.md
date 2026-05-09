@@ -72,7 +72,10 @@ export async function measureBenchAutosizeRun(
   if (!autosize) {
     return {
       status: "partial",
-      notes: [`script: autosize`, `no autosize callback registered for ${adapterId}`],
+      notes: [
+        `script: autosize`,
+        `no autosize callback registered for ${adapterId}`,
+      ],
       metrics: {},
     };
   }
