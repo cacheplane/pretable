@@ -20,10 +20,10 @@ This memo tightens that slice only. It does not evaluate other scenarios, other 
 
 ## High-repeat data
 
-| Adapter | n | mean p95 (ms) | sd (ms) | min | median | max |
-|---|---:|---:|---:|---:|---:|---:|
-| pretable | 20 | 9.07 | 0.20 | 8.70 | 9.10 | 9.40 |
-| mui | 20 | 9.14 | 0.19 | 8.60 | 9.15 | 9.30 |
+| Adapter  |   n | mean p95 (ms) | sd (ms) |  min | median |  max |
+| -------- | --: | ------------: | ------: | ---: | -----: | ---: |
+| pretable |  20 |          9.07 |    0.20 | 8.70 |   9.10 | 9.40 |
+| mui      |  20 |          9.14 |    0.19 | 8.60 |   9.15 | 9.30 |
 
 Source: `status/milestones/2026-05-09-perf-diag-high-repeat.scroll.json`.
 
