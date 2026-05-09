@@ -253,3 +253,58 @@
 - H21 heavy render scroll p95: 9.3ms ≤ 20ms ✓
 - H1 (existing scroll wedge) directional, no regression on the same runset.
 - Committed milestone artifact: `status/milestones/2026-05-07-bench-slab1-selection-nav-cell-renderers.hypotheses.json`.
+
+## 2026-05-08
+
+### Tier 1 B2: Comparative bench against real third-party grids
+
+- Replaced the three identical `BaselineAdapter` stubs (`gridalpha`, `gridbeta`, `gridgamma`) with real adapters: AG Grid Community v33 (`themeQuartz`, `applyTransaction`, sortable+filterable+resizable defaults), TanStack Table v8 + TanStack Virtual v3 (`getCoreRowModel`/`getSortedRowModel`/`getFilteredRowModel` + virtualized rows), and MUI X DataGrid Community v7 (`@mui/x-data-grid` defaults). Shipped as four sequential PRs (#120 ag-grid, #121 mui, #122 tanstack, B2 Phase 4 = this runset).
+- `BenchAdapterId` renamed everywhere outside frozen historical runsets: `pretable | ag-grid | tanstack | mui`.
+- New comparator deps land in `apps/bench` only — `@pretable/*` public surface unchanged. `pnpm why` confirms zero leakage into `core`/`react`/`ui`/`stream-adapter`.
+- Comparative S2/hypothesis/Chromium runset committed at `status/milestones/2026-05-08-b2-comparative-bench.hypotheses.json` (12 scripts × 4 adapters × 3 repeats; ~4 min wall-clock thanks to fast unsupported fail-fast). Per-adapter scroll medians extracted to `status/milestones/2026-05-08-b2-scroll-summary.json` for the website page renderer.
+
+### H1 flipped from "satisfied" (against stubs) to "failing" (against real grids)
+
+- Prior H1 satisfied claim was anchored on the gridalpha stub at 66.7ms / 152px row-height clip — i.e., a deliberately broken baseline.
+- Real evidence (S2/hypothesis/Chromium, 3 repeats, frame p95 medians):
+  - **MUI X DataGrid Community: 8.7ms** / row-height error 1px / 0 blank gaps / 0 anchor shift — passes all H1 quality sub-criteria and is 11% _faster_ than pretable.
+  - **pretable: 9.7ms** / row-height error 1px / 0 blank gaps / 0 anchor shift — passes all quality sub-criteria.
+  - **AG Grid Community: 16.7ms** / row-height error 2px / 1 blank gap — fails quality on row-height-drift and blank-gap.
+  - **TanStack Table v8: 16.7ms** / row-height error 0px / 1 blank gap — fails quality on blank-gap.
+- The 10% parity threshold (pretable within 10% of best full-grid comparator) is not met — pretable is ~11% above MUI's frame p95.
+- We're keeping the failing status. The honest read: pretable's wedge on the scroll script isn't raw frame speed; it's the _combination_ of zero-artifact quality and the surrounding feature surface (headless engine, streaming primitives, theming-as-data, selection/keyboard/cell-renderer hypotheses H16-H21 all satisfied). MUI ties on quality but ships a fundamentally different feature surface and licensing tier.
+- `scripts/bench-matrix.mjs` thresholds are unchanged. Only the website prose at `apps/website/app/bench/page.tsx` was rewritten to match measured deltas.
+
+### Hypothesis status delta (vs 2026-05-07 bench-slab1 milestone)
+
+| H#  | Before    | After        | Note                                                                 |
+| --- | --------- | ------------ | -------------------------------------------------------------------- |
+| H1  | satisfied | **failing**  | Real MUI 11% faster than pretable; comparators got real (see above). |
+| H5  | satisfied | satisfied    | Matrix harness still emits artifacts.                                |
+| H6  | satisfied | satisfied    | Sort interaction (S2/pretable).                                      |
+| H7  | satisfied | satisfied    | Metadata filter (S2/pretable).                                       |
+| H8  | satisfied | satisfied    | Wrapped-text filter (S2/pretable).                                   |
+| H9  | -         | insufficient | S7 not in this matrix.                                               |
+| H10 | -         | insufficient | S7 not in this matrix.                                               |
+| H11 | -         | insufficient | S7 not in this matrix.                                               |
+| H12 | -         | insufficient | S7 not in this matrix.                                               |
+| H13 | -         | insufficient | S5/updates not in this matrix.                                       |
+| H14 | -         | insufficient | S5/updates not in this matrix.                                       |
+| H15 | -         | insufficient | S5/updates not in this matrix.                                       |
+| H16 | satisfied | satisfied    | Selection extend p95 = 10.2ms.                                       |
+| H17 | satisfied | satisfied    | Keyboard nav p95 = 10.1ms.                                           |
+| H18 | satisfied | satisfied    | Select-all latency = 8.7ms.                                          |
+| H19 | satisfied | satisfied    | Format overhead = 0.40ms.                                            |
+| H20 | satisfied | satisfied    | Cheap-render scroll p95 = 10.3ms.                                    |
+| H21 | satisfied | satisfied    | Heavy-render scroll p95 = 9.4ms.                                     |
+
+### Known gaps / follow-ups
+
+- **`autosize` script never wired through the harness pipeline.** `autosize` is in the `BenchScriptName` type union (`packages/bench-runner/src/index.ts`) and the AG Grid adapter has an `autosize` branch in `onGridReady`, but the query-state parser (`apps/bench/src/query-state.ts`) does not accept `autosize` as a valid `script` query param, and the bench-runner's `supportedScripts` allowlist in `validateSupportedP0aRequest` does not include it. No historical runset has autosize evidence; the AG Grid adapter's autosize branch is currently dead code. Wiring autosize end-to-end (query-state allowlist + bench-runner `supportedScripts` + pretable + mui handlers; tanstack returns `unsupported` per spec) is a follow-up PR. Phase 4's matrix run dropped autosize from the script list as a consequence.
+- **Comparative interaction evidence (sort/filter for ag-grid/tanstack/mui).** `validateSupportedP0aRequest` still gates `sort`/`filter-text`/`filter-metadata` to pretable-only, so the matrix renders those as `unsupported` for the new comparators. Real grids implement those operations; a future B-phase sub-project should expose comparative interaction latency.
+- **Comparative streaming evidence (S5/updates).** All four bench adapters now wire `applyTransaction`-style updates, but the matrix run was S2-only. A future runset under S5 with rate-tagged repeats can populate H13/H14/H15 against real comparators.
+- **Webkit/Firefox.** This runset is Chromium-only; cross-browser parity is a separate slice.
+
+### Next checkpoint
+
+- Per the standing backlog (theming architecture, AI integrations, headless docs, clipboard docs, autosize wiring, comparative interaction/streaming), the user picks the next priority.

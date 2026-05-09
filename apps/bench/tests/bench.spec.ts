@@ -37,7 +37,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}&autorun=1`,
   );
 
-  await expect(page.getByText(adapterLabel)).toBeVisible();
+  await expect(page.getByLabel(adapterLabel).first()).toBeVisible();
 
   await page.waitForFunction(() => Boolean(window.__PRETABLE_BENCH_RESULT__));
 
