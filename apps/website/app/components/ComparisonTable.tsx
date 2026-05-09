@@ -22,6 +22,13 @@ const NA_MARKER = "n/a";
 //     Same slice for pretable + mui at 20 repeats. Confirms parity (mean
 //     diff −0.065 ms, well inside the 2σ noise floor of 0.40 ms).
 //
+//   status/milestones/2026-05-09-b2-s5-s7-cross-validation.hypotheses.json
+//     S5/updates × {1000, 25000}/sec and S7/scroll × 4 adapters × 3 repeats.
+//     Cross-validates H1 on S7 (satisfied) and surfaces H13/H14/H15 as
+//     directional — AG Grid's native applyTransaction matches pretable on
+//     streaming p95, the 25k/sec envelope, and visible-row drift. The
+//     streaming-uniqueness wedge is package surface, not raw throughput.
+//
 //   status/milestones/2026-05-10-b2-sort-filter-summary.json
 //     S2/hypothesis/Chromium × 3 repeats × 4 adapters × 3 interaction
 //     scripts. Pretable beats AG Grid 3-3.5× and MUI 2× across sort,
@@ -34,9 +41,9 @@ const NA_MARKER = "n/a";
 // The wedge: parity with the best full-grid comparator (MUI) on raw frame
 // p95, with ~1.7× headroom over AG Grid + TanStack, and the only adapter
 // here that combines zero blank gaps + zero anchor shift + ≤1 px row-height
-// fidelity at full-grid feature weight. Streaming rows are absent until a
-// future runset captures comparative S5 evidence — see
-// project_b2_followups.md item 6.
+// fidelity at full-grid feature weight. The streaming row is capability-
+// anchored (not numeric): pretable ships the SSE/partial-JSON/batcher/
+// applyTransaction pipeline; AG Grid users wire that themselves.
 const ROWS: readonly Row[] = [
   {
     metric: "frame p95 (ms) — wrapped scroll",
@@ -103,7 +110,8 @@ const ROWS: readonly Row[] = [
     budget: "—",
   },
   {
-    metric: "purpose-built streaming pipeline",
+    metric:
+      "streaming pipeline (SSE → partial JSON → batcher → applyTransaction)",
     pretable: "yes",
     agGrid: NA_MARKER,
     tanstack: NA_MARKER,

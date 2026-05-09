@@ -19,6 +19,15 @@ it("renders the receipts headline numbers", () => {
   expect(screen.getByText("9ms")).toBeInTheDocument();
 });
 
+it("renders the streaming-pipeline capability anchor (B2 follow-up #7)", () => {
+  render(<ReceiptsBand />);
+  // After S5/S7 cross-validation showed AG Grid ties on raw streaming
+  // numerics, the fourth slot is a capability anchor (the integration
+  // pretable ships, not a throughput number).
+  expect(screen.getByText(/streaming sources/i)).toBeInTheDocument();
+  expect(screen.getByText(/openai/i)).toBeInTheDocument();
+});
+
 it("does not render the positioning cards anymore (moved to CredibilityCards)", () => {
   render(<ReceiptsBand />);
   expect(screen.queryByText(/ai-native/i)).not.toBeInTheDocument();

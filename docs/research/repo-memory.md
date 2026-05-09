@@ -364,6 +364,20 @@ No other hypothesis status changed (S2-dependent ones — H1, H6–H8, H10–H12
 - Editorial homepage refresh (potentially repopulating the deleted streaming row from this evidence) — distinct prose work.
 - Comparative interaction scripts (sort, filter-text, filter-metadata, cell-renderer) on S7 — still pretable-only per the supportedScripts gate; tracked as B2 follow-up #5.
 
+### B2 follow-up #7: streaming wedge reframed as capability-anchored
+
+Direct consequence of follow-up #6's finding. AG Grid Community matches pretable on every measured streaming numeric (frame p95, 25k/sec envelope, visible-row drift), so the homepage can no longer claim a numeric streaming win. The wedge moves to package surface: pretable ships the SSE → partial-JSON → batcher → applyTransaction pipeline as a single import; AG Grid expects you to wire that yourself.
+
+Three editorial edits across `apps/website`:
+
+- **`ComparisonTable.tsx`** — the streaming row was titled `purpose-built streaming pipeline` (vague). Renamed to `streaming pipeline (SSE → partial JSON → batcher → applyTransaction)` to spell the wedge out concretely. Still capability-anchored (`yes / n/a / n/a / n/a`); no numeric streaming row added because the n=3 numerics tie.
+- **`ReceiptsBand.tsx`** — replaced the `25k/s · max sustained update rate` hero stat (no longer pretable-unique) with `OpenAI · Anthropic · SSE · streaming sources, one import`. Added a `compact: true` flag to the `Stat` interface so the longer label renders at a smaller font size, preserving the four-cell grid without overflowing the hero font scale.
+- **`FeatureGrid.tsx`** — Stream-aware card: dropped the "sustained from 100 to 25,000 updates/sec" tail; rewrote the description around the pipeline that ships as one import.
+
+Test added: `ReceiptsBand.test.tsx` regression-guards the new capability anchor (`streaming sources` + `openai`). The `verdictFor` / trail-marker tests are unchanged.
+
+The "Stream-aware" card in FeatureGrid retained its `markerLabel: "Advanced — bring your own SSE"` because that's still accurate — pretable ships the post-SSE pipeline; the SSE source itself is consumer-supplied.
+
 ## 2026-05-10
 
 ### B2 follow-up #5a: cell-renderer scripts opened to comparators
