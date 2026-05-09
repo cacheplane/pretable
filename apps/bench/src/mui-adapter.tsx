@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DataGrid, type GridColDef } from "@mui/x-data-grid";
+import {
+  DataGrid,
+  useGridApiRef,
+  type GridColDef,
+} from "@mui/x-data-grid";
 
 import type {
   ScenarioColumn,
@@ -15,6 +19,12 @@ const ROW_HEIGHT = 48;
 export interface MuiAdapterProps {
   dataset: ScenarioDataset;
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
+  /**
+   * Called once the adapter has a usable autosize entry point. The
+   * supplied callback wraps `apiRef.current.autosizeColumns(...)`,
+   * which returns a Promise on MUI X DataGrid v7+.
+   */
+  onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
   runKey: number;
   scriptName?: string;
 }
@@ -54,12 +64,17 @@ function toColDef(
 export function MuiAdapter({
   dataset,
   onUpdateApiReady,
+  onAutosizeReady,
   runKey,
   scriptName,
 }: MuiAdapterProps) {
+  const apiRef = useGridApiRef();
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
   // eslint-disable-next-line react-hooks/refs -- sync to latest
   onUpdateApiReadyRef.current = onUpdateApiReady;
+  const onAutosizeReadyRef = useRef(onAutosizeReady);
+  // eslint-disable-next-line react-hooks/refs -- sync to latest
+  onAutosizeReadyRef.current = onAutosizeReady;
 
   const [rows, setRows] = useState<ScenarioRow[]>(() => dataset.rows.slice());
 
@@ -92,6 +107,12 @@ export function MuiAdapter({
     // stable via useCallback, and the ref above always reads the latest.
   }, [runKey]);
 
+  useEffect(() => {
+    onAutosizeReadyRef.current?.(async () => {
+      await apiRef.current?.autosizeColumns({ includeOutliers: true });
+    });
+  }, [apiRef, runKey]);
+
   return (
     <section
       aria-label="MUI X DataGrid adapter"
@@ -107,6 +128,7 @@ export function MuiAdapter({
       </header>
       <div key={runKey} style={{ height: VIEWPORT_HEIGHT, minWidth: 720 }}>
         <DataGrid
+          apiRef={apiRef}
           rows={rows}
           columns={columns}
           rowHeight={ROW_HEIGHT}

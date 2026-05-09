@@ -21,6 +21,11 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 export interface AgGridAdapterProps {
   dataset: ScenarioDataset;
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
+  /**
+   * Called once the adapter has a usable autosize entry point. The
+   * supplied callback wraps `gridApi.autoSizeAllColumns(false)`.
+   */
+  onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
   runKey: number;
   scriptName?: string;
 }
@@ -63,15 +68,21 @@ function toColDef(
 export function AgGridAdapter({
   dataset,
   onUpdateApiReady,
+  onAutosizeReady,
   runKey,
   scriptName,
 }: AgGridAdapterProps) {
   const apiRef = useRef<GridApi | null>(null);
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
+  const onAutosizeReadyRef = useRef(onAutosizeReady);
 
   useEffect(() => {
     onUpdateApiReadyRef.current = onUpdateApiReady;
   }, [onUpdateApiReady]);
+
+  useEffect(() => {
+    onAutosizeReadyRef.current = onAutosizeReady;
+  }, [onAutosizeReady]);
 
   const columnDefs = useMemo(
     () => dataset.columns.map((c) => toColDef(c, scriptName)),
@@ -86,10 +97,10 @@ export function AgGridAdapter({
     };
     onUpdateApiReadyRef.current?.(apply);
 
-    if (scriptName === "autosize") {
+    onAutosizeReadyRef.current?.(() => {
       const colIds = event.api.getColumns()?.map((c) => c.getColId()) ?? [];
       event.api.autoSizeColumns(colIds, false);
-    }
+    });
   };
 
   useEffect(() => {

@@ -25,6 +25,12 @@ const OVERSCAN = 4;
 export interface TanstackAdapterProps {
   dataset: ScenarioDataset;
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
+  /**
+   * Accepted for harness uniformity but never invoked: TanStack Table is
+   * headless and exposes no autosize API. The bench-runner returns
+   * `unsupported` for autosize on tanstack before the adapter ever mounts.
+   */
+  onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
   runKey: number;
   scriptName?: string;
 }

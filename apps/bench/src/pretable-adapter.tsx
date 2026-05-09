@@ -96,6 +96,12 @@ export interface PretableAdapterProps {
    * streaming pattern.
    */
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
+  /**
+   * Called once the adapter has a usable autosize entry point. The
+   * supplied callback wraps `grid.autosizeColumns()` so the bench
+   * harness can invoke it on demand for the autosize script.
+   */
+  onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
   runKey: number;
   /**
    * Active bench script name. When this matches a cell-renderer flavor
@@ -125,6 +131,7 @@ export function PretableAdapter({
   onGridReady,
   onTelemetryChange,
   onUpdateApiReady,
+  onAutosizeReady,
   runKey,
   scriptName,
 }: PretableAdapterProps) {
@@ -153,10 +160,16 @@ export function PretableAdapter({
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onUpdateApiReadyRef.current = onUpdateApiReady;
+  const onAutosizeReadyRef = useRef(onAutosizeReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
+  onAutosizeReadyRef.current = onAutosizeReady;
 
   const handleGridReady = useCallback((grid: PretableGrid<ScenarioRow>) => {
     gridRef.current = grid;
     onGridReadyRef.current?.(grid);
+    onAutosizeReadyRef.current?.(() => {
+      grid.autosizeColumns();
+    });
   }, []);
 
   // Wire updates through the stream-adapter batcher (RAF-aligned), the

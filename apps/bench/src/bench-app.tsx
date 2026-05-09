@@ -28,6 +28,7 @@ import {
   createBenchInteractionStateFromTelemetry,
   createPretableTelemetryNotes,
   createBenchRequest,
+  measureBenchAutosizeRun,
   measureBenchInteractionRun,
   measureBenchKeySequenceRun,
   measureBenchScrollRun,
@@ -110,6 +111,19 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const handleUpdateApiReady = useCallback((apply: ApplyBenchUpdates) => {
     updateApiRef.current = apply;
   }, []);
+  /**
+   * Adapter-agnostic autosize entry point. Each adapter calls back with
+   * a closure over its native autosize API (pretable: grid.autosizeColumns;
+   * ag-grid: gridApi.autoSizeColumns; mui: apiRef.autosizeColumns). The
+   * autosize bench script awaits this callback and times to the next paint.
+   */
+  const autosizeApiRef = useRef<(() => Promise<void> | void) | null>(null);
+  const handleAutosizeApiReady = useCallback(
+    (autosize: () => Promise<void> | void) => {
+      autosizeApiRef.current = autosize;
+    },
+    [],
+  );
   const interactionPlan =
     interactionPlanOverride?.search === search
       ? interactionPlanOverride.plan
@@ -152,6 +166,12 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         plan: null,
         search,
       });
+
+      // Clear adapter-published refs before remount so the wait loops below
+      // observe a stale-free state and only resolve on the new adapter's
+      // onReady callbacks.
+      updateApiRef.current = null;
+      autosizeApiRef.current = null;
 
       setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
@@ -239,6 +259,25 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 : null
               : null;
 
+      // Wait up to ~1s for the current adapter to publish its autosize API.
+      // Like onGridReady, autosize callbacks are wired asynchronously after
+      // mount on AG Grid / MUI; without this the very first autosize run
+      // races past readiness.
+      if (scriptName === "autosize" && !autosizeApiRef.current) {
+        for (let i = 0; i < 60 && !autosizeApiRef.current; i++) {
+          await waitForNextAnimationFrame();
+        }
+      }
+
+      const autosizeRun =
+        scriptName === "autosize"
+          ? await measureBenchAutosizeRun(
+              viewportRef.current ?? document.body,
+              query.adapterId,
+              autosizeApiRef.current,
+            )
+          : null;
+
       // Wait up to ~1s for the current adapter to publish its update API.
       // AG Grid in particular fires onGridReady asynchronously a few RAFs
       // after mount, so kicking off the updates script in the very next
@@ -309,7 +348,21 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                   ],
                   metrics: updatesRun.metrics,
                 })
-              : interactionRun
+              : scriptName === "autosize" && autosizeRun
+                ? createBenchRunSummary({
+                    request,
+                    status: autosizeRun.status,
+                    timestamp,
+                    tracePath,
+                    notes: [
+                      ...autosizeRun.notes,
+                      ...createPretableTelemetryNotes(
+                        pretableTelemetryRef.current,
+                      ),
+                    ],
+                    metrics: autosizeRun.metrics,
+                  })
+                : interactionRun
                 ? createBenchRunSummary({
                     request,
                     status: interactionRun.status,
@@ -453,6 +506,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 dataset={dataset}
                 interactionPlan={interactionPlan}
                 key={runKey}
+                onAutosizeReady={handleAutosizeApiReady}
                 onGridReady={(grid) => {
                   pretableGridRef.current = grid;
                 }}
@@ -467,6 +521,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               <AdapterSurface
                 dataset={dataset}
                 key={runKey}
+                onAutosizeReady={handleAutosizeApiReady}
                 onUpdateApiReady={handleUpdateApiReady}
                 runKey={runKey}
                 scriptName={query.scriptName}
