@@ -1,0 +1,3021 @@
+{
+  "runsetId": "2026-05-09t05-13-18-861z",
+  "generatedAt": "2026-05-09T05:18:19.030Z",
+  "adapters": [
+    {
+      "adapterId": "pretable",
+      "adapterFamily": "candidate"
+    },
+    {
+      "adapterId": "ag-grid",
+      "adapterFamily": "full-grid"
+    },
+    {
+      "adapterId": "tanstack",
+      "adapterFamily": "virtualization-primitive"
+    },
+    {
+      "adapterId": "mui",
+      "adapterFamily": "full-grid"
+    }
+  ],
+  "matrix": {
+    "adapters": [
+      "pretable",
+      "ag-grid",
+      "tanstack",
+      "mui"
+    ],
+    "scenarios": [
+      "S2"
+    ],
+    "scripts": [
+      "initial",
+      "scroll",
+      "sort",
+      "filter-text",
+      "filter-metadata",
+      "updates",
+      "autosize",
+      "select-range-extend",
+      "keyboard-nav-row",
+      "select-all",
+      "scroll-with-format",
+      "scroll-with-render",
+      "scroll-with-heavy-render"
+    ],
+    "repeats": 3
+  },
+  "slices": [
+    {
+      "scenarioId": "S2",
+      "scriptName": "initial",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [],
+        "union": [
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "sort",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: sort",
+          "internal telemetry rendered rows: 7",
+          "internal telemetry visible rows: 3",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515693",
+          "internal telemetry viewport range: 0-3",
+          "internal telemetry selected row: S2-row-1775",
+          "internal telemetry focused row: S2-row-1775"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: sort",
+          "internal telemetry rendered rows: 7",
+          "internal telemetry visible rows: 3",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515693",
+          "internal telemetry viewport range: 0-3",
+          "internal telemetry selected row: S2-row-1775",
+          "internal telemetry focused row: S2-row-1775"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "filter-text",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-text",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 86896",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-1501",
+          "internal telemetry focused row: S2-row-1501"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-text",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 86896",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-1501",
+          "internal telemetry focused row: S2-row-1501"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "filter-metadata",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-metadata",
+          "internal telemetry rendered rows: 7",
+          "internal telemetry visible rows: 3",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 103395",
+          "internal telemetry viewport range: 0-3",
+          "internal telemetry selected row: S2-row-1502",
+          "internal telemetry focused row: S2-row-1502"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "interaction mode: filter-metadata",
+          "internal telemetry rendered rows: 7",
+          "internal telemetry visible rows: 3",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 103395",
+          "internal telemetry viewport range: 0-3",
+          "internal telemetry selected row: S2-row-1502",
+          "internal telemetry focused row: S2-row-1502"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "updates",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [],
+        "union": [],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "autosize",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "script: autosize"
+        ],
+        "union": [
+          "script: autosize",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "select-range-extend",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: select-range-extend",
+          "events: 30",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-0",
+          "internal telemetry focused row: S2-row-29"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: select-range-extend",
+          "events: 30",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-0",
+          "internal telemetry focused row: S2-row-29"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "keyboard-nav-row",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: keyboard-nav-row",
+          "events: 60",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-59",
+          "internal telemetry focused row: S2-row-59"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: keyboard-nav-row",
+          "events: 60",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-59",
+          "internal telemetry focused row: S2-row-59"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "select-all",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: select-all",
+          "events: 1",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-0",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "script: select-all",
+          "events: 1",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: S2-row-0",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll-with-format",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll-with-render",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    },
+    {
+      "scenarioId": "S2",
+      "scriptName": "scroll-with-heavy-render",
+      "adapterIds": [
+        "pretable",
+        "ag-grid",
+        "tanstack",
+        "mui"
+      ],
+      "policyNotes": {
+        "common": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "union": [
+          "contain: none",
+          "content visibility: visible",
+          "contain intrinsic size: none",
+          "scroll anchoring: none",
+          "overscroll behavior: contain",
+          "internal telemetry rendered rows: 6",
+          "internal telemetry visible rows: 2",
+          "internal telemetry total rows: 3000",
+          "internal telemetry planned height: 515700",
+          "internal telemetry viewport range: 0-2",
+          "internal telemetry selected row: none",
+          "internal telemetry focused row: none"
+        ],
+        "varying": {}
+      }
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "H1",
+      "status": "satisfied",
+      "summary": "Wrapped-text scrolling delivers zero-artifact quality (row height error ≤ 1px, anchor shift ≤ 16px, no blank gaps, no long tasks) with frame times within 10% of the best measured full-grid comparator. No measured full-grid competitor achieves the same combined quality. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 98,
+            "scroll_viewport_nodes_peak": 93,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 8.699999999999989,
+              "median": 9,
+              "max": 9.300000000000011
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 98,
+              "median": 98,
+              "max": 98
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 93,
+              "median": 93,
+              "max": 93
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "mui",
+          "adapterFamily": "full-grid",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.199999999999989,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 251,
+            "scroll_viewport_nodes_peak": 239,
+            "rendered_rows_peak": 22,
+            "rendered_cells_peak": 115,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 8.699999999999989,
+              "median": 9.199999999999989,
+              "max": 9.300000000000011
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 251,
+              "median": 251,
+              "max": 251
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 239,
+              "median": 239,
+              "max": 239
+            },
+            "rendered_rows_peak": {
+              "min": 22,
+              "median": 22,
+              "max": 22
+            },
+            "rendered_cells_peak": {
+              "min": 115,
+              "median": 115,
+              "max": 115
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "tanstack",
+          "adapterFamily": "virtualization-primitive",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 16.700000000000045,
+            "blank_gap_frames": 1,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 704,
+            "scroll_viewport_nodes_peak": 700,
+            "rendered_rows_peak": 16,
+            "rendered_cells_peak": 640,
+            "row_height_error_p95_px": 0,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 16.700000000000045,
+              "median": 16.700000000000045,
+              "max": 16.800000000000068
+            },
+            "blank_gap_frames": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 704,
+              "median": 704,
+              "max": 704
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 700,
+              "median": 700,
+              "max": 700
+            },
+            "rendered_rows_peak": {
+              "min": 16,
+              "median": 16,
+              "max": 16
+            },
+            "rendered_cells_peak": {
+              "min": 640,
+              "median": 640,
+              "max": 640
+            },
+            "row_height_error_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H6",
+      "status": "satisfied",
+      "summary": "Wrapped-text local sorting stays within the current interaction and settle thresholds while preserving post-sort stability. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: sort",
+              "internal telemetry rendered rows: 7",
+              "internal telemetry visible rows: 3",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515693",
+              "internal telemetry viewport range: 0-3",
+              "internal telemetry selected row: S2-row-1775",
+              "internal telemetry focused row: S2-row-1775"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: sort",
+              "internal telemetry rendered rows: 7",
+              "internal telemetry visible rows: 3",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515693",
+              "internal telemetry viewport range: 0-3",
+              "internal telemetry selected row: S2-row-1775",
+              "internal telemetry focused row: S2-row-1775"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 16.599999999999966,
+            "settle_duration_ms": 16.100000000000023,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 1,
+            "result_row_count": 3000,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 70,
+            "rendered_rows_peak": 7,
+            "rendered_cells_peak": 42
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 16.5,
+              "median": 16.599999999999966,
+              "max": 16.69999999999999
+            },
+            "settle_duration_ms": {
+              "min": 15.800000000000011,
+              "median": 16.100000000000023,
+              "max": 16.899999999999977
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "result_row_count": {
+              "min": 3000,
+              "median": 3000,
+              "max": 3000
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 70,
+              "median": 70,
+              "max": 70
+            },
+            "rendered_rows_peak": {
+              "min": 7,
+              "median": 7,
+              "max": 7
+            },
+            "rendered_cells_peak": {
+              "min": 42,
+              "median": 42,
+              "max": 42
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H7",
+      "status": "satisfied",
+      "summary": "Metadata filtering stays within the current interaction and settle thresholds while reducing the row set without post-filter instability. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-metadata",
+              "internal telemetry rendered rows: 7",
+              "internal telemetry visible rows: 3",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 103395",
+              "internal telemetry viewport range: 0-3",
+              "internal telemetry selected row: S2-row-1502",
+              "internal telemetry focused row: S2-row-1502"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-metadata",
+              "internal telemetry rendered rows: 7",
+              "internal telemetry visible rows: 3",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 103395",
+              "internal telemetry viewport range: 0-3",
+              "internal telemetry selected row: S2-row-1502",
+              "internal telemetry focused row: S2-row-1502"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 16.69999999999999,
+            "settle_duration_ms": 16.599999999999966,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 1,
+            "result_row_count": 750,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 70,
+            "rendered_rows_peak": 7,
+            "rendered_cells_peak": 42
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 16.600000000000023,
+              "median": 16.69999999999999,
+              "max": 16.80000000000001
+            },
+            "settle_duration_ms": {
+              "min": 15.800000000000011,
+              "median": 16.599999999999966,
+              "max": 16.69999999999999
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "result_row_count": {
+              "min": 750,
+              "median": 750,
+              "max": 750
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 70,
+              "median": 70,
+              "max": 70
+            },
+            "rendered_rows_peak": {
+              "min": 7,
+              "median": 7,
+              "max": 7
+            },
+            "rendered_cells_peak": {
+              "min": 42,
+              "median": 42,
+              "max": 42
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H8",
+      "status": "satisfied",
+      "summary": "Wrapped-text primary-column filtering stays within the current interaction and settle thresholds while preserving post-filter stability. Evidence is based on current repeated-run medians.",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-text",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 86896",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-1501",
+              "internal telemetry focused row: S2-row-1501"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "interaction mode: filter-text",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 86896",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-1501",
+              "internal telemetry focused row: S2-row-1501"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 16.69999999999999,
+            "settle_duration_ms": 16.599999999999966,
+            "post_interaction_blank_gap_frames": 0,
+            "post_interaction_anchor_shift_px": 0,
+            "post_interaction_row_height_error_p95_px": 1,
+            "result_row_count": 500,
+            "selected_row_preserved": 1,
+            "focused_row_preserved": 1,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 16.5,
+              "median": 16.69999999999999,
+              "max": 25
+            },
+            "settle_duration_ms": {
+              "min": 16.5,
+              "median": 16.599999999999966,
+              "max": 16.700000000000045
+            },
+            "post_interaction_blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "post_interaction_row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "result_row_count": {
+              "min": 500,
+              "median": 500,
+              "max": 500
+            },
+            "selected_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "focused_row_preserved": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H5",
+      "status": "satisfied",
+      "summary": "The matrix run writes summary JSON, trace artifacts, and a machine-readable hypothesis report from one command.",
+      "evidence": [
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-initial-2026-05-09t05-13-34-110z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-09t05-13-35-936z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-09t05-13-38-052z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-09t05-13-39-878z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-09t05-13-41-714z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-updates-2026-05-09t05-13-43-539z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-autosize-2026-05-09t05-13-45-311z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-range-extend-2026-05-09t05-13-47-176z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-13-49-323z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-all-2026-05-09t05-13-51-631z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-format-2026-05-09t05-13-53-431z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-render-2026-05-09t05-13-55-539z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-13-57-642z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-initial-2026-05-09t05-13-59-754z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-09t05-14-01-563z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-09t05-14-03-666z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-09t05-14-05-513z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-09t05-14-07-321z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-updates-2026-05-09t05-14-09-142z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-autosize-2026-05-09t05-14-10-898z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-range-extend-2026-05-09t05-14-12-691z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-14-14-754z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-all-2026-05-09t05-14-17-076z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-format-2026-05-09t05-14-18-907z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-render-2026-05-09t05-14-21-029z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-14-23-152z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-initial-2026-05-09t05-14-25-255z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-2026-05-09t05-14-27-075z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-sort-2026-05-09t05-14-29-177z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-text-2026-05-09t05-14-30-966z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-filter-metadata-2026-05-09t05-14-32-802z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-updates-2026-05-09t05-14-34-614z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-autosize-2026-05-09t05-14-36-409z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-range-extend-2026-05-09t05-14-38-235z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-14-40-292z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-select-all-2026-05-09t05-14-42-606z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-format-2026-05-09t05-14-44-406z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-render-2026-05-09t05-14-46-517z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-pretable-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-14-48-643z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-initial-2026-05-09t05-14-50-711z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-2026-05-09t05-14-52-504z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-sort-2026-05-09t05-14-54-678z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-filter-text-2026-05-09t05-14-56-425z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-filter-metadata-2026-05-09t05-14-58-179z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-updates-2026-05-09t05-14-59-915z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-autosize-2026-05-09t05-15-01-720z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-select-range-extend-2026-05-09t05-15-03-585z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-15-05-370z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-select-all-2026-05-09t05-15-07-145z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-format-2026-05-09t05-15-08-912z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-render-2026-05-09t05-15-10-700z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-15-12-490z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-initial-2026-05-09t05-15-14-257z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-2026-05-09t05-15-16-064z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-sort-2026-05-09t05-15-18-264z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-filter-text-2026-05-09t05-15-19-997z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-filter-metadata-2026-05-09t05-15-21-735z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-updates-2026-05-09t05-15-23-513z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-autosize-2026-05-09t05-15-25-293z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-select-range-extend-2026-05-09t05-15-27-118z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-15-28-901z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-select-all-2026-05-09t05-15-30-682z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-format-2026-05-09t05-15-32-475z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-render-2026-05-09t05-15-34-245z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-15-36-007z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-initial-2026-05-09t05-15-37-778z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-2026-05-09t05-15-39-571z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-sort-2026-05-09t05-15-41-898z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-filter-text-2026-05-09t05-15-43-679z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-filter-metadata-2026-05-09t05-15-45-452z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-updates-2026-05-09t05-15-47-211z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-autosize-2026-05-09t05-15-49-023z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-select-range-extend-2026-05-09t05-15-50-861z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-15-52-635z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-select-all-2026-05-09t05-15-54-406z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-format-2026-05-09t05-15-56-163z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-render-2026-05-09t05-15-57-908z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-ag-grid-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-15-59-694z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-initial-2026-05-09t05-16-01-477z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-2026-05-09t05-16-03-248z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-sort-2026-05-09t05-16-05-418z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-filter-text-2026-05-09t05-16-07-139z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-filter-metadata-2026-05-09t05-16-08-847z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-updates-2026-05-09t05-16-10-571z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-autosize-2026-05-09t05-16-12-305z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-select-range-extend-2026-05-09t05-16-14-062z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-16-15-861z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-select-all-2026-05-09t05-16-17-622z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-format-2026-05-09t05-16-19-392z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-render-2026-05-09t05-16-21-137z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-16-22-933z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-initial-2026-05-09t05-16-24-702z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-2026-05-09t05-16-26-492z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-sort-2026-05-09t05-16-28-710z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-filter-text-2026-05-09t05-16-30-480z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-filter-metadata-2026-05-09t05-16-32-224z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-updates-2026-05-09t05-16-33-959z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-autosize-2026-05-09t05-16-35-692z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-select-range-extend-2026-05-09t05-16-37-418z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-16-39-179z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-select-all-2026-05-09t05-16-40-922z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-format-2026-05-09t05-16-42-690z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-render-2026-05-09t05-16-44-464z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-16-46-260z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-initial-2026-05-09t05-16-48-039z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-2026-05-09t05-16-49-880z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-sort-2026-05-09t05-16-52-081z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-filter-text-2026-05-09t05-16-53-832z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-filter-metadata-2026-05-09t05-16-55-573z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-updates-2026-05-09t05-16-57-322z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-autosize-2026-05-09t05-16-59-092z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-select-range-extend-2026-05-09t05-17-00-848z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-17-02-565z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-select-all-2026-05-09t05-17-04-290z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-format-2026-05-09t05-17-06-018z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-render-2026-05-09t05-17-07-736z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-tanstack-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-17-09-466z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-initial-2026-05-09t05-17-11-211z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-2026-05-09t05-17-12-967z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-sort-2026-05-09t05-17-15-065z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-filter-text-2026-05-09t05-17-16-833z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-filter-metadata-2026-05-09t05-17-18-596z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-updates-2026-05-09t05-17-20-374z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-autosize-2026-05-09t05-17-22-139z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-select-range-extend-2026-05-09t05-17-23-924z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-17-25-655z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-select-all-2026-05-09t05-17-27-390z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-format-2026-05-09t05-17-29-134z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-render-2026-05-09t05-17-30-899z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 0,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-17-32-662z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-initial-2026-05-09t05-17-34-409z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-2026-05-09t05-17-36-199z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-sort-2026-05-09t05-17-38-318z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-filter-text-2026-05-09t05-17-40-076z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-filter-metadata-2026-05-09t05-17-41-858z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-updates-2026-05-09t05-17-43-618z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-autosize-2026-05-09t05-17-45-391z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-select-range-extend-2026-05-09t05-17-47-193z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-17-48-931z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-select-all-2026-05-09t05-17-50-680z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-format-2026-05-09t05-17-52-420z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-render-2026-05-09t05-17-54-146z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 1,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-17-55-861z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "initial",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-initial-2026-05-09t05-17-57-583z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-2026-05-09t05-17-59-365z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "sort",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-sort-2026-05-09t05-18-01-460z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-text",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-filter-text-2026-05-09t05-18-03-189z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "filter-metadata",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-filter-metadata-2026-05-09t05-18-04-915z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "updates",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-updates-2026-05-09t05-18-06-637z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-autosize-2026-05-09t05-18-08-362z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-select-range-extend-2026-05-09t05-18-10-139z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-keyboard-nav-row-2026-05-09t05-18-11-866z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-select-all-2026-05-09t05-18-13-635z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-format-2026-05-09t05-18-15-408z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-render-2026-05-09t05-18-17-141z.summary.json"
+        },
+        {
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "repeatIndex": 2,
+          "summaryPath": "status/chromium-mui-default-s2-hypothesis-scroll-with-heavy-render-2026-05-09t05-18-18-867z.summary.json"
+        }
+      ]
+    },
+    {
+      "id": "H9",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 scroll run, so composite scroll quality cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H10",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 sort run, so local sort interaction proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H11",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 metadata-filter run, so metadata filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H12",
+      "status": "insufficient",
+      "summary": "Missing a completed S7 text-filter run, so wrapped-text filter proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H13",
+      "status": "insufficient",
+      "summary": "Missing a completed S5 updates run, so streaming update frame budget proof is not available yet.",
+      "evidence": []
+    },
+    {
+      "id": "H14",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so the streaming operating envelope cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H15",
+      "status": "insufficient",
+      "summary": "Missing rate-tagged S5 updates runs for pretable, so streaming row stability cannot be evaluated yet.",
+      "evidence": []
+    },
+    {
+      "id": "H16",
+      "status": "satisfied",
+      "summary": "Selection extend p95 is 10.099999997764826ms (≤ 16ms single-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "select-range-extend",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: select-range-extend",
+              "events: 30",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-0",
+              "internal telemetry focused row: S2-row-29"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: select-range-extend",
+              "events: 30",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-0",
+              "internal telemetry focused row: S2-row-29"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 10.099999997764826,
+            "settle_duration_ms": 41.69999999925494,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 8.599999997764826,
+              "median": 10.099999997764826,
+              "max": 10.199999999254942
+            },
+            "settle_duration_ms": {
+              "min": 41.30000000074506,
+              "median": 41.69999999925494,
+              "max": 41.69999999925494
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H17",
+      "status": "satisfied",
+      "summary": "Keyboard nav p95 is 8.900000002235174ms (≤ 16ms single-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "keyboard-nav-row",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: keyboard-nav-row",
+              "events: 60",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-59",
+              "internal telemetry focused row: S2-row-59"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: keyboard-nav-row",
+              "events: 60",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-59",
+              "internal telemetry focused row: S2-row-59"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 8.900000002235174,
+            "settle_duration_ms": 41.600000001490116,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 8.800000000745058,
+              "median": 8.900000002235174,
+              "max": 9.300000000745058
+            },
+            "settle_duration_ms": {
+              "min": 40.599999997764826,
+              "median": 41.600000001490116,
+              "max": 42.599999997764826
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H18",
+      "status": "satisfied",
+      "summary": "Select-all latency is 9.900000002235174ms (≤ 33ms two-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "select-all",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: select-all",
+              "events: 1",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-0",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "script: select-all",
+              "events: 1",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: S2-row-0",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 9.900000002235174,
+            "settle_duration_ms": 38,
+            "dom_nodes_peak": 63,
+            "rendered_rows_peak": 6,
+            "rendered_cells_peak": 36
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 9.100000001490116,
+              "median": 9.900000002235174,
+              "max": 10.199999999254942
+            },
+            "settle_duration_ms": {
+              "min": 36.69999999925494,
+              "median": 38,
+              "max": 41
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            },
+            "rendered_rows_peak": {
+              "min": 6,
+              "median": 6,
+              "max": 6
+            },
+            "rendered_cells_peak": {
+              "min": 36,
+              "median": 36,
+              "max": 36
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H19",
+      "status": "satisfied",
+      "summary": "Format overhead is 0.10ms (≤ 2ms; format 9.099999999999966ms, baseline 9ms).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-format",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.099999999999966,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 98,
+            "scroll_viewport_nodes_peak": 93,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9,
+              "median": 9.099999999999966,
+              "max": 9.400000000000034
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 98,
+              "median": 98,
+              "max": 98
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 93,
+              "median": 93,
+              "max": 93
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        },
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 98,
+            "scroll_viewport_nodes_peak": 93,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 8.699999999999989,
+              "median": 9,
+              "max": 9.300000000000011
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 98,
+              "median": 98,
+              "max": 98
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 93,
+              "median": 93,
+              "max": 93
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H20",
+      "status": "satisfied",
+      "summary": "Cheap render scroll p95 is 8.799999999999955ms (≤ 16ms single-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-render",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 8.799999999999955,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 164,
+            "scroll_viewport_nodes_peak": 159,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 8.599999999999966,
+              "median": 8.799999999999955,
+              "max": 9.300000000000011
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 164,
+              "median": 164,
+              "max": 164
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 159,
+              "median": 159,
+              "max": 159
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H21",
+      "status": "satisfied",
+      "summary": "Heavy render scroll p95 is 9.399999999999977ms (≤ 20ms; ≤ 25% above single-frame budget).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "scroll-with-heavy-render",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "contain: none",
+              "content visibility: visible",
+              "contain intrinsic size: none",
+              "scroll anchoring: none",
+              "overscroll behavior: contain",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "scroll_frame_p95_ms": 9.399999999999977,
+            "blank_gap_frames": 0,
+            "long_tasks_count": 0,
+            "long_tasks_ms": 0,
+            "dom_nodes_peak": 296,
+            "scroll_viewport_nodes_peak": 291,
+            "rendered_rows_peak": 11,
+            "rendered_cells_peak": 66,
+            "row_height_error_p95_px": 1,
+            "scroll_anchor_shift_px": 0,
+            "scroll_anchor_shift_forward_p95_px": 0,
+            "scroll_anchor_shift_backward_p95_px": 0
+          },
+          "metricSummary": {
+            "scroll_frame_p95_ms": {
+              "min": 9.300000000000011,
+              "median": 9.399999999999977,
+              "max": 9.399999999999977
+            },
+            "blank_gap_frames": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_count": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "long_tasks_ms": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "dom_nodes_peak": {
+              "min": 296,
+              "median": 296,
+              "max": 296
+            },
+            "scroll_viewport_nodes_peak": {
+              "min": 291,
+              "median": 291,
+              "max": 291
+            },
+            "rendered_rows_peak": {
+              "min": 11,
+              "median": 11,
+              "max": 11
+            },
+            "rendered_cells_peak": {
+              "min": 66,
+              "median": 66,
+              "max": 66
+            },
+            "row_height_error_p95_px": {
+              "min": 1,
+              "median": 1,
+              "max": 1
+            },
+            "scroll_anchor_shift_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_forward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            },
+            "scroll_anchor_shift_backward_p95_px": {
+              "min": 0,
+              "median": 0,
+              "max": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "H22",
+      "status": "satisfied",
+      "summary": "pretable autosize completes within the single-frame budget (5.300000000745058ms ≤ 16ms) and within 10% of the best comparator (mui: 11ms; ratio = 0.482).",
+      "evidence": [
+        {
+          "adapterId": "pretable",
+          "adapterFamily": "candidate",
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "script: autosize",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "union": [
+              "script: autosize",
+              "internal telemetry rendered rows: 6",
+              "internal telemetry visible rows: 2",
+              "internal telemetry total rows: 3000",
+              "internal telemetry planned height: 515700",
+              "internal telemetry viewport range: 0-2",
+              "internal telemetry selected row: none",
+              "internal telemetry focused row: none"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 5.300000000745058,
+            "dom_nodes_peak": 63
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 4,
+              "median": 5.300000000745058,
+              "max": 11.800000000745058
+            },
+            "dom_nodes_peak": {
+              "min": 63,
+              "median": 63,
+              "max": 63
+            }
+          }
+        },
+        {
+          "adapterId": "mui",
+          "adapterFamily": "full-grid",
+          "scenarioId": "S2",
+          "scriptName": "autosize",
+          "status": "completed",
+          "sampleCount": 3,
+          "policyNotes": {
+            "common": [
+              "script: autosize"
+            ],
+            "union": [
+              "script: autosize"
+            ],
+            "varying": {}
+          },
+          "metrics": {
+            "interaction_latency_ms": 11,
+            "dom_nodes_peak": 108
+          },
+          "metricSummary": {
+            "interaction_latency_ms": {
+              "min": 9.699999999254942,
+              "median": 11,
+              "max": 11.199999999254942
+            },
+            "dom_nodes_peak": {
+              "min": 108,
+              "median": 108,
+              "max": 108
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
