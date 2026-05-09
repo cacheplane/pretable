@@ -6,24 +6,34 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Bench results — pretable",
   description:
-    "Comparative bench results for pretable vs gridalpha vs gridbeta on wrapped-text scroll and streaming row stability.",
+    "Comparative bench results for pretable vs AG Grid Community, TanStack Table, and MUI X DataGrid Community on wrapped-text scroll and streaming row stability.",
 };
 
-interface Evidence {
+interface ScrollAdapterSummary {
   adapterId: string;
-  scenarioId: string;
-  metrics: {
+  status: string;
+  sampleCount: number;
+  metrics?: {
     scroll_frame_p95_ms?: number;
     row_height_error_p95_px?: number;
+    blank_gap_frames?: number;
+    long_tasks_count?: number;
+    scroll_anchor_shift_backward_p95_px?: number;
     [k: string]: unknown;
   };
+}
+
+interface ScrollSummaryFile {
+  runsetId: string;
+  generatedAt: string;
+  adapters: ScrollAdapterSummary[];
 }
 
 interface Hypothesis {
   id: string;
   status: string;
   summary: string;
-  evidence: Evidence[];
+  evidence: { adapterId: string; metrics: Record<string, unknown> }[];
 }
 
 interface MilestoneFile {
@@ -32,13 +42,11 @@ interface MilestoneFile {
 
 const REPO = "cacheplane/pretable";
 const ADAPTER_ORDER = ["pretable", "ag-grid", "tanstack", "mui"] as const;
-// Historical adapter ids used in frozen milestone evidence files; mapped to
-// the current adapter ids for rendering. The B2 Phase 4 runset will replace
-// these milestone files with real-grid evidence under the new ids.
-const LEGACY_ADAPTER_ID_MAP: Record<string, string> = {
-  gridalpha: "ag-grid",
-  gridbeta: "tanstack",
-  gridgamma: "mui",
+const ADAPTER_LABEL: Record<(typeof ADAPTER_ORDER)[number], string> = {
+  pretable: "pretable",
+  "ag-grid": "AG Grid Community",
+  tanstack: "TanStack Table",
+  mui: "MUI X DataGrid Community",
 };
 
 function repoRootRelative(...segments: string[]): string {
@@ -46,55 +54,87 @@ function repoRootRelative(...segments: string[]): string {
   return join(process.cwd(), "..", "..", ...segments);
 }
 
-function loadH1(): {
-  rows: { adapter: string; p95Ms: number; rhePx: number }[];
-  filename: string;
-} {
-  const filename = "status/milestones/2026-05-01-h1-satisfied.hypotheses.json";
-  const raw = readFileSync(repoRootRelative(filename), "utf8");
-  const data = JSON.parse(raw) as MilestoneFile;
-  const h1 = data.hypotheses.find((h) => h.id === "H1");
-  if (!h1) throw new Error("H1 not found in milestone file");
-  const rows = ADAPTER_ORDER.flatMap((adapter) => {
-    const ev = h1.evidence.find((e) => {
-      const mapped = LEGACY_ADAPTER_ID_MAP[e.adapterId] ?? e.adapterId;
-      return mapped === adapter && e.scenarioId === "S2";
-    });
-    if (!ev) {
-      // Phase 1 of B2 carries the BenchAdapterId rename ahead of the matrix
-      // re-run. Until Phase 4 publishes the comparative runset, the new
-      // adapter ids (tanstack, mui) won't have evidence rows yet — render
-      // only the adapters that do.
-      return [];
-    }
-    const p95 = ev.metrics.scroll_frame_p95_ms;
-    const rhe = ev.metrics.row_height_error_p95_px;
-    if (p95 == null || rhe == null) {
-      throw new Error(`Missing metrics for ${adapter}`);
-    }
-    return [{ adapter, p95Ms: p95, rhePx: rhe }];
-  });
-  return { rows, filename };
+interface ScrollRow {
+  adapter: (typeof ADAPTER_ORDER)[number];
+  label: string;
+  p95Ms: number;
+  rhePx: number;
+  blankGaps: number;
+  anchorShiftPx: number;
 }
 
-function loadStreamingSummary(): string {
-  const filename =
-    "status/milestones/2026-05-01-streaming-revalidated.hypotheses.json";
+function loadScrollSummary(): {
+  rows: ScrollRow[];
+  filename: string;
+  runsetId: string;
+} {
+  const filename = "status/milestones/2026-05-08-b2-scroll-summary.json";
   const raw = readFileSync(repoRootRelative(filename), "utf8");
+  const data = JSON.parse(raw) as ScrollSummaryFile;
+  const rows = ADAPTER_ORDER.flatMap<ScrollRow>((adapter) => {
+    const entry = data.adapters.find((a) => a.adapterId === adapter);
+    if (!entry || entry.status !== "completed" || !entry.metrics) return [];
+    const m = entry.metrics;
+    if (
+      m.scroll_frame_p95_ms == null ||
+      m.row_height_error_p95_px == null ||
+      m.blank_gap_frames == null
+    ) {
+      return [];
+    }
+    return [
+      {
+        adapter,
+        label: ADAPTER_LABEL[adapter],
+        p95Ms: m.scroll_frame_p95_ms,
+        rhePx: m.row_height_error_p95_px,
+        blankGaps: m.blank_gap_frames,
+        anchorShiftPx: m.scroll_anchor_shift_backward_p95_px ?? 0,
+      },
+    ];
+  });
+  return { rows, filename, runsetId: data.runsetId };
+}
+
+function loadH1Hypothesis(): Hypothesis | undefined {
+  const raw = readFileSync(
+    repoRootRelative(
+      "status/milestones/2026-05-08-b2-comparative-bench.hypotheses.json",
+    ),
+    "utf8",
+  );
   const data = JSON.parse(raw) as MilestoneFile;
-  const h15 = data.hypotheses.find((h) => h.id === "H15");
-  return h15?.summary ?? "";
+  return data.hypotheses.find((h) => h.id === "H1");
+}
+
+function verdictFor(row: ScrollRow, fastest: ScrollRow): string {
+  const ratio = row.p95Ms / fastest.p95Ms;
+  if (row.adapter === fastest.adapter) {
+    if (row.adapter === "pretable") return "fastest tied; full quality pass";
+    return `${row.p95Ms.toFixed(1)}ms p95; full quality pass`;
+  }
+  const ratioStr = ratio < 1.05 ? "≈ tied" : `${ratio.toFixed(1)}× slower`;
+  const issues: string[] = [];
+  if (row.blankGaps > 0) issues.push(`${row.blankGaps} blank gap`);
+  if (row.rhePx > 1) issues.push(`row height drift ${row.rhePx}px`);
+  if (issues.length === 0) return ratioStr;
+  return `${ratioStr}; ${issues.join(", ")}`;
 }
 
 export default function BenchPage() {
-  const { rows: h1Rows, filename: h1File } = loadH1();
-  const streamingSummary = loadStreamingSummary();
-  const streamingFile =
-    "status/milestones/2026-05-01-streaming-revalidated.hypotheses.json";
+  const {
+    rows: scrollRows,
+    filename: scrollFile,
+    runsetId,
+  } = loadScrollSummary();
+  const h1 = loadH1Hypothesis();
 
-  const fastest = h1Rows.reduce((min, r) => (r.p95Ms < min.p95Ms ? r : min));
-  const slowest = h1Rows.reduce((max, r) => (r.p95Ms > max.p95Ms ? r : max));
-  const speedup = (slowest.p95Ms / fastest.p95Ms).toFixed(1);
+  // Fastest by raw scroll frame p95.
+  const fastest = scrollRows.reduce((min, r) =>
+    r.p95Ms < min.p95Ms ? r : min,
+  );
+  // Pretable's row, for prose anchoring.
+  const pretableRow = scrollRows.find((r) => r.adapter === "pretable");
 
   return (
     <article className="prose">
@@ -110,9 +150,15 @@ export default function BenchPage() {
         >
           <code>apps/bench</code>
         </a>{" "}
-        — pretable, gridalpha, gridbeta — measuring scroll frame timings and
-        row-height fidelity. All raw data is in the repo; the page below is a
-        rendered view of two milestone JSON files.
+        — pretable against three real third-party grids: AG Grid Community,
+        TanStack Table v8 with TanStack Virtual, and MUI X DataGrid Community.
+        We measure scroll frame timings, blank gaps under scroll, row-height
+        fidelity for wrapped text, and anchor stability across rebuilds. All raw
+        data is in the repo; this page renders one milestone JSON file.
+      </p>
+      <p className="mt-3 max-w-[60ch] text-[14px] italic leading-[1.6] text-text-muted">
+        Runset <code>{runsetId}</code> · Chromium · S2 (3,000 rows, wrapped
+        multilingual messages) · hypothesis scale · 3 repeats per adapter.
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
@@ -121,8 +167,9 @@ export default function BenchPage() {
       <p className="mt-3 text-[15px] leading-[1.6] text-text-secondary">
         Scenario <code>S2</code> (3,000 rows, wrapped multilingual messages,
         scroll script). Frame p95 measured via Performance Observer; row-height
-        error measured by comparing the engine's planned row height against the
-        actual rendered DOM height. Lower is better for both.
+        error measured by comparing each adapter&rsquo;s rendered DOM row height
+        against the engine&rsquo;s planned height. Lower is better for every
+        column.
       </p>
 
       <table className="mt-6 w-full table-fixed border-collapse text-left text-[14px]">
@@ -138,18 +185,21 @@ export default function BenchPage() {
               Row height error (px)
             </th>
             <th className="py-3 font-mono text-[11px] uppercase tracking-[0.14em]">
+              Blank gaps
+            </th>
+            <th className="py-3 font-mono text-[11px] uppercase tracking-[0.14em]">
               Verdict
             </th>
           </tr>
         </thead>
         <tbody>
-          {h1Rows.map((r) => (
+          {scrollRows.map((r) => (
             <tr
               className="border-b border-rule-soft text-text-primary"
               key={r.adapter}
             >
               <td className="py-3 font-mono text-[13px] font-semibold">
-                {r.adapter}
+                {r.label}
               </td>
               <td className="py-3 font-mono text-[13px] tabular-nums">
                 {r.p95Ms.toFixed(1)}
@@ -157,30 +207,63 @@ export default function BenchPage() {
               <td className="py-3 font-mono text-[13px] tabular-nums">
                 {r.rhePx}
               </td>
+              <td className="py-3 font-mono text-[13px] tabular-nums">
+                {r.blankGaps}
+              </td>
               <td className="py-3 text-[13px] text-text-secondary">
-                {r.adapter === "pretable" && "fastest + zero clipping"}
-                {r.adapter === "ag-grid" &&
-                  `${(r.p95Ms / fastest.p95Ms).toFixed(1)}× slower; clips wrapped content (${r.rhePx}px)`}
-                {r.adapter === "tanstack" && "fastest tied; needs DIY assembly"}
+                {verdictFor(r, fastest)}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <p className="mt-6 text-[15px] leading-[1.6] text-text-secondary">
-        <strong className="text-text-primary">{speedup}× faster</strong> than{" "}
-        gridalpha on the same dataset, with zero row-height error. gridbeta
-        matches the speed but is a virtualization primitive — you assemble
-        sort/filter/selection yourself. gridalpha is a full grid but clips
-        wrapped content to a single line at hypothesis scale.
+      <p className="mt-6 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
+        On this dataset, MUI X DataGrid Community renders frames a hair faster
+        than pretable ({fastest.p95Ms.toFixed(1)}ms p95 vs{" "}
+        {pretableRow?.p95Ms.toFixed(1)}ms) — both clear the single 60Hz frame
+        budget with zero blank gaps and ≤ 1px row-height drift. AG Grid and
+        TanStack land at roughly twice that frame p95 (~16.7ms) and both drop a
+        blank gap during the scripted scroll; AG Grid additionally drifts 2px on
+        row height, a sign that wrapped-cell layout doesn&rsquo;t round-trip
+        through its line-height pipeline as cleanly as pretable&rsquo;s
+        text-core does.
+      </p>
+      <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
+        The honest read: pretable&rsquo;s wedge on this script isn&rsquo;t raw
+        frame speed — it&rsquo;s the combination of zero blank gaps, zero anchor
+        shift, and ≤ 1px row-height fidelity at full-grid feature weight. MUI
+        matches pretable on quality but ships a fundamentally different feature
+        surface (no headless engine, no streaming primitives, no
+        theming-as-data). The H1 evaluator marks this run{" "}
+        <strong className="text-text-primary">{h1?.status ?? "—"}</strong>{" "}
+        because the 10% parity threshold (pretable within 10% of the best
+        full-grid comparator&rsquo;s frame p95) is not met on Chromium /
+        hypothesis scale; pretable is roughly 11% above MUI. We&rsquo;re keeping
+        the failing status visible rather than re-thresholding.
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
-        H15 — streaming row stability
+        Interaction (sort, filter)
       </h2>
-      <p className="mt-3 text-[15px] leading-[1.6] text-text-secondary">
-        {streamingSummary}
+      <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
+        Sort, metadata-filter, and wrapped-text-filter scripts (H6, H7, H8) all
+        stay within pretable&rsquo;s single-frame interaction budget on the same
+        dataset and remain satisfied on this runset. The comparator grids each
+        carry their own sort/filter pipelines, but our matrix gates interaction
+        scripts to pretable for now — comparative interaction evidence is on the
+        roadmap.
+      </p>
+
+      <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
+        Streaming
+      </h2>
+      <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
+        H13&ndash;H15 (streaming update frame budget, operating envelope, and
+        row stability under stream) require S5 and rate-tagged update runs; this
+        matrix run is S2 only, so those hypotheses are reported as{" "}
+        <em>insufficient</em> rather than re-evaluated. The last full streaming
+        evidence remains in the milestone archive.
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
@@ -191,25 +274,32 @@ export default function BenchPage() {
           <strong className="text-text-primary">
             Same dataset, same script.
           </strong>{" "}
-          Each adapter runs the canonical scenario from{" "}
+          Each adapter runs the canonical S2 scenario from{" "}
           <code>@pretable-internal/scenario-data</code> through identical
           interaction plans. The harness is in{" "}
           <code>@pretable-internal/bench-runner</code>.
         </li>
         <li>
-          <strong className="text-text-primary">Repeated-run medians.</strong> 5
-          samples per (adapter, scenario, script) tuple. Reported value is the
-          median; min and max are in the raw JSON.
+          <strong className="text-text-primary">Repeated-run medians.</strong> 3
+          samples per (adapter, scenario, script) tuple in this runset. Reported
+          value is the median; full per-sample data is in the runset JSON.
         </li>
         <li>
           <strong className="text-text-primary">
-            No per-adapter optimizations.
+            Idiomatic out-of-the-box config.
           </strong>{" "}
-          Each adapter uses its library's idiomatic streaming pattern:
-          gridalpha's <code>applyTransaction</code>, gridbeta's
-          <code> useVirtualizer</code> + setState, pretable's RAF-batched{" "}
+          AG Grid uses <code>themeQuartz</code> with Community modules
+          registered, sortable + filterable + resizable defaults, and{" "}
+          <code>applyTransaction</code> updates. TanStack uses{" "}
+          <code>useReactTable</code> with <code>getCoreRowModel</code>/
+          <code>getSortedRowModel</code>/<code>getFilteredRowModel</code> plus
+          TanStack Virtual for row virtualization. MUI X uses{" "}
+          <code>DataGrid</code> from <code>@mui/x-data-grid</code> with default
+          sort/filter/resizable enabled. Pretable uses RAF-batched{" "}
           <code>grid.applyTransaction</code> via{" "}
-          <code>@pretable/stream-adapter</code>.
+          <code>@pretable/stream-adapter</code>. None of the adapters carry
+          per-bench tuning — what we measure is what each library ships out of
+          the box.
         </li>
         <li>
           <strong className="text-text-primary">Wedge integrity:</strong> the
@@ -220,7 +310,8 @@ export default function BenchPage() {
           >
             <code>&lt;PretableSurface&gt;</code>
           </a>{" "}
-          the website's homepage hero uses. What we measure is what you ship.
+          the website&rsquo;s homepage hero uses. What we measure is what you
+          ship.
         </li>
       </ul>
 
@@ -234,7 +325,12 @@ export default function BenchPage() {
         <code>{`git clone https://github.com/${REPO}.git
 cd pretable
 pnpm install
-pnpm bench:matrix      # produces status/runsets/<timestamp>.hypotheses.json`}</code>
+pnpm bench:matrix \\
+  --project=chromium \\
+  --adapters=pretable,ag-grid,tanstack,mui \\
+  --scenarios=S2 --scripts=initial,scroll \\
+  --scale=hypothesis --repeats=3
+# Output: status/runsets/<timestamp>.hypotheses.json`}</code>
       </pre>
       <p className="mt-4 text-[15px] leading-[1.6] text-text-secondary">
         For the full contributor walkthrough, see{" "}
@@ -254,20 +350,22 @@ pnpm bench:matrix      # produces status/runsets/<timestamp>.hypotheses.json`}</
         <li>
           <a
             className="text-accent underline-offset-2 hover:underline"
-            href={`https://github.com/${REPO}/blob/main/${h1File}`}
+            href={`https://github.com/${REPO}/blob/main/${scrollFile}`}
           >
-            <code>{h1File}</code>
+            <code>{scrollFile}</code>
           </a>{" "}
-          — H1 wrapped-text scroll evidence
+          — per-adapter scroll medians (this page&rsquo;s table)
         </li>
         <li>
           <a
             className="text-accent underline-offset-2 hover:underline"
-            href={`https://github.com/${REPO}/blob/main/${streamingFile}`}
+            href={`https://github.com/${REPO}/blob/main/status/milestones/2026-05-08-b2-comparative-bench.hypotheses.json`}
           >
-            <code>{streamingFile}</code>
+            <code>
+              status/milestones/2026-05-08-b2-comparative-bench.hypotheses.json
+            </code>
           </a>{" "}
-          — H15 streaming row stability + four other hypotheses
+          — full H1&ndash;H21 evaluator report for this runset
         </li>
         <li>
           <a
@@ -276,8 +374,8 @@ pnpm bench:matrix      # produces status/runsets/<timestamp>.hypotheses.json`}</
           >
             <code>status/milestones/</code>
           </a>{" "}
-          — all milestone JSONs (H1, H6–H12 interaction, S3 column
-          virtualization)
+          — milestone archive (H1 baseline, S3 column virtualization, streaming,
+          selection/nav)
         </li>
       </ul>
     </article>

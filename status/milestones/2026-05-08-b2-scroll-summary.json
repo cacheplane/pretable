@@ -1,0 +1,66 @@
+{
+  "runsetId": "2026-05-09t00-49-34-903z",
+  "generatedAt": "2026-05-09T00:53:43.871Z",
+  "scenarioId": "S2",
+  "scriptName": "scroll",
+  "scale": "hypothesis",
+  "browserName": "chromium",
+  "adapters": [
+    {
+      "adapterId": "pretable",
+      "status": "completed",
+      "sampleCount": 3,
+      "metrics": {
+        "scroll_frame_p95_ms": 9.700000000000045,
+        "row_height_error_p95_px": 1,
+        "blank_gap_frames": 0,
+        "long_tasks_count": 0,
+        "scroll_anchor_shift_backward_p95_px": 0,
+        "dom_nodes_peak": 98,
+        "rendered_rows_peak": 11
+      }
+    },
+    {
+      "adapterId": "ag-grid",
+      "status": "completed",
+      "sampleCount": 3,
+      "metrics": {
+        "scroll_frame_p95_ms": 16.700000000000045,
+        "row_height_error_p95_px": 2,
+        "blank_gap_frames": 1,
+        "long_tasks_count": 0,
+        "scroll_anchor_shift_backward_p95_px": 0,
+        "dom_nodes_peak": 412,
+        "rendered_rows_peak": 27
+      }
+    },
+    {
+      "adapterId": "tanstack",
+      "status": "completed",
+      "sampleCount": 3,
+      "metrics": {
+        "scroll_frame_p95_ms": 16.699999999999932,
+        "row_height_error_p95_px": 0,
+        "blank_gap_frames": 1,
+        "long_tasks_count": 0,
+        "scroll_anchor_shift_backward_p95_px": 0,
+        "dom_nodes_peak": 704,
+        "rendered_rows_peak": 16
+      }
+    },
+    {
+      "adapterId": "mui",
+      "status": "completed",
+      "sampleCount": 3,
+      "metrics": {
+        "scroll_frame_p95_ms": 8.700000000000045,
+        "row_height_error_p95_px": 1,
+        "blank_gap_frames": 0,
+        "long_tasks_count": 0,
+        "scroll_anchor_shift_backward_p95_px": 0,
+        "dom_nodes_peak": 251,
+        "rendered_rows_peak": 22
+      }
+    }
+  ]
+}
