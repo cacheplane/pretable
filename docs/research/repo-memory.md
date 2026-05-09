@@ -345,3 +345,21 @@ The `autosize` script existed in the `BenchScriptName` union and the AG Grid ada
 - **H22 verdict:** **satisfied** — pretable 5.3 ms vs MUI 11 ms (ratio 0.482, comfortably below the tight zone, so the min-repeat gate does not apply). AG Grid autosize completed too. A 20-repeat re-run is **not** required because the verdict resolved outside the tight zone.
 - **Other status changes vs the 2026-05-08 milestone:** H1 flipped from `failing` to `satisfied` (pretable 9 ms vs MUI 9.2 ms, ratio 0.978; in tight zone but ratio < 1.1 so the new gate does not gate, and the existing < 1.1 path satisfies parity). This matches the n=20 correction documented above. No other hypotheses changed status.
 - **Autosize gap closed.** The follow-up backlog item logged on 2026-05-08 is resolved; remaining out-of-scope items (column-width fidelity instrumentation, post-autosize scroll measurement) remain deferred.
+
+### B2 follow-up #6: S5 + S7 cross-validation of H1's parity story
+
+Cross-validation of H1's parity story on S5 (streaming updates) and S7 (filter-metadata) scenarios. The B2 Phase 4 retry was S2-only, leaving H9 (S7/scroll) and H13/H14/H15 (S5/updates) at `insufficient`. With autosize landed (follow-up #3) the matrix is healthy enough to re-run those scenarios at parity-style fidelity. Run command: `pnpm bench:matrix --project=chromium --adapters=pretable,ag-grid,tanstack,mui --scenarios=S5,S7 --scripts=scroll,updates --scale=hypothesis --repeats=3 --update-rates=1000,25000`. Wall-clock ~3.5 min. Milestone: `status/milestones/2026-05-09-b2-s5-s7-cross-validation.hypotheses.json`.
+
+| Hypothesis                              | Before       | After         | Notes                                                                                                                                                                                                                                                  |
+| --------------------------------------- | ------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| H9 (S7 scroll quality + parity)         | insufficient | **satisfied** | Pretable matches MUI on S7 scroll: 9.2 ms p95, 0 blank gaps, 0 long tasks, row-height error ≤ 1 px. TanStack 16.7 ms p95 with 1 blank gap. AG Grid measured but does not clear the combined quality bar. Mirrors H1's parity story on the S7 scenario. |
+| H13 (streaming frame-budget uniqueness) | insufficient | directional   | Pretable holds the budget at 1000/sec and 25000/sec; AG Grid also clears it. Frame-budget threshold alone does not differentiate.                                                                                                                      |
+| H14 (streaming envelope uniqueness)     | insufficient | directional   | Pretable reaches 25000/sec; AG Grid also reaches 25000/sec — no order-of-magnitude gap inside the configured rates. Higher update rates would be needed to find the ceiling, if one exists.                                                            |
+| H15 (streaming row stability)           | insufficient | directional   | Pretable visible-row drift = 1, AG Grid drift = 0. Pretable is slightly worse on this metric; differentiation threshold (5 rows) is not exceeded by either side.                                                                                       |
+
+No other hypothesis status changed (S2-dependent ones — H1, H6–H8, H10–H12, H16–H22 — remain `insufficient` because S2 was not in this matrix; expected).
+
+**Out of scope (separate follow-ups):**
+
+- Editorial homepage refresh (potentially repopulating the deleted streaming row from this evidence) — distinct prose work.
+- Comparative interaction scripts (sort, filter-text, filter-metadata, cell-renderer) on S7 — still pretable-only per the supportedScripts gate; tracked as B2 follow-up #5.
