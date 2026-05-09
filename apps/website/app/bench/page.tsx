@@ -40,6 +40,29 @@ interface MilestoneFile {
   hypotheses: Hypothesis[];
 }
 
+interface H1HighRepeatCorrectionFile {
+  predecessor: string;
+  evidenceSource: string;
+  reason: string;
+  highRepeatEvidence: {
+    matrix: { repeats: number };
+    perAdapter: Record<
+      string,
+      {
+        n: number;
+        mean_scroll_frame_p95_ms: number;
+        sd_scroll_frame_p95_ms: number;
+      }
+    >;
+    twoSigmaTest: {
+      meanDiffPretableMinusMui: number;
+      noiseFloor: number;
+      verdict: "noise" | "real-pretable-slower" | "real-mui-slower";
+    };
+  };
+  correctedH1: { id: string; status: string; summary: string };
+}
+
 const REPO = "cacheplane/pretable";
 const ADAPTER_ORDER = ["pretable", "ag-grid", "tanstack", "mui"] as const;
 const ADAPTER_LABEL: Record<(typeof ADAPTER_ORDER)[number], string> = {
@@ -107,18 +130,38 @@ function loadH1Hypothesis(): Hypothesis | undefined {
   return data.hypotheses.find((h) => h.id === "H1");
 }
 
-function verdictFor(row: ScrollRow, fastest: ScrollRow): string {
-  const ratio = row.p95Ms / fastest.p95Ms;
-  if (row.adapter === fastest.adapter) {
-    if (row.adapter === "pretable") return "fastest tied; full quality pass";
-    return `${row.p95Ms.toFixed(1)}ms p95; full quality pass`;
-  }
-  const ratioStr = ratio < 1.05 ? "≈ tied" : `${ratio.toFixed(1)}× slower`;
+function loadH1HighRepeatCorrection(): H1HighRepeatCorrectionFile {
+  const raw = readFileSync(
+    repoRootRelative(
+      "status/milestones/2026-05-09-b2-h1-high-repeat-correction.json",
+    ),
+    "utf8",
+  );
+  return JSON.parse(raw) as H1HighRepeatCorrectionFile;
+}
+
+function verdictFor(
+  row: ScrollRow,
+  fastest: ScrollRow,
+  parityAdapters: ReadonlySet<string>,
+): string {
   const issues: string[] = [];
   if (row.blankGaps > 0) issues.push(`${row.blankGaps} blank gap`);
   if (row.rhePx > 1) issues.push(`row height drift ${row.rhePx}px`);
-  if (issues.length === 0) return ratioStr;
-  return `${ratioStr}; ${issues.join(", ")}`;
+  const issueStr = issues.length > 0 ? `; ${issues.join(", ")}` : "";
+
+  // High-repeat data confirmed parity for these adapters — don't crown a
+  // "fastest" off n=3 noise.
+  if (parityAdapters.has(row.adapter)) {
+    return `parity at n=20 (full quality pass)${issueStr}`;
+  }
+
+  const ratio = row.p95Ms / fastest.p95Ms;
+  if (row.adapter === fastest.adapter) {
+    return `${row.p95Ms.toFixed(1)}ms p95; full quality pass${issueStr}`;
+  }
+  const ratioStr = ratio < 1.05 ? "≈ tied" : `${ratio.toFixed(1)}× slower`;
+  return `${ratioStr}${issueStr}`;
 }
 
 export default function BenchPage() {
@@ -127,7 +170,15 @@ export default function BenchPage() {
     filename: scrollFile,
     runsetId,
   } = loadScrollSummary();
-  const h1 = loadH1Hypothesis();
+  const h1Original = loadH1Hypothesis();
+  const h1Correction = loadH1HighRepeatCorrection();
+  const h1Status = h1Correction.correctedH1.status;
+  const highRepeat = h1Correction.highRepeatEvidence;
+  const parityAdapters = new Set(
+    highRepeat.twoSigmaTest.verdict === "noise"
+      ? Object.keys(highRepeat.perAdapter)
+      : [],
+  );
 
   // Fastest by raw scroll frame p95.
   const fastest = scrollRows.reduce((min, r) =>
@@ -135,6 +186,8 @@ export default function BenchPage() {
   );
   // Pretable's row, for prose anchoring.
   const pretableRow = scrollRows.find((r) => r.adapter === "pretable");
+  const pretableHighRepeat = highRepeat.perAdapter.pretable;
+  const muiHighRepeat = highRepeat.perAdapter.mui;
 
   return (
     <article className="prose">
@@ -159,6 +212,8 @@ export default function BenchPage() {
       <p className="mt-3 max-w-[60ch] text-[14px] italic leading-[1.6] text-text-muted">
         Runset <code>{runsetId}</code> · Chromium · S2 (3,000 rows, wrapped
         multilingual messages) · hypothesis scale · 3 repeats per adapter.
+        Pretable / MUI scroll p95 also re-measured at 20 repeats — parity
+        confirmed (see below).
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
@@ -211,7 +266,7 @@ export default function BenchPage() {
                 {r.blankGaps}
               </td>
               <td className="py-3 text-[13px] text-text-secondary">
-                {verdictFor(r, fastest)}
+                {verdictFor(r, fastest, parityAdapters)}
               </td>
             </tr>
           ))}
@@ -219,28 +274,37 @@ export default function BenchPage() {
       </table>
 
       <p className="mt-6 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
-        On this dataset, MUI X DataGrid Community renders frames a hair faster
-        than pretable ({fastest.p95Ms.toFixed(1)}ms p95 vs{" "}
-        {pretableRow?.p95Ms.toFixed(1)}ms) — both clear the single 60Hz frame
-        budget with zero blank gaps and ≤ 1px row-height drift. AG Grid and
-        TanStack land at roughly twice that frame p95 (~16.7ms) and both drop a
-        blank gap during the scripted scroll; AG Grid additionally drifts 2px on
-        row height, a sign that wrapped-cell layout doesn&rsquo;t round-trip
-        through its line-height pipeline as cleanly as pretable&rsquo;s
-        text-core does.
+        On this dataset, pretable and MUI X DataGrid Community sit at parity on
+        scroll frame p95: a 20-repeat re-measurement gives pretable{" "}
+        {pretableHighRepeat.mean_scroll_frame_p95_ms.toFixed(2)}ms ± {""}
+        {pretableHighRepeat.sd_scroll_frame_p95_ms.toFixed(2)} and MUI {""}
+        {muiHighRepeat.mean_scroll_frame_p95_ms.toFixed(2)}ms ± {""}
+        {muiHighRepeat.sd_scroll_frame_p95_ms.toFixed(2)}. The single-repeat
+        snapshot above (pretable {pretableRow?.p95Ms.toFixed(1)}ms vs{" "}
+        {fastest.p95Ms.toFixed(1)}ms) read as a small MUI lead; under tighter
+        sampling that gap is well inside the 2σ noise floor (≈ 0.40ms). Both
+        adapters clear the single 60Hz frame budget with zero blank gaps and ≤
+        1px row-height drift.
       </p>
       <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
-        The honest read: pretable&rsquo;s wedge on this script isn&rsquo;t raw
-        frame speed — it&rsquo;s the combination of zero blank gaps, zero anchor
+        AG Grid Community and TanStack Table land at roughly twice that frame
+        p95 (~16.7ms) and both drop a blank gap during the scripted scroll; AG
+        Grid additionally drifts 2px on row height, a sign that wrapped-cell
+        layout doesn&rsquo;t round-trip through its line-height pipeline as
+        cleanly as pretable&rsquo;s text-core does.
+      </p>
+      <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
+        The honest read: pretable&rsquo;s wedge on this script isn&rsquo;t a raw
+        frame-speed lead over the best comparator — it&rsquo;s parity on raw
+        frame timing, with the combination of zero blank gaps, zero anchor
         shift, and ≤ 1px row-height fidelity at full-grid feature weight. MUI
         matches pretable on quality but ships a fundamentally different feature
         surface (no headless engine, no streaming primitives, no
         theming-as-data). The H1 evaluator marks this run{" "}
-        <strong className="text-text-primary">{h1?.status ?? "—"}</strong>{" "}
-        because the 10% parity threshold (pretable within 10% of the best
-        full-grid comparator&rsquo;s frame p95) is not met on Chromium /
-        hypothesis scale; pretable is roughly 11% above MUI. We&rsquo;re keeping
-        the failing status visible rather than re-thresholding.
+        <strong className="text-text-primary">{h1Status}</strong> after the
+        high-repeat correction; the original{" "}
+        <code>{h1Original?.status ?? "—"}</code> verdict from the n=3 snapshot
+        was a low-sample artifact, not a real regression.
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">

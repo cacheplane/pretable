@@ -308,3 +308,27 @@
 ### Next checkpoint
 
 - Per the standing backlog (theming architecture, AI integrations, headless docs, clipboard docs, autosize wiring, comparative interaction/streaming), the user picks the next priority.
+
+## 2026-05-09
+
+### B2 follow-up #1: H1 flip overturned at higher repeat count
+
+The 2026-05-08 H1 "failing" verdict was a low-sample artifact, not a real regression.
+
+- High-repeat rerun (S2/hypothesis/Chromium, scroll script, pretable + mui only, n=20 each): pretable mean **9.07 ms ± 0.20**, MUI mean **9.14 ms ± 0.19**. Mean diff −0.065 ms (pretable marginally faster on average) is well inside the 2σ noise floor of 0.40 ms.
+- Verdict: **noise**. Source: `status/milestones/2026-05-09-perf-diag-high-repeat.scroll.json`; memo at `docs/research/2026-05-09-pretable-vs-mui-scroll-perf.md`.
+- Corrected H1 milestone: `status/milestones/2026-05-09-b2-h1-high-repeat-correction.json` overlays the original B2 evidence with the n=20 result and a `correctedH1.status: "satisfied"` entry. The original B2 milestone (`2026-05-08-b2-comparative-bench.hypotheses.json`) is left intact for historical reference.
+- AG Grid (16.7 ms p95, 1 blank gap, 2 px row-height drift) and TanStack (16.7 ms p95, 1 blank gap) status from the B2 n=3 runset is **not** corrected by this rerun — both adapters were measured at >50% above pretable, far enough that low-repeat noise is unlikely to flip them. They remain ~1.7× pretable's `scroll_frame_p95_ms` with quality gaps that pretable does not have.
+
+### H1 evaluator now gates on minimum repeats in the tight zone
+
+Architectural fix to prevent this class of artifact from re-occurring:
+
+- `scripts/bench-matrix.mjs` `evaluateH1` now returns `insufficient` (rather than `failing`) when the pretable / best-full-grid frame-p95 ratio is in the tight zone `0.9 ≤ r ≤ 1.2` AND either adapter has `< 10 repeats`. Outside the tight zone (e.g., 1.6× slower) the gap dominates noise and the existing n=1 path still fires.
+- New test: `composite H1 returns insufficient when parity ratio is in the tight zone with too few repeats`. Existing test `composite H1 fails when pretable frame parity exceeds 110%` rewritten to use a clearly-out-of-zone ratio (1.6) so the failing path stays exercised.
+- Practical effect: a 3-repeat matrix run that puts pretable in the same noise-zone as a comparator will surface as `insufficient` with guidance to re-run at `--repeats=10` or higher, instead of producing a false-failing verdict.
+
+### Website /bench page updated to parity framing
+
+- `apps/website/app/bench/page.tsx` now loads both the original n=3 milestone and the n=20 correction. The H1 status displayed reflects the corrected verdict; the `verdictFor` table cell labels parity-confirmed adapters as `parity at n=20 (full quality pass)` rather than crowning a "fastest" off n=3 noise.
+- Prose rewritten: parity at high repeats is the headline; the original n=3 snapshot is described as a low-sample artifact. AG Grid / TanStack framing (~1.7× slower with quality gaps) is unchanged.
