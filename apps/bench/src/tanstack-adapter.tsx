@@ -102,7 +102,8 @@ export function TanstackAdapter({
 
   const interactionMode = interactionPlan?.mode ?? null;
   const columns = useMemo(
-    () => dataset.columns.map((c) => toColumnDef(c, scriptName, interactionMode)),
+    () =>
+      dataset.columns.map((c) => toColumnDef(c, scriptName, interactionMode)),
     [dataset.columns, scriptName, interactionMode],
   );
 
@@ -123,7 +124,6 @@ export function TanstackAdapter({
   // into a ref so the interaction useEffect can call setSorting /
   // setColumnFilters from outside the render path.
   const tableRef = useRef<Table<ScenarioRow> | null>(table);
-  // eslint-disable-next-line react-hooks/refs -- sync to latest
   tableRef.current = table;
 
   useEffect(() => {

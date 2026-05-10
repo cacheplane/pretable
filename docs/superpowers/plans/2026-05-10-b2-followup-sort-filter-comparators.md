@@ -161,7 +161,8 @@ docs/research/repo-memory.md            (MODIFY: 2026-05-10 entry — sort + fil
       const items = Object.entries(interactionPlan.filters).map(
         ([field, value]) => ({
           field,
-          operator: interactionPlan.mode === "filter-metadata" ? "equals" : "contains",
+          operator:
+            interactionPlan.mode === "filter-metadata" ? "equals" : "contains",
           value,
         }),
       );
@@ -222,11 +223,13 @@ docs/research/repo-memory.md            (MODIFY: 2026-05-10 entry — sort + fil
 ### Task 6 — Re-run matrix
 
 - [ ] **6.1** Build the harness:
+
   ```
   pnpm --filter @pretable/app-bench build
   ```
 
 - [ ] **6.2** Run matrix:
+
   ```
   pnpm bench:matrix \
     --project=chromium \
@@ -236,6 +239,7 @@ docs/research/repo-memory.md            (MODIFY: 2026-05-10 entry — sort + fil
     --scale=hypothesis \
     --repeats=3
   ```
+
   Expected wall-clock: ~2 min (3 scripts × 4 adapters × 3 repeats = 36 runs).
 
 - [ ] **6.3** Inspect `status/runsets/<id>/hypotheses.json`. H6, H7, H8 may flip status now that comparator data is available. Outcomes:
