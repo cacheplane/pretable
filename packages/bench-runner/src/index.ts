@@ -336,14 +336,14 @@ export function validateSupportedP0aRequest(
     }
   }
 
-  if (
-    selectionNavScripts.includes(request.scriptName) ||
-    cellRendererScripts.includes(request.scriptName)
-  ) {
+  if (selectionNavScripts.includes(request.scriptName)) {
+    // Range/all selection are paid-tier features in AG Grid Enterprise and
+    // MUI X Pro; TanStack Table doesn't ship native cell selection. Keep
+    // these pretable-only.
     if (request.adapterId !== "pretable") {
       return {
         ok: false,
-        reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (Slab 1 — pretable only)`,
+        reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (selection is Community-tier paid in AG Grid + MUI; not available in TanStack)`,
       };
     }
 
@@ -351,6 +351,20 @@ export function validateSupportedP0aRequest(
       return {
         ok: false,
         reason: `Unsupported scenario for ${request.scriptName}: ${request.scenarioId} (Slab 1 — S2 only)`,
+      };
+    }
+  }
+
+  if (cellRendererScripts.includes(request.scriptName)) {
+    // All four bench adapters wire scriptName-driven cell-renderer
+    // branches in apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx
+    // (Phase 1+2+3 of B2). The script measures scroll p95 with format /
+    // renderCell / heavy-render columns mounted; runs through the
+    // existing measureBenchScrollRun helper.
+    if (request.scenarioId !== "S2") {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for ${request.scriptName}: ${request.scenarioId} (S2 only)`,
       };
     }
   }

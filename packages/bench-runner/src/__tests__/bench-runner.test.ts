@@ -222,6 +222,60 @@ describe("bench-runner contract", () => {
       reason: expect.stringContaining("scenario"),
     });
 
+    // Cell-renderer scripts are supported across all four adapters on S2
+    // (each adapter wires scriptName-driven render branches in
+    // apps/bench/src/*-adapter.tsx). B2 follow-up #5a opened the gate that
+    // had previously kept these pretable-only.
+    for (const adapterId of [
+      "pretable",
+      "ag-grid",
+      "tanstack",
+      "mui",
+    ] as const) {
+      for (const scriptName of [
+        "scroll-with-format",
+        "scroll-with-render",
+        "scroll-with-heavy-render",
+      ] as const) {
+        expect(
+          validateSupportedP0aRequest({
+            ...baseRequest,
+            adapterId,
+            scenarioId: "S2",
+            scriptName,
+          }),
+        ).toEqual({ ok: true });
+      }
+    }
+
+    // Cell-renderer scripts are still S2-only.
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S5",
+        scriptName: "scroll-with-format",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+
+    // Selection scripts remain pretable-only (Community-tier paid in AG
+    // Grid + MUI; not native in TanStack).
+    for (const adapterId of ["ag-grid", "tanstack", "mui"] as const) {
+      expect(
+        validateSupportedP0aRequest({
+          ...baseRequest,
+          adapterId,
+          scenarioId: "S2",
+          scriptName: "select-range-extend",
+        }),
+      ).toEqual({
+        ok: false,
+        reason: expect.stringContaining("adapter"),
+      });
+    }
+
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
