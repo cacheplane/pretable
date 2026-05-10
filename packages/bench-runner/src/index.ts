@@ -262,9 +262,14 @@ export function validateSupportedP0aRequest(
   }
 
   const interactionScripts = ["sort", "filter-metadata", "filter-text"];
-  // Slab 1: pretable-internal absolute thresholds. Comparators are
-  // intentionally unsupported until a future Slab 2 sub-project ships
-  // comparative wiring.
+  // B2 follow-up #5b: sort + filter-metadata + filter-text are supported
+  // across all four adapters on S2/S7. Each adapter wires its native
+  // sort/filter API in apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx
+  // (pretable: column-state via useEffect; ag-grid: applyColumnState +
+  // setFilterModel; tanstack: setSorting + setColumnFilters; mui:
+  // apiRef.setSortModel + setFilterModel). The bench-app dispatch is
+  // adapter-agnostic via measureBenchInteractionRun's DOM-default state
+  // reader (telemetry override is pretable-only).
   const selectionNavScripts = [
     "select-range-extend",
     "keyboard-nav-row",
@@ -321,17 +326,10 @@ export function validateSupportedP0aRequest(
   }
 
   if (interactionScripts.includes(request.scriptName)) {
-    if (request.adapterId !== "pretable") {
-      return {
-        ok: false,
-        reason: `Unsupported adapter for interaction script ${request.scriptName}: ${request.adapterId}`,
-      };
-    }
-
     if (!["S2", "S7"].includes(request.scenarioId)) {
       return {
         ok: false,
-        reason: `Unsupported scenario for interaction script ${request.scriptName}: ${request.scenarioId}`,
+        reason: `Unsupported scenario for interaction script ${request.scriptName}: ${request.scenarioId} (S2/S7 only)`,
       };
     }
   }

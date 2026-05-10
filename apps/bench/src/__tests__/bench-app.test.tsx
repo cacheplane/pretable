@@ -187,8 +187,26 @@ describe("BenchApp", () => {
     });
   });
 
-  test("publishes an unsupported result for comparator interaction scripts that are not yet semantically measured", async () => {
-    const interactionSpy = vi.spyOn(benchRuntime, "measureBenchInteractionRun");
+  test("dispatches comparator interaction scripts through measureBenchInteractionRun (B2 #5b)", async () => {
+    const interactionSpy = vi
+      .spyOn(benchRuntime, "measureBenchInteractionRun")
+      .mockResolvedValueOnce({
+        status: "completed",
+        notes: ["interaction mode: sort"],
+        metrics: {
+          interaction_latency_ms: 32,
+          settle_duration_ms: 24,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 750,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 600,
+          rendered_rows_peak: 11,
+          rendered_cells_peak: 440,
+        },
+      });
 
     render(
       <BenchApp
@@ -201,15 +219,16 @@ describe("BenchApp", () => {
 
     await waitFor(() => {
       expect(window[BENCH_RESULT_KEY]).toMatchObject({
-        status: "unsupported",
-        unsupported: {
-          adapterId: "ag-grid",
-          scenarioId: "S2",
-          scriptName: "sort",
-        },
+        status: "completed",
+        adapterId: "ag-grid",
+        scenarioId: "S2",
+        scriptName: "sort",
       });
     });
 
-    expect(interactionSpy).not.toHaveBeenCalled();
+    expect(interactionSpy).toHaveBeenCalledTimes(1);
+    // Comparators pass undefined for the telemetry override; pretable
+    // gets a closure (see bench-app.tsx).
+    expect(interactionSpy.mock.calls[0]?.[4]).toBeUndefined();
   });
 });

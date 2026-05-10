@@ -15,6 +15,7 @@ import type {
 } from "@pretable-internal/scenario-data";
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
+import type { BenchInteractionPlan } from "./interaction-plan";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -28,6 +29,7 @@ export interface AgGridAdapterProps {
   onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
   runKey: number;
   scriptName?: string;
+  interactionPlan?: BenchInteractionPlan | null;
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -71,6 +73,7 @@ export function AgGridAdapter({
   onAutosizeReady,
   runKey,
   scriptName,
+  interactionPlan,
 }: AgGridAdapterProps) {
   const apiRef = useRef<GridApi | null>(null);
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
@@ -106,6 +109,40 @@ export function AgGridAdapter({
   useEffect(() => {
     apiRef.current?.setGridOption("rowData", dataset.rows.slice());
   }, [dataset.rows, runKey]);
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api || !interactionPlan) return;
+
+    if (interactionPlan.mode === "sort" && interactionPlan.sort) {
+      api.applyColumnState({
+        state: [
+          {
+            colId: interactionPlan.sort.columnId,
+            sort: interactionPlan.sort.direction,
+          },
+        ],
+        defaultState: { sort: null },
+      });
+      return;
+    }
+
+    if (
+      interactionPlan.mode === "filter-metadata" ||
+      interactionPlan.mode === "filter-text"
+    ) {
+      const model: Record<string, unknown> = {};
+      for (const [colId, value] of Object.entries(interactionPlan.filters)) {
+        model[colId] = {
+          filterType: "text",
+          type:
+            interactionPlan.mode === "filter-metadata" ? "equals" : "contains",
+          filter: value,
+        };
+      }
+      api.setFilterModel(model);
+    }
+  }, [interactionPlan, runKey]);
 
   return (
     <section

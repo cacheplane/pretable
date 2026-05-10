@@ -8,6 +8,7 @@ import type {
 } from "@pretable-internal/scenario-data";
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
+import type { BenchInteractionPlan } from "./interaction-plan";
 
 const VIEWPORT_HEIGHT = 320;
 const ROW_HEIGHT = 48;
@@ -23,6 +24,7 @@ export interface MuiAdapterProps {
   onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
   runKey: number;
   scriptName?: string;
+  interactionPlan?: BenchInteractionPlan | null;
 }
 
 function toColDef(
@@ -63,6 +65,7 @@ export function MuiAdapter({
   onAutosizeReady,
   runKey,
   scriptName,
+  interactionPlan,
 }: MuiAdapterProps) {
   const apiRef = useGridApiRef();
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
@@ -108,6 +111,36 @@ export function MuiAdapter({
       await apiRef.current?.autosizeColumns({ includeOutliers: true });
     });
   }, [apiRef, runKey]);
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api || !interactionPlan) return;
+
+    if (interactionPlan.mode === "sort" && interactionPlan.sort) {
+      api.setSortModel([
+        {
+          field: interactionPlan.sort.columnId,
+          sort: interactionPlan.sort.direction,
+        },
+      ]);
+      return;
+    }
+
+    if (
+      interactionPlan.mode === "filter-metadata" ||
+      interactionPlan.mode === "filter-text"
+    ) {
+      const items = Object.entries(interactionPlan.filters).map(
+        ([field, value]) => ({
+          field,
+          operator:
+            interactionPlan.mode === "filter-metadata" ? "equals" : "contains",
+          value,
+        }),
+      );
+      api.setFilterModel({ items });
+    }
+  }, [apiRef, interactionPlan, runKey]);
 
   return (
     <section

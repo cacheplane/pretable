@@ -206,36 +206,39 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         scriptName === "sort" ||
         scriptName === "filter-metadata" ||
         scriptName === "filter-text"
-          ? query.adapterId === "pretable"
-            ? await (() => {
-                const nextInteractionPlan = createBenchInteractionPlan(
-                  dataset,
-                  scriptName,
-                );
+          ? await (() => {
+              const nextInteractionPlan = createBenchInteractionPlan(
+                dataset,
+                scriptName,
+              );
 
-                if (!nextInteractionPlan) {
-                  return null;
-                }
+              if (!nextInteractionPlan) {
+                return Promise.resolve(null);
+              }
 
-                return measureBenchInteractionRun(
-                  viewportRef.current ?? document.body,
-                  query.adapterId,
-                  scriptName,
-                  nextInteractionPlan,
-                  () =>
-                    createBenchInteractionStateFromTelemetry(
-                      pretableTelemetryRef.current,
-                      dataset.rows.length,
-                    ),
-                  () => {
-                    setInteractionPlanOverride({
-                      plan: nextInteractionPlan,
-                      search,
-                    });
-                  },
-                );
-              })()
-            : null
+              return measureBenchInteractionRun(
+                viewportRef.current ?? document.body,
+                query.adapterId,
+                scriptName,
+                nextInteractionPlan,
+                // Telemetry-based state reading is pretable-only (uses
+                // PretableTelemetry visible-rows snapshot). Comparators
+                // fall back to DOM-default state reading.
+                query.adapterId === "pretable"
+                  ? () =>
+                      createBenchInteractionStateFromTelemetry(
+                        pretableTelemetryRef.current,
+                        dataset.rows.length,
+                      )
+                  : undefined,
+                () => {
+                  setInteractionPlanOverride({
+                    plan: nextInteractionPlan,
+                    search,
+                  });
+                },
+              );
+            })()
           : null;
 
       const keySequenceRun =
@@ -529,6 +532,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             ) : (
               <AdapterSurface
                 dataset={dataset}
+                interactionPlan={interactionPlan}
                 key={runKey}
                 onAutosizeReady={handleAutosizeApiReady}
                 onUpdateApiReady={handleUpdateApiReady}

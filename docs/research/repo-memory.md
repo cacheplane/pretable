@@ -408,3 +408,50 @@ The sort / filter-text / filter-metadata gate is still pretable-only. That's the
 ### Pretable `scroll-with-render` anomaly (logged for investigation)
 
 Surfaced by the milestone above. Pretable's `scroll-with-render` p95 (16.4 ms) is anomalously slow vs `scroll-with-format` (10.2 ms) and `scroll-with-heavy-render` (10.3 ms). Heavy render is `scroll-with-render` plus extra DOM (badge dot + status data attr) — yet it's faster. This suggests the cheap-React-cellRenderer path in `pretable-adapter.tsx`'s `applyCellRendererFlavor` has a perf cliff that the heavier path avoids (possibly a different code path in `@pretable/react`'s cell-render integration that disables on more complex render output). Not investigated in this PR; logged as a follow-up.
+
+### B2 follow-up #5b: sort + filter scripts opened to comparators
+
+Second slice of follow-up #5. The `sort` / `filter-metadata` / `filter-text` gate in `packages/bench-runner/src/index.ts` was the last pretable-only block in the supportedScripts validator. Dropped it; each adapter now applies the bench's `BenchInteractionPlan` via its native library API:
+
+- **AG Grid:** `gridApi.applyColumnState({ state: [{ colId, sort }], defaultState: { sort: null } })` for sort; `gridApi.setFilterModel({ [colId]: { filterType: "text", type: "equals" | "contains", filter } })` for filter.
+- **TanStack:** `table.setSorting([{ id, desc }])` for sort; `table.setColumnFilters([{ id, value }])` for filter. The Table instance is captured into a ref each render (TanStack v8's `useReactTable` returns a fresh object per render) so a `useEffect` keyed on `[interactionPlan, runKey]` can drive it. `filter-metadata` mode swaps `filterFn` to `equalsString`; default is `auto` (includesString) for `filter-text`.
+- **MUI:** `apiRef.current.setSortModel([{ field, sort }])` for sort; `apiRef.current.setFilterModel({ items: [{ field, operator: "equals" | "contains", value }] })` for filter.
+
+`bench-app.tsx`'s interaction dispatch now widens to all four adapters; comparators pass `undefined` for `readInteractionStateOverride` so the runtime falls back to DOM-default state reading (telemetry override remains pretable-only). All four adapters receive `interactionPlan={interactionPlan}` in the AdapterSurface render block.
+
+Matrix run: `pnpm bench:matrix --project=chromium --adapters=pretable,ag-grid,tanstack,mui --scenarios=S2 --scripts=sort,filter-metadata,filter-text --scale=hypothesis --repeats=3`. Wall-clock ~2 min. Milestone: `status/milestones/2026-05-10-b2-sort-filter-comparators.hypotheses.json`.
+
+Per-adapter latency (n=3 medians; `interaction_latency_ms` / `settle_duration_ms`):
+
+| Script            | pretable          | ag-grid           | tanstack          | mui               |
+| ----------------- | ----------------- | ----------------- | ----------------- | ----------------- |
+| `sort`            | 16.5 ms / 16.8 ms | 58.3 ms / 9.2 ms  | 34.4 ms / 31.6 ms | 35.0 ms / 25.0 ms |
+| `filter-metadata` | 16.0 ms / 16.7 ms | 49.9 ms / 15.5 ms | 15.7 ms / 26.5 ms | 33.4 ms / 25.0 ms |
+| `filter-text`     | 17.7 ms / 16.6 ms | 50.0 ms / 16.7 ms | 40.2 ms / 24.7 ms | 33.3 ms / 25.0 ms |
+
+Hypothesis status (H6/H7/H8 evaluators remain pretable-only — comparator data lives in the per-run summary files):
+
+| H#  | Status    | Notes                                                                                                                |
+| --- | --------- | -------------------------------------------------------------------------------------------------------------------- |
+| H6  | satisfied | Pretable sort 16.5 / 16.8 ms within thresholds; comparator data captured (ag-grid 58.3, mui 35.0, tanstack 34.4 ms). |
+| H7  | satisfied | Pretable filter-metadata 16.0 / 16.7 ms within thresholds; comparator data captured.                                 |
+| H8  | satisfied | Pretable filter-text 17.7 / 16.6 ms within thresholds; comparator data captured.                                     |
+
+**Findings worth noting:**
+
+- **Pretable beats AG Grid Community 3–3.5× on every interaction script** (16–18 ms vs 50–58 ms `interaction_latency_ms`). Strongest comparative result yet.
+- **Pretable beats MUI 2× on every interaction script** (16–18 ms vs 33–35 ms).
+- **TanStack is mixed:** filter-metadata latency (15.7 ms) actually beats pretable (16.0 ms) — but settle (26.5 ms) is 1.6× slower. Sort and filter-text are slower on both axes.
+- **Comparator `result_row_count` reads as 3000 (full dataset)** because the comparator adapters set `data-bench-result-row-count` to `dataset.rows.length` at render time and don't recompute it after applying a filter. The interaction itself is correctly applied (see `interaction mode: filter-*` in the run notes; harness reaches "settled" only when DOM signature changes), so latency/settle metrics are valid. Updating comparator adapters to publish post-filter row counts is a small follow-up if H7/H8 ever gain comparator-aware evaluators.
+
+**H6/H7/H8 evaluators are pretable-only** — like H19/H20/H21 from #5a, they don't surface comparator metrics in the evidence array. Comparator data lives in `status/chromium-<adapter>-default-s2-hypothesis-{sort,filter-metadata,filter-text}-*.summary.json`. The narrative table above is the source of truth.
+
+**Tests:** `packages/bench-runner/src/__tests__/bench-runner.test.ts` rewrites the negative comparator assertions as positive parity assertions (all four adapters can run sort/filter-metadata/filter-text on S2). The `apps/bench/src/__tests__/bench-app.test.tsx` "publishes an unsupported result for comparator interaction scripts" test flips to a positive dispatch assertion that comparator runs go through `measureBenchInteractionRun` with `readInteractionStateOverride === undefined`.
+
+**Out of scope (separate follow-ups):**
+
+- Comparator-aware H6/H7/H8 evaluators (would require adding a multi-adapter evidence shape; the data is already on disk).
+- Comparator post-filter row-count reporting (small adapter polish to update `data-bench-result-row-count` on plan apply).
+- Homepage narrative refresh to reflect the 2–3.5× wedge on interaction scripts (separate editorial follow-up; this PR is harness wiring + evidence only).
+
+This closes the structural part of B2 follow-up #5; the supportedScripts gate is no longer pretable-only for any non-selection script.
