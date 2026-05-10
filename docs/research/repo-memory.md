@@ -363,3 +363,48 @@ No other hypothesis status changed (S2-dependent ones — H1, H6–H8, H10–H12
 
 - Editorial homepage refresh (potentially repopulating the deleted streaming row from this evidence) — distinct prose work.
 - Comparative interaction scripts (sort, filter-text, filter-metadata, cell-renderer) on S7 — still pretable-only per the supportedScripts gate; tracked as B2 follow-up #5.
+
+## 2026-05-10
+
+### B2 follow-up #5a: cell-renderer scripts opened to comparators
+
+First slice of follow-up #5 (open the supportedScripts gate). The gate in `packages/bench-runner/src/index.ts` previously kept `scroll-with-format` / `scroll-with-render` / `scroll-with-heavy-render` pretable-only, even though the AG Grid + TanStack + MUI adapters had wired the scriptName-driven render branches in Phase 1–3 of B2. Split the gate: cell-renderer scripts now run on all four adapters (S2-only); selection scripts (`select-range-extend` / `keyboard-nav-row` / `select-all`) remain pretable-only because range-select and select-all are paid-tier in AG Grid Enterprise + MUI X Pro and TanStack Table doesn't ship native cell selection.
+
+While running the matrix the first time, AG Grid hit "scroll viewport unavailable" because `bench-app.tsx` only awaited the extra mount frame for `scriptName === "scroll"`, not for the cell-renderer variants. Fixed by extending the extra-frame wait to all four scroll-shape scripts; the bench-runtime `waitForScrollViewport` 12-frame ceiling stays unchanged.
+
+Matrix run: `pnpm bench:matrix --adapters=pretable,ag-grid,tanstack,mui --scenarios=S2 --scripts=scroll,scroll-with-format,scroll-with-render,scroll-with-heavy-render --scale=hypothesis --repeats=3`. Wall-clock ~2 min. Milestone: `status/milestones/2026-05-10-b2-cell-renderer-comparators.hypotheses.json`.
+
+Per-adapter scroll-frame-p95 (n=3 medians, blank-gap counts in parens):
+
+| Script                     | pretable    | ag-grid     | tanstack    | mui         |
+| -------------------------- | ----------- | ----------- | ----------- | ----------- |
+| `scroll-with-format`       | 10.2 ms (0) | 25.1 ms (1) | 17.5 ms (1) | 10.2 ms (0) |
+| `scroll-with-render`       | 16.4 ms (0) | 24.9 ms (1) | 17.0 ms (1) | 10.3 ms (0) |
+| `scroll-with-heavy-render` | 10.3 ms (0) | 25.2 ms (1) | 23.4 ms (1) | 10.1 ms (0) |
+
+Hypothesis status (all evaluators are pretable-only at the evaluator level today; comparator data lives in the per-run summary files):
+
+| H#  | Status        | Notes                                                                    |
+| --- | ------------- | ------------------------------------------------------------------------ |
+| H1  | satisfied     | Same parity story as B2 corrections.                                     |
+| H19 | **satisfied** | Format overhead is −0.10 ms (format 10.2 ms vs scroll baseline 10.3 ms). |
+| H20 | satisfied     | Cheap-render p95 = 10.2 ms ≤ 16 ms single-frame budget.                  |
+| H21 | satisfied     | Heavy-render p95 = 10.3 ms ≤ 20 ms.                                      |
+
+**Findings worth noting:**
+
+- **Pretable beats AG Grid Community 2–2.5× on every cell-renderer script,** with zero blank gaps. AG Grid drops a blank gap on each. Strongest comparative wedge surfaced since the original B2 H1 stub-baseline era.
+- **Pretable matches MUI on `scroll-with-format` and `scroll-with-heavy-render`,** but loses on `scroll-with-render` (pretable 16.4 ms vs MUI 10.3 ms). Pretable's cheap-React-cellRenderer path is anomalously slow vs the format-only path and even the heavy-render path — same dataset, fewer DOM nodes, more frame budget consumed. Logged as a follow-up to investigate.
+- **TanStack with cellRenderer scales DOM nodes aggressively** (704 / 1344 / 2624 across the three scripts). React-virtual's per-cell render under JSX cells is a known cost; TanStack still lands within ~1.7× of pretable's frame budget despite the node-count blow-up.
+
+**H19/H20/H21 evaluators are pretable-only** — they don't surface comparator data in the evidence array even now that comparators have run. The data lives in the per-run `status/chromium-<adapter>-default-s2-hypothesis-scroll-with-*.summary.json` files. Future work could extend the evaluators (or add new comparator-aware H## entries) so the milestone JSON renders the comparative table inline; for now the milestone is the source of truth and downstream tools can read the per-run summaries.
+
+**Tests:** `packages/bench-runner/src/__tests__/bench-runner.test.ts` extended with positive assertions that all four adapters can run cell-renderer scripts on S2, plus a regression guard that selection scripts stay pretable-only.
+
+### Open from follow-up #5
+
+The sort / filter-text / filter-metadata gate is still pretable-only. That's the next slice (option C from the brainstorm) — sequenced after this PR per the user's "A then C" choice. May flip H6/H7/H8 when comparators are wired.
+
+### Pretable `scroll-with-render` anomaly (logged for investigation)
+
+Surfaced by the milestone above. Pretable's `scroll-with-render` p95 (16.4 ms) is anomalously slow vs `scroll-with-format` (10.2 ms) and `scroll-with-heavy-render` (10.3 ms). Heavy render is `scroll-with-render` plus extra DOM (badge dot + status data attr) — yet it's faster. This suggests the cheap-React-cellRenderer path in `pretable-adapter.tsx`'s `applyCellRendererFlavor` has a perf cliff that the heavier path avoids (possibly a different code path in `@pretable/react`'s cell-render integration that disables on more complex render output). Not investigated in this PR; logged as a follow-up.

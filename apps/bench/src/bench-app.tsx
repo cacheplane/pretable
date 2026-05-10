@@ -176,7 +176,16 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
 
-      if (scriptName === "scroll") {
+      if (
+        scriptName === "scroll" ||
+        scriptName === "scroll-with-format" ||
+        scriptName === "scroll-with-render" ||
+        scriptName === "scroll-with-heavy-render"
+      ) {
+        // AG Grid v33's body viewport attaches one frame later than the
+        // outer adapter section becomes visible; without this extra wait,
+        // measureBenchScrollRun's viewport polling hits "unavailable" on
+        // a fresh mount with cell-renderer columnDefs.
         await waitForNextAnimationFrame();
       }
 
