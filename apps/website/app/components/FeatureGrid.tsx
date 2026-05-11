@@ -25,7 +25,7 @@ const FEATURES: readonly Feature[] = [
   {
     title: "Stream-aware",
     description:
-      "Token-by-token rendering for OpenAI, Anthropic, your own SSE — sustained from 100 to 25,000 updates/sec.",
+      "Token-by-token rendering for OpenAI, Anthropic, and your own SSE. The full pipeline — partial-JSON parser, frame-budget batcher, applyTransaction wiring — ships as one import.",
     marker: "black",
     markerLabel: "Advanced — bring your own SSE",
   },

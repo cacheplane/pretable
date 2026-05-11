@@ -3,29 +3,41 @@ interface Stat {
   caption: string;
   /** First stat anchors with accent color (warm orange) on the dark band. */
   accent?: boolean;
+  /**
+   * Render the value at a smaller size for non-numeric labels (e.g., a
+   * source list). The grid still uses four cells; this slot just trades
+   * hero-number weight for legible text.
+   */
+  compact?: boolean;
 }
 
 // Receipts snapshot — numbers from the committed B2 comparative runset
-// and its high-repeat correction:
+// and its high-repeat correction; final slot is a capability anchor.
 //
 //   status/milestones/2026-05-09-b2-h1-high-repeat-correction.json
 //     S2/hypothesis/scroll × 20 repeats. Pretable mean p95 = 9.07 ms ± 0.20;
 //     parity with MUI X DataGrid Community. Quality wedge: 0 blank gaps,
 //     0 anchor shift, ≤1 px row-height drift.
 //
-//   status/milestones/2026-05-01-streaming-revalidated.hypotheses.json
-//     S5/updates × 6 rates × 3 repeats. Pretable max sustained update rate
-//     = 25k/sec (pretable's own — comparative S5 evidence pending; see
-//     project_b2_followups.md item 6).
+//   status/milestones/2026-05-09-b2-s5-s7-cross-validation.hypotheses.json
+//     S5/updates × 4 adapters × 3 repeats. AG Grid Community matches
+//     pretable on raw streaming throughput (9.2 ms p95, 25k/sec, 0 drift),
+//     so the streaming wedge is reframed as the shipped pipeline rather
+//     than the throughput number. Final receipts slot is the source list
+//     pretable ships integrations for.
 //
 // First stat (0) anchors the quality wedge with accent (warm orange). All
-// numbers are pretable's own; the comparative ranking lives on the /bench
+// numerics are pretable's own; the comparative ranking lives on the /bench
 // page and ComparisonTable.
 const STATS: readonly Stat[] = [
   { value: "0", caption: "blank gaps under scroll", accent: true },
   { value: "9ms", caption: "frame p95 / wrapped scroll" },
   { value: "≤1px", caption: "row-height fidelity" },
-  { value: "25k/s", caption: "max sustained update rate" },
+  {
+    value: "OpenAI · Anthropic · SSE",
+    caption: "streaming sources, one import",
+    compact: true,
+  },
 ];
 
 export function ReceiptsBand() {
@@ -43,7 +55,10 @@ export function ReceiptsBand() {
             <li key={stat.caption} className="border-t-2 border-accent pt-4">
               <div
                 className={[
-                  "font-display text-[44px] leading-[0.95] tracking-[-0.02em] md:text-[56px]",
+                  "font-display leading-[0.95] tracking-[-0.02em]",
+                  stat.compact
+                    ? "text-[20px] md:text-[24px]"
+                    : "text-[44px] md:text-[56px]",
                   stat.accent ? "text-accent" : "text-bg-page",
                 ].join(" ")}
               >
