@@ -8,11 +8,11 @@ The PR #130 cheap-render anomaly is sampling noise. A high-repeat re-run shows p
 
 PR #130 captured (n=3 medians, Chromium S2/hypothesis):
 
-| Script | scroll p95 |
-| --- | --- |
-| `scroll-with-format` | 10.2 ms |
-| `scroll-with-render` | **16.4 ms** |
-| `scroll-with-heavy-render` | 10.3 ms |
+| Script                     | scroll p95  |
+| -------------------------- | ----------- |
+| `scroll-with-format`       | 10.2 ms     |
+| `scroll-with-render`       | **16.4 ms** |
+| `scroll-with-heavy-render` | 10.3 ms     |
 
 Cheap-render renders fewer DOM nodes than heavy-render (164 vs 296) yet measured ~6 ms slower than both heavy-render and format. Two competing hypotheses motivated this investigation:
 
@@ -30,11 +30,11 @@ Cheap-render renders fewer DOM nodes than heavy-render (164 vs 296) yet measured
 
 The matrix run completed only ~36 % of planned repeats before exiting (likely a Playwright flake; not investigated since the verdict was clear at the data available):
 
-| Script | n | mean p95 (ms) | σ (ms) | min | median | max |
-| --- | --- | --- | --- | --- | --- | --- |
-| scroll-with-format | 8 | 9.36 | 0.80 | 8.6 | 9.2 | 11.4 |
-| scroll-with-render | 7 | **8.97** | 0.35 | 8.4 | 9.1 | 9.4 |
-| scroll-with-heavy-render | 6 | 9.15 | 0.13 | 8.9 | 9.2 | 9.3 |
+| Script                   | n   | mean p95 (ms) | σ (ms) | min | median | max  |
+| ------------------------ | --- | ------------- | ------ | --- | ------ | ---- |
+| scroll-with-format       | 8   | 9.36          | 0.80   | 8.6 | 9.2    | 11.4 |
+| scroll-with-render       | 7   | **8.97**      | 0.35   | 8.4 | 9.1    | 9.4  |
+| scroll-with-heavy-render | 6   | 9.15          | 0.13   | 8.9 | 9.2    | 9.3  |
 
 Source: `status/milestones/2026-05-11-pretable-cell-renderer-high-repeat.json`.
 

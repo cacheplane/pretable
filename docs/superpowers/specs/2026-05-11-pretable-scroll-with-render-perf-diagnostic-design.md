@@ -14,11 +14,11 @@ Diagnose whether pretable's `scroll-with-render` frame p95 (16.4 ms in the n=3 P
 
 PR #130 captured (n=3 medians, Chromium S2/hypothesis):
 
-| Script | pretable scroll p95 | DOM nodes peak | Notes |
-| --- | --- | --- | --- |
-| `scroll-with-format` | 10.2 ms | 98 | column.format set |
-| `scroll-with-render` | **16.4 ms** | 164 | column.render set (cheap JSX: 1 span) |
-| `scroll-with-heavy-render` | 10.3 ms | 296 | column.render set (heavy JSX: 3 spans + className) |
+| Script                     | pretable scroll p95 | DOM nodes peak | Notes                                              |
+| -------------------------- | ------------------- | -------------- | -------------------------------------------------- |
+| `scroll-with-format`       | 10.2 ms             | 98             | column.format set                                  |
+| `scroll-with-render`       | **16.4 ms**         | 164            | column.render set (cheap JSX: 1 span)              |
+| `scroll-with-heavy-render` | 10.3 ms             | 296            | column.render set (heavy JSX: 3 spans + className) |
 
 Heavy render renders more DOM (296 nodes vs 164) yet measures faster than cheap render. Heavy and cheap share the same code path in `@pretable/react`'s `MemoizedCellContent` (the `column.render` branch); the only structural difference between them is the JSX shape returned. Format diverges (uses `column.format` instead).
 
@@ -41,11 +41,11 @@ This investigation tightens the signal first, then profiles only if warranted.
 
 One PR off latest `main`. Three sequential phases inside the PR (mirrors PR #124):
 
-| Phase | Action | Output |
-|---|---|---|
-| A | High-repeat (n=20) re-run of `pretable / S2 / hypothesis / {scroll-with-format, scroll-with-render, scroll-with-heavy-render}` on Chromium. | `status/milestones/2026-05-11-pretable-cell-renderer-high-repeat.json` with mean / σ / min / median / max per script. |
-| B | If Phase A confirms both `cheap − format` AND `cheap − heavy` gaps are real (>2σ): capture one Playwright trace per script. | `status/traces/2026-05-11-pretable-scroll-with-{format,render,heavy-render}.trace.zip` |
-| C | Manual trace analysis (only if Phase B fires). Identify what cheap-render does differently. | `docs/research/2026-05-11-pretable-scroll-with-render-perf-diagnostic.md` |
+| Phase | Action                                                                                                                                      | Output                                                                                                                |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| A     | High-repeat (n=20) re-run of `pretable / S2 / hypothesis / {scroll-with-format, scroll-with-render, scroll-with-heavy-render}` on Chromium. | `status/milestones/2026-05-11-pretable-cell-renderer-high-repeat.json` with mean / σ / min / median / max per script. |
+| B     | If Phase A confirms both `cheap − format` AND `cheap − heavy` gaps are real (>2σ): capture one Playwright trace per script.                 | `status/traces/2026-05-11-pretable-scroll-with-{format,render,heavy-render}.trace.zip`                                |
+| C     | Manual trace analysis (only if Phase B fires). Identify what cheap-render does differently.                                                 | `docs/research/2026-05-11-pretable-scroll-with-render-perf-diagnostic.md`                                             |
 
 If Phase A shows the gap is noise (one or both pairs within 2σ), the memo concludes "noise; the n=3 cheap-render outlier was a sample artifact" and skips Phases B+C. The PR ships the high-repeat runset + a short negative-result memo.
 

@@ -308,11 +308,11 @@ No source code, package, or test files modified.
 
   PR #130 captured (n=3 medians, Chromium S2/hypothesis):
 
-  | Script | scroll p95 |
-  | --- | --- |
-  | `scroll-with-format` | 10.2 ms |
-  | `scroll-with-render` | 16.4 ms |
-  | `scroll-with-heavy-render` | 10.3 ms |
+  | Script                     | scroll p95 |
+  | -------------------------- | ---------- |
+  | `scroll-with-format`       | 10.2 ms    |
+  | `scroll-with-render`       | 16.4 ms    |
+  | `scroll-with-heavy-render` | 10.3 ms    |
 
   Heavy-render renders more DOM (296 nodes vs 164) yet measures faster than cheap-render. This memo tightens the signal at n=20 and, if warranted, profiles the cause.
 
@@ -325,11 +325,11 @@ No source code, package, or test files modified.
 
   ## High-repeat data
 
-  | Script | n | mean p95 (ms) | σ (ms) | min | median | max |
-  | --- | --- | --- | --- | --- | --- | --- |
-  | scroll-with-format | 20 | <X.X> | <X.X> | <X.X> | <X.X> | <X.X> |
-  | scroll-with-render | 20 | <X.X> | <X.X> | <X.X> | <X.X> | <X.X> |
-  | scroll-with-heavy-render | 20 | <X.X> | <X.X> | <X.X> | <X.X> | <X.X> |
+  | Script                   | n   | mean p95 (ms) | σ (ms) | min   | median | max   |
+  | ------------------------ | --- | ------------- | ------ | ----- | ------ | ----- |
+  | scroll-with-format       | 20  | <X.X>         | <X.X>  | <X.X> | <X.X>  | <X.X> |
+  | scroll-with-render       | 20  | <X.X>         | <X.X>  | <X.X> | <X.X>  | <X.X> |
+  | scroll-with-heavy-render | 20  | <X.X>         | <X.X>  | <X.X> | <X.X>  | <X.X> |
 
   Source: `status/milestones/2026-05-11-pretable-cell-renderer-high-repeat.json`.
 
@@ -344,20 +344,25 @@ No source code, package, or test files modified.
   (Omit this section if verdict is noise/mixed.)
 
   Traces committed at:
+
   - `status/traces/2026-05-11-pretable-scroll-with-format.trace.zip`
   - `status/traces/2026-05-11-pretable-scroll-with-render.trace.zip`
   - `status/traces/2026-05-11-pretable-scroll-with-heavy-render.trace.zip`
 
   ### Format hotspots
+
   <bulleted list>
 
   ### Cheap-render hotspots
+
   <bulleted list>
 
   ### Heavy-render hotspots
+
   <bulleted list>
 
   ### Differential
+
   <paragraph>
 
   ## Hypothesis for the gap
@@ -370,13 +375,14 @@ No source code, package, or test files modified.
 
   (Omit if verdict is noise/mixed.)
 
-  | Option | Description | Expected delta | Risk to quality wedge |
-  | --- | --- | --- | --- |
-  | 1 | <e.g., "Inline the cheap-render JSX structure to match heavy"> | <delta> | <risk> |
+  | Option | Description                                                    | Expected delta | Risk to quality wedge |
+  | ------ | -------------------------------------------------------------- | -------------- | --------------------- |
+  | 1      | <e.g., "Inline the cheap-render JSX structure to match heavy"> | <delta>        | <risk>                |
 
   ## Verdict
 
   <one of:
+
   - "Gap is noise; n=3 cheap-render outlier was a sample artifact. No follow-up needed; recommend the bench's default repeat protocol stay at n=3 for cell-renderer scripts unless similar anomalies recur."
   - "Gap is mixed: one pair real, the other within noise. The differential isn't clean enough to act on. Recommend n=50 follow-up to settle."
   - "Gap is real and likely caused by <X>. Recommend a perf-fix PR scoped to <Y>. Estimated impact: <Z>.">
@@ -420,7 +426,6 @@ No source code, package, or test files modified.
 - [ ] **7.3** Open the PR. PR title: `docs(research): pretable scroll-with-render perf diagnostic`. Body sections: Summary, Verdict, what's NOT in this PR.
 
 - [ ] **7.4** Auto-merge decision:
-
   - **Verdict was `noise`** → set auto-merge with `gh pr merge --auto --squash`. Negative-result memo; uncontroversial.
   - **Verdict was `mixed`** → set auto-merge as well; the inconclusive verdict is honest reporting.
   - **Verdict was `real-cheap-render-slower`** → HOLD for user review. The memo names a leading hypothesis about pretable's React reconciliation path; that's a project-narrative decision the user should read before it's committed as the official position.
@@ -433,17 +438,17 @@ No source code, package, or test files modified.
 
 **Spec coverage:**
 
-| Spec section | Covered by |
-| --- | --- |
-| Goal: diagnose 6 ms cheap-render gap, no code changes | Tasks 1–6, no source files in File Structure |
-| Non-goals (no fix, no other browsers, etc.) | Out-of-scope notes in PR body (Task 7.3) |
-| Architecture: 3 sequential phases inside one PR | Phases A / B / C, conditional branch in Task 3.1 |
-| Phase A: n=20 matrix command | Task 1.1 |
-| Decision threshold: 2σ on mean-of-p95, BOTH pairs must pass | Task 2.1 (verdict computation), Task 3.1 (branching) |
-| Phase B: Playwright trace capture | Tasks 4–5 |
-| Phase C: memo with template structure | Task 6 |
-| Failure modes (BLOCKED on trace failure, BLOCKED on insufficient samples) | Tasks 1.1, 3.1, 4.4, 5.6 |
-| Auto-merge policy per verdict | Task 7.4 |
+| Spec section                                                              | Covered by                                           |
+| ------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Goal: diagnose 6 ms cheap-render gap, no code changes                     | Tasks 1–6, no source files in File Structure         |
+| Non-goals (no fix, no other browsers, etc.)                               | Out-of-scope notes in PR body (Task 7.3)             |
+| Architecture: 3 sequential phases inside one PR                           | Phases A / B / C, conditional branch in Task 3.1     |
+| Phase A: n=20 matrix command                                              | Task 1.1                                             |
+| Decision threshold: 2σ on mean-of-p95, BOTH pairs must pass               | Task 2.1 (verdict computation), Task 3.1 (branching) |
+| Phase B: Playwright trace capture                                         | Tasks 4–5                                            |
+| Phase C: memo with template structure                                     | Task 6                                               |
+| Failure modes (BLOCKED on trace failure, BLOCKED on insufficient samples) | Tasks 1.1, 3.1, 4.4, 5.6                             |
+| Auto-merge policy per verdict                                             | Task 7.4                                             |
 
 All sections covered.
 
