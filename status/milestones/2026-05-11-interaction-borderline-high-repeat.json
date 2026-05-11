@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-05-11T21:13:16.743Z",
+  "scenarioId": "S2",
+  "scale": "hypothesis",
+  "browserName": "chromium",
+  "plannedRepeats": 20,
+  "grid": {
+    "pretable": {
+      "filter-metadata": {
+        "n": 20,
+        "mean": 17.51,
+        "sd": 2.44,
+        "min": 15.800000000000011,
+        "median": 16.74999999999997,
+        "max": 24.80000000000001
+      },
+      "filter-text": {
+        "n": 20,
+        "mean": 16.79,
+        "sd": 0.308,
+        "min": 16.099999999999966,
+        "median": 16.700000000000045,
+        "max": 17.5
+      }
+    },
+    "tanstack": {
+      "filter-metadata": {
+        "n": 8,
+        "mean": 19.113,
+        "sd": 11.597,
+        "min": 8.199999999999989,
+        "median": 17.250000000000014,
+        "max": 41.69999999999999
+      },
+      "filter-text": {
+        "n": 6,
+        "mean": 27.967,
+        "sd": 17.23,
+        "min": 8.299999999999983,
+        "median": 29.450000000000003,
+        "max": 49.60000000000002
+      }
+    }
+  },
+  "slices": {
+    "pretableFilterTextOverBudget": {
+      "rule": "noise-within-budget if mean+2σ ≤ 16; real-over-budget if mean−2σ > 16; else borderline-confirmed",
+      "mean": 16.79,
+      "sd": 0.308,
+      "meanPlus2": 17.406,
+      "meanMinus2": 16.174,
+      "budget": 16,
+      "verdict": "real-over-budget"
+    },
+    "tanstackVsPretableFilterMetadata": {
+      "rule": "real if |mean_tanstack − mean_pretable| > 2 × max(σ_tanstack, σ_pretable)",
+      "meanDiff": 1.603,
+      "noiseFloor": 23.194,
+      "tanstackFasterIfReal": false,
+      "verdict": "noise-tied"
+    }
+  }
+}
