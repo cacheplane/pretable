@@ -465,9 +465,9 @@ export default function BenchPage() {
       <p className="mt-6 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
         Pretable sorts and filters 3,000 wrapped-text rows in 16–18 ms across
         all three scripts — clear of the single 60Hz frame budget on{" "}
-        <code>filter-metadata</code> and <code>sort</code>, fractionally over
-        on <code>filter-text</code>. AG Grid Community runs sort and filter
-        3–3.5× slower despite being a full feature-surface grid; MUI X DataGrid
+        <code>filter-metadata</code> and <code>sort</code>, fractionally over on{" "}
+        <code>filter-text</code>. AG Grid Community runs sort and filter 3–3.5×
+        slower despite being a full feature-surface grid; MUI X DataGrid
         Community lands at roughly 2× across all three scripts. TanStack Table
         v8 + TanStack Virtual is the only comparator that ties pretable on a
         single metric — <code>filter-metadata</code> at 15.7 ms vs 16.0 ms,
@@ -477,8 +477,7 @@ export default function BenchPage() {
       <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
         Like the scroll story, the H6/H7/H8 evaluators check pretable&rsquo;s
         absolute thresholds (<code>≤ 32 ms</code> interaction p95) rather than
-        gating on comparator parity. All three hypotheses stay satisfied at
-        n=3.
+        gating on comparator parity. All three hypotheses stay satisfied at n=3.
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">

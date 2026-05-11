@@ -3,8 +3,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const STATUS_DIR = "status";
-const OUT_PATH =
-  "status/milestones/2026-05-10-b2-sort-filter-summary.json";
+const OUT_PATH = "status/milestones/2026-05-10-b2-sort-filter-summary.json";
 
 const ADAPTERS = ["pretable", "ag-grid", "tanstack", "mui"];
 const SCRIPTS = ["sort", "filter-metadata", "filter-text"];
@@ -14,9 +13,7 @@ function median(xs) {
   const sorted = [...xs].sort((a, b) => a - b);
   const n = sorted.length;
   if (n === 0) return null;
-  return n % 2
-    ? sorted[(n - 1) / 2]
-    : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+  return n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
 }
 
 const files = await readdir(STATUS_DIR);
@@ -42,9 +39,7 @@ for (const adapterId of ADAPTERS) {
       .slice(-3);
     const samples = [];
     for (const f of matchingFiles) {
-      const data = JSON.parse(
-        await readFile(join(STATUS_DIR, f), "utf8"),
-      );
+      const data = JSON.parse(await readFile(join(STATUS_DIR, f), "utf8"));
       const lat = data.metrics?.interaction_latency_ms;
       const settle = data.metrics?.settle_duration_ms;
       if (typeof lat === "number" && typeof settle === "number") {

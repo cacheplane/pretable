@@ -43,6 +43,7 @@ docs/research/
 ### 1.1 Inspect existing per-run summary file shape
 
 Run:
+
 ```
 ls status/chromium-pretable-default-s2-hypothesis-sort-2026-05-10*.summary.json | head -1 | xargs cat | jq '{adapterId, scriptName, status, metrics: {interaction_latency_ms: .metrics.interaction_latency_ms, settle_duration_ms: .metrics.settle_duration_ms}}'
 ```
@@ -57,8 +58,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const STATUS_DIR = "status";
-const OUT_PATH =
-  "status/milestones/2026-05-10-b2-sort-filter-summary.json";
+const OUT_PATH = "status/milestones/2026-05-10-b2-sort-filter-summary.json";
 
 const ADAPTERS = ["pretable", "ag-grid", "tanstack", "mui"];
 const SCRIPTS = ["sort", "filter-metadata", "filter-text"];
@@ -68,9 +68,7 @@ function median(xs) {
   const sorted = [...xs].sort((a, b) => a - b);
   const n = sorted.length;
   if (n === 0) return null;
-  return n % 2
-    ? sorted[(n - 1) / 2]
-    : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+  return n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
 }
 
 const files = await readdir(STATUS_DIR);
@@ -89,9 +87,7 @@ for (const adapterId of ADAPTERS) {
     );
     const samples = [];
     for (const f of matchingFiles) {
-      const data = JSON.parse(
-        await readFile(join(STATUS_DIR, f), "utf8"),
-      );
+      const data = JSON.parse(await readFile(join(STATUS_DIR, f), "utf8"));
       const lat = data.metrics?.interaction_latency_ms;
       const settle = data.metrics?.settle_duration_ms;
       if (typeof lat === "number" && typeof settle === "number") {
@@ -320,17 +316,14 @@ function loadInteractionSummary(): {
   filename: string;
   runsetId: string;
 } {
-  const filename =
-    "status/milestones/2026-05-10-b2-sort-filter-summary.json";
+  const filename = "status/milestones/2026-05-10-b2-sort-filter-summary.json";
   const raw = readFileSync(repoRootRelative(filename), "utf8");
   const data = JSON.parse(raw) as InteractionSummaryFile;
   const rows = ADAPTER_ORDER.flatMap<InteractionRow>((adapter) => {
     const entry = data.adapters.find((a) => a.adapterId === adapter);
     if (!entry) return [];
     const sortRow = entry.rows.find((r) => r.scriptName === "sort");
-    const fmRow = entry.rows.find(
-      (r) => r.scriptName === "filter-metadata",
-    );
+    const fmRow = entry.rows.find((r) => r.scriptName === "filter-metadata");
     const ftRow = entry.rows.find((r) => r.scriptName === "filter-text");
     if (
       sortRow?.interactionLatencyMs == null ||

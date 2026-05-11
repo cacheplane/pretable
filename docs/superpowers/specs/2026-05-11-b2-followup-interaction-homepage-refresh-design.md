@@ -16,11 +16,11 @@ No source/package changes. Only `apps/website/` and a new aggregated milestone s
 
 PR #131 captured (n=3 medians, `interaction_latency_ms`):
 
-| Script | pretable | AG Grid | TanStack | MUI X |
-| --- | --- | --- | --- | --- |
-| `sort` | **16.5 ms** | 58.3 ms (3.5×) | 34.4 ms (2.1×) | 35.0 ms (2.1×) |
-| `filter-metadata` | 16.0 ms | 49.9 ms (3.1×) | **15.7 ms** (0.98×) | 33.4 ms (2.1×) |
-| `filter-text` | **17.7 ms** | 50.0 ms (2.8×) | 40.2 ms (2.3×) | 33.3 ms (1.9×) |
+| Script            | pretable    | AG Grid        | TanStack            | MUI X          |
+| ----------------- | ----------- | -------------- | ------------------- | -------------- |
+| `sort`            | **16.5 ms** | 58.3 ms (3.5×) | 34.4 ms (2.1×)      | 35.0 ms (2.1×) |
+| `filter-metadata` | 16.0 ms     | 49.9 ms (3.1×) | **15.7 ms** (0.98×) | 33.4 ms (2.1×) |
+| `filter-text`     | **17.7 ms** | 50.0 ms (2.8×) | 40.2 ms (2.3×)      | 33.3 ms (1.9×) |
 
 Pretable beats AG Grid Community 3–3.5× and MUI X 2× across all three scripts. TanStack edges pretable by 0.3 ms on `filter-metadata` (within noise) but loses 2.1–2.3× on the other two. This is the strongest comparative wedge surfaced since the post-stub-era, and meaningfully sharper than the scroll wedge (~1.7× vs AG Grid + TanStack; MUI parity).
 
@@ -77,33 +77,81 @@ docs/research/
     {
       "adapterId": "pretable",
       "rows": [
-        { "scriptName": "sort", "interactionLatencyMs": 16.5, "settleDurationMs": 16.8 },
-        { "scriptName": "filter-metadata", "interactionLatencyMs": 16.0, "settleDurationMs": 16.7 },
-        { "scriptName": "filter-text", "interactionLatencyMs": 17.7, "settleDurationMs": 16.6 }
+        {
+          "scriptName": "sort",
+          "interactionLatencyMs": 16.5,
+          "settleDurationMs": 16.8
+        },
+        {
+          "scriptName": "filter-metadata",
+          "interactionLatencyMs": 16.0,
+          "settleDurationMs": 16.7
+        },
+        {
+          "scriptName": "filter-text",
+          "interactionLatencyMs": 17.7,
+          "settleDurationMs": 16.6
+        }
       ]
     },
     {
       "adapterId": "ag-grid",
       "rows": [
-        { "scriptName": "sort", "interactionLatencyMs": 58.3, "settleDurationMs": 9.2 },
-        { "scriptName": "filter-metadata", "interactionLatencyMs": 49.9, "settleDurationMs": 15.5 },
-        { "scriptName": "filter-text", "interactionLatencyMs": 50.0, "settleDurationMs": 16.7 }
+        {
+          "scriptName": "sort",
+          "interactionLatencyMs": 58.3,
+          "settleDurationMs": 9.2
+        },
+        {
+          "scriptName": "filter-metadata",
+          "interactionLatencyMs": 49.9,
+          "settleDurationMs": 15.5
+        },
+        {
+          "scriptName": "filter-text",
+          "interactionLatencyMs": 50.0,
+          "settleDurationMs": 16.7
+        }
       ]
     },
     {
       "adapterId": "tanstack",
       "rows": [
-        { "scriptName": "sort", "interactionLatencyMs": 34.4, "settleDurationMs": 31.6 },
-        { "scriptName": "filter-metadata", "interactionLatencyMs": 15.7, "settleDurationMs": 26.5 },
-        { "scriptName": "filter-text", "interactionLatencyMs": 40.2, "settleDurationMs": 24.7 }
+        {
+          "scriptName": "sort",
+          "interactionLatencyMs": 34.4,
+          "settleDurationMs": 31.6
+        },
+        {
+          "scriptName": "filter-metadata",
+          "interactionLatencyMs": 15.7,
+          "settleDurationMs": 26.5
+        },
+        {
+          "scriptName": "filter-text",
+          "interactionLatencyMs": 40.2,
+          "settleDurationMs": 24.7
+        }
       ]
     },
     {
       "adapterId": "mui",
       "rows": [
-        { "scriptName": "sort", "interactionLatencyMs": 35.0, "settleDurationMs": 25.0 },
-        { "scriptName": "filter-metadata", "interactionLatencyMs": 33.4, "settleDurationMs": 25.0 },
-        { "scriptName": "filter-text", "interactionLatencyMs": 33.3, "settleDurationMs": 25.0 }
+        {
+          "scriptName": "sort",
+          "interactionLatencyMs": 35.0,
+          "settleDurationMs": 25.0
+        },
+        {
+          "scriptName": "filter-metadata",
+          "interactionLatencyMs": 33.4,
+          "settleDurationMs": 25.0
+        },
+        {
+          "scriptName": "filter-text",
+          "interactionLatencyMs": 33.3,
+          "settleDurationMs": 25.0
+        }
       ]
     }
   ]

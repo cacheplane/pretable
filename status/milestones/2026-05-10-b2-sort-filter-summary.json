@@ -4,11 +4,7 @@
   "scenarioId": "S2",
   "scale": "hypothesis",
   "browserName": "chromium",
-  "scripts": [
-    "sort",
-    "filter-metadata",
-    "filter-text"
-  ],
+  "scripts": ["sort", "filter-metadata", "filter-text"],
   "adapters": [
     {
       "adapterId": "pretable",
