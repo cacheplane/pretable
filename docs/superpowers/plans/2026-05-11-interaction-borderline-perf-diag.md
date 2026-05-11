@@ -43,6 +43,7 @@ No source code, package, or test files modified.
 ### Task 1 — Run the matrix
 
 - [ ] **1.1** Run:
+
   ```
   pnpm bench:matrix \
     --project=chromium \
@@ -56,6 +57,7 @@ No source code, package, or test files modified.
   Use `Bash` with `run_in_background: true` if the foreground would block too long; poll sparingly. Expected wall-clock 12–18 min.
 
 - [ ] **1.2** Locate the per-run summary files:
+
   ```
   ls status/chromium-{pretable,tanstack}-default-s2-hypothesis-{filter-metadata,filter-text}-2026-05-11*.summary.json | wc -l
   ```
@@ -180,6 +182,7 @@ No source code, package, or test files modified.
 ### Task 3 — Read verdicts; decide auto-merge
 
 - [ ] **3.1** Read the two slice verdicts:
+
   ```
   jq '.slices | {ft: .pretableFilterTextOverBudget.verdict, fm: .tanstackVsPretableFilterMetadata.verdict}' status/milestones/2026-05-11-interaction-borderline-high-repeat.json
   ```
@@ -227,12 +230,12 @@ No source code, package, or test files modified.
 
   ## High-repeat data
 
-  | (adapter, script) | n | mean (ms) | σ (ms) | min | median | max |
-  | --- | --- | --- | --- | --- | --- | --- |
-  | pretable, filter-text | <n> | <X.X> | <X.X> | <X.X> | <X.X> | <X.X> |
-  | pretable, filter-metadata | <n> | <X.X> | <X.X> | <X.X> | <X.X> | <X.X> |
-  | tanstack, filter-text | <n> | <X.X> | <X.X> | <X.X> | <X.X> | <X.X> |
-  | tanstack, filter-metadata | <n> | <X.X> | <X.X> | <X.X> | <X.X> | <X.X> |
+  | (adapter, script)         | n   | mean (ms) | σ (ms) | min   | median | max   |
+  | ------------------------- | --- | --------- | ------ | ----- | ------ | ----- |
+  | pretable, filter-text     | <n> | <X.X>     | <X.X>  | <X.X> | <X.X>  | <X.X> |
+  | pretable, filter-metadata | <n> | <X.X>     | <X.X>  | <X.X> | <X.X>  | <X.X> |
+  | tanstack, filter-text     | <n> | <X.X>     | <X.X>  | <X.X> | <X.X>  | <X.X> |
+  | tanstack, filter-metadata | <n> | <X.X>     | <X.X>  | <X.X> | <X.X>  | <X.X> |
 
   Source: `status/milestones/2026-05-11-interaction-borderline-high-repeat.json`.
 
@@ -268,6 +271,7 @@ No source code, package, or test files modified.
   ## Verdict
 
   <one of:
+
   - "Both borderlines are noise; PR #131's n=3 readings were sampling artifacts."
   - "Pretable filter-text is real-over-budget; recommend a perf-fix PR." (etc.)>
   ```
@@ -285,12 +289,15 @@ No source code, package, or test files modified.
 ## Task 5 — Gates + PR
 
 - [ ] **5.1** Repo-wide gates:
+
   ```
   pnpm -w typecheck && pnpm -w test && pnpm -w lint && pnpm format
   ```
+
   Expected: all pass (no source changes).
 
 - [ ] **5.2** Push + open PR:
+
   ```
   git push -u origin interaction-borderline-perf-diag
   gh pr create --title "docs(research): interaction borderline perf diagnostic" --body "..."
@@ -304,11 +311,11 @@ No source code, package, or test files modified.
 
 ## Self-review
 
-| Spec section | Plan task |
-| --- | --- |
-| Phase A matrix | Task 1 |
-| Per-slice verdicts | Task 2.1 + Task 3 |
-| Memo | Task 4 |
-| Auto-merge gate | Task 3.2 + Task 5.3 |
+| Spec section       | Plan task           |
+| ------------------ | ------------------- |
+| Phase A matrix     | Task 1              |
+| Per-slice verdicts | Task 2.1 + Task 3   |
+| Memo               | Task 4              |
+| Auto-merge gate    | Task 3.2 + Task 5.3 |
 
 No placeholders outside the memo template (those are intentional). Type/value consistency: paths consistent; verdict enum values consistent between Task 2.1 compute + Task 3.2 branch + Task 4 memo + Task 5.3 gate.

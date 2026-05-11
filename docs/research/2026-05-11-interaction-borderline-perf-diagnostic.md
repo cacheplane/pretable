@@ -28,12 +28,12 @@ Both within ±2 ms of budget at n=3, where p95 is essentially max-of-3. PR #124 
 
 ## High-repeat data
 
-| (adapter, script) | n | mean (ms) | σ (ms) | min | median | max |
-| --- | --- | --- | --- | --- | --- | --- |
-| pretable, filter-text | 20 | **16.79** | 0.31 | 16.10 | 16.70 | 17.50 |
-| pretable, filter-metadata | 20 | **17.51** | 2.44 | 15.80 | 16.75 | 24.80 |
-| tanstack, filter-metadata | 8 | 19.11 | 11.60 | 8.20 | 17.25 | 41.70 |
-| tanstack, filter-text | 6 | 27.97 | 17.23 | 8.30 | 29.45 | 49.60 |
+| (adapter, script)         | n   | mean (ms) | σ (ms) | min   | median | max   |
+| ------------------------- | --- | --------- | ------ | ----- | ------ | ----- |
+| pretable, filter-text     | 20  | **16.79** | 0.31   | 16.10 | 16.70  | 17.50 |
+| pretable, filter-metadata | 20  | **17.51** | 2.44   | 15.80 | 16.75  | 24.80 |
+| tanstack, filter-metadata | 8   | 19.11     | 11.60  | 8.20  | 17.25  | 41.70 |
+| tanstack, filter-text     | 6   | 27.97     | 17.23  | 8.30  | 29.45  | 49.60 |
 
 Source: `status/milestones/2026-05-11-interaction-borderline-high-repeat.json`.
 

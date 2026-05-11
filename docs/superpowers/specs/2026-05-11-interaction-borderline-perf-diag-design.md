@@ -19,10 +19,10 @@ Output is a research memo + raw evidence — no code changes. If verdicts are "n
 
 PR #131 captured (n=3 medians, Chromium S2/hypothesis):
 
-| Script | pretable `interaction_latency_ms` | tanstack `interaction_latency_ms` |
-| --- | --- | --- |
-| `filter-text` | **17.7 ms** | 40.2 ms |
-| `filter-metadata` | 16.0 ms | **15.7 ms** |
+| Script            | pretable `interaction_latency_ms` | tanstack `interaction_latency_ms` |
+| ----------------- | --------------------------------- | --------------------------------- |
+| `filter-text`     | **17.7 ms**                       | 40.2 ms                           |
+| `filter-metadata` | 16.0 ms                           | **15.7 ms**                       |
 
 `filter-text` 17.7 ms is the only pretable script over the 16 ms single-frame budget in the entire PR #131 runset; the page prose acknowledges this as "fractionally over." `filter-metadata` 15.7 ms is the only place tanstack edges pretable.
 
@@ -40,11 +40,11 @@ Both are within ±2 ms of budget at n=3, where p95 is essentially max-of-3 and a
 
 One PR off latest `main`. Three sequential phases (mirrors PR #124 + PR #133):
 
-| Phase | Action | Output |
-|---|---|---|
-| A | n=20 matrix re-run for `pretable + tanstack` × S2/hypothesis × {`filter-metadata`, `filter-text`}. | `status/milestones/2026-05-11-interaction-borderline-high-repeat.json` with mean / σ / min / median / max per (adapter, script). |
-| B | (Skipped — no traces. Borderlines don't have a perf cliff to find.) | n/a |
-| C | Memo with per-slice verdicts. | `docs/research/2026-05-11-interaction-borderline-perf-diagnostic.md` |
+| Phase | Action                                                                                             | Output                                                                                                                           |
+| ----- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| A     | n=20 matrix re-run for `pretable + tanstack` × S2/hypothesis × {`filter-metadata`, `filter-text`}. | `status/milestones/2026-05-11-interaction-borderline-high-repeat.json` with mean / σ / min / median / max per (adapter, script). |
+| B     | (Skipped — no traces. Borderlines don't have a perf cliff to find.)                                | n/a                                                                                                                              |
+| C     | Memo with per-slice verdicts.                                                                      | `docs/research/2026-05-11-interaction-borderline-perf-diagnostic.md`                                                             |
 
 ## Method details
 
