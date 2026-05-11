@@ -22,12 +22,12 @@ it("renders trail markers for each adapter", () => {
     screen.getByRole("img", { name: /recommended path/i }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("img", { name: /slower scroll.*row-height drift/i }),
+    screen.getByRole("img", { name: /slower scroll.*slower interaction/i }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("img", { name: /headless.*selection and nav/i }),
+    screen.getByRole("img", { name: /headless.*slower interaction/i }),
   ).toBeInTheDocument();
   expect(
-    screen.getByRole("img", { name: /parity at scroll p95/i }),
+    screen.getByRole("img", { name: /scroll-p95 parity/i }),
   ).toBeInTheDocument();
 });

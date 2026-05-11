@@ -1,0 +1,102 @@
+{
+  "runsetId": "958z",
+  "generatedAt": "2026-05-11T15:55:47.241Z",
+  "scenarioId": "S2",
+  "scale": "hypothesis",
+  "browserName": "chromium",
+  "scripts": ["sort", "filter-metadata", "filter-text"],
+  "adapters": [
+    {
+      "adapterId": "pretable",
+      "rows": [
+        {
+          "scriptName": "sort",
+          "interactionLatencyMs": 16.5,
+          "settleDurationMs": 16.80000000000001,
+          "sampleCount": 3
+        },
+        {
+          "scriptName": "filter-metadata",
+          "interactionLatencyMs": 16,
+          "settleDurationMs": 16.69999999999999,
+          "sampleCount": 3
+        },
+        {
+          "scriptName": "filter-text",
+          "interactionLatencyMs": 17.700000000000045,
+          "settleDurationMs": 16.600000000000023,
+          "sampleCount": 3
+        }
+      ]
+    },
+    {
+      "adapterId": "ag-grid",
+      "rows": [
+        {
+          "scriptName": "sort",
+          "interactionLatencyMs": 58.29999999999998,
+          "settleDurationMs": 9.199999999999989,
+          "sampleCount": 3
+        },
+        {
+          "scriptName": "filter-metadata",
+          "interactionLatencyMs": 49.89999999999998,
+          "settleDurationMs": 15.5,
+          "sampleCount": 3
+        },
+        {
+          "scriptName": "filter-text",
+          "interactionLatencyMs": 50,
+          "settleDurationMs": 16.700000000000045,
+          "sampleCount": 3
+        }
+      ]
+    },
+    {
+      "adapterId": "tanstack",
+      "rows": [
+        {
+          "scriptName": "sort",
+          "interactionLatencyMs": 34.400000000000034,
+          "settleDurationMs": 31.599999999999966,
+          "sampleCount": 3
+        },
+        {
+          "scriptName": "filter-metadata",
+          "interactionLatencyMs": 15.699999999999989,
+          "settleDurationMs": 26.5,
+          "sampleCount": 3
+        },
+        {
+          "scriptName": "filter-text",
+          "interactionLatencyMs": 40.20000000000002,
+          "settleDurationMs": 24.69999999999999,
+          "sampleCount": 3
+        }
+      ]
+    },
+    {
+      "adapterId": "mui",
+      "rows": [
+        {
+          "scriptName": "sort",
+          "interactionLatencyMs": 35,
+          "settleDurationMs": 25,
+          "sampleCount": 3
+        },
+        {
+          "scriptName": "filter-metadata",
+          "interactionLatencyMs": 33.400000000000034,
+          "settleDurationMs": 25,
+          "sampleCount": 3
+        },
+        {
+          "scriptName": "filter-text",
+          "interactionLatencyMs": 33.30000000000001,
+          "settleDurationMs": 25,
+          "sampleCount": 3
+        }
+      ]
+    }
+  ]
+}

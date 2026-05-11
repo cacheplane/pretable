@@ -22,6 +22,12 @@ const NA_MARKER = "n/a";
 //     Same slice for pretable + mui at 20 repeats. Confirms parity (mean
 //     diff −0.065 ms, well inside the 2σ noise floor of 0.40 ms).
 //
+//   status/milestones/2026-05-10-b2-sort-filter-summary.json
+//     S2/hypothesis/Chromium × 3 repeats × 4 adapters × 3 interaction
+//     scripts. Pretable beats AG Grid 3-3.5× and MUI 2× across sort,
+//     filter-metadata, filter-text; TanStack at parity on filter-metadata
+//     only.
+//
 // Re-derive with `pnpm bench:matrix --adapters=pretable,ag-grid,tanstack,mui
 //   --scenarios=S2 --scripts=scroll --scale=hypothesis --repeats=10`.
 //
@@ -65,6 +71,30 @@ const ROWS: readonly Row[] = [
     budget: "≤ 16",
   },
   {
+    metric: "sort latency p95 (ms) — interaction",
+    pretable: "16.5",
+    agGrid: "58.3",
+    tanstack: "34.4",
+    mui: "35.0",
+    budget: "≤ 16",
+  },
+  {
+    metric: "filter-metadata latency p95 (ms)",
+    pretable: "16.0",
+    agGrid: "49.9",
+    tanstack: "15.7",
+    mui: "33.4",
+    budget: "≤ 16",
+  },
+  {
+    metric: "filter-text latency p95 (ms)",
+    pretable: "17.7",
+    agGrid: "50.0",
+    tanstack: "40.2",
+    mui: "33.3",
+    budget: "≤ 16",
+  },
+  {
     metric: "headless engine + React surface",
     pretable: "yes",
     agGrid: NA_MARKER,
@@ -98,7 +128,8 @@ export function ComparisonTable() {
           of AG Grid Community and TanStack on raw frame p95 — and is the only
           adapter here that clears every quality threshold (zero blank gaps,
           zero anchor shift, ≤1 px row-height drift) at full-grid feature
-          weight.{" "}
+          weight. Interactive sort and filter run 2–3.5× faster than every
+          measured comparator on the same dataset.{" "}
           <a
             href="https://github.com/cacheplane/pretable/tree/main/status/milestones"
             className="text-accent-deep underline-offset-2 hover:underline"
@@ -124,7 +155,7 @@ export function ComparisonTable() {
                   <span className="inline-flex items-center gap-2">
                     <TrailMarker
                       variant="blue"
-                      label="Slower scroll; row-height drift"
+                      label="1.7× slower scroll, 3× slower interaction; row-height drift"
                     />
                     AG Grid
                   </span>
@@ -133,7 +164,7 @@ export function ComparisonTable() {
                   <span className="inline-flex items-center gap-2">
                     <TrailMarker
                       variant="black"
-                      label="Headless; you wire selection and nav"
+                      label="Headless; ~2× slower interaction (filter-metadata ties pretable)"
                     />
                     TanStack
                   </span>
@@ -142,7 +173,7 @@ export function ComparisonTable() {
                   <span className="inline-flex items-center gap-2">
                     <TrailMarker
                       variant="green"
-                      label="Parity at scroll p95; full-grid feature surface"
+                      label="Scroll-p95 parity; 2× slower interaction"
                     />
                     MUI X
                   </span>

@@ -140,6 +140,97 @@ function loadH1HighRepeatCorrection(): H1HighRepeatCorrectionFile {
   return JSON.parse(raw) as H1HighRepeatCorrectionFile;
 }
 
+interface InteractionAdapterRow {
+  scriptName: "sort" | "filter-metadata" | "filter-text";
+  interactionLatencyMs: number | null;
+  settleDurationMs: number | null;
+  sampleCount: number;
+}
+
+interface InteractionAdapterSummary {
+  adapterId: string;
+  rows: InteractionAdapterRow[];
+}
+
+interface InteractionSummaryFile {
+  runsetId: string;
+  generatedAt: string;
+  scenarioId: string;
+  scale: string;
+  browserName: string;
+  scripts: string[];
+  adapters: InteractionAdapterSummary[];
+}
+
+interface InteractionRow {
+  adapter: (typeof ADAPTER_ORDER)[number];
+  label: string;
+  sortMs: number;
+  filterMetadataMs: number;
+  filterTextMs: number;
+}
+
+function loadInteractionSummary(): {
+  rows: InteractionRow[];
+  filename: string;
+  runsetId: string;
+} {
+  const filename = "status/milestones/2026-05-10-b2-sort-filter-summary.json";
+  const raw = readFileSync(repoRootRelative(filename), "utf8");
+  const data = JSON.parse(raw) as InteractionSummaryFile;
+  const rows = ADAPTER_ORDER.flatMap<InteractionRow>((adapter) => {
+    const entry = data.adapters.find((a) => a.adapterId === adapter);
+    if (!entry) return [];
+    const sortRow = entry.rows.find((r) => r.scriptName === "sort");
+    const fmRow = entry.rows.find((r) => r.scriptName === "filter-metadata");
+    const ftRow = entry.rows.find((r) => r.scriptName === "filter-text");
+    if (
+      sortRow?.interactionLatencyMs == null ||
+      fmRow?.interactionLatencyMs == null ||
+      ftRow?.interactionLatencyMs == null
+    ) {
+      return [];
+    }
+    return [
+      {
+        adapter,
+        label: ADAPTER_LABEL[adapter],
+        sortMs: sortRow.interactionLatencyMs,
+        filterMetadataMs: fmRow.interactionLatencyMs,
+        filterTextMs: ftRow.interactionLatencyMs,
+      },
+    ];
+  });
+  return { rows, filename, runsetId: data.runsetId };
+}
+
+function interactionVerdictFor(
+  row: InteractionRow,
+  fastest: InteractionRow,
+): string {
+  if (row.adapter === fastest.adapter) {
+    return "fastest tied; full quality pass";
+  }
+  const ratios = [
+    row.sortMs / fastest.sortMs,
+    row.filterMetadataMs / fastest.filterMetadataMs,
+    row.filterTextMs / fastest.filterTextMs,
+  ];
+  const minR = Math.min(...ratios);
+  const maxR = Math.max(...ratios);
+  const tieScripts: string[] = [];
+  if (row.filterMetadataMs / fastest.filterMetadataMs < 1.05) {
+    tieScripts.push("filter-metadata");
+  }
+  const range =
+    Math.round(minR * 10) === Math.round(maxR * 10)
+      ? `${minR.toFixed(1)}× slower`
+      : `${minR.toFixed(1)}–${maxR.toFixed(1)}× slower`;
+  return tieScripts.length > 0
+    ? `${range} (${tieScripts.join(", ")} ties pretable)`
+    : range;
+}
+
 function verdictFor(
   row: ScrollRow,
   fastest: ScrollRow,
@@ -188,6 +279,13 @@ export default function BenchPage() {
   const pretableRow = scrollRows.find((r) => r.adapter === "pretable");
   const pretableHighRepeat = highRepeat.perAdapter.pretable;
   const muiHighRepeat = highRepeat.perAdapter.mui;
+
+  const { rows: interactionRows } = loadInteractionSummary();
+  const interactionFastest = interactionRows.reduce((min, r) => {
+    const minSum = min.sortMs + min.filterMetadataMs + min.filterTextMs;
+    const rSum = r.sortMs + r.filterMetadataMs + r.filterTextMs;
+    return rSum < minSum ? r : min;
+  });
 
   return (
     <article className="prose">
@@ -308,15 +406,78 @@ export default function BenchPage() {
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
-        Interaction (sort, filter)
+        Interactions (sort, filter)
       </h2>
+      <p className="mt-3 text-[15px] leading-[1.6] text-text-secondary">
+        Scenario <code>S2</code> (3,000 rows, wrapped multilingual messages).
+        Sort applies a column-state change; filter-metadata applies an equals
+        filter on a metadata column; filter-text applies a contains filter on
+        the wrapped-text primary column. Latency measured from trigger to first
+        changed frame; lower is better.
+      </p>
+
+      <table className="mt-6 w-full table-fixed border-collapse text-left text-[14px]">
+        <thead>
+          <tr className="border-b border-rule text-text-muted">
+            <th className="py-3 font-mono text-[11px] uppercase tracking-[0.14em]">
+              Adapter
+            </th>
+            <th className="py-3 font-mono text-[11px] uppercase tracking-[0.14em]">
+              sort p95 (ms)
+            </th>
+            <th className="py-3 font-mono text-[11px] uppercase tracking-[0.14em]">
+              filter-metadata p95 (ms)
+            </th>
+            <th className="py-3 font-mono text-[11px] uppercase tracking-[0.14em]">
+              filter-text p95 (ms)
+            </th>
+            <th className="py-3 font-mono text-[11px] uppercase tracking-[0.14em]">
+              Verdict
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {interactionRows.map((r) => (
+            <tr
+              className="border-b border-rule-soft text-text-primary"
+              key={r.adapter}
+            >
+              <td className="py-3 font-mono text-[13px] font-semibold">
+                {r.label}
+              </td>
+              <td className="py-3 font-mono text-[13px] tabular-nums">
+                {r.sortMs.toFixed(1)}
+              </td>
+              <td className="py-3 font-mono text-[13px] tabular-nums">
+                {r.filterMetadataMs.toFixed(1)}
+              </td>
+              <td className="py-3 font-mono text-[13px] tabular-nums">
+                {r.filterTextMs.toFixed(1)}
+              </td>
+              <td className="py-3 text-[13px] text-text-secondary">
+                {interactionVerdictFor(r, interactionFastest)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p className="mt-6 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
+        Pretable sorts and filters 3,000 wrapped-text rows in 16–18 ms across
+        all three scripts — clear of the single 60Hz frame budget on{" "}
+        <code>filter-metadata</code> and <code>sort</code>, fractionally over on{" "}
+        <code>filter-text</code>. AG Grid Community runs sort and filter 3–3.5×
+        slower despite being a full feature-surface grid; MUI X DataGrid
+        Community lands at roughly 2× across all three scripts. TanStack Table
+        v8 + TanStack Virtual is the only comparator that ties pretable on a
+        single metric — <code>filter-metadata</code> at 15.7 ms vs 16.0 ms,
+        within run noise — but is 2.1× slower on sort and 2.3× slower on{" "}
+        <code>filter-text</code>.
+      </p>
       <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
-        Sort, metadata-filter, and wrapped-text-filter scripts (H6, H7, H8) all
-        stay within pretable&rsquo;s single-frame interaction budget on the same
-        dataset and remain satisfied on this runset. The comparator grids each
-        carry their own sort/filter pipelines, but our matrix gates interaction
-        scripts to pretable for now — comparative interaction evidence is on the
-        roadmap.
+        Like the scroll story, the H6/H7/H8 evaluators check pretable&rsquo;s
+        absolute thresholds (<code>≤ 32 ms</code> interaction p95) rather than
+        gating on comparator parity. All three hypotheses stay satisfied at n=3.
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
