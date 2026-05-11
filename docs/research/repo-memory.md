@@ -455,3 +455,32 @@ Hypothesis status (H6/H7/H8 evaluators remain pretable-only — comparator data 
 - Homepage narrative refresh to reflect the 2–3.5× wedge on interaction scripts (separate editorial follow-up; this PR is harness wiring + evidence only).
 
 This closes the structural part of B2 follow-up #5; the supportedScripts gate is no longer pretable-only for any non-selection script.
+
+## 2026-05-11
+
+### B2 follow-up: homepage interaction wedge refresh
+
+Editorial PR landing the PR #131 sort + filter comparator wedge on the homepage. Three editorial surfaces touched; no source/package changes.
+
+- **`apps/website/app/components/ComparisonTable.tsx`** — three new rows added between `scroll anchor shift (px)` and `headless engine + React surface`: `sort latency p95`, `filter-metadata latency p95`, `filter-text latency p95`. Each row carries per-adapter numbers from the PR #131 runset (n=3 medians). The section subhead gets one new sentence: "Interactive sort and filter run 2–3.5× faster than every measured comparator on the same dataset." Header docblock cites the new milestone source.
+- **Trail-marker labels** rewritten on three comparators (pretable's "Recommended path" unchanged):
+  - **AG Grid** — `"Slower scroll; row-height drift"` → `"1.7× slower scroll, 3× slower interaction; row-height drift"`.
+  - **TanStack** — `"Headless; you wire selection and nav"` → `"Headless; ~2× slower interaction (filter-metadata ties pretable)"`.
+  - **MUI X** — `"Parity at scroll p95; full-grid feature surface"` → `"Scroll-p95 parity; 2× slower interaction"`. This is the most consequential change — the prior "parity at scroll p95" framing read positively about MUI; the new label keeps that half of the story while adding the interaction caveat.
+- **`apps/website/app/bench/page.tsx`** — the existing placeholder Interactions section ("comparative interaction evidence is on the roadmap") is replaced with a real section mirroring the H1 scroll layout: a four-adapter × three-script table plus two prose paragraphs. New `loadInteractionSummary()` + `interactionVerdictFor()` helpers parallel the existing scroll-side patterns. The verdict helper computes per-script ratio ranges and annotates the TanStack `filter-metadata` tie inline.
+- **Aggregator + summary file:** `scripts/extract-interaction-summary.mjs` is a one-shot Node script that reads the PR #131 per-run JSONs (`status/chromium-<adapter>-default-s2-hypothesis-{sort,filter-metadata,filter-text}-2026-05-10*.summary.json`), picks medians, and writes `status/milestones/2026-05-10-b2-sort-filter-summary.json`. Future matrix runs can regenerate the summary via the same script.
+
+**Tests:** `apps/website/__tests__/components/ComparisonTable.test.tsx` regression-guards the new trail-marker label phrasings via regex; pretable assertion unchanged. No new test for the `/bench` page section beyond the existing render-check.
+
+### Out of scope (deliberate)
+
+- **`ReceiptsBand.tsx`** — PR #129 (streaming reframe) is still open and modifies this file. Leaving it untouched here to avoid a merge conflict over an unresolved editorial decision.
+- **`FeatureGrid.tsx` Stream-aware card** — already capability-anchored after PR #126; doesn't need re-touching.
+- **High-repeat (n=20) follow-up for borderline cases:** pretable's `filter-text` at 17.7 ms and TanStack's `filter-metadata` at 15.7 ms both sit within ±2 ms of the 16 ms frame budget. The page prose acknowledges this; an n=20 rerun would tighten the verdict but isn't a v1 blocker.
+- **Comparator-aware H6/H7/H8 evaluators** — the page reads from the aggregated summary file directly (mirroring the scroll-summary pattern); evaluator-array extension is future work if needed.
+
+### Open from B2
+
+- **PR #129 streaming reframe** — still awaiting user prose review. Touches `ComparisonTable.tsx` (streaming-row rename) and `ReceiptsBand.tsx`. File-level conflict with this PR is limited to the docblock at the top of `ComparisonTable.tsx`; resolvable.
+- **High-repeat protocol for interaction borderlines** — logged here.
+- **Pretable `scroll-with-render` 16.4 ms anomaly** — logged in the 2026-05-10 entry above; still pending investigation.
