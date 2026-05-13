@@ -70,6 +70,7 @@ The CDP write happens INSIDE the test fixture, so it lands in the same per-run o
 The CDP `Tracing` API produces an array of event objects matching the Chrome DevTools "Trace Event Format" — the same format that DevTools' "Save profile…" / "Load profile…" round-trips. Wrap in `{"traceEvents": [...]}` so Chrome DevTools accepts the file directly.
 
 Example consumption (manual):
+
 1. Open Chrome → DevTools → Performance tab.
 2. Click "Load profile…" (folder icon).
 3. Select `status/traces/<stem>.cdp.json`.

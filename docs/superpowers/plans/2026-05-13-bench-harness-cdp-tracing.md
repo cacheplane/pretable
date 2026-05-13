@@ -26,9 +26,11 @@ No `packages/` changes. No app source. No matrix-runner changes.
 ## Pre-flight
 
 - [ ] **0.1** Read the existing `apps/bench/tests/bench.spec.ts` to understand the current tracing wiring:
+
   ```
   cat apps/bench/tests/bench.spec.ts
   ```
+
   Confirm the spec already does `await page.context().tracing.start({ screenshots: true, snapshots: true })` early and `await page.context().tracing.stop({ path: tracePath })` later. The CDP-tracing path is additive — both traces run when opt-in is set.
 
 - [ ] **0.2** Free port 4173 if stale (`lsof -ti tcp:4173 | xargs -r kill -9`).
@@ -108,15 +110,19 @@ No `packages/` changes. No app source. No matrix-runner changes.
 - [ ] **1.5** Verify Imports. The spec already imports `mkdir`, `readFile`, `stat`, `writeFile` from `"node:fs/promises"` and `path` from `"node:path"`. No new imports needed.
 
 - [ ] **1.6** Typecheck:
+
   ```
   pnpm --filter @pretable/app-bench typecheck
   ```
+
   Expected: passes.
 
 - [ ] **1.7** Run the existing test with `PLAYWRIGHT_PERF_TRACE` UNSET to confirm regression-free:
+
   ```
   pnpm bench:e2e --project=chromium
   ```
+
   Expected: spec passes; no `.cdp.json` produced; behavior identical to current `main`.
 
 - [ ] **1.8** Commit:
@@ -130,6 +136,7 @@ No `packages/` changes. No app source. No matrix-runner changes.
 ## Task 2 — Manual verification
 
 - [ ] **2.1** Run with the env opt-in set:
+
   ```
   PLAYWRIGHT_PERF_TRACE=1 \
     PRETABLE_BENCH_ADAPTER=pretable \
@@ -140,21 +147,27 @@ No `packages/` changes. No app source. No matrix-runner changes.
   ```
 
 - [ ] **2.2** Locate the produced JSON:
+
   ```
   ls -lt status/traces/*.cdp.json | head -1
   ```
+
   Expected: non-zero size (1–30 MB).
 
 - [ ] **2.3** Sanity-check the JSON:
+
   ```
   jq '.traceEvents | length' status/traces/*.cdp.json | head -1
   ```
+
   Expected: a number > 100 (a real trace has thousands of events; a low number would suggest the categories aren't producing what we expect).
 
   Also check shape:
+
   ```
   jq '.traceEvents[0:3]' status/traces/*.cdp.json
   ```
+
   Expected: each event has `ph` (phase), `ts` (timestamp), `cat` (category), etc. — Chrome DevTools trace-event format.
 
 - [ ] **2.4** Open in Chrome DevTools:
@@ -194,12 +207,15 @@ No `packages/` changes. No app source. No matrix-runner changes.
 ## Task 4 — Gates + PR
 
 - [ ] **4.1** Repo-wide gates:
+
   ```
   pnpm -w typecheck && pnpm -w test && pnpm -w lint && pnpm format
   ```
+
   Expected: all pass.
 
 - [ ] **4.2** Push + open PR:
+
   ```
   git push -u origin bench-harness-cdp-tracing
   gh pr create --title "feat(bench): opt-in CDP tracing in bench.spec.ts (unblocks flame-graph perf diagnostics)" --body "..."
