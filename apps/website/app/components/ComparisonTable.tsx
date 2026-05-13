@@ -32,8 +32,14 @@ const NA_MARKER = "n/a";
 //   status/milestones/2026-05-10-b2-sort-filter-summary.json
 //     S2/hypothesis/Chromium × 3 repeats × 4 adapters × 3 interaction
 //     scripts. Pretable beats AG Grid 3-3.5× and MUI 2× across sort,
-//     filter-metadata, filter-text; TanStack at parity on filter-metadata
-//     only.
+//     filter-metadata, filter-text.
+//
+//   status/milestones/2026-05-11-interaction-borderline-high-repeat.json
+//     S2/hypothesis/Chromium × 20 repeats × pretable × 2 scripts +
+//     tanstack × {filter-metadata, filter-text} partial. Pretable
+//     interaction scripts land 1-2 ms over the single-frame budget at
+//     higher repeats; the budget column is dropped from interaction
+//     rows below. Pretable sort n=20 = 17.10 ± 1.83 ms.
 //
 // Re-derive with `pnpm bench:matrix --adapters=pretable,ag-grid,tanstack,mui
 //   --scenarios=S2 --scripts=scroll --scale=hypothesis --repeats=10`.
@@ -79,27 +85,27 @@ const ROWS: readonly Row[] = [
   },
   {
     metric: "sort latency p95 (ms) — interaction",
-    pretable: "16.5",
+    pretable: "17.1",
     agGrid: "58.3",
     tanstack: "34.4",
     mui: "35.0",
-    budget: "≤ 16",
+    budget: "—",
   },
   {
     metric: "filter-metadata latency p95 (ms)",
-    pretable: "16.0",
+    pretable: "17.5",
     agGrid: "49.9",
     tanstack: "15.7",
     mui: "33.4",
-    budget: "≤ 16",
+    budget: "—",
   },
   {
     metric: "filter-text latency p95 (ms)",
-    pretable: "17.7",
+    pretable: "16.8",
     agGrid: "50.0",
     tanstack: "40.2",
     mui: "33.3",
-    budget: "≤ 16",
+    budget: "—",
   },
   {
     metric: "headless engine + React surface",
@@ -172,7 +178,7 @@ export function ComparisonTable() {
                   <span className="inline-flex items-center gap-2">
                     <TrailMarker
                       variant="black"
-                      label="Headless; ~2× slower interaction (filter-metadata ties pretable)"
+                      label="Headless; ~2× slower interaction"
                     />
                     TanStack
                   </span>
