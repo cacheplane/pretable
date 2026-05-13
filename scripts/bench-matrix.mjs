@@ -1342,6 +1342,10 @@ export function evaluateH20(runs) {
   }
 
   const evidence = summarizeRunSeriesEvidence(series);
+  const comparatorEvidence = findComparatorEvidence(runs, {
+    scenarioId: "S2",
+    scriptName: "scroll-with-render",
+  });
   const p95 = evidence.metrics.scroll_frame_p95_ms;
 
   if (p95 === undefined || p95 > 16) {
@@ -1349,7 +1353,7 @@ export function evaluateH20(runs) {
       id: "H20",
       status: "failing",
       summary: `scroll_frame_p95_ms with cheap render is ${p95 ?? "missing"}ms (threshold: ≤ 16ms).`,
-      evidence: [evidence],
+      evidence: [evidence, ...comparatorEvidence],
     };
   }
 
@@ -1357,7 +1361,7 @@ export function evaluateH20(runs) {
     id: "H20",
     status: "satisfied",
     summary: `Cheap render scroll p95 is ${p95}ms (≤ 16ms single-frame budget).`,
-    evidence: [evidence],
+    evidence: [evidence, ...comparatorEvidence],
   };
 }
 
