@@ -39,7 +39,7 @@ n=20 — cleanest signal.
 - Single bench run via `apps/bench/tests/bench.spec.ts` with
   `PRETABLE_BENCH_ADAPTER=pretable / SCENARIO=S2 / SCALE=hypothesis /
 SCRIPT=filter-text`.
-- Trace: `status/traces/2026-05-13-pretable-filter-text-perf.trace.zip`.
+- Trace captured locally; **not committed** (per repo convention — `status/traces/*.zip` is `.gitignore`d). The trace turned out to be Playwright's default action-trace format (API call frames + snapshots + screencast), which has no per-function timeline. To re-capture for flame-graph analysis, the bench harness needs a CDP-level tracing path (see Verdict + the bench-harness gap follow-up).
 - Summary metrics (single sample, 3,000 rows, filter narrows to 500):
   - `interaction_latency_ms`: 8.20 ms (single-sample noise vs the n=20 mean
     of 16.79 ms; matches the documented ±0.31 σ width — n=1 lands wherever
