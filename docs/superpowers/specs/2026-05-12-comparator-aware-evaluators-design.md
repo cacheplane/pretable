@@ -48,14 +48,14 @@ The comparator lookup mirrors `evaluateH1`'s `groupRunSeries(runs, { scenarioId,
 
 ### Per-evaluator slice definitions
 
-| Evaluator | Scenario | Script | Comparators |
-| --- | --- | --- | --- |
-| `evaluateH6` | S2 | `sort` | ag-grid, tanstack, mui |
-| `evaluateH7` | S2 | `filter-metadata` | ag-grid, tanstack, mui |
-| `evaluateH8` | S2 | `filter-text` | ag-grid, tanstack, mui |
-| `evaluateH19` | S2 | `scroll-with-format` (compared to `scroll` baseline) | ag-grid, tanstack, mui — but only on `scroll-with-format` slice; baseline stays pretable |
-| `evaluateH20` | S2 | `scroll-with-render` | ag-grid, tanstack, mui |
-| `evaluateH21` | S2 | `scroll-with-heavy-render` | ag-grid, tanstack, mui |
+| Evaluator     | Scenario | Script                                               | Comparators                                                                              |
+| ------------- | -------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `evaluateH6`  | S2       | `sort`                                               | ag-grid, tanstack, mui                                                                   |
+| `evaluateH7`  | S2       | `filter-metadata`                                    | ag-grid, tanstack, mui                                                                   |
+| `evaluateH8`  | S2       | `filter-text`                                        | ag-grid, tanstack, mui                                                                   |
+| `evaluateH19` | S2       | `scroll-with-format` (compared to `scroll` baseline) | ag-grid, tanstack, mui — but only on `scroll-with-format` slice; baseline stays pretable |
+| `evaluateH20` | S2       | `scroll-with-render`                                 | ag-grid, tanstack, mui                                                                   |
+| `evaluateH21` | S2       | `scroll-with-heavy-render`                           | ag-grid, tanstack, mui                                                                   |
 
 H19 is the tricky one: its current verdict compares format-overhead (`scroll-with-format`) against a `scroll` baseline, both pretable. The comparator data adds value on the `scroll-with-format` slice (comparator's format overhead vs its own scroll baseline would be a deeper extension; out of scope). For H19 we surface comparator `scroll-with-format` evidence alongside pretable's existing format + baseline; comparators' format-vs-baseline overhead is informational, not gated.
 

@@ -78,6 +78,7 @@ docs/research/
 - [ ] **3.1** In `evaluateH6` (around line 613), find the `return { id: "H6", ..., evidence: [...] }` shape.
 
 - [ ] **3.2** Just before the return, compute comparator evidence:
+
   ```js
   const comparatorEvidence = findComparatorEvidence(runs, {
     scenarioId,
@@ -88,6 +89,7 @@ docs/research/
   Update each return statement in `evaluateH6` to spread `...comparatorEvidence` after the pretable evidence in the array. There may be multiple returns (insufficient / failing / satisfied branches); update them all.
 
   Skeleton (illustrative, adapt to actual evaluator code):
+
   ```js
   return {
     id: "H6",
@@ -100,9 +102,11 @@ docs/research/
   Note: for `insufficient` returns where `pretableEvidence` isn't built (no pretable series), keep the existing `evidence: []` — comparator data alone doesn't satisfy any version of H6.
 
 - [ ] **3.3** Run the bench-matrix tests:
+
   ```
   node --test scripts/__tests__/bench-matrix.test.mjs
   ```
+
   Expected: all existing tests still pass. The evidence array now has more entries but existing tests check status + summary, not evidence-length.
 
 - [ ] **3.4** Commit:
@@ -133,6 +137,7 @@ docs/research/
 - [ ] **6.1** H19 is structured around comparing pretable's `scroll-with-format` p95 against pretable's `scroll` baseline. The comparator extension surfaces each comparator's `scroll-with-format` evidence (not deltas — see spec's non-goals; per-adapter format-vs-baseline deltas are a future enhancement).
 
   In `evaluateH19`, add the comparator lookup:
+
   ```js
   const comparatorEvidence = findComparatorEvidence(runs, {
     scenarioId: "S2",
@@ -143,6 +148,7 @@ docs/research/
   Append `...comparatorEvidence` to each return's `evidence` array. Keep the existing pretable format + pretable scroll baseline entries at the front.
 
   Add a comment near the evidence array clarifying the semantics:
+
   ```js
   // evidence shape: [pretable format-overhead summary, pretable scroll
   // baseline summary, ...comparator scroll-with-format absolute summaries].
@@ -188,9 +194,11 @@ docs/research/
   Adapt the test helper invocation to whatever `createInteractionRun` / `createScrollRun` factory the test file already has. Read the file for the existing helper before writing the test.
 
 - [ ] **9.2** Run all matrix-runner tests:
+
   ```
   node --test scripts/__tests__/bench-matrix.test.mjs
   ```
+
   Expected: 6 new tests pass; all existing tests still pass.
 
 - [ ] **9.3** Commit:
@@ -202,11 +210,13 @@ docs/research/
 ## Task 10 — Matrix re-run
 
 - [ ] **10.1** Build the harness:
+
   ```
   pnpm --filter @pretable/app-bench build
   ```
 
 - [ ] **10.2** Run the matrix:
+
   ```
   pnpm bench:matrix \
     --project=chromium \
@@ -220,6 +230,7 @@ docs/research/
   Use `Bash run_in_background: true` since this is ~5 min wall-clock. 7 scripts × 4 adapters × 3 repeats = 84 runs.
 
 - [ ] **10.3** Wait for the matrix to complete (poll sparingly via `pgrep -f bench-matrix`). When done, locate the runset:
+
   ```
   ls -lt status/runsets/ | head -3
   ```
@@ -232,11 +243,13 @@ docs/research/
   - If any status flips unexpectedly, STOP and report DONE_WITH_CONCERNS — don't change thresholds.
 
 - [ ] **10.5** Copy the runset to the milestone path:
+
   ```
   cp status/runsets/<id>/hypotheses.json status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json
   ```
 
 - [ ] **10.6** Commit:
+
   ```
   git add status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json
   git commit -m "chore(bench): matrix milestone for comparator-aware evaluators
@@ -263,12 +276,15 @@ docs/research/
 ## Task 12 — Gates + PR
 
 - [ ] **12.1** Repo-wide gates:
+
   ```
   pnpm -w typecheck && pnpm -w test && pnpm -w lint && pnpm format
   ```
+
   Expected: all pass. The evaluator changes are JS in `scripts/`; typecheck doesn't cover them but lint does.
 
 - [ ] **12.2** Push + open PR:
+
   ```
   git push -u origin comparator-aware-evaluators
   gh pr create --title "feat(bench-matrix): H6-H8 + H19-H21 evaluators embed comparator evidence" --body "..."
@@ -284,14 +300,14 @@ docs/research/
 
 ## Self-review
 
-| Spec section | Plan task |
-| --- | --- |
-| Evaluator extension pattern | Tasks 2 (helper) + 3–8 (per-evaluator) |
-| Per-evaluator slice definitions | Tasks 3–8 use the right (scenarioId, scriptName) tuple |
-| Test updates | Task 9 |
-| Matrix re-run | Task 10 |
-| Sanity check on verdicts | Task 10.4 |
-| H19 format-overhead semantics drift | Task 6.1 inline comment |
+| Spec section                        | Plan task                                              |
+| ----------------------------------- | ------------------------------------------------------ |
+| Evaluator extension pattern         | Tasks 2 (helper) + 3–8 (per-evaluator)                 |
+| Per-evaluator slice definitions     | Tasks 3–8 use the right (scenarioId, scriptName) tuple |
+| Test updates                        | Task 9                                                 |
+| Matrix re-run                       | Task 10                                                |
+| Sanity check on verdicts            | Task 10.4                                              |
+| H19 format-overhead semantics drift | Task 6.1 inline comment                                |
 
 All sections covered.
 
