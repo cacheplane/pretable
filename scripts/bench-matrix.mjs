@@ -1280,6 +1280,15 @@ export function evaluateH19(runs) {
 
   const formatEvidence = summarizeRunSeriesEvidence(formatSeries);
   const baselineEvidence = summarizeRunSeriesEvidence(baselineSeries);
+  // evidence shape: [pretable format-overhead summary, pretable scroll
+  // baseline summary, ...comparator scroll-with-format absolute summaries].
+  // Pretable's first two entries form the format-overhead delta the H19
+  // status verdict consumes; comparator entries are absolute format p95
+  // for cross-adapter reference, NOT deltas vs their own scroll baselines.
+  const comparatorEvidence = findComparatorEvidence(runs, {
+    scenarioId: "S2",
+    scriptName: "scroll-with-format",
+  });
   const formatP95 = formatEvidence.metrics.scroll_frame_p95_ms;
   const baselineP95 = baselineEvidence.metrics.scroll_frame_p95_ms;
 
@@ -1289,7 +1298,7 @@ export function evaluateH19(runs) {
       status: "insufficient",
       summary:
         "scroll_frame_p95_ms missing from format or baseline run — cannot evaluate.",
-      evidence: [formatEvidence, baselineEvidence],
+      evidence: [formatEvidence, baselineEvidence, ...comparatorEvidence],
     };
   }
 
@@ -1299,7 +1308,7 @@ export function evaluateH19(runs) {
       id: "H19",
       status: "failing",
       summary: `Format overhead is ${overhead.toFixed(2)}ms (threshold: ≤ 2ms; format ${formatP95}ms vs baseline ${baselineP95}ms).`,
-      evidence: [formatEvidence, baselineEvidence],
+      evidence: [formatEvidence, baselineEvidence, ...comparatorEvidence],
     };
   }
 
@@ -1307,7 +1316,7 @@ export function evaluateH19(runs) {
     id: "H19",
     status: "satisfied",
     summary: `Format overhead is ${overhead.toFixed(2)}ms (≤ 2ms; format ${formatP95}ms, baseline ${baselineP95}ms).`,
-    evidence: [formatEvidence, baselineEvidence],
+    evidence: [formatEvidence, baselineEvidence, ...comparatorEvidence],
   };
 }
 
