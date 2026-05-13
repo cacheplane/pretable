@@ -2832,10 +2832,12 @@ test("H6 evidence array includes comparator entries when comparator runs are pre
   assert.ok(h6);
   assert.equal(h6.status, "satisfied");
   assert.equal(h6.evidence.length, 4);
-  assert.deepEqual(
-    h6.evidence.map((entry) => entry.adapterId).sort(),
-    ["ag-grid", "mui", "pretable", "tanstack"],
-  );
+  assert.deepEqual(h6.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
 });
 
 test("H7 evidence array includes comparator entries when comparator runs are present", () => {
@@ -2844,10 +2846,12 @@ test("H7 evidence array includes comparator entries when comparator runs are pre
   assert.ok(h7);
   assert.equal(h7.status, "satisfied");
   assert.equal(h7.evidence.length, 4);
-  assert.deepEqual(
-    h7.evidence.map((entry) => entry.adapterId).sort(),
-    ["ag-grid", "mui", "pretable", "tanstack"],
-  );
+  assert.deepEqual(h7.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
 });
 
 test("H8 evidence array includes comparator entries when comparator runs are present", () => {
@@ -2856,10 +2860,12 @@ test("H8 evidence array includes comparator entries when comparator runs are pre
   assert.ok(h8);
   assert.equal(h8.status, "satisfied");
   assert.equal(h8.evidence.length, 4);
-  assert.deepEqual(
-    h8.evidence.map((entry) => entry.adapterId).sort(),
-    ["ag-grid", "mui", "pretable", "tanstack"],
-  );
+  assert.deepEqual(h8.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
 });
 
 test("H19 evidence array includes comparator format entries when comparator runs are present", () => {
@@ -2900,7 +2906,10 @@ test("H19 evidence array includes comparator format entries when comparator runs
   // [pretable format, pretable scroll baseline, ag-grid, tanstack, mui]
   assert.equal(result.evidence.length, 5);
   assert.deepEqual(
-    result.evidence.slice(2).map((entry) => entry.adapterId).sort(),
+    result.evidence
+      .slice(2)
+      .map((entry) => entry.adapterId)
+      .sort(),
     ["ag-grid", "mui", "tanstack"],
   );
 });
@@ -2918,10 +2927,12 @@ test("H20 evidence array includes comparator entries when comparator runs are pr
   const result = evaluateH20(runs);
   assert.equal(result.status, "satisfied");
   assert.equal(result.evidence.length, 4);
-  assert.deepEqual(
-    result.evidence.map((entry) => entry.adapterId).sort(),
-    ["ag-grid", "mui", "pretable", "tanstack"],
-  );
+  assert.deepEqual(result.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
 });
 
 test("H21 evidence array includes comparator entries when comparator runs are present", () => {
@@ -2937,8 +2948,10 @@ test("H21 evidence array includes comparator entries when comparator runs are pr
   const result = evaluateH21(runs);
   assert.equal(result.status, "satisfied");
   assert.equal(result.evidence.length, 4);
-  assert.deepEqual(
-    result.evidence.map((entry) => entry.adapterId).sort(),
-    ["ag-grid", "mui", "pretable", "tanstack"],
-  );
+  assert.deepEqual(result.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
 });
