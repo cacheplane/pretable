@@ -498,3 +498,23 @@ Editorial PR landing the PR #131 sort + filter comparator wedge on the homepage.
 - **PR #129 streaming reframe** — still awaiting user prose review. Touches `ComparisonTable.tsx` (streaming-row rename) and `ReceiptsBand.tsx`. File-level conflict with this PR is limited to the docblock at the top of `ComparisonTable.tsx`; resolvable.
 - **High-repeat protocol for interaction borderlines** — logged here.
 - **Pretable `scroll-with-render` 16.4 ms anomaly** — logged in the 2026-05-10 entry above; still pending investigation.
+
+## 2026-05-12
+
+### Comparator-aware evaluators — architecture change
+
+Six pretable-only evaluators in `scripts/bench-matrix.mjs` (H6, H7, H8 interaction + H19, H20, H21 cell-renderer) now embed comparator-adapter evidence in their `evidence` arrays. Mirrors `evaluateH1`'s pre-existing pattern. Status logic unchanged — pretable's absolute thresholds still drive verdicts; comparator data is informational. Replaces (over time) the per-PR aggregator-script pattern that fed the `/bench` page through PRs #130, #131, #132.
+
+- New `findComparatorEvidence(runs, { scenarioId, scriptName })` helper in `scripts/bench-matrix.mjs` returns all non-pretable adapter series for a slice via `groupRunSeries` + `summarizeRunSeriesEvidence`. Single helper used by all six target evaluators.
+- Each of H6/H7/H8/H19/H20/H21 appends `...comparatorEvidence` to its `evidence:` array in every return branch (insufficient / failing / satisfied / directional). For `insufficient` branches without pretable data, the evidence array stays empty — comparator data alone doesn't satisfy any hypothesis.
+- H19 (format overhead) keeps pretable's format + scroll-baseline entries at the front of the array; comparator entries are absolute `scroll-with-format` p95, NOT format-vs-baseline deltas. Inline docblock documents the semantics so future readers don't conflate the two.
+- Six new test cases in `scripts/__tests__/bench-matrix.test.mjs` assert evidence-array contents when comparator runs are present. All existing status-verdict tests untouched.
+- Matrix re-run intended at 4 adapters × 7 scripts × 3 repeats = 84 runs. The matrix runner's end-of-run report-writer flaked repeatedly in this worktree (port-binding issue surfaced as a side effect of multiple matrix invocations stacking up); synthesized the milestone from per-run summaries by calling `createHypothesisReport` directly. Pretable + ag-grid + tanstack data captured per evaluator; MUI flaked entirely and is absent from the milestone — evaluator correctly handles whatever comparator data is present per-slice.
+- Milestone: `status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json`. All seven hypotheses (H1, H6–H8, H19–H21) retained `satisfied` status — architectural change was data-only.
+
+### Out of scope (deferred)
+
+- **`/bench` page swap to read from `hypotheses.json` directly.** Aggregator scripts (`scripts/extract-interaction-summary.mjs` + the inline aggregators) still feed the page; can be retired once the page reads from the new milestone shape. Editorial-only PR.
+- **Per-adapter format-overhead deltas in H19.** Currently H19's status compares pretable's `scroll-with-format` p95 against pretable's `scroll` baseline; comparator evidence surfaces absolute format p95 only. Computing per-adapter deltas would extend H19 from a pretable-quality check into a comparative-overhead check — a different hypothesis.
+- **Matrix runner reliability.** The end-of-run report-writer flake is well-documented across PRs #133, #134, this one. Worth investigating as its own follow-up; for now the synthesized-from-summaries pattern works.
+- **MUI matrix coverage.** This milestone has no MUI evidence due to the matrix flake; the evaluator is ready to surface MUI data when the matrix runner is stable.
