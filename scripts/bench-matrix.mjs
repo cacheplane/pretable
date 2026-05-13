@@ -398,6 +398,24 @@ async function writeHypothesisReport(report) {
   return path.relative(process.cwd(), reportPath);
 }
 
+/**
+ * Find comparator-adapter series for the given (scenarioId, scriptName)
+ * slice and return their evidence summaries. Pretable is excluded —
+ * callers are expected to construct pretable evidence separately. Each
+ * returned entry is the same shape as summarizeRunSeriesEvidence's output,
+ * matching the evidence-array contract used by all evaluators.
+ *
+ * Used by H6/H7/H8 (interaction) and H19/H20/H21 (cell-renderer) to
+ * surface comparator metrics alongside pretable in their evidence arrays.
+ * Status verdicts remain pretable-only; this data is informational.
+ */
+function findComparatorEvidence(runs, { scenarioId, scriptName }) {
+  const series = groupRunSeries(runs, { scenarioId, scriptName }).filter(
+    (s) => s[0]?.adapterId && s[0].adapterId !== "pretable",
+  );
+  return series.map((s) => summarizeRunSeriesEvidence(s));
+}
+
 function evaluateH1(runs, scenarioId) {
   const wrappedScrollSeries = findRunSeries(runs, {
     adapterId: "pretable",
@@ -1516,6 +1534,13 @@ function evaluateInteractionHypothesis(
   }
 
   const candidateEvidence = summarizeRunSeriesEvidence(candidateSeries);
+  // Surface ALL comparator entries (not just the best one) so the evidence
+  // array carries every measured adapter for cross-reference. H6/H7/H8
+  // status verdicts remain pretable-only — comparator data is informational.
+  const comparatorEvidence = findComparatorEvidence(runs, {
+    scenarioId,
+    scriptName,
+  });
   const latency = candidateEvidence.metricSummary?.interaction_latency_ms;
   const settle = candidateEvidence.metricSummary?.settle_duration_ms;
   const blankGap =
@@ -1546,26 +1571,10 @@ function evaluateInteractionHypothesis(
       status: "insufficient",
       summary:
         "The interaction path is measured, but one or more required latency or stability metrics are still missing.",
-      evidence: [candidateEvidence],
+      evidence: [candidateEvidence, ...comparatorEvidence],
     };
   }
 
-  const competitorSeries = groupRunSeries(runs, {
-    scenarioId,
-    scriptName,
-  }).filter((series) => series[0]?.adapterId !== "pretable");
-  const bestCompetitorSeries =
-    competitorSeries.length > 0
-      ? competitorSeries.reduce((best, current) =>
-          medianMetric(current, "interaction_latency_ms") <
-          medianMetric(best, "interaction_latency_ms")
-            ? current
-            : best,
-        )
-      : null;
-  const bestCompetitorEvidence = bestCompetitorSeries
-    ? summarizeRunSeriesEvidence(bestCompetitorSeries)
-    : null;
   const rowReductionSatisfied = requiresRowReduction
     ? baselineRowCount !== undefined && rowCount.median < baselineRowCount
     : true;
@@ -1609,10 +1618,7 @@ function evaluateInteractionHypothesis(
       : requiresRowReduction && !rowReductionSatisfied
         ? "The interaction is instrumented, but the filter does not materially reduce the row set yet."
         : "The interaction is instrumented, but it still exceeds one or more current latency or stability thresholds.",
-    evidence: [
-      candidateEvidence,
-      ...(bestCompetitorEvidence ? [bestCompetitorEvidence] : []),
-    ],
+    evidence: [candidateEvidence, ...comparatorEvidence],
   };
 }
 
