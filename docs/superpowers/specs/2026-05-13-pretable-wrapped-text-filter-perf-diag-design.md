@@ -14,11 +14,11 @@ Identify the cause of pretable's three interaction scripts (sort, filter-metadat
 
 PR #134's high-repeat verdict:
 
-| Script | mean (ms) | σ (ms) | Budget |
-| --- | --- | --- | --- |
-| sort | 17.10 | 1.83 | ≤ 16 |
-| filter-metadata | 17.51 | 2.44 | ≤ 16 |
-| filter-text | 16.79 | 0.31 | ≤ 16 |
+| Script          | mean (ms) | σ (ms) | Budget |
+| --------------- | --------- | ------ | ------ |
+| sort            | 17.10     | 1.83   | ≤ 16   |
+| filter-metadata | 17.51     | 2.44   | ≤ 16   |
+| filter-text     | 16.79     | 0.31   | ≤ 16   |
 
 All three reliably over the single-frame budget. Pretable is still 2–3.5× faster than every measured comparator, so the homepage narrative is intact (post PR #141's editorial follow-up). But the budget-miss is a real fact and there's likely a shared root cause across all three scripts — the wrapped-text filter / sort pipeline runs synchronously in pretable's React render, blocking the frame.
 

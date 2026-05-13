@@ -81,9 +81,11 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
   - Don't commit the trace zip.
 
 - [ ] **1.5** Verify trace opens:
+
   ```
   pnpm exec playwright show-trace status/traces/2026-05-13-pretable-filter-text-perf.trace.zip
   ```
+
   A browser window should open. Quit with `q`. If trace fails to open, STOP and report BLOCKED.
 
 - [ ] **1.6** Commit the trace:
@@ -99,6 +101,7 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
 ### Task 2 — Inspect the trace
 
 - [ ] **2.1** Open the trace:
+
   ```
   pnpm exec playwright show-trace status/traces/2026-05-13-pretable-filter-text-perf.trace.zip
   ```
@@ -119,6 +122,7 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
   - Classify the phase: `derivation` (`deriveVisibleRows` and friends), `reconciliation` (React render work), `virtualization` (visible-window math), `dom-update` (cell mounts / unmounts / property writes).
 
 - [ ] **2.4** Save findings to `/tmp/filter-text-trace-findings.md`:
+
   ```
   ## Trace breakdown — pretable filter-text n=1 sample
 
@@ -150,6 +154,7 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
   ## Context
 
   PR #134 verdict (n=20, Chromium S2/hypothesis):
+
   - sort: 17.10 ± 1.83 ms
   - filter-metadata: 17.51 ± 2.44 ms
   - filter-text: 16.79 ± 0.31 ms
@@ -165,16 +170,18 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
   ## Trace breakdown
 
   | Task | Duration (ms) | Phase | File |
-  | --- | --- | --- | --- |
+  | ---- | ------------- | ----- | ---- |
+
   | <from /tmp/filter-text-trace-findings.md>
 
   ## Hypothesis for the gap
 
   <1–3 paragraphs identifying the dominant cause. Likely candidates:
-   - deriveVisibleRows running synchronously on every render
-   - React reconciliation across many cells when the visible row list changes shape
-   - Virtualization recompute when the result-row-count shrinks/grows
-   - DOM updates for newly-mounted vs unmounted cells>
+
+  - deriveVisibleRows running synchronously on every render
+  - React reconciliation across many cells when the visible row list changes shape
+  - Virtualization recompute when the result-row-count shrinks/grows
+  - DOM updates for newly-mounted vs unmounted cells>
 
   ## Why sort + filter-metadata likely share this cause
 
@@ -182,15 +189,16 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
 
   ## Proposed fixes (no code in this PR yet — see Verdict)
 
-  | Option | Description | Expected delta | Risk to quality wedge | Complexity |
-  | --- | --- | --- | --- | --- |
-  | 1 | <e.g., "Memoize deriveVisibleRows by (rows, filters, sort) identity"> | <delta> | <risk> | <complexity> |
+  | Option | Description                                                           | Expected delta | Risk to quality wedge | Complexity   |
+  | ------ | --------------------------------------------------------------------- | -------------- | --------------------- | ------------ |
+  | 1      | <e.g., "Memoize deriveVisibleRows by (rows, filters, sort) identity"> | <delta>        | <risk>                | <complexity> |
 
   ## Verdict
 
   <one of:
-   - "Fix shipped in this PR — <X>. See Phase D below."
-   - "No single-cause hotspot. Memo-only output. Follow-up PR scoped to <Y> per the proposed-fixes table.">
+
+  - "Fix shipped in this PR — <X>. See Phase D below."
+  - "No single-cause hotspot. Memo-only output. Follow-up PR scoped to <Y> per the proposed-fixes table.">
 
   ## Phase D (only if fix shipped)
 
@@ -224,12 +232,15 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
   - Lazy cell-value reads in `matchesFilters` (cache `readCellValue(row, column)` per row across columns).
 
 - [ ] **4.2** Repo-wide gates:
+
   ```
   pnpm -w typecheck && pnpm -w test && pnpm -w lint && pnpm format
   ```
+
   All pass.
 
 - [ ] **4.3** Re-run matrix for verification:
+
   ```
   PRETABLE_BENCH_ADAPTER=pretable \
     PRETABLE_BENCH_SCENARIO=S2 \
@@ -241,6 +252,7 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
   Repeat × 20 (run a loop, or kick the matrix runner with `--adapters=pretable --scripts=filter-text --repeats=20`).
 
 - [ ] **4.4** Aggregate the post-fix latency:
+
   ```bash
   node --input-type=module <<'EOF'
   import { readdir, readFile } from "node:fs/promises";
@@ -270,11 +282,13 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
 - [ ] **4.6** Document the post-fix numbers + quality verification in the memo's Phase D section.
 
 - [ ] **4.7** Save a post-fix milestone:
+
   ```
   cp status/runsets/<id>/hypotheses.json status/milestones/2026-05-13-pretable-filter-text-postfix.json
   ```
 
 - [ ] **4.8** Commit the fix + verification:
+
   ```
   git add packages/<area>/src/<file>.ts status/milestones/2026-05-13-pretable-filter-text-postfix.json docs/research/2026-05-13-pretable-wrapped-text-filter-perf-diagnostic.md
   git commit -m "perf(<area>): <description of fix> for wrapped-text filter pipeline
@@ -294,12 +308,15 @@ packages/<area>/src/<file>.ts                            (NEW only if fix shippe
 ## Task 5 — Gates + PR
 
 - [ ] **5.1** Repo-wide gates:
+
   ```
   pnpm -w typecheck && pnpm -w test && pnpm -w lint && pnpm format
   ```
+
   All pass.
 
 - [ ] **5.2** Push + open PR:
+
   ```
   git push -u origin wrapped-text-filter-perf-diag
   gh pr create --title "<title>" --body "<body>"

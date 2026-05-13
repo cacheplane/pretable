@@ -20,11 +20,11 @@ performance trace to confirm before any production code change.
 
 PR #134 (n=20, Chromium S2/hypothesis):
 
-| Script | mean (ms) | σ (ms) | Budget |
-| --- | --- | --- | --- |
-| sort | 17.10 | 1.83 | ≤ 16 |
-| filter-metadata | 17.51 | 2.44 | ≤ 16 |
-| filter-text | 16.79 | 0.31 | ≤ 16 |
+| Script          | mean (ms) | σ (ms) | Budget |
+| --------------- | --------- | ------ | ------ |
+| sort            | 17.10     | 1.83   | ≤ 16   |
+| filter-metadata | 17.51     | 2.44   | ≤ 16   |
+| filter-text     | 16.79     | 0.31   | ≤ 16   |
 
 All three reliably over the 16 ms single-frame budget. PR #141 reframed the
 homepage prose to acknowledge over-budget honestly while emphasizing the
@@ -38,7 +38,7 @@ n=20 — cleanest signal.
 
 - Single bench run via `apps/bench/tests/bench.spec.ts` with
   `PRETABLE_BENCH_ADAPTER=pretable / SCENARIO=S2 / SCALE=hypothesis /
-  SCRIPT=filter-text`.
+SCRIPT=filter-text`.
 - Trace: `status/traces/2026-05-13-pretable-filter-text-perf.trace.zip`.
 - Summary metrics (single sample, 3,000 rows, filter narrows to 500):
   - `interaction_latency_ms`: 8.20 ms (single-sample noise vs the n=20 mean
@@ -146,12 +146,12 @@ dominate in each.
 
 ## Proposed fixes (deferred — no code in this PR)
 
-| Option | Description | Expected delta | Risk to quality wedge | Complexity |
-| --- | --- | --- | --- | --- |
-| A | Lazy-evaluate `rowHeights` — only compute heights for rows the viewport plan actually needs (rendered + overscan window), not the entire `visibleRows` list. Requires restructuring `createDomRenderSnapshot` to defer `estimateRowHeight` until after `planViewport` chooses the row indices. | High — should remove the bulk of the per-filtered-row cost | Medium — `planViewport` currently consumes `rowMetrics` over the full visible list to do binary-search positioning by `scrollTop`. Need a substitute (cumulative-sum index using a default-height-estimate stride, then refine only the rows that land in the window). Risk to anchor-shift / blank-gap if not handled carefully. | Moderate — touches the planning layer's contract |
-| B | Pre-warm `estimateRowHeight` cache during initial render across all source rows (idle-callback or sync at mount). Amortizes the cost into mount; interactions see a hot cache. | Medium — moves the cost out of the interaction frame budget; doesn't reduce total work | Low — same cache, same outputs | Low — single mount-time hook |
-| C | Memoize the entire `rowHeights` array keyed on `(visibleRows, columns, measuredHeights)` identity. Repeated interactions that return to the same filter / sort state hit the cache. | Low-Medium — only helps repeat interactions; doesn't help the first filter-text trigger | Low | Low |
-| D | Use `useDeferredValue` for the snapshot, letting React yield between the snapshot reduction and the post-filter render. Doesn't reduce work; allows the prior frame to paint before re-render. | Medium — reframes "over budget" by splitting work across two frames; user-perceived latency unchanged | Low — no algorithm change | Low — single React hook |
+| Option | Description                                                                                                                                                                                                                                                                                    | Expected delta                                                                                        | Risk to quality wedge                                                                                                                                                                                                                                                                                                             | Complexity                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| A      | Lazy-evaluate `rowHeights` — only compute heights for rows the viewport plan actually needs (rendered + overscan window), not the entire `visibleRows` list. Requires restructuring `createDomRenderSnapshot` to defer `estimateRowHeight` until after `planViewport` chooses the row indices. | High — should remove the bulk of the per-filtered-row cost                                            | Medium — `planViewport` currently consumes `rowMetrics` over the full visible list to do binary-search positioning by `scrollTop`. Need a substitute (cumulative-sum index using a default-height-estimate stride, then refine only the rows that land in the window). Risk to anchor-shift / blank-gap if not handled carefully. | Moderate — touches the planning layer's contract |
+| B      | Pre-warm `estimateRowHeight` cache during initial render across all source rows (idle-callback or sync at mount). Amortizes the cost into mount; interactions see a hot cache.                                                                                                                 | Medium — moves the cost out of the interaction frame budget; doesn't reduce total work                | Low — same cache, same outputs                                                                                                                                                                                                                                                                                                    | Low — single mount-time hook                     |
+| C      | Memoize the entire `rowHeights` array keyed on `(visibleRows, columns, measuredHeights)` identity. Repeated interactions that return to the same filter / sort state hit the cache.                                                                                                            | Low-Medium — only helps repeat interactions; doesn't help the first filter-text trigger               | Low                                                                                                                                                                                                                                                                                                                               | Low                                              |
+| D      | Use `useDeferredValue` for the snapshot, letting React yield between the snapshot reduction and the post-filter render. Doesn't reduce work; allows the prior frame to paint before re-render.                                                                                                 | Medium — reframes "over budget" by splitting work across two frames; user-perceived latency unchanged | Low — no algorithm change                                                                                                                                                                                                                                                                                                         | Low — single React hook                          |
 
 Option A is the most attractive on raw delta but the highest risk to the
 quality wedge (anchor stability + blank-gap prevention depend on
