@@ -211,6 +211,13 @@ function interactionVerdictFor(
   if (row.adapter === fastest.adapter) {
     return "fastest tied; full quality pass";
   }
+  // The n=3 summary loaded here had tanstack filter-metadata at 15.7 ms vs
+  // pretable 16.0 ms — a 0.3 ms gap that read as a "tie" by the < 5% ratio
+  // test. PR #134's high-repeat (n=20) verdict found that gap was sampling
+  // noise: both adapters span 8–42 ms on that script at higher repeats. The
+  // verdict text below renders the per-script ratio range without
+  // distinguishing "ties pretable" — see the prose paragraph below the
+  // table for the honest framing.
   const ratios = [
     row.sortMs / fastest.sortMs,
     row.filterMetadataMs / fastest.filterMetadataMs,
@@ -218,17 +225,9 @@ function interactionVerdictFor(
   ];
   const minR = Math.min(...ratios);
   const maxR = Math.max(...ratios);
-  const tieScripts: string[] = [];
-  if (row.filterMetadataMs / fastest.filterMetadataMs < 1.05) {
-    tieScripts.push("filter-metadata");
-  }
-  const range =
-    Math.round(minR * 10) === Math.round(maxR * 10)
-      ? `${minR.toFixed(1)}× slower`
-      : `${minR.toFixed(1)}–${maxR.toFixed(1)}× slower`;
-  return tieScripts.length > 0
-    ? `${range} (${tieScripts.join(", ")} ties pretable)`
-    : range;
+  return Math.round(minR * 10) === Math.round(maxR * 10)
+    ? `${minR.toFixed(1)}× slower`
+    : `${minR.toFixed(1)}–${maxR.toFixed(1)}× slower`;
 }
 
 function verdictFor(
