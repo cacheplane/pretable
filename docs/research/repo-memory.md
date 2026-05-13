@@ -533,8 +533,35 @@ Header docblock updated to cite the n=20 milestone source (`status/milestones/20
 
 No test changes required: the TanStack regex (`/headless.*slower interaction/i`) still matches the shortened label.
 
+### Bench-harness CDP tracing opt-in
+
+Wired `apps/bench/tests/bench.spec.ts` for opt-in Chrome DevTools-format trace capture, closing the tooling gap surfaced by PR #142's wrapped-text filter perf-diag (Playwright's default `tracing.start({ screenshots, snapshots })` produces an SDK action trace, not a JS flame graph).
+
+**How to use:**
+
+```
+PLAYWRIGHT_PERF_TRACE=1 \
+  PRETABLE_BENCH_ADAPTER=pretable \
+  PRETABLE_BENCH_SCENARIO=S2 \
+  PRETABLE_BENCH_SCALE=hypothesis \
+  PRETABLE_BENCH_SCRIPT=filter-text \
+  pnpm --filter @pretable/app-bench exec playwright test --workers=1
+```
+
+Output: `status/traces/<stem>.cdp.json` (sibling to the Playwright `.trace.zip`). Gitignored.
+
+**Loading:** Chrome → DevTools → Performance tab → "Load profile…" (folder icon) → select the `.cdp.json`. Flame graph renders.
+
+**Categories captured:** `disabled-by-default-devtools.timeline`, `disabled-by-default-devtools.timeline.frame`, `v8`, `disabled-by-default-v8.cpu_profiler` (sampling-frequency=10000). Standard DevTools profiling set.
+
+**Failure handling:** Best-effort additive. CDP attach failures, end timeouts, and JSON write failures all log + continue — the bench run never fails because of CDP tracing.
+
+**Known limitation (consumer side, not the harness):** The bench app starts its interaction script on page-load. CDP attach happens after the adapter-label visibility check, so the very first moments of the interaction may run before tracing starts. For hypothesis-scale runs the captured window can be sparse — observed ~145 events / 30 KB for filter-text/hypothesis. For meaningful flame-graph data, prefer wider windows (larger scale, or a future triggered-start variant in the bench app). Out of scope for this harness PR; the wiring + format are correct.
+
+**Out of scope here:** matrix-runner integration (would multiply wall-clock 5–10×), Speedscope export, automated test for the CDP path. Documented in the spec.
+
 ### Open follow-ups
 
-- **Pretable wrapped-text filter perf-fix investigation** — next item; profiling + scope.
+- **Pretable wrapped-text filter perf-fix investigation** — next item; profiling + scope. Tooling now unblocked; remaining blocker is the bench-app interaction-start timing noted above.
 - **`/bench` page swap to read from `hypotheses.json` directly** — still deferred; aggregator scripts continue feeding the page for now.
 - **Matrix-runner reliability** — flakes are now well-documented across PRs #133, #134, #140, and this PR's sort re-run (which succeeded for pretable-only, but the multi-adapter runner remains fragile).
