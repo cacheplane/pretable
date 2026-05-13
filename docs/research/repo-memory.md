@@ -517,3 +517,24 @@ Six pretable-only evaluators in `scripts/bench-matrix.mjs` (H6, H7, H8 interacti
 - **`/bench` page swap to read from `hypotheses.json` directly.** Aggregator scripts (`scripts/extract-interaction-summary.mjs` + the inline aggregators) still feed the page; can be retired once the page reads from the new milestone shape. Editorial-only PR.
 - **Per-adapter format-overhead deltas in H19.** Currently H19's status compares pretable's `scroll-with-format` p95 against pretable's `scroll` baseline; comparator evidence surfaces absolute format p95 only. Computing per-adapter deltas would extend H19 from a pretable-quality check into a comparative-overhead check — a different hypothesis.
 - **Matrix runner reliability.** Mid-run flakes (locator timeouts, preview-server connection refused) have hit multiple recent PRs (#133, #134, this one). The bail-on-first-failure behavior wastes a 5-minute run when a single repeat flakes; a `--continue-on-error` option plus a runset-merge pathway would be a useful runner enhancement.
+
+## 2026-05-13
+
+### PR #134 editorial follow-up: interaction prose, ComparisonTable, TanStack label
+
+Acts on the four recommendations from PR #134's interaction-borderline memo. All four decisions made by the user:
+
+1. **`/bench` page Interactions prose** — rewrote from "fractionally over on filter-text" to honest "~1 ms over budget on all three scripts; 2-3.5× faster than every measured comparator." Includes the n=20 numbers inline (sort 17.10 ± 1.83 ms, filter-metadata 17.51 ± 2.44 ms, filter-text 16.79 ± 0.31 ms) and notes the pretable wrapped-text filter pipeline is on the roadmap for a perf-fix pass.
+2. **`ComparisonTable.tsx` interaction rows** — dropped the `≤ 16` budget reference (set to `—`) on the three interaction rows; budget column stays for scroll rows. Replaced PR #131's n=3 numbers with the n=20 set (sort: pretable 16.5 → 17.1; filter-metadata: 16.0 → 17.5; filter-text: 17.7 → 16.8). Sort n=20 was captured fresh in this PR (pretable-only matrix run).
+3. **TanStack trail-marker label** — dropped the `(filter-metadata ties pretable)` parenthetical. Per PR #134's n=20 + n=8 verdict, the tie was sampling noise at n=3; tanstack's distribution at higher repeats spans 8-42 ms on filter-metadata. New label: `Headless; ~2× slower interaction`.
+4. **Perf-fix investigation queued** — pretable's wrapped-text filter pipeline (sort + filter-metadata + filter-text all over budget) deserves a profiling-driven optimization pass. Brainstorm + spec + plan + investigation as a next follow-up PR.
+
+Header docblock updated to cite the n=20 milestone source (`status/milestones/2026-05-11-interaction-borderline-high-repeat.json`).
+
+No test changes required: the TanStack regex (`/headless.*slower interaction/i`) still matches the shortened label.
+
+### Open follow-ups
+
+- **Pretable wrapped-text filter perf-fix investigation** — next item; profiling + scope.
+- **`/bench` page swap to read from `hypotheses.json` directly** — still deferred; aggregator scripts continue feeding the page for now.
+- **Matrix-runner reliability** — flakes are now well-documented across PRs #133, #134, #140, and this PR's sort re-run (which succeeded for pretable-only, but the multi-adapter runner remains fragile).

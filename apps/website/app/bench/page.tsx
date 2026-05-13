@@ -463,21 +463,26 @@ export default function BenchPage() {
       </table>
 
       <p className="mt-6 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
-        Pretable sorts and filters 3,000 wrapped-text rows in 16–18 ms across
-        all three scripts — clear of the single 60Hz frame budget on{" "}
-        <code>filter-metadata</code> and <code>sort</code>, fractionally over on{" "}
-        <code>filter-text</code>. AG Grid Community runs sort and filter 3–3.5×
-        slower despite being a full feature-surface grid; MUI X DataGrid
-        Community lands at roughly 2× across all three scripts. TanStack Table
-        v8 + TanStack Virtual is the only comparator that ties pretable on a
-        single metric — <code>filter-metadata</code> at 15.7 ms vs 16.0 ms,
-        within run noise — but is 2.1× slower on sort and 2.3× slower on{" "}
-        <code>filter-text</code>.
+        Pretable sorts and filters 3,000 wrapped-text rows in 17–18 ms across
+        all three scripts — about a millisecond over the single 60Hz frame
+        budget on every interaction script, but{" "}
+        <strong className="text-text-primary">
+          2–3.5× faster than every measured comparator
+        </strong>
+        . AG Grid Community runs sort and filter 3–3.5× slower; MUI X DataGrid
+        Community lands at roughly 2× slower across all three scripts. TanStack
+        Table v8 + TanStack Virtual runs ~2× slower on average, with high
+        variance on <code>filter-metadata</code> (samples span 8–42 ms at n=8).
       </p>
       <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
-        Like the scroll story, the H6/H7/H8 evaluators check pretable&rsquo;s
+        High-repeat (n=20) follow-up confirms pretable is reliably 1–2 ms over
+        budget on all three scripts (sort 17.10 ± 1.83 ms; filter-metadata 17.51
+        ± 2.44 ms; filter-text 16.79 ± 0.31 ms). The comparative wedge is the
+        story, not absolute single-frame compliance — pretable&rsquo;s
+        wrapped-text filter pipeline is on the roadmap for a perf-fix pass. Like
+        the scroll story, the H6/H7/H8 evaluators check pretable&rsquo;s
         absolute thresholds (<code>≤ 32 ms</code> interaction p95) rather than
-        gating on comparator parity. All three hypotheses stay satisfied at n=3.
+        comparator parity; all three hypotheses stay satisfied.
       </p>
 
       <h2 className="mt-12 font-display text-[28px] tracking-[-0.02em] text-text-primary">
