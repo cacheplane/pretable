@@ -1387,6 +1387,10 @@ export function evaluateH21(runs) {
   }
 
   const evidence = summarizeRunSeriesEvidence(series);
+  const comparatorEvidence = findComparatorEvidence(runs, {
+    scenarioId: "S2",
+    scriptName: "scroll-with-heavy-render",
+  });
   const p95 = evidence.metrics.scroll_frame_p95_ms;
 
   if (p95 === undefined || p95 > 20) {
@@ -1394,7 +1398,7 @@ export function evaluateH21(runs) {
       id: "H21",
       status: "failing",
       summary: `scroll_frame_p95_ms with heavy render is ${p95 ?? "missing"}ms (threshold: ≤ 20ms).`,
-      evidence: [evidence],
+      evidence: [evidence, ...comparatorEvidence],
     };
   }
 
@@ -1402,7 +1406,7 @@ export function evaluateH21(runs) {
     id: "H21",
     status: "satisfied",
     summary: `Heavy render scroll p95 is ${p95}ms (≤ 20ms; ≤ 25% above single-frame budget).`,
-    evidence: [evidence],
+    evidence: [evidence, ...comparatorEvidence],
   };
 }
 
