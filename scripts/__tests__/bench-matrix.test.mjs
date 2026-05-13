@@ -2724,3 +2724,234 @@ test("evaluateH22 directional when no comparator data", () => {
   assert.equal(result.id, "H22");
   assert.equal(result.status, "directional");
 });
+
+// --------------------------------------------------------------------------
+// Comparator-aware evidence assertions for H6/H7/H8/H19/H20/H21
+//
+// These six evaluators surface every measured comparator adapter in their
+// evidence array (status verdicts remain pretable-only). The tests below
+// pin that contract: when pretable + 3 comparator runs are supplied, the
+// evidence array contains 4 entries (or 5 for H19, which also carries the
+// pretable scroll baseline).
+// --------------------------------------------------------------------------
+
+function createInteractionRun({
+  adapterId,
+  scriptName,
+  scenarioId = "S2",
+  timestamp,
+  interaction_latency_ms = 24,
+  settle_duration_ms = 18,
+  result_row_count = 750,
+}) {
+  return {
+    adapterId,
+    profile: "default",
+    scenarioId,
+    scale: "dev",
+    scriptName,
+    browserName: "chromium",
+    browserVersion: "123.0",
+    timestamp,
+    seed: 202,
+    rowCount: 750,
+    viewport: { width: 1440, height: 900 },
+    fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+    deviceScaleFactor: 1,
+    status: "completed",
+    notes: [`interaction mode: ${scriptName}`],
+    tracePath: `status/traces/${adapterId}-${scriptName}.trace.zip`,
+    metrics: {
+      interaction_latency_ms,
+      settle_duration_ms,
+      post_interaction_blank_gap_frames: 0,
+      post_interaction_anchor_shift_px: 0,
+      post_interaction_row_height_error_p95_px: 0,
+      result_row_count,
+      selected_row_preserved: 1,
+      focused_row_preserved: 1,
+      dom_nodes_peak: 400,
+    },
+  };
+}
+
+function createCellRendererScrollRun({
+  adapterId,
+  scriptName,
+  scenarioId = "S2",
+  scale = "hypothesis",
+  timestamp,
+  scroll_frame_p95_ms = 9,
+}) {
+  return {
+    adapterId,
+    profile: "default",
+    scenarioId,
+    scale,
+    scriptName,
+    browserName: "chromium",
+    browserVersion: "123.0",
+    timestamp,
+    seed: 202,
+    viewport: { width: 1440, height: 900 },
+    fontStack: '"IBM Plex Sans", system-ui, sans-serif',
+    deviceScaleFactor: 1,
+    notes: [],
+    status: "completed",
+    tracePath: `status/traces/${adapterId}-${scriptName}.trace.zip`,
+    metrics: { scroll_frame_p95_ms },
+  };
+}
+
+function makeInteractionReport({ scriptName }) {
+  const adapters = ["pretable", "ag-grid", "tanstack", "mui"];
+  return createHypothesisReport({
+    runsetId: "comparator-evidence-test",
+    generatedAt: "2026-05-12T00:00:00.000Z",
+    entries: adapters.map((adapterId) => ({
+      adapterId,
+      repeatIndex: 0,
+      scenarioId: "S2",
+      scriptName,
+      summaryPath: `status/${adapterId}-${scriptName}.summary.json`,
+    })),
+    runs: adapters.map((adapterId, index) =>
+      createInteractionRun({
+        adapterId,
+        scriptName,
+        timestamp: `2026-05-12T00:00:${(index * 10).toString().padStart(2, "0")}.000Z`,
+        result_row_count: scriptName === "sort" ? 750 : 500,
+      }),
+    ),
+  });
+}
+
+test("H6 evidence array includes comparator entries when comparator runs are present", () => {
+  const report = makeInteractionReport({ scriptName: "sort" });
+  const h6 = report.hypotheses.find((h) => h.id === "H6");
+  assert.ok(h6);
+  assert.equal(h6.status, "satisfied");
+  assert.equal(h6.evidence.length, 4);
+  assert.deepEqual(h6.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
+});
+
+test("H7 evidence array includes comparator entries when comparator runs are present", () => {
+  const report = makeInteractionReport({ scriptName: "filter-metadata" });
+  const h7 = report.hypotheses.find((h) => h.id === "H7");
+  assert.ok(h7);
+  assert.equal(h7.status, "satisfied");
+  assert.equal(h7.evidence.length, 4);
+  assert.deepEqual(h7.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
+});
+
+test("H8 evidence array includes comparator entries when comparator runs are present", () => {
+  const report = makeInteractionReport({ scriptName: "filter-text" });
+  const h8 = report.hypotheses.find((h) => h.id === "H8");
+  assert.ok(h8);
+  assert.equal(h8.status, "satisfied");
+  assert.equal(h8.evidence.length, 4);
+  assert.deepEqual(h8.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
+});
+
+test("H19 evidence array includes comparator format entries when comparator runs are present", () => {
+  const runs = [
+    createCellRendererScrollRun({
+      adapterId: "pretable",
+      scriptName: "scroll-with-format",
+      timestamp: "2026-05-12T00:00:00.000Z",
+      scroll_frame_p95_ms: 9,
+    }),
+    createCellRendererScrollRun({
+      adapterId: "pretable",
+      scriptName: "scroll",
+      timestamp: "2026-05-12T00:00:10.000Z",
+      scroll_frame_p95_ms: 8,
+    }),
+    createCellRendererScrollRun({
+      adapterId: "ag-grid",
+      scriptName: "scroll-with-format",
+      timestamp: "2026-05-12T00:00:20.000Z",
+      scroll_frame_p95_ms: 11,
+    }),
+    createCellRendererScrollRun({
+      adapterId: "tanstack",
+      scriptName: "scroll-with-format",
+      timestamp: "2026-05-12T00:00:30.000Z",
+      scroll_frame_p95_ms: 13,
+    }),
+    createCellRendererScrollRun({
+      adapterId: "mui",
+      scriptName: "scroll-with-format",
+      timestamp: "2026-05-12T00:00:40.000Z",
+      scroll_frame_p95_ms: 14,
+    }),
+  ];
+  const result = evaluateH19(runs);
+  assert.equal(result.status, "satisfied");
+  // [pretable format, pretable scroll baseline, ag-grid, tanstack, mui]
+  assert.equal(result.evidence.length, 5);
+  assert.deepEqual(
+    result.evidence
+      .slice(2)
+      .map((entry) => entry.adapterId)
+      .sort(),
+    ["ag-grid", "mui", "tanstack"],
+  );
+});
+
+test("H20 evidence array includes comparator entries when comparator runs are present", () => {
+  const adapters = ["pretable", "ag-grid", "tanstack", "mui"];
+  const runs = adapters.map((adapterId, index) =>
+    createCellRendererScrollRun({
+      adapterId,
+      scriptName: "scroll-with-render",
+      timestamp: `2026-05-12T00:00:${(index * 10).toString().padStart(2, "0")}.000Z`,
+      scroll_frame_p95_ms: 11,
+    }),
+  );
+  const result = evaluateH20(runs);
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.evidence.length, 4);
+  assert.deepEqual(result.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
+});
+
+test("H21 evidence array includes comparator entries when comparator runs are present", () => {
+  const adapters = ["pretable", "ag-grid", "tanstack", "mui"];
+  const runs = adapters.map((adapterId, index) =>
+    createCellRendererScrollRun({
+      adapterId,
+      scriptName: "scroll-with-heavy-render",
+      timestamp: `2026-05-12T00:00:${(index * 10).toString().padStart(2, "0")}.000Z`,
+      scroll_frame_p95_ms: 17,
+    }),
+  );
+  const result = evaluateH21(runs);
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.evidence.length, 4);
+  assert.deepEqual(result.evidence.map((entry) => entry.adapterId).sort(), [
+    "ag-grid",
+    "mui",
+    "pretable",
+    "tanstack",
+  ]);
+});

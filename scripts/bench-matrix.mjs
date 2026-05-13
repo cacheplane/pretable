@@ -398,6 +398,24 @@ async function writeHypothesisReport(report) {
   return path.relative(process.cwd(), reportPath);
 }
 
+/**
+ * Find comparator-adapter series for the given (scenarioId, scriptName)
+ * slice and return their evidence summaries. Pretable is excluded —
+ * callers are expected to construct pretable evidence separately. Each
+ * returned entry is the same shape as summarizeRunSeriesEvidence's output,
+ * matching the evidence-array contract used by all evaluators.
+ *
+ * Used by H6/H7/H8 (interaction) and H19/H20/H21 (cell-renderer) to
+ * surface comparator metrics alongside pretable in their evidence arrays.
+ * Status verdicts remain pretable-only; this data is informational.
+ */
+function findComparatorEvidence(runs, { scenarioId, scriptName }) {
+  const series = groupRunSeries(runs, { scenarioId, scriptName }).filter(
+    (s) => s[0]?.adapterId && s[0].adapterId !== "pretable",
+  );
+  return series.map((s) => summarizeRunSeriesEvidence(s));
+}
+
 function evaluateH1(runs, scenarioId) {
   const wrappedScrollSeries = findRunSeries(runs, {
     adapterId: "pretable",
@@ -1262,6 +1280,15 @@ export function evaluateH19(runs) {
 
   const formatEvidence = summarizeRunSeriesEvidence(formatSeries);
   const baselineEvidence = summarizeRunSeriesEvidence(baselineSeries);
+  // evidence shape: [pretable format-overhead summary, pretable scroll
+  // baseline summary, ...comparator scroll-with-format absolute summaries].
+  // Pretable's first two entries form the format-overhead delta the H19
+  // status verdict consumes; comparator entries are absolute format p95
+  // for cross-adapter reference, NOT deltas vs their own scroll baselines.
+  const comparatorEvidence = findComparatorEvidence(runs, {
+    scenarioId: "S2",
+    scriptName: "scroll-with-format",
+  });
   const formatP95 = formatEvidence.metrics.scroll_frame_p95_ms;
   const baselineP95 = baselineEvidence.metrics.scroll_frame_p95_ms;
 
@@ -1271,7 +1298,7 @@ export function evaluateH19(runs) {
       status: "insufficient",
       summary:
         "scroll_frame_p95_ms missing from format or baseline run — cannot evaluate.",
-      evidence: [formatEvidence, baselineEvidence],
+      evidence: [formatEvidence, baselineEvidence, ...comparatorEvidence],
     };
   }
 
@@ -1281,7 +1308,7 @@ export function evaluateH19(runs) {
       id: "H19",
       status: "failing",
       summary: `Format overhead is ${overhead.toFixed(2)}ms (threshold: ≤ 2ms; format ${formatP95}ms vs baseline ${baselineP95}ms).`,
-      evidence: [formatEvidence, baselineEvidence],
+      evidence: [formatEvidence, baselineEvidence, ...comparatorEvidence],
     };
   }
 
@@ -1289,7 +1316,7 @@ export function evaluateH19(runs) {
     id: "H19",
     status: "satisfied",
     summary: `Format overhead is ${overhead.toFixed(2)}ms (≤ 2ms; format ${formatP95}ms, baseline ${baselineP95}ms).`,
-    evidence: [formatEvidence, baselineEvidence],
+    evidence: [formatEvidence, baselineEvidence, ...comparatorEvidence],
   };
 }
 
@@ -1315,6 +1342,10 @@ export function evaluateH20(runs) {
   }
 
   const evidence = summarizeRunSeriesEvidence(series);
+  const comparatorEvidence = findComparatorEvidence(runs, {
+    scenarioId: "S2",
+    scriptName: "scroll-with-render",
+  });
   const p95 = evidence.metrics.scroll_frame_p95_ms;
 
   if (p95 === undefined || p95 > 16) {
@@ -1322,7 +1353,7 @@ export function evaluateH20(runs) {
       id: "H20",
       status: "failing",
       summary: `scroll_frame_p95_ms with cheap render is ${p95 ?? "missing"}ms (threshold: ≤ 16ms).`,
-      evidence: [evidence],
+      evidence: [evidence, ...comparatorEvidence],
     };
   }
 
@@ -1330,7 +1361,7 @@ export function evaluateH20(runs) {
     id: "H20",
     status: "satisfied",
     summary: `Cheap render scroll p95 is ${p95}ms (≤ 16ms single-frame budget).`,
-    evidence: [evidence],
+    evidence: [evidence, ...comparatorEvidence],
   };
 }
 
@@ -1356,6 +1387,10 @@ export function evaluateH21(runs) {
   }
 
   const evidence = summarizeRunSeriesEvidence(series);
+  const comparatorEvidence = findComparatorEvidence(runs, {
+    scenarioId: "S2",
+    scriptName: "scroll-with-heavy-render",
+  });
   const p95 = evidence.metrics.scroll_frame_p95_ms;
 
   if (p95 === undefined || p95 > 20) {
@@ -1363,7 +1398,7 @@ export function evaluateH21(runs) {
       id: "H21",
       status: "failing",
       summary: `scroll_frame_p95_ms with heavy render is ${p95 ?? "missing"}ms (threshold: ≤ 20ms).`,
-      evidence: [evidence],
+      evidence: [evidence, ...comparatorEvidence],
     };
   }
 
@@ -1371,7 +1406,7 @@ export function evaluateH21(runs) {
     id: "H21",
     status: "satisfied",
     summary: `Heavy render scroll p95 is ${p95}ms (≤ 20ms; ≤ 25% above single-frame budget).`,
-    evidence: [evidence],
+    evidence: [evidence, ...comparatorEvidence],
   };
 }
 
@@ -1516,6 +1551,13 @@ function evaluateInteractionHypothesis(
   }
 
   const candidateEvidence = summarizeRunSeriesEvidence(candidateSeries);
+  // Surface ALL comparator entries (not just the best one) so the evidence
+  // array carries every measured adapter for cross-reference. H6/H7/H8
+  // status verdicts remain pretable-only — comparator data is informational.
+  const comparatorEvidence = findComparatorEvidence(runs, {
+    scenarioId,
+    scriptName,
+  });
   const latency = candidateEvidence.metricSummary?.interaction_latency_ms;
   const settle = candidateEvidence.metricSummary?.settle_duration_ms;
   const blankGap =
@@ -1546,26 +1588,10 @@ function evaluateInteractionHypothesis(
       status: "insufficient",
       summary:
         "The interaction path is measured, but one or more required latency or stability metrics are still missing.",
-      evidence: [candidateEvidence],
+      evidence: [candidateEvidence, ...comparatorEvidence],
     };
   }
 
-  const competitorSeries = groupRunSeries(runs, {
-    scenarioId,
-    scriptName,
-  }).filter((series) => series[0]?.adapterId !== "pretable");
-  const bestCompetitorSeries =
-    competitorSeries.length > 0
-      ? competitorSeries.reduce((best, current) =>
-          medianMetric(current, "interaction_latency_ms") <
-          medianMetric(best, "interaction_latency_ms")
-            ? current
-            : best,
-        )
-      : null;
-  const bestCompetitorEvidence = bestCompetitorSeries
-    ? summarizeRunSeriesEvidence(bestCompetitorSeries)
-    : null;
   const rowReductionSatisfied = requiresRowReduction
     ? baselineRowCount !== undefined && rowCount.median < baselineRowCount
     : true;
@@ -1609,10 +1635,7 @@ function evaluateInteractionHypothesis(
       : requiresRowReduction && !rowReductionSatisfied
         ? "The interaction is instrumented, but the filter does not materially reduce the row set yet."
         : "The interaction is instrumented, but it still exceeds one or more current latency or stability thresholds.",
-    evidence: [
-      candidateEvidence,
-      ...(bestCompetitorEvidence ? [bestCompetitorEvidence] : []),
-    ],
+    evidence: [candidateEvidence, ...comparatorEvidence],
   };
 }
 
