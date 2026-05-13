@@ -8,6 +8,8 @@ import {
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
 
+const perfTraceEnabled = process.env.PLAYWRIGHT_PERF_TRACE === "1";
+
 const adapterId = process.env.PRETABLE_BENCH_ADAPTER ?? "pretable";
 const scale = process.env.PRETABLE_BENCH_SCALE ?? "dev";
 const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
@@ -39,9 +41,69 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
 
   await expect(page.getByLabel(adapterLabel).first()).toBeVisible();
 
+  let cdpSession: Awaited<
+    ReturnType<typeof page.context.prototype.newCDPSession>
+  > | null = null;
+  const cdpEvents: unknown[] = [];
+
+  if (perfTraceEnabled) {
+    try {
+      cdpSession = await page.context().newCDPSession(page);
+      cdpSession.on(
+        "Tracing.dataCollected",
+        (payload: { value: unknown[] }) => {
+          for (const event of payload.value) cdpEvents.push(event);
+        },
+      );
+      await cdpSession.send("Tracing.start", {
+        categories: [
+          "disabled-by-default-devtools.timeline",
+          "disabled-by-default-devtools.timeline.frame",
+          "v8",
+          "disabled-by-default-v8.cpu_profiler",
+        ].join(","),
+        options: "sampling-frequency=10000",
+      });
+    } catch (err) {
+      console.warn(
+        `[bench.spec] CDP tracing start failed (best-effort, ignoring):`,
+        err,
+      );
+      cdpSession = null;
+    }
+  }
+
   await page.waitForFunction(() => Boolean(window.__PRETABLE_BENCH_RESULT__));
 
   const result = await page.evaluate(() => window.__PRETABLE_BENCH_RESULT__);
+
+  if (perfTraceEnabled && cdpSession) {
+    try {
+      const session = cdpSession;
+      const tracingComplete = new Promise<void>((resolve) => {
+        session.once("Tracing.tracingComplete", () => resolve());
+      });
+      await session.send("Tracing.end");
+      await tracingComplete;
+      const traceRelPath =
+        typeof result?.tracePath === "string"
+          ? result.tracePath
+          : `status/traces/${createRunArtifactFileStem(result)}.trace.zip`;
+      const cdpPath = path
+        .join(process.cwd(), traceRelPath)
+        .replace(/\.trace\.zip$/, ".cdp.json");
+      await mkdir(path.dirname(cdpPath), { recursive: true });
+      await writeFile(
+        cdpPath,
+        JSON.stringify({ traceEvents: cdpEvents }, null, 0) + "\n",
+      );
+    } catch (err) {
+      console.warn(
+        `[bench.spec] CDP tracing stop/write failed (best-effort, ignoring):`,
+        err,
+      );
+    }
+  }
 
   const interactionScript =
     scriptName === "sort" ||
