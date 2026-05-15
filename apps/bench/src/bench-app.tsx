@@ -431,16 +431,21 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     }
     autorunRef.current = true;
 
-    if (!query.waitForTrigger) {
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
       void autorunScript(query.scriptName);
+    };
+
+    if (!query.waitForTrigger) {
+      run();
       return;
     }
 
-    let cancelled = false;
     const tick = () => {
       if (cancelled) return;
       if (window.__PRETABLE_BENCH_START__ === true) {
-        void autorunScript(query.scriptName);
+        run();
         return;
       }
       requestAnimationFrame(tick);

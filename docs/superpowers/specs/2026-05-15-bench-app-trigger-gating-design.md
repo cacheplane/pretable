@@ -100,6 +100,7 @@ If CDP start fails (the existing try/catch path), do NOT set the trigger — the
 ### Output verification
 
 After this PR:
+
 - Re-run the same `PLAYWRIGHT_PERF_TRACE=1 ... filter-text` command from PR #143's manual verification.
 - Expected: `.cdp.json` size jumps from ~30 KB → meaningful KB or MB range (the interaction window is now fully inside the trace).
 - Expected: `jq '.traceEvents | length'` jumps from 145 → thousands.

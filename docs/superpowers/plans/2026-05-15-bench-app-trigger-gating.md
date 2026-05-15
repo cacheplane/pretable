@@ -59,6 +59,7 @@ docs/research/repo-memory.md      (MODIFY: 2026-05-15 entry)
   }, [query.autorun, query.scriptName]);
   ```
 - [ ] **2.2** Replace with:
+
   ```ts
   useEffect(() => {
     if (!query.autorun || autorunRef.current) {
@@ -86,7 +87,9 @@ docs/research/repo-memory.md      (MODIFY: 2026-05-15 entry)
     };
   }, [query.autorun, query.waitForTrigger, query.scriptName]);
   ```
+
   The `cancelled` flag protects against React strict-mode double-mount in dev.
+
 - [ ] **2.3** Typecheck again:
   ```
   pnpm --filter @pretable/app-bench typecheck
@@ -111,7 +114,9 @@ docs/research/repo-memory.md      (MODIFY: 2026-05-15 entry)
   ```ts
   if (perfTraceEnabled) {
     await page.evaluate(() => {
-      (window as Window & { __PRETABLE_BENCH_START__?: boolean }).__PRETABLE_BENCH_START__ = true;
+      (
+        window as Window & { __PRETABLE_BENCH_START__?: boolean }
+      ).__PRETABLE_BENCH_START__ = true;
     });
   }
   ```
@@ -144,11 +149,13 @@ docs/research/repo-memory.md      (MODIFY: 2026-05-15 entry)
     pnpm --filter @pretable/app-bench exec playwright test --workers=1
   ```
 - [ ] **4.4** Inspect the produced CDP JSON:
+
   ```
   ls -lt status/traces/*.cdp.json | head -1
   jq '.traceEvents | length' status/traces/*.cdp.json | head -1
   jq '[.traceEvents[].cat] | unique' status/traces/*.cdp.json | head
   ```
+
   - **Expected event count: > 1000** (vs PR #143's 145). This is the success bar. If count is still in the low hundreds, the gate is not effective — debug before proceeding.
   - **Expected size: 100 KB to multi-MB** (vs 30 KB before).
   - Categories should still include `disabled-by-default-devtools.timeline`, `v8`, `disabled-by-default-v8.cpu_profiler`.
@@ -164,7 +171,7 @@ docs/research/repo-memory.md      (MODIFY: 2026-05-15 entry)
 ## Task 6 — repo-memory entry
 
 - [ ] **6.1** Append a 2026-05-15 section to `docs/research/repo-memory.md`:
-  Cover:
+      Cover:
   - The new `waitForTrigger=1` query param + window flag.
   - That the spec automatically sets it under `PLAYWRIGHT_PERF_TRACE=1`.
   - The observed before/after event counts (145 → <new count>).
@@ -182,18 +189,23 @@ docs/research/repo-memory.md      (MODIFY: 2026-05-15 entry)
 ## Task 7 — Gates + PR
 
 - [ ] **7.1** Repo-wide gates:
+
   ```
   pnpm -w typecheck && pnpm -w test && pnpm -w lint && pnpm format
   ```
+
   Expected: all pass.
 
 - [ ] **7.2** Push + open PR:
+
   ```
   git push -u origin bench-app-trigger-gating
   ```
+
   ```
   gh pr create --title "feat(bench): waitForTrigger gate so CDP tracing captures full interaction window" --body "..."
   ```
+
   PR body should include:
   - Summary (one bullet).
   - The before/after event counts from Task 4.4.

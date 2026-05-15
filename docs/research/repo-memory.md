@@ -578,10 +578,10 @@ The trigger is set **outside** the CDP try/catch (success or failure both unbloc
 
 **Before/after (filter-text / S2 / hypothesis, pretable):**
 
-| Metric         | PR #143 baseline | This PR  |
-| -------------- | ---------------- | -------- |
-| Trace events   | 145              | 723      |
-| File size      | ~30 KB           | ~221 KB  |
+| Metric         | PR #143 baseline | This PR      |
+| -------------- | ---------------- | ------------ |
+| Trace events   | 145              | 723          |
+| File size      | ~30 KB           | ~221 KB      |
 | Window covered | tail only        | full ~144 ms |
 
 **Category breakdown (verification run):** 427 timeline + 140 frame + 39 frame-timeline + 42 v8 + 26 cpu_profiler + 25 cc + 23 metadata. Full DevTools profiling set.
