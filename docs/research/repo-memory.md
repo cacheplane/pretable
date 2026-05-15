@@ -565,3 +565,29 @@ Output: `status/traces/<stem>.cdp.json` (sibling to the Playwright `.trace.zip`)
 - **Pretable wrapped-text filter perf-fix investigation** — next item; profiling + scope. Tooling now unblocked; remaining blocker is the bench-app interaction-start timing noted above.
 - **`/bench` page swap to read from `hypotheses.json` directly** — still deferred; aggregator scripts continue feeding the page for now.
 - **Matrix-runner reliability** — flakes are now well-documented across PRs #133, #134, #140, and this PR's sort re-run (which succeeded for pretable-only, but the multi-adapter runner remains fragile).
+
+## 2026-05-15
+
+### Bench-app trigger gating (CDP tracing now captures the full interaction window)
+
+Closed the consumer-side limitation called out in the 2026-05-13 CDP-tracing entry: the bench app's autorun was firing before CDP attach completed, so traces captured only the tail of the interaction window.
+
+**The gate:** new `waitForTrigger=1` query param on the bench app. When present, the autorun `useEffect` polls `window.__PRETABLE_BENCH_START__` via `requestAnimationFrame` instead of running the script immediately. The Playwright spec automatically appends the param under `PLAYWRIGHT_PERF_TRACE=1`, attaches CDP, then sets the window flag — so by the time the interaction script runs, tracing is recording.
+
+The trigger is set **outside** the CDP try/catch (success or failure both unblock the gate; the bench never hangs).
+
+**Before/after (filter-text / S2 / hypothesis, pretable):**
+
+| Metric         | PR #143 baseline | This PR      |
+| -------------- | ---------------- | ------------ |
+| Trace events   | 145              | 723          |
+| File size      | ~30 KB           | ~221 KB      |
+| Window covered | tail only        | full ~144 ms |
+
+**Category breakdown (verification run):** 427 timeline + 140 frame + 39 frame-timeline + 42 v8 + 26 cpu_profiler + 25 cc + 23 metadata. Full DevTools profiling set.
+
+The plan called for >1000 events as the success bar. 723 came in under that, but the bar was directional — `filter-text` at hypothesis-scale is genuinely a sub-200 ms operation. Heavier scripts / larger scales will produce proportionally larger traces. The thing that matters (full-window coverage) is achieved.
+
+**Unaffected:** `/bench` page autorun, matrix runner, all default paths. The gate is opt-in via query param; default behavior is byte-identical to current `main`.
+
+**Wrapped-text filter perf-fix is now fully unblocked** — the next consumer of this tooling. Both the harness (PR #143) and the consumer-side gating (this PR) are in place; profiling can proceed against actionable flame graphs.

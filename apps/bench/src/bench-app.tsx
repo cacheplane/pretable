@@ -429,10 +429,32 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     if (!query.autorun || autorunRef.current) {
       return;
     }
-
     autorunRef.current = true;
-    void autorunScript(query.scriptName);
-  }, [query.autorun, query.scriptName]);
+
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      void autorunScript(query.scriptName);
+    };
+
+    if (!query.waitForTrigger) {
+      run();
+      return;
+    }
+
+    const tick = () => {
+      if (cancelled) return;
+      if (window.__PRETABLE_BENCH_START__ === true) {
+        run();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+    };
+  }, [query.autorun, query.waitForTrigger, query.scriptName]);
 
   const selectedScenario = getScenarioById(query.scenarioId);
 
