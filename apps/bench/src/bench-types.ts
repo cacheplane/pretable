@@ -31,4 +31,5 @@ export interface BenchQueryState {
    * 50 ms tick (so RAF/timer behavior stays consistent across rates).
    */
   updateRatePerSec: number;
+  waitForTrigger: boolean;
 }

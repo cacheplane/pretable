@@ -12,6 +12,7 @@ describe("parseBenchQuery", () => {
       scriptName: "initial",
       autorun: false,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 
@@ -28,6 +29,7 @@ describe("parseBenchQuery", () => {
       scriptName: "initial",
       autorun: true,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 
@@ -44,6 +46,7 @@ describe("parseBenchQuery", () => {
       scriptName: "scroll",
       autorun: false,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 
@@ -60,6 +63,7 @@ describe("parseBenchQuery", () => {
       scriptName: "scroll",
       autorun: false,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 
@@ -76,6 +80,7 @@ describe("parseBenchQuery", () => {
       scriptName: "scroll",
       autorun: false,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 
@@ -88,6 +93,7 @@ describe("parseBenchQuery", () => {
       scriptName: "scroll",
       autorun: false,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 
@@ -100,6 +106,7 @@ describe("parseBenchQuery", () => {
       scriptName: "scroll",
       autorun: false,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 
@@ -112,6 +119,7 @@ describe("parseBenchQuery", () => {
       scriptName: "scroll",
       autorun: false,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 
@@ -124,6 +132,7 @@ describe("parseBenchQuery", () => {
       scriptName: "scroll",
       autorun: false,
       updateRatePerSec: 1000,
+      waitForTrigger: false,
     });
   });
 

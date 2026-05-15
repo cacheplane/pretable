@@ -35,8 +35,9 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   const rateParam = updateRatePerSec
     ? `&updateRatePerSec=${updateRatePerSec}`
     : "";
+  const triggerParam = perfTraceEnabled ? "&waitForTrigger=1" : "";
   await page.goto(
-    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}&autorun=1`,
+    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}&autorun=1${triggerParam}`,
   );
 
   await expect(page.getByLabel(adapterLabel).first()).toBeVisible();
@@ -71,6 +72,14 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       );
       cdpSession = null;
     }
+  }
+
+  if (perfTraceEnabled) {
+    await page.evaluate(() => {
+      (
+        window as Window & { __PRETABLE_BENCH_START__?: boolean }
+      ).__PRETABLE_BENCH_START__ = true;
+    });
   }
 
   await page.waitForFunction(() => Boolean(window.__PRETABLE_BENCH_RESULT__));

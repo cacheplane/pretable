@@ -8,6 +8,7 @@ const DEFAULT_QUERY_STATE: BenchQueryState = {
   scriptName: "initial",
   autorun: false,
   updateRatePerSec: 1000,
+  waitForTrigger: false,
 };
 
 /** Allowed update-rate values for the rate sweep. */
@@ -78,5 +79,6 @@ export function parseBenchQuery(
         ? parsed
         : DEFAULT_QUERY_STATE.updateRatePerSec;
     })(),
+    waitForTrigger: searchParams.get("waitForTrigger") === "1",
   };
 }
