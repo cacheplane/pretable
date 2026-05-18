@@ -34,9 +34,9 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
     "@changesets/cli": "^2.31.0",
+    "@eslint/js": "^9.39.4",
     "@microsoft/api-extractor": "^7.52.5",
     "@microsoft/tsdoc": "^0.16.0",
-    "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.60.0",
     "@svitejs/changesets-changelog-github-compact": "^1.2.0",
     "@testing-library/jest-dom": "^6.9.1",
@@ -54,6 +54,7 @@
     "publint": "^0.3.20",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "source-map": "0.7.6",
     "tsup": "^8.5.1",
     "tsx": "^4.20.0",
     "typescript": "^6.0.3",
