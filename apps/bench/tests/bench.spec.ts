@@ -62,6 +62,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
           "disabled-by-default-devtools.timeline.frame",
           "v8",
           "disabled-by-default-v8.cpu_profiler",
+          "blink.user_timing",
         ].join(","),
         options: "sampling-frequency=10000",
       });

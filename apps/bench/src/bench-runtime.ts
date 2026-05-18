@@ -416,6 +416,7 @@ export async function measureBenchInteractionRun(
   );
   const startTimestamp = await waitForAnimationFrame();
 
+  performance.mark("pretable.interaction.start");
   trigger();
 
   let domNodesPeak = root.querySelectorAll("*").length;
@@ -466,6 +467,7 @@ export async function measureBenchInteractionRun(
 
     if (isFirstChangedFrame) {
       firstChangedAt = timestamp;
+      performance.mark("pretable.interaction.firstFrame");
     }
 
     if (firstChangedAt === null) {
@@ -522,6 +524,7 @@ export async function measureBenchInteractionRun(
 
     if (stableFrames >= Math.max(0, profile.maxSettleFrames - 1)) {
       settledAt = timestamp;
+      performance.mark("pretable.interaction.settled");
       break;
     }
   }
