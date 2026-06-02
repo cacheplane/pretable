@@ -43,8 +43,8 @@
   "devDependencies": {
     "@pretable-internal/renderer-dom": "workspace:*",
     "@pretable-internal/scenario-data": "workspace:*",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "scripts": {
     "api": "api-extractor run --local --config api-extractor.json",
