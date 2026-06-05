@@ -39,28 +39,70 @@ const columns: PretableColumn<Event>[] = [
 
 ## Grid-level `onCopy` override
 
-For full control — a custom delimiter, a JSON payload, an HTML clipboard payload alongside the TSV — pass `onCopy` on the surface:
+For full control — a custom delimiter, a JSON payload, an HTML clipboard payload alongside the TSV — pass `onCopy` on the surface. It receives the same `SerializeRangesArgs` the default serializer gets and returns a `CopyPayload` (`{ text, html? }`) or `null` to cancel the copy:
 
 ```tsx
+import { serializeRangesAsTsv } from "@pretable/react";
+
 <PretableSurface
   ariaLabel="Inspection grid"
   columns={columns}
   rows={rows}
   getRowId={(row) => row.id}
-  onCopy={({ ranges, snapshot }) => ({
-    text: serializeAsTsv({ ranges, snapshot }),
-    html: serializeAsHtmlTable({ ranges, snapshot }),
-  })}
+  onCopy={(args) => {
+    // args is SerializeRangesArgs: { ranges, visibleRows, columns, copyWithHeaders }
+    const tsv = serializeRangesAsTsv(args);
+    if (!tsv) return null; // empty selection → cancel the copy
+    // Reuse the built-in TSV, but write CSV instead.
+    return { text: tsv.text.replace(/\t/g, ",") };
+  }}
+/>;
+```
+
+`onCopy` returns a `CopyPayload` or `null`:
+
+- `{ text, html? }` — `text` is written as `text/plain`; when `html` is present, the surface also writes `text/html` via the Clipboard API. Excel and Sheets prefer `text/html` when both are present.
+- `null` — skip the clipboard write entirely (suppress copy in this mode).
+
+`serializeRangesAsTsv` is the same helper the default path uses, so calling it inside `onCopy` (as above) keeps the built-in row/column/range handling — including filtering out the synthetic row-select column — and lets you post-process its output.
+
+## Building your own serializer
+
+`serializeRangesAsTsv`, `defaultCoerceForCopy`, and the `SerializeRangesArgs` / `CopyPayload` types are exported from `@pretable/react`, so you can build a serializer from the same primitives the default uses.
+
+`SerializeRangesArgs<TRow>` is the argument both `onCopy` and `serializeRangesAsTsv` receive:
+
+| Field             | Type                               | Notes                                             |
+| ----------------- | ---------------------------------- | ------------------------------------------------- |
+| `ranges`          | `readonly PretableCellRange[]`     | the selected ranges, in the order they were added |
+| `visibleRows`     | `readonly PretableVisibleRow<T>[]` | the currently materialized rows                   |
+| `columns`         | `readonly PretableColumn<T>[]`     | column defs (the row-select column is among them) |
+| `copyWithHeaders` | `boolean`                          | mirror of the `copyWithHeaders` prop              |
+
+`defaultCoerceForCopy(value)` is the fallback value→string coercion (the `null` / `Date` / primitive / object rules listed under [Default TSV format](#default-tsv-format)). Reach for it in a custom serializer so values without a per-column `format` still stringify consistently:
+
+```tsx
+import { defaultCoerceForCopy } from "@pretable/react";
+
+const text = column.format
+  ? column.format({ value, row, column })
+  : defaultCoerceForCopy(value);
+```
+
+## `copyToClipboard` override
+
+By default the surface writes the `CopyPayload` to the system clipboard via the async Clipboard API. Pass `copyToClipboard` to intercept that write — to route copies through your own clipboard shim, log them, or target a non-DOM environment:
+
+```tsx
+<PretableSurface
+  copyToClipboard={async ({ text, html }) => {
+    await myClipboard.write({ text, html });
+  }}
+  /* ... */
 />
 ```
 
-`onCopy` returns:
-
-- `string` — written to the clipboard as `text/plain`.
-- `{ text, html? }` — when `html` is present, the surface writes both `text/plain` and `text/html` via the Clipboard API. Excel and Sheets prefer `text/html` when present.
-- `null` — skip the clipboard write entirely (suppress copy in this mode).
-
-The `serializeRangesAsTsv` helper from `@pretable/react` is the same function the default uses; call it directly when you only want to wrap the TSV output.
+It receives the `CopyPayload` produced by the default serializer or your `onCopy`, and may return a promise.
 
 ## `copyWithHeaders`
 
