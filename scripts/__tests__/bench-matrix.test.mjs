@@ -2955,3 +2955,48 @@ test("H21 evidence array includes comparator entries when comparator runs are pr
     "tanstack",
   ]);
 });
+
+test("findRunSeries isolates runs by scale so a different-scale run cannot pollute the verdict", () => {
+  const makeRun = (scale, timestamp, latency) => ({
+    adapterId: "pretable",
+    profile: "default",
+    scenarioId: "S2",
+    scale,
+    scriptName: "select-range-extend",
+    browserName: "chromium",
+    browserVersion: "123.0",
+    timestamp,
+    seed: 1,
+    rowCount: 3000,
+    viewport: { width: 1440, height: 900 },
+    fontStack: "system-ui",
+    deviceScaleFactor: 1,
+    status: "completed",
+    notes: ["interaction mode: select-range-extend"],
+    tracePath: "status/traces/x.trace.zip",
+    metrics: {
+      interaction_latency_ms: latency,
+      settle_duration_ms: 16,
+      post_interaction_blank_gap_frames: 0,
+      post_interaction_anchor_shift_px: 0,
+      post_interaction_row_height_error_p95_px: 0,
+      result_row_count: 3000,
+      selected_row_preserved: 1,
+      focused_row_preserved: 1,
+      dom_nodes_peak: 400,
+    },
+  });
+
+  // H16 matches pretable/S2/hypothesis/select-range-extend. A bad "dev"-scale
+  // run for the same scenario+script must be excluded — before the scale
+  // filter it would have been aggregated in, dragging latency over budget and
+  // flipping the verdict to failing.
+  const result = evaluateH16([
+    makeRun("hypothesis", "2026-06-05T22:00:00.000Z", 10),
+    makeRun("dev", "2026-06-05T22:00:01.000Z", 120),
+  ]);
+
+  assert.equal(result.status, "satisfied");
+  assert.equal(result.evidence[0].sampleCount, 1);
+  assert.equal(result.evidence[0].metrics.interaction_latency_ms, 10);
+});

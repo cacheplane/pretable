@@ -1646,6 +1646,7 @@ function findRunSeries(runs, matcher) {
         run.status === "completed" &&
         (matcher.adapterId === undefined ||
           run.adapterId === matcher.adapterId) &&
+        (matcher.scale === undefined || run.scale === matcher.scale) &&
         run.scenarioId === matcher.scenarioId &&
         run.scriptName === matcher.scriptName,
     )
@@ -1658,6 +1659,7 @@ function groupRunSeries(runs, matcher) {
   for (const run of runs) {
     if (
       run.status !== "completed" ||
+      (matcher.scale !== undefined && run.scale !== matcher.scale) ||
       run.scenarioId !== matcher.scenarioId ||
       run.scriptName !== matcher.scriptName
     ) {
