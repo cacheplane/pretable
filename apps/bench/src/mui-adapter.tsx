@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { DataGrid, useGridApiRef, type GridColDef } from "@mui/x-data-grid";
+import {
+  DataGrid,
+  gridFilteredTopLevelRowCountSelector,
+  useGridApiRef,
+  type GridColDef,
+} from "@mui/x-data-grid";
 
 import type {
   ScenarioColumn,
@@ -76,11 +81,28 @@ export function MuiAdapter({
   onAutosizeReadyRef.current = onAutosizeReady;
 
   const [rows, setRows] = useState<ScenarioRow[]>(() => dataset.rows.slice());
+  // Post-interaction visible-row count. `rows` above is always the full
+  // dataset (DataGrid filters internally), so the published count is sourced
+  // from the grid's filtered-row selector instead — keeping it in sync with
+  // what the grid actually shows after a filter.
+  const [resultRowCount, setResultRowCount] = useState(dataset.rows.length);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- runKey reset
     setRows(dataset.rows.slice());
   }, [dataset.rows, runKey]);
+
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    // Seed immediately (covers a filter already applied before subscribe),
+    // then track every filter change. `filteredRowsSet` fires after the grid
+    // recomputes its filtered model.
+    const sync = () =>
+      setResultRowCount(gridFilteredTopLevelRowCountSelector(apiRef));
+    sync();
+    return api.subscribeEvent("filteredRowsSet", sync);
+  }, [apiRef, runKey, dataset.rows.length]);
 
   const columns = useMemo(
     () => dataset.columns.map((c) => toColDef(c, scriptName)),
@@ -146,7 +168,7 @@ export function MuiAdapter({
     <section
       aria-label="MUI X DataGrid adapter"
       data-benchmark-adapter="mui"
-      data-bench-result-row-count={String(rows.length)}
+      data-bench-result-row-count={String(resultRowCount)}
       style={{ display: "grid", gap: 12 }}
     >
       <header>
