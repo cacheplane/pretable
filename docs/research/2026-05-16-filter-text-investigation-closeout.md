@@ -6,14 +6,14 @@ Closing the wrapped-text filter perf-fix investigation thread that ran through P
 
 ## What this investigation produced
 
-| PR | What landed |
-|---|---|
-| #142 | First diagnostic memo; identified harness gap (Playwright action trace ≠ flame graph) |
-| #143 | Opt-in CDP tracing (`PLAYWRIGHT_PERF_TRACE=1`) |
-| #144 | `waitForTrigger=1` gate so CDP attaches before bench interaction runs |
-| #145 | First flame-graph diagnostic + `scripts/analyze-cdp.mjs` + bench sourcemaps; misattributed `getEstimatedRowHeightSignature` from full-trace view |
-| #146 | `performance.mark` window bounds + `--window=interaction` slicing; corrected #145; identified `matchesFilters` |
-| (closed) | This memo. |
+| PR       | What landed                                                                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| #142     | First diagnostic memo; identified harness gap (Playwright action trace ≠ flame graph)                                                            |
+| #143     | Opt-in CDP tracing (`PLAYWRIGHT_PERF_TRACE=1`)                                                                                                   |
+| #144     | `waitForTrigger=1` gate so CDP attaches before bench interaction runs                                                                            |
+| #145     | First flame-graph diagnostic + `scripts/analyze-cdp.mjs` + bench sourcemaps; misattributed `getEstimatedRowHeightSignature` from full-trace view |
+| #146     | `performance.mark` window bounds + `--window=interaction` slicing; corrected #145; identified `matchesFilters`                                   |
+| (closed) | This memo.                                                                                                                                       |
 
 The infrastructure is permanent and reusable for any future bench-perf investigation. The lesson — always slice to the interaction window — is saved to repo-wide memory.
 
@@ -38,10 +38,12 @@ Interaction window for `pretable / S2 / hypothesis / filter-text` (n=1, 6.77 ms)
 Top RasterTask: 908μs (single tile). Total raster: ~3 ms across many small tiles. Total Layout/UpdateLayoutTree: <1 ms.
 
 So in a ~7 ms interaction window:
+
 - ~5.4 ms attributable JS (incl. native overhead)
 - ~1-2 ms paint/raster/composite
 
 The bench p95 of 16.79 ms must reflect either:
+
 - Variance: some runs hit slow GC / cache-miss paths the trace didn't sample.
 - Aggregate paint cost across the multi-frame settle window (not just first-changed frame).
 - Mount-time work bleeding into the timer (though `startTimestamp` is post-rAF, so this should be excluded).
