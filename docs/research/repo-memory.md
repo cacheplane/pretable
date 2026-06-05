@@ -419,9 +419,9 @@ Hypothesis status (all evaluators are pretable-only at the evaluator level today
 
 The sort / filter-text / filter-metadata gate is still pretable-only. That's the next slice (option C from the brainstorm) — sequenced after this PR per the user's "A then C" choice. May flip H6/H7/H8 when comparators are wired.
 
-### Pretable `scroll-with-render` anomaly (logged for investigation)
+### Pretable `scroll-with-render` anomaly — **CLOSED AS NOISE 2026-06-05**
 
-Surfaced by the milestone above. Pretable's `scroll-with-render` p95 (16.4 ms) is anomalously slow vs `scroll-with-format` (10.2 ms) and `scroll-with-heavy-render` (10.3 ms). Heavy render is `scroll-with-render` plus extra DOM (badge dot + status data attr) — yet it's faster. This suggests the cheap-React-cellRenderer path in `pretable-adapter.tsx`'s `applyCellRendererFlavor` has a perf cliff that the heavier path avoids (possibly a different code path in `@pretable/react`'s cell-render integration that disables on more complex render output). Not investigated in this PR; logged as a follow-up.
+Surfaced by the milestone above: pretable's `scroll-with-render` p95 (16.4 ms) looked anomalously slow vs `scroll-with-format` (10.2 ms) and `scroll-with-heavy-render` (10.3 ms), despite heavy-render rendering strictly more DOM. **Re-ran at `--repeats=12` (the original was median-of-3 ≈ max-of-3) and the gap vanished:** all four scripts cluster at ~10.1–10.2 ms p95 (stdev 0.12–0.24 ms, zero blank gaps); `scroll-with-render` 10.20 ms vs `scroll-with-heavy-render` 10.10 ms are statistically identical. The 16.4 ms was a low-n artifact (one slow frame dragging max-of-3), same failure mode as the "1 ms MUI gap" in B2 follow-up #1 (vanished at n=20, PR #124). Code reading confirmed there was no mechanism: `@pretable/react`'s `CellContentImpl` (`packages/react/src/pretable-surface.tsx:297-303`) takes an identical `renderRef(cellRenderInput)` path for both flavors — no branch disables on complex output. No production change. Full memo: `docs/research/2026-06-05-scroll-with-render-anomaly-closeout.md`.
 
 ### B2 follow-up #5b: sort + filter scripts opened to comparators
 
