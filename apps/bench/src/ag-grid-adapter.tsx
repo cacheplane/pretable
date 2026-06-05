@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
   ModuleRegistry,
   themeQuartz,
   type ColDef,
+  type FilterChangedEvent,
   type GridApi,
   type GridReadyEvent,
 } from "ag-grid-community";
@@ -78,6 +80,12 @@ export function AgGridAdapter({
   const apiRef = useRef<GridApi | null>(null);
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
   const onAutosizeReadyRef = useRef(onAutosizeReady);
+  // Post-filter displayed-row count, published as data-bench-result-row-count.
+  const [resultRowCount, setResultRowCount] = useState(dataset.rows.length);
+  // `onGridReady` fires asynchronously after mount; gating the interaction
+  // effect on this flag re-applies a filter/sort plan that is already present
+  // at mount once the grid API exists, rather than silently skipping it.
+  const [gridReady, setGridReady] = useState(false);
 
   useEffect(() => {
     onUpdateApiReadyRef.current = onUpdateApiReady;
@@ -94,6 +102,7 @@ export function AgGridAdapter({
 
   const onGridReady = (event: GridReadyEvent) => {
     apiRef.current = event.api;
+    setGridReady(true);
     const apply: ApplyBenchUpdates = (patches) => {
       const updates = patches.map((p) => ({ ...p }));
       event.api.applyTransaction({ update: updates });
@@ -142,13 +151,13 @@ export function AgGridAdapter({
       }
       api.setFilterModel(model);
     }
-  }, [interactionPlan, runKey]);
+  }, [interactionPlan, runKey, gridReady]);
 
   return (
     <section
       aria-label="AG Grid Community adapter"
       data-benchmark-adapter="ag-grid"
-      data-bench-result-row-count={String(dataset.rows.length)}
+      data-bench-result-row-count={String(resultRowCount)}
       style={{ display: "grid", gap: 12 }}
     >
       <header>
@@ -164,6 +173,17 @@ export function AgGridAdapter({
           columnDefs={columnDefs}
           rowHeight={ROW_HEIGHT}
           onGridReady={onGridReady}
+          onFilterChanged={(event: FilterChangedEvent) => {
+            // AG Grid renders rows imperatively, so the bench's settle loop
+            // records result_row_count the moment the filtered rows paint.
+            // A normal setState re-render lands a few frames later — after
+            // settle — so the bench would capture the stale pre-filter count.
+            // flushSync forces the attribute update synchronously with this
+            // event, landing it inside the settle window.
+            flushSync(() =>
+              setResultRowCount(event.api.getDisplayedRowCount()),
+            );
+          }}
           getRowId={(params) => String((params.data as { id: unknown }).id)}
         />
       </div>
