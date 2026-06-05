@@ -2,6 +2,7 @@ import { render, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
 import { MuiAdapter } from "../mui-adapter";
+import type { BenchInteractionPlan } from "../interaction-plan";
 
 const dataset = {
   columns: [
@@ -13,6 +14,35 @@ const dataset = {
     { id: "2", name: "Beta" },
   ],
 };
+
+const statusDataset = {
+  columns: [
+    { id: "id", header: "ID", wrap: false, widthPx: 80 },
+    { id: "status", header: "Status", wrap: false, widthPx: 160 },
+  ],
+  rows: [
+    { id: "1", status: "running" },
+    { id: "2", status: "stopped" },
+    { id: "3", status: "running" },
+    { id: "4", status: "idle" },
+  ],
+};
+
+function filterPlan(
+  mode: "filter-metadata" | "filter-text",
+  filters: Record<string, string>,
+): BenchInteractionPlan {
+  return {
+    focusedRowId: null,
+    filters,
+    mode,
+    probeColumnId: Object.keys(filters)[0] ?? "",
+    resultRowCount: 0,
+    rows: [],
+    selectedRowId: null,
+    sort: null,
+  };
+}
 
 describe("MuiAdapter", () => {
   test("mounts and renders MUI DataGrid public selectors", async () => {
@@ -31,6 +61,36 @@ describe("MuiAdapter", () => {
         container.querySelector(".MuiDataGrid-virtualScroller"),
       ).not.toBeNull();
       expect(container.querySelector(".MuiDataGrid-root")).not.toBeNull();
+    });
+  });
+
+  test("publishes the post-filter row count, not the full dataset size", async () => {
+    const { container, rerender } = render(
+      <MuiAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-metadata"
+        interactionPlan={null}
+      />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".MuiDataGrid-root")).not.toBeNull();
+    });
+
+    rerender(
+      <MuiAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-metadata"
+        interactionPlan={filterPlan("filter-metadata", { status: "running" })}
+      />,
+    );
+
+    // status === "running" matches 2 of 4 rows. The published count is sourced
+    // from the grid's filtered-row selector, not the full dataset size.
+    await waitFor(() => {
+      const section = container.querySelector('[data-benchmark-adapter="mui"]');
+      expect(section?.getAttribute("data-bench-result-row-count")).toBe("2");
     });
   });
 });

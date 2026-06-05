@@ -188,7 +188,10 @@ export function TanstackAdapter({
     <section
       aria-label="TanStack Table adapter"
       data-benchmark-adapter="tanstack"
-      data-bench-result-row-count={String(data.length)}
+      // `rows` is the post-filter, post-sort row model (table.getRowModel()),
+      // so this reflects the count the grid actually displays after an
+      // interaction. `data` is the full unfiltered dataset (always 3000).
+      data-bench-result-row-count={String(rows.length)}
       style={{ display: "grid", gap: 12 }}
     >
       <header>
