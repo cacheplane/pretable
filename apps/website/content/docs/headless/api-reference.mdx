@@ -258,6 +258,10 @@ interface AutosizeOptions {
 type PretableRowSelectionTriState = "selected" | "indeterminate";
 ```
 
+The state a "select all" control reflects when the current selection is a partial
+set of rows — useful when you render your own header checkbox alongside
+`selectAll()` / `setSelectAllVisible()`.
+
 ## See also
 
 - [Snapshot & subscribe](/docs/headless/state-model) — the read side in detail.

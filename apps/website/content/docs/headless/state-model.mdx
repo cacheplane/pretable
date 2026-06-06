@@ -54,7 +54,7 @@ unsubscribe(); // stop listening
 ```
 
 - `subscribe(listener)` returns an unsubscribe function.
-- The listener fires after every state change (any mutation method).
+- The listener fires after each effective state change (a no-op mutation, like re-applying the current sort, doesn't notify).
 - Pair it with `getSnapshot()` — the listener is the "something changed" signal; the snapshot is the new state.
 
 ## Snapshot identity is stable
