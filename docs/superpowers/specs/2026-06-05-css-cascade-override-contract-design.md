@@ -37,10 +37,11 @@ Rejected alternatives:
 
 ## Design
 
-### 1. Single `pretable` cascade layer
+### 1. Single `pretable` cascade layer — applied to `grid.css` only
 
-`tokens.css`, `themes/material.css`, `themes/excel.css`, and `grid.css` each wrap their contents in `@layer pretable { … }`. CSS merges same-named layers, so all contributions land in one `pretable` layer, ordered by import order — token declarations precede the grid rules that consume them.
+`grid.css` wraps its contents in `@layer pretable { … }`. This is where the override robustness is needed: the grid's **selector rules** are what consumers fight with and what Preflight can clobber.
 
+- **Token files (`tokens.css`, `themes/*.css`) stay UNLAYERED.** Two reasons: (a) **jsdom constraint** — jsdom's `getComputedStyle` returns `""` for a custom property declared inside `@layer` (verified 2026-06-05), so layering the token files would break the existing jsdom token-resolution tests (`contract.test.ts`, `density.test.ts`); (b) **marginal benefit** — token overrides already win by source order, and the docs already instruct consumers to override _after_ importing the theme. `var()` lookups ignore layers, so layered grid rules resolve unlayered tokens fine.
 - **No sublayers.** A single layer satisfies the entire contract; sublayers add nuance for no benefit (YAGNI).
 - **`tailwind.css` is NOT layered.** It is the `@theme inline` bridge that exposes `--pretable-*` to Tailwind's utility namespace. `var()` lookups ignore layers, so leaving it unlayered is correct and safe; the implementation confirms the bridge still resolves token values.
 
@@ -54,13 +55,13 @@ Mechanical rewrite of every rule in `grid.css`:
 [data-pretable-row]:hover [data-pretable-cell] { … } →  :where([data-pretable-row]:hover [data-pretable-cell]) { … }
 ```
 
-Every default rule becomes specificity (0,0,0). Token declarations (`:root`, `[data-theme="dark"]`, `[data-density="…"]`) are custom-property declarations and do not need `:where()` — but they are layered (§1), so consumer token overrides (unlayered or later-layer) still win.
+Every default rule becomes specificity (0,0,0). Token declarations (`:root`, `[data-theme="dark"]`, `[data-density="…"]`) live in the unlayered token files (§1) and are unchanged; consumer token overrides win by source order as today (override after importing the theme).
 
 ### 3. State precedence becomes source-order (the one non-mechanical risk)
 
 Today `[data-selected]` (0,2,0) beats base `[data-pretable-cell]` (0,1,0) by specificity. After flattening, all rules are (0,0,0), so precedence is **pure source order**. The migration must keep state/structural rules ordered least-intent → most-intent: base → zebra (`:nth-child(even)`) → hover → pinned → selected → focused → role-based selected/focused.
 
-The current `grid.css` already runs roughly intent-ascending, so this is largely preserved. **The implementation MUST audit every rule pair** to confirm no default currently relies on out-of-order specificity (a more-specific rule that appears _before_ a less-specific one but wins by specificity today). Any such case is reordered so source order reproduces the intended precedence. This is the only behavior-risk in the migration; everything else is mechanical and behavior-preserving.
+**Audit result (done during planning):** the current source order is already `base → zebra → hover → pinned → selected → focused`, so `:where()`-flattening reproduces the intuitive precedence **with no rule reordering**. There is exactly **one behavior delta**: today zebra/hover are (0,3,0) and beat selected/focused (0,2,0) by specificity (a latent artifact — a selected cell in an even row, or while hovered, shows the zebra/hover background instead of the selection background). After flattening, source order makes **selected/focused win** over zebra/hover, which is the correct/intended behavior. This delta is deliberate and locked by the Playwright cascade test. Everything else is mechanical and behavior-preserving (pinned-vs-selected and the `[role="gridcell"]` rules keep their current source-order outcome).
 
 ### 4. The documented override contract
 
@@ -93,8 +94,8 @@ Edge cases:
 
 **`packages/ui`:**
 
-- `src/grid.css` — wrap in `@layer pretable`; `:where()`-flatten all selectors (incl. `.pt-sr-only`, `button[...]`, `[role="gridcell"]...`); audit + preserve state ordering.
-- `src/tokens.css`, `src/themes/material.css`, `src/themes/excel.css` — wrap token blocks in `@layer pretable`.
+- `src/grid.css` — wrap in `@layer pretable`; `:where()`-flatten all selectors (incl. `.pt-sr-only`, `button[...]`, `[role="gridcell"]...`); source order already yields correct state precedence (no reordering).
+- `src/tokens.css`, `src/themes/material.css`, `src/themes/excel.css` — **unchanged** (stay unlayered; see §1).
 - `src/tailwind.css` — unchanged; verify the bridge still resolves tokens.
 - `README.md` — update the CSS-contract section.
 
