@@ -6,7 +6,7 @@
 
 import { CSSProperties } from 'react';
 import { HTMLAttributes } from 'react';
-import * as react from 'react';
+import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode } from 'react';
 
 // @public
@@ -29,7 +29,7 @@ export interface DensityHeights {
 }
 
 // @beta
-export function InspectionGrid(input: InspectionGridProps): react.JSX.Element;
+export function InspectionGrid(input: InspectionGridProps): react_jsx_runtime.JSX.Element;
 
 // @beta
 export interface InspectionGridProps {
@@ -80,7 +80,7 @@ export interface InspectionGridProps {
 }
 
 // @beta
-export function LabeledGridSurface<TRow extends PretableRow = PretableRow>(input: LabeledGridSurfaceProps<TRow>): react.JSX.Element;
+export function LabeledGridSurface<TRow extends PretableRow = PretableRow>(input: LabeledGridSurfaceProps<TRow>): react_jsx_runtime.JSX.Element;
 
 // @beta
 export interface LabeledGridSurfaceFormatValueInput<TRow extends PretableRow = PretableRow> {
@@ -162,7 +162,7 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
 }
 
 // @public
-export function Pretable<TRow extends PretableRow = PretableRow>(input: PretableProps<TRow>): react.JSX.Element;
+export function Pretable<TRow extends PretableRow = PretableRow>(input: PretableProps<TRow>): react_jsx_runtime.JSX.Element;
 
 // @public
 export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow> extends PretableFormatInput<TRow> {
@@ -391,7 +391,7 @@ export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> 
 export type PretableRow = Record<string, unknown>;
 
 // @public
-export function PretableSurface<TRow extends PretableRow = PretableRow>(input: PretableSurfaceProps<TRow>): react.JSX.Element;
+export function PretableSurface<TRow extends PretableRow = PretableRow>(input: PretableSurfaceProps<TRow>): react_jsx_runtime.JSX.Element;
 
 // @public
 export interface PretableSurfaceMessages {
