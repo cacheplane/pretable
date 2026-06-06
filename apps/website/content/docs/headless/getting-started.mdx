@@ -1,0 +1,85 @@
+---
+title: First headless grid
+description: "createGrid + useSyncExternalStore — render your own table from the engine's snapshot."
+nav: Headless engine
+order: 2
+---
+
+A headless grid is two pieces: an engine that owns the state, and your own markup that reads a snapshot of it. The engine never touches the DOM — you map `snapshot.visibleRows` to whatever you're rendering.
+
+## Create the engine
+
+`createGrid` takes your columns, your rows, and how to identify a row:
+
+```ts
+import { createGrid } from "@pretable/core";
+
+const grid = createGrid({
+  columns,
+  rows,
+  getRowId: (row) => row.id,
+});
+```
+
+`columns` is `PretableColumn<TRow>[]` — each column has an `id`, an optional `header`, and flags like `sortable`, `filterable`, plus `value` / `format` accessors. See the [API reference](/docs/headless/api-reference) for the full shape.
+
+## Subscribe in React
+
+The engine is a `useSyncExternalStore` store. Pass `getSnapshot` as both the client and the server snapshot — the engine's snapshot is deterministic from `options`, so the server render matches:
+
+```tsx
+const snapshot = useSyncExternalStore(
+  grid.subscribe,
+  grid.getSnapshot,
+  grid.getSnapshot, // server snapshot — engine snapshot is deterministic
+);
+```
+
+The contract:
+
+- `subscribe(listener)` registers a listener that fires after every mutation, and returns an unsubscribe function.
+- `getSnapshot()` returns a cached object whose identity stays stable until the next mutation. That stability is what makes it `useSyncExternalStore`-safe — it won't loop.
+
+## Render `snapshot.visibleRows`
+
+`visibleRows` is the filtered + sorted set — the rows that pass the current filter, in sort order. It is not a viewport window; you get every matching row and decide how to render them.
+
+```tsx
+<tbody>
+  {snapshot.visibleRows.map(({ id, row }) => (
+    <tr key={id}>
+      {columns.map((c) => (
+        <td key={c.id}>{String(row[c.id])}</td>
+      ))}
+    </tr>
+  ))}
+</tbody>
+```
+
+## Drive it
+
+Call methods on the engine; the snapshot updates and React re-renders:
+
+```ts
+grid.setSort("latencyMs", "asc"); // sort ascending by a column
+grid.setFilter("team", "payments"); // filter a column by substring
+grid.toggleRowSelection(rowId); // toggle a row in the selection
+```
+
+## Live example
+
+The table below is built exactly this way — `createGrid` + `useSyncExternalStore`, no `<Pretable>`. Click a header to sort, type a team to filter, click a row to select it. Open the source tabs to see the full wiring.
+
+<HeadlessExample />
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Snapshot & subscribe" href="/docs/headless/state-model">
+    Every field on the snapshot and the subscribe contract in detail.
+  </Card>
+  <Card title="Actions" href="/docs/headless/mutations">
+    The full set of engine mutations: sort, filter, select, focus, layout,
+    and data transactions.
+  </Card>
+</CardGroup>
