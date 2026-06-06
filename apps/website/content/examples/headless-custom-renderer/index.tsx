@@ -18,7 +18,7 @@ interface FileSpec {
 }
 
 const SPEC: readonly FileSpec[] = [
-  { path: "page.tsx", lang: "tsx" },
+  { path: "HeadlessTable.tsx", lang: "tsx" },
   { path: "columns.ts", lang: "ts" },
   { path: "data.ts", lang: "ts" },
 ];
@@ -44,6 +44,8 @@ const files = await Promise.all(
   }),
 );
 
+// Imported after the file reads so the live demo component is paired with its
+// own highlighted source.
 import { HeadlessTable } from "./HeadlessTable";
 
 export const headlessCustomRenderer = defineExample({

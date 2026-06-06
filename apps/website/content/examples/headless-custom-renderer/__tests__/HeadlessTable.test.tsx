@@ -32,7 +32,6 @@ describe("HeadlessTable", () => {
     });
     const rows = screen.getAllByRole("row").slice(1);
     expect(rows.length).toBe(15); // 75 / 5 teams
-    expect(rows.length).toBeGreaterThan(0);
   });
 
   it("marks a row selected when clicked", () => {
