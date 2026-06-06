@@ -18,7 +18,7 @@ describe("grid.css cascade contract", () => {
       .filter(Boolean);
     expect(selectors.length).toBeGreaterThan(5);
     for (const sel of selectors) {
-      if (/^@layer\s+pretable$/.test(sel)) continue; // the layer block opener
+      if (/^@/.test(sel)) continue; // layer/media/supports/etc. block openers — not selectors
       expect(sel, `selector not wrapped in :where(): "${sel}"`).toMatch(
         /^:where\(/,
       );
