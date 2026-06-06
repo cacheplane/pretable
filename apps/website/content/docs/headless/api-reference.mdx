@@ -19,12 +19,12 @@ Creates an engine instance. `TRow` defaults to `PretableRow` (`Record<string, un
 
 ### `PretableGridOptions<TRow>`
 
-| Field      | Type                                  | Notes                                                     |
-| ---------- | ------------------------------------- | --------------------------------------------------------- |
-| `columns`  | `PretableColumn<TRow>[]`              | Column definitions.                                       |
-| `rows`     | `TRow[]`                              | The source rows.                                          |
-| `getRowId` | `(row: TRow, index: number) => string` | Optional. How to derive a stable id for each row.        |
-| `autosize` | `boolean \| AutosizeOptions`          | Optional. Autosize columns to content on creation.        |
+| Field      | Type                                   | Notes                                              |
+| ---------- | -------------------------------------- | -------------------------------------------------- |
+| `columns`  | `PretableColumn<TRow>[]`               | Column definitions.                                |
+| `rows`     | `TRow[]`                               | The source rows.                                   |
+| `getRowId` | `(row: TRow, index: number) => string` | Optional. How to derive a stable id for each row.  |
+| `autosize` | `boolean \| AutosizeOptions`           | Optional. Autosize columns to content on creation. |
 
 ## `PretableGrid<TRow>`
 
@@ -37,50 +37,50 @@ readonly options: PretableGridOptions<TRow>;
 
 ### Store
 
-| Method          | Signature                            | Notes                                                          |
-| --------------- | ------------------------------------ | -------------------------------------------------------------- |
-| `getSnapshot`   | `() => PretableGridSnapshot<TRow>`   | Current state; identity stable until the next mutation.        |
-| `subscribe`     | `(listener: () => void) => () => void` | Registers a listener; returns an unsubscribe fn.             |
+| Method        | Signature                              | Notes                                                   |
+| ------------- | -------------------------------------- | ------------------------------------------------------- |
+| `getSnapshot` | `() => PretableGridSnapshot<TRow>`     | Current state; identity stable until the next mutation. |
+| `subscribe`   | `(listener: () => void) => () => void` | Registers a listener; returns an unsubscribe fn.        |
 
 ### Sort & filter
 
-| Method           | Signature                                                       |
-| ---------------- | --------------------------------------------------------------- |
+| Method           | Signature                                                              |
+| ---------------- | ---------------------------------------------------------------------- |
 | `setSort`        | `(columnId: string \| null, direction: PretableSortDirection) => void` |
-| `setFilter`      | `(columnId: string, value: string) => void`                     |
-| `replaceFilters` | `(nextFilters: Record<string, string>) => void`                 |
-| `clearFilters`   | `() => void`                                                    |
+| `setFilter`      | `(columnId: string, value: string) => void`                            |
+| `replaceFilters` | `(nextFilters: Record<string, string>) => void`                        |
+| `clearFilters`   | `() => void`                                                           |
 
 ### Selection & ranges
 
-| Method                  | Signature                                            |
-| ----------------------- | ---------------------------------------------------- |
-| `toggleRowSelection`    | `(rowId: string) => void`                            |
-| `selectAll`             | `() => void`                                         |
-| `clearSelection`        | `() => void`                                         |
-| `setSelection`          | `(state: PretableSelectionState) => void`            |
-| `setSelectAllVisible`   | `(checked: boolean) => void`                         |
-| `addRange`              | `(range: PretableCellRange) => void`                 |
-| `extendRangeFromAnchor` | `(addr: PretableCellAddress) => void`                |
+| Method                  | Signature                                 |
+| ----------------------- | ----------------------------------------- |
+| `toggleRowSelection`    | `(rowId: string) => void`                 |
+| `selectAll`             | `() => void`                              |
+| `clearSelection`        | `() => void`                              |
+| `setSelection`          | `(state: PretableSelectionState) => void` |
+| `setSelectAllVisible`   | `(checked: boolean) => void`              |
+| `addRange`              | `(range: PretableCellRange) => void`      |
+| `extendRangeFromAnchor` | `(addr: PretableCellAddress) => void`     |
 
 ### Focus & movement
 
-| Method      | Signature                                                                       |
-| ----------- | ------------------------------------------------------------------------------- |
-| `setFocus`  | `(addr: PretableCellAddress \| null) => void`                                   |
+| Method      | Signature                                                                         |
+| ----------- | --------------------------------------------------------------------------------- |
+| `setFocus`  | `(addr: PretableCellAddress \| null) => void`                                     |
 | `moveFocus` | `(direction: PretableFocusDirection, options?: PretableMoveFocusOptions) => void` |
 
 ### Column layout
 
-| Method                  | Signature                                              |
-| ----------------------- | ------------------------------------------------------ |
-| `setColumnWidth`        | `(columnId: string, width: number) => void`            |
-| `setColumnPinned`       | `(columnId: string, pinned: "left" \| null) => void`   |
-| `moveColumn`            | `(columnId: string, toIndex: number) => void`          |
+| Method                  | Signature                                               |
+| ----------------------- | ------------------------------------------------------- |
+| `setColumnWidth`        | `(columnId: string, width: number) => void`             |
+| `setColumnPinned`       | `(columnId: string, pinned: "left" \| null) => void`    |
+| `moveColumn`            | `(columnId: string, toIndex: number) => void`           |
 | `autosizeColumn`        | `(columnId: string, options?: AutosizeOptions) => void` |
-| `autosizeColumns`       | `(options?: AutosizeOptions) => void`                  |
-| `resetColumnLayout`     | `() => void`                                           |
-| `mergeColumnsFromProps` | `(nextColumns: PretableColumn<TRow>[]) => void`        |
+| `autosizeColumns`       | `(options?: AutosizeOptions) => void`                   |
+| `resetColumnLayout`     | `() => void`                                            |
+| `mergeColumnsFromProps` | `(nextColumns: PretableColumn<TRow>[]) => void`         |
 
 ### Data & viewport
 

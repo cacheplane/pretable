@@ -17,6 +17,7 @@
 ## File structure
 
 Create:
+
 - `apps/website/content/examples/headless-custom-renderer/data.ts` — deterministic ~75-row dataset.
 - `apps/website/content/examples/headless-custom-renderer/columns.ts` — column defs (`PretableColumn<Service>[]`).
 - `apps/website/content/examples/headless-custom-renderer/HeadlessTable.tsx` — the live demo component (createGrid + useSyncExternalStore custom renderer).
@@ -31,6 +32,7 @@ Create:
 - `apps/website/content/docs/headless/api-reference.mdx` — API reference.
 
 Modify:
+
 - `apps/website/package.json` — add `"@pretable/core": "workspace:*"`.
 - `apps/website/app/components/docs/MdxRenderer.tsx` — register `HeadlessExample` in `docsMdxComponents`.
 - `apps/website/app/docs/_nav.ts` — add "Headless engine" section after "Grid".
@@ -41,6 +43,7 @@ Modify:
 ## Task 1: Add `@pretable/core` as a website dependency
 
 **Files:**
+
 - Modify: `apps/website/package.json`
 
 - [ ] **Step 1: Add the dependency** — insert `"@pretable/core": "workspace:*",` into `dependencies`, alphabetically near the other `@pretable/*` entries.
@@ -48,18 +51,22 @@ Modify:
 - [ ] **Step 2: Install + build core**
 
 Run:
+
 ```bash
 pnpm install --no-frozen-lockfile && pnpm --filter @pretable/core build
 ```
+
 Expected: install completes; core emits `packages/core/dist/index.mjs` + `index.d.ts`.
 Note: if `vite`/tests later fail to start with an esbuild error, the worktree's `node_modules/esbuild` top-level symlink was dropped by the install — relink: `ESB=$(ls -d node_modules/.pnpm/esbuild@*/node_modules/esbuild | head -1); rm -rf node_modules/esbuild; ln -s "${ESB#node_modules/}" node_modules/esbuild`.
 
 - [ ] **Step 3: Verify resolution**
 
 Run:
+
 ```bash
 cd apps/website && node -e "import('@pretable/core').then(m=>console.log('createGrid:', typeof m.createGrid))"
 ```
+
 Expected: `createGrid: function`
 
 - [ ] **Step 4: Commit**
@@ -74,6 +81,7 @@ git commit -m "chore(website): depend on @pretable/core for headless docs exampl
 ## Task 2: Example dataset + columns
 
 **Files:**
+
 - Create: `apps/website/content/examples/headless-custom-renderer/data.ts`
 - Create: `apps/website/content/examples/headless-custom-renderer/columns.ts`
 
@@ -135,6 +143,7 @@ git commit -m "feat(website): headless example fixture data + columns"
 The live demo: `createGrid` + `useSyncExternalStore` rendering a custom table with sortable headers, a team filter input, and click-to-toggle row selection. Selection read-back uses the single-row-toggle invariant (each `toggleRowSelection` range has `startRowId === endRowId`).
 
 **Files:**
+
 - Create: `apps/website/content/examples/headless-custom-renderer/HeadlessTable.tsx`
 - Test: `apps/website/content/examples/headless-custom-renderer/__tests__/HeadlessTable.test.tsx`
 
@@ -310,6 +319,7 @@ git commit -m "feat(website): headless custom-renderer demo component + test"
 `page.tsx` is shown as source in the example's file tabs (not a route) — it shows the idiomatic wiring a reader would copy. `index.tsx` shiki-highlights the files and pairs them with the live `<HeadlessTable />` Demo, mirroring `streaming-chat-grid/index.tsx`.
 
 **Files:**
+
 - Create: `apps/website/content/examples/headless-custom-renderer/page.tsx`
 - Create: `apps/website/content/examples/headless-custom-renderer/index.tsx`
 
@@ -435,6 +445,7 @@ git commit -m "feat(website): headless example defineExample + display source"
 ## Task 5: `HeadlessExample` MDX wrapper + register it
 
 **Files:**
+
 - Create: `apps/website/app/components/docs/mdx/HeadlessExample.tsx`
 - Modify: `apps/website/app/components/docs/MdxRenderer.tsx`
 
@@ -452,10 +463,13 @@ export function HeadlessExample() {
 - [ ] **Step 2: Register it** — in `MdxRenderer.tsx`, add the import and the map entry.
 
 Add import (with the other mdx imports):
+
 ```tsx
 import { HeadlessExample } from "./mdx/HeadlessExample";
 ```
+
 Add to the `docsMdxComponents` object:
+
 ```tsx
   HeadlessExample,
 ```
@@ -477,11 +491,13 @@ git commit -m "feat(website): register HeadlessExample MDX component"
 ## Task 6: Overview page — `docs/headless/index.mdx`
 
 **Files:**
+
 - Create: `apps/website/content/docs/headless/index.mdx`
 
 - [ ] **Step 1: Write the page.** Frontmatter then content. Required content (prose phrasing is the author's; the technical claims below are mandatory and must stay accurate):
 
 Frontmatter:
+
 ```mdx
 ---
 title: Headless engine
@@ -492,8 +508,9 @@ order: 1
 ```
 
 Sections + mandatory points:
+
 - **Lead:** `@pretable/core` is the engine beneath `<Pretable>` — filtering, sorting, selection, focus, column layout, and data transactions — exposed as a `useSyncExternalStore`-ready store (`subscribe` + `getSnapshot`). It is framework-agnostic and has no React peer requirement.
-- **Engine vs renderer** (`<Callout>`): the engine owns *state and the row model*; it does **not** render, measure, or virtualize. `getSnapshot().visibleRows` is "rows passing the current filter, in sort order" — the full logical set, **not** a viewport window. Windowing/virtualization/DOM is what `@pretable/react` adds on top.
+- **Engine vs renderer** (`<Callout>`): the engine owns _state and the row model_; it does **not** render, measure, or virtualize. `getSnapshot().visibleRows` is "rows passing the current filter, in sort order" — the full logical set, **not** a viewport window. Windowing/virtualization/DOM is what `@pretable/react` adds on top.
 - **When to reach for it:** custom/non-table layouts, a non-React renderer, or embedding grid logic in your own component system. Otherwise use `<Pretable>` / `<PretableSurface>` (link both: `/docs/grid/pretable-component`, `/docs/grid/pretable-surface`).
 - **Install:** ` ```bash\nnpm i @pretable/core\n``` `
 - **Next:** link to `/docs/headless/getting-started`.
@@ -510,11 +527,13 @@ git commit -m "docs(website): headless engine overview page"
 ## Task 7: Getting-started page — `docs/headless/getting-started.mdx`
 
 **Files:**
+
 - Create: `apps/website/content/docs/headless/getting-started.mdx`
 
 - [ ] **Step 1: Write the page.**
 
 Frontmatter:
+
 ```mdx
 ---
 title: First headless grid
@@ -525,6 +544,7 @@ order: 2
 ```
 
 Required content:
+
 - **Create the engine:** show `createGrid({ columns, rows, getRowId })`. Note `columns` are `PretableColumn<TRow>[]` (`id`, optional `header`, `sortable`, `filterable`, `value`, `format`, …) and link the API reference.
 - **Subscribe in React:** the exact snippet —
   ```tsx
@@ -552,11 +572,13 @@ git commit -m "docs(website): headless getting-started page with live example"
 ## Task 8: State-model page — `docs/headless/state-model.mdx`
 
 **Files:**
+
 - Create: `apps/website/content/docs/headless/state-model.mdx`
 
 - [ ] **Step 1: Write the page.**
 
 Frontmatter:
+
 ```mdx
 ---
 title: Snapshot & subscribe
@@ -567,6 +589,7 @@ order: 3
 ```
 
 Required content — document every `PretableGridSnapshot` field accurately:
+
 - `visibleRows: PretableVisibleRow<TRow>[]` — filtered + sorted set; each entry `{ id, row, sourceIndex }`. **Not** viewport-windowed.
 - `visibleRange: { start, end }` — currently the full range `{ start: 0, end: visibleRows.length }`; reserved for future windowing. Do not rely on it to be a viewport slice.
 - `totalRowCount` — count of source rows (pre-filter).
@@ -587,6 +610,7 @@ git commit -m "docs(website): headless snapshot & subscribe page"
 ## Task 9: Mutations page — `docs/headless/mutations.mdx`
 
 **Files:**
+
 - Create: `apps/website/content/docs/headless/mutations.mdx`
 
 - [ ] **Step 1: Write the page.** Group the action methods; each group gets a short paragraph + a focused snippet. Use only methods that exist on `PretableGrid` (see api-reference). Frontmatter:
@@ -601,6 +625,7 @@ order: 4
 ```
 
 Required groups (method names must match exactly):
+
 - **Sort / filter:** `setSort(columnId | null, "asc"|"desc"|null)`, `setFilter(columnId, value)`, `replaceFilters(record)`, `clearFilters()`.
 - **Selection & ranges:** `toggleRowSelection(rowId)`, `selectAll()`, `clearSelection()`, `setSelection(state)`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `setSelectAllVisible(checked)`. Note ranges are `{ startRowId, endRowId, startColumnId, endColumnId }`; a single toggled row is a full-width single-row range.
 - **Focus & movement:** `setFocus(addr | null)`, `moveFocus(direction, options?)` with `PretableMoveFocusOptions` (`byPage`, `extend`, `jumpToEdge`).
@@ -620,6 +645,7 @@ git commit -m "docs(website): headless actions/mutations page"
 ## Task 10: API reference page — `docs/headless/api-reference.mdx`
 
 **Files:**
+
 - Create: `apps/website/content/docs/headless/api-reference.mdx`
 
 - [ ] **Step 1: Write the page** mirroring the structure of `apps/website/content/docs/streaming/api-reference.mdx` and `grid/api-reference.mdx`. Frontmatter:
@@ -647,6 +673,7 @@ git commit -m "docs(website): headless API reference page"
 ## Task 11: Nav wiring + cross-links
 
 **Files:**
+
 - Modify: `apps/website/app/docs/_nav.ts`
 - Modify: `apps/website/content/docs/grid/index.mdx`
 - Modify: `apps/website/content/docs/streaming/index.mdx`
@@ -684,16 +711,16 @@ git commit -m "docs(website): wire headless nav section + cross-links"
 **Files:** none (verification only)
 
 - [ ] **Step 1: Test** — Run: `pnpm --filter @pretable/app-website test`
-  Expected: PASS, including the 4 `HeadlessTable` tests.
+      Expected: PASS, including the 4 `HeadlessTable` tests.
 
 - [ ] **Step 2: Typecheck** — Run: `pnpm --filter @pretable/app-website typecheck`
-  Expected: PASS.
+      Expected: PASS.
 
 - [ ] **Step 3: Lint** — Run: `pnpm --filter @pretable/app-website lint`
-  Expected: PASS.
+      Expected: PASS.
 
 - [ ] **Step 4: Build** — Run: `pnpm --filter @pretable/app-website build`
-  Expected: PASS; the five `/docs/headless/*` routes are generated and the example compiles (shiki highlight + live Demo).
+      Expected: PASS; the five `/docs/headless/*` routes are generated and the example compiles (shiki highlight + live Demo).
 
 - [ ] **Step 5: Manual smoke** — Run `pnpm --filter @pretable/app-website dev`, open `/docs/headless`, confirm: nav section present (Grid → Headless engine → Streaming), all five pages render, getting-started shows the live interactive table (sort headers reorder, team filter shrinks rows, clicking a row highlights it), cross-links resolve.
 

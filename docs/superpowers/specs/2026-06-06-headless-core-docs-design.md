@@ -37,9 +37,9 @@ windowing." Explicitly define `visibleRows` so no reader assumes the engine
 virtualizes. The example must therefore render all `visibleRows` over a modest
 dataset rather than fake a viewport window.
 
-**Positioning line:** *Reach for `@pretable/core` when you need Pretable's grid
+**Positioning line:** _Reach for `@pretable/core` when you need Pretable's grid
 logic under your own rendering; reach for `<Pretable>` when you want batteries
-included.*
+included._
 
 ## Public surface to document
 
@@ -85,7 +85,7 @@ Pages under `apps/website/content/docs/headless/`:
 2. **`getting-started.mdx` — First headless grid**
    - `createGrid({ columns, rows })`.
    - Minimal React custom renderer via `useSyncExternalStore(grid.subscribe,
-     grid.getSnapshot)`.
+grid.getSnapshot)`.
    - Render `snapshot.visibleRows`; wire one sort toggle + one filter input.
    - Embeds the live worked example.
 

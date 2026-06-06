@@ -9,16 +9,16 @@ order: 3
 
 ## The snapshot shape
 
-| Field           | Type                          | What it is                                                                                              |
-| --------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `visibleRows`   | `PretableVisibleRow<TRow>[]`  | The filtered + sorted row set — rows passing the current filter, in sort order. **Not** viewport-windowed. |
-| `visibleRange`  | `PretableRowRange`            | `{ start, end }`. Currently the full range `{ start: 0, end: visibleRows.length }`.                     |
-| `totalRowCount` | `number`                      | Count of source rows, before filtering.                                                                 |
-| `sort`          | `PretableSortState`           | `{ columnId, direction }` — the active sort.                                                            |
-| `filters`       | `Record<string, string>`      | Active per-column filter values, keyed by column id.                                                    |
-| `selection`     | `PretableSelectionState`      | `{ anchor, ranges }` — the current cell-range selection.                                                |
-| `focus`         | `PretableFocusState`          | `{ rowId, columnId }` — the focused cell.                                                               |
-| `viewport`      | `PretableViewportState`       | `{ scrollTop, scrollLeft, width, height }`.                                                             |
+| Field           | Type                         | What it is                                                                                                 |
+| --------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `visibleRows`   | `PretableVisibleRow<TRow>[]` | The filtered + sorted row set — rows passing the current filter, in sort order. **Not** viewport-windowed. |
+| `visibleRange`  | `PretableRowRange`           | `{ start, end }`. Currently the full range `{ start: 0, end: visibleRows.length }`.                        |
+| `totalRowCount` | `number`                     | Count of source rows, before filtering.                                                                    |
+| `sort`          | `PretableSortState`          | `{ columnId, direction }` — the active sort.                                                               |
+| `filters`       | `Record<string, string>`     | Active per-column filter values, keyed by column id.                                                       |
+| `selection`     | `PretableSelectionState`     | `{ anchor, ranges }` — the current cell-range selection.                                                   |
+| `focus`         | `PretableFocusState`         | `{ rowId, columnId }` — the focused cell.                                                                  |
+| `viewport`      | `PretableViewportState`      | `{ scrollTop, scrollLeft, width, height }`.                                                                |
 
 ### `visibleRows`
 
@@ -78,6 +78,6 @@ The engine's snapshot is deterministic from the `options` you passed to `createG
 ## Next
 
 <Card title="Actions" href="/docs/headless/mutations">
-  Every mutation that changes the snapshot: sort, filter, select, focus,
-  column layout, and data transactions.
+  Every mutation that changes the snapshot: sort, filter, select, focus, column
+  layout, and data transactions.
 </Card>

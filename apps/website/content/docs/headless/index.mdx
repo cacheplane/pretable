@@ -8,11 +8,10 @@ order: 1
 `@pretable/core` is the engine that sits beneath `<Pretable>`. It owns filtering, sorting, selection, focus, column layout, and data transactions, and exposes them as a `useSyncExternalStore`-ready store: `subscribe` for change notifications, `getSnapshot` for the current state. It is framework-agnostic — no React peer dependency, no DOM, no styling.
 
 <Callout type="warning">
-  The engine owns **state and the row model** — it does not render, measure,
-  or virtualize. `getSnapshot().visibleRows` is the rows passing the current
+  The engine owns **state and the row model** — it does not render, measure, or
+  virtualize. `getSnapshot().visibleRows` is the rows passing the current
   filter, in sort order: the full logical set, **not** a viewport window.
-  Windowing, virtualization, and the DOM are what `@pretable/react` adds on
-  top.
+  Windowing, virtualization, and the DOM are what `@pretable/react` adds on top.
 </Callout>
 
 ## When to reach for it
