@@ -42,6 +42,16 @@ export const docsNav: DocsNavSection[] = [
     ],
   },
   {
+    title: "Headless engine",
+    items: [
+      { title: "Overview", href: "/docs/headless" },
+      { title: "First headless grid", href: "/docs/headless/getting-started" },
+      { title: "Snapshot & subscribe", href: "/docs/headless/state-model" },
+      { title: "Actions", href: "/docs/headless/mutations" },
+      { title: "API reference", href: "/docs/headless/api-reference" },
+    ],
+  },
+  {
     title: "Streaming",
     items: [
       { title: "Overview", href: "/docs/streaming" },
