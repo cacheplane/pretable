@@ -1,0 +1,27 @@
+import { describe, expect, test } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+
+const GRID_CSS = path.resolve(__dirname, "../grid.css");
+
+describe("grid.css cascade contract", () => {
+  test("grid.css declares @layer pretable", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).toMatch(/@layer\s+pretable\s*\{/);
+  });
+
+  test("every grid.css rule selector is wrapped in :where()", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const selectors = [...noComments.matchAll(/([^{}]+)\{/g)]
+      .map((m) => m[1].trim())
+      .filter(Boolean);
+    expect(selectors.length).toBeGreaterThan(5);
+    for (const sel of selectors) {
+      if (/^@layer\s+pretable$/.test(sel)) continue; // the layer block opener
+      expect(sel, `selector not wrapped in :where(): "${sel}"`).toMatch(
+        /^:where\(/,
+      );
+    }
+  });
+});
