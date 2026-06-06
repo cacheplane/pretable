@@ -190,9 +190,12 @@ body {
 }
 
 /* Drawer takeover — fullscreen slide-up.
-   Outside @layer components because Tailwind v4's @import overrides our layer
-   declarations. Plain CSS specificity wins over Tailwind utilities here
-   because of the `html[data-drawer="open"]` qualifier. */
+   Deliberately unlayered (not in @layer components): unlayered rules outrank
+   every @layer, so these beat the Tailwind utilities that .drawer-shell /
+   .drawer-handle / .drawer-content also carry (e.g. the handle's box-shadow
+   vs. its focus-visible:ring). Moved into @layer components they would instead
+   LOSE to @layer utilities, which is declared last — and layer order beats
+   specificity, so the qualified selectors wouldn't save them. */
 .drawer-shell {
   position: relative;
   display: block;
