@@ -7,6 +7,8 @@ order: 3
 
 The override story is plain CSS cascade. Pick a theme, redefine any of its 24 tokens in your own stylesheet, and your values win because they load after the theme.
 
+> Token overrides are the simplest path, but you can also override any rendered style with plain CSS — the grid's defaults are zero-specificity and layered, so your selectors win without `!important`. See [Cascade & overrides](/docs/theming/cascade-and-overrides).
+
 ## The basic pattern
 
 ```css

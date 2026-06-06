@@ -53,6 +53,20 @@ The full token set lives in [`src/tokens.css`](./src/tokens.css). Override any t
 
 Pretable surfaces emit a stable set of data attributes on rendered DOM. The CSS files in this package target them; your custom styles can too. The full set lives in `grid.css` — common ones include `[data-pretable-cell]`, `[data-pretable-row]`, `[data-pretable-header]`, `[data-pretable-cell-focused]`, and `[data-pretable-cell-selected]`. Renaming or removing these attributes is a breaking change.
 
+### Cascade layer
+
+`grid.css` ships inside a single `@layer pretable` cascade layer, and every
+selector is wrapped in `:where()` (specificity `(0,0,0)`). Consumer CSS wins by
+layer order or specificity without `!important`. In a Tailwind v4 app declare:
+
+```css
+@layer theme, base, pretable, components, utilities;
+```
+
+Token files (`tokens.css`, `themes/*.css`) are intentionally **unlayered** —
+override tokens after importing the theme. See the website's "Cascade &
+overrides" theming page for the full contract.
+
 ## JS API
 
 ```ts
