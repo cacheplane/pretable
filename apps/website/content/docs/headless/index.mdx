@@ -1,0 +1,39 @@
+---
+title: Headless engine
+description: "@pretable/core is the framework-agnostic state + row-model engine beneath <Pretable>. Bring your own rendering."
+nav: Headless engine
+order: 1
+---
+
+`@pretable/core` is the engine that sits beneath `<Pretable>`. It owns filtering, sorting, selection, focus, column layout, and data transactions, and exposes them as a `useSyncExternalStore`-ready store: `subscribe` for change notifications, `getSnapshot` for the current state. It is framework-agnostic — no React peer dependency, no DOM, no styling.
+
+<Callout type="warning">
+  The engine owns **state and the row model** — it does not render, measure,
+  or virtualize. `getSnapshot().visibleRows` is the rows passing the current
+  filter, in sort order: the full logical set, **not** a viewport window.
+  Windowing, virtualization, and the DOM are what `@pretable/react` adds on
+  top.
+</Callout>
+
+## When to reach for it
+
+Use `@pretable/core` directly when you're building something the React surface can't express:
+
+- A custom or non-table layout (cards, a board, a tree) driven by grid state.
+- A renderer that isn't React.
+- Grid logic embedded inside your own component system.
+
+If you just want a table in a React app, use [`<Pretable>`](/docs/grid/pretable-component) or [`<PretableSurface>`](/docs/grid/pretable-surface) — they wire the engine to a virtualized renderer for you.
+
+## Install
+
+```bash
+npm i @pretable/core
+```
+
+## Next
+
+<Card title="First headless grid" href="/docs/headless/getting-started">
+  `createGrid` + `useSyncExternalStore`, rendering your own table from the
+  engine's snapshot.
+</Card>
