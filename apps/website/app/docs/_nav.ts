@@ -64,6 +64,10 @@ export const docsNav: DocsNavSection[] = [
         title: "Tailwind + CSS-in-JS",
         href: "/docs/theming/tailwind-css-in-js",
       },
+      {
+        title: "Cascade & overrides",
+        href: "/docs/theming/cascade-and-overrides",
+      },
       { title: "Token reference", href: "/docs/theming/token-reference" },
     ],
   },

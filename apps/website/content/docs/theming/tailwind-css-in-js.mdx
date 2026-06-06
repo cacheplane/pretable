@@ -35,6 +35,16 @@ The `pt-` prefix avoids collisions with your own design tokens. Available utilit
 
 Density tokens and `--pretable-radius` are intentionally NOT exposed as Tailwind utilities — they're consumed by `grid.css` directly and don't have meaningful per-element utility analogs.
 
+## Cascade layer order
+
+Tailwind v4 layers its Preflight reset in `base`. Declare the order once so the grid layer sits after the reset but before your utilities:
+
+```css
+@layer theme, base, pretable, components, utilities;
+```
+
+This keeps Preflight from clobbering the grid while letting your utility classes win on individual cells. See [Cascade & overrides](/docs/theming/cascade-and-overrides).
+
 ## Why the bridge is opt-in
 
 You don't need the bridge to use `@pretable/ui` with Tailwind. The grid renders correctly with just `themes/excel.css` + `grid.css` imported. The bridge is only useful if you want to style your own application's UI using Pretable's token palette — for example, building a sidebar that color-matches the embedded grid.

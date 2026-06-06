@@ -1,0 +1,67 @@
+---
+title: Cascade & overrides
+description: "How Pretable's CSS layers work and how to override any part with plain CSS."
+nav: Theming
+order: 8
+---
+
+All of Pretable's grid styling lives in a single cascade layer named `pretable`, and every default selector is wrapped in `:where()` so it carries **zero specificity**. Together these mean your styles win — by layer order, by specificity, or both — without `!important` or specificity tricks.
+
+## Three ways to override, in increasing power
+
+1. **Tokens** — set any `--pretable-*` variable at `:root` or a scoped selector. This is the blessed path for recoloring and resizing. Override _after_ importing the theme file. See [Override tokens](/docs/theming/override-tokens).
+2. **Deep CSS** — write a selector targeting any grid part. Because the defaults are specificity `(0,0,0)`, even a single class wins:
+
+   ```css
+   .my-grid [data-pretable-cell][data-selected="true"] {
+     background: hotpink;
+   }
+   ```
+
+3. **Layer order** — because all Pretable CSS is in `@layer pretable`, anything **unlayered** or in a **later layer** wins regardless of specificity.
+
+## Declare the layer order (Tailwind / reset users)
+
+If you use cascade layers — including Tailwind v4, which layers Preflight in `base` — declare the order once so the cascade is predictable:
+
+```css
+@layer theme, base, pretable, components, utilities;
+```
+
+- `pretable` is **after `base`**, so a reset (Tailwind Preflight, `normalize.css` in `base`) cannot clobber the grid's borders and padding.
+- `pretable` is **before `utilities`**, so a utility class like `class="bg-red-500"` on a cell still wins.
+
+If you don't use layers at all, you need none of this — plain unlayered CSS beats every layer automatically.
+
+> Put resets in `@layer base`. A `normalize.css` imported **unlayered** would beat the grid (unlayered beats all layers) and could strip its styling.
+
+## Worked examples
+
+**Recolor the selected cell**
+
+```css
+[data-pretable-cell][data-selected="true"] {
+  background: #1d4ed8;
+  color: white;
+}
+```
+
+**Restyle the header**
+
+```css
+[data-pretable-header-cell] {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+```
+
+**Thicker resize handle**
+
+```css
+[data-pretable-resize-handle] {
+  width: 8px;
+}
+```
+
+Each of these is a plain selector with no `!important` — they win because the grid's defaults are layered and specificity-`(0,0,0)`.

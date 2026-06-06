@@ -1,3 +1,7 @@
+/* Declare cascade order: pretable sits after Tailwind's base (Preflight can't
+   clobber the grid) and before utilities (utility classes still win). */
+@layer theme, base, pretable, components, utilities;
+
 @import "@fontsource-variable/fraunces/wght.css";
 @import "@fontsource-variable/fraunces/wght-italic.css";
 @import "@fontsource-variable/inter/wght.css";

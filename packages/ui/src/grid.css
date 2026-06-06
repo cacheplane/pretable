@@ -3,211 +3,229 @@
  * Selector-based grid skin. Targets data attributes exposed by @pretable/react;
  * values reference --pretable-* tokens defined by theme files.
  *
+ * All rules live in the `pretable` cascade layer and use :where() so every
+ * default is specificity (0,0,0). Consumers override by writing any selector
+ * (it wins on specificity) or any unlayered / later-layer rule (it wins on
+ * layer order). Recommended layer order in your app:
+ *   @layer theme, base, pretable, components, utilities;
+ *
  * Consumer recipe:
  *   @import "@pretable/ui/themes/excel.css";
  *   @import "@pretable/ui/grid.css";
  */
 
-/* Visually hidden — used for ARIA live region announcements. */
-.pt-sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
+@layer pretable {
+  /* Visually hidden — used for ARIA live region announcements. */
+  :where(.pt-sr-only) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 
-/* Outer viewport (scrollable container) */
-[data-pretable-scroll-viewport] {
-  background: var(--pretable-bg-grid);
-  border: 1px solid var(--pretable-rule-strong);
-  border-radius: var(--pretable-radius);
-  font-family: var(--pretable-font-sans);
-  color: var(--pretable-text-cell);
-}
+  /* Outer viewport (scrollable container) */
+  :where([data-pretable-scroll-viewport]) {
+    background: var(--pretable-bg-grid);
+    border: 1px solid var(--pretable-rule-strong);
+    border-radius: var(--pretable-radius);
+    font-family: var(--pretable-font-sans);
+    color: var(--pretable-text-cell);
+  }
 
-/* Header row */
-[data-pretable-header-row] {
-  background: var(--pretable-bg-header);
-  border-bottom: 1px solid var(--pretable-rule-strong);
-  height: var(--pretable-header-height);
-}
+  /* Header row */
+  :where([data-pretable-header-row]) {
+    background: var(--pretable-bg-header);
+    border-bottom: 1px solid var(--pretable-rule-strong);
+    height: var(--pretable-header-height);
+  }
 
-[data-pretable-header-cell] {
-  display: flex;
-  align-items: center;
-  padding: 0 var(--pretable-cell-padding-x);
-  font-size: var(--pretable-font-size-header);
-  font-weight: 500;
-  color: var(--pretable-text-header);
-  border-right: 1px solid var(--pretable-rule);
-  box-sizing: border-box;
-}
+  :where([data-pretable-header-cell]) {
+    display: flex;
+    align-items: center;
+    padding: 0 var(--pretable-cell-padding-x);
+    font-size: var(--pretable-font-size-header);
+    font-weight: 500;
+    color: var(--pretable-text-header);
+    border-right: 1px solid var(--pretable-rule);
+    box-sizing: border-box;
+  }
 
-[data-pretable-header-cell]:last-of-type {
-  border-right: none;
-}
+  :where([data-pretable-header-cell]:last-of-type) {
+    border-right: none;
+  }
 
-/* Body cells */
-[data-pretable-cell] {
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
-  font-size: var(--pretable-font-size-cell);
-  color: var(--pretable-text-cell);
-  background: var(--pretable-bg-grid);
-  border-right: 1px solid var(--pretable-rule);
-  border-bottom: 1px solid var(--pretable-rule);
-}
+  /* Body cells */
+  :where([data-pretable-cell]) {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
+    font-size: var(--pretable-font-size-cell);
+    color: var(--pretable-text-cell);
+    background: var(--pretable-bg-grid);
+    border-right: 1px solid var(--pretable-rule);
+    border-bottom: 1px solid var(--pretable-rule);
+  }
 
-[data-pretable-cell]:last-of-type {
-  border-right: none;
-}
+  :where([data-pretable-cell]:last-of-type) {
+    border-right: none;
+  }
 
-/* Zebra striping — only effective when --pretable-bg-grid-alt differs */
-[data-pretable-row]:nth-child(even) [data-pretable-cell] {
-  background: var(--pretable-bg-grid-alt);
-}
+  /* Zebra striping — only effective when --pretable-bg-grid-alt differs */
+  :where([data-pretable-row]:nth-child(even) [data-pretable-cell]) {
+    background: var(--pretable-bg-grid-alt);
+  }
 
-/* Hover */
-[data-pretable-row]:hover [data-pretable-cell] {
-  background: var(--pretable-bg-hover);
-}
+  /* Hover */
+  :where([data-pretable-row]:hover [data-pretable-cell]) {
+    background: var(--pretable-bg-hover);
+  }
 
-/* Pinned cells (sticky left/right) — reuse header background */
-[data-pretable-cell][data-pinned="left"],
-[data-pretable-cell][data-pinned="right"] {
-  background: var(--pretable-bg-header);
-  z-index: 1;
-}
+  /* Pinned cells (sticky left/right) — reuse header background */
+  :where(
+    [data-pretable-cell][data-pinned="left"],
+    [data-pretable-cell][data-pinned="right"]
+  ) {
+    background: var(--pretable-bg-header);
+    z-index: 1;
+  }
 
-/* Selection */
-[data-pretable-cell][data-selected="true"] {
-  background: var(--pretable-bg-selected);
-  color: var(--pretable-text-selected);
-}
+  /* Selection — wins over zebra/hover via source order (they precede it) */
+  :where([data-pretable-cell][data-selected="true"]) {
+    background: var(--pretable-bg-selected);
+    color: var(--pretable-text-selected);
+  }
 
-/* Focus */
-[data-pretable-cell][data-focused="true"] {
-  outline: 2px solid var(--pretable-focus-ring);
-  outline-offset: -2px;
-}
+  /* Focus */
+  :where([data-pretable-cell][data-focused="true"]) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
 
-/**
- * Theme-agnostic cell-range selection visuals (Phase 3).
- * Targets the ARIA role + aria-selected attribute exposed by @pretable/react,
- * so consumers using only @pretable/ui's tokens.css (no theme file) still get
- * a usable visual. Theme-prefixed rules above take precedence when a theme is
- * loaded.
- */
-[role="gridcell"][aria-selected="true"] {
-  background: var(--pt-color-selection-bg);
-}
+  /**
+   * Theme-agnostic cell-range selection visuals (Phase 3).
+   * Targets the ARIA role + aria-selected attribute exposed by @pretable/react,
+   * so consumers using only @pretable/ui's tokens.css (no theme file) still get
+   * a usable visual.
+   */
+  :where([role="gridcell"][aria-selected="true"]) {
+    background: var(--pt-color-selection-bg);
+  }
 
-[role="gridcell"][data-focused="true"] {
-  box-shadow: inset 0 0 0 2px var(--pt-color-focus-ring);
-}
+  :where([role="gridcell"][data-focused="true"]) {
+    box-shadow: inset 0 0 0 2px var(--pt-color-focus-ring);
+  }
 
-/* Numeric cells (opt-in via [data-pretable-numeric="true"]) */
-[data-pretable-cell][data-pretable-numeric="true"] {
-  font-family: var(--pretable-font-mono);
-  text-align: right;
-  justify-content: flex-end;
-  font-variant-numeric: tabular-nums;
-}
+  /* Numeric cells (opt-in via [data-pretable-numeric="true"]) */
+  :where([data-pretable-cell][data-pretable-numeric="true"]) {
+    font-family: var(--pretable-font-mono);
+    text-align: right;
+    justify-content: flex-end;
+    font-variant-numeric: tabular-nums;
+  }
 
-/* Toolbar / status bar — applied if engine wraps in named data attribute */
-[data-pretable-toolbar],
-[data-pretable-status-bar] {
-  background: var(--pretable-bg-toolbar);
-  color: var(--pretable-text-dim);
-  font-family: var(--pretable-font-sans);
-  font-size: var(--pretable-font-size-cell);
-}
+  /* Toolbar / status bar — applied if engine wraps in named data attribute */
+  :where([data-pretable-toolbar], [data-pretable-status-bar]) {
+    background: var(--pretable-bg-toolbar);
+    color: var(--pretable-text-dim);
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+  }
 
-/* Row-selection checkbox column (Phase 4) */
-[data-pretable-cell][data-row-select-cell="true"],
-[data-pretable-header-cell][data-pretable-row-select-header] {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-button[data-pretable-row-select],
-button[data-pretable-row-select-all] {
-  width: 16px;
-  height: 16px;
-  border: 1px solid var(--pt-color-checkbox-border);
-  background: var(--pt-color-checkbox-bg);
-  border-radius: 3px;
-  cursor: pointer;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--pt-color-checkbox-checked-fg);
-}
-button[data-pretable-row-select][aria-checked="true"],
-button[data-pretable-row-select-all][aria-checked="true"] {
-  background: var(--pt-color-checkbox-checked-bg);
-  border-color: var(--pt-color-checkbox-checked-bg);
-  color: var(--pt-color-checkbox-checked-fg);
-}
-button[data-pretable-row-select][aria-checked="mixed"],
-button[data-pretable-row-select-all][aria-checked="mixed"] {
-  background: var(--pt-color-checkbox-checked-bg);
-  border-color: var(--pt-color-checkbox-checked-bg);
-  color: var(--pt-color-checkbox-checked-fg);
-}
+  /* Row-selection checkbox column (Phase 4) */
+  :where(
+    [data-pretable-cell][data-row-select-cell="true"],
+    [data-pretable-header-cell][data-pretable-row-select-header]
+  ) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  :where(
+    button[data-pretable-row-select],
+    button[data-pretable-row-select-all]
+  ) {
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--pt-color-checkbox-border);
+    background: var(--pt-color-checkbox-bg);
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--pt-color-checkbox-checked-fg);
+  }
+  :where(
+    button[data-pretable-row-select][aria-checked="true"],
+    button[data-pretable-row-select-all][aria-checked="true"]
+  ) {
+    background: var(--pt-color-checkbox-checked-bg);
+    border-color: var(--pt-color-checkbox-checked-bg);
+    color: var(--pt-color-checkbox-checked-fg);
+  }
+  :where(
+    button[data-pretable-row-select][aria-checked="mixed"],
+    button[data-pretable-row-select-all][aria-checked="mixed"]
+  ) {
+    background: var(--pt-color-checkbox-checked-bg);
+    border-color: var(--pt-color-checkbox-checked-bg);
+    color: var(--pt-color-checkbox-checked-fg);
+  }
 
-/* Column resize handle (sub-project C) */
-[data-pretable-resize-handle] {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 4px;
-  height: 100%;
-  cursor: col-resize;
-  background: var(--pt-color-resize-handle);
-  z-index: 2;
-  user-select: none;
-  touch-action: none;
-}
-[data-pretable-resize-handle]:hover,
-[data-pretable-resize-handle][data-dragging="true"] {
-  background: var(--pt-color-resize-handle-hover);
-}
+  /* Column resize handle (sub-project C) */
+  :where([data-pretable-resize-handle]) {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 4px;
+    height: 100%;
+    cursor: col-resize;
+    background: var(--pt-color-resize-handle);
+    z-index: 2;
+    user-select: none;
+    touch-action: none;
+  }
+  :where(
+    [data-pretable-resize-handle]:hover,
+    [data-pretable-resize-handle][data-dragging="true"]
+  ) {
+    background: var(--pt-color-resize-handle-hover);
+  }
 
-/* Column reorder gesture (sub-project C) */
-[data-pretable-reorder-ghost] {
-  position: fixed;
-  pointer-events: none;
-  background: var(--pt-color-reorder-ghost-bg);
-  box-shadow: var(--pt-color-reorder-ghost-shadow);
-  opacity: 0.6;
-  z-index: 10;
-  user-select: none;
-}
-[data-pretable-reorder-drop-indicator] {
-  position: absolute;
-  top: 0;
-  width: 2px;
-  background: var(--pt-color-reorder-drop-indicator);
-  z-index: 9;
-  pointer-events: none;
-}
+  /* Column reorder gesture (sub-project C) */
+  :where([data-pretable-reorder-ghost]) {
+    position: fixed;
+    pointer-events: none;
+    background: var(--pt-color-reorder-ghost-bg);
+    box-shadow: var(--pt-color-reorder-ghost-shadow);
+    opacity: 0.6;
+    z-index: 10;
+    user-select: none;
+  }
+  :where([data-pretable-reorder-drop-indicator]) {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    background: var(--pt-color-reorder-drop-indicator);
+    z-index: 9;
+    pointer-events: none;
+  }
 
-/* Tooltip / popover */
-[data-pretable-popover] {
-  background: var(--pretable-bg-tooltip);
-  color: var(--pretable-text-cell);
-  border: 1px solid var(--pretable-rule);
-  border-radius: var(--pretable-radius);
+  /* Tooltip / popover */
+  :where([data-pretable-popover]) {
+    background: var(--pretable-bg-tooltip);
+    color: var(--pretable-text-cell);
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius);
+  }
 }
