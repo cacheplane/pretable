@@ -13,19 +13,20 @@ test("an unlayered consumer rule beats the layered grid default", async ({
   await page.setContent(
     '<div data-pretable-scroll-viewport><span data-pretable-cell id="c">x</span></div>',
   );
-  await page.addStyleTag({ path: EXCEL_CSS }); // unlayered tokens
-  await page.addStyleTag({ path: GRID_CSS }); // layered grid rules (:where)
-
-  const cell = page.locator("#c");
-  // Sanity: the layered default applied a non-empty color from the theme.
-  const defaultColor = await cell.evaluate((el) => getComputedStyle(el).color);
-  expect(defaultColor).not.toBe("");
-
-  // A bare unlayered consumer rule (specificity (0,1,0)) must win over the
-  // layered, :where()-flattened (0,0,0) default purely via layer order.
+  // Consumer rule FIRST (unlayered), then the theme tokens, then the layered
+  // grid.css LAST. If grid.css were not in @layer, it would win here by source
+  // order at equal specificity — so this ordering genuinely tests the layer.
   await page.addStyleTag({
     content: "[data-pretable-cell] { color: rgb(7, 8, 9); }",
   });
+  await page.addStyleTag({ path: EXCEL_CSS });
+  await page.addStyleTag({ path: GRID_CSS });
+
+  const cell = page.locator("#c");
+  // Sanity: grid.css actually loaded and applied (it sets display:flex on cells).
+  await expect(cell).toHaveCSS("display", "flex");
+  // The unlayered consumer rule wins over the layered grid default even though
+  // grid.css was injected last — proving the @layer mechanism.
   await expect(cell).toHaveCSS("color", "rgb(7, 8, 9)");
 });
 
