@@ -1,0 +1,269 @@
+---
+title: API reference
+description: "Every public export of @pretable/core: createGrid, the PretableGrid handle, and the supporting types."
+nav: Headless engine
+order: 5
+---
+
+The complete public surface of `@pretable/core`.
+
+## `createGrid`
+
+```ts
+function createGrid<TRow extends PretableRow = PretableRow>(
+  options: PretableGridOptions<TRow>,
+): PretableGrid<TRow>;
+```
+
+Creates an engine instance. `TRow` defaults to `PretableRow` (`Record<string, unknown>`); pass your row type for typed accessors.
+
+### `PretableGridOptions<TRow>`
+
+| Field      | Type                                   | Notes                                              |
+| ---------- | -------------------------------------- | -------------------------------------------------- |
+| `columns`  | `PretableColumn<TRow>[]`               | Column definitions.                                |
+| `rows`     | `TRow[]`                               | The source rows.                                   |
+| `getRowId` | `(row: TRow, index: number) => string` | Optional. How to derive a stable id for each row.  |
+| `autosize` | `boolean \| AutosizeOptions`           | Optional. Autosize columns to content on creation. |
+
+## `PretableGrid<TRow>`
+
+The handle returned by `createGrid`. It carries two readonly fields and the store + mutation methods.
+
+```ts
+readonly kind: "pretable-grid";
+readonly options: PretableGridOptions<TRow>;
+```
+
+### Store
+
+| Method        | Signature                              | Notes                                                   |
+| ------------- | -------------------------------------- | ------------------------------------------------------- |
+| `getSnapshot` | `() => PretableGridSnapshot<TRow>`     | Current state; identity stable until the next mutation. |
+| `subscribe`   | `(listener: () => void) => () => void` | Registers a listener; returns an unsubscribe fn.        |
+
+### Sort & filter
+
+| Method           | Signature                                                              |
+| ---------------- | ---------------------------------------------------------------------- |
+| `setSort`        | `(columnId: string \| null, direction: PretableSortDirection) => void` |
+| `setFilter`      | `(columnId: string, value: string) => void`                            |
+| `replaceFilters` | `(nextFilters: Record<string, string>) => void`                        |
+| `clearFilters`   | `() => void`                                                           |
+
+### Selection & ranges
+
+| Method                  | Signature                                 |
+| ----------------------- | ----------------------------------------- |
+| `toggleRowSelection`    | `(rowId: string) => void`                 |
+| `selectAll`             | `() => void`                              |
+| `clearSelection`        | `() => void`                              |
+| `setSelection`          | `(state: PretableSelectionState) => void` |
+| `setSelectAllVisible`   | `(checked: boolean) => void`              |
+| `addRange`              | `(range: PretableCellRange) => void`      |
+| `extendRangeFromAnchor` | `(addr: PretableCellAddress) => void`     |
+
+### Focus & movement
+
+| Method      | Signature                                                                         |
+| ----------- | --------------------------------------------------------------------------------- |
+| `setFocus`  | `(addr: PretableCellAddress \| null) => void`                                     |
+| `moveFocus` | `(direction: PretableFocusDirection, options?: PretableMoveFocusOptions) => void` |
+
+### Column layout
+
+| Method                  | Signature                                               |
+| ----------------------- | ------------------------------------------------------- |
+| `setColumnWidth`        | `(columnId: string, width: number) => void`             |
+| `setColumnPinned`       | `(columnId: string, pinned: "left" \| null) => void`    |
+| `moveColumn`            | `(columnId: string, toIndex: number) => void`           |
+| `autosizeColumn`        | `(columnId: string, options?: AutosizeOptions) => void` |
+| `autosizeColumns`       | `(options?: AutosizeOptions) => void`                   |
+| `resetColumnLayout`     | `() => void`                                            |
+| `mergeColumnsFromProps` | `(nextColumns: PretableColumn<TRow>[]) => void`         |
+
+### Data & viewport
+
+| Method             | Signature                                          |
+| ------------------ | -------------------------------------------------- |
+| `applyTransaction` | `(transaction: PretableTransaction<TRow>) => void` |
+| `setViewport`      | `(viewport: PretableViewportState) => void`        |
+
+## Types
+
+### `PretableColumn<TRow>`
+
+```ts
+interface PretableColumn<TRow = PretableRow> {
+  id: string;
+  header?: string;
+  value?: (row: TRow) => unknown;
+  format?: (input: PretableFormatInput<TRow>) => string;
+  sortable?: boolean;
+  filterable?: boolean;
+  reorderable?: boolean;
+  resizable?: boolean;
+  pinned?: "left";
+  wrap?: boolean;
+  widthPx?: number;
+  minWidthPx?: number;
+  maxWidthPx?: number;
+}
+```
+
+### `PretableRow`
+
+```ts
+type PretableRow = Record<string, unknown>;
+```
+
+### `PretableGridSnapshot<TRow>`
+
+```ts
+interface PretableGridSnapshot<TRow = PretableRow> {
+  visibleRows: PretableVisibleRow<TRow>[];
+  visibleRange: PretableRowRange;
+  totalRowCount: number;
+  sort: PretableSortState;
+  filters: Record<string, string>;
+  selection: PretableSelectionState;
+  focus: PretableFocusState;
+  viewport: PretableViewportState;
+}
+```
+
+See [Snapshot & subscribe](/docs/headless/state-model) for what each field means.
+
+### `PretableVisibleRow<TRow>`
+
+```ts
+interface PretableVisibleRow<TRow = PretableRow> {
+  id: string;
+  row: TRow;
+  sourceIndex: number;
+}
+```
+
+### `PretableRowRange`
+
+```ts
+interface PretableRowRange {
+  start: number;
+  end: number;
+}
+```
+
+### `PretableSortState` / `PretableSortDirection`
+
+```ts
+type PretableSortDirection = "asc" | "desc" | null;
+
+interface PretableSortState {
+  columnId: string | null;
+  direction: PretableSortDirection;
+}
+```
+
+### `PretableSelectionState`
+
+```ts
+interface PretableSelectionState {
+  anchor: PretableCellAddress | null;
+  ranges: PretableCellRange[];
+}
+```
+
+### `PretableCellRange` / `PretableCellAddress`
+
+```ts
+interface PretableCellRange {
+  startRowId: string;
+  endRowId: string;
+  startColumnId: string;
+  endColumnId: string;
+}
+
+interface PretableCellAddress {
+  rowId: string;
+  columnId: string;
+}
+```
+
+### `PretableFocusState` / `PretableFocusDirection`
+
+```ts
+type PretableFocusDirection = "up" | "down" | "left" | "right";
+
+interface PretableFocusState {
+  rowId: string | null;
+  columnId: string | null;
+}
+```
+
+### `PretableMoveFocusOptions`
+
+```ts
+interface PretableMoveFocusOptions {
+  byPage?: boolean;
+  extend?: boolean;
+  jumpToEdge?: boolean;
+}
+```
+
+### `PretableViewportState`
+
+```ts
+interface PretableViewportState {
+  scrollTop: number;
+  scrollLeft: number;
+  width: number;
+  height: number;
+}
+```
+
+### `PretableTransaction<TRow>`
+
+```ts
+interface PretableTransaction<TRow = PretableRow> {
+  add?: TRow[];
+  update?: Partial<TRow>[];
+  remove?: string[];
+}
+```
+
+### `PretableFormatInput<TRow>`
+
+```ts
+interface PretableFormatInput<TRow = PretableRow> {
+  value: unknown;
+  row: TRow;
+  column: PretableColumn<TRow>;
+}
+```
+
+### `AutosizeOptions`
+
+```ts
+interface AutosizeOptions {
+  minWidthPx?: number;
+  maxWidthPx?: number;
+  cellPaddingPx?: number;
+  averageCharWidth?: number;
+}
+```
+
+### `PretableRowSelectionTriState`
+
+```ts
+type PretableRowSelectionTriState = "selected" | "indeterminate";
+```
+
+The state a "select all" control reflects when the current selection is a partial
+set of rows — useful when you render your own header checkbox alongside
+`selectAll()` / `setSelectAllVisible()`.
+
+## See also
+
+- [Snapshot & subscribe](/docs/headless/state-model) — the read side in detail.
+- [Actions](/docs/headless/mutations) — the mutation methods grouped with examples.
+- [Streaming](/docs/streaming) — drives the engine via `applyTransaction`.

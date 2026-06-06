@@ -1,0 +1,95 @@
+---
+title: Actions
+description: "Sort, filter, select, focus, lay out columns, and apply data transactions on the engine."
+nav: Headless engine
+order: 4
+---
+
+Every change to the grid goes through a method on the engine handle. Each one updates the state and notifies subscribers; the next `getSnapshot()` reflects the change. Signatures below match the [API reference](/docs/headless/api-reference) exactly.
+
+## Sort & filter
+
+```ts
+grid.setSort("latencyMs", "asc"); // sort a column "asc" | "desc"
+grid.setSort(null, null); // clear the sort
+
+grid.setFilter("team", "payments"); // filter one column
+grid.replaceFilters({ team: "search", status: "down" }); // replace all filters at once
+grid.clearFilters(); // remove every filter
+```
+
+`setSort(columnId, direction)` takes a `PretableSortDirection` (`"asc"`, `"desc"`, or `null`); pass `null` for both to clear. Sorting and filtering both re-derive `visibleRows`.
+
+## Selection & ranges
+
+```ts
+grid.toggleRowSelection(rowId); // add/remove a single row
+grid.selectAll(); // select every row
+grid.clearSelection(); // empty the selection
+grid.setSelectAllVisible(true); // select/deselect all currently visible rows
+
+grid.addRange({
+  startRowId,
+  endRowId,
+  startColumnId,
+  endColumnId,
+}); // add a cell range
+grid.extendRangeFromAnchor({ rowId, columnId }); // extend from the selection anchor
+grid.setSelection({ anchor, ranges }); // replace the whole selection state
+```
+
+Selection is a list of cell ranges. A `PretableCellRange` is `{ startRowId, endRowId, startColumnId, endColumnId }`. A row toggled with `toggleRowSelection` becomes a full-width range covering that single row (so `startRowId === endRowId`), which is why you can read selected row ids back by filtering for single-row ranges.
+
+## Focus & movement
+
+```ts
+grid.setFocus({ rowId, columnId }); // focus a specific cell
+grid.setFocus(null); // clear focus
+
+grid.moveFocus("down"); // arrow-key style movement
+grid.moveFocus("down", { byPage: true }); // PageDown
+grid.moveFocus("right", { extend: true }); // shift+arrow — extend selection
+grid.moveFocus("up", { jumpToEdge: true }); // Ctrl/Cmd+arrow — jump to edge
+```
+
+`moveFocus(direction, options?)` takes a `PretableFocusDirection` (`"up" | "down" | "left" | "right"`) and `PretableMoveFocusOptions`: `byPage` pages by the viewport height, `extend` grows the selection from the anchor, `jumpToEdge` jumps to the first/last row or column.
+
+## Column layout
+
+```ts
+grid.setColumnWidth("name", 240);
+grid.setColumnPinned("name", "left"); // pin left; pass null to unpin
+grid.moveColumn("status", 0); // reorder to an index
+grid.autosizeColumn("name"); // fit one column to content
+grid.autosizeColumns(); // fit all columns
+grid.resetColumnLayout(); // back to the column defs' defaults
+grid.mergeColumnsFromProps(nextColumns); // reconcile against new column defs
+```
+
+`autosizeColumn` / `autosizeColumns` take an optional `AutosizeOptions` (`minWidthPx`, `maxWidthPx`, `cellPaddingPx`, `averageCharWidth`). `mergeColumnsFromProps` is how the React surface keeps engine column state in sync when the `columns` prop changes.
+
+## Data transactions
+
+```ts
+grid.applyTransaction({
+  add: [{ id: "svc-99", name: "service-99", team: "core" }],
+  update: [{ id: "svc-1", status: "down" }],
+  remove: ["svc-2"],
+});
+```
+
+`applyTransaction({ add?, update?, remove? })` is the batched mutation path: `add` is full rows, `update` is partial rows merged by id, `remove` is row ids. This is the same method the [Streaming](/docs/streaming) adapter drives — it pipes a live data source into the grid one transaction at a time.
+
+## Viewport
+
+```ts
+grid.setViewport({ scrollTop, scrollLeft, width, height });
+```
+
+`setViewport` records the scroll position and dimensions. It only affects PageUp / PageDown paging in `moveFocus` — it never changes which rows `visibleRows` returns.
+
+## Next
+
+<Card title="API reference" href="/docs/headless/api-reference">
+  Every public export of `@pretable/core` with full type signatures.
+</Card>

@@ -1,0 +1,83 @@
+---
+title: Snapshot & subscribe
+description: "The getSnapshot shape, the subscribe contract, and useSyncExternalStore integration."
+nav: Headless engine
+order: 3
+---
+
+`getSnapshot()` returns a `PretableGridSnapshot<TRow>` — the complete, current state of the engine. `subscribe(listener)` tells you when it changes. Together they're the whole read side of the engine.
+
+## The snapshot shape
+
+| Field           | Type                         | What it is                                                                                                 |
+| --------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `visibleRows`   | `PretableVisibleRow<TRow>[]` | The filtered + sorted row set — rows passing the current filter, in sort order. **Not** viewport-windowed. |
+| `visibleRange`  | `PretableRowRange`           | `{ start, end }`. Currently the full range `{ start: 0, end: visibleRows.length }`.                        |
+| `totalRowCount` | `number`                     | Count of source rows, before filtering.                                                                    |
+| `sort`          | `PretableSortState`          | `{ columnId, direction }` — the active sort.                                                               |
+| `filters`       | `Record<string, string>`     | Active per-column filter values, keyed by column id.                                                       |
+| `selection`     | `PretableSelectionState`     | `{ anchor, ranges }` — the current cell-range selection.                                                   |
+| `focus`         | `PretableFocusState`         | `{ rowId, columnId }` — the focused cell.                                                                  |
+| `viewport`      | `PretableViewportState`      | `{ scrollTop, scrollLeft, width, height }`.                                                                |
+
+### `visibleRows`
+
+Each entry is a `PretableVisibleRow<TRow>`:
+
+```ts
+interface PretableVisibleRow<TRow> {
+  id: string; // the row id from getRowId
+  row: TRow; // the source row object
+  sourceIndex: number; // index of the row in the original rows array
+}
+```
+
+This is the array you render. It already reflects the active filter and sort, so you map it directly to markup — no client-side filtering or sorting on your end.
+
+### `visibleRange`
+
+`visibleRange` is `{ start, end }` and is currently always the full range — `{ start: 0, end: visibleRows.length }`. It is reserved for future windowing. Do not treat it as a viewport slice; render the rows in `visibleRows`, not a slice indexed by `visibleRange`.
+
+### `viewport`
+
+`viewport` holds `{ scrollTop, scrollLeft, width, height }`. The engine uses it for one thing only: PageUp / PageDown focus math in [`moveFocus`](/docs/headless/mutations). It does **not** decide which rows `visibleRows` returns — the engine never windows rows by viewport.
+
+## The subscribe contract
+
+```ts
+const unsubscribe = grid.subscribe(() => {
+  // fires after every mutation
+  render(grid.getSnapshot());
+});
+
+unsubscribe(); // stop listening
+```
+
+- `subscribe(listener)` returns an unsubscribe function.
+- The listener fires after each effective state change (a no-op mutation, like re-applying the current sort, doesn't notify).
+- Pair it with `getSnapshot()` — the listener is the "something changed" signal; the snapshot is the new state.
+
+## Snapshot identity is stable
+
+`getSnapshot()` returns the same object reference until the next mutation — the engine memoizes the snapshot. That stable identity is what makes the store safe for `useSyncExternalStore`: React can compare snapshots by reference, so a `subscribe` notification that doesn't change state won't cause a render loop.
+
+## Server-side rendering
+
+`useSyncExternalStore` takes a third argument for the server snapshot. Pass `getSnapshot` again:
+
+```tsx
+const snapshot = useSyncExternalStore(
+  grid.subscribe,
+  grid.getSnapshot,
+  grid.getSnapshot, // server snapshot
+);
+```
+
+The engine's snapshot is deterministic from the `options` you passed to `createGrid`, so the server render and the first client render produce the same `visibleRows` — no hydration mismatch.
+
+## Next
+
+<Card title="Actions" href="/docs/headless/mutations">
+  Every mutation that changes the snapshot: sort, filter, select, focus, column
+  layout, and data transactions.
+</Card>

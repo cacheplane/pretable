@@ -7,6 +7,8 @@ order: 1
 
 `@pretable/stream-adapter` wires any async data source to a Pretable grid. It treats a 1,000-patch/sec stream and a static array of rows as the same input shape — one reducer, one render path, one selection model. There's no "streaming mode" toggle.
 
+The `grid` in the snippets below is a [`@pretable/core`](/docs/headless) engine instance — the adapter drives it through `grid.applyTransaction`.
+
 ## Pick the shape that matches your source
 
 <Tabs>
