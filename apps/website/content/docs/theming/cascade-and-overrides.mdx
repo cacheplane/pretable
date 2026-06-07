@@ -13,7 +13,7 @@ All of Pretable's grid styling lives in a single cascade layer named `pretable`,
 2. **Deep CSS** — write a selector targeting any grid part. Because the defaults are specificity `(0,0,0)`, even a single class wins:
 
    ```css
-   .my-grid [data-pretable-cell][data-selected="true"] {
+   .my-grid [data-pretable-cell][data-pretable-selected="true"] {
      background: hotpink;
    }
    ```
@@ -40,7 +40,7 @@ If you don't use layers at all, you need none of this — plain unlayered CSS be
 **Recolor the selected cell**
 
 ```css
-[data-pretable-cell][data-selected="true"] {
+[data-pretable-cell][data-pretable-selected="true"] {
   background: #1d4ed8;
   color: white;
 }
@@ -65,3 +65,27 @@ If you don't use layers at all, you need none of this — plain unlayered CSS be
 ```
 
 Each of these is a plain selector with no `!important` — they win because the grid's defaults are layered and specificity-`(0,0,0)`.
+
+## Targeting attributes
+
+Pretable emits a stable set of `data-pretable-*` attributes you can target with CSS:
+
+| Element                                   | Attributes                                                                                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Row `[data-pretable-row]`                 | `data-pretable-row-id`, `data-pretable-row-index`, `data-pretable-selected`, `data-pretable-focused`                              |
+| Body cell `[data-pretable-cell]`          | `data-pretable-column-id`, `data-pretable-selected`, `data-pretable-focused`, `data-pretable-pinned="left"`, `data-pretable-wrap` |
+| Header cell `[data-pretable-header-cell]` | `data-pretable-column-id`, `data-pretable-pinned="left"`                                                                          |
+
+For example, style one column (header and body) and the selected cells in another:
+
+```css
+[data-pretable-column-id="revenue"] {
+  font-variant-numeric: tabular-nums;
+}
+[data-pretable-cell][data-pretable-selected="true"] {
+  background: #1d4ed8;
+  color: white;
+}
+```
+
+These names are stable; `aria-*` and `role` are also targetable but follow ARIA semantics, not Pretable's namespace.

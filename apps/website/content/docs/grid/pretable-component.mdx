@@ -73,7 +73,7 @@ The grid renders with Excel's surface tones, gridlines, accent. Toggle `data-den
 - **Selection state in your component tree** — wire `grid.toggleRowSelection(id)` and derive selected rows from `snapshot.selection.ranges` (use `deriveSelectedRows` for the three-state row helper).
 - **Focus / keyboard navigation** — wire `grid.setFocus({ rowId, columnId })` and `grid.moveFocus("up" | "down" | "left" | "right", options?)` to keyboard handlers.
 - **Custom cell components** — replace the default label/value layout. Custom rendering lets you render any React tree per cell.
-- **Pinned columns rendered as sticky** — set `column.pinned: "left"` and render with the data-pinned attribute.
+- **Pinned columns rendered as sticky** — set `column.pinned: "left"` and render with the `data-pretable-pinned` attribute.
 - **Per-row measured heights** — provide `measuredHeights: Record<string, number>` to `usePretable`.
 
 All of the above are available with `usePretable`. The drop-in component just doesn't expose the API surface for it.

@@ -121,7 +121,7 @@ export function MyGrid({ rows }: { rows: Person[] }) {
             <button
               key={col.id}
               data-pretable-header-cell=""
-              data-pinned={col.pinned === "left" ? "left" : undefined}
+              data-pretable-pinned={col.pinned === "left" ? "left" : undefined}
               onClick={() => grid.setSort(col.id, next)}
               style={{
                 position: "absolute",
@@ -184,9 +184,11 @@ export function MyGrid({ rows }: { rows: Person[] }) {
                   <div
                     key={col.id}
                     data-pretable-cell=""
-                    data-pinned={col.pinned === "left" ? "left" : undefined}
-                    data-selected={isSelected ? "true" : "false"}
-                    data-focused={
+                    data-pretable-pinned={
+                      col.pinned === "left" ? "left" : undefined
+                    }
+                    data-pretable-selected={isSelected ? "true" : "false"}
+                    data-pretable-focused={
                       isFocused && snapshot.focus.columnId === col.id
                         ? "true"
                         : "false"
