@@ -50,7 +50,7 @@ it("exposes the benchmark viewport, content, row, and cell DOM markers", () => {
   expect(
     view.getByRole("columnheader", { name: "Sort Message" }),
   ).toBeInTheDocument();
-  expect(row).toHaveAttribute("data-row-index", "0");
+  expect(row).toHaveAttribute("data-pretable-row-index", "0");
   expect(cells).toHaveLength(1);
 });
 
@@ -107,7 +107,7 @@ it("renders accessor-driven values correctly through the public wrapper", () => 
   expect(view.getByText("Ada Lovelace")).toBeInTheDocument();
 });
 
-it("measures wrapped rows and applies the measured height back to data-row-height", async () => {
+it("measures wrapped rows and applies the measured height back to data-pretable-row-height", async () => {
   vi.spyOn(window, "getComputedStyle").mockReturnValue({
     borderBottomWidth: "1px",
     paddingBottom: "10px",
@@ -148,7 +148,7 @@ it("measures wrapped rows and applies the measured height back to data-row-heigh
   const row = view.getByTestId("pretable-row");
 
   await waitFor(() => {
-    expect(row).toHaveAttribute("data-row-height", "201");
+    expect(row).toHaveAttribute("data-pretable-row-height", "201");
   });
 });
 
@@ -210,8 +210,8 @@ it("uses caller-provided row ids in the public component path", () => {
 
   const renderedRows = view.getAllByTestId("pretable-row");
 
-  expect(renderedRows[0]).toHaveAttribute("data-row-id", "evt-001");
-  expect(renderedRows[1]).toHaveAttribute("data-row-id", "evt-002");
+  expect(renderedRows[0]).toHaveAttribute("data-pretable-row-id", "evt-001");
+  expect(renderedRows[1]).toHaveAttribute("data-pretable-row-id", "evt-002");
 });
 
 it("measures rendered row height from the tallest cell plus row chrome", () => {

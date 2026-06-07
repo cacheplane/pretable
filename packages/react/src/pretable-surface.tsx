@@ -809,7 +809,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     let changed = false;
 
     for (const [rowId, node] of rowNodesRef.current) {
-      const plannedHeight = Number(node.getAttribute("data-row-height"));
+      const plannedHeight = Number(
+        node.getAttribute("data-pretable-row-height"),
+      );
       const cachedHeight = nextHeights[rowId];
       const currentRowKey = getRowMeasurementKey(node);
       const cachedRowKey = nextKeys[rowId];
@@ -1072,7 +1074,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 aria-colindex={plannedCol.index + 1}
                 data-pretable-header-cell=""
                 data-pretable-row-select-header=""
-                data-pinned={plannedCol.pinned === "left" ? "left" : undefined}
+                data-pretable-pinned={
+                  plannedCol.pinned === "left" ? "left" : undefined
+                }
                 key={column.id}
                 role="columnheader"
                 style={{
@@ -1178,7 +1182,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 sortDirection,
               })}
               data-pretable-header-cell=""
-              data-pinned={plannedCol.pinned === "left" ? "left" : undefined}
+              data-pretable-column-id={column.id}
+              data-pretable-pinned={
+                plannedCol.pinned === "left" ? "left" : undefined
+              }
               key={column.id}
               role="columnheader"
               onClick={(event) => {
@@ -1364,8 +1371,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               <div
                 key={`${column.id}::resize-handle`}
                 data-pretable-resize-handle=""
-                data-column-id={column.id}
-                data-dragging={isDragging ? "true" : "false"}
+                data-pretable-column-id={column.id}
+                data-pretable-dragging={isDragging ? "true" : "false"}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -1481,12 +1488,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 rowId: id,
                 rowIndex,
               })}
-              data-focused={isFocused ? "true" : "false"}
+              data-pretable-focused={isFocused ? "true" : "false"}
               data-pretable-row=""
-              data-row-height={height}
-              data-row-id={id}
-              data-row-index={rowIndex}
-              data-selected={isSelected ? "true" : "false"}
+              data-pretable-row-height={height}
+              data-pretable-row-id={id}
+              data-pretable-row-index={rowIndex}
+              data-pretable-selected={isSelected ? "true" : "false"}
               data-testid="pretable-row"
               key={id}
               role="row"
@@ -1552,13 +1559,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     aria-colindex={plannedCol.index + 1}
                     aria-selected={cellIsSelected ? "true" : undefined}
                     className={getBodyCellClassName?.(bodyInput)}
-                    data-column-id={column.id}
-                    data-focused={cellIsFocused ? "true" : "false"}
-                    data-pinned={column.pinned === "left" ? "left" : undefined}
+                    data-pretable-column-id={column.id}
+                    data-pretable-focused={cellIsFocused ? "true" : "false"}
+                    data-pretable-pinned={
+                      column.pinned === "left" ? "left" : undefined
+                    }
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
-                    data-row-select-cell={isRowSelectCell ? "true" : undefined}
-                    data-selected={cellIsSelected ? "true" : "false"}
+                    data-pretable-row-select-cell={
+                      isRowSelectCell ? "true" : undefined
+                    }
+                    data-pretable-selected={cellIsSelected ? "true" : "false"}
                     key={`${id}:${column.id}`}
                     onClick={(event) => {
                       if (column.id === ROW_SELECT_COLUMN_ID) return;
@@ -1928,20 +1939,20 @@ function getRowMeasurementKey(rowNode: HTMLDivElement) {
     rowNode.getAttribute("class") ?? "",
     normalizeStyleSignature(rowNode.getAttribute("style") ?? ""),
     rowNode.getAttribute("aria-selected") ?? "",
-    rowNode.getAttribute("data-focused") ?? "",
-    rowNode.getAttribute("data-selected") ?? "",
+    rowNode.getAttribute("data-pretable-focused") ?? "",
+    rowNode.getAttribute("data-pretable-selected") ?? "",
   ];
 
   const cellParts = [
     ...rowNode.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
   ].map((cell) =>
     [
-      cell.getAttribute("data-column-id") ?? "",
+      cell.getAttribute("data-pretable-column-id") ?? "",
       cell.getAttribute("class") ?? "",
       cell.getAttribute("style") ?? "",
       cell.getAttribute("data-pretable-wrap") ?? "",
-      cell.getAttribute("data-focused") ?? "",
-      cell.getAttribute("data-selected") ?? "",
+      cell.getAttribute("data-pretable-focused") ?? "",
+      cell.getAttribute("data-pretable-selected") ?? "",
       cell.textContent ?? "",
     ].join(":"),
   );

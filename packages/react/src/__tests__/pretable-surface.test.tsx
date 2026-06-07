@@ -229,7 +229,7 @@ describe("PretableSurface", () => {
     expect(
       view
         .getAllByTestId("pretable-row")
-        .map((row) => row.getAttribute("data-row-id")),
+        .map((row) => row.getAttribute("data-pretable-row-id")),
     ).toEqual(["evt-001", "evt-003"]);
 
     fireEvent.click(severityButton);
@@ -238,7 +238,7 @@ describe("PretableSurface", () => {
     expect(
       view
         .getAllByTestId("pretable-row")
-        .map((row) => row.getAttribute("data-row-id")),
+        .map((row) => row.getAttribute("data-pretable-row-id")),
     ).toEqual(["evt-002", "evt-003"]);
   });
 
@@ -274,7 +274,9 @@ describe("PretableSurface", () => {
     );
 
     const firstRow = view.getAllByTestId("pretable-row")[0];
-    const wrappedCell = firstRow?.querySelector('[data-column-id="message"]');
+    const wrappedCell = firstRow?.querySelector(
+      '[data-pretable-column-id="message"]',
+    );
 
     expect(wrappedCell).toHaveAttribute("data-pretable-wrap", "true");
   });
@@ -296,28 +298,28 @@ describe("PretableSurface", () => {
     fireEvent.keyDown(viewport, { key: "ArrowDown" });
 
     let renderedRows = view.getAllByTestId("pretable-row");
-    expect(renderedRows[0]).toHaveAttribute("data-focused", "true");
+    expect(renderedRows[0]).toHaveAttribute("data-pretable-focused", "true");
     expect(
       renderedRows[0]?.querySelector("[data-pretable-cell]"),
-    ).toHaveAttribute("data-focused", "true");
+    ).toHaveAttribute("data-pretable-focused", "true");
 
     fireEvent.keyDown(viewport, { key: "Enter" });
 
     renderedRows = view.getAllByTestId("pretable-row");
     expect(renderedRows[0]).toHaveAttribute("aria-selected", "true");
-    expect(renderedRows[0]).toHaveAttribute("data-selected", "true");
+    expect(renderedRows[0]).toHaveAttribute("data-pretable-selected", "true");
 
     fireEvent.keyDown(viewport, { key: "ArrowDown" });
     fireEvent.keyDown(viewport, { key: "Space" });
 
     renderedRows = view.getAllByTestId("pretable-row");
-    expect(renderedRows[1]).toHaveAttribute("data-focused", "true");
-    expect(renderedRows[1]).toHaveAttribute("data-selected", "true");
+    expect(renderedRows[1]).toHaveAttribute("data-pretable-focused", "true");
+    expect(renderedRows[1]).toHaveAttribute("data-pretable-selected", "true");
 
     fireEvent.keyDown(viewport, { key: "ArrowUp" });
 
     renderedRows = view.getAllByTestId("pretable-row");
-    expect(renderedRows[0]).toHaveAttribute("data-focused", "true");
+    expect(renderedRows[0]).toHaveAttribute("data-pretable-focused", "true");
   });
 
   it("can advance selection with arrow-key focus movement when configured", () => {
@@ -338,15 +340,15 @@ describe("PretableSurface", () => {
     fireEvent.keyDown(viewport, { key: "ArrowDown" });
 
     let renderedRows = view.getAllByTestId("pretable-row");
-    expect(renderedRows[0]).toHaveAttribute("data-focused", "true");
-    expect(renderedRows[0]).toHaveAttribute("data-selected", "true");
+    expect(renderedRows[0]).toHaveAttribute("data-pretable-focused", "true");
+    expect(renderedRows[0]).toHaveAttribute("data-pretable-selected", "true");
 
     fireEvent.keyDown(viewport, { key: "ArrowDown" });
 
     renderedRows = view.getAllByTestId("pretable-row");
-    expect(renderedRows[1]).toHaveAttribute("data-focused", "true");
-    expect(renderedRows[1]).toHaveAttribute("data-selected", "true");
-    expect(renderedRows[0]).toHaveAttribute("data-selected", "false");
+    expect(renderedRows[1]).toHaveAttribute("data-pretable-focused", "true");
+    expect(renderedRows[1]).toHaveAttribute("data-pretable-selected", "true");
+    expect(renderedRows[0]).toHaveAttribute("data-pretable-selected", "false");
   });
 
   it("emits selected row id changes for keyboard-driven full-row selection", () => {
@@ -484,9 +486,9 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", "141");
+      expect(tallRow).toHaveAttribute("data-pretable-row-height", "141");
     });
   });
 
@@ -535,9 +537,9 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", "141");
+      expect(tallRow).toHaveAttribute("data-pretable-row-height", "141");
     });
 
     measureRenderedRowHeightSpy.mockClear();
@@ -563,12 +565,12 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", "171");
+      expect(tallRow).toHaveAttribute("data-pretable-row-height", "171");
       expect(
         measureRenderedRowHeightSpy.mock.calls.filter(
-          ([node]) => node.getAttribute("data-row-id") === "evt-002",
+          ([node]) => node.getAttribute("data-pretable-row-id") === "evt-002",
         ),
       ).not.toHaveLength(0);
     });
@@ -623,9 +625,9 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", "141");
+      expect(tallRow).toHaveAttribute("data-pretable-row-height", "141");
     });
 
     measureRenderedRowHeightSpy.mockClear();
@@ -644,12 +646,12 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const shortRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(shortRow).toHaveAttribute("data-row-height", "66");
+      expect(shortRow).toHaveAttribute("data-pretable-row-height", "66");
       expect(
         measureRenderedRowHeightSpy.mock.calls.filter(
-          ([node]) => node.getAttribute("data-row-id") === "evt-002",
+          ([node]) => node.getAttribute("data-pretable-row-id") === "evt-002",
         ),
       ).not.toHaveLength(0);
     });
@@ -695,9 +697,9 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", "141");
+      expect(tallRow).toHaveAttribute("data-pretable-row-height", "141");
     });
 
     measureRenderedRowHeightSpy.mockClear();
@@ -719,12 +721,12 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", "141");
+      expect(tallRow).toHaveAttribute("data-pretable-row-height", "141");
       expect(
         measureRenderedRowHeightSpy.mock.calls.filter(
-          ([node]) => node.getAttribute("data-row-id") === "evt-002",
+          ([node]) => node.getAttribute("data-pretable-row-id") === "evt-002",
         ),
       ).not.toHaveLength(0);
     });
@@ -747,12 +749,12 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", "141");
+      expect(tallRow).toHaveAttribute("data-pretable-row-height", "141");
       expect(
         measureRenderedRowHeightSpy.mock.calls.filter(
-          ([node]) => node.getAttribute("data-row-id") === "evt-002",
+          ([node]) => node.getAttribute("data-pretable-row-id") === "evt-002",
         ),
       ).toHaveLength(0);
     });
@@ -840,7 +842,7 @@ describe("PretableSurface", () => {
     );
 
     const pinnedCells = view.container.querySelectorAll(
-      '[data-column-id="pinned_ts"]',
+      '[data-pretable-column-id="pinned_ts"]',
     );
 
     // Should have at least 1 pinned cell (in the body) + 1 header
@@ -922,9 +924,12 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", expectedTallRowHeight);
+      expect(tallRow).toHaveAttribute(
+        "data-pretable-row-height",
+        expectedTallRowHeight,
+      );
     });
 
     measureRenderedRowHeightSpy.mockClear();
@@ -939,18 +944,21 @@ describe("PretableSurface", () => {
     await waitFor(() => {
       const tallRow = view
         .getAllByTestId("pretable-row")
-        .find((row) => row.getAttribute("data-row-id") === "evt-002");
+        .find((row) => row.getAttribute("data-pretable-row-id") === "evt-002");
 
-      expect(tallRow).toHaveAttribute("data-row-height", expectedTallRowHeight);
+      expect(tallRow).toHaveAttribute(
+        "data-pretable-row-height",
+        expectedTallRowHeight,
+      );
       expect(
         measureRenderedRowHeightSpy.mock.calls.filter(
-          ([node]) => node.getAttribute("data-row-id") === "evt-002",
+          ([node]) => node.getAttribute("data-pretable-row-id") === "evt-002",
         ),
       ).toHaveLength(0);
     });
   });
 
-  it("exposes data-pretable-header-row, data-pretable-header-cell, and data-pinned for theming", () => {
+  it("exposes data-pretable-header-row, data-pretable-header-cell, and data-pretable-pinned for theming", () => {
     const view = render(
       <PretableSurface
         ariaLabel="Theming attribute grid"
@@ -973,14 +981,14 @@ describe("PretableSurface", () => {
     );
     expect(headerCells.length).toBe(columns.length);
     // First two columns are pinned: left, third+ are not.
-    expect(headerCells[0]?.getAttribute("data-pinned")).toBe("left");
-    expect(headerCells[1]?.getAttribute("data-pinned")).toBe("left");
-    expect(headerCells[2]?.getAttribute("data-pinned")).toBeNull();
+    expect(headerCells[0]?.getAttribute("data-pretable-pinned")).toBe("left");
+    expect(headerCells[1]?.getAttribute("data-pretable-pinned")).toBe("left");
+    expect(headerCells[2]?.getAttribute("data-pretable-pinned")).toBeNull();
 
     const bodyCells = container.querySelectorAll("[data-pretable-cell]");
     expect(bodyCells.length).toBeGreaterThan(0);
     const pinnedBodyCell = container.querySelector(
-      '[data-pretable-cell][data-pinned="left"]',
+      '[data-pretable-cell][data-pretable-pinned="left"]',
     );
     expect(pinnedBodyCell).not.toBeNull();
   });
@@ -1072,20 +1080,20 @@ function getCell(
   colId: string,
 ) {
   return view.container.querySelector<HTMLDivElement>(
-    `[data-pretable-row][data-row-id="${rowId}"] [data-column-id="${colId}"]`,
+    `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-column-id="${colId}"]`,
   );
 }
 
 function getFocusedCell(view: ReturnType<typeof render>) {
   return view.container.querySelector<HTMLDivElement>(
-    '[data-pretable-cell][data-focused="true"]',
+    '[data-pretable-cell][data-pretable-focused="true"]',
   );
 }
 
 function getSelectedCells(view: ReturnType<typeof render>) {
   return Array.from(
     view.container.querySelectorAll<HTMLDivElement>(
-      '[data-pretable-cell][data-selected="true"]',
+      '[data-pretable-cell][data-pretable-selected="true"]',
     ),
   );
 }
@@ -1096,7 +1104,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r1", "a");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowDown" });
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
     expect(getCell(view, "r2", "a")).toHaveAttribute("tabIndex", "0");
   });
 
@@ -1105,7 +1116,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r3", "b");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowUp" });
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("ArrowRight moves focus right one column", () => {
@@ -1113,7 +1127,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r1", "a");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowRight" });
-    expect(getCell(view, "r1", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r1", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("ArrowLeft moves focus left one column", () => {
@@ -1121,7 +1138,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r1", "c");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowLeft" });
-    expect(getCell(view, "r1", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r1", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Shift+ArrowDown extends the selection range downward by one row", () => {
@@ -1133,10 +1153,19 @@ describe("keyboard contract", () => {
 
     const selected = getSelectedCells(view);
     expect(selected.length).toBeGreaterThanOrEqual(2);
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
     // Other-column cells in those rows should NOT be selected
-    expect(getCell(view, "r1", "b")).toHaveAttribute("data-selected", "false");
+    expect(getCell(view, "r1", "b")).toHaveAttribute(
+      "data-pretable-selected",
+      "false",
+    );
   });
 
   it("Shift+ArrowRight extends the selection range rightward by one column", () => {
@@ -1145,9 +1174,18 @@ describe("keyboard contract", () => {
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowRight", shiftKey: true });
 
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r1", "b")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-selected", "false");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r1", "b")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "false",
+    );
   });
 
   it("Cmd+ArrowDown jumps focus to last visible row", () => {
@@ -1155,7 +1193,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r1", "a");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowDown", metaKey: true });
-    expect(getCell(view, "r5", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r5", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Cmd+ArrowRight jumps focus to last column", () => {
@@ -1163,7 +1204,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r1", "a");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowRight", metaKey: true });
-    expect(getCell(view, "r1", "c")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r1", "c")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Ctrl+ArrowUp jumps focus to first row (ctrl works as cmd alias)", () => {
@@ -1171,7 +1215,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r5", "b");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "ArrowUp", ctrlKey: true });
-    expect(getCell(view, "r1", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r1", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Cmd+Shift+ArrowDown extends range to last row", () => {
@@ -1183,8 +1230,14 @@ describe("keyboard contract", () => {
       metaKey: true,
       shiftKey: true,
     });
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r5", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r5", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
   });
 
   it("Home moves focus to first column in the current row", () => {
@@ -1192,7 +1245,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r2", "c");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "Home" });
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("End moves focus to last column in the current row", () => {
@@ -1200,7 +1256,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r2", "a");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "End" });
-    expect(getCell(view, "r2", "c")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "c")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Cmd+Home moves focus to the first cell in the grid", () => {
@@ -1208,7 +1267,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r4", "c");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "Home", metaKey: true });
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Cmd+End moves focus to the last cell in the grid", () => {
@@ -1216,7 +1278,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r1", "a");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "End", metaKey: true });
-    expect(getCell(view, "r5", "c")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r5", "c")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("PageDown moves focus down by ~viewport rows", () => {
@@ -1228,7 +1293,7 @@ describe("keyboard contract", () => {
     const focused = getFocusedCell(view);
     const focusedRowId = focused
       ?.closest("[data-pretable-row]")
-      ?.getAttribute("data-row-id");
+      ?.getAttribute("data-pretable-row-id");
     // PageDown should advance focus to a row strictly below r1 (and not past
     // the last row r5).
     expect(focusedRowId).not.toBe("r1");
@@ -1243,7 +1308,7 @@ describe("keyboard contract", () => {
     const focused = getFocusedCell(view);
     const focusedRowId = focused
       ?.closest("[data-pretable-row]")
-      ?.getAttribute("data-row-id");
+      ?.getAttribute("data-pretable-row-id");
     expect(focusedRowId).not.toBe("r5");
     expect(["r1", "r2", "r3", "r4"]).toContain(focusedRowId);
   });
@@ -1256,8 +1321,13 @@ describe("keyboard contract", () => {
 
     // r1/a is the anchor and should remain selected; some row below should
     // also be selected as part of the extended range.
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    const r2sel = getCell(view, "r2", "a")?.getAttribute("data-selected");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    const r2sel = getCell(view, "r2", "a")?.getAttribute(
+      "data-pretable-selected",
+    );
     expect(r2sel).toBe("true");
   });
 
@@ -1266,7 +1336,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r2", "a");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "Tab" });
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Tab at end of row wraps to next row's first cell (wrap-rows)", () => {
@@ -1274,7 +1347,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r2", "c");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "Tab" });
-    expect(getCell(view, "r3", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r3", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Shift+Tab moves focus left", () => {
@@ -1282,7 +1358,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r2", "b");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "Tab", shiftKey: true });
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Shift+Tab at start of row wraps to previous row's last cell", () => {
@@ -1290,7 +1369,10 @@ describe("keyboard contract", () => {
     seedFocus(view, "r3", "a");
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "Tab", shiftKey: true });
-    expect(getCell(view, "r2", "c")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "c")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Tab with tabBehavior=exit does NOT preventDefault and does not move focus", () => {
@@ -1306,7 +1388,10 @@ describe("keyboard contract", () => {
 
     expect(event.defaultPrevented).toBe(false);
     // Focus should still be at r2/a
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Tab with tabBehavior=wrap-rows DOES preventDefault", () => {
@@ -1343,9 +1428,11 @@ describe("keyboard contract", () => {
     fireEvent.keyDown(grid, { key: "Escape" });
     const selected = getSelectedCells(view);
     expect(selected).toHaveLength(1);
-    expect(selected[0]?.getAttribute("data-column-id")).toBe("a");
+    expect(selected[0]?.getAttribute("data-pretable-column-id")).toBe("a");
     expect(
-      selected[0]?.closest("[data-pretable-row]")?.getAttribute("data-row-id"),
+      selected[0]
+        ?.closest("[data-pretable-row]")
+        ?.getAttribute("data-pretable-row-id"),
     ).toBe("r1");
   });
 
@@ -1356,10 +1443,10 @@ describe("keyboard contract", () => {
     fireEvent.keyDown(grid, { key: "Enter" });
 
     const r2 = view.container.querySelector(
-      '[data-pretable-row][data-row-id="r2"]',
+      '[data-pretable-row][data-pretable-row-id="r2"]',
     );
     expect(r2).toHaveAttribute("aria-selected", "true");
-    expect(r2).toHaveAttribute("data-selected", "true");
+    expect(r2).toHaveAttribute("data-pretable-selected", "true");
   });
 
   it("Space selects the focused row (Phase 1 behavior)", () => {
@@ -1369,9 +1456,9 @@ describe("keyboard contract", () => {
     fireEvent.keyDown(grid, { key: " " });
 
     const r3 = view.container.querySelector(
-      '[data-pretable-row][data-row-id="r3"]',
+      '[data-pretable-row][data-pretable-row-id="r3"]',
     );
-    expect(r3).toHaveAttribute("data-selected", "true");
+    expect(r3).toHaveAttribute("data-pretable-selected", "true");
   });
 
   it("emits onFocusChange when arrow keys move focus", () => {
@@ -1414,8 +1501,14 @@ describe("controlled-mode round-trips", () => {
     // the prop, not the engine-internal extension.
     fireEvent.keyDown(grid, { key: "ArrowDown", shiftKey: true });
 
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-selected", "false");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "false",
+    );
 
     // The callback fires with the proposed-by-engine extended selection,
     // even though the controlled prop forces it back to the original value
@@ -1469,8 +1562,14 @@ describe("controlled-mode round-trips", () => {
     fireEvent.keyDown(grid, { key: "ArrowDown", shiftKey: true });
 
     // Consumer committed the change; rendered selection follows.
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
   });
 
   it("state.selection: rerendering with an updated controlled selection prop forces the rendered selection to match the prop", () => {
@@ -1507,8 +1606,14 @@ describe("controlled-mode round-trips", () => {
     const view = render(
       <ControlledSelectionHarness selection={initialSelection} />,
     );
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-selected", "false");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "false",
+    );
 
     const extendedSelection: PretableSelectionState = {
       ranges: [
@@ -1523,8 +1628,14 @@ describe("controlled-mode round-trips", () => {
     };
     view.rerender(<ControlledSelectionHarness selection={extendedSelection} />);
 
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
   });
 
   it("state.focus: arrow does not move rendered focus when consumer ignores callback", () => {
@@ -1536,8 +1647,14 @@ describe("controlled-mode round-trips", () => {
 
     // Engine moves focus, but controlled state forces it back to (r1,a) on
     // the next render — the rendered focus stays where the prop pinned it.
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-focused", "true");
-    expect(getCell(view, "r2", "a")).toHaveAttribute("data-focused", "false");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
+    expect(getCell(view, "r2", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "false",
+    );
   });
 
   it("state.focus: rerendering with an updated controlled focus prop forces the rendered focus to match the prop", () => {
@@ -1558,13 +1675,22 @@ describe("controlled-mode round-trips", () => {
     const view = render(
       <ControlledFocusHarness focus={{ rowId: "r1", columnId: "a" }} />,
     );
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
 
     view.rerender(
       <ControlledFocusHarness focus={{ rowId: "r2", columnId: "b" }} />,
     );
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-focused", "false");
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "false",
+    );
   });
 });
 
@@ -1600,9 +1726,11 @@ describe("ARIA grid attributes", () => {
     );
     const tabStops = Array.from(allCells).filter((c) => c.tabIndex === 0);
     expect(tabStops).toHaveLength(1);
-    expect(tabStops[0]?.getAttribute("data-column-id")).toBe("b");
+    expect(tabStops[0]?.getAttribute("data-pretable-column-id")).toBe("b");
     expect(
-      tabStops[0]?.closest("[data-pretable-row]")?.getAttribute("data-row-id"),
+      tabStops[0]
+        ?.closest("[data-pretable-row]")
+        ?.getAttribute("data-pretable-row-id"),
     ).toBe("r2");
 
     const negative = Array.from(allCells).filter((c) => c.tabIndex === -1);
@@ -1640,10 +1768,10 @@ describe("ARIA grid attributes", () => {
 
     // First body row -> aria-rowindex="2"
     const first = renderedRows.find(
-      (r) => r.getAttribute("data-row-id") === "r1",
+      (r) => r.getAttribute("data-pretable-row-id") === "r1",
     );
     const second = renderedRows.find(
-      (r) => r.getAttribute("data-row-id") === "r2",
+      (r) => r.getAttribute("data-pretable-row-id") === "r2",
     );
     expect(first).toHaveAttribute("aria-rowindex", "2");
     expect(second).toHaveAttribute("aria-rowindex", "3");
@@ -1682,8 +1810,14 @@ describe("click + drag selection", () => {
     fireEvent.pointerUp(cell, { pointerId: 1, button: 0 });
     fireEvent.click(cell);
 
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
     // Only one selected cell
     expect(getSelectedCells(view)).toHaveLength(1);
   });
@@ -1701,8 +1835,14 @@ describe("click + drag selection", () => {
     fireEvent.click(cell);
 
     expect(getSelectedCells(view)).toHaveLength(1);
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("shift+click with no prior anchor behaves as plain click", () => {
@@ -1715,8 +1855,14 @@ describe("click + drag selection", () => {
 
     // No anchor before -> falls through to plain-click branch -> single cell.
     expect(getSelectedCells(view)).toHaveLength(1);
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("shift+click extends from existing anchor", () => {
@@ -1737,10 +1883,16 @@ describe("click + drag selection", () => {
     expect(getSelectedCells(view)).toHaveLength(9);
     for (const r of ["r1", "r2", "r3"]) {
       for (const c of ["a", "b", "c"]) {
-        expect(getCell(view, r, c)).toHaveAttribute("data-selected", "true");
+        expect(getCell(view, r, c)).toHaveAttribute(
+          "data-pretable-selected",
+          "true",
+        );
       }
     }
-    expect(getCell(view, "r3", "c")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r3", "c")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("cmd+click adds a discontiguous range", () => {
@@ -1757,11 +1909,23 @@ describe("click + drag selection", () => {
     fireEvent.click(end, { metaKey: true });
 
     // Two single cells selected — discontiguous.
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r3", "c")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "false");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r3", "c")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-selected",
+      "false",
+    );
     expect(getSelectedCells(view)).toHaveLength(2);
-    expect(getCell(view, "r3", "c")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r3", "c")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("onSelectionChange fires on plain click", () => {
@@ -1915,10 +2079,16 @@ describe("click + drag selection", () => {
     expect(getSelectedCells(view)).toHaveLength(9);
     for (const r of ["r1", "r2", "r3"]) {
       for (const col of ["a", "b", "c"]) {
-        expect(getCell(view, r, col)).toHaveAttribute("data-selected", "true");
+        expect(getCell(view, r, col)).toHaveAttribute(
+          "data-pretable-selected",
+          "true",
+        );
       }
     }
-    expect(getCell(view, "r3", "c")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r3", "c")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("drag with a single pointerEnter still works", () => {
@@ -1934,7 +2104,10 @@ describe("click + drag selection", () => {
     expect(getSelectedCells(view)).toHaveLength(4);
     for (const r of ["r1", "r2"]) {
       for (const col of ["a", "b"]) {
-        expect(getCell(view, r, col)).toHaveAttribute("data-selected", "true");
+        expect(getCell(view, r, col)).toHaveAttribute(
+          "data-pretable-selected",
+          "true",
+        );
       }
     }
   });
@@ -1946,8 +2119,14 @@ describe("click + drag selection", () => {
     fireEvent.pointerUp(cell, { pointerId: 1, button: 0 });
 
     expect(getSelectedCells(view)).toHaveLength(1);
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("Esc during drag reverts to pre-drag selection", () => {
@@ -1963,7 +2142,10 @@ describe("click + drag selection", () => {
     // Begin drag at (r2, b) — collapses to (r2, b).
     const b = getCell(view, "r2", "b")!;
     fireEvent.pointerDown(b, { pointerId: 1, button: 0 });
-    expect(getCell(view, "r2", "b")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r2", "b")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
 
     // Move into (r3, c) — extends.
     const c = getCell(view, "r3", "c")!;
@@ -1974,14 +2156,20 @@ describe("click + drag selection", () => {
     fireEvent.keyDown(grid, { key: "Escape" });
 
     expect(getSelectedCells(view)).toHaveLength(1);
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
 
     // Subsequent pointerEnter should NOT extend (drag mode is off).
     const r4c = getCell(view, "r4", "c");
     if (r4c) {
       fireEvent.pointerEnter(r4c, { pointerId: 1 });
       expect(getSelectedCells(view)).toHaveLength(1);
-      expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
+      expect(getCell(view, "r1", "a")).toHaveAttribute(
+        "data-pretable-selected",
+        "true",
+      );
     }
     fireEvent.pointerUp(b, { pointerId: 1, button: 0 });
     expect(getSelectedCells(view)).toHaveLength(1);
@@ -2004,8 +2192,14 @@ describe("click + drag selection", () => {
     fireEvent.pointerEnter(c, { pointerId: 1 });
 
     // Selection still anchored at (r1,a) (unchanged from anchor click).
-    expect(getCell(view, "r1", "a")).toHaveAttribute("data-selected", "true");
-    expect(getCell(view, "r3", "c")).toHaveAttribute("data-selected", "false");
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-selected",
+      "true",
+    );
+    expect(getCell(view, "r3", "c")).toHaveAttribute(
+      "data-pretable-selected",
+      "false",
+    );
 
     // Shift+click then completes the shift-extend semantics.
     fireEvent.pointerUp(b, { pointerId: 1, button: 0, shiftKey: true });
@@ -2029,7 +2223,10 @@ describe("click + drag selection", () => {
     fireEvent.pointerEnter(c, { pointerId: 1 });
 
     // (r3, c) must not have been silently added.
-    expect(getCell(view, "r3", "c")).toHaveAttribute("data-selected", "false");
+    expect(getCell(view, "r3", "c")).toHaveAttribute(
+      "data-pretable-selected",
+      "false",
+    );
   });
 
   it("onSelectionChange fires on each pointerEnter during a drag", () => {
@@ -2056,7 +2253,7 @@ describe("click + drag selection", () => {
 
 function getRowCheckbox(view: ReturnType<typeof render>, rowId: string) {
   const row = view.container.querySelector(
-    `[data-pretable-row][data-row-id="${rowId}"]`,
+    `[data-pretable-row][data-pretable-row-id="${rowId}"]`,
   );
   return row?.querySelector(
     "[data-pretable-row-select]",
@@ -2092,7 +2289,7 @@ describe("row-select checkbox column", () => {
     ).toBeNull();
     expect(
       view.container.querySelector(
-        `[data-column-id="${ROW_SELECT_COLUMN_ID}"]`,
+        `[data-pretable-column-id="${ROW_SELECT_COLUMN_ID}"]`,
       ),
     ).toBeNull();
   });
@@ -2100,10 +2297,10 @@ describe("row-select checkbox column", () => {
   it("renders a leftmost row checkbox cell when rowSelectionColumn.enabled is true", () => {
     const view = renderHarness({ rowSelectionColumn: { enabled: true } });
     const r1 = view.container.querySelector(
-      '[data-pretable-row][data-row-id="r1"]',
+      '[data-pretable-row][data-pretable-row-id="r1"]',
     );
     const cells = r1?.querySelectorAll("[data-pretable-cell]");
-    expect(cells?.[0]).toHaveAttribute("data-row-select-cell", "true");
+    expect(cells?.[0]).toHaveAttribute("data-pretable-row-select-cell", "true");
     expect(
       cells?.[0]?.querySelector("[data-pretable-row-select]"),
     ).not.toBeNull();
@@ -2171,9 +2368,15 @@ describe("row-select checkbox column", () => {
       },
     });
 
-    expect(getCell(view, "r3", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r3", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
     fireEvent.click(getRowCheckbox(view, "r1")!);
-    expect(getCell(view, "r3", "b")).toHaveAttribute("data-focused", "true");
+    expect(getCell(view, "r3", "b")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
   });
 
   it("clicking a body checkbox does not collapse an existing cell-range selection", () => {
@@ -2365,7 +2568,7 @@ describe("row-select checkbox column", () => {
     const view = renderHarness({ rowSelectionColumn: { enabled: true } });
     const a = getCell(view, "r1", "a")!;
     const r2Checkbox = view.container.querySelector(
-      '[data-pretable-row][data-row-id="r2"] [data-row-select-cell="true"]',
+      '[data-pretable-row][data-pretable-row-id="r2"] [data-pretable-row-select-cell="true"]',
     ) as HTMLElement;
     const c = getCell(view, "r3", "c")!;
 
@@ -2379,14 +2582,14 @@ describe("row-select checkbox column", () => {
     for (const rowId of ["r1", "r2", "r3"]) {
       for (const colId of ["a", "b", "c"]) {
         expect(getCell(view, rowId, colId)).toHaveAttribute(
-          "data-selected",
+          "data-pretable-selected",
           "true",
         );
       }
       const checkboxCell = view.container.querySelector(
-        `[data-pretable-row][data-row-id="${rowId}"] [data-row-select-cell="true"]`,
+        `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-row-select-cell="true"]`,
       );
-      expect(checkboxCell).toHaveAttribute("data-selected", "false");
+      expect(checkboxCell).toHaveAttribute("data-pretable-selected", "false");
     }
   });
 
@@ -2400,14 +2603,14 @@ describe("row-select checkbox column", () => {
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
 
-    // The synthetic row-select cells must never render as data-selected="true";
+    // The synthetic row-select cells must never render as data-pretable-selected="true";
     // they are excluded from the visual cell-selection set even if the engine
     // range happens to span the synthetic column id.
     for (const rowId of gridRows.map((r) => r.id)) {
       const checkboxCell = view.container.querySelector(
-        `[data-pretable-row][data-row-id="${rowId}"] [data-row-select-cell="true"]`,
+        `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-row-select-cell="true"]`,
       );
-      expect(checkboxCell).toHaveAttribute("data-selected", "false");
+      expect(checkboxCell).toHaveAttribute("data-pretable-selected", "false");
     }
   });
 });
@@ -3022,7 +3225,7 @@ describe("aria-live announcements", () => {
 describe("column resize", () => {
   function getResizeHandle(view: ReturnType<typeof render>, columnId: string) {
     return view.container.querySelector<HTMLDivElement>(
-      `[data-pretable-resize-handle][data-column-id="${columnId}"]`,
+      `[data-pretable-resize-handle][data-pretable-column-id="${columnId}"]`,
     );
   }
 
@@ -3058,7 +3261,7 @@ describe("column resize", () => {
     });
     expect(
       view.container.querySelector(
-        `[data-pretable-resize-handle][data-column-id="${ROW_SELECT_COLUMN_ID}"]`,
+        `[data-pretable-resize-handle][data-pretable-column-id="${ROW_SELECT_COLUMN_ID}"]`,
       ),
     ).toBeNull();
     // sanity: real columns still have handles
@@ -3193,7 +3396,7 @@ describe("column resize", () => {
     expect(cell).toBeTruthy();
     // Live drag width should be reflected in the cell's inline width.
     expect(cell?.style.width).toBe("175px");
-    expect(handle.getAttribute("data-dragging")).toBe("true");
+    expect(handle.getAttribute("data-pretable-dragging")).toBe("true");
   });
 
   it("double-click on handle calls autosize and fires onColumnWidthsChange", () => {
@@ -3802,7 +4005,7 @@ describe("cell renderers", () => {
     );
     for (const row of gridRows) {
       const cell = view.container.querySelector(
-        `[data-pretable-row][data-row-id="${row.id}"] [data-column-id="a"]`,
+        `[data-pretable-row][data-pretable-row-id="${row.id}"] [data-pretable-column-id="a"]`,
       );
       expect(cell?.textContent).toBe(`F:${row.a}`);
     }
@@ -3887,13 +4090,13 @@ describe("cell renderers", () => {
     );
     // Column "a" uses per-col
     const aCell = view.container.querySelector(
-      `[data-pretable-row][data-row-id="r1"] [data-column-id="a"]`,
+      `[data-pretable-row][data-pretable-row-id="r1"] [data-pretable-column-id="a"]`,
     );
     expect(aCell?.querySelector('[data-testid="per-col"]')).not.toBeNull();
     expect(aCell?.querySelector('[data-testid="grid-level"]')).toBeNull();
     // Column "b" uses grid-level fallback
     const bCell = view.container.querySelector(
-      `[data-pretable-row][data-row-id="r1"] [data-column-id="b"]`,
+      `[data-pretable-row][data-pretable-row-id="r1"] [data-pretable-column-id="b"]`,
     );
     expect(bCell?.querySelector('[data-testid="grid-level"]')).not.toBeNull();
     expect(bCell?.querySelector('[data-testid="per-col"]')).toBeNull();
@@ -3933,7 +4136,7 @@ describe("cell renderers", () => {
   it("synthetic row-select column ignores per-column hooks and renders the built-in checkbox", () => {
     const view = renderHarness({ rowSelectionColumn: { enabled: true } });
     const selectCells = view.container.querySelectorAll(
-      `[data-row-select-cell="true"]`,
+      `[data-pretable-row-select-cell="true"]`,
     );
     expect(selectCells.length).toBe(gridRows.length);
     for (const cell of selectCells) {
@@ -3991,7 +4194,7 @@ describe("cell renderers", () => {
         viewportHeight={300}
       />,
     );
-    const targetCellSel = `[data-pretable-row][data-row-id="r1"] [data-column-id="a"]`;
+    const targetCellSel = `[data-pretable-row][data-pretable-row-id="r1"] [data-pretable-column-id="a"]`;
     expect(view.container.querySelector(targetCellSel)?.textContent).toBe("a1");
     const updatedRows = gridRows.map((r) =>
       r.id === "r1" ? { ...r, a: "a1-updated" } : r,
@@ -4125,7 +4328,7 @@ describe("cell renderers", () => {
       />,
     );
     const cell = view.container.querySelector(
-      `[data-pretable-row][data-row-id="r1"] [data-column-id="a"]`,
+      `[data-pretable-row][data-pretable-row-id="r1"] [data-pretable-column-id="a"]`,
     );
     expect(cell?.textContent).toBe("F:a1");
     expect(cell?.textContent).not.toBe("a1");
