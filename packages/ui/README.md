@@ -51,7 +51,7 @@ The full token set lives in [`src/tokens.css`](./src/tokens.css). Override any t
 
 ### Data-attribute hooks
 
-Pretable surfaces emit a stable set of data attributes on rendered DOM. The CSS files in this package target them; your custom styles can too. The full set lives in `grid.css` — common ones include `[data-pretable-cell]`, `[data-pretable-row]`, `[data-pretable-header]`, `[data-pretable-cell][data-focused="true"]`, `[data-pretable-cell][data-selected="true"]`, `[data-pretable-cell][data-pinned="left"|"right"]`, and `[data-pretable-cell][data-pretable-numeric="true"]`. Renaming or removing these attributes is a breaking change.
+Pretable surfaces emit a stable set of data attributes on rendered DOM. The CSS files in this package target them; your custom styles can too. The full set lives in `grid.css` — common ones include `[data-pretable-cell]`, `[data-pretable-row]`, `[data-pretable-header]`, `[data-pretable-cell][data-pretable-focused="true"]`, `[data-pretable-cell][data-pretable-selected="true"]`, `[data-pretable-cell][data-pretable-pinned="left"]`, and `[data-pretable-cell][data-pretable-numeric="true"]`. Renaming or removing these attributes is a breaking change.
 
 ### Cascade layer
 

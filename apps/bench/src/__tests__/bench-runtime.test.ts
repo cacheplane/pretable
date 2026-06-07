@@ -155,10 +155,10 @@ describe("bench runtime", () => {
       <div data-testid="root">
         <section data-benchmark-adapter="pretable">
           <div data-pretable-scroll-viewport="">
-            <div data-pretable-row="" data-row-id="row-a" data-row-index="0">
+            <div data-pretable-row="" data-pretable-row-id="row-a" data-pretable-row-index="0">
               <div data-pretable-cell="">row a</div>
             </div>
-            <div data-pretable-row="" data-row-id="row-b" data-row-index="1">
+            <div data-pretable-row="" data-pretable-row-id="row-b" data-pretable-row-index="1">
               <div data-pretable-cell="">row b</div>
             </div>
           </div>

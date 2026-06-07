@@ -154,8 +154,8 @@ const scrollRuntimeProfiles: Record<
     viewportSelector: "[data-pretable-scroll-viewport]",
     rowSelector: "[data-pretable-row]",
     cellSelector: "[data-pretable-cell]",
-    rowIdAttribute: "data-row-id",
-    rowIndexAttribute: "data-row-index",
+    rowIdAttribute: "data-pretable-row-id",
+    rowIndexAttribute: "data-pretable-row-index",
     maxSettleFrames: 3,
     measureRowHeightError: (row, renderedHeight) =>
       measureWrappedCellRowHeightError(

@@ -104,11 +104,11 @@ describe("LabeledGridSurface", () => {
       .closest("[data-pretable-cell]");
 
     expect(timestampHeader).toHaveClass("inspection-header-cell", "is-pinned");
-    expect(timestampHeader).toHaveAttribute("data-pinned", "left");
+    expect(timestampHeader).toHaveAttribute("data-pretable-pinned", "left");
     expect(severityHeader).toHaveAttribute("data-filterable", "true");
     expect(firstRow).toHaveClass("inspection-row");
     expect(pinnedCell).toHaveClass("inspection-cell", "is-pinned");
-    expect(pinnedCell).toHaveAttribute("data-pinned", "left");
+    expect(pinnedCell).toHaveAttribute("data-pretable-pinned", "left");
     expect(severityCell).toHaveAttribute("data-filterable", "true");
     expect(within(firstRow).getAllByText("Timestamp")).toHaveLength(1);
     expect(within(firstRow).getByText("tenant-a, cold-start")).toHaveClass(

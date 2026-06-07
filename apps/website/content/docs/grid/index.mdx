@@ -69,9 +69,9 @@ Both paths emit the same `[data-pretable-*]` data attributes on grid elements. `
 | `[data-pretable-row]`             | each body row                         | Row positioning (`position: absolute` + `top`)                             |
 | `[data-pretable-cell]`            | each body cell                        | Cell background, padding, font, gridlines                                  |
 | `[data-pretable-wrap]`            | each body cell (modifier)             | `"true"` on cells with `column.wrap`; coexists with `[data-pretable-cell]` |
-| `[data-pinned]="left"`            | pinned cells (header + body)          | Sticky left positioning, distinct background                               |
-| `[data-selected]="true"`          | selected cells                        | Selection background and text color                                        |
-| `[data-focused]="true"`           | focused row + cell                    | Focus outline; mirrored on row and cell so CSS can target either           |
+| `[data-pretable-pinned]="left"`   | pinned cells (header + body)          | Sticky left positioning, distinct background                               |
+| `[data-pretable-selected]="true"` | selected cells                        | Selection background and text color                                        |
+| `[data-pretable-focused]="true"`  | focused row + cell                    | Focus outline; mirrored on row and cell so CSS can target either           |
 
 Path 1 (`<Pretable>`) emits these automatically. Path 2 (custom rendering) requires you to apply them yourself — `@pretable/ui/grid.css` only styles elements that match these selectors. See [Custom rendering](/docs/grid/custom-rendering) for examples.
 

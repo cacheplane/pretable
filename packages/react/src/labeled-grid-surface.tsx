@@ -133,7 +133,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
         mergeProps(
           input.column.pinned === "left"
             ? ({
-                "data-pinned": "left",
+                "data-pretable-pinned": "left",
               } as HTMLAttributes<HTMLDivElement>)
             : undefined,
           getBodyCellProps?.(input),
@@ -150,7 +150,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
         mergeProps(
           input.column.pinned === "left"
             ? ({
-                "data-pinned": "left",
+                "data-pretable-pinned": "left",
               } as HTMLAttributes<HTMLButtonElement>)
             : undefined,
           getHeaderCellProps?.(input),

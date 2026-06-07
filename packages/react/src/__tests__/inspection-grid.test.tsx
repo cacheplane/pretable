@@ -39,7 +39,7 @@ describe("InspectionGrid", () => {
       .closest("[data-pretable-cell]");
 
     expect(timestampHeader).toHaveClass("inspection-header-cell", "is-pinned");
-    expect(timestampHeader).toHaveAttribute("data-pinned", "left");
+    expect(timestampHeader).toHaveAttribute("data-pretable-pinned", "left");
     expect(timestampHeader).toHaveAttribute("data-filterable", "true");
     expect(firstRow).toHaveClass("inspection-row");
     expect(pinnedCell).toHaveClass("inspection-cell", "is-pinned");
@@ -102,7 +102,7 @@ describe("InspectionGrid", () => {
     );
 
     expect(view.getAllByTestId("pretable-row")[0]).toHaveAttribute(
-      "data-row-id",
+      "data-pretable-row-id",
       "evt-001",
     );
 
@@ -118,7 +118,10 @@ describe("InspectionGrid", () => {
 
     const firstStressRow = view.getAllByTestId("pretable-row")[0]!;
 
-    expect(firstStressRow).toHaveAttribute("data-row-id", "evt-stress-0000");
+    expect(firstStressRow).toHaveAttribute(
+      "data-pretable-row-id",
+      "evt-stress-0000",
+    );
     expect(
       firstStressRow.querySelector("[data-pretable-cell]"),
     ).toHaveAttribute("data-pretable-cell", "");

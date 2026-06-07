@@ -17,7 +17,7 @@ A column definition. Generic over your row type.
 | `header`       | `string`                                                | no       | Column header label. Defaults to the column `id` if omitted.                                                           |
 | `wrap`         | `boolean`                                               | no       | If `true`, cells in this column wrap content vertically (sets `[data-pretable-wrap="true"]`).                          |
 | `widthPx`      | `number`                                                | no       | Fixed pixel width. Defaults to 220 for wrapping columns, 140 for non-wrapping.                                         |
-| `pinned`       | `"left"`                                                | no       | Pinned positioning. Currently only `"left"` is supported. Sets `[data-pinned="left"]` on the cell.                     |
+| `pinned`       | `"left"`                                                | no       | Pinned positioning. Currently only `"left"` is supported. Sets `[data-pretable-pinned="left"]` on the cell.            |
 | `sortable`     | `boolean`                                               | no       | Whether the column can be sorted. Defaults to `true` if a `value` is provided.                                         |
 | `filterable`   | `boolean`                                               | no       | Whether the column can be filtered. Defaults to `true` if a `value` is provided.                                       |
 | `value`        | `(row: TRow) => unknown`                                | no       | Extract the cell value from the row. If omitted, the column has no sortable/filterable value.                          |

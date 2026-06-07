@@ -41,7 +41,7 @@ test("selected background wins over zebra via source order", async ({
       'style="--pretable-bg-grid-alt: rgb(50, 50, 50); --pretable-bg-selected: rgb(1, 2, 3)">' +
       "<div data-pretable-row></div>" + // row 1 (odd)
       "<div data-pretable-row>" + // row 2 (even → zebra applies)
-      '<span data-pretable-cell data-selected="true" id="sel">x</span>' +
+      '<span data-pretable-cell data-pretable-selected="true" id="sel">x</span>' +
       "</div></div>",
   );
   await page.addStyleTag({ path: GRID_CSS });
