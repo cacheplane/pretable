@@ -1069,6 +1069,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             const showHeaderCheckbox =
               rowSelectionColumn?.headerCheckbox !== false;
 
+            // Note: data-pretable-column-id is intentionally absent here — the
+            // row-select column is a synthetic UI column (ROW_SELECT_COLUMN_ID),
+            // not a user data column, so it has no meaningful column id to expose.
             return (
               <div
                 aria-colindex={plannedCol.index + 1}
