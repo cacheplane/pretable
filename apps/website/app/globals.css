@@ -75,8 +75,8 @@ body {
 }
 
 /* InspectionGrid internals — these classes come from @pretable/react/internal.
-   The [data-pretable-scroll-viewport] / [data-pinned] / [data-selected] /
-   [data-focused] generic skin is now provided by @pretable/ui/grid.css.
+   The [data-pretable-scroll-viewport] / [data-pretable-pinned] / [data-pretable-selected] /
+   [data-pretable-focused] generic skin is now provided by @pretable/ui/grid.css.
    Rules below add InspectionGrid-specific layout (label/value stacked
    inside each cell, monospace font, grid layout for column alignment). */
 
