@@ -37,6 +37,22 @@
   /* Accent */
   --pretable-accent: #0061a4; /* primary — M3 baseline blue */
 
+  /* Grid controls — derived from this theme's tokens so they recolor coherently */
+  --pretable-selection-bg: color-mix(
+    in srgb,
+    var(--pretable-accent) 8%,
+    transparent
+  );
+  --pretable-checkbox-bg: var(--pretable-bg-grid);
+  --pretable-checkbox-border: var(--pretable-rule-strong);
+  --pretable-checkbox-checked-bg: var(--pretable-accent);
+  --pretable-checkbox-checked-fg: #fff;
+  --pretable-resize-handle: transparent;
+  --pretable-resize-handle-hover: var(--pretable-accent);
+  --pretable-reorder-ghost-bg: var(--pretable-bg-header);
+  --pretable-reorder-ghost-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+  --pretable-reorder-drop-indicator: var(--pretable-accent);
+
   /* Density — natural default = standard */
   --pretable-row-height: 48px;
   --pretable-header-height: 52px;

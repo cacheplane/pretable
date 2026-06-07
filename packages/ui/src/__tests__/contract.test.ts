@@ -27,6 +27,16 @@ const TOKENS = [
   "pretable-font-size-header",
   "pretable-font-sans",
   "pretable-font-mono",
+  "pretable-selection-bg",
+  "pretable-checkbox-bg",
+  "pretable-checkbox-border",
+  "pretable-checkbox-checked-bg",
+  "pretable-checkbox-checked-fg",
+  "pretable-resize-handle",
+  "pretable-resize-handle-hover",
+  "pretable-reorder-ghost-bg",
+  "pretable-reorder-ghost-shadow",
+  "pretable-reorder-drop-indicator",
 ];
 
 const THEMES_DIR = path.resolve(__dirname, "../themes");
