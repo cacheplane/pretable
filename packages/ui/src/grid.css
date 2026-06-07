@@ -86,23 +86,20 @@
     background: var(--pretable-bg-hover);
   }
 
-  /* Pinned cells (sticky left/right) — reuse header background */
-  :where(
-    [data-pretable-cell][data-pinned="left"],
-    [data-pretable-cell][data-pinned="right"]
-  ) {
+  /* Pinned cells (sticky left) — reuse header background */
+  :where([data-pretable-cell][data-pretable-pinned="left"]) {
     background: var(--pretable-bg-header);
     z-index: 1;
   }
 
   /* Selection — wins over zebra/hover via source order (they precede it) */
-  :where([data-pretable-cell][data-selected="true"]) {
+  :where([data-pretable-cell][data-pretable-selected="true"]) {
     background: var(--pretable-bg-selected);
     color: var(--pretable-text-selected);
   }
 
   /* Focus */
-  :where([data-pretable-cell][data-focused="true"]) {
+  :where([data-pretable-cell][data-pretable-focused="true"]) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
   }
@@ -117,7 +114,7 @@
     background: var(--pt-color-selection-bg);
   }
 
-  :where([role="gridcell"][data-focused="true"]) {
+  :where([role="gridcell"][data-pretable-focused="true"]) {
     box-shadow: inset 0 0 0 2px var(--pt-color-focus-ring);
   }
 
@@ -139,7 +136,7 @@
 
   /* Row-selection checkbox column (Phase 4) */
   :where(
-    [data-pretable-cell][data-row-select-cell="true"],
+    [data-pretable-cell][data-pretable-row-select-cell="true"],
     [data-pretable-header-cell][data-pretable-row-select-header]
   ) {
     display: flex;
@@ -197,7 +194,7 @@
   }
   :where(
     [data-pretable-resize-handle]:hover,
-    [data-pretable-resize-handle][data-dragging="true"]
+    [data-pretable-resize-handle][data-pretable-dragging="true"]
   ) {
     background: var(--pt-color-resize-handle-hover);
   }
