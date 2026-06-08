@@ -70,4 +70,18 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
 
   // streaming
   applyTransaction(transaction: PretableTransaction<TRow>): void;
+
+  // cell editing (v1)
+  beginEdit(
+    addr: PretableCellAddress,
+    opts?: { draft?: unknown; status?: "checking" | "editing" },
+  ): void;
+  setEditDraft(value: unknown): void;
+  markEditing(): void;
+  markEditValidating(): void;
+  markEditSaving(): void;
+  markEditInvalid(message: string): void;
+  markEditError(message: string): void;
+  commitEditSucceeded(): void;
+  cancelEdit(): void;
 }
