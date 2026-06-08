@@ -9,6 +9,7 @@ import type {
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,
+  PretableEditState,
   PretableFocusDirection,
   PretableFocusState,
   PretableMoveFocusOptions,
@@ -89,6 +90,7 @@ export function createGridCore<TRow extends PretableRow>(
   let filters: Record<string, string> = {};
   let selection: PretableSelectionState = { ranges: [], anchor: null };
   let focus: PretableFocusState = { rowId: null, columnId: null };
+  let editing: PretableEditState | null = null;
   let viewport: PretableViewportState = {
     scrollTop: 0,
     scrollLeft: 0,
@@ -771,6 +773,58 @@ export function createGridCore<TRow extends PretableRow>(
       cachedVisibleRows = null;
       emit();
     },
+    beginEdit(
+      addr: PretableCellAddress,
+      opts?: { draft?: unknown; status?: "checking" | "editing" },
+    ) {
+      editing = {
+        rowId: addr.rowId,
+        columnId: addr.columnId,
+        draft: opts?.draft,
+        status: opts?.status ?? "editing",
+      };
+      emit();
+    },
+    setEditDraft(value: unknown) {
+      if (!editing) return;
+      editing = { ...editing, draft: value };
+      emit();
+    },
+    markEditing() {
+      if (!editing || editing.status !== "checking") return;
+      editing = { ...editing, status: "editing", error: undefined };
+      emit();
+    },
+    markEditValidating() {
+      if (!editing) return;
+      editing = { ...editing, status: "validating", error: undefined };
+      emit();
+    },
+    markEditSaving() {
+      if (!editing) return;
+      editing = { ...editing, status: "saving", error: undefined };
+      emit();
+    },
+    markEditInvalid(message: string) {
+      if (!editing) return;
+      editing = { ...editing, status: "editing", error: message };
+      emit();
+    },
+    markEditError(message: string) {
+      if (!editing) return;
+      editing = { ...editing, status: "error", error: message };
+      emit();
+    },
+    commitEditSucceeded() {
+      if (!editing) return;
+      editing = null;
+      emit();
+    },
+    cancelEdit() {
+      if (!editing) return;
+      editing = null;
+      emit();
+    },
   };
 
   return store;
@@ -811,6 +865,7 @@ export function createGridCore<TRow extends PretableRow>(
         start: 0,
         end: visibleRows.length,
       },
+      editing: editing ? { ...editing } : null,
     };
 
     return cachedSnapshot;
