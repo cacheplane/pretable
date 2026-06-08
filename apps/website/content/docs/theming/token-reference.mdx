@@ -74,7 +74,7 @@ The first two are read by the engine in JavaScript. The other four are CSS-only.
 
 ## Grid controls (10)
 
-These tokens control the visual appearance of interactive grid elements: row-selection checkboxes, cell-range selection overlays, column resize handles, and column reorder drag-and-drop indicators. By default they all derive from the theme's `--pretable-accent`, `--pretable-bg-grid`, `--pretable-rule-strong`, and `--pretable-bg-header`, so overriding those four upstream tokens recolors the controls coherently without touching this group individually.
+These tokens control the visual appearance of interactive grid elements: row-selection checkboxes, cell-range selection overlays, column resize handles, and column reorder drag-and-drop indicators. Most derive from the theme's `--pretable-accent`, `--pretable-bg-grid`, `--pretable-rule-strong`, and `--pretable-bg-header`, so overriding those upstream tokens recolors the controls coherently; `--pretable-checkbox-checked-fg` and `--pretable-reorder-ghost-shadow` are standalone constants (`#fff` and a box-shadow value) that you must override explicitly if needed.
 
 | Token                               | Description                                                  | Type   | Excel                                                        | Material 3 (light)                                           |
 | ----------------------------------- | ------------------------------------------------------------ | ------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
