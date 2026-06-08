@@ -105,25 +105,35 @@ describe("token contract", () => {
     cleanup();
   });
 
-  test("grid.css has no unresolved var(--pretable-*) references when excel.css is loaded", () => {
-    const themeCleanup = loadCSS(path.join(THEMES_DIR, "excel.css"));
+  test("grid.css references no --pt-color-* tokens (consolidated into --pretable-*)", () => {
     const gridCss = fs.readFileSync(GRID_CSS, "utf8");
-    const refs = new Set(
-      Array.from(gridCss.matchAll(/var\((--pretable-[a-z-]+)/g)).map(
-        (m) => m[1],
-      ),
+    const stale = [...gridCss.matchAll(/var\((--pt-color-[a-z-]+)/g)].map(
+      (m) => m[1],
     );
-    expect(
-      refs.size,
-      "grid.css references zero --pretable-* vars; this is suspicious",
-    ).toBeGreaterThan(0);
-    const computed = getComputedStyle(document.documentElement);
-    for (const ref of refs) {
-      expect(
-        computed.getPropertyValue(ref).trim(),
-        `grid.css references unresolved ${ref}`,
-      ).not.toBe("");
-    }
-    themeCleanup();
+    expect(stale, `grid.css still references ${stale.join(", ")}`).toEqual([]);
   });
+
+  for (const themeFile of ["excel.css", "material.css"]) {
+    test(`grid.css has no unresolved var(--pretable-*) refs under ${themeFile}`, () => {
+      const themeCleanup = loadCSS(path.join(THEMES_DIR, themeFile));
+      const gridCss = fs.readFileSync(GRID_CSS, "utf8");
+      const refs = new Set(
+        Array.from(gridCss.matchAll(/var\((--pretable-[a-z-]+)/g)).map(
+          (m) => m[1],
+        ),
+      );
+      expect(
+        refs.size,
+        "grid.css references zero --pretable-* vars; this is suspicious",
+      ).toBeGreaterThan(0);
+      const computed = getComputedStyle(document.documentElement);
+      for (const ref of refs) {
+        expect(
+          computed.getPropertyValue(ref).trim(),
+          `grid.css references unresolved ${ref} under ${themeFile}`,
+        ).not.toBe("");
+      }
+      themeCleanup();
+    });
+  }
 });
