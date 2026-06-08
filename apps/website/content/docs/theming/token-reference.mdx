@@ -1,13 +1,13 @@
 ---
 title: Token reference
-description: "The 24-token --pretable-* surface, with shape, default, and purpose for each."
+description: "The 34-token --pretable-* surface, with shape, default, and purpose for each."
 nav: Theming
 order: 8
 ---
 
-Pretable's public theming surface is 24 CSS variables, all `--pretable-*` prefixed. Each theme defines all 24 at `:root`. Excel and Material 3 ship preset values; consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
+Pretable's public theming surface is 34 CSS variables, all `--pretable-*` prefixed. Each theme defines all 34 at `:root`. Excel and Material 3 ship preset values; consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
 
-> Two tokens — `--pretable-row-height` and `--pretable-header-height` — are read by the engine in JavaScript via the `useResolvedHeights` hook. The other 22 are CSS-only.
+> Two tokens — `--pretable-row-height` and `--pretable-header-height` — are read by the engine in JavaScript via the `useResolvedHeights` hook. The other 32 are CSS-only.
 
 ## Surfaces (5)
 
@@ -71,6 +71,23 @@ The first two are read by the engine in JavaScript. The other four are CSS-only.
 | ---------------------- | -------------------------------------------- | ---- | --------------------------------------------------------------- | ---------------------------------------- |
 | `--pretable-font-sans` | Primary sans-serif family stack              | font | `"Aptos Narrow", "Aptos", "Segoe UI", -apple-system, …`         | `"Roboto Flex", "Roboto", system-ui, …`  |
 | `--pretable-font-mono` | Monospace family stack (numeric cells, code) | font | `ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace` | `"Roboto Mono", ui-monospace, monospace` |
+
+## Grid controls (10)
+
+These tokens control the visual appearance of interactive grid elements: row-selection checkboxes, cell-range selection overlays, column resize handles, and column reorder drag-and-drop indicators. Most derive from the theme's `--pretable-accent`, `--pretable-bg-grid`, `--pretable-rule-strong`, and `--pretable-bg-header`, so overriding those upstream tokens recolors the controls coherently; `--pretable-checkbox-checked-fg` and `--pretable-reorder-ghost-shadow` are standalone constants (`#fff` and a box-shadow value) that you must override explicitly if needed.
+
+| Token                               | Description                                                  | Type   | Excel                                                        | Material 3 (light)                                           |
+| ----------------------------------- | ------------------------------------------------------------ | ------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `--pretable-selection-bg`           | Range-selection overlay background (`[aria-selected]` cells) | color  | `color-mix(in srgb, var(--pretable-accent) 8%, transparent)` | `color-mix(in srgb, var(--pretable-accent) 8%, transparent)` |
+| `--pretable-checkbox-bg`            | Row-select checkbox background                               | color  | `var(--pretable-bg-grid)`                                    | `var(--pretable-bg-grid)`                                    |
+| `--pretable-checkbox-border`        | Row-select checkbox border                                   | color  | `var(--pretable-rule-strong)`                                | `var(--pretable-rule-strong)`                                |
+| `--pretable-checkbox-checked-bg`    | Row-select checkbox background when checked                  | color  | `var(--pretable-accent)`                                     | `var(--pretable-accent)`                                     |
+| `--pretable-checkbox-checked-fg`    | Row-select checkmark color                                   | color  | `#fff`                                                       | `#fff`                                                       |
+| `--pretable-resize-handle`          | Column resize handle (idle)                                  | color  | `transparent`                                                | `transparent`                                                |
+| `--pretable-resize-handle-hover`    | Column resize handle (hover/dragging)                        | color  | `var(--pretable-accent)`                                     | `var(--pretable-accent)`                                     |
+| `--pretable-reorder-ghost-bg`       | Column drag ghost background                                 | color  | `var(--pretable-bg-header)`                                  | `var(--pretable-bg-header)`                                  |
+| `--pretable-reorder-ghost-shadow`   | Column drag ghost shadow                                     | shadow | `0 4px 12px rgb(0 0 0 / 0.12)`                               | `0 4px 12px rgb(0 0 0 / 0.12)`                               |
+| `--pretable-reorder-drop-indicator` | Column drop-position indicator                               | color  | `var(--pretable-accent)`                                     | `var(--pretable-accent)`                                     |
 
 ## Stability
 
