@@ -26,6 +26,7 @@ import type {
 import type {
   PretableCellRenderInput,
   PretableColumn,
+  PretableEditorInput,
   PretableHeaderRenderInput,
 } from "./types";
 
@@ -57,6 +58,8 @@ import {
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { ROW_SELECT_COLUMN_ID } from "./constants";
+import { useCellEditController } from "./use-cell-edit-controller";
+import { CellEditor } from "./cell-editor";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
@@ -270,6 +273,17 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * fall back to English defaults.
    */
   messages?: PretableSurfaceMessages;
+  /**
+   * Called when a cell edit commits successfully. The grid is controlled:
+   * update your own `rows` from this callback. Return a promise to keep the
+   * edit in its `saving` phase until it resolves (rejection enters `error`).
+   */
+  onCellEdit?: (payload: {
+    rowId: string;
+    columnId: string;
+    value: unknown;
+    row: TRow;
+  }) => void | Promise<void>;
 }
 
 interface MemoizedCellContentProps {
@@ -433,6 +447,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   onCopy,
   copyToClipboard,
   messages,
+  onCellEdit,
 }: PretableSurfaceProps<TRow>) {
   const [measuredHeights, setMeasuredHeights] = useState<
     Record<string, number>
@@ -542,6 +557,40 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   });
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
+
+  // Cell editing. `useCellEditController` memoizes on `grid` only, so the
+  // closures it captures would otherwise go stale across renders. Keep refs to
+  // the latest columns/rows/onCellEdit and read them through stable wrappers so
+  // the (memoized) controller always sees current data. Refs are synced in a
+  // layout effect (every render, no deps) — they only need to be current before
+  // event handlers / async resolutions read them, which happen post-commit.
+  const editColumnsRef = useRef(effectiveColumns);
+  const editVisibleRowsRef = useRef(snapshot.visibleRows);
+  const onCellEditRef = useRef(onCellEdit);
+  useLayoutEffect(() => {
+    editColumnsRef.current = effectiveColumns;
+    editVisibleRowsRef.current = snapshot.visibleRows;
+    onCellEditRef.current = onCellEdit;
+  });
+  const editController = useCellEditController<TRow>({
+    grid,
+    getColumns: useCallback(() => editColumnsRef.current, []),
+    getRowById: useCallback(
+      (id: string) =>
+        editVisibleRowsRef.current.find((r) => r.id === id)?.row ?? null,
+      [],
+    ),
+    onCellEdit: useCallback(
+      (payload: {
+        rowId: string;
+        columnId: string;
+        value: unknown;
+        row: TRow;
+      }) => onCellEditRef.current?.(payload),
+      [],
+    ),
+  });
+
   const pinnedOffsets = useMemo(
     () => getPinnedLeftOffsets(effectiveColumns),
     [effectiveColumns],
@@ -955,6 +1004,44 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               });
           }
           return;
+        }
+
+        // Begin-edit triggers (Enter / F2 / type-to-replace). Only when no edit
+        // is active and the focused cell's column is editable; otherwise fall
+        // through so Enter/Space keep their row-selection behavior. When an edit
+        // IS active the editor input owns keystrokes (Enter/Tab/Escape are
+        // stop-propagated inside CellEditor), so this handler is not reached.
+        if (!snapshot.editing) {
+          const focusAddr =
+            snapshot.focus.rowId && snapshot.focus.columnId
+              ? {
+                  rowId: snapshot.focus.rowId,
+                  columnId: snapshot.focus.columnId,
+                }
+              : null;
+          const focusedColumn = focusAddr
+            ? effectiveColumns.find((c) => c.id === focusAddr.columnId)
+            : undefined;
+          if (focusAddr && focusedColumn?.editable) {
+            const cmd = event.metaKey || event.ctrlKey;
+            if (event.key === "Enter" || event.key === "F2") {
+              event.preventDefault();
+              void editController.begin(focusAddr);
+              return;
+            }
+            // type-to-replace: a single printable, non-whitespace character
+            // seeds the draft. Space is reserved for row selection.
+            if (
+              event.key.length === 1 &&
+              event.key !== " " &&
+              !cmd &&
+              !event.altKey
+            ) {
+              event.preventDefault();
+              void editController.begin(focusAddr, event.key);
+              return;
+            }
+          }
         }
 
         const isSelectAll =
@@ -1521,6 +1608,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 const cellIsFocused =
                   isFocused && snapshot.focus.columnId === column.id;
                 const cellIsSelected = isCellSelected(id, column.id);
+                const cellEdit =
+                  snapshot.editing &&
+                  snapshot.editing.rowId === id &&
+                  snapshot.editing.columnId === column.id
+                    ? snapshot.editing
+                    : null;
                 const formattedValue = column.format
                   ? column.format({ value, row, column })
                   : formatCellValue(value);
@@ -1573,6 +1666,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       isRowSelectCell ? "true" : undefined
                     }
                     data-pretable-selected={cellIsSelected ? "true" : "false"}
+                    data-pretable-edit-status={cellEdit?.status}
                     key={`${id}:${column.id}`}
                     onClick={(event) => {
                       if (column.id === ROW_SELECT_COLUMN_ID) return;
@@ -1587,6 +1681,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         rowId: id,
                         shift: event.shiftKey,
                       });
+                    }}
+                    onDoubleClick={() => {
+                      if (column.id === ROW_SELECT_COLUMN_ID) return;
+                      if (column.editable) {
+                        void editController.begin({
+                          rowId: id,
+                          columnId: column.id,
+                        });
+                      }
                     }}
                     onPointerDown={(event) => {
                       if (event.button !== 0) return;
@@ -1678,7 +1781,24 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     tabIndex={cellIsFocused ? 0 : -1}
                   >
-                    {isRowSelectCell ? (
+                    {cellEdit ? (
+                      <CellEditor
+                        input={
+                          {
+                            rowId: id,
+                            columnId: column.id,
+                            row,
+                            column,
+                            value,
+                            draft: cellEdit.draft,
+                            setDraft: (v: unknown) => grid.setEditDraft(v),
+                            commit: (dir?: PretableFocusDirection) =>
+                              void editController.commit(dir ?? "down"),
+                            cancel: () => editController.cancel(),
+                          } as unknown as PretableEditorInput
+                        }
+                      />
+                    ) : isRowSelectCell ? (
                       <button
                         aria-checked={rowCheckState}
                         aria-label="Select row"
