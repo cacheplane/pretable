@@ -1,0 +1,239 @@
+---
+title: Editing
+description: "Controlled inline cell editing with an async editable / validate / commit lifecycle."
+nav: Grid
+order: 7
+---
+
+Inline editing is **controlled**: the grid never mutates your rows. A successful commit fires `onCellEdit({ rowId, columnId, value, row })`, and you write the new value into your own state and feed the updated `rows` back down. The grid owns the in-progress edit (the draft, the lifecycle phase); your app owns the data.
+
+Editing is **off by default** — a cell only becomes editable when its column opts in.
+
+<Callout type="note">
+  This is single-cell editing. Fill-handle drag, paste-to-edit, multi-cell
+  edits, and undo are not part of this phase.
+</Callout>
+
+## The controlled model
+
+`onCellEdit` is a prop on both `<Pretable>` and `<PretableSurface>`. It receives the committed value and the row it came from; return a promise to make the commit await your save:
+
+```tsx
+<PretableSurface
+  ariaLabel="People"
+  columns={columns}
+  rows={rows}
+  getRowId={(row) => row.id}
+  onCellEdit={({ rowId, columnId, value, row }) => {
+    // apply `value` to your own state — the grid does not touch `rows`
+    setRows((prev) =>
+      prev.map((r) => (r.id === rowId ? { ...r, [columnId]: value } : r)),
+    );
+  }}
+/>
+```
+
+The payload is `{ rowId, columnId, value, row }`:
+
+| Field      | Type      | Notes                                                     |
+| ---------- | --------- | --------------------------------------------------------- |
+| `rowId`    | `string`  | the `getRowId` of the edited row                          |
+| `columnId` | `string`  | `column.id` of the edited cell                            |
+| `value`    | `unknown` | the committed value (after `parseEditValue`, if supplied) |
+| `row`      | `TRow`    | the row object the edit targets                           |
+
+## Making a column editable
+
+Set `editable` on the column. It's `false` by default; pass `true` to allow editing unconditionally, or a function to gate it per cell:
+
+```tsx
+import type { PretableColumn } from "@pretable/react";
+
+const columns: PretableColumn<Person>[] = [
+  { id: "name", header: "Name", editable: true },
+  {
+    id: "email",
+    header: "Email",
+    // gate per cell — sync or async (return a Promise<boolean>)
+    editable: ({ row }) => row.status !== "locked",
+  },
+];
+```
+
+The function form receives a `PretableEditInput` (`{ rowId, columnId, row, column, value }`) and may return a `Promise<boolean>`, so a permission check can hit the network before the editor opens. While an async `editable` is pending, the edit sits in the `checking` phase (see [Lifecycle](#lifecycle)); if it resolves `false`, the edit is cancelled and no editor appears.
+
+## Validating
+
+`validate` runs on commit, before `onCellEdit`. Return `true` to accept, or a **string** to reject — the string becomes the validation message and the cell stays in edit mode so the user can fix it. It can be sync or async:
+
+```tsx
+const columns: PretableColumn<Person>[] = [
+  {
+    id: "age",
+    header: "Age",
+    editable: true,
+    parseEditValue: (raw) => Number(raw),
+    validate: (value) => {
+      if (typeof value !== "number" || Number.isNaN(value))
+        return "Enter a number";
+      if (value < 0) return "Age cannot be negative";
+      return true;
+    },
+  },
+];
+```
+
+`validate(value, input)` receives the parsed value and the same `PretableEditInput`. A returned string keeps the edit open with `snapshot.editing.error` set to that message; a `Promise<true | string>` lets you validate against a server. Commit only proceeds to `onCellEdit` once validation passes.
+
+## Custom editors
+
+The default editor is a text input. To render your own — a `<select>`, a date picker, a numeric stepper — supply `renderEditor`. Pair it with `parseEditValue` (string → your value type) and `formatEditValue` (your value → the string the editor seeds from):
+
+```tsx
+const columns: PretableColumn<Person>[] = [
+  {
+    id: "status",
+    header: "Status",
+    editable: true,
+    renderEditor: ({ draft, setDraft, commit, cancel }) => (
+      <select
+        autoFocus
+        value={String(draft ?? "")}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") cancel();
+        }}
+        onBlur={() => commit()}
+      >
+        <option value="active">Active</option>
+        <option value="paused">Paused</option>
+      </select>
+    ),
+  },
+];
+```
+
+`renderEditor` receives a `PretableEditorInput` — the edit input (`rowId`, `columnId`, `row`, `column`, `value`) plus the live draft controls:
+
+| Field      | Type                                           | Notes                                                              |
+| ---------- | ---------------------------------------------- | ------------------------------------------------------------------ |
+| `draft`    | `unknown`                                      | the current in-progress value                                      |
+| `setDraft` | `(value: unknown) => void`                     | update the draft as the user types                                 |
+| `commit`   | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus (`"down"`, `"right"`, …) |
+| `cancel`   | `() => void`                                   | discard the edit and restore the cell                              |
+
+`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onCellEdit`. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (a number, a `Date`, an enum) so the round-trip stays type-correct.
+
+## Lifecycle
+
+A commit is **pessimistic**: the grid keeps showing the draft while the work runs and only clears the edit once `onCellEdit` resolves. The edit moves through a sequence of phases, observable as `snapshot.editing.status`:
+
+```text
+checking → editing → validating → saving → (cleared)
+                ↑__________|              |
+              invalid (validate            |
+              returned a string)           ↓
+                                         error (onCellEdit threw)
+```
+
+| Phase        | Meaning                                                           |
+| ------------ | ----------------------------------------------------------------- |
+| `checking`   | an async `editable` is resolving; no editor yet                   |
+| `editing`    | the editor is open and accepting input                            |
+| `validating` | `validate` is running on the draft                                |
+| `saving`     | validation passed; `onCellEdit` is in flight                      |
+| `error`      | `onCellEdit` rejected; `snapshot.editing.error` holds the message |
+
+When `validate` returns a string the edit returns to `editing` with `snapshot.editing.error` set to that message. When `onCellEdit` throws or rejects, the edit enters `error` (it does **not** clear) so you can surface the failure and let the user retry or cancel.
+
+For most apps the default editor handles all of this and you never touch the phases directly. If you render cells yourself (a custom `render`, or the [headless engine](/docs/headless)), read `grid.getSnapshot().editing` — `{ rowId, columnId, draft, status, error? }` — to drive your own in-cell editor or status affordance:
+
+```tsx
+const { editing } = grid.getSnapshot();
+if (editing?.status === "saving") {
+  // show a spinner in the cell at editing.rowId / editing.columnId
+}
+```
+
+<Callout type="note">
+  The engine's edit transitions (`beginEdit`, `markEditSaving`, …) are advanced,
+  headless-only primitives. In the controlled `<Pretable>` / `<PretableSurface>`
+  path you don't call them — `onCellEdit`, the column hooks, and the keyboard drive
+  the lifecycle for you.
+</Callout>
+
+## Keyboard
+
+Editing reuses the focused cell from the [selection](/docs/grid/selection) model.
+
+| Key                | When                | Effect                                                                 |
+| ------------------ | ------------------- | ---------------------------------------------------------------------- |
+| `Enter` / `F2`     | cell focused        | begin editing the focused cell                                         |
+| Double-click       | on an editable cell | begin editing that cell                                                |
+| Any printable char | cell focused        | begin editing, seeding the draft with that character (type-to-replace) |
+| `Enter`            | editing             | commit, then move focus **down**                                       |
+| `Tab`              | editing             | commit, then move focus **right**                                      |
+| `Escape`           | editing             | cancel — discard the draft, restore the cell                           |
+
+A begin trigger on a non-editable column is a no-op. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation.
+
+## Worked example
+
+A small grid where `name` is editable and `onCellEdit` updates React state:
+
+```tsx
+import { useState } from "react";
+import { PretableSurface, type PretableColumn } from "@pretable/react";
+
+interface Person extends Record<string, unknown> {
+  id: string;
+  name: string;
+  age: number;
+}
+
+const columns: PretableColumn<Person>[] = [
+  { id: "name", header: "Name", widthPx: 200, editable: true },
+  {
+    id: "age",
+    header: "Age",
+    widthPx: 100,
+    editable: true,
+    parseEditValue: (raw) => Number(raw),
+    validate: (value) =>
+      typeof value === "number" && !Number.isNaN(value) && value >= 0
+        ? true
+        : "Enter a non-negative number",
+  },
+];
+
+export function EditableGrid() {
+  const [rows, setRows] = useState<Person[]>([
+    { id: "r1", name: "Ada", age: 36 },
+    { id: "r2", name: "Linus", age: 54 },
+  ]);
+
+  return (
+    <PretableSurface<Person>
+      ariaLabel="People"
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      viewportHeight={300}
+      onCellEdit={({ rowId, columnId, value }) => {
+        setRows((prev) =>
+          prev.map((r) => (r.id === rowId ? { ...r, [columnId]: value } : r)),
+        );
+      }}
+    />
+  );
+}
+```
+
+Click a cell, press `Enter` (or just start typing), edit, and press `Enter` again — `onCellEdit` fires, your state updates, and the new `rows` flow back into the grid.
+
+## See also
+
+- [Selection](/docs/grid/selection) — focus is the cell editing begins on.
+- [Keyboard](/docs/grid/keyboard) — the full keyboard contract.
+- [Headless engine](/docs/headless) — read `snapshot.editing` to build your own editor.
+- [API reference](/docs/grid/api-reference) — `PretableEditInput`, `PretableEditorInput`, `PretableEditState`, `PretableEditStatus` types.
