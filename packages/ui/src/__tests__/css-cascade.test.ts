@@ -10,6 +10,14 @@ describe("grid.css cascade contract", () => {
     expect(css).toMatch(/@layer\s+pretable\s*\{/);
   });
 
+  test("grid.css styles the cell editor, error, and pending states", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).toMatch(/:where\(\.pretable-cell-editor\)/);
+    expect(css).toMatch(/:where\(\[data-pretable-edit-error\]\)/);
+    expect(css).toMatch(/var\(--pretable-edit-bg\)/);
+    expect(css).toMatch(/var\(--pretable-text-error\)/);
+  });
+
   test("every grid.css rule selector is wrapped in :where()", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
