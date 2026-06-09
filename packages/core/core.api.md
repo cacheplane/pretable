@@ -42,9 +42,13 @@ export interface PretableCellRange {
 // @public
 export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
+    editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
+    // (undocumented)
     filterable?: boolean;
     // (undocumented)
     format?: (input: PretableFormatInput<TRow>) => string;
+    // (undocumented)
+    formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
     // (undocumented)
     header?: string;
     // (undocumented)
@@ -54,6 +58,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     minWidthPx?: number;
     // (undocumented)
+    parseEditValue?: (raw: string, input: PretableEditInput<TRow>) => unknown;
+    // (undocumented)
     pinned?: "left";
     // (undocumented)
     reorderable?: boolean;
@@ -62,12 +68,45 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     sortable?: boolean;
     // (undocumented)
+    validate?: (value: unknown, input: PretableEditInput<TRow>) => (true | string) | Promise<true | string>;
+    // (undocumented)
     value?: (row: TRow) => unknown;
     // (undocumented)
     widthPx?: number;
     // (undocumented)
     wrap?: boolean;
 }
+
+// @public
+export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    column: PretableColumn<TRow>;
+    // (undocumented)
+    columnId: string;
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    rowId: string;
+    // (undocumented)
+    value: unknown;
+}
+
+// @public
+export interface PretableEditState {
+    // (undocumented)
+    columnId: string;
+    // (undocumented)
+    draft: unknown;
+    // (undocumented)
+    error?: string;
+    // (undocumented)
+    rowId: string;
+    // (undocumented)
+    status: PretableEditStatus;
+}
+
+// @public
+export type PretableEditStatus = "checking" | "editing" | "validating" | "saving" | "error";
 
 // @public
 export type PretableFocusDirection = "up" | "down" | "left" | "right";
@@ -101,13 +140,32 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     autosizeColumns(options?: AutosizeOptions): void;
     // (undocumented)
+    beginEdit(addr: PretableCellAddress, opts?: {
+        draft?: unknown;
+        status?: "checking" | "editing";
+    }): void;
+    // (undocumented)
+    cancelEdit(): void;
+    // (undocumented)
     clearFilters(): void;
     // (undocumented)
     clearSelection(): void;
     // (undocumented)
+    commitEditSucceeded(): void;
+    // (undocumented)
     extendRangeFromAnchor(addr: PretableCellAddress): void;
     getSnapshot(): PretableGridSnapshot<TRow>;
     readonly kind: "pretable-grid";
+    // (undocumented)
+    markEditError(message: string): void;
+    // (undocumented)
+    markEditing(): void;
+    // (undocumented)
+    markEditInvalid(message: string): void;
+    // (undocumented)
+    markEditSaving(): void;
+    // (undocumented)
+    markEditValidating(): void;
     // (undocumented)
     mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void;
     // (undocumented)
@@ -125,6 +183,8 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     setColumnPinned(columnId: string, pinned: "left" | null): void;
     // (undocumented)
     setColumnWidth(columnId: string, width: number): void;
+    // (undocumented)
+    setEditDraft(value: unknown): void;
     // (undocumented)
     setFilter(columnId: string, value: string): void;
     // (undocumented)
@@ -156,6 +216,8 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
 
 // @public
 export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    editing: PretableEditState | null;
     // (undocumented)
     filters: Record<string, string>;
     // (undocumented)

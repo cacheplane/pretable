@@ -185,8 +185,58 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> extends 
     // (undocumented)
     render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
     // (undocumented)
+    renderEditor?: (input: PretableEditorInput<TRow>) => ReactNode;
+    // (undocumented)
     renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
 }
+
+// @public
+export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    column: PretableColumn_2<TRow>;
+    // (undocumented)
+    columnId: string;
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    rowId: string;
+    // (undocumented)
+    value: unknown;
+}
+
+// @public
+export interface PretableEditorInput<TRow extends PretableRow = PretableRow> extends Omit<PretableEditInput<TRow>, "column"> {
+    // (undocumented)
+    cancel: () => void;
+    // (undocumented)
+    column: PretableColumn<TRow>;
+    // (undocumented)
+    commit: (direction?: PretableFocusDirection) => void;
+    // (undocumented)
+    draft: unknown;
+    // (undocumented)
+    setDraft: (value: unknown) => void;
+}
+
+// @public
+export interface PretableEditState {
+    // (undocumented)
+    columnId: string;
+    // (undocumented)
+    draft: unknown;
+    // (undocumented)
+    error?: string;
+    // (undocumented)
+    rowId: string;
+    // (undocumented)
+    status: PretableEditStatus;
+}
+
+// @public
+export type PretableEditStatus = "checking" | "editing" | "validating" | "saving" | "error";
+
+// @public
+export type PretableFocusDirection = "up" | "down" | "left" | "right";
 
 // @public
 export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
@@ -215,9 +265,18 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     autosizeColumns(options?: AutosizeOptions): void;
     // (undocumented)
+    beginEdit(addr: PretableCellAddress, opts?: {
+        draft?: unknown;
+        status?: "checking" | "editing";
+    }): void;
+    // (undocumented)
+    cancelEdit(): void;
+    // (undocumented)
     clearFilters(): void;
     // (undocumented)
     clearSelection(): void;
+    // (undocumented)
+    commitEditSucceeded(): void;
     // Warning: (ae-forgotten-export) The symbol "PretableCellAddress" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -225,10 +284,19 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     getSnapshot(): PretableGridSnapshot<TRow>;
     readonly kind: "pretable-grid";
     // (undocumented)
+    markEditError(message: string): void;
+    // (undocumented)
+    markEditing(): void;
+    // (undocumented)
+    markEditInvalid(message: string): void;
+    // (undocumented)
+    markEditSaving(): void;
+    // (undocumented)
+    markEditValidating(): void;
+    // (undocumented)
     mergeColumnsFromProps(nextColumns: PretableColumn_2<TRow>[]): void;
     // (undocumented)
     moveColumn(columnId: string, toIndex: number): void;
-    // Warning: (ae-forgotten-export) The symbol "PretableFocusDirection" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "PretableMoveFocusOptions" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -244,6 +312,8 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     setColumnPinned(columnId: string, pinned: "left" | null): void;
     // (undocumented)
     setColumnWidth(columnId: string, width: number): void;
+    // (undocumented)
+    setEditDraft(value: unknown): void;
     // (undocumented)
     setFilter(columnId: string, value: string): void;
     // (undocumented)
@@ -279,6 +349,8 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
 
 // @public
 export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    editing: PretableEditState | null;
     // (undocumented)
     filters: Record<string, string>;
     // Warning: (ae-forgotten-export) The symbol "PretableFocusState" needs to be exported by the entry point index.d.ts
@@ -341,6 +413,8 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
     getRowId?: PretableGridOptions<TRow>["getRowId"];
     // (undocumented)
     messages?: PretableSurfaceProps<TRow>["messages"];
+    // (undocumented)
+    onCellEdit?: PretableSurfaceProps<TRow>["onCellEdit"];
     // (undocumented)
     onColumnOrderChange?: PretableSurfaceProps<TRow>["onColumnOrderChange"];
     // (undocumented)
@@ -447,6 +521,12 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     getRowProps?: (input: PretableSurfaceRowAttributesInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
     messages?: PretableSurfaceMessages;
+    onCellEdit?: (payload: {
+        rowId: string;
+        columnId: string;
+        value: unknown;
+        row: TRow;
+    }) => void | Promise<void>;
     // (undocumented)
     onColumnOrderChange?: (next: readonly string[]) => void;
     // (undocumented)
@@ -609,7 +689,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:437:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:464:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

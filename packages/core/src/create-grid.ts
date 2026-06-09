@@ -53,5 +53,14 @@ export function createGrid<TRow extends PretableRow = PretableRow>(
     resetColumnLayout: engine.resetColumnLayout,
     mergeColumnsFromProps: engine.mergeColumnsFromProps,
     applyTransaction: engine.applyTransaction,
+    beginEdit: engine.beginEdit,
+    setEditDraft: engine.setEditDraft,
+    markEditing: engine.markEditing,
+    markEditValidating: engine.markEditValidating,
+    markEditSaving: engine.markEditSaving,
+    markEditInvalid: engine.markEditInvalid,
+    markEditError: engine.markEditError,
+    commitEditSucceeded: engine.commitEditSucceeded,
+    cancelEdit: engine.cancelEdit,
   };
 }

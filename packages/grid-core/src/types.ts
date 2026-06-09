@@ -18,6 +18,47 @@ export type PretableRow = Record<string, unknown>;
 export type PretableSortDirection = "asc" | "desc" | null;
 
 /**
+ * Phase of an in-progress cell edit.
+ *
+ * @public
+ */
+export type PretableEditStatus =
+  | "checking"
+  | "editing"
+  | "validating"
+  | "saving"
+  | "error";
+
+/**
+ * Input passed to a column's edit hooks (`editable`, `validate`, `parseEditValue`,
+ * `formatEditValue`).
+ *
+ * @public
+ */
+export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
+  rowId: string;
+  columnId: string;
+  row: TRow;
+  column: PretableColumn<TRow>;
+  value: unknown;
+}
+
+/**
+ * In-progress cell edit observed via `PretableGrid.getSnapshot().editing`.
+ * `error` carries the validation message (status `"editing"`) or the commit
+ * failure message (status `"error"`).
+ *
+ * @public
+ */
+export interface PretableEditState {
+  rowId: string;
+  columnId: string;
+  draft: unknown;
+  status: PretableEditStatus;
+  error?: string;
+}
+
+/**
  * Engine-level column definition. `@pretable/react` extends this with React-specific render fields.
  *
  * @public
@@ -37,6 +78,16 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   maxWidthPx?: number;
   resizable?: boolean;
   reorderable?: boolean;
+  // cell editing (v1):
+  editable?:
+    | boolean
+    | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
+  validate?: (
+    value: unknown,
+    input: PretableEditInput<TRow>,
+  ) => (true | string) | Promise<true | string>;
+  parseEditValue?: (raw: string, input: PretableEditInput<TRow>) => unknown;
+  formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
 }
 
 /**
@@ -162,6 +213,7 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   totalRowCount: number;
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
+  editing: PretableEditState | null;
 }
 
 /** @internal */
@@ -199,6 +251,20 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   autosizeColumn(columnId: string, options?: AutosizeOptions): void;
   resetColumnLayout(): void;
   mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void;
+
+  // cell editing (v1):
+  beginEdit(
+    addr: PretableCellAddress,
+    opts?: { draft?: unknown; status?: "checking" | "editing" },
+  ): void;
+  setEditDraft(value: unknown): void;
+  markEditing(): void;
+  markEditValidating(): void;
+  markEditSaving(): void;
+  markEditInvalid(message: string): void;
+  markEditError(message: string): void;
+  commitEditSucceeded(): void;
+  cancelEdit(): void;
 }
 
 /**
