@@ -27,8 +27,6 @@ function setup(
   return { grid, controller, onCellEdit };
 }
 
-const tick = () => new Promise((r) => setTimeout(r, 0));
-
 describe("cell edit controller", () => {
   it("begins an edit immediately when editable === true", async () => {
     const { grid, controller } = setup();
