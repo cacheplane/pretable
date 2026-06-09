@@ -958,6 +958,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           return;
         }
 
+        // While a cell edit is active the editor input owns the keyboard. Its
+        // own keydown handler stop-propagates Enter/Tab/Escape; every other key
+        // (typing, arrows, Home/End, Cmd+A) must drive the input, not the grid,
+        // so bail before any copy/select/navigation handling. Do NOT
+        // preventDefault — the input still needs default text behavior.
+        if (snapshot.editing) {
+          return;
+        }
+
         // Cmd/Ctrl+C copy. Skip if focus is in an editable input/textarea.
         if (
           (event.key === "c" || event.key === "C") &&

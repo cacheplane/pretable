@@ -101,4 +101,29 @@ describe("PretableSurface editing", () => {
     fireEvent.doubleClick(cell);
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
+
+  it("does not move grid focus when arrow keys are pressed inside the editor", () => {
+    const onFocusChange = vi.fn();
+    render(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={COLUMNS}
+        rows={ROWS}
+        getRowId={(r) => r.id}
+        viewportHeight={300}
+        onCellEdit={vi.fn()}
+        onFocusChange={onFocusChange}
+      />,
+    );
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    const box = screen.getByRole("textbox");
+    onFocusChange.mockClear();
+    // Arrow keys must drive the text cursor, not the grid's focus model.
+    fireEvent.keyDown(box, { key: "ArrowRight" });
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    expect(onFocusChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+  });
 });
