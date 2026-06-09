@@ -21,6 +21,7 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
   onColumnWidthsChange?: PretableSurfaceProps<TRow>["onColumnWidthsChange"];
   onColumnOrderChange?: PretableSurfaceProps<TRow>["onColumnOrderChange"];
   onColumnPinnedChange?: PretableSurfaceProps<TRow>["onColumnPinnedChange"];
+  onCellEdit?: PretableSurfaceProps<TRow>["onCellEdit"];
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -50,6 +51,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   onColumnWidthsChange,
   onColumnOrderChange,
   onColumnPinnedChange,
+  onCellEdit,
 }: PretableProps<TRow>) {
   const resolvedGetRowId =
     getRowId ??
@@ -141,6 +143,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
         onColumnWidthsChange={onColumnWidthsChange}
         onColumnOrderChange={onColumnOrderChange}
         onColumnPinnedChange={onColumnPinnedChange}
+        onCellEdit={onCellEdit}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
         viewportHeight={VIEWPORT_HEIGHT}
       />

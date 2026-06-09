@@ -43,6 +43,7 @@ export type {
 export type {
   PretableCellRenderInput,
   PretableColumn,
+  PretableEditorInput,
   PretableFormatInput,
   PretableHeaderRenderInput,
 } from "./types";
@@ -57,6 +58,10 @@ export type { DensityHeights } from "@pretable/ui";
 // Re-exports from @pretable/core (the engine types react users typically
 // touch — full headless surface lives in @pretable/core)
 export type {
+  PretableEditInput,
+  PretableEditState,
+  PretableEditStatus,
+  PretableFocusDirection,
   PretableGrid,
   PretableGridOptions,
   PretableGridSnapshot,
