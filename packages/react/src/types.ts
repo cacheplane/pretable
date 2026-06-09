@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type {
   PretableColumn as PretableBaseColumn,
+  PretableEditInput,
+  PretableFocusDirection,
   PretableFormatInput,
   PretableRow,
 } from "@pretable/core";
@@ -15,6 +17,24 @@ export interface PretableColumn<
 > extends PretableBaseColumn<TRow> {
   render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
   renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
+  renderEditor?: (input: PretableEditorInput<TRow>) => ReactNode;
+}
+
+/**
+ * Input passed to a column's `renderEditor`. Extends the engine edit input with
+ * draft controls bound to the active edit. `commit` accepts the focus direction
+ * to move after a successful commit (Enter → "down", Tab → "right").
+ *
+ * @public
+ */
+export interface PretableEditorInput<
+  TRow extends PretableRow = PretableRow,
+> extends Omit<PretableEditInput<TRow>, "column"> {
+  column: PretableColumn<TRow>;
+  draft: unknown;
+  setDraft: (value: unknown) => void;
+  commit: (direction?: PretableFocusDirection) => void;
+  cancel: () => void;
 }
 
 /**
