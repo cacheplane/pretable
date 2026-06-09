@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type {
   PretableColumn as PretableBaseColumn,
   PretableEditInput,
+  PretableEditStatus,
   PretableFocusDirection,
   PretableFormatInput,
   PretableRow,
@@ -31,6 +32,8 @@ export interface PretableEditorInput<
   TRow extends PretableRow = PretableRow,
 > extends Omit<PretableEditInput<TRow>, "column"> {
   column: PretableColumn<TRow>;
+  status: PretableEditStatus;
+  error?: string;
   draft: unknown;
   setDraft: (value: unknown) => void;
   commit: (direction?: PretableFocusDirection) => void;
