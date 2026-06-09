@@ -1799,10 +1799,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             row,
                             column,
                             value,
+                            status: cellEdit.status,
+                            error: cellEdit.error,
                             draft: cellEdit.draft,
                             setDraft: (v: unknown) => grid.setEditDraft(v),
                             commit: (dir?: PretableFocusDirection) =>
-                              void editController.commit(dir ?? "down"),
+                              void editController.commit(dir),
                             cancel: () => editController.cancel(),
                           } as unknown as PretableEditorInput
                         }

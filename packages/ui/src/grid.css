@@ -225,4 +225,35 @@
     border: 1px solid var(--pretable-rule);
     border-radius: var(--pretable-radius);
   }
+
+  /* Cell editor (inline editing) */
+  :where(.pretable-cell-editor) {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
+    border: none;
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+    background: var(--pretable-edit-bg);
+    color: var(--pretable-text-cell);
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+  }
+
+  :where(.pretable-cell-editor[aria-invalid="true"]) {
+    outline-color: var(--pretable-text-error);
+  }
+
+  :where(.pretable-cell-editor[aria-busy="true"]) {
+    opacity: 0.7;
+    cursor: wait;
+  }
+
+  :where([data-pretable-edit-error]) {
+    margin-top: 2px;
+    color: var(--pretable-text-error);
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+  }
 }

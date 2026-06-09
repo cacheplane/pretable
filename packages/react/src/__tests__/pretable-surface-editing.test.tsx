@@ -132,4 +132,64 @@ describe("PretableSurface editing", () => {
     expect(onFocusChange).not.toHaveBeenCalled();
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
+
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("shows a validation message and keeps the editor open on reject", async () => {
+    render(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={[
+          {
+            id: "name",
+            header: "Name",
+            editable: true,
+            validate: () => "too short",
+          },
+        ]}
+        rows={ROWS}
+        getRowId={(r) => r.id}
+        viewportHeight={300}
+        onCellEdit={vi.fn()}
+      />,
+    );
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "x" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await flush();
+    expect(screen.getByRole("alert")).toHaveTextContent("too short");
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+  });
+
+  it("shows an error and allows Enter-retry when commit rejects then resolves", async () => {
+    const onCellEdit = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("save failed"))
+      .mockResolvedValueOnce(undefined);
+    render(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={[{ id: "name", header: "Name", editable: true }]}
+        rows={ROWS}
+        getRowId={(r) => r.id}
+        viewportHeight={300}
+        onCellEdit={onCellEdit}
+      />,
+    );
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Ada L." },
+    });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await flush();
+    expect(screen.getByRole("alert")).toHaveTextContent("save failed");
+    // retry
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await flush();
+    expect(onCellEdit).toHaveBeenCalledTimes(2);
+  });
 });

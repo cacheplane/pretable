@@ -30,6 +30,8 @@
   --pretable-bg-selected: rgba(16, 124, 65, 0.1); /* Excel green range tint */
   --pretable-text-selected: #1f1f1f; /* Don't invert selection text */
   --pretable-focus-ring: #107c41; /* Excel app brand green active-cell border */
+  --pretable-edit-bg: #ffffff; /* editor field — matches grid surface */
+  --pretable-text-error: #b91c1c; /* invalid outline + error text */
 
   /* Accent */
   --pretable-accent: #107c41; /* Excel brand green */

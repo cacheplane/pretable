@@ -17,6 +17,7 @@ function makeInput(
     columnId: "name",
     row: { id: "r1", name: "Ada" },
     column: { id: "name" },
+    status: "editing",
     value: "Ada",
     draft: "Ada",
     setDraft: vi.fn(),
@@ -60,5 +61,62 @@ describe("CellEditor (default)", () => {
     });
     render(<CellEditor input={input} />);
     expect(screen.getByText("custom")).toBeInTheDocument();
+  });
+
+  it("commits in place (no direction) on blur while editing", () => {
+    const commit = vi.fn();
+    render(<CellEditor input={makeInput({ status: "editing", commit })} />);
+    fireEvent.blur(screen.getByRole("textbox"));
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledWith(); // no direction → no focus move
+  });
+
+  it("does NOT commit on blur while saving (no double-submit)", () => {
+    const commit = vi.fn();
+    render(<CellEditor input={makeInput({ status: "saving", commit })} />);
+    fireEvent.blur(screen.getByRole("textbox"));
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("renders the error message with role=alert and marks the input invalid", () => {
+    render(
+      <CellEditor
+        input={makeInput({ status: "editing", error: "too short" })}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("too short");
+    expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("associates the error message with the input via aria-errormessage", () => {
+    render(
+      <CellEditor
+        input={makeInput({ status: "editing", error: "too short" })}
+      />,
+    );
+    const box = screen.getByRole("textbox");
+    const alert = screen.getByRole("alert");
+    const errorId = box.getAttribute("aria-errormessage");
+    expect(errorId).toBeTruthy();
+    expect(alert).toHaveAttribute("id", errorId);
+  });
+
+  it("is readOnly and aria-busy while saving", () => {
+    render(<CellEditor input={makeInput({ status: "saving" })} />);
+    const box = screen.getByRole("textbox");
+    expect(box).toHaveAttribute("readonly");
+    expect(box).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("labels the input from column.header", () => {
+    render(
+      <CellEditor
+        input={makeInput({ column: { id: "name", header: "Full name" } })}
+      />,
+    );
+    expect(screen.getByRole("textbox")).toHaveAttribute(
+      "aria-label",
+      "Full name",
+    );
   });
 });

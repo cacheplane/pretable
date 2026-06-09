@@ -37,6 +37,8 @@ const TOKENS = [
   "pretable-reorder-ghost-bg",
   "pretable-reorder-ghost-shadow",
   "pretable-reorder-drop-indicator",
+  "pretable-edit-bg",
+  "pretable-text-error",
 ];
 
 const THEMES_DIR = path.resolve(__dirname, "../themes");
