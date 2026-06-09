@@ -80,7 +80,9 @@ describe("CellEditor (default)", () => {
 
   it("renders the error message with role=alert and marks the input invalid", () => {
     render(
-      <CellEditor input={makeInput({ status: "editing", error: "too short" })} />,
+      <CellEditor
+        input={makeInput({ status: "editing", error: "too short" })}
+      />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent("too short");
     expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
@@ -88,7 +90,9 @@ describe("CellEditor (default)", () => {
 
   it("associates the error message with the input via aria-errormessage", () => {
     render(
-      <CellEditor input={makeInput({ status: "editing", error: "too short" })} />,
+      <CellEditor
+        input={makeInput({ status: "editing", error: "too short" })}
+      />,
     );
     const box = screen.getByRole("textbox");
     const alert = screen.getByRole("alert");
