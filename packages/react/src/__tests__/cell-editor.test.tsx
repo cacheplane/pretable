@@ -86,6 +86,17 @@ describe("CellEditor (default)", () => {
     expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
   });
 
+  it("associates the error message with the input via aria-errormessage", () => {
+    render(
+      <CellEditor input={makeInput({ status: "editing", error: "too short" })} />,
+    );
+    const box = screen.getByRole("textbox");
+    const alert = screen.getByRole("alert");
+    const errorId = box.getAttribute("aria-errormessage");
+    expect(errorId).toBeTruthy();
+    expect(alert).toHaveAttribute("id", errorId);
+  });
+
   it("is readOnly and aria-busy while saving", () => {
     render(<CellEditor input={makeInput({ status: "saving" })} />);
     const box = screen.getByRole("textbox");

@@ -31,6 +31,7 @@ export function CellEditor({ input }: CellEditorProps) {
   }
 
   const pending = PENDING_STATUSES.has(input.status);
+  const errorId = `pretable-edit-error-${input.rowId}-${input.columnId}`;
 
   return (
     <>
@@ -39,6 +40,7 @@ export function CellEditor({ input }: CellEditorProps) {
         className="pretable-cell-editor"
         aria-label={input.column.header ?? input.columnId}
         aria-invalid={input.error ? true : undefined}
+        aria-errormessage={input.error ? errorId : undefined}
         aria-busy={pending ? true : undefined}
         readOnly={pending}
         value={String(input.draft ?? "")}
@@ -66,7 +68,7 @@ export function CellEditor({ input }: CellEditorProps) {
         }}
       />
       {input.error ? (
-        <div data-pretable-edit-error role="alert">
+        <div id={errorId} data-pretable-edit-error role="alert">
           {input.error}
         </div>
       ) : null}
