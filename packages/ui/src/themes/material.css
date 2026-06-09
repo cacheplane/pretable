@@ -33,6 +33,8 @@
   --pretable-bg-selected: #d1e4ff; /* secondary-container — M3 baseline blue */
   --pretable-text-selected: #001d36; /* on-secondary-container */
   --pretable-focus-ring: #0061a4; /* primary */
+  --pretable-edit-bg: #fcfcfc; /* N99 — matches grid surface */
+  --pretable-text-error: #b3261e; /* M3 error (light) */
 
   /* Accent */
   --pretable-accent: #0061a4; /* primary — M3 baseline blue */
@@ -108,6 +110,8 @@
   --pretable-bg-selected: #00497d; /* secondary-container — M3 baseline blue (dark) */
   --pretable-text-selected: #d1e4ff; /* on-secondary-container */
   --pretable-focus-ring: #9ecaff; /* primary (dark) */
+  --pretable-edit-bg: #1c1c1c; /* surface-container-low (dark) */
+  --pretable-text-error: #f2b8b5; /* M3 error (dark) */
 
   --pretable-accent: #9ecaff;
 }
