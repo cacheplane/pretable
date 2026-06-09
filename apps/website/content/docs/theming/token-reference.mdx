@@ -1,13 +1,13 @@
 ---
 title: Token reference
-description: "The 34-token --pretable-* surface, with shape, default, and purpose for each."
+description: "The 36-token --pretable-* surface, with shape, default, and purpose for each."
 nav: Theming
 order: 8
 ---
 
-Pretable's public theming surface is 34 CSS variables, all `--pretable-*` prefixed. Each theme defines all 34 at `:root`. Excel and Material 3 ship preset values; consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
+Pretable's public theming surface is 36 CSS variables, all `--pretable-*` prefixed. Each theme defines all 36 at `:root`. Excel and Material 3 ship preset values; consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
 
-> Two tokens — `--pretable-row-height` and `--pretable-header-height` — are read by the engine in JavaScript via the `useResolvedHeights` hook. The other 32 are CSS-only.
+> Two tokens — `--pretable-row-height` and `--pretable-header-height` — are read by the engine in JavaScript via the `useResolvedHeights` hook. The other 34 are CSS-only.
 
 ## Surfaces (5)
 
@@ -43,6 +43,15 @@ Pretable's public theming surface is 34 CSS variables, all `--pretable-*` prefix
 | `--pretable-bg-selected`   | Selected cell/row background              | color | `rgba(16, 124, 65, 0.10)` | `#e8def8` (`secondary-container`)            |
 | `--pretable-text-selected` | Selected cell/row text color              | color | `#1f1f1f`                 | `#1d192b` (`on-secondary-container`)         |
 | `--pretable-focus-ring`    | Focus outline color (cell focus, kbd nav) | color | `#107c41` (Excel green)   | `#6750a4` (`primary`)                        |
+
+## Editing (2)
+
+These tokens skin the inline cell editor (see [Editing](/docs/grid/editing)).
+
+| Token                   | Description                                        | Type  | Excel     | Material 3 (light)  |
+| ----------------------- | -------------------------------------------------- | ----- | --------- | ------------------- |
+| `--pretable-edit-bg`    | Editor field surface (matches the grid background) | color | `#ffffff` | `#fcfcfc` (`N99`)   |
+| `--pretable-text-error` | Invalid-input outline + inline error-message text  | color | `#b91c1c` | `#b3261e` (`error`) |
 
 ## Accent (1)
 

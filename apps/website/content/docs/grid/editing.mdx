@@ -162,6 +162,16 @@ if (editing?.status === "saving") {
   the lifecycle for you.
 </Callout>
 
+## Default editor behavior
+
+The default text editor handles commit, errors, and pending state for you — no wiring required:
+
+- **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.)
+- **Failures keep the editor open.** When `validate` rejects (returns a string) or `onCellEdit` throws, the editor stays open and renders the message inline below the field — so the user can fix the value and try again. Press `Enter` to retry a failed commit, or `Escape` to cancel.
+- **Async work locks the field.** While an async `editable`, `validate`, or `onCellEdit` is in flight (the `checking`, `validating`, and `saving` phases), the input is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
+
+For custom styling, two DOM hooks are exposed: the editing cell carries `data-pretable-edit-status` (the current [lifecycle phase](#lifecycle)), and the inline error element carries `data-pretable-edit-error`. The `@pretable/ui` skin styles both — the field outline turns `--pretable-text-error` while invalid, and the message renders in the same color.
+
 ## Keyboard
 
 Editing reuses the focused cell from the [selection](/docs/grid/selection) model.
