@@ -1,235 +1,56 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createPortfolioReplay } from "../replay-engine";
+import type { PositionRow } from "../types";
 
-import { createRaceReplay } from "../replay-engine";
-import type { RaceRow } from "../types";
+// Minimal recording: 2 rows via element stream + one tick + one commentary.
+const RECORDING = [
+  JSON.stringify({ type: "response.created", t: 0 }),
+  JSON.stringify({
+    type: "response.output_text.delta", t: 10,
+    delta: JSON.stringify([
+      { id: "AAA", symbol: "AAA", name: "Aaa", sector: "Technology", qty: 10, last: 100, mktValue: 1000, dayPnl: 0, dayPnlPct: 0, weight: 60, analyst: "", flag: "hold" },
+      { id: "BBB", symbol: "BBB", name: "Bbb", sector: "Energy", qty: 5, last: 50, mktValue: 250, dayPnl: 0, dayPnlPct: 0, weight: 40, analyst: "", flag: "hold" },
+    ]),
+  }),
+  JSON.stringify({ type: "response.completed", t: 20 }),
+  JSON.stringify({ t: 0.4, type: "tick", patches: [{ id: "AAA", last: 101, mktValue: 1010, dayPnl: 10, dayPnlPct: 1 }] }),
+  JSON.stringify({ t: 0.8, type: "commentary", patches: [{ id: "AAA", analyst: "Up on volume." }] }),
+].join("\n") + "\n";
 
-// Tiny inline recording: 2 racers in phase 1, then phase 2 events covering
-// every event-type so we can assert tier filters.
-const FIXTURE = (() => {
-  const arr = JSON.stringify([
-    {
-      id: "r-001",
-      bib: 1,
-      racer: "A 🇨🇭",
-      gate1: "",
-      gate2: "",
-      gate3: "",
-      finish: "",
-      delta: "",
-      status: "dns",
-      notes: "",
-    },
-    {
-      id: "r-002",
-      bib: 2,
-      racer: "B 🇳🇴",
-      gate1: "",
-      gate2: "",
-      gate3: "",
-      finish: "",
-      delta: "",
-      status: "dns",
-      notes: "",
-    },
-  ]);
-  const lines: string[] = [];
-  lines.push(JSON.stringify({ t: 0.0, type: "response.created" }));
-  // chunk arr into 16-char deltas
-  let cursor = 0;
-  let t = 0.1;
-  while (cursor < arr.length) {
-    lines.push(
-      JSON.stringify({
-        t,
-        type: "response.output_text.delta",
-        delta: arr.slice(cursor, cursor + 16),
-      }),
-    );
-    cursor += 16;
-    t += 0.01;
-  }
-  lines.push(JSON.stringify({ t, type: "response.completed" }));
-  // phase 2 — packed into ~0.5s of virtual time so test windows stay short
-  // (engine plays at 1× wall-time pace at every tier; rate envelope only
-  // controls event-type filtering and HEAVY telemetry density)
-  lines.push(
-    JSON.stringify({
-      t: 0.1,
-      type: "update",
-      patches: [{ id: "r-001", status: "running" }],
-    }),
-  );
-  lines.push(
-    JSON.stringify({
-      t: 0.2,
-      type: "update",
-      patches: [{ id: "r-001", gate1: "00:14.32" }],
-    }),
-  );
-  lines.push(
-    JSON.stringify({
-      t: 0.3,
-      type: "update",
-      patches: [
-        {
-          id: "r-001",
-          finish: "01:18.84",
-          status: "finished",
-          delta: "LEADER",
-        },
-      ],
-    }),
-  );
-  lines.push(
-    JSON.stringify({
-      t: 0.35,
-      type: "rerank",
-      patches: [{ id: "r-002", delta: "+1.20" }],
-    }),
-  );
-  lines.push(
-    JSON.stringify({
-      t: 0.4,
-      type: "commentary",
-      patches: [{ id: "r-001", notes: "Aggressive" }],
-    }),
-  );
-  return lines.join("\n");
-})();
+let rafCbs: Array<(t: number) => void>;
+beforeEach(() => {
+  rafCbs = [];
+  vi.stubGlobal("requestAnimationFrame", (cb: (t: number) => void) => { rafCbs.push(cb); return rafCbs.length; });
+  vi.stubGlobal("cancelAnimationFrame", () => {});
+});
+afterEach(() => vi.unstubAllGlobals());
 
-describe("createRaceReplay", () => {
-  // The global test setup (apps/website/__tests__/setup.ts) stubs
-  // requestAnimationFrame as a no-op to prevent React rerender storms in
-  // component tests. For replay-engine tests we need a real rAF, so we
-  // override the stub for this suite.
-  let originalRaf: typeof globalThis.requestAnimationFrame;
-  let originalCaf: typeof globalThis.cancelAnimationFrame;
-  beforeEach(() => {
-    originalRaf = globalThis.requestAnimationFrame;
-    originalCaf = globalThis.cancelAnimationFrame;
-    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) =>
-      setTimeout(
-        () => cb(performance.now()),
-        0,
-      ) as unknown as number) as typeof globalThis.requestAnimationFrame;
-    globalThis.cancelAnimationFrame = ((id: number) =>
-      clearTimeout(
-        id as unknown as NodeJS.Timeout,
-      )) as typeof globalThis.cancelAnimationFrame;
-  });
-  afterEach(() => {
-    globalThis.requestAnimationFrame = originalRaf;
-    globalThis.cancelAnimationFrame = originalCaf;
-    vi.restoreAllMocks();
-  });
+function flushRaf(nowMs: number) {
+  const cbs = rafCbs; rafCbs = [];
+  for (const cb of cbs) cb(nowMs);
+}
 
-  it("phase 1: parses deltas via parseElementStream and emits add per row", async () => {
-    const adds: RaceRow[] = [];
-    const replay = createRaceReplay({
-      recording: FIXTURE,
-      ratePerSec: 60,
-      isPlaying: true,
-      onTransaction: (tx) => {
-        if (tx.add) adds.push(...tx.add);
-      },
+describe("createPortfolioReplay", () => {
+  it("emits add transactions for each parsed row (Phase 1)", async () => {
+    const adds: PositionRow[] = [];
+    const replay = createPortfolioReplay({
+      recording: RECORDING, ratePerSec: 60, isPlaying: true,
+      onTransaction: (tx) => { if (tx.add) adds.push(...tx.add); },
     });
-    // give the async parser time to run
-    await new Promise((r) => setTimeout(r, 200));
-    expect(adds.filter((r) => r.id === "r-001")).toHaveLength(1);
-    expect(adds.filter((r) => r.id === "r-002")).toHaveLength(1);
+    await vi.waitFor(() => expect(adds.map((r) => r.id)).toEqual(["AAA", "BBB"]));
     replay.dispose();
   });
 
-  it("phase 2: at PROD tier emits update + rerank + commentary patches", async () => {
-    const updates: Array<Partial<RaceRow>> = [];
-    const replay = createRaceReplay({
-      recording: FIXTURE,
-      ratePerSec: 60,
-      isPlaying: true,
-      onTransaction: (tx) => {
-        if (tx.update) updates.push(...tx.update);
-      },
+  it("drains tick + commentary patches on the virtual clock (Phase 2)", async () => {
+    const updates: Array<Partial<PositionRow>> = [];
+    const replay = createPortfolioReplay({
+      recording: RECORDING, ratePerSec: 60, isPlaying: true,
+      onTransaction: (tx) => { if (tx.update) updates.push(...tx.update); },
     });
-    // run long enough for virtual t=14 to elapse at 1× wall-time
-    await new Promise((r) => setTimeout(r, 1500));
-    const r1 = updates.filter((u) => u.id === "r-001");
-    // running, gate1, finish, commentary — at least 4 update events for r-001
-    expect(r1.length).toBeGreaterThanOrEqual(3);
-    // rerank for r-002
-    expect(updates.some((u) => u.id === "r-002" && u.delta === "+1.20")).toBe(
-      true,
-    );
-    replay.dispose();
-  }, 4000);
-
-  it("LIGHT tier filters out rerank + commentary patches", async () => {
-    const updates: Array<Partial<RaceRow>> = [];
-    const replay = createRaceReplay({
-      recording: FIXTURE,
-      ratePerSec: 10,
-      isPlaying: true,
-      onTransaction: (tx) => {
-        if (tx.update) updates.push(...tx.update);
-      },
-    });
-    await new Promise((r) => setTimeout(r, 1500));
-    // No rerank: r-002 should never have its delta updated
-    expect(updates.some((u) => u.id === "r-002" && u.delta)).toBe(false);
-    // No commentary: r-001 should never have its notes updated
-    expect(updates.some((u) => u.id === "r-001" && u.notes)).toBe(false);
-    replay.dispose();
-  }, 4000);
-
-  it("HEAVY tier synthesizes telemetry add rows (id starts with tel-)", async () => {
-    const adds: RaceRow[] = [];
-    const replay = createRaceReplay({
-      recording: FIXTURE,
-      ratePerSec: 250,
-      isPlaying: true,
-      onTransaction: (tx) => {
-        if (tx.add) adds.push(...tx.add);
-      },
-    });
-    await new Promise((r) => setTimeout(r, 500));
-    const tel = adds.filter((r) => r.id.startsWith("tel-"));
-    expect(tel.length).toBeGreaterThan(0);
-    expect(tel[0].bib).toBe("—");
-    expect(tel[0].racer).toMatch(/sensor|wind|gate|chairlift/i);
-    replay.dispose();
-  }, 2000);
-
-  it("LIGHT and PROD tiers do not synthesize telemetry", async () => {
-    for (const rate of [10, 60] as const) {
-      const adds: RaceRow[] = [];
-      const replay = createRaceReplay({
-        recording: FIXTURE,
-        ratePerSec: rate,
-        isPlaying: true,
-        onTransaction: (tx) => {
-          if (tx.add) adds.push(...tx.add);
-        },
-      });
-      await new Promise((r) => setTimeout(r, 300));
-      const tel = adds.filter((r) => r.id.startsWith("tel-"));
-      expect(tel).toHaveLength(0);
-      replay.dispose();
-    }
-  }, 2000);
-
-  it("setPlaying(false) pauses dispatch", async () => {
-    const callback = vi.fn();
-    const replay = createRaceReplay({
-      recording: FIXTURE,
-      ratePerSec: 60,
-      isPlaying: true,
-      onTransaction: callback,
-    });
-    await new Promise((r) => setTimeout(r, 100));
-    replay.setPlaying(false);
-    callback.mockClear();
-    await new Promise((r) => setTimeout(r, 200));
-    // No NEW dispatches after pause (allow one already-in-flight microtask)
-    expect(callback.mock.calls.length).toBeLessThanOrEqual(1);
+    flushRaf(0);     // establish clock baseline
+    flushRaf(1000);  // advance 1 virtual second → both t=0.4 and t=0.8 fire
+    expect(updates.find((u) => (u as { last?: number }).last === 101)).toBeTruthy();
+    expect(updates.find((u) => (u as { analyst?: string }).analyst === "Up on volume.")).toBeTruthy();
     replay.dispose();
   });
 });
