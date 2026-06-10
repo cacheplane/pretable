@@ -34,9 +34,9 @@ export function DrawerHero() {
           Built for the AI era.
         </h1>
         <p className="mx-auto mt-5 max-w-[56ch] font-display text-[17px] leading-[1.55] text-text-secondary">
-          60fps under streaming load. Zero row drift. A deterministic engine
-          designed for live data, agent output, and real-time telemetry — not
-          retrofitted from a batch-era grid.
+          60fps under live market load. Zero row drift while an AI analyst
+          streams wrapped commentary beside ticking prices — the grid built for
+          live, AI-augmented data, not retrofitted from a batch-era table.
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <CopyPromptButton prompt={DRAWER_HERO_PROMPT} />
@@ -50,6 +50,9 @@ export function DrawerHero() {
         </div>
         <p className="mt-8 font-mono text-[11px] text-text-muted">
           MIT licensed · open source
+        </p>
+        <p className="mt-2 font-mono text-[10px] text-text-muted">
+          Demo uses illustrative, synthetic market data — not investment advice.
         </p>
       </div>
     </section>
