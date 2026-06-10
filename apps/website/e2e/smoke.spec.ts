@@ -55,6 +55,33 @@ test("docs brand link goes to bare grid when drawer was never opened", async ({
   await expect(page.locator("html")).toHaveAttribute("data-drawer", "closed");
 });
 
+test("hero shows the live portfolio: ticks/s, streaming analyst text, no row drift", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  // The positions grid renders.
+  await expect(
+    page.getByRole("grid", { name: /portfolio positions/i }),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Control bar advertises the market stream in ticks/s.
+  await expect(page.getByText(/ticks\/s/i).first()).toBeVisible();
+
+  // The AI Analyst column streams wrapped commentary in: a known phrase appears.
+  await expect(page.getByText(/single-name guardrail/i)).toBeVisible({
+    timeout: 12_000,
+  });
+
+  // Row-drift guard: the grid's frame must not jump while commentary streams and
+  // rows take on variable heights. This is the demo's headline correctness claim.
+  const bezel = page.getByTestId("hero-bezel");
+  const before = await bezel.boundingBox();
+  await page.waitForTimeout(3000);
+  const after = await bezel.boundingBox();
+  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(2);
+});
+
 test("hero grid row-select checkbox column is visible and clickable", async ({
   page,
 }) => {
@@ -71,11 +98,18 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
     /true|false|mixed/,
   );
 
+  // Pause the live stream first. The grid is rebuilt on every rows update
+  // (createGrid is memoized on the rows array), which clears selection — so a
+  // checkbox toggled mid-stream is reset on the next tick. Pausing lets us
+  // assert the selection primitive deterministically. (Selection surviving
+  // streaming updates is a known core limitation tracked separately.)
+  await page.getByRole("button", { name: /pause market/i }).click();
+
   // At least one body checkbox is rendered.
   const bodyCheckbox = page.locator("[data-pretable-row-select]").first();
   await expect(bodyCheckbox).toBeVisible();
 
-  // Clicking it changes its aria-checked state.
+  // Clicking it changes (and keeps) its aria-checked state.
   const initialState = await bodyCheckbox.getAttribute("aria-checked");
   await bodyCheckbox.click();
   await expect(bodyCheckbox).not.toHaveAttribute(

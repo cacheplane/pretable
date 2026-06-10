@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { COMMENTARY } from "../commentary";
-import { ROSTER } from "../roster";
+import { ROSTER, startingPositions } from "../roster";
 import type { PositionRow } from "../types";
 
 /** Deterministic seeded PRNG (mulberry32). */
@@ -24,32 +24,12 @@ const TICK_HZ = 8;            // price updates per second across the book
 interface Phase1Event { type: "response.created" | "response.output_text.delta" | "response.completed"; t: number; delta?: string }
 interface Phase2Event { t: number; type: "tick" | "commentary" | "flag"; patches: Array<Partial<PositionRow> & { id: string }> }
 
-function startingRows(): PositionRow[] {
-  // Compute weights from market value so the default weight-desc sort is correct.
-  const base = ROSTER.map((e) => ({ ...e, mkt: e.qty * e.price }));
-  const nav = base.reduce((s, e) => s + e.mkt, 0);
-  return base.map((e) => ({
-    id: e.symbol,
-    symbol: e.symbol,
-    name: e.name,
-    sector: e.sector,
-    qty: e.qty,
-    last: e.price,
-    mktValue: e.mkt,
-    dayPnl: 0,
-    dayPnlPct: 0,
-    weight: Number(((e.mkt / nav) * 100).toFixed(1)),
-    analyst: "",
-    flag: "hold",
-  }));
-}
-
 export function generatePortfolioRecording(): string {
   const rand = mulberry32(SEED);
   const lines: string[] = [];
 
   // ---- Phase 1: stream the roster as chunked JSON deltas ----
-  const rows = startingRows();
+  const rows = startingPositions();
   const json = JSON.stringify(rows);
   let t = 0;
   lines.push(JSON.stringify({ type: "response.created", t } satisfies Phase1Event));

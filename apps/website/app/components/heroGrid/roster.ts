@@ -1,4 +1,6 @@
 // apps/website/app/components/heroGrid/roster.ts
+import type { PositionRow } from "./types";
+
 export interface RosterEntry {
   symbol: string;
   name: string;
@@ -37,3 +39,27 @@ export const ROSTER: RosterEntry[] = [
   { symbol: "KO", name: "Coca-Cola Co", sector: "Consumer", qty: 26000, price: 62.0, vol: 0.5 },
   { symbol: "WMT", name: "Walmart Inc", sector: "Consumer", qty: 17000, price: 68.0, vol: 0.6 },
 ];
+
+/**
+ * The opening book as `PositionRow[]` (weights derived from market value).
+ * Shared by the recording generator (Phase-1 source) and the HeroGrid
+ * reduced-motion fallback (a settled, non-animating snapshot).
+ */
+export function startingPositions(): PositionRow[] {
+  const base = ROSTER.map((e) => ({ ...e, mkt: e.qty * e.price }));
+  const nav = base.reduce((s, e) => s + e.mkt, 0);
+  return base.map((e) => ({
+    id: e.symbol,
+    symbol: e.symbol,
+    name: e.name,
+    sector: e.sector,
+    qty: e.qty,
+    last: e.price,
+    mktValue: e.mkt,
+    dayPnl: 0,
+    dayPnlPct: 0,
+    weight: Number(((e.mkt / nav) * 100).toFixed(1)),
+    analyst: "",
+    flag: "hold",
+  }));
+}

@@ -8,6 +8,7 @@ import { positionColumns } from "./heroGrid/positionColumns";
 import { PORTFOLIO_RECORDING } from "./heroGrid/recordings/portfolio";
 import { createPortfolioReplay } from "./heroGrid/replay-engine";
 import { PortfolioSummary } from "./heroGrid/PortfolioSummary";
+import { startingPositions } from "./heroGrid/roster";
 import { applySort, type ColumnId, type SortState } from "./heroGrid/sort";
 import type { PositionRow } from "./heroGrid/types";
 import styles from "./heroGrid/heroGrid.module.css";
@@ -40,7 +41,15 @@ export function HeroGrid() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    if (reduce) return;
+    if (reduce) {
+      // No streaming for reduced-motion users — show a settled snapshot of the
+      // book so the hero isn't blank. One-time seed: it can't be a lazy
+      // useState initializer because the media query is client-only and would
+      // hydration-mismatch the server's empty render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot snapshot, runs once then returns
+      setRows(startingPositions());
+      return;
+    }
 
     const replay = createPortfolioReplay({
       recording: PORTFOLIO_RECORDING,
