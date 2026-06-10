@@ -21,7 +21,7 @@ describe("TopControlBar", () => {
   it("renders the brand link to the home page", () => {
     render(
       <ControlStateProvider>
-        <TopControlBar fps={60} eventsPerSec={1000} p95Ms={9.3} />
+        <TopControlBar fps={60} ticksPerSec={1000} p95Ms={9.3} />
       </ControlStateProvider>,
     );
     const brand = screen.getByRole("link", { name: /pretable\.ai/i });
@@ -31,7 +31,7 @@ describe("TopControlBar", () => {
   it("renders the live counter with events/sec, p95, and fps", () => {
     render(
       <ControlStateProvider>
-        <TopControlBar fps={59} eventsPerSec={1247} p95Ms={9.3} />
+        <TopControlBar fps={59} ticksPerSec={1247} p95Ms={9.3} />
       </ControlStateProvider>,
     );
     expect(screen.getByText(/1,247/)).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe("TopControlBar", () => {
     let captured: ReturnType<typeof useControlState> | null = null;
     render(
       <ControlStateProvider>
-        <TopControlBar fps={60} eventsPerSec={1000} p95Ms={9.3} />
+        <TopControlBar fps={60} ticksPerSec={1000} p95Ms={9.3} />
         <ControlsAccessor onState={(s) => (captured = s)} />
       </ControlStateProvider>,
     );
@@ -58,11 +58,11 @@ describe("TopControlBar", () => {
     let captured: ReturnType<typeof useControlState> | null = null;
     render(
       <ControlStateProvider>
-        <TopControlBar fps={60} eventsPerSec={1000} p95Ms={9.3} />
+        <TopControlBar fps={60} ticksPerSec={1000} p95Ms={9.3} />
         <ControlsAccessor onState={(s) => (captured = s)} />
       </ControlStateProvider>,
     );
-    fireEvent.click(screen.getByRole("radio", { name: /heavy/i }));
+    fireEvent.click(screen.getByRole("radio", { name: /volatile/i }));
     expect(captured!.ratePerSec).toBe(250);
   });
 });
