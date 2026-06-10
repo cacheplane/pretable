@@ -19,7 +19,7 @@ export interface PortfolioReplay {
 
 interface Phase2Event { t: number; type: Phase2Type; patches: Array<Partial<PositionRow> & { id: string }> }
 
-/** LIGHT drops ~⅔ of ticks; PRODUCTION keeps all; HEAVY keeps all (caller dups for throughput). */
+/** LIGHT drops ~⅔ of ticks; PRODUCTION keeps all; HEAVY keeps all (engine dups for throughput). */
 function tickAllowed(rate: TickRate, index: number): boolean {
   if (rate === 10) return index % 3 === 0;
   return true;

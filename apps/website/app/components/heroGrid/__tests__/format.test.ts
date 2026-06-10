@@ -13,6 +13,7 @@ describe("format helpers", () => {
   it("formats signed percent", () => {
     expect(fmtPct(1.38)).toBe("+1.38%");
     expect(fmtPct(-2.0)).toBe("−2.00%");
+    expect(fmtPct(0)).toBe("0.00%");
   });
   it("formats compact USD for large values", () => {
     expect(fmtCompactUsd(10_900_000)).toBe("$10.9M");

@@ -13,7 +13,8 @@ export function fmtSignedUsd(value: number): string {
 }
 
 export function fmtPct(value: number): string {
-  const sign = value >= 0 ? "+" : MINUS;
+  if (value === 0) return "0.00%"; // unsigned at zero, matching fmtSignedUsd("$0")
+  const sign = value > 0 ? "+" : MINUS;
   return `${sign}${Math.abs(value).toFixed(2)}%`;
 }
 
