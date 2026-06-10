@@ -1,0 +1,19 @@
+.symbol { font-weight: 700; }
+.symbolSub { display: block; font-size: 11px; opacity: 0.55; font-weight: 400; }
+.num { font-variant-numeric: tabular-nums; }
+.up { color: var(--pretable-pos, #1a8f50); }
+.down { color: var(--pretable-neg, #c0392b); }
+.flash { display: inline-block; padding: 0 2px; border-radius: 3px; }
+.flashUp { animation: flashUp 1s ease-out; }
+.flashDown { animation: flashDown 1s ease-out; }
+@keyframes flashUp { from { background: rgba(26, 143, 80, 0.28); } to { background: transparent; } }
+@keyframes flashDown { from { background: rgba(192, 57, 57, 0.28); } to { background: transparent; } }
+.analyst { line-height: 1.45; }
+.subline { display: block; font-size: 11px; opacity: 0.55; }
+.pill { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+.pillTrim, .pillWatch { background: rgba(184, 120, 0, 0.16); color: #b87800; }
+.pillRisk { background: rgba(192, 57, 57, 0.16); color: #c0392b; }
+.pillHold { background: rgba(26, 143, 80, 0.16); color: #1a8f50; }
+@media (prefers-reduced-motion: reduce) {
+  .flashUp, .flashDown { animation: none; }
+}
