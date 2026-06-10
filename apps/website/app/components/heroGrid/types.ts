@@ -1,20 +1,32 @@
-export interface RaceRow extends Record<string, unknown> {
-  /** Stable row id; matches `bib` for race rows, `tel-{n}` for telemetry rows at HEAVY tier. */
+// apps/website/app/components/heroGrid/types.ts
+/** Severity tag the AI analyst assigns a holding. */
+export type PositionFlag = "trim" | "hold" | "watch" | "risk";
+
+/**
+ * One holding in the demo portfolio.
+ *
+ * `last`/`mktValue`/`dayPnl`/`dayPnlPct`/`weight` are mutated by Phase-2 `tick`
+ * events. `analyst` grows via `commentary` events (wrapped, variable height).
+ * `flag` changes via `flag` events. `lastDir`/`tickSeq` are render-only fields
+ * the HeroGrid reducer sets when applying a tick — they drive the price flash
+ * and are never present in the recording.
+ */
+export interface PositionRow extends Record<string, unknown> {
+  /** Stable row id; equals `symbol`. */
   id: string;
-  /** Bib number — 1..30 for race rows, "—" for telemetry rows. */
-  bib: number | "—";
-  /** Racer display: "Marco Odermatt 🇨🇭" — flag is a Unicode emoji. */
-  racer: string;
-  /** Intermediate split times in mm:ss.cc format. Empty until racer crosses the gate. */
-  gate1: string;
-  gate2: string;
-  gate3: string;
-  /** Final run time. Empty until racer finishes. */
-  finish: string;
-  /** Signed delta to current leader: "+0.32" / "-0.04" / "LEADER". Empty until racer finishes. */
-  delta: string;
-  /** Lifecycle: "dns" → "running" → "finished" / "DNF" / "DSQ". */
-  status: "dns" | "running" | "finished" | "DNF" | "DSQ";
-  /** Race commentary; multiline; streams in token-by-token at PROD+ tiers. */
-  notes: string;
+  symbol: string;
+  name: string;
+  sector: string;
+  qty: number;
+  last: number;
+  mktValue: number;
+  dayPnl: number;
+  dayPnlPct: number;
+  weight: number;
+  analyst: string;
+  flag: PositionFlag;
+  /** Render-only: direction of the most recent price change. */
+  lastDir?: "up" | "down";
+  /** Render-only: increments on every tick so the flash animation restarts. */
+  tickSeq?: number;
 }
