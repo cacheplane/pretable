@@ -30,33 +30,40 @@ function parsePxLength(value: string | null | undefined): number {
  * we fall back to `scrollHeight` so non-DOM unit tests keep their behavior.
  */
 function measureCellContentHeight(cell: HTMLElement): number {
+  // jsdom has no layout engine — every element reports a zero-size box. There we
+  // keep the original scrollHeight-based measurement so the non-DOM unit tests
+  // hold. (A real browser always gives the cell a non-zero width.)
+  const cellRect = cell.getBoundingClientRect();
+  if (cellRect.width <= 0 && cellRect.height <= 0) {
+    return cell.scrollHeight;
+  }
+
+  const style = getComputedStyle(cell);
+  const padding =
+    parsePxLength(style.paddingTop) + parsePxLength(style.paddingBottom);
+  const border =
+    parsePxLength(style.borderTopWidth) + parsePxLength(style.borderBottomWidth);
+
+  // Measure the intrinsic content extent with a Range — independent of the
+  // cell's flex-stretched box height, so the result is idempotent. We must NOT
+  // read `scrollHeight` here: a cell stretches to the row height (height:100%),
+  // so its scrollHeight reports the applied row height back and feeds into a
+  // measurement loop that, under frequent re-renders, never settles. An empty
+  // cell legitimately measures 0; the row-level MIN clamp covers that.
   let content = 0;
   try {
-    const range = cell.ownerDocument?.createRange?.();
-    if (range && typeof range.getBoundingClientRect === "function") {
-      range.selectNodeContents(cell);
-      const rect = range.getBoundingClientRect();
-      content = rect ? rect.height : 0;
-    }
+    const range = cell.ownerDocument.createRange();
+    range.selectNodeContents(cell);
+    const rect = range.getBoundingClientRect();
+    content = rect ? rect.height : 0;
   } catch {
     content = 0;
   }
-
-  if (Number.isFinite(content) && content > 0) {
-    // Reconstruct the cell's padding-box height from the measured content
-    // extent. This equals a non-stretched `scrollHeight` but is idempotent.
-    const style = getComputedStyle(cell);
-    const padding =
-      parsePxLength(style.paddingTop) + parsePxLength(style.paddingBottom);
-    const border =
-      parsePxLength(style.borderTopWidth) +
-      parsePxLength(style.borderBottomWidth);
-    return content + padding + border;
+  if (!Number.isFinite(content) || content < 0) {
+    content = 0;
   }
 
-  // jsdom (no layout engine, so the Range has no geometry) or an empty cell:
-  // fall back to the original scrollHeight-based measurement unchanged.
-  return cell.scrollHeight;
+  return content + padding + border;
 }
 
 /**

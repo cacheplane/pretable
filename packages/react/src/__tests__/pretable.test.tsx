@@ -287,6 +287,12 @@ it("measures a wrapped cell's content via a Range, ignoring the stretched box", 
     configurable: true,
     value: 999, // stretched-box readback — must be ignored
   });
+  // Simulate a real layout engine (jsdom reports a zero-size box), so the
+  // Range-based content path is taken instead of the jsdom scrollHeight path.
+  Object.defineProperty(cell, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({ width: 200, height: 56 }),
+  });
 
   const origCreateRange = document.createRange;
   const origGetComputedStyle = window.getComputedStyle;
