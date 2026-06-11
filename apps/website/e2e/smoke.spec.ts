@@ -98,22 +98,15 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
     /true|false|mixed/,
   );
 
-  // Pause the live stream first. The grid is rebuilt on every rows update
-  // (createGrid is memoized on the rows array), which clears selection — so a
-  // checkbox toggled mid-stream is reset on the next tick. Pausing lets us
-  // assert the selection primitive deterministically. (Selection surviving
-  // streaming updates is a known core limitation tracked separately.)
-  await page.getByRole("button", { name: /pause market/i }).click();
-
   // At least one body checkbox is rendered.
   const bodyCheckbox = page.locator("[data-pretable-row-select]").first();
   await expect(bodyCheckbox).toBeVisible();
 
-  // Clicking it changes (and keeps) its aria-checked state.
-  const initialState = await bodyCheckbox.getAttribute("aria-checked");
+  // Select a row WHILE the stream is live and confirm it stays selected across
+  // several ticks. The grid reconciles row updates in place rather than
+  // recreating itself, so selection survives streaming.
   await bodyCheckbox.click();
-  await expect(bodyCheckbox).not.toHaveAttribute(
-    "aria-checked",
-    initialState ?? "false",
-  );
+  await expect(bodyCheckbox).toHaveAttribute("aria-checked", "true");
+  await page.waitForTimeout(2000); // several stream ticks
+  await expect(bodyCheckbox).toHaveAttribute("aria-checked", "true");
 });

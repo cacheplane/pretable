@@ -144,10 +144,37 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   onSelectionChange,
   onFocusChange,
 }: UsePretableOptions<TRow>): PretableModel<TRow> {
+  // getRowId may be an inline closure that changes identity every render. Wrap
+  // it in a stable function so it never forces the grid — and the selection /
+  // focus state it holds — to be recreated. Mirrors createSourceRows' default.
+  const getRowIdRef = useRef(getRowId);
+  getRowIdRef.current = getRowId;
+  const stableGetRowId = useRef(
+    (row: TRow, index: number): string =>
+      getRowIdRef.current?.(row, index) ?? String(index),
+  ).current;
+
+  // Create the grid once per columns/getRowId/autosize identity. Row data is
+  // reconciled in place via grid.setRows (below) rather than by recreating the
+  // grid, so selection and focus survive high-frequency row updates (streaming).
+  // NOTE: keep `columns` a stable reference for this to hold across updates.
   const grid = useMemo(
-    () => createGrid({ columns, rows, getRowId, autosize }),
-    [autosize, columns, getRowId, rows],
+    () => createGrid({ columns, rows, getRowId: stableGetRowId, autosize }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows; getRowId via the stable wrapper above
+    [autosize, columns, stableGetRowId],
   );
+
+  // Reconcile streamed row updates into the existing grid (instead of recreating
+  // it). Runs in a layout effect — before paint, so there's no visible stale
+  // frame — rather than during render, which would emit to the external store
+  // mid-render and trip React's "update during render" guard.
+  const lastRowsRef = useRef(rows);
+  useLayoutEffect(() => {
+    if (lastRowsRef.current !== rows) {
+      lastRowsRef.current = rows;
+      grid.setRows(rows);
+    }
+  }, [grid, rows]);
 
   const lastColumnIdsRef = useRef<readonly string[] | null>(null);
   useLayoutEffect(() => {

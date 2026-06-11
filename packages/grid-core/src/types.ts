@@ -243,6 +243,7 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   setViewport(viewport: PretableViewportState): void;
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
   applyTransaction(transaction: PretableTransaction<TRow>): void;
+  setRows(rows: TRow[]): void;
 
   // column-layout actions (sub-project C):
   setColumnWidth(columnId: string, width: number): void;

@@ -70,6 +70,13 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
 
   // streaming
   applyTransaction(transaction: PretableTransaction<TRow>): void;
+  /**
+   * Replace the full row set in place. Unlike recreating the grid, this
+   * preserves selection and focus (both keyed by row id), dropping only the
+   * references whose rows are no longer present. Suited to high-frequency
+   * updates where row identities are stable.
+   */
+  setRows(rows: TRow[]): void;
 
   // cell editing (v1)
   beginEdit(

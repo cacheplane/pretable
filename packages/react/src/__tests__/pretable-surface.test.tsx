@@ -2334,6 +2334,38 @@ describe("row-select checkbox column", () => {
     expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "true");
   });
 
+  it("preserves a selected row across a streamed rows update with an inline rowSelectionColumn", () => {
+    const renderAt = (rows: GridRow[]) => (
+      <PretableSurface
+        ariaLabel="stream-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={rows}
+        rowSelectionColumn={{ enabled: true }} // inline: a new object every render
+        viewportHeight={300}
+      />
+    );
+    const view = render(
+      renderAt([
+        { id: "r1", a: "a1", b: "b1", c: "c1" },
+        { id: "r2", a: "a2", b: "b2", c: "c2" },
+      ]),
+    );
+    fireEvent.click(getRowCheckbox(view, "r2")!);
+    expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "true");
+
+    // New rows array, same ids, updated data — the streaming case. Recreating
+    // the grid here (the old behavior) would discard the selection.
+    view.rerender(
+      renderAt([
+        { id: "r1", a: "a1*", b: "b1*", c: "c1*" },
+        { id: "r2", a: "a2*", b: "b2*", c: "c2*" },
+      ]),
+    );
+    expect(getRowCheckbox(view, "r2")).toHaveAttribute("aria-checked", "true");
+  });
+
   it("clicking the checkbox of an already fully-selected row toggles it off", () => {
     const onSelectionChange = vi.fn();
     const view = renderHarness({
