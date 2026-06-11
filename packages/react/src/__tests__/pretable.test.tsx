@@ -276,6 +276,53 @@ it("prefers wrapped cells when measuring rendered row height", () => {
   expect(measureRenderedRowHeight(row)).toBe(141);
 });
 
+it("measures a wrapped cell's content via a Range, ignoring the stretched box", () => {
+  // Cells flex-stretch to the row height, so `scrollHeight` reads the applied
+  // box back (a feedback loop under streaming). The Range reports the true
+  // content height instead, making the measurement idempotent.
+  const row = document.createElement("div");
+  row.innerHTML = `<div data-pretable-cell="" data-pretable-wrap="true"></div>`;
+  const cell = row.children[0]!;
+  Object.defineProperty(cell, "scrollHeight", {
+    configurable: true,
+    value: 999, // stretched-box readback — must be ignored
+  });
+
+  const origCreateRange = document.createRange;
+  const origGetComputedStyle = window.getComputedStyle;
+  Object.defineProperty(document, "createRange", {
+    configurable: true,
+    value: () => ({
+      selectNodeContents() {},
+      getBoundingClientRect: () => ({ height: 40 }),
+    }),
+  });
+  Object.defineProperty(window, "getComputedStyle", {
+    configurable: true,
+    value: () =>
+      ({
+        paddingTop: "8px",
+        paddingBottom: "8px",
+        borderTopWidth: "0px",
+        borderBottomWidth: "0px",
+      }) satisfies Partial<CSSStyleDeclaration>,
+  });
+
+  try {
+    // content 40 + cell padding 16 = 56 (NOT 999); row chrome +16 padding → 72.
+    expect(measureRenderedRowHeight(row)).toBe(72);
+  } finally {
+    Object.defineProperty(document, "createRange", {
+      configurable: true,
+      value: origCreateRange,
+    });
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      value: origGetComputedStyle,
+    });
+  }
+});
+
 it("exposes a public render model hook that reacts to grid viewport updates", () => {
   const rows = Array.from({ length: 12 }, (_, index) => ({
     id: `row-${index}`,
