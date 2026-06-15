@@ -34,11 +34,22 @@ bespoke demo shortcuts — and surface them with explicit affordances:
   summary.**
 - **A3 — Filter: symbol/name search box + sector chips.**
 
-A new thin **grid toolbar** row inside the bezel (between `TopControlBar` and
-the grid surface) hosts: search box, sector chips, live selection summary, and
-a one-line interaction legend ("double-click to edit · drag to select · ⌘C
-copy"). The existing `TopControlBar` (ticks/s · p95 · fps · pause · tiers) is
-unchanged.
+The new controls live in the **right sidebar** (the restructured
+`PortfolioSummary` panel), not a toolbar row — this keeps the grid full-height
+and establishes the sidebar as pretable's control-and-insight surface. The
+sidebar stacks, top to bottom: **Filters** (search + sector chips), a
+**Selection** summary (shown only when a range is selected), then the existing
+rollups (**NAV**, **Day P&L**, **Allocation**, **AI alerts**). A one-line
+interaction legend ("double-click to edit · drag to select · ⌘C copy") sits as a
+caption directly under the grid. `TopControlBar` (ticks/s · p95 · fps · pause ·
+tiers) is unchanged.
+
+**Forward-looking:** this sidebar is the seed of a future **advanced panel**
+(advanced filtering, pivot configuration, etc.) that will get its own brainstorm
+later. Structure its sections as independent, stacked units so that panel can
+grow in without a rewrite. The simple search + sector chips here are a precursor
+the advanced filter UI will later subsume. Building the advanced panel is **out
+of scope** for sub-project A.
 
 **The stream keeps running through everything.** Edit drafts, selection, and
 filters persist across ticks. No pausing, no row freezing.
@@ -96,54 +107,74 @@ All engine/surface capabilities already exist; this wires and surfaces them:
 - Copy: ⌘/Ctrl+C with `copyWithHeaders: true` (TSV + HTML payload, default
   `serializeRangesAsTsv` path; no `onCopy` override).
 - **Wire `onSelectionChange`** in `HeroGrid` to local state powering a live
-  **selection summary** in the toolbar: e.g. `3 × 2 selected · ⌘C to copy`
-  (rows × columns of the bounding ranges; hidden when nothing is selected).
+  **selection summary** in the sidebar's Selection section: e.g.
+  `3 × 2 selected · ⌘C to copy`
+  (rows × columns of the bounding ranges; the section is hidden when nothing is
+  selected).
   Show `Copied ✓` transiently after a copy (hook the surface's copy
   announcement via `messages.copyAnnouncement` returning the same string it
   uses for aria — implementation detail; the visible summary update is the
   requirement).
-- The interaction legend in the toolbar lists: "double-click to edit · drag to
-  select · ⌘C copy".
+- The interaction legend (caption under the grid) lists: "double-click to edit ·
+  drag to select · ⌘C copy".
 - Everything must survive streaming ticks (already true at engine level;
   asserted end-to-end in tests).
 
 ## A3 — Filter (search + sector chips)
 
-- **Search box** (toolbar, left): filters by symbol or name substring,
-  case-insensitive. Debounce ~150 ms.
-- **Sector chips** (toolbar, next to search): `All · Technology · Consumer ·
-  Health Care · Financials · Energy`. Single-select; `All` clears.
-- Both compose into a `filters` object applied via the surface's controlled
-  `state.filters` (engine `replaceFilters` semantics):
-  - search → a filter on a searchable field; sector chip → `sector` equals.
-  - The engine's filter is substring matching per column. The grid's columns
-    don't include `sector` or a combined symbol+name field as visible columns —
-    add hidden filterable handling as needed: implementation may add
-    `filterable: true` metadata or filter on the `symbol` column for search and
-    add a hidden `sector` column config if required by the engine's per-column
-    model. The spec requirement is the BEHAVIOR (search matches symbol or
-    name; chip matches sector exactly); the wiring may use whatever the public
-    API supports cleanly.
+- **Search box** (sidebar, top of the Filters section): filters by symbol or
+  name substring, case-insensitive. Debounce ~150 ms.
+- **Sector chips** (sidebar, under the search box): `All · Technology ·
+  Consumer · Health Care · Financials · Energy`. Single-select; `All` clears.
+- **Engine filter model (verified):** `filters` is `Record<columnId, string>`;
+  each entry is a case-insensitive **substring** test against that column's
+  `value(row)`, and multiple entries are **AND**-combined. A filter whose
+  columnId is not a real column is ignored. Two concrete consequences drive the
+  design below:
+  1. To make search match **symbol or company name**, the `symbol` column's
+     `value` becomes `` `${symbol} ${name}` `` (e.g. `"NVDA NVIDIA Corp"`). The
+     stacked `render` is unchanged; `sort.ts` is unaffected (it compares
+     `row.symbol` directly, not the column value); copy of that cell now
+     includes the name, which matches what the cell visibly shows.
+  2. The sector chip needs a real column to filter on, so add a **visible
+     `sector` column** (`value: row.sector`, narrow width, placed after Symbol)
+     — realistic for a blotter and the honest way to drive the filter through
+     the engine.
+- Both controls compose into one `filters` object applied via the surface's
+  controlled `state.filters` (the engine's `replaceFilters` path):
+  - search → `filters.symbol = text` (debounced ~150 ms; omitted when empty).
+  - sector chip → `filters.sector = chipName` (omitted when `All`).
+  - Combined via AND, so "search **and** sector" narrows correctly — and the
+    demo genuinely exercises multi-column `replaceFilters`.
 - Filtered view updates live while the stream ticks (visible rows keep
   flashing/growing). Clearing filters restores the full book.
 - **Sidebar rollups stay whole-book** (NAV, Day P&L, allocation, AI alerts are
   computed from all rows, not the filtered subset) — avoids implying the fund
   NAV changed because the view narrowed.
 - Empty state: if no rows match, the grid shows its natural empty body; the
-  toolbar keeps the active filter visible so the user can clear it.
+  sidebar keeps the active filter visible so the user can clear it.
 
-## Toolbar (new component)
+## Sidebar panel (restructured `PortfolioSummary`)
 
-`apps/website/app/components/heroGrid/GridToolbar.tsx` — one row inside the
-bezel above the grid surface:
+`PortfolioSummary.tsx` becomes a thin **container of independent, stacked
+sections** (each its own small component/CSS module so the future advanced
+panel can add/replace sections cleanly):
 
-- Left: search input + sector chips.
-- Right: selection summary (or legend when nothing selected). At narrow
-  widths the legend hides; search collapses to an icon (mobile sidebar is
-  already hidden at ≤768px; match that breakpoint).
-- Styling: CSS module consistent with the existing hero skin (Tailwind is
-  allowed in `apps/*` but the heroGrid components use CSS modules — stay
-  consistent with CSS modules here).
+- `FilterSection` — search input + sector chips (drives `state.filters`).
+- `SelectionSection` — the live selection summary; rendered only when a range
+  is selected; shows transient `Copied ✓` after a copy.
+- `RollupSection` — the existing NAV / Day P&L / Allocation / AI alerts
+  (unchanged behavior; whole-book).
+
+Order top→bottom: Filter, Selection (conditional), Rollups. Sized to the
+existing sidebar column (~widen to ~280px if the chips need it). Styling stays
+CSS modules, consistent with the current hero skin.
+
+**Mobile:** the sidebar is already hidden at ≤768px, so the new controls hide
+there too. Acceptable for this demo — the grid still streams, edits (via
+double-click), and selects (keyboard); filtering/selection-summary are
+desktop-only for now. A mobile affordance is deferred to the future
+advanced-panel brainstorm.
 
 ## State & data flow (HeroGrid)
 
@@ -166,7 +197,7 @@ New local state alongside existing `rows`/`userSort`:
   filters object); deterministic desk-rejection seed.
 - **Component (RTL):** edit lifecycle states render (validating → saving →
   success and both rejection paths); selection summary updates on
-  `onSelectionChange`; toolbar chips/search drive `state.filters`.
+  `onSelectionChange`; sidebar chips/search drive `state.filters`.
 - **Smoke (Playwright), against the streaming hero:**
   - Edit qty → success path: new qty visible, weight changes, stream still
     ticking.
