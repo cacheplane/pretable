@@ -63,10 +63,15 @@ using the public column API:
 - `parseEditValue`: string → integer (strip commas/whitespace).
 - `validate`: sync rules — integer, `> 0`, `≤ 10×` current qty (sanity bound).
   Returns an error string on failure (engine shows `editing` + error state).
-- `renderEditor`: numeric input showing lifecycle states from
-  `PretableEditorInput`: `status === "validating"` → "compliance check…",
-  `"saving"` → "submitting order…", `"error"`/validation message inline.
-  Commit on Enter (focus moves down), cancel on Esc — engine defaults.
+- `renderEditor`: a compact numeric `<input>` that fits the narrow Qty column,
+  plus a small status icon. The lifecycle status from `PretableEditorInput`
+  renders in a **cell-anchored popover** below the cell (NOT inline — keeps the
+  cell narrow and never grows the row height, consistent with the row-height
+  work on this branch): `status === "validating"` → spinner + "compliance
+  check…", `"saving"` → spinner + "submitting order…", `"error"`/validation →
+  red icon + the error/validation message in the popover. Commit on Enter
+  (focus moves down), cancel on Esc — engine defaults. The popover uses normal
+  flow / absolute positioning relative to the cell (no `position: fixed`).
 - Hover affordance: a pencil glyph on the qty cell (CSS `:hover` on the cell
   via `getBodyCellClassName` or the cell render; implementation may choose).
 
