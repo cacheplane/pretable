@@ -46,7 +46,18 @@ export function HeroGrid() {
   const [copied, setCopied] = useState(false);
   const editedQtyByIdRef = useRef<Map<string, number>>(new Map());
 
-  const filterMap = useMemo(() => buildFilters(filter), [filter]);
+  // Debounce the search term (~150ms) so we don't re-filter on every keystroke;
+  // the sector chip applies immediately. The input stays responsive because the
+  // FilterSection input is bound to `filter.search` directly.
+  const [appliedSearch, setAppliedSearch] = useState("");
+  useEffect(() => {
+    const t = window.setTimeout(() => setAppliedSearch(filter.search), 150);
+    return () => window.clearTimeout(t);
+  }, [filter.search]);
+  const filterMap = useMemo(
+    () => buildFilters({ search: appliedSearch, sector: filter.sector }),
+    [appliedSearch, filter.sector],
+  );
 
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [viewportHeight, setViewportHeight] = useState(FALLBACK_VIEWPORT_HEIGHT);
@@ -151,7 +162,17 @@ export function HeroGrid() {
   // Copy feedback — transient "Copied ✓" toast when ⌘/Ctrl+C fires with a selection
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C") && selection) {
+      // Ignore ⌘C while typing in an input (e.g. the search box) — that copies
+      // text, not grid cells, so it shouldn't flash the grid copy toast.
+      const inInput =
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement;
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        (e.key === "c" || e.key === "C") &&
+        selection &&
+        !inInput
+      ) {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1500);
       }

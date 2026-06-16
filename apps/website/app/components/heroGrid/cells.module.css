@@ -17,8 +17,8 @@
 @media (prefers-reduced-motion: reduce) {
   .flashUp, .flashDown { animation: none; }
 }
-:global([data-pretable-column-id="qty"]) { position: relative; }
-:global([data-pretable-column-id="qty"]):hover::after {
+:global([data-pretable-cell][data-pretable-column-id="qty"]) { position: relative; }
+:global([data-pretable-cell][data-pretable-column-id="qty"]):hover::after {
   content: "✎";
   position: absolute;
   right: 4px;
