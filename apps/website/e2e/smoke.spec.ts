@@ -110,3 +110,73 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
   await page.waitForTimeout(2000); // several stream ticks
   await expect(bodyCheckbox).toHaveAttribute("aria-checked", "true");
 });
+
+test("cockpit: filter, edit (guardrail + success), and select+copy under streaming", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // --- Filter: search narrows, clear restores, sector chip narrows ---
+  // ([data-pretable-row] counts only virtualized/visible rows, so assert
+  //  deterministic filtered counts and ">5" for the unfiltered view.)
+  const search = page.getByPlaceholder(/filter symbol/i);
+  await search.fill("NVDA");
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(1);
+  await search.fill("");
+  await expect
+    .poll(() => page.locator("[data-pretable-row]").count())
+    .toBeGreaterThan(5);
+  const sectors = page.getByRole("group", { name: "Sector" });
+  await sectors.getByRole("button", { name: "Energy" }).click();
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(2); // XOM, CVX
+  const shown = await page
+    .locator('[data-pretable-row] [data-pretable-column-id="sector"]')
+    .allInnerTexts();
+  expect(new Set(shown.map((s) => s.trim()))).toEqual(new Set(["Energy"]));
+  await sectors.getByRole("button", { name: "All" }).click();
+  await expect
+    .poll(() => page.locator("[data-pretable-row]").count())
+    .toBeGreaterThan(5);
+
+  // --- Edit qty → 7% guardrail rejection (NVDA is already > 7% of the book) ---
+  const nvdaQty = page.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="qty"]',
+  );
+  await nvdaQty.dblclick();
+  const editor = page.getByLabel("Edit quantity");
+  await editor.fill("13000"); // within 10x sanity, but still breaches 7%
+  await editor.press("Enter");
+  await expect(page.getByText(/guardrail/i)).toBeVisible({ timeout: 5000 });
+  await editor.press("Escape");
+
+  // --- Edit qty → success (low-weight, viewport-visible holding; the qty is a
+  //     deterministic non-rejected value that keeps the name under 7%) ---
+  const jpmQty = page.locator(
+    '[data-pretable-row][data-pretable-row-id="JPM"] [data-pretable-column-id="qty"]',
+  );
+  await jpmQty.dblclick();
+  const editor2 = page.getByLabel("Edit quantity");
+  await editor2.fill("14500");
+  await editor2.press("Enter");
+  await expect(jpmQty).toContainText("14,500", { timeout: 5000 });
+
+  // --- Cell-range select + copy, surviving streaming ticks ---
+  const cellA = page.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="dayPnl"]',
+  );
+  const cellB = page.locator(
+    '[data-pretable-row][data-pretable-row-id="MSFT"] [data-pretable-column-id="weight"]',
+  );
+  await cellA.click();
+  await cellB.click({ modifiers: ["Shift"] });
+  await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+c" : "Control+c",
+  );
+  await expect(page.getByText(/Copied/i)).toBeVisible();
+  await page.waitForTimeout(2000); // ticks
+  await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
+});
