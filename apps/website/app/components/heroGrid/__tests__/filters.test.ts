@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFilters, SECTORS, type FilterState } from "../filters";
+import { buildFilters, SECTORS } from "../filters";
 
 describe("buildFilters", () => {
   it("is empty for the default state", () => {
