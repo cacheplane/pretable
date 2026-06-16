@@ -181,6 +181,7 @@ export function HeroGrid() {
               state={{ ...(userSort ? { sort: userSort } : {}), filters: filterMap }}
               viewportHeight={viewportHeight}
             />
+            <p className={styles.legend}>double-click to edit · drag to select · ⌘C copy</p>
           </div>
           <div className={styles.heroSidebar}>
             <PortfolioSummary

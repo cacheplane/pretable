@@ -58,6 +58,14 @@
   display: block;
 }
 
+.legend {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--pt-text-muted, #888);
+  border-top: 1px solid var(--pt-rule, #eee);
+}
+
 @media (max-width: 768px) {
   .heroBackdrop {
     padding: 12px;
