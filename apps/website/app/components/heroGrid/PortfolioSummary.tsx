@@ -2,9 +2,18 @@ import { useMemo } from "react";
 import { fmtCompactUsd, fmtSignedUsd, fmtPct } from "./format";
 import type { PositionRow } from "./types";
 import styles from "./portfolioSummary.module.css";
+import { FilterSection } from "./sidebar/FilterSection";
+import { SelectionSection } from "./sidebar/SelectionSection";
+import type { FilterState } from "./filters";
+import type { SelectionSummary } from "./selection";
 
 export interface PortfolioSummaryProps {
   rows: readonly PositionRow[];
+  filter: FilterState;
+  onSearch: (value: string) => void;
+  onSector: (value: string) => void;
+  selection: SelectionSummary | null;
+  copied: boolean;
 }
 
 const SECTOR_COLORS: Record<string, string> = {
@@ -43,11 +52,13 @@ function buildModel(rows: readonly PositionRow[]): Model {
   return { nav, dayPnl, dayPnlPct, sectors, alerts };
 }
 
-export function PortfolioSummary({ rows }: PortfolioSummaryProps) {
+export function PortfolioSummary({ rows, filter, onSearch, onSector, selection, copied }: PortfolioSummaryProps) {
   const model = useMemo(() => buildModel(rows), [rows]);
 
   return (
     <aside aria-label="Portfolio summary" className={styles.board}>
+      <FilterSection search={filter.search} sector={filter.sector ?? "All"} onSearch={onSearch} onSector={onSector} />
+      <SelectionSection summary={selection} copied={copied} />
       <section className={styles.section}>
         <span className={styles.label}>Net Asset Value</span>
         <span className={styles.nav} data-testid="summary-nav">{fmtCompactUsd(model.nav)}</span>
