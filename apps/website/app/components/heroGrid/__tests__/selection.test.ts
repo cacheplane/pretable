@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summarizeSelection } from "../selection";
-import type { PretableSelectionState } from "@pretable/react";
+import type { PretableSelectionState } from "@pretable/core";
 
 const sel = (ranges: Array<[string, string, string, string]>): PretableSelectionState => ({
   ranges: ranges.map(([startRowId, endRowId, startColumnId, endColumnId]) => ({

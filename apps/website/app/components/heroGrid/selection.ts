@@ -1,4 +1,4 @@
-import type { PretableSelectionState } from "@pretable/react";
+import type { PretableSelectionState } from "@pretable/core";
 
 export interface SelectionSummary {
   rows: number;
