@@ -47,12 +47,14 @@ export function HeroGrid() {
 
   // Stable columns — created once so the grid instance is never recreated under streaming.
   // The getRows closure captures the ref *object* (not .current) so it always reads the
-  // latest rows without being in the deps array.
-  // eslint-disable-next-line react-hooks/refs -- intentional: closure reads ref.current lazily (not during render)
+  // latest rows without being in the deps array. Block-disable (not -next-line) so the
+  // directive survives Prettier reflowing the useMemo across lines.
+  /* eslint-disable react-hooks/refs -- intentional: closure reads ref.current lazily (not during render) */
   const columns = useMemo(
     () => makePositionColumns({ getRows: () => rowsRef.current }),
     [],
   ); // empty deps — created once on purpose
+  /* eslint-enable react-hooks/refs */
 
   const sortedRows = useMemo(() => applySort(rows, userSort), [rows, userSort]);
   useEffect(() => {
