@@ -3,10 +3,11 @@
 [![CI](https://github.com/cacheplane/pretable/actions/workflows/ci.yml/badge.svg)](https://github.com/cacheplane/pretable/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](./LICENSE)
 
-Pretable is a React data grid for AI product teams that need to render messy,
-high-signal data: chat transcripts, eval results, support queues, research
-tables, tool-call logs, and other text-heavy workflows where fixed-height rows
-break down.
+Pretable is a React data grid for teams rendering live, high-signal data: a
+portfolio cockpit where prices tick beside an AI analyst's streaming commentary,
+agent transcripts, eval results, support queues, and other workflows that mix
+dense numbers with wrapped, variable-height text where fixed-height rows break
+down.
 
 It focuses on wrapped text, variable row heights, column virtualization,
 streaming-compatible updates, keyboard/selection primitives, and a small public
@@ -90,6 +91,8 @@ streaming responses, nested metadata, and high-frequency inspection workflows.
 
 Pretable is built around that shape:
 
+- Live numbers and streaming AI narrative coexist in one grid — ticking prices
+  beside wrapped, variable-height analyst text, with no row drift.
 - Variable-height rows and wrapped content are first-class.
 - Column virtualization is part of the proof surface, not a later add-on.
 - Sorting, filtering, focus, copy, and selection live in a framework-neutral

@@ -189,6 +189,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     setFilter(columnId: string, value: string): void;
     // (undocumented)
     setFocus(addr: PretableCellAddress | null): void;
+    setRows(rows: TRow[]): void;
     // (undocumented)
     setSelectAllVisible(checked: boolean): void;
     // (undocumented)

@@ -42,7 +42,7 @@
   min-width: 0; /* prevents the wide notes column from overflowing in split-pane */
 }
 
-/* Split-pane layout inside the bezel: grid on the left, scoreboard sidebar on the right. */
+/* Split-pane layout inside the bezel: grid on the left, portfolio summary sidebar on the right. */
 .heroSplit {
   display: flex;
   flex: 1 1 auto;
@@ -58,6 +58,14 @@
   display: block;
 }
 
+.legend {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--pt-text-muted, #888);
+  border-top: 1px solid var(--pt-rule, #eee);
+}
+
 @media (max-width: 768px) {
   .heroBackdrop {
     padding: 12px;
@@ -68,12 +76,4 @@
   .heroSidebar {
     display: none;
   }
-}
-
-.leaderRow {
-  background: color-mix(
-    in oklab,
-    var(--pt-color-warning, #d97706) 12%,
-    transparent
-  );
 }

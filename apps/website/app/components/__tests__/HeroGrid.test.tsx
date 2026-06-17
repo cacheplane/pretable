@@ -40,18 +40,18 @@ describe("HeroGrid", () => {
     expect(screen.getByTestId("hero-bezel")).toBeInTheDocument();
   });
 
-  it("renders the scoreboard sidebar inside the bezel", () => {
+  it("renders the portfolio summary sidebar inside the bezel", () => {
     renderHeroGrid();
     expect(
-      screen.getByRole("complementary", { name: /race scoreboard/i }),
+      screen.getByRole("complementary", { name: /portfolio summary/i }),
     ).toBeInTheDocument();
   });
 
-  it("renders the race grid with an accessible label", () => {
+  it("renders the portfolio grid with an accessible label", () => {
     renderHeroGrid();
     expect(
       screen.getByRole("grid", {
-        name: /live ski racing|live race|streaming/i,
+        name: /live portfolio positions/i,
       }),
     ).toBeInTheDocument();
   });

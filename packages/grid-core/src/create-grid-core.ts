@@ -773,6 +773,42 @@ export function createGridCore<TRow extends PretableRow>(
       cachedVisibleRows = null;
       emit();
     },
+    setRows(nextRows: TRow[]) {
+      options = { ...options, rows: nextRows };
+      sourceRows = createSourceRows(options);
+      sourceRowIndex.clear();
+      for (const entry of sourceRows) {
+        sourceRowIndex.set(entry.id, entry);
+      }
+
+      // Selection and focus are keyed by row id and intentionally survive a row
+      // replacement — this is what lets them persist across streaming updates.
+      // Only drop references whose rows are no longer present.
+      const hasRow = (id: string | null | undefined): boolean =>
+        id != null && sourceRowIndex.has(id);
+
+      const keptRanges = selection.ranges.filter(
+        (range) => hasRow(range.startRowId) && hasRow(range.endRowId),
+      );
+      const anchorValid = !selection.anchor || hasRow(selection.anchor.rowId);
+      if (keptRanges.length !== selection.ranges.length || !anchorValid) {
+        selection = {
+          ranges: keptRanges,
+          anchor: anchorValid ? selection.anchor : null,
+        };
+      }
+
+      if (focus.rowId !== null && !hasRow(focus.rowId)) {
+        focus = { rowId: null, columnId: null };
+      }
+
+      if (editing && !hasRow(editing.rowId)) {
+        editing = null;
+      }
+
+      cachedVisibleRows = null;
+      emit();
+    },
     beginEdit(
       addr: PretableCellAddress,
       opts?: { draft?: unknown; status?: "checking" | "editing" },

@@ -530,18 +530,25 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const lastCheckedRowAnchorRef = useRef<string | null>(null);
   const { headerHeight } = useResolvedHeights();
   const bodyViewportHeight = Math.max(viewportHeight - headerHeight, 0);
+  // Depend on the primitive fields, not the rowSelectionColumn object: callers
+  // typically pass it inline (`rowSelectionColumn={{ enabled: true }}`), so a new
+  // object every render would churn effectiveColumns — and recreate the grid,
+  // discarding selection/focus — on every streamed row update.
+  const rowSelectEnabled = rowSelectionColumn?.enabled ?? false;
+  const rowSelectWidth = rowSelectionColumn?.width;
+  const rowSelectPinned = rowSelectionColumn?.pinned;
   const effectiveColumns = useMemo<PretableColumn<TRow>[]>(() => {
-    if (!rowSelectionColumn?.enabled) return columns;
+    if (!rowSelectEnabled) return columns;
     const synth: PretableColumn<TRow> = {
       id: ROW_SELECT_COLUMN_ID,
       header: "",
-      widthPx: rowSelectionColumn.width ?? 36,
+      widthPx: rowSelectWidth ?? 36,
       sortable: false,
       filterable: false,
-      ...((rowSelectionColumn.pinned ?? true) ? { pinned: "left" } : {}),
+      ...((rowSelectPinned ?? true) ? { pinned: "left" } : {}),
     };
     return [synth, ...columns];
-  }, [columns, rowSelectionColumn]);
+  }, [columns, rowSelectEnabled, rowSelectWidth, rowSelectPinned]);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
     autosize,
     columns: effectiveColumns,
@@ -910,12 +917,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     if (changed) {
       setMeasuredHeights(nextHeights);
     }
-    // Deps: only re-run when something that could legitimately change row
-    // measurements has changed. Without these deps, the effect re-runs on
-    // every render — including the re-render triggered by its own
-    // setMeasuredHeights call — which under high-churn streaming with
-    // wrap:true rows can hit React's "Maximum update depth" guard.
-  }, [snapshot.visibleRows, effectiveColumns, viewportWidth]);
+    // Runs after every render: row heights depend on the full rendered output
+    // (row/cell classes from getRowClassName, cell content, etc.), not just the
+    // grid snapshot — and a render-prop change can alter height without changing
+    // any row data. The per-row key+height check above skips unchanged rows, and
+    // measureRenderedRowHeight is idempotent (it measures intrinsic content, not
+    // the stretched box), so the setMeasuredHeights re-render converges instead
+    // of looping — even under high-churn streaming with wrap:true rows.
+  });
 
   return (
     <div

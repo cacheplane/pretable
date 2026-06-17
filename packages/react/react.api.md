@@ -322,6 +322,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     setFilter(columnId: string, value: string): void;
     // (undocumented)
     setFocus(addr: PretableCellAddress | null): void;
+    setRows(rows: TRow[]): void;
     // (undocumented)
     setSelectAllVisible(checked: boolean): void;
     // Warning: (ae-forgotten-export) The symbol "PretableSelectionState" needs to be exported by the entry point index.d.ts

@@ -55,6 +55,33 @@ test("docs brand link goes to bare grid when drawer was never opened", async ({
   await expect(page.locator("html")).toHaveAttribute("data-drawer", "closed");
 });
 
+test("hero shows the live portfolio: ticks/s, streaming analyst text, no row drift", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  // The positions grid renders.
+  await expect(
+    page.getByRole("grid", { name: /portfolio positions/i }),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Control bar advertises the market stream in ticks/s.
+  await expect(page.getByText(/ticks\/s/i).first()).toBeVisible();
+
+  // The AI Analyst column streams wrapped commentary in: a known phrase appears.
+  await expect(page.getByText(/single-name guardrail/i)).toBeVisible({
+    timeout: 12_000,
+  });
+
+  // Row-drift guard: the grid's frame must not jump while commentary streams and
+  // rows take on variable heights. This is the demo's headline correctness claim.
+  const bezel = page.getByTestId("hero-bezel");
+  const before = await bezel.boundingBox();
+  await page.waitForTimeout(3000);
+  const after = await bezel.boundingBox();
+  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(2);
+});
+
 test("hero grid row-select checkbox column is visible and clickable", async ({
   page,
 }) => {
@@ -75,11 +102,164 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
   const bodyCheckbox = page.locator("[data-pretable-row-select]").first();
   await expect(bodyCheckbox).toBeVisible();
 
-  // Clicking it changes its aria-checked state.
-  const initialState = await bodyCheckbox.getAttribute("aria-checked");
+  // Select a row WHILE the stream is live and confirm it stays selected across
+  // several ticks. The grid reconciles row updates in place rather than
+  // recreating itself, so selection survives streaming.
   await bodyCheckbox.click();
-  await expect(bodyCheckbox).not.toHaveAttribute(
-    "aria-checked",
-    initialState ?? "false",
+  await expect(bodyCheckbox).toHaveAttribute("aria-checked", "true");
+  await page.waitForTimeout(2000); // several stream ticks
+  await expect(bodyCheckbox).toHaveAttribute("aria-checked", "true");
+});
+
+test("cockpit: filter, edit (guardrail + success), and select+copy under streaming", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // --- Filter: search narrows, clear restores, sector chip narrows ---
+  // ([data-pretable-row] counts only virtualized/visible rows, so assert
+  //  deterministic filtered counts and ">5" for the unfiltered view.)
+  const search = page.getByPlaceholder(/filter symbol/i);
+  await search.fill("NVDA");
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(1);
+  await search.fill("");
+  await expect
+    .poll(() => page.locator("[data-pretable-row]").count())
+    .toBeGreaterThan(5);
+  const sectors = page.getByRole("group", { name: "Sector" });
+  await sectors.getByRole("button", { name: "Energy" }).click();
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(2); // XOM, CVX
+  const shown = await page
+    .locator('[data-pretable-row] [data-pretable-column-id="sector"]')
+    .allInnerTexts();
+  expect(new Set(shown.map((s) => s.trim()))).toEqual(new Set(["Energy"]));
+  await sectors.getByRole("button", { name: "All" }).click();
+  await expect
+    .poll(() => page.locator("[data-pretable-row]").count())
+    .toBeGreaterThan(5);
+
+  // --- Edit qty → 7% guardrail rejection (NVDA is already > 7% of the book) ---
+  const nvdaQty = page.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="qty"]',
   );
+  await nvdaQty.dblclick();
+  const editor = page.getByLabel("Edit quantity");
+  await editor.fill("13000"); // within 10x sanity, but still breaches 7%
+  await editor.press("Enter");
+  await expect(page.getByText(/guardrail/i)).toBeVisible({ timeout: 5000 });
+  await editor.press("Escape");
+
+  // --- Edit qty → success (low-weight, viewport-visible holding; the qty is a
+  //     deterministic non-rejected value that keeps the name under 7%) ---
+  const jpmQty = page.locator(
+    '[data-pretable-row][data-pretable-row-id="JPM"] [data-pretable-column-id="qty"]',
+  );
+  await jpmQty.dblclick();
+  const editor2 = page.getByLabel("Edit quantity");
+  await editor2.fill("14500");
+  await editor2.press("Enter");
+  await expect(jpmQty).toContainText("14,500", { timeout: 5000 });
+
+  // --- Cell-range select + copy, surviving streaming ticks ---
+  const cellA = page.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="dayPnl"]',
+  );
+  const cellB = page.locator(
+    '[data-pretable-row][data-pretable-row-id="MSFT"] [data-pretable-column-id="weight"]',
+  );
+  await cellA.click();
+  await cellB.click({ modifiers: ["Shift"] });
+  await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+c" : "Control+c",
+  );
+  await expect(page.getByText(/Copied/i)).toBeVisible();
+  await page.waitForTimeout(2000); // ticks
+  await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
+});
+
+test("showcase: scale grid virtualizes; column layout resizes + resets", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("drawer-handle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-drawer", "open");
+
+  // --- Scale section: scroll into view, grid mounts, counter proves virtualization ---
+  await page.locator("#scale").scrollIntoViewIfNeeded();
+  const scaleGrid = page.getByRole("grid", { name: /2,500 by 500/i });
+  await expect(scaleGrid).toBeVisible({ timeout: 10_000 });
+  // Model total is shown.
+  await expect(page.getByTestId("scale-counter")).toContainText("1,250,000");
+  // DOM-rendered cell count is tiny relative to 1.25M (virtualization on).
+  await expect
+    .poll(
+      async () => await page.locator("#scale [data-pretable-cell]").count(),
+      {
+        timeout: 10_000,
+      },
+    )
+    .toBeLessThan(2000);
+  // The DOM count must also be positive (the grid actually rendered cells).
+  expect(
+    await page.locator("#scale [data-pretable-cell]").count(),
+  ).toBeGreaterThan(0);
+  // Scroll the grid; the rendered count stays small.
+  await page
+    .locator("#scale [data-pretable-scroll-viewport]")
+    .evaluate((el) => {
+      el.scrollTop = 4000;
+      el.scrollLeft = 6000;
+    });
+  await expect
+    .poll(async () => await page.locator("#scale [data-pretable-cell]").count())
+    .toBeLessThan(2000);
+
+  // --- Column-layout section: resize a column, then reset ---
+  await page.locator("#column-layout").scrollIntoViewIfNeeded();
+  const layoutGrid = page.getByRole("grid", {
+    name: /resizable, reorderable/i,
+  });
+  await expect(layoutGrid).toBeVisible({ timeout: 10_000 });
+
+  // The header cell and its resize handle are SIBLINGS in the header row, each
+  // tagged with the same data-pretable-column-id (verified against
+  // packages/react/src/pretable-surface.tsx) — the handle is NOT nested inside
+  // the header cell, so both are scoped from the column-layout section root.
+  const layout = page.locator("#column-layout");
+  const symbolHeader = layout.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="symbol"]',
+  );
+  await expect(symbolHeader).toBeVisible();
+  const widthBefore = (await symbolHeader.boundingBox())?.width ?? 0;
+
+  // Drag the symbol column's resize handle to the right by ~80px. The handle
+  // listens for pointer events and uses setPointerCapture; WebKit only engages
+  // capture once the pointer actually traverses intermediate positions, so the
+  // drag moves in steps (a short hop, then the full distance) rather than a
+  // single jump.
+  const handle = layout.locator(
+    '[data-pretable-resize-handle][data-pretable-column-id="symbol"]',
+  );
+  const hb = await handle.boundingBox();
+  expect(hb).not.toBeNull();
+  if (hb) {
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + 20, hb.y + hb.height / 2, { steps: 4 });
+    await page.mouse.move(hb.x + 80, hb.y + hb.height / 2, { steps: 8 });
+    await page.mouse.up();
+  }
+  await expect
+    .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(widthBefore + 20);
+
+  // Reset restores the original width.
+  await page.getByTestId("reset-layout").click();
+  await expect
+    .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
+    .toBeLessThan(widthBefore + 20);
 });

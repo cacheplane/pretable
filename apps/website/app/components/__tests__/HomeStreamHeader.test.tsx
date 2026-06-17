@@ -11,9 +11,9 @@ describe("HomeStreamHeader", () => {
         <HomeStreamHeader />
       </ControlStateProvider>,
     );
-    // Default tier is PRODUCTION (60 ev/s) — its radio button should be the
+    // Default tier is Active (60 ev/s) — its radio button should be the
     // checked one in the tier-group radiogroup.
-    const productionTier = screen.getByRole("radio", { name: /production/i });
-    expect(productionTier).toHaveAttribute("aria-checked", "true");
+    const activeTier = screen.getByRole("radio", { name: /active/i });
+    expect(activeTier).toHaveAttribute("aria-checked", "true");
   });
 });

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
+/** Market activity tier — gates tick density in the replay engine (not playback speed). */
 export type RateTier = 10 | 60 | 250;
 
 export interface HeroGridControlState {

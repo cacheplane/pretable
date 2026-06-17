@@ -1,4 +1,5 @@
 import { CodeExample } from "./components/CodeExample";
+import { ColumnLayoutShowcase } from "./components/ColumnLayoutShowcase";
 import { ComparisonTable } from "./components/ComparisonTable";
 import { CtaSection } from "./components/CtaSection";
 import { DrawerHandle } from "./components/DrawerHandle";
@@ -12,6 +13,7 @@ import { HomeStreamHeader } from "./components/HomeStreamHeader";
 import { HowItWorks } from "./components/HowItWorks";
 import { MountainFooter } from "./components/MountainFooter";
 import { ReceiptsBand } from "./components/ReceiptsBand";
+import { ScaleShowcase } from "./components/ScaleShowcase";
 import { ScrollReveal } from "./components/ScrollReveal";
 import { StreamingByDesign } from "./components/StreamingByDesign";
 
@@ -39,6 +41,12 @@ export default function HomePage() {
         </ScrollReveal>
         <ScrollReveal>
           <FeatureGrid />
+        </ScrollReveal>
+        <ScrollReveal>
+          <ScaleShowcase />
+        </ScrollReveal>
+        <ScrollReveal>
+          <ColumnLayoutShowcase />
         </ScrollReveal>
         <ScrollReveal>
           <CtaSection />

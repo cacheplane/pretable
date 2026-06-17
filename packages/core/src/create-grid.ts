@@ -53,6 +53,7 @@ export function createGrid<TRow extends PretableRow = PretableRow>(
     resetColumnLayout: engine.resetColumnLayout,
     mergeColumnsFromProps: engine.mergeColumnsFromProps,
     applyTransaction: engine.applyTransaction,
+    setRows: engine.setRows,
     beginEdit: engine.beginEdit,
     setEditDraft: engine.setEditDraft,
     markEditing: engine.markEditing,

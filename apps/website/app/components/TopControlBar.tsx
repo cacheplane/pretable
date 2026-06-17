@@ -6,24 +6,20 @@ import { useControlState, type RateTier } from "./heroGrid/controlState";
 import styles from "./topControlBar.module.css";
 
 interface TopControlBarProps {
-  eventsPerSec: number;
+  ticksPerSec: number;
   p95Ms: number;
   fps: number;
 }
 
 const TIERS: { value: RateTier; label: string }[] = [
-  { value: 10, label: "Light" },
-  { value: 60, label: "Production" },
-  { value: 250, label: "Heavy" },
+  { value: 10, label: "Calm" },
+  { value: 60, label: "Active" },
+  { value: 250, label: "Volatile" },
 ];
 
 const eventsFormatter = new Intl.NumberFormat("en-US");
 
-export function TopControlBar({
-  eventsPerSec,
-  p95Ms,
-  fps,
-}: TopControlBarProps) {
+export function TopControlBar({ ticksPerSec, p95Ms, fps }: TopControlBarProps) {
   const { ratePerSec, setRatePerSec, isPaused, setIsPaused } =
     useControlState();
 
@@ -31,7 +27,7 @@ export function TopControlBar({
     <div
       className={styles.bar}
       role="toolbar"
-      aria-label="Grid stream controls"
+      aria-label="Market stream controls"
     >
       <div className={styles.left}>
         <Link className={styles.brandLink} href="/">
@@ -43,7 +39,7 @@ export function TopControlBar({
       </div>
       <div className={styles.center}>
         <span className={styles.metric}>
-          <strong>{eventsFormatter.format(eventsPerSec)}</strong> ev/s
+          <strong>{eventsFormatter.format(ticksPerSec)}</strong> ticks/s
         </span>
         <span className={styles.metric}>
           <strong>{p95Ms > 0 ? p95Ms.toFixed(1) : "—"}</strong> ms p95
@@ -54,7 +50,7 @@ export function TopControlBar({
       </div>
       <div className={styles.right}>
         <button
-          aria-label={isPaused ? "Resume stream" : "Pause stream"}
+          aria-label={isPaused ? "Resume market" : "Pause market"}
           aria-pressed={isPaused}
           className={styles.iconBtn}
           onClick={() => setIsPaused(!isPaused)}
@@ -63,7 +59,7 @@ export function TopControlBar({
           {isPaused ? "▶" : "⏸"}
         </button>
         <div
-          aria-label="Stream rate"
+          aria-label="Market activity"
           className={styles.tierGroup}
           role="radiogroup"
         >
