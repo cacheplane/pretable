@@ -19,11 +19,7 @@ const TIERS: { value: RateTier; label: string }[] = [
 
 const eventsFormatter = new Intl.NumberFormat("en-US");
 
-export function TopControlBar({
-  ticksPerSec,
-  p95Ms,
-  fps,
-}: TopControlBarProps) {
+export function TopControlBar({ ticksPerSec, p95Ms, fps }: TopControlBarProps) {
   const { ratePerSec, setRatePerSec, isPaused, setIsPaused } =
     useControlState();
 

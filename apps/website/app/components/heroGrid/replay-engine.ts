@@ -8,7 +8,10 @@ export interface PortfolioReplayOptions {
   recording: string;
   ratePerSec: TickRate;
   isPlaying: boolean;
-  onTransaction: (tx: { add?: PositionRow[]; update?: Array<Partial<PositionRow> & { id: string }> }) => void;
+  onTransaction: (tx: {
+    add?: PositionRow[];
+    update?: Array<Partial<PositionRow> & { id: string }>;
+  }) => void;
 }
 
 export interface PortfolioReplay {
@@ -17,7 +20,11 @@ export interface PortfolioReplay {
   dispose(): void;
 }
 
-interface Phase2Event { t: number; type: Phase2Type; patches: Array<Partial<PositionRow> & { id: string }> }
+interface Phase2Event {
+  t: number;
+  type: Phase2Type;
+  patches: Array<Partial<PositionRow> & { id: string }>;
+}
 
 /** LIGHT drops ~⅔ of ticks; PRODUCTION keeps all; HEAVY keeps all (engine dups for throughput). */
 function tickAllowed(rate: TickRate, index: number): boolean {
@@ -25,43 +32,73 @@ function tickAllowed(rate: TickRate, index: number): boolean {
   return true;
 }
 
-export function createPortfolioReplay(options: PortfolioReplayOptions): PortfolioReplay {
+export function createPortfolioReplay(
+  options: PortfolioReplayOptions,
+): PortfolioReplay {
   let rate: TickRate = options.ratePerSec;
   let playing = options.isPlaying;
   let disposed = false;
 
-  const lines = options.recording.split("\n").filter((l) => l.trim().length > 0);
+  const lines = options.recording
+    .split("\n")
+    .filter((l) => l.trim().length > 0);
   const phase1Deltas: string[] = [];
   const phase2Events: Phase2Event[] = [];
 
   for (const line of lines) {
     let parsed: unknown;
-    try { parsed = JSON.parse(line); } catch { continue; }
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
     if (!parsed || typeof parsed !== "object") continue;
-    const ev = parsed as { type?: string; delta?: string; t?: number; patches?: unknown };
-    if (ev.type === "response.output_text.delta" && typeof ev.delta === "string") {
+    const ev = parsed as {
+      type?: string;
+      delta?: string;
+      t?: number;
+      patches?: unknown;
+    };
+    if (
+      ev.type === "response.output_text.delta" &&
+      typeof ev.delta === "string"
+    ) {
       phase1Deltas.push(ev.delta);
-    } else if ((ev.type === "tick" || ev.type === "commentary" || ev.type === "flag") && Array.isArray(ev.patches) && typeof ev.t === "number") {
+    } else if (
+      (ev.type === "tick" || ev.type === "commentary" || ev.type === "flag") &&
+      Array.isArray(ev.patches) &&
+      typeof ev.t === "number"
+    ) {
       // Recording emits seconds.
-      phase2Events.push({ t: ev.t, type: ev.type, patches: ev.patches as Phase2Event["patches"] });
+      phase2Events.push({
+        t: ev.t,
+        type: ev.type,
+        patches: ev.patches as Phase2Event["patches"],
+      });
     }
   }
   phase2Events.sort((a, b) => a.t - b.t);
-  const lastT = phase2Events.length > 0 ? phase2Events[phase2Events.length - 1].t : 0;
+  const lastT =
+    phase2Events.length > 0 ? phase2Events[phase2Events.length - 1].t : 0;
   const loopDuration = lastT + 3;
 
   // Phase 1
   (async () => {
     if (disposed) return;
     async function* gen(): AsyncIterable<string> {
-      for (const d of phase1Deltas) { if (disposed) return; yield d; }
+      for (const d of phase1Deltas) {
+        if (disposed) return;
+        yield d;
+      }
     }
     try {
       for await (const row of parseElementStream<PositionRow>(gen())) {
         if (disposed) return;
         options.onTransaction({ add: [row] });
       }
-    } catch { /* resilient: swallow parse errors */ }
+    } catch {
+      /* resilient: swallow parse errors */
+    }
   })();
 
   // Phase 2 — rAF virtual clock
@@ -76,11 +113,18 @@ export function createPortfolioReplay(options: PortfolioReplayOptions): Portfoli
 
   function tick(now: number) {
     if (disposed) return;
-    if (!playing || lastWall < 0) { lastWall = now; rafId = requestAnimationFrame(tick); return; }
+    if (!playing || lastWall < 0) {
+      lastWall = now;
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
     virtualT += (now - lastWall) / 1000;
     lastWall = now;
 
-    while (phase2Index < phase2Events.length && phase2Events[phase2Index].t <= virtualT) {
+    while (
+      phase2Index < phase2Events.length &&
+      phase2Events[phase2Index].t <= virtualT
+    ) {
       const ev = phase2Events[phase2Index++];
       if (ev.type === "tick") {
         if (tickAllowed(rate, tickCounter++)) {
@@ -92,18 +136,27 @@ export function createPortfolioReplay(options: PortfolioReplayOptions): Portfoli
       }
     }
 
-    if (virtualT >= loopDuration) { virtualT = 0; phase2Index = 0; }
+    if (virtualT >= loopDuration) {
+      virtualT = 0;
+      phase2Index = 0;
+    }
     rafId = requestAnimationFrame(tick);
   }
 
   if (hasRaf) rafId = requestAnimationFrame(tick);
 
   return {
-    setRate(r) { rate = r; },
-    setPlaying(p) { playing = p; if (!p) lastWall = -1; },
+    setRate(r) {
+      rate = r;
+    },
+    setPlaying(p) {
+      playing = p;
+      if (!p) lastWall = -1;
+    },
     dispose() {
       disposed = true;
-      if (rafId !== null && typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(rafId);
+      if (rafId !== null && typeof cancelAnimationFrame !== "undefined")
+        cancelAnimationFrame(rafId);
       rafId = null;
     },
   };

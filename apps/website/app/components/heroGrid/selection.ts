@@ -20,9 +20,17 @@ export function summarizeSelection(
   const rowSet = new Set<number>();
   const colSet = new Set<number>();
   for (const r of selection.ranges) {
-    const r0 = rowIdx.get(r.startRowId), r1 = rowIdx.get(r.endRowId);
-    const c0 = colIdx.get(r.startColumnId), c1 = colIdx.get(r.endColumnId);
-    if (r0 === undefined || r1 === undefined || c0 === undefined || c1 === undefined) continue;
+    const r0 = rowIdx.get(r.startRowId),
+      r1 = rowIdx.get(r.endRowId);
+    const c0 = colIdx.get(r.startColumnId),
+      c1 = colIdx.get(r.endColumnId);
+    if (
+      r0 === undefined ||
+      r1 === undefined ||
+      c0 === undefined ||
+      c1 === undefined
+    )
+      continue;
     for (let i = Math.min(r0, r1); i <= Math.max(r0, r1); i += 1) rowSet.add(i);
     for (let j = Math.min(c0, c1); j <= Math.max(c0, c1); j += 1) colSet.add(j);
   }

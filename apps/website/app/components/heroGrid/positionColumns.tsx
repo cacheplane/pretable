@@ -7,7 +7,10 @@ import type { PositionFlag, PositionRow } from "./types";
 import styles from "./cells.module.css";
 
 const PILL_CLASS: Record<PositionFlag, string> = {
-  trim: styles.pillTrim, watch: styles.pillWatch, risk: styles.pillRisk, hold: styles.pillHold,
+  trim: styles.pillTrim,
+  watch: styles.pillWatch,
+  risk: styles.pillRisk,
+  hold: styles.pillHold,
 };
 
 const COMPLIANCE_DELAY_MS = 400;
@@ -70,10 +73,20 @@ export function makePositionColumns(
       widthPx: 96,
       value: (row) => row.last,
       render: ({ row }) => {
-        const dirClass = row.lastDir === "up" ? styles.flashUp : row.lastDir === "down" ? styles.flashDown : "";
+        const dirClass =
+          row.lastDir === "up"
+            ? styles.flashUp
+            : row.lastDir === "down"
+              ? styles.flashDown
+              : "";
         return (
           <span className={styles.num}>
-            <span key={row.tickSeq ?? 0} className={`${styles.flash} ${dirClass}`}>{fmtPrice(row.last)}</span>
+            <span
+              key={row.tickSeq ?? 0}
+              className={`${styles.flash} ${dirClass}`}
+            >
+              {fmtPrice(row.last)}
+            </span>
           </span>
         );
       },
@@ -91,7 +104,9 @@ export function makePositionColumns(
       widthPx: 120,
       value: (row) => row.dayPnl,
       render: ({ row }) => (
-        <span className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}>
+        <span
+          className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}
+        >
           {fmtSignedUsd(row.dayPnl)}
           <span className={styles.subline}>{fmtPct(row.dayPnlPct)}</span>
         </span>
@@ -115,7 +130,9 @@ export function makePositionColumns(
         <span className={styles.analyst}>
           {row.analyst}
           {row.analyst.length > 0 && (
-            <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>{row.flag}</span>
+            <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>
+              {row.flag}
+            </span>
           )}
         </span>
       ),

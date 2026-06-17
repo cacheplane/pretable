@@ -1,5 +1,10 @@
 export const SECTORS = [
-  "All", "Technology", "Consumer", "Health Care", "Financials", "Energy",
+  "All",
+  "Technology",
+  "Consumer",
+  "Health Care",
+  "Financials",
+  "Energy",
 ] as const;
 
 export interface FilterState {

@@ -1,14 +1,71 @@
-.board { display: flex; flex-direction: column; gap: 16px; padding: 14px; font-size: 12px; }
-.section { display: flex; flex-direction: column; gap: 2px; }
-.label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.55; }
-.nav { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.pnl { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.up { color: var(--pretable-pos, #1a8f50); }
-.down { color: var(--pretable-neg, #c0392b); }
-.alloc { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0 4px; }
-.alloc > span { display: block; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 10px; opacity: 0.75; }
-.key { display: inline-flex; align-items: center; gap: 4px; }
-.sw { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
-.alert { padding: 6px 8px; border-radius: 7px; background: rgba(128, 128, 128, 0.08); line-height: 1.35; }
-.alert strong { font-weight: 700; }
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px;
+  font-size: 12px;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.55;
+}
+.nav {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pnl {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.up {
+  color: var(--pretable-pos, #1a8f50);
+}
+.down {
+  color: var(--pretable-neg, #c0392b);
+}
+.alloc {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+.alloc > span {
+  display: block;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 10px;
+  opacity: 0.75;
+}
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sw {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.alert {
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: rgba(128, 128, 128, 0.08);
+  line-height: 1.35;
+}
+.alert strong {
+  font-weight: 700;
+}

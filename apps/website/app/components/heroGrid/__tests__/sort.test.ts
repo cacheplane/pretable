@@ -4,9 +4,18 @@ import type { PositionRow } from "../types";
 
 function row(p: Partial<PositionRow> & { id: string }): PositionRow {
   return {
-    symbol: p.id, name: p.id, sector: "Technology",
-    qty: 0, last: 0, mktValue: 0, dayPnl: 0, dayPnlPct: 0, weight: 0,
-    analyst: "", flag: "hold", ...p,
+    symbol: p.id,
+    name: p.id,
+    sector: "Technology",
+    qty: 0,
+    last: 0,
+    mktValue: 0,
+    dayPnl: 0,
+    dayPnlPct: 0,
+    weight: 0,
+    analyst: "",
+    flag: "hold",
+    ...p,
   };
 }
 

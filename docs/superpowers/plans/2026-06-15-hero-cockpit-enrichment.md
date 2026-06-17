@@ -17,7 +17,7 @@
   1. `parseEditValue(String(draft), input)` → the typed value.
   2. if `column.validate`: status → `validating`; `await validate(value, input)`; a returned string → status back to `editing` with that error (`markEditInvalid`); `true` → continue.
   3. status → `saving`; `await onCellEdit({ rowId, columnId, value, row })`; resolve → commit succeeds; **throw → status `error` with the thrown message** (`markEditError`).
-  `PretableEditorInput` (passed to `renderEditor`) has: `draft`, `setDraft(v)`, `commit(dir?)`, `cancel()`, `status` (`"checking"|"editing"|"validating"|"saving"|"error"`), `error?`, `row`, `column`, `value`.
+     `PretableEditorInput` (passed to `renderEditor`) has: `draft`, `setDraft(v)`, `commit(dir?)`, `cancel()`, `status` (`"checking"|"editing"|"validating"|"saving"|"error"`), `error?`, `row`, `column`, `value`.
 - **Column edit fields (`PretableColumn`):** `editable?: boolean | (input)=>boolean|Promise<boolean>`, `validate?: (value, input)=> (true|string)|Promise<...>`, `parseEditValue?: (raw, input)=>unknown`, `renderEditor?: (input)=>ReactNode`.
 - **Filter engine (verified):** `state.filters: Record<columnId,string>`; each is a case-insensitive **substring** match against that column's `value(row)`, **AND**-combined; a filter on a non-existent column id is ignored.
 - **Grid stability rule (from earlier on this branch):** the grid is created once and reconciled in place; it recreates only if `columns`/`getRowId`/`autosize` identity changes. So **`columns` must keep a stable identity** — build the factory result in a `useMemo(..., [])` reading live data through a ref.
@@ -26,19 +26,19 @@
 
 ### File structure
 
-| File | Responsibility |
-|------|----------------|
-| `heroGrid/positions-math.ts` (new) | Pure: NAV + weight recomputation from rows. |
-| `heroGrid/qty-edit.ts` (new) | Pure: parse/sanity-validate qty, 7% guardrail check, deterministic desk-rejection. |
-| `heroGrid/filters.ts` (new) | Pure: build `state.filters` from `{search, sector}`. |
-| `heroGrid/selection.ts` (new) | Pure: summarize selection ranges → `{rows, cols}`. |
-| `heroGrid/positionColumns.tsx` (modify) | Factory `makePositionColumns({getRows})`; symbol `value` carries name; new `sector` column; editable `qty` column. |
-| `heroGrid/QtyEditor.tsx` (new) + `qtyEditor.module.css` | `renderEditor` component: input + cell-anchored lifecycle popover. |
-| `heroGrid/sidebar/FilterSection.tsx` (new) | Search input + sector chips. |
-| `heroGrid/sidebar/SelectionSection.tsx` (new) | Live selection summary + "Copied ✓". |
-| `heroGrid/PortfolioSummary.tsx` (modify) | Compose Filter / Selection / Rollup sections. |
-| `heroGrid/sidebar/sidebar.module.css` (new) | Section styling. |
-| `HeroGrid.tsx` (modify) | Columns factory, controlled filters, onCellEdit, onSelectionChange, copy feedback, reducer weight/edit reconciliation. |
+| File                                                    | Responsibility                                                                                                         |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `heroGrid/positions-math.ts` (new)                      | Pure: NAV + weight recomputation from rows.                                                                            |
+| `heroGrid/qty-edit.ts` (new)                            | Pure: parse/sanity-validate qty, 7% guardrail check, deterministic desk-rejection.                                     |
+| `heroGrid/filters.ts` (new)                             | Pure: build `state.filters` from `{search, sector}`.                                                                   |
+| `heroGrid/selection.ts` (new)                           | Pure: summarize selection ranges → `{rows, cols}`.                                                                     |
+| `heroGrid/positionColumns.tsx` (modify)                 | Factory `makePositionColumns({getRows})`; symbol `value` carries name; new `sector` column; editable `qty` column.     |
+| `heroGrid/QtyEditor.tsx` (new) + `qtyEditor.module.css` | `renderEditor` component: input + cell-anchored lifecycle popover.                                                     |
+| `heroGrid/sidebar/FilterSection.tsx` (new)              | Search input + sector chips.                                                                                           |
+| `heroGrid/sidebar/SelectionSection.tsx` (new)           | Live selection summary + "Copied ✓".                                                                                   |
+| `heroGrid/PortfolioSummary.tsx` (modify)                | Compose Filter / Selection / Rollup sections.                                                                          |
+| `heroGrid/sidebar/sidebar.module.css` (new)             | Section styling.                                                                                                       |
+| `HeroGrid.tsx` (modify)                                 | Columns factory, controlled filters, onCellEdit, onSelectionChange, copy feedback, reducer weight/edit reconciliation. |
 
 ---
 
@@ -54,16 +54,36 @@ import { computeNav, withDerivedWeights } from "../positions-math";
 import type { PositionRow } from "../types";
 
 function row(p: Partial<PositionRow> & { id: string }): PositionRow {
-  return { symbol: p.id, name: p.id, sector: "Technology", qty: 0, last: 0,
-    mktValue: 0, dayPnl: 0, dayPnlPct: 0, weight: 0, analyst: "", flag: "hold", ...p };
+  return {
+    symbol: p.id,
+    name: p.id,
+    sector: "Technology",
+    qty: 0,
+    last: 0,
+    mktValue: 0,
+    dayPnl: 0,
+    dayPnlPct: 0,
+    weight: 0,
+    analyst: "",
+    flag: "hold",
+    ...p,
+  };
 }
 
 describe("positions-math", () => {
   it("computeNav sums market value", () => {
-    expect(computeNav([row({ id: "A", mktValue: 30 }), row({ id: "B", mktValue: 10 })])).toBe(40);
+    expect(
+      computeNav([
+        row({ id: "A", mktValue: 30 }),
+        row({ id: "B", mktValue: 10 }),
+      ]),
+    ).toBe(40);
   });
   it("withDerivedWeights sets each weight to mktValue / NAV percent", () => {
-    const out = withDerivedWeights([row({ id: "A", mktValue: 30 }), row({ id: "B", mktValue: 10 })]);
+    const out = withDerivedWeights([
+      row({ id: "A", mktValue: 30 }),
+      row({ id: "B", mktValue: 10 }),
+    ]);
     expect(out.find((r) => r.id === "A")!.weight).toBe(75);
     expect(out.find((r) => r.id === "B")!.weight).toBe(25);
   });
@@ -86,7 +106,9 @@ export function computeNav(rows: readonly PositionRow[]): number {
 }
 
 /** Return rows with `weight` derived from each mktValue against total NAV (percent, 1 dp). */
-export function withDerivedWeights(rows: readonly PositionRow[]): PositionRow[] {
+export function withDerivedWeights(
+  rows: readonly PositionRow[],
+): PositionRow[] {
   const nav = computeNav(rows);
   return rows.map((r) => {
     const weight = nav > 0 ? Number(((r.mktValue / nav) * 100).toFixed(1)) : 0;
@@ -114,7 +136,13 @@ git commit -m "feat(website): NAV + derived-weight helpers for the cockpit"
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { parseQty, sanityCheckQty, breachesGuardrail, isDeskRejected, GUARDRAIL_PCT } from "../qty-edit";
+import {
+  parseQty,
+  sanityCheckQty,
+  breachesGuardrail,
+  isDeskRejected,
+  GUARDRAIL_PCT,
+} from "../qty-edit";
 
 describe("qty-edit", () => {
   it("parseQty strips commas/spaces to an integer", () => {
@@ -133,13 +161,17 @@ describe("qty-edit", () => {
   });
   it("breachesGuardrail compares the new single-name weight against NAV", () => {
     // newMktValue large vs others → > 7%
-    expect(breachesGuardrail({ newMktValue: 50, otherMktValue: 100 })).toBe(true);  // 50/150 = 33%
-    expect(breachesGuardrail({ newMktValue: 5, otherMktValue: 200 })).toBe(false);  // 5/205 ≈ 2.4%
+    expect(breachesGuardrail({ newMktValue: 50, otherMktValue: 100 })).toBe(
+      true,
+    ); // 50/150 = 33%
+    expect(breachesGuardrail({ newMktValue: 5, otherMktValue: 200 })).toBe(
+      false,
+    ); // 5/205 ≈ 2.4%
     expect(GUARDRAIL_PCT).toBe(7);
   });
   it("isDeskRejected is deterministic per symbol+qty", () => {
     const a = isDeskRejected("NVDA", 14000);
-    expect(isDeskRejected("NVDA", 14000)).toBe(a);   // stable
+    expect(isDeskRejected("NVDA", 14000)).toBe(a); // stable
     expect(typeof a).toBe("boolean");
   });
 });
@@ -160,13 +192,17 @@ export function parseQty(raw: string): number {
 
 /** Returns `true` if acceptable, else a human error string. */
 export function sanityCheckQty(qty: number, currentQty: number): true | string {
-  if (!Number.isInteger(qty) || qty <= 0) return "Enter a whole number of shares";
+  if (!Number.isInteger(qty) || qty <= 0)
+    return "Enter a whole number of shares";
   if (qty > currentQty * 10) return "Too large — over 10× current position";
   return true;
 }
 
 /** New single-name weight = newMktValue / (newMktValue + every other holding's mktValue). */
-export function breachesGuardrail(args: { newMktValue: number; otherMktValue: number }): boolean {
+export function breachesGuardrail(args: {
+  newMktValue: number;
+  otherMktValue: number;
+}): boolean {
   const nav = args.newMktValue + args.otherMktValue;
   if (nav <= 0) return false;
   return (args.newMktValue / nav) * 100 > GUARDRAIL_PCT;
@@ -210,13 +246,20 @@ describe("buildFilters", () => {
     expect(buildFilters({ search: "", sector: null })).toEqual({});
   });
   it("maps search to the symbol column", () => {
-    expect(buildFilters({ search: "nvda", sector: null })).toEqual({ symbol: "nvda" });
+    expect(buildFilters({ search: "nvda", sector: null })).toEqual({
+      symbol: "nvda",
+    });
   });
   it("maps a sector chip to the sector column", () => {
-    expect(buildFilters({ search: "", sector: "Energy" })).toEqual({ sector: "Energy" });
+    expect(buildFilters({ search: "", sector: "Energy" })).toEqual({
+      sector: "Energy",
+    });
   });
   it("composes both (AND)", () => {
-    expect(buildFilters({ search: "x", sector: "Technology" })).toEqual({ symbol: "x", sector: "Technology" });
+    expect(buildFilters({ search: "x", sector: "Technology" })).toEqual({
+      symbol: "x",
+      sector: "Technology",
+    });
   });
   it("trims whitespace-only search to empty", () => {
     expect(buildFilters({ search: "   ", sector: null })).toEqual({});
@@ -234,7 +277,12 @@ describe("buildFilters", () => {
 
 ```ts
 export const SECTORS = [
-  "All", "Technology", "Consumer", "Health Care", "Financials", "Energy",
+  "All",
+  "Technology",
+  "Consumer",
+  "Health Care",
+  "Financials",
+  "Energy",
 ] as const;
 
 export interface FilterState {
@@ -273,23 +321,44 @@ import { describe, expect, it } from "vitest";
 import { summarizeSelection } from "../selection";
 import type { PretableSelectionState } from "@pretable/react";
 
-const sel = (ranges: Array<[string, string, string, string]>): PretableSelectionState => ({
+const sel = (
+  ranges: Array<[string, string, string, string]>,
+): PretableSelectionState => ({
   ranges: ranges.map(([startRowId, endRowId, startColumnId, endColumnId]) => ({
-    startRowId, endRowId, startColumnId, endColumnId })),
+    startRowId,
+    endRowId,
+    startColumnId,
+    endColumnId,
+  })),
   anchor: null,
 });
 
 describe("summarizeSelection", () => {
   it("returns null for an empty selection", () => {
-    expect(summarizeSelection(sel([]), ["c1", "c2", "c3"], ["r1", "r2", "r3"])).toBeNull();
+    expect(
+      summarizeSelection(sel([]), ["c1", "c2", "c3"], ["r1", "r2", "r3"]),
+    ).toBeNull();
   });
   it("counts rows × columns of a single range", () => {
-    expect(summarizeSelection(sel([["r1", "r2", "c1", "c2"]]), ["c1", "c2", "c3"], ["r1", "r2", "r3"]))
-      .toEqual({ rows: 2, cols: 2 });
+    expect(
+      summarizeSelection(
+        sel([["r1", "r2", "c1", "c2"]]),
+        ["c1", "c2", "c3"],
+        ["r1", "r2", "r3"],
+      ),
+    ).toEqual({ rows: 2, cols: 2 });
   });
   it("counts the union across multiple ranges", () => {
-    expect(summarizeSelection(sel([["r1", "r1", "c1", "c1"], ["r3", "r3", "c3", "c3"]]),
-      ["c1", "c2", "c3"], ["r1", "r2", "r3"])).toEqual({ rows: 2, cols: 2 });
+    expect(
+      summarizeSelection(
+        sel([
+          ["r1", "r1", "c1", "c1"],
+          ["r3", "r3", "c3", "c3"],
+        ]),
+        ["c1", "c2", "c3"],
+        ["r1", "r2", "r3"],
+      ),
+    ).toEqual({ rows: 2, cols: 2 });
   });
 });
 ```
@@ -321,9 +390,17 @@ export function summarizeSelection(
   const rowSet = new Set<number>();
   const colSet = new Set<number>();
   for (const r of selection.ranges) {
-    const r0 = rowIdx.get(r.startRowId), r1 = rowIdx.get(r.endRowId);
-    const c0 = colIdx.get(r.startColumnId), c1 = colIdx.get(r.endColumnId);
-    if (r0 === undefined || r1 === undefined || c0 === undefined || c1 === undefined) continue;
+    const r0 = rowIdx.get(r.startRowId),
+      r1 = rowIdx.get(r.endRowId);
+    const c0 = colIdx.get(r.startColumnId),
+      c1 = colIdx.get(r.endColumnId);
+    if (
+      r0 === undefined ||
+      r1 === undefined ||
+      c0 === undefined ||
+      c1 === undefined
+    )
+      continue;
     for (let i = Math.min(r0, r1); i <= Math.max(r0, r1); i += 1) rowSet.add(i);
     for (let j = Math.min(c0, c1); j <= Math.max(c0, c1); j += 1) colSet.add(j);
   }
@@ -361,7 +438,14 @@ const cols = makePositionColumns({ getRows: () => [] });
 describe("makePositionColumns", () => {
   it("exposes columns in order incl. the sector column", () => {
     expect(cols.map((c) => c.id)).toEqual([
-      "symbol", "sector", "qty", "last", "mktValue", "dayPnl", "weight", "analyst",
+      "symbol",
+      "sector",
+      "qty",
+      "last",
+      "mktValue",
+      "dayPnl",
+      "weight",
+      "analyst",
     ]);
   });
   it("symbol value carries the company name so search matches both", () => {
@@ -376,13 +460,45 @@ describe("makePositionColumns", () => {
   });
   it("qty validate rejects a guardrail breach using live NAV", async () => {
     const rows: PositionRow[] = [
-      { id: "NVDA", symbol: "NVDA", name: "NVIDIA Corp", sector: "Technology", qty: 100, last: 10,
-        mktValue: 1000, dayPnl: 0, dayPnlPct: 0, weight: 0, analyst: "", flag: "hold" },
-      { id: "MSFT", symbol: "MSFT", name: "Microsoft", sector: "Technology", qty: 100, last: 1,
-        mktValue: 100, dayPnl: 0, dayPnlPct: 0, weight: 0, analyst: "", flag: "hold" },
+      {
+        id: "NVDA",
+        symbol: "NVDA",
+        name: "NVIDIA Corp",
+        sector: "Technology",
+        qty: 100,
+        last: 10,
+        mktValue: 1000,
+        dayPnl: 0,
+        dayPnlPct: 0,
+        weight: 0,
+        analyst: "",
+        flag: "hold",
+      },
+      {
+        id: "MSFT",
+        symbol: "MSFT",
+        name: "Microsoft",
+        sector: "Technology",
+        qty: 100,
+        last: 1,
+        mktValue: 100,
+        dayPnl: 0,
+        dayPnlPct: 0,
+        weight: 0,
+        analyst: "",
+        flag: "hold",
+      },
     ];
-    const qty = makePositionColumns({ getRows: () => rows }).find((c) => c.id === "qty")!;
-    const input = { rowId: "NVDA", columnId: "qty", row: rows[0]!, column: qty, value: 100 } as never;
+    const qty = makePositionColumns({ getRows: () => rows }).find(
+      (c) => c.id === "qty",
+    )!;
+    const input = {
+      rowId: "NVDA",
+      columnId: "qty",
+      row: rows[0]!,
+      column: qty,
+      value: 100,
+    } as never;
     // new qty 1000 × last 10 = 10000 mktValue → 10000/(10000+100) ≈ 99% > 7%
     await expect(qty.validate!(1000, input)).resolves.toMatch(/guardrail/i);
     // a tiny change passes sanity + guardrail
@@ -407,7 +523,10 @@ import type { PositionFlag, PositionRow } from "./types";
 import styles from "./cells.module.css";
 
 const PILL_CLASS: Record<PositionFlag, string> = {
-  trim: styles.pillTrim, watch: styles.pillWatch, risk: styles.pillRisk, hold: styles.pillHold,
+  trim: styles.pillTrim,
+  watch: styles.pillWatch,
+  risk: styles.pillRisk,
+  hold: styles.pillHold,
 };
 
 const COMPLIANCE_DELAY_MS = 400;
@@ -471,10 +590,20 @@ export function makePositionColumns(
       widthPx: 96,
       value: (row) => row.last,
       render: ({ row }) => {
-        const dirClass = row.lastDir === "up" ? styles.flashUp : row.lastDir === "down" ? styles.flashDown : "";
+        const dirClass =
+          row.lastDir === "up"
+            ? styles.flashUp
+            : row.lastDir === "down"
+              ? styles.flashDown
+              : "";
         return (
           <span className={styles.num}>
-            <span key={row.tickSeq ?? 0} className={`${styles.flash} ${dirClass}`}>{fmtPrice(row.last)}</span>
+            <span
+              key={row.tickSeq ?? 0}
+              className={`${styles.flash} ${dirClass}`}
+            >
+              {fmtPrice(row.last)}
+            </span>
           </span>
         );
       },
@@ -492,7 +621,9 @@ export function makePositionColumns(
       widthPx: 120,
       value: (row) => row.dayPnl,
       render: ({ row }) => (
-        <span className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}>
+        <span
+          className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}
+        >
           {fmtSignedUsd(row.dayPnl)}
           <span className={styles.subline}>{fmtPct(row.dayPnlPct)}</span>
         </span>
@@ -516,7 +647,9 @@ export function makePositionColumns(
         <span className={styles.analyst}>
           {row.analyst}
           {row.analyst.length > 0 && (
-            <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>{row.flag}</span>
+            <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>
+              {row.flag}
+            </span>
           )}
         </span>
       ),
@@ -550,8 +683,16 @@ import { QtyEditor } from "../QtyEditor";
 
 function makeInput(over: Record<string, unknown> = {}) {
   return {
-    draft: "12500", setDraft: vi.fn(), commit: vi.fn(), cancel: vi.fn(),
-    status: "editing", error: undefined, row: {}, column: {}, value: 12500, ...over,
+    draft: "12500",
+    setDraft: vi.fn(),
+    commit: vi.fn(),
+    cancel: vi.fn(),
+    status: "editing",
+    error: undefined,
+    row: {},
+    column: {},
+    value: 12500,
+    ...over,
   } as never;
 }
 
@@ -561,7 +702,9 @@ describe("QtyEditor", () => {
     render(<QtyEditor input={input} />);
     const el = screen.getByRole("textbox");
     fireEvent.change(el, { target: { value: "14000" } });
-    expect((input as { setDraft: ReturnType<typeof vi.fn> }).setDraft).toHaveBeenCalledWith("14000");
+    expect(
+      (input as { setDraft: ReturnType<typeof vi.fn> }).setDraft,
+    ).toHaveBeenCalledWith("14000");
   });
   it("shows the compliance popover while validating", () => {
     render(<QtyEditor input={makeInput({ status: "validating" })} />);
@@ -572,7 +715,14 @@ describe("QtyEditor", () => {
     expect(screen.getByText(/submitting order/i)).toBeInTheDocument();
   });
   it("shows the error message popover on rejection", () => {
-    render(<QtyEditor input={makeInput({ status: "error", error: "Rejected by trading desk" })} />);
+    render(
+      <QtyEditor
+        input={makeInput({
+          status: "error",
+          error: "Rejected by trading desk",
+        })}
+      />,
+    );
     expect(screen.getByText(/trading desk/i)).toBeInTheDocument();
   });
   it("commits on Enter and cancels on Escape", () => {
@@ -580,9 +730,13 @@ describe("QtyEditor", () => {
     render(<QtyEditor input={input} />);
     const el = screen.getByRole("textbox");
     fireEvent.keyDown(el, { key: "Enter" });
-    expect((input as { commit: ReturnType<typeof vi.fn> }).commit).toHaveBeenCalledWith("down");
+    expect(
+      (input as { commit: ReturnType<typeof vi.fn> }).commit,
+    ).toHaveBeenCalledWith("down");
     fireEvent.keyDown(el, { key: "Escape" });
-    expect((input as { cancel: ReturnType<typeof vi.fn> }).cancel).toHaveBeenCalled();
+    expect(
+      (input as { cancel: ReturnType<typeof vi.fn> }).cancel,
+    ).toHaveBeenCalled();
   });
 });
 ```
@@ -592,18 +746,62 @@ describe("QtyEditor", () => {
 - [ ] **Step 3: Create `qtyEditor.module.css`**
 
 ```css
-.wrap { position: relative; display: inline-flex; align-items: center; gap: 4px; }
-.input { width: 64px; font: inherit; font-variant-numeric: tabular-nums; padding: 1px 4px;
-  border: 1px solid var(--pt-rule-strong, #888); border-radius: 4px; background: var(--pt-bg-card, #fff); }
-.icon { font-size: 11px; line-height: 1; }
-.spin { animation: spin 0.8s linear infinite; display: inline-block; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.pending { color: var(--pt-color-warning, #b87800); }
-.error { color: var(--pt-color-negative, #c0392b); }
-.popover { position: absolute; top: 100%; left: 0; margin-top: 3px; z-index: 5; white-space: nowrap;
-  font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--pt-rule, #ddd);
-  background: var(--pt-bg-card, #fff); box-shadow: 0 2px 8px rgba(0,0,0,.12); display: inline-flex; gap: 5px; align-items: center; }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.input {
+  width: 64px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 4px;
+  border: 1px solid var(--pt-rule-strong, #888);
+  border-radius: 4px;
+  background: var(--pt-bg-card, #fff);
+}
+.icon {
+  font-size: 11px;
+  line-height: 1;
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pending {
+  color: var(--pt-color-warning, #b87800);
+}
+.error {
+  color: var(--pt-color-negative, #c0392b);
+}
+.popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 3px;
+  z-index: 5;
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--pt-rule, #ddd);
+  background: var(--pt-bg-card, #fff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
 ```
 
 - [ ] **Step 4: Create `QtyEditor.tsx`**
@@ -613,7 +811,11 @@ import type { PretableEditorInput } from "@pretable/react";
 import type { PositionRow } from "./types";
 import styles from "./qtyEditor.module.css";
 
-export function QtyEditor({ input }: { input: PretableEditorInput<PositionRow> }) {
+export function QtyEditor({
+  input,
+}: {
+  input: PretableEditorInput<PositionRow>;
+}) {
   const { status, error } = input;
   const pending = status === "validating" || status === "saving";
 
@@ -626,21 +828,35 @@ export function QtyEditor({ input }: { input: PretableEditorInput<PositionRow> }
         value={String(input.draft ?? "")}
         onChange={(e) => input.setDraft(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); input.commit("down"); }
-          else if (e.key === "Escape") { e.preventDefault(); input.cancel(); }
+          if (e.key === "Enter") {
+            e.preventDefault();
+            input.commit("down");
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            input.cancel();
+          }
         }}
       />
       {status === "validating" && (
-        <span className={`${styles.icon} ${styles.pending}`} aria-hidden="true">⟳</span>
+        <span className={`${styles.icon} ${styles.pending}`} aria-hidden="true">
+          ⟳
+        </span>
       )}
       {pending && (
         <span className={styles.popover} role="status">
-          <span className={`${styles.icon} ${styles.pending} ${styles.spin}`} aria-hidden="true">⟳</span>
+          <span
+            className={`${styles.icon} ${styles.pending} ${styles.spin}`}
+            aria-hidden="true"
+          >
+            ⟳
+          </span>
           {status === "validating" ? "compliance check…" : "submitting order…"}
         </span>
       )}
       {!pending && error && (
-        <span className={`${styles.popover} ${styles.error}`} role="alert">{error}</span>
+        <span className={`${styles.popover} ${styles.error}`} role="alert">
+          {error}
+        </span>
       )}
     </span>
   );
@@ -673,19 +889,45 @@ import { FilterSection } from "../sidebar/FilterSection";
 describe("FilterSection", () => {
   it("emits search text changes", () => {
     const onSearch = vi.fn();
-    render(<FilterSection search="" sector="All" onSearch={onSearch} onSector={vi.fn()} />);
-    fireEvent.change(screen.getByPlaceholderText(/filter symbol/i), { target: { value: "nvda" } });
+    render(
+      <FilterSection
+        search=""
+        sector="All"
+        onSearch={onSearch}
+        onSector={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/filter symbol/i), {
+      target: { value: "nvda" },
+    });
     expect(onSearch).toHaveBeenCalledWith("nvda");
   });
   it("emits sector chip selection", () => {
     const onSector = vi.fn();
-    render(<FilterSection search="" sector="All" onSearch={vi.fn()} onSector={onSector} />);
+    render(
+      <FilterSection
+        search=""
+        sector="All"
+        onSearch={vi.fn()}
+        onSector={onSector}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Energy" }));
     expect(onSector).toHaveBeenCalledWith("Energy");
   });
   it("marks the active sector chip", () => {
-    render(<FilterSection search="" sector="Technology" onSearch={vi.fn()} onSector={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Technology" })).toHaveAttribute("aria-pressed", "true");
+    render(
+      <FilterSection
+        search=""
+        sector="Technology"
+        onSearch={vi.fn()}
+        onSector={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Technology" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 });
 ```
@@ -695,16 +937,56 @@ describe("FilterSection", () => {
 - [ ] **Step 3: Create `sidebar/sidebar.module.css`**
 
 ```css
-.section { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--pt-rule, #eee); }
-.label { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; opacity: .55; }
-.search { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; padding: 4px 8px;
-  border: 1px solid var(--pt-rule-strong, #ccc); border-radius: 6px; background: var(--pt-bg-card, #fff); }
-.chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.chip { font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
-  border: 1px solid var(--pt-rule-strong, #ccc); background: transparent; color: inherit; }
-.chip[aria-pressed="true"] { background: var(--pt-accent, #2563eb); color: #fff; border-color: var(--pt-accent, #2563eb); }
-.selsum { font-size: 12px; font-weight: 600; color: var(--pt-accent, #2563eb); }
-.copied { color: var(--pt-color-positive, #1a8f50); }
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--pt-rule, #eee);
+}
+.label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.55;
+}
+.search {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--pt-rule-strong, #ccc);
+  border-radius: 6px;
+  background: var(--pt-bg-card, #fff);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  border: 1px solid var(--pt-rule-strong, #ccc);
+  background: transparent;
+  color: inherit;
+}
+.chip[aria-pressed="true"] {
+  background: var(--pt-accent, #2563eb);
+  color: #fff;
+  border-color: var(--pt-accent, #2563eb);
+}
+.selsum {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pt-accent, #2563eb);
+}
+.copied {
+  color: var(--pt-color-positive, #1a8f50);
+}
 ```
 
 - [ ] **Step 4: Create `sidebar/FilterSection.tsx`**
@@ -720,7 +1002,12 @@ export interface FilterSectionProps {
   onSector: (value: string) => void;
 }
 
-export function FilterSection({ search, sector, onSearch, onSector }: FilterSectionProps) {
+export function FilterSection({
+  search,
+  sector,
+  onSearch,
+  onSector,
+}: FilterSectionProps) {
   return (
     <section className={styles.section} aria-label="Filters">
       <span className={styles.label}>Filter</span>
@@ -773,7 +1060,9 @@ import { SelectionSection } from "../sidebar/SelectionSection";
 
 describe("SelectionSection", () => {
   it("renders nothing when there is no summary", () => {
-    const { container } = render(<SelectionSection summary={null} copied={false} />);
+    const { container } = render(
+      <SelectionSection summary={null} copied={false} />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
   it("shows rows × cols and the copy hint", () => {
@@ -839,13 +1128,29 @@ git commit -m "feat(website): sidebar SelectionSection (live summary + copied)"
 //   <PortfolioSummary rows={rows} filter={{search:"",sector:"All"}} onSearch={()=>{}}
 //      onSector={()=>{}} selection={null} copied={false} />
 it("renders the filter controls", () => {
-  render(<PortfolioSummary rows={rows} filter={{ search: "", sector: "All" }}
-    onSearch={() => {}} onSector={() => {}} selection={null} copied={false} />);
+  render(
+    <PortfolioSummary
+      rows={rows}
+      filter={{ search: "", sector: "All" }}
+      onSearch={() => {}}
+      onSector={() => {}}
+      selection={null}
+      copied={false}
+    />,
+  );
   expect(screen.getByPlaceholderText(/filter symbol/i)).toBeInTheDocument();
 });
 it("renders the selection summary when present", () => {
-  render(<PortfolioSummary rows={rows} filter={{ search: "", sector: "All" }}
-    onSearch={() => {}} onSector={() => {}} selection={{ rows: 2, cols: 2 }} copied={false} />);
+  render(
+    <PortfolioSummary
+      rows={rows}
+      filter={{ search: "", sector: "All" }}
+      onSearch={() => {}}
+      onSector={() => {}}
+      selection={{ rows: 2, cols: 2 }}
+      copied={false}
+    />,
+  );
   expect(screen.getByText(/2 × 2 selected/i)).toBeInTheDocument();
 });
 ```
@@ -874,11 +1179,23 @@ export interface PortfolioSummaryProps {
 }
 
 // in the component, render sections before the existing rollup markup:
-export function PortfolioSummary({ rows, filter, onSearch, onSector, selection, copied }: PortfolioSummaryProps) {
+export function PortfolioSummary({
+  rows,
+  filter,
+  onSearch,
+  onSector,
+  selection,
+  copied,
+}: PortfolioSummaryProps) {
   const model = useMemo(() => buildModel(rows), [rows]);
   return (
     <aside aria-label="Portfolio summary" className={styles.board}>
-      <FilterSection search={filter.search} sector={filter.sector ?? "All"} onSearch={onSearch} onSector={onSector} />
+      <FilterSection
+        search={filter.search}
+        sector={filter.sector ?? "All"}
+        onSearch={onSearch}
+        onSector={onSector}
+      />
       <SelectionSection summary={selection} copied={copied} />
       {/* existing NAV / Day P&L / Allocation / AI alerts sections unchanged below */}
       {/* ...keep current JSX... */}
@@ -907,33 +1224,49 @@ This is the integration task. Add state + handlers and pass props through.
 - [ ] **Step 1: Edit `HeroGrid.tsx`** — apply all of the following:
 
 (a) **Imports** (add):
+
 ```tsx
 import { useCallback } from "react";
 import { makePositionColumns } from "./heroGrid/positionColumns";
 import { withDerivedWeights } from "./heroGrid/positions-math";
 import { buildFilters, type FilterState } from "./heroGrid/filters";
-import { summarizeSelection, type SelectionSummary } from "./heroGrid/selection";
+import {
+  summarizeSelection,
+  type SelectionSummary,
+} from "./heroGrid/selection";
 import { isDeskRejected } from "./heroGrid/qty-edit";
 import type { PretableSelectionState } from "@pretable/react";
 ```
+
 Remove the old `import { positionColumns } from "./heroGrid/positionColumns";`.
 
 (b) **Live rows ref + stable columns** (so the qty `validate` sees current NAV without recreating the grid):
+
 ```tsx
 const rowsRef = useRef<PositionRow[]>([]);
-useEffect(() => { rowsRef.current = rows; }, [rows]);
-const columns = useMemo(() => makePositionColumns({ getRows: () => rowsRef.current }), []);
+useEffect(() => {
+  rowsRef.current = rows;
+}, [rows]);
+const columns = useMemo(
+  () => makePositionColumns({ getRows: () => rowsRef.current }),
+  [],
+);
 ```
 
 (c) **New state**:
+
 ```tsx
-const [filter, setFilter] = useState<FilterState>({ search: "", sector: "All" });
+const [filter, setFilter] = useState<FilterState>({
+  search: "",
+  sector: "All",
+});
 const [selection, setSelection] = useState<SelectionSummary | null>(null);
 const [copied, setCopied] = useState(false);
 const editedQtyByIdRef = useRef<Map<string, number>>(new Map());
 ```
 
 (d) **Reducer change** — in the `onTransaction` `tx.update` branch, after merging patches, override edited rows' `mktValue` and re-derive all weights. Replace the existing merge/return with:
+
 ```tsx
 next = next.map((row) => {
   const patch = byId.get(row.id);
@@ -952,49 +1285,79 @@ next = next.map((row) => {
 });
 next = withDerivedWeights(next); // keep weight consistent with current mktValues
 ```
+
 Apply the same `withDerivedWeights(next)` after the `tx.add` branch too (so initial rows get correct weights — they already do from the recording, but this is idempotent and harmless).
 
 (e) **filters → controlled state**: compute and pass merged state:
+
 ```tsx
 const filterMap = useMemo(() => buildFilters(filter), [filter]);
 // in <PretableSurface ... >:
 state={{ ...(userSort ? { sort: userSort } : {}), filters: filterMap }}
 ```
+
 (Replace the existing `state={userSort ? { sort: userSort } : null}`.)
 
 (f) **onCellEdit** (the saving phase — submit delay, desk rejection, apply):
+
 ```tsx
-const handleCellEdit = useCallback(async ({ rowId, columnId, value }: {
-  rowId: string; columnId: string; value: unknown; row: PositionRow;
-}) => {
-  if (columnId !== "qty") return;
-  const qty = value as number;
-  await new Promise((r) => setTimeout(r, 700)); // simulated order submission (status = saving)
-  if (isDeskRejected(rowId, qty)) {
-    throw new Error("Rejected by trading desk"); // → markEditError
-  }
-  editedQtyByIdRef.current.set(rowId, qty);
-  setRows((prev) => withDerivedWeights(prev.map((r) =>
-    r.id === rowId ? { ...r, qty, mktValue: Math.round(qty * r.last) } : r,
-  )));
-}, []);
+const handleCellEdit = useCallback(
+  async ({
+    rowId,
+    columnId,
+    value,
+  }: {
+    rowId: string;
+    columnId: string;
+    value: unknown;
+    row: PositionRow;
+  }) => {
+    if (columnId !== "qty") return;
+    const qty = value as number;
+    await new Promise((r) => setTimeout(r, 700)); // simulated order submission (status = saving)
+    if (isDeskRejected(rowId, qty)) {
+      throw new Error("Rejected by trading desk"); // → markEditError
+    }
+    editedQtyByIdRef.current.set(rowId, qty);
+    setRows((prev) =>
+      withDerivedWeights(
+        prev.map((r) =>
+          r.id === rowId
+            ? { ...r, qty, mktValue: Math.round(qty * r.last) }
+            : r,
+        ),
+      ),
+    );
+  },
+  [],
+);
 ```
 
 (g) **onSelectionChange** → summary (needs current visible order; derive from sortedRows + columns):
+
 ```tsx
-const handleSelectionChange = useCallback((next: PretableSelectionState) => {
-  const colOrder = columns.map((c) => c.id);
-  const rowOrder = sortedRowsRef.current.map((r) => r.id);
-  setSelection(summarizeSelection(next, colOrder, rowOrder));
-}, [columns]);
+const handleSelectionChange = useCallback(
+  (next: PretableSelectionState) => {
+    const colOrder = columns.map((c) => c.id);
+    const rowOrder = sortedRowsRef.current.map((r) => r.id);
+    setSelection(summarizeSelection(next, colOrder, rowOrder));
+  },
+  [columns],
+);
 ```
+
 Add `const sortedRowsRef = useRef<PositionRow[]>([]);` and `useEffect(() => { sortedRowsRef.current = sortedRows; }, [sortedRows]);` (so the callback reads the latest order without re-creating).
 
 (h) **Copy feedback** — a document keydown listener shows "Copied ✓" transiently when ⌘/Ctrl+C fires with an active selection (the surface performs the actual copy):
+
 ```tsx
 useEffect(() => {
   const onKey = (e: KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C") && selection) {
+    if (
+      (e.metaKey || e.ctrlKey) &&
+      (e.key === "c" || e.key === "C") &&
+      selection
+    ) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1500);
     }
@@ -1007,6 +1370,7 @@ useEffect(() => {
 (i) **Wire props on `<PretableSurface>`**: add `columns={columns}`, `onCellEdit={handleCellEdit}`, `onSelectionChange={handleSelectionChange}`, `copyWithHeaders`. Keep `rows={sortedRows}`, `getRowId`, `viewportHeight`, `rowSelectionColumn`, `onSortChange`.
 
 (j) **Wire `<PortfolioSummary>`**:
+
 ```tsx
 <PortfolioSummary
   rows={rows}
@@ -1038,20 +1402,39 @@ git commit -m "feat(website): wire editing, filtering, selection + copy into the
 **Files:** Modify `apps/website/app/components/HeroGrid.tsx` (legend caption), `heroGrid/cells.module.css` (pencil), `heroGrid/heroGrid.module.css` (sidebar width)
 
 - [ ] **Step 1: Legend caption** — under the grid surface in `HeroGrid.tsx`, add a caption element below the `<PretableSurface>` wrapper:
+
 ```tsx
 <p className={styles.legend}>double-click to edit · drag to select · ⌘C copy</p>
 ```
+
 Add to `heroGrid.module.css`:
+
 ```css
-.legend { margin: 0; padding: 4px 10px; font-size: 11px; color: var(--pt-text-muted, #888);
-  border-top: 1px solid var(--pt-rule, #eee); }
+.legend {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--pt-text-muted, #888);
+  border-top: 1px solid var(--pt-rule, #eee);
+}
 ```
 
 - [ ] **Step 2: Pencil affordance** — in `cells.module.css`, add a hover pencil on editable qty cells:
+
 ```css
-[data-pretable-column-id="qty"] { position: relative; }
-[data-pretable-column-id="qty"]:hover::after { content: "✎"; position: absolute; right: 4px; top: 50%;
-  transform: translateY(-50%); font-size: 10px; opacity: .5; pointer-events: none; }
+[data-pretable-column-id="qty"] {
+  position: relative;
+}
+[data-pretable-column-id="qty"]:hover::after {
+  content: "✎";
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  opacity: 0.5;
+  pointer-events: none;
+}
 ```
 
 - [ ] **Step 3: Sidebar width** — in `heroGrid.module.css`, widen `.heroSidebar` from `flex: 0 0 300px` if needed to `flex: 0 0 300px` (already 300px; confirm the chips wrap acceptably — if cramped, bump to 320px).
@@ -1076,9 +1459,13 @@ Add one spec exercising the new interactions against the live (streaming) hero. 
 - [ ] **Step 1: Add the test**
 
 ```ts
-test("cockpit: edit qty (guardrail reject), filter, and select+copy under streaming", async ({ page }) => {
+test("cockpit: edit qty (guardrail reject), filter, and select+copy under streaming", async ({
+  page,
+}) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+    timeout: 10_000,
+  });
 
   // --- Filter: search narrows the book, sector chip narrows further, clear restores ---
   const search = page.getByPlaceholder(/filter symbol/i);
@@ -1086,13 +1473,17 @@ test("cockpit: edit qty (guardrail reject), filter, and select+copy under stream
   await search.fill("NVDA");
   await expect(page.locator("[data-pretable-row]")).toHaveCount(1);
   await search.fill("");
-  await expect.poll(async () => page.locator("[data-pretable-row]").count()).toBe(before);
+  await expect
+    .poll(async () => page.locator("[data-pretable-row]").count())
+    .toBe(before);
   await page.getByRole("button", { name: "Energy" }).click();
   await expect(page.locator("[data-pretable-row]").first()).toBeVisible();
   await page.getByRole("button", { name: "All" }).click();
 
   // --- Edit qty → 7% guardrail rejection (huge qty) ---
-  const nvdaQty = page.locator('[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="qty"]');
+  const nvdaQty = page.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="qty"]',
+  );
   await nvdaQty.dblclick();
   const input = page.getByLabel("Edit quantity");
   await input.fill("9000000");
@@ -1101,12 +1492,18 @@ test("cockpit: edit qty (guardrail reject), filter, and select+copy under stream
   await input.press("Escape");
 
   // --- Selection summary + copy, surviving ticks ---
-  const cellA = page.locator('[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="dayPnl"]');
-  const cellB = page.locator('[data-pretable-row][data-pretable-row-id="MSFT"] [data-pretable-column-id="weight"]');
+  const cellA = page.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="dayPnl"]',
+  );
+  const cellB = page.locator(
+    '[data-pretable-row][data-pretable-row-id="MSFT"] [data-pretable-column-id="weight"]',
+  );
   await cellA.click();
   await cellB.click({ modifiers: ["Shift"] });
   await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+c" : "Control+c");
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+c" : "Control+c",
+  );
   await expect(page.getByText(/Copied/i)).toBeVisible();
   await page.waitForTimeout(2000); // ticks
   await expect(page.getByText(/selected/i)).toBeVisible(); // selection persists
@@ -1127,6 +1524,7 @@ git commit -m "test(website): smoke for editing, filtering, selection+copy under
 ## Task 13: Full validation
 
 - [ ] **Step 1: Run the suite** (from repo root, sequentially):
+
 ```bash
 pnpm --filter @pretable/app-website typecheck
 pnpm --filter @pretable/app-website lint
@@ -1134,6 +1532,7 @@ pnpm --filter @pretable/app-website test
 pnpm --filter @pretable/app-website build
 pnpm --filter @pretable/app-website smoke   # against a running dev server or BASE_URL
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 2: Manual check** — `dev` server; verify: double-click NVDA qty → "compliance check…" then "submitting order…" popover; a huge qty → "breaches 7% guardrail"; a modest qty → applies and weight/NAV shift live while prices keep ticking; search + sector chip narrow the book live; drag-select cells → sidebar shows "N × M selected"; ⌘C → "Copied ✓"; reduced-motion still renders the settled snapshot.

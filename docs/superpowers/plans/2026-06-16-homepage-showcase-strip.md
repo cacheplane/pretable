@@ -9,6 +9,7 @@
 **Tech Stack:** Next 16 / React 19, `@pretable/react` (`PretableSurface`, `PretableColumn`), Tailwind (design tokens: `text-text-primary`, `text-text-secondary`, `border-rule`, `bg-bg-card`, `accent`, `font-display`, `font-mono`), Vitest + Testing Library, Playwright.
 
 **Key facts verified against the codebase:**
+
 - Base column fields: `id`, `header`, `widthPx`, `pinned`, `value`, `format`, `render`, `editable`, `resizable`, `reorderable`. Resize is enabled unless `resizable: false`; reorder unless `reorderable: false` (`pretable-surface.tsx:1270,1317`). So defaults give us both — no extra props.
 - `PretableSurface` measures its own `viewportWidth` from `clientWidth` (`pretable-surface.tsx:483,1110`) → column virtualization is automatic; we only pass `viewportHeight` (a number).
 - Cells carry `data-pretable-cell`; the scroll viewport carries `data-pretable-scroll-viewport`.
@@ -21,6 +22,7 @@
 ## File Structure
 
 New (all under `apps/website/app/components/`):
+
 - `showcase/useInView.ts` — one-shot lazy-mount hook.
 - `showcase/scaleData.ts` — pure generators for the 2,500 × 500 grid.
 - `showcase/useRenderedCellCount.ts` — live DOM-cell counter hook (+ pure `countCells`).
@@ -32,6 +34,7 @@ New (all under `apps/website/app/components/`):
 - Tests: `__tests__/useInView.test.ts`, `__tests__/scaleData.test.ts`, `__tests__/useRenderedCellCount.test.ts`, `__tests__/columnLayoutData.test.ts`, `__tests__/ScaleGrid.test.tsx`, `__tests__/ColumnLayoutGrid.test.tsx`.
 
 Modified:
+
 - `app/page.tsx` — insert the two sections after `<FeatureGrid>`, before `<CtaSection>`.
 - `e2e/smoke.spec.ts` — one new test.
 
@@ -40,6 +43,7 @@ Modified:
 ## Task 1: `useInView` lazy-mount hook
 
 **Files:**
+
 - Create: `apps/website/app/components/showcase/useInView.ts`
 - Test: `apps/website/app/components/__tests__/useInView.test.ts`
 
@@ -174,6 +178,7 @@ git commit -m "feat(website): useInView one-shot lazy-mount hook"
 ## Task 2: `scaleData` generators
 
 **Files:**
+
 - Create: `apps/website/app/components/showcase/scaleData.ts`
 - Test: `apps/website/app/components/__tests__/scaleData.test.ts`
 
@@ -294,6 +299,7 @@ git commit -m "feat(website): scale-grid data generators (2,500 x 500, lazy cell
 ## Task 3: `useRenderedCellCount` + `countCells`
 
 **Files:**
+
 - Create: `apps/website/app/components/showcase/useRenderedCellCount.ts`
 - Test: `apps/website/app/components/__tests__/useRenderedCellCount.test.ts`
 
@@ -400,6 +406,7 @@ git commit -m "feat(website): useRenderedCellCount live DOM-cell counter"
 ## Task 4: `columnLayoutData` (portfolio slice)
 
 **Files:**
+
 - Create: `apps/website/app/components/showcase/columnLayoutData.ts`
 - Test: `apps/website/app/components/__tests__/columnLayoutData.test.ts`
 
@@ -479,7 +486,16 @@ const mk = (
 });
 
 export const LAYOUT_ROWS: LayoutRow[] = [
-  mk("NVDA", "NVIDIA", "Technology", 12000, 121.4, 18420, 6.4, "Trim into strength"),
+  mk(
+    "NVDA",
+    "NVIDIA",
+    "Technology",
+    12000,
+    121.4,
+    18420,
+    6.4,
+    "Trim into strength",
+  ),
   mk("MSFT", "Microsoft", "Technology", 8200, 432.1, -9100, 5.8, "Core hold"),
   mk("AAPL", "Apple", "Technology", 9400, 224.3, 4200, 5.1, "Hold"),
   mk("AMZN", "Amazon", "Consumer", 6100, 186.7, 7300, 4.4, "Add on dips"),
@@ -494,8 +510,7 @@ export const LAYOUT_ROWS: LayoutRow[] = [
 ];
 
 export function makeLayoutColumns(): PretableColumn<LayoutRow>[] {
-  const usd = (n: number) =>
-    `$${Math.round(n).toLocaleString("en-US")}`;
+  const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
   const signedUsd = (n: number) =>
     `${n < 0 ? "-" : "+"}$${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
   return [
@@ -558,6 +573,7 @@ git commit -m "feat(website): column-layout demo data (portfolio slice)"
 ## Task 5: `ScaleGrid` client island + section
 
 **Files:**
+
 - Create: `apps/website/app/components/showcase/ScaleGrid.tsx`
 - Create: `apps/website/app/components/ScaleShowcase.tsx`
 - Test: `apps/website/app/components/__tests__/ScaleGrid.test.tsx`
@@ -677,7 +693,10 @@ function ScaleGridLive() {
         </strong>{" "}
         rendered in the DOM
       </p>
-      <div ref={ref} className="overflow-hidden rounded-[8px] border border-rule">
+      <div
+        ref={ref}
+        className="overflow-hidden rounded-[8px] border border-rule"
+      >
         <PretableSurface<ScaleRow>
           ariaLabel="Virtualized 2,500 by 500 grid"
           columns={columns}
@@ -743,6 +762,7 @@ git commit -m "feat(website): scale showcase section (2,500 x 500 virtualization
 ## Task 6: `ColumnLayoutGrid` client island + section
 
 **Files:**
+
 - Create: `apps/website/app/components/showcase/ColumnLayoutGrid.tsx`
 - Create: `apps/website/app/components/ColumnLayoutShowcase.tsx`
 - Test: `apps/website/app/components/__tests__/ColumnLayoutGrid.test.tsx`
@@ -888,8 +908,7 @@ export function ColumnLayoutShowcase() {
           09 · columns, your way
         </p>
         <h2 className="mt-4 font-display text-[36px] leading-[1.05] tracking-[-0.025em] md:text-[44px]">
-          Resize and reorder.{" "}
-          <em className="italic text-accent">Built in.</em>
+          Resize and reorder. <em className="italic text-accent">Built in.</em>
         </h2>
         <p className="mt-5 max-w-[64ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           Drag a column border to resize, drag a header to reorder — no config,
@@ -921,6 +940,7 @@ git commit -m "feat(website): column-layout showcase section (resize/reorder + r
 ## Task 7: Wire both sections into the homepage
 
 **Files:**
+
 - Modify: `apps/website/app/page.tsx`
 
 - [ ] **Step 1: Add imports**
@@ -964,6 +984,7 @@ git commit -m "feat(website): add scale + column-layout showcases to homepage"
 ## Task 8: Playwright smoke + full validation
 
 **Files:**
+
 - Modify: `apps/website/e2e/smoke.spec.ts`
 
 - [ ] **Step 1: Add the smoke test**
@@ -987,8 +1008,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // DOM-rendered cell count is tiny relative to 1.25M (virtualization on).
   await expect
     .poll(
-      async () =>
-        await page.locator("#scale [data-pretable-cell]").count(),
+      async () => await page.locator("#scale [data-pretable-cell]").count(),
       { timeout: 10_000 },
     )
     .toBeLessThan(2000);
@@ -1005,7 +1025,9 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
 
   // --- Column-layout section: resize a column, then reset ---
   await page.locator("#column-layout").scrollIntoViewIfNeeded();
-  const layoutGrid = page.getByRole("grid", { name: /resizable, reorderable/i });
+  const layoutGrid = page.getByRole("grid", {
+    name: /resizable, reorderable/i,
+  });
   await expect(layoutGrid).toBeVisible({ timeout: 10_000 });
 
   const symbolHeader = page.locator(

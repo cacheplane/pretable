@@ -7,16 +7,29 @@ describe("generatePortfolioRecording", () => {
   });
 
   it("emits a Phase-1 element stream that parses into the full roster", () => {
-    const lines = generatePortfolioRecording().trim().split("\n").map((l) => JSON.parse(l));
-    const deltas = lines.filter((e) => e.type === "response.output_text.delta").map((e) => e.delta);
+    const lines = generatePortfolioRecording()
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    const deltas = lines
+      .filter((e) => e.type === "response.output_text.delta")
+      .map((e) => e.delta);
     const parsed = JSON.parse(deltas.join(""));
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed.length).toBe(20);
-    expect(parsed[0]).toMatchObject({ id: "NVDA", symbol: "NVDA", flag: "hold", analyst: "" });
+    expect(parsed[0]).toMatchObject({
+      id: "NVDA",
+      symbol: "NVDA",
+      flag: "hold",
+      analyst: "",
+    });
   });
 
   it("emits tick and commentary events with id-keyed patches", () => {
-    const lines = generatePortfolioRecording().trim().split("\n").map((l) => JSON.parse(l));
+    const lines = generatePortfolioRecording()
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     const ticks = lines.filter((e) => e.type === "tick");
     const commentary = lines.filter((e) => e.type === "commentary");
     expect(ticks.length).toBeGreaterThan(100);
@@ -29,7 +42,10 @@ describe("generatePortfolioRecording", () => {
   });
 
   it("tick patches carry numeric last/mktValue/dayPnl", () => {
-    const tick = generatePortfolioRecording().trim().split("\n").map((l) => JSON.parse(l))
+    const tick = generatePortfolioRecording()
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l))
       .find((e) => e.type === "tick");
     expect(typeof tick.patches[0].last).toBe("number");
     expect(typeof tick.patches[0].mktValue).toBe("number");

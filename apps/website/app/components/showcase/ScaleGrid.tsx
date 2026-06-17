@@ -49,7 +49,10 @@ function ScaleGridLive() {
         </strong>{" "}
         rendered in the DOM
       </p>
-      <div ref={ref} className="overflow-hidden rounded-[8px] border border-rule">
+      <div
+        ref={ref}
+        className="overflow-hidden rounded-[8px] border border-rule"
+      >
         <PretableSurface<ScaleRow>
           ariaLabel="Virtualized 2,500 by 500 grid"
           columns={columns}

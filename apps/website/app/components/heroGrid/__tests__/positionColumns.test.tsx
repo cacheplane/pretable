@@ -7,7 +7,14 @@ const cols = makePositionColumns({ getRows: () => [] });
 describe("makePositionColumns", () => {
   it("exposes columns in order incl. the sector column", () => {
     expect(cols.map((c) => c.id)).toEqual([
-      "symbol", "sector", "qty", "last", "mktValue", "dayPnl", "weight", "analyst",
+      "symbol",
+      "sector",
+      "qty",
+      "last",
+      "mktValue",
+      "dayPnl",
+      "weight",
+      "analyst",
     ]);
   });
   it("symbol value carries the company name so search matches both", () => {
@@ -22,13 +29,45 @@ describe("makePositionColumns", () => {
   });
   it("qty validate rejects a guardrail breach using live NAV", async () => {
     const rows: PositionRow[] = [
-      { id: "NVDA", symbol: "NVDA", name: "NVIDIA Corp", sector: "Technology", qty: 100, last: 10,
-        mktValue: 1000, dayPnl: 0, dayPnlPct: 0, weight: 0, analyst: "", flag: "hold" },
-      { id: "MSFT", symbol: "MSFT", name: "Microsoft", sector: "Technology", qty: 100, last: 200,
-        mktValue: 20000, dayPnl: 0, dayPnlPct: 0, weight: 0, analyst: "", flag: "hold" },
+      {
+        id: "NVDA",
+        symbol: "NVDA",
+        name: "NVIDIA Corp",
+        sector: "Technology",
+        qty: 100,
+        last: 10,
+        mktValue: 1000,
+        dayPnl: 0,
+        dayPnlPct: 0,
+        weight: 0,
+        analyst: "",
+        flag: "hold",
+      },
+      {
+        id: "MSFT",
+        symbol: "MSFT",
+        name: "Microsoft",
+        sector: "Technology",
+        qty: 100,
+        last: 200,
+        mktValue: 20000,
+        dayPnl: 0,
+        dayPnlPct: 0,
+        weight: 0,
+        analyst: "",
+        flag: "hold",
+      },
     ];
-    const qty = makePositionColumns({ getRows: () => rows }).find((c) => c.id === "qty")!;
-    const input = { rowId: "NVDA", columnId: "qty", row: rows[0]!, column: qty, value: 100 } as never;
+    const qty = makePositionColumns({ getRows: () => rows }).find(
+      (c) => c.id === "qty",
+    )!;
+    const input = {
+      rowId: "NVDA",
+      columnId: "qty",
+      row: rows[0]!,
+      column: qty,
+      value: 100,
+    } as never;
     // qty 1000 × last 10 = 10,000 mktValue → 10000/(10000+20000) = 33% > 7% → breach
     await expect(qty.validate!(1000, input)).resolves.toMatch(/guardrail/i);
     // qty 120 × last 10 = 1,200 mktValue → 1200/(1200+20000) ≈ 5.7% ≤ 7% → ok

@@ -36,7 +36,16 @@ const mk = (
 });
 
 export const LAYOUT_ROWS: LayoutRow[] = [
-  mk("NVDA", "NVIDIA", "Technology", 12000, 121.4, 18420, 6.4, "Trim into strength"),
+  mk(
+    "NVDA",
+    "NVIDIA",
+    "Technology",
+    12000,
+    121.4,
+    18420,
+    6.4,
+    "Trim into strength",
+  ),
   mk("MSFT", "Microsoft", "Technology", 8200, 432.1, -9100, 5.8, "Core hold"),
   mk("AAPL", "Apple", "Technology", 9400, 224.3, 4200, 5.1, "Hold"),
   mk("AMZN", "Amazon", "Consumer", 6100, 186.7, 7300, 4.4, "Add on dips"),
@@ -51,8 +60,7 @@ export const LAYOUT_ROWS: LayoutRow[] = [
 ];
 
 export function makeLayoutColumns(): PretableColumn<LayoutRow>[] {
-  const usd = (n: number) =>
-    `$${Math.round(n).toLocaleString("en-US")}`;
+  const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
   const signedUsd = (n: number) =>
     `${n < 0 ? "-" : "+"}$${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
   return [

@@ -7,7 +7,7 @@
 ## Goal
 
 Make the homepage the canonical pretable demo by adding two **live, interactive**
-proof sections below the hero. Today the marketing copy *claims* virtualization
+proof sections below the hero. Today the marketing copy _claims_ virtualization
 and column layout, but nothing on the page lets a visitor exercise them. This is
 sub-project B of the "homepage as canonical demo" effort (sub-project A — the
 hero cockpit — already shipped on PR #176).
@@ -164,6 +164,7 @@ to reorder". A visible "Reset layout" button.
 ## Testing
 
 **Unit (vitest, website):**
+
 - `scaleData`: `makeScaleRows()` length 2500 and ids `"0".."2499"`;
   `makeScaleColumns()` length 500, header labels `C1..C500`, value accessor is
   deterministic (same row+col → same value; differs across cells).
@@ -173,6 +174,7 @@ to reorder". A visible "Reset layout" button.
   (mock `IntersectionObserver`).
 
 **Component (RTL):**
+
 - `ScaleGrid` once in view renders far fewer `[data-pretable-cell]` nodes than
   `ROW_COUNT * COL_COUNT` (i.e. virtualization is on), and the counter text shows
   the model total `1,250,000` (or formatted) and a much smaller DOM number.
@@ -181,6 +183,7 @@ to reorder". A visible "Reset layout" button.
   drag is exercised in smoke rather than RTL (drag is awkward in jsdom).
 
 **E2E (Playwright smoke, `e2e/smoke.spec.ts`):** one new test —
+
 - Open drawer, scroll the Scale section into view, assert the grid viewport
   renders and the counter shows the model total and a DOM count `< 1000`
   (proving virtualization). Scroll the grid and assert the DOM count stays small.
@@ -202,6 +205,7 @@ to reorder". A visible "Reset layout" button.
 ## File summary
 
 New, all under `apps/website/app/components/`:
+
 - `ScaleShowcase.tsx`, `ColumnLayoutShowcase.tsx`
 - `showcase/ScaleGrid.tsx`, `showcase/ColumnLayoutGrid.tsx`
 - `showcase/scaleData.ts`, `showcase/columnLayoutData.ts`
@@ -212,4 +216,5 @@ New, all under `apps/website/app/components/`:
 - one new case in `e2e/smoke.spec.ts`
 
 Edited:
+
 - `app/page.tsx` (insert the two sections)

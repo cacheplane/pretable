@@ -1,8 +1,15 @@
 import type { PositionRow } from "./types";
 
 export type ColumnId =
-  | "symbol" | "name" | "sector"
-  | "qty" | "last" | "mktValue" | "dayPnl" | "dayPnlPct" | "weight";
+  | "symbol"
+  | "name"
+  | "sector"
+  | "qty"
+  | "last"
+  | "mktValue"
+  | "dayPnl"
+  | "dayPnlPct"
+  | "weight";
 
 export type SortDirection = "asc" | "desc";
 export interface SortState {
@@ -11,11 +18,20 @@ export interface SortState {
 }
 
 const NUMERIC: ReadonlySet<ColumnId> = new Set([
-  "qty", "last", "mktValue", "dayPnl", "dayPnlPct", "weight",
+  "qty",
+  "last",
+  "mktValue",
+  "dayPnl",
+  "dayPnlPct",
+  "weight",
 ]);
 const TEXT: ReadonlySet<ColumnId> = new Set(["symbol", "name", "sector"]);
 
-function compareByColumn(a: PositionRow, b: PositionRow, columnId: ColumnId): number {
+function compareByColumn(
+  a: PositionRow,
+  b: PositionRow,
+  columnId: ColumnId,
+): number {
   if (NUMERIC.has(columnId)) {
     return (a[columnId] as number) - (b[columnId] as number);
   }

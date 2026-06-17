@@ -40,34 +40,59 @@ function buildModel(rows: readonly PositionRow[]): Model {
   const dayPnlPct = prevNav > 0 ? (dayPnl / prevNav) * 100 : 0;
 
   const bySector = new Map<string, number>();
-  for (const r of rows) bySector.set(r.sector, (bySector.get(r.sector) ?? 0) + r.mktValue);
+  for (const r of rows)
+    bySector.set(r.sector, (bySector.get(r.sector) ?? 0) + r.mktValue);
   const sectors = [...bySector.entries()]
-    .map(([name, mkt]) => ({ name, pct: nav > 0 ? (mkt / nav) * 100 : 0, color: SECTOR_COLORS[name] ?? OTHER_COLOR }))
+    .map(([name, mkt]) => ({
+      name,
+      pct: nav > 0 ? (mkt / nav) * 100 : 0,
+      color: SECTOR_COLORS[name] ?? OTHER_COLOR,
+    }))
     .sort((a, b) => b.pct - a.pct);
 
   const alerts = rows
-    .filter((r) => (r.flag === "risk" || r.flag === "watch") && r.analyst.length > 0)
+    .filter(
+      (r) => (r.flag === "risk" || r.flag === "watch") && r.analyst.length > 0,
+    )
     .map((r) => ({ id: r.id, symbol: r.symbol, flag: r.flag }));
 
   return { nav, dayPnl, dayPnlPct, sectors, alerts };
 }
 
-export function PortfolioSummary({ rows, filter, onSearch, onSector, selection, copied }: PortfolioSummaryProps) {
+export function PortfolioSummary({
+  rows,
+  filter,
+  onSearch,
+  onSector,
+  selection,
+  copied,
+}: PortfolioSummaryProps) {
   const model = useMemo(() => buildModel(rows), [rows]);
 
   return (
     <aside aria-label="Portfolio summary" className={styles.board}>
-      <FilterSection search={filter.search} sector={filter.sector ?? "All"} onSearch={onSearch} onSector={onSector} />
+      <FilterSection
+        search={filter.search}
+        sector={filter.sector ?? "All"}
+        onSearch={onSearch}
+        onSector={onSector}
+      />
       <SelectionSection summary={selection} copied={copied} />
       <section className={styles.section}>
         <span className={styles.label}>Net Asset Value</span>
-        <span className={styles.nav} data-testid="summary-nav">{fmtCompactUsd(model.nav)}</span>
+        <span className={styles.nav} data-testid="summary-nav">
+          {fmtCompactUsd(model.nav)}
+        </span>
       </section>
 
       <section className={styles.section}>
         <span className={styles.label}>Day P&amp;L</span>
-        <span className={`${styles.pnl} ${model.dayPnl >= 0 ? styles.up : styles.down}`} data-testid="summary-pnl">
-          {fmtSignedUsd(model.dayPnl)} <span style={{ fontSize: 11 }}>{fmtPct(model.dayPnlPct)}</span>
+        <span
+          className={`${styles.pnl} ${model.dayPnl >= 0 ? styles.up : styles.down}`}
+          data-testid="summary-pnl"
+        >
+          {fmtSignedUsd(model.dayPnl)}{" "}
+          <span style={{ fontSize: 11 }}>{fmtPct(model.dayPnlPct)}</span>
         </span>
       </section>
 
@@ -76,7 +101,10 @@ export function PortfolioSummary({ rows, filter, onSearch, onSector, selection, 
           <span className={styles.label}>Allocation</span>
           <div className={styles.alloc}>
             {model.sectors.map((s) => (
-              <span key={s.name} style={{ width: `${s.pct}%`, background: s.color }} />
+              <span
+                key={s.name}
+                style={{ width: `${s.pct}%`, background: s.color }}
+              />
             ))}
           </div>
           <div className={styles.legend}>
@@ -94,8 +122,13 @@ export function PortfolioSummary({ rows, filter, onSearch, onSector, selection, 
         <section className={styles.section}>
           <span className={styles.label}>AI Alerts</span>
           {model.alerts.map((a) => (
-            <div className={styles.alert} data-testid="summary-alert" key={a.id}>
-              <strong>{a.symbol}</strong> {a.flag === "risk" ? "flagged for review" : "on watch"}
+            <div
+              className={styles.alert}
+              data-testid="summary-alert"
+              key={a.id}
+            >
+              <strong>{a.symbol}</strong>{" "}
+              {a.flag === "risk" ? "flagged for review" : "on watch"}
             </div>
           ))}
         </section>

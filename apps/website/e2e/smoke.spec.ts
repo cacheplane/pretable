@@ -196,14 +196,17 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   await expect(page.getByTestId("scale-counter")).toContainText("1,250,000");
   // DOM-rendered cell count is tiny relative to 1.25M (virtualization on).
   await expect
-    .poll(async () => await page.locator("#scale [data-pretable-cell]").count(), {
-      timeout: 10_000,
-    })
+    .poll(
+      async () => await page.locator("#scale [data-pretable-cell]").count(),
+      {
+        timeout: 10_000,
+      },
+    )
     .toBeLessThan(2000);
   // The DOM count must also be positive (the grid actually rendered cells).
-  expect(await page.locator("#scale [data-pretable-cell]").count()).toBeGreaterThan(
-    0,
-  );
+  expect(
+    await page.locator("#scale [data-pretable-cell]").count(),
+  ).toBeGreaterThan(0);
   // Scroll the grid; the rendered count stays small.
   await page
     .locator("#scale [data-pretable-scroll-viewport]")

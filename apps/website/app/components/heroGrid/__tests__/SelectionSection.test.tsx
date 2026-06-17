@@ -5,7 +5,9 @@ import { SelectionSection } from "../sidebar/SelectionSection";
 
 describe("SelectionSection", () => {
   it("renders nothing when there is no summary", () => {
-    const { container } = render(<SelectionSection summary={null} copied={false} />);
+    const { container } = render(
+      <SelectionSection summary={null} copied={false} />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
   it("shows rows × cols and the copy hint", () => {

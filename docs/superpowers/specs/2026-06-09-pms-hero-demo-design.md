@@ -13,7 +13,7 @@ differentiator:
 - The hero copy sells **speed/streaming**; the README sells **messy, text-heavy
   AI data** ("transcripts, eval results, support queues, tool-call logs… where
   fixed-height rows break down"). The ski race is neither.
-- A streaming-numbers demo is the one shape where *every* grid looks good. It
+- A streaming-numbers demo is the one shape where _every_ grid looks good. It
   does not showcase Pretable's wedge: **wrapped text + variable row heights**.
 
 We want a single example that is (a) instantly credible, (b) natively
@@ -66,17 +66,17 @@ drive price flashes; Phase 2 `commentary` events stream the analyst text.
 
 ```ts
 interface PositionRow extends Record<string, unknown> {
-  id: string;          // ticker, stable row id
-  symbol: string;      // "NVDA"
-  name: string;        // "NVIDIA Corp"
-  qty: number;         // shares held
-  last: number;        // live price; flashes on update
-  mktValue: number;    // derived qty * last; live
-  dayPnl: number;      // signed day P&L; live
-  dayPnlPct: number;   // signed day P&L %; live
-  weight: number;      // % of NAV; live-ish
-  sector: string;      // for allocation rollup
-  analyst: string;     // AI commentary; streams token-by-token; multiline
+  id: string; // ticker, stable row id
+  symbol: string; // "NVDA"
+  name: string; // "NVIDIA Corp"
+  qty: number; // shares held
+  last: number; // live price; flashes on update
+  mktValue: number; // derived qty * last; live
+  dayPnl: number; // signed day P&L; live
+  dayPnlPct: number; // signed day P&L %; live
+  weight: number; // % of NAV; live-ish
+  sector: string; // for allocation rollup
+  analyst: string; // AI commentary; streams token-by-token; multiline
   flag: "trim" | "hold" | "watch" | "risk"; // severity pill; may change live
 }
 ```
@@ -117,19 +117,19 @@ replay engine plays back — same pattern as `generate-race.ts` →
 
 ### Components (`app/components/heroGrid/`, dir name retained)
 
-| Today | After |
-|-------|-------|
-| `types.ts` (`RaceRow`) | `types.ts` (`PositionRow`) |
-| `raceColumns.ts` | `positionColumns.ts` |
-| `sort.ts` (race comparators) | `sort.ts` (position comparators) |
-| `replay-engine.ts` (race events) | `replay-engine.ts` (tick/commentary/flag) |
-| `recordings/race.{jsonl,ts}` | `recordings/portfolio.{jsonl,ts}` |
-| `scripts/generate-race.ts` | `scripts/generate-portfolio.ts` |
-| `Scoreboard.tsx` | `PortfolioSummary.tsx` |
-| `controlState.tsx` (tiers) | same mechanism, relabeled |
-| `useFrameStats.ts` | unchanged |
-| `heroGrid.module.css` / `scoreboard.module.css` | PMS skin |
-| `HeroGrid.tsx` | wires `PositionRow`; top-holding styling replaces leader styling |
+| Today                                           | After                                                            |
+| ----------------------------------------------- | ---------------------------------------------------------------- |
+| `types.ts` (`RaceRow`)                          | `types.ts` (`PositionRow`)                                       |
+| `raceColumns.ts`                                | `positionColumns.ts`                                             |
+| `sort.ts` (race comparators)                    | `sort.ts` (position comparators)                                 |
+| `replay-engine.ts` (race events)                | `replay-engine.ts` (tick/commentary/flag)                        |
+| `recordings/race.{jsonl,ts}`                    | `recordings/portfolio.{jsonl,ts}`                                |
+| `scripts/generate-race.ts`                      | `scripts/generate-portfolio.ts`                                  |
+| `Scoreboard.tsx`                                | `PortfolioSummary.tsx`                                           |
+| `controlState.tsx` (tiers)                      | same mechanism, relabeled                                        |
+| `useFrameStats.ts`                              | unchanged                                                        |
+| `heroGrid.module.css` / `scoreboard.module.css` | PMS skin                                                         |
+| `HeroGrid.tsx`                                  | wires `PositionRow`; top-holding styling replaces leader styling |
 
 **`PortfolioSummary` sidebar** (derived from the same row stream):
 
@@ -164,7 +164,7 @@ decoration).
 - **README:** lead the example list and "Why Pretable" with the
   financial-analyst PMS use case, kept under the existing thesis ("messy,
   high-signal data where fixed-height rows break down"). This is a positioning
-  *alignment*, not a rewrite — the financial copilot is a flagship instance of
+  _alignment_, not a rewrite — the financial copilot is a flagship instance of
   the same thesis (live numbers + AI narrative = mixed-shape, high-signal data).
 
 ## Out of scope (follow-up)

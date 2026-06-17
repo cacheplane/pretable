@@ -21,7 +21,9 @@ describe("DrawerHero", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: /fastest data grid/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/60fps under live market load/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/60fps under live market load/i),
+    ).toBeInTheDocument();
   });
 
   it("renders all three CTAs: copy prompt + npm install + docs link", () => {

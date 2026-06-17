@@ -14,8 +14,8 @@
 
 - **The hero lives entirely in `apps/website/app/components/heroGrid/`** plus `HeroGrid.tsx`, `HomeStreamHeader.tsx`, `TopControlBar.tsx` one level up. Nothing in `packages/*` changes.
 - **The replay engine has two phases** (`replay-engine.ts`):
-  - *Phase 1*: lines of `{"type":"response.output_text.delta","delta":"..."}` are concatenated and fed to `parseElementStream<Row>()`, which yields complete row objects as the JSON array parses. Each yielded row becomes an `add` transaction.
-  - *Phase 2*: lines of `{"type":"update"|"rerank"|"commentary","t":<seconds-or-ms>,"patches":[{id,...}]}` are sorted by `t` and drained on a `requestAnimationFrame` virtual clock. Each becomes an `update` transaction (array of partial rows keyed by `id`).
+  - _Phase 1_: lines of `{"type":"response.output_text.delta","delta":"..."}` are concatenated and fed to `parseElementStream<Row>()`, which yields complete row objects as the JSON array parses. Each yielded row becomes an `add` transaction.
+  - _Phase 2_: lines of `{"type":"update"|"rerank"|"commentary","t":<seconds-or-ms>,"patches":[{id,...}]}` are sorted by `t` and drained on a `requestAnimationFrame` virtual clock. Each becomes an `update` transaction (array of partial rows keyed by `id`).
   - A rate tier (`10 | 60 | 250`) gates which Phase-2 event types fire and (at 250) synthesizes extra rows. We keep the tier mechanism, repurposed for tick density.
 - **The recording is committed twice**: `recordings/<name>.jsonl` (source of truth) and `recordings/<name>.ts` (a `export const ... = "<jsonl>"` wrapper, because Turbopack rejects `?raw` .jsonl imports). Both are emitted by the generator script's CLI block.
 - **Column API** (`@pretable/react`): `{ id, header?, wrap?, widthPx?, pinned?: "left", sortable?, value?: (row)=>unknown, format?: ({value,row,column})=>string, render?: ({value,row,column,formattedValue,rowId,rowIndex,isFocused,isSelected})=>ReactNode }`. Use `render` for the flashing price cell and the wrapped analyst cell.
@@ -25,18 +25,18 @@
 
 ### Naming map (delete-and-replace, keep the `heroGrid/` dir)
 
-| Delete | Create |
-|--------|--------|
-| `types.ts` (`RaceRow`) | `types.ts` (`PositionRow`) |
-| `raceColumns.ts` | `positionColumns.tsx` (now has JSX renders) |
-| `sort.ts` (race) | `sort.ts` (positions) |
-| `recordings/race.{jsonl,ts}` | `recordings/portfolio.{jsonl,ts}` |
-| `scripts/generate-race.ts` | `scripts/generate-portfolio.ts` |
+| Delete                                     | Create                                                 |
+| ------------------------------------------ | ------------------------------------------------------ |
+| `types.ts` (`RaceRow`)                     | `types.ts` (`PositionRow`)                             |
+| `raceColumns.ts`                           | `positionColumns.tsx` (now has JSX renders)            |
+| `sort.ts` (race)                           | `sort.ts` (positions)                                  |
+| `recordings/race.{jsonl,ts}`               | `recordings/portfolio.{jsonl,ts}`                      |
+| `scripts/generate-race.ts`                 | `scripts/generate-portfolio.ts`                        |
 | `Scoreboard.tsx` + `scoreboard.module.css` | `PortfolioSummary.tsx` + `portfolioSummary.module.css` |
-| `__tests__/raceColumns.test.ts` | `__tests__/positionColumns.test.tsx` |
-| `__tests__/sort.test.ts` (race) | `__tests__/sort.test.ts` (positions) |
-| `__tests__/replay-engine.test.ts` (race) | rewritten for portfolio events |
-| `scripts/__tests__/generate-race.test.ts` | `scripts/__tests__/generate-portfolio.test.ts` |
+| `__tests__/raceColumns.test.ts`            | `__tests__/positionColumns.test.tsx`                   |
+| `__tests__/sort.test.ts` (race)            | `__tests__/sort.test.ts` (positions)                   |
+| `__tests__/replay-engine.test.ts` (race)   | rewritten for portfolio events                         |
+| `scripts/__tests__/generate-race.test.ts`  | `scripts/__tests__/generate-portfolio.test.ts`         |
 
 `controlState.tsx`, `useFrameStats.ts`, and their tests keep their logic; only labels/wording change.
 
@@ -45,6 +45,7 @@
 ## Task 1: `PositionRow` type + static roster
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/types.ts` (replaces existing)
 - Create: `apps/website/app/components/heroGrid/roster.ts`
 - Delete (end of plan): old `types.ts` contents are fully replaced here
@@ -107,26 +108,166 @@ export interface RosterEntry {
  * holdings and prices. Ordered so the default weight-desc sort reads naturally.
  */
 export const ROSTER: RosterEntry[] = [
-  { symbol: "NVDA", name: "NVIDIA Corp", sector: "Technology", qty: 12500, price: 870.0, vol: 1.6 },
-  { symbol: "MSFT", name: "Microsoft Corp", sector: "Technology", qty: 15300, price: 418.0, vol: 0.9 },
-  { symbol: "AAPL", name: "Apple Inc", sector: "Technology", qty: 24000, price: 226.0, vol: 0.9 },
-  { symbol: "AMZN", name: "Amazon.com Inc", sector: "Consumer", qty: 18000, price: 184.0, vol: 1.1 },
-  { symbol: "GOOGL", name: "Alphabet Inc", sector: "Technology", qty: 16000, price: 178.0, vol: 1.0 },
-  { symbol: "META", name: "Meta Platforms", sector: "Technology", qty: 9000, price: 512.0, vol: 1.2 },
-  { symbol: "JPM", name: "JPMorgan Chase", sector: "Financials", qty: 14000, price: 214.0, vol: 0.8 },
-  { symbol: "XOM", name: "Exxon Mobil", sector: "Energy", qty: 22000, price: 112.0, vol: 1.0 },
-  { symbol: "UNH", name: "UnitedHealth Group", sector: "Health Care", qty: 5200, price: 498.0, vol: 0.9 },
-  { symbol: "PFE", name: "Pfizer Inc", sector: "Health Care", qty: 40000, price: 28.5, vol: 1.1 },
-  { symbol: "TSLA", name: "Tesla Inc", sector: "Consumer", qty: 8200, price: 240.0, vol: 1.6 },
-  { symbol: "V", name: "Visa Inc", sector: "Financials", qty: 11000, price: 276.0, vol: 0.7 },
-  { symbol: "AVGO", name: "Broadcom Inc", sector: "Technology", qty: 4200, price: 1380.0, vol: 1.3 },
-  { symbol: "COST", name: "Costco Wholesale", sector: "Consumer", qty: 3400, price: 880.0, vol: 0.7 },
-  { symbol: "HD", name: "Home Depot", sector: "Consumer", qty: 6000, price: 360.0, vol: 0.8 },
-  { symbol: "CVX", name: "Chevron Corp", sector: "Energy", qty: 12000, price: 158.0, vol: 0.9 },
-  { symbol: "ABBV", name: "AbbVie Inc", sector: "Health Care", qty: 9500, price: 178.0, vol: 0.8 },
-  { symbol: "BAC", name: "Bank of America", sector: "Financials", qty: 30000, price: 39.0, vol: 0.9 },
-  { symbol: "KO", name: "Coca-Cola Co", sector: "Consumer", qty: 26000, price: 62.0, vol: 0.5 },
-  { symbol: "WMT", name: "Walmart Inc", sector: "Consumer", qty: 17000, price: 68.0, vol: 0.6 },
+  {
+    symbol: "NVDA",
+    name: "NVIDIA Corp",
+    sector: "Technology",
+    qty: 12500,
+    price: 870.0,
+    vol: 1.6,
+  },
+  {
+    symbol: "MSFT",
+    name: "Microsoft Corp",
+    sector: "Technology",
+    qty: 15300,
+    price: 418.0,
+    vol: 0.9,
+  },
+  {
+    symbol: "AAPL",
+    name: "Apple Inc",
+    sector: "Technology",
+    qty: 24000,
+    price: 226.0,
+    vol: 0.9,
+  },
+  {
+    symbol: "AMZN",
+    name: "Amazon.com Inc",
+    sector: "Consumer",
+    qty: 18000,
+    price: 184.0,
+    vol: 1.1,
+  },
+  {
+    symbol: "GOOGL",
+    name: "Alphabet Inc",
+    sector: "Technology",
+    qty: 16000,
+    price: 178.0,
+    vol: 1.0,
+  },
+  {
+    symbol: "META",
+    name: "Meta Platforms",
+    sector: "Technology",
+    qty: 9000,
+    price: 512.0,
+    vol: 1.2,
+  },
+  {
+    symbol: "JPM",
+    name: "JPMorgan Chase",
+    sector: "Financials",
+    qty: 14000,
+    price: 214.0,
+    vol: 0.8,
+  },
+  {
+    symbol: "XOM",
+    name: "Exxon Mobil",
+    sector: "Energy",
+    qty: 22000,
+    price: 112.0,
+    vol: 1.0,
+  },
+  {
+    symbol: "UNH",
+    name: "UnitedHealth Group",
+    sector: "Health Care",
+    qty: 5200,
+    price: 498.0,
+    vol: 0.9,
+  },
+  {
+    symbol: "PFE",
+    name: "Pfizer Inc",
+    sector: "Health Care",
+    qty: 40000,
+    price: 28.5,
+    vol: 1.1,
+  },
+  {
+    symbol: "TSLA",
+    name: "Tesla Inc",
+    sector: "Consumer",
+    qty: 8200,
+    price: 240.0,
+    vol: 1.6,
+  },
+  {
+    symbol: "V",
+    name: "Visa Inc",
+    sector: "Financials",
+    qty: 11000,
+    price: 276.0,
+    vol: 0.7,
+  },
+  {
+    symbol: "AVGO",
+    name: "Broadcom Inc",
+    sector: "Technology",
+    qty: 4200,
+    price: 1380.0,
+    vol: 1.3,
+  },
+  {
+    symbol: "COST",
+    name: "Costco Wholesale",
+    sector: "Consumer",
+    qty: 3400,
+    price: 880.0,
+    vol: 0.7,
+  },
+  {
+    symbol: "HD",
+    name: "Home Depot",
+    sector: "Consumer",
+    qty: 6000,
+    price: 360.0,
+    vol: 0.8,
+  },
+  {
+    symbol: "CVX",
+    name: "Chevron Corp",
+    sector: "Energy",
+    qty: 12000,
+    price: 158.0,
+    vol: 0.9,
+  },
+  {
+    symbol: "ABBV",
+    name: "AbbVie Inc",
+    sector: "Health Care",
+    qty: 9500,
+    price: 178.0,
+    vol: 0.8,
+  },
+  {
+    symbol: "BAC",
+    name: "Bank of America",
+    sector: "Financials",
+    qty: 30000,
+    price: 39.0,
+    vol: 0.9,
+  },
+  {
+    symbol: "KO",
+    name: "Coca-Cola Co",
+    sector: "Consumer",
+    qty: 26000,
+    price: 62.0,
+    vol: 0.5,
+  },
+  {
+    symbol: "WMT",
+    name: "Walmart Inc",
+    sector: "Consumer",
+    qty: 17000,
+    price: 68.0,
+    vol: 0.6,
+  },
 ];
 ```
 
@@ -144,6 +285,7 @@ git commit -m "feat(website): PositionRow type + synthetic portfolio roster"
 Pure functions used by columns, the sidebar, and tests. Isolated so they're unit-testable without React.
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/format.ts`
 - Test: `apps/website/app/components/heroGrid/__tests__/format.test.ts`
 
@@ -228,6 +370,7 @@ git commit -m "feat(website): currency/percent formatting helpers for PMS hero"
 Replaces the race `sort.ts`. Numeric columns sort numerically; text columns via `localeCompare`; `analyst` is not user-sortable; default (no user sort) is `weight` desc.
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/sort.ts` (replaces existing)
 - Test: `apps/website/app/components/heroGrid/__tests__/sort.test.ts` (replaces existing)
 
@@ -241,9 +384,18 @@ import type { PositionRow } from "../types";
 
 function row(p: Partial<PositionRow> & { id: string }): PositionRow {
   return {
-    symbol: p.id, name: p.id, sector: "Technology",
-    qty: 0, last: 0, mktValue: 0, dayPnl: 0, dayPnlPct: 0, weight: 0,
-    analyst: "", flag: "hold", ...p,
+    symbol: p.id,
+    name: p.id,
+    sector: "Technology",
+    qty: 0,
+    last: 0,
+    mktValue: 0,
+    dayPnl: 0,
+    dayPnlPct: 0,
+    weight: 0,
+    analyst: "",
+    flag: "hold",
+    ...p,
   };
 }
 
@@ -288,8 +440,15 @@ Expected: FAIL (module not found / wrong export shape).
 import type { PositionRow } from "./types";
 
 export type ColumnId =
-  | "symbol" | "name" | "sector"
-  | "qty" | "last" | "mktValue" | "dayPnl" | "dayPnlPct" | "weight";
+  | "symbol"
+  | "name"
+  | "sector"
+  | "qty"
+  | "last"
+  | "mktValue"
+  | "dayPnl"
+  | "dayPnlPct"
+  | "weight";
 
 export type SortDirection = "asc" | "desc";
 export interface SortState {
@@ -298,11 +457,20 @@ export interface SortState {
 }
 
 const NUMERIC: ReadonlySet<ColumnId> = new Set([
-  "qty", "last", "mktValue", "dayPnl", "dayPnlPct", "weight",
+  "qty",
+  "last",
+  "mktValue",
+  "dayPnl",
+  "dayPnlPct",
+  "weight",
 ]);
 const TEXT: ReadonlySet<ColumnId> = new Set(["symbol", "name", "sector"]);
 
-function compareByColumn(a: PositionRow, b: PositionRow, columnId: ColumnId): number {
+function compareByColumn(
+  a: PositionRow,
+  b: PositionRow,
+  columnId: ColumnId,
+): number {
   if (NUMERIC.has(columnId)) {
     return (a[columnId] as number) - (b[columnId] as number);
   }
@@ -349,6 +517,7 @@ git commit -m "feat(website): position sort comparators (weight-desc default)"
 Custom cell renders: a flashing `last` cell (keyed on `tickSeq` to restart the CSS animation), colored P&L cells, and a wrapped `analyst` cell that renders prose + a flag pill. File is `.tsx` because it returns JSX.
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/positionColumns.tsx` (replaces `raceColumns.ts`)
 - Create: `apps/website/app/components/heroGrid/cells.module.css`
 - Test: `apps/website/app/components/heroGrid/__tests__/positionColumns.test.tsx` (replaces `raceColumns.test.ts`)
@@ -363,7 +532,13 @@ import { positionColumns } from "../positionColumns";
 describe("positionColumns", () => {
   it("exposes the expected columns in order", () => {
     expect(positionColumns.map((c) => c.id)).toEqual([
-      "symbol", "qty", "last", "mktValue", "dayPnl", "weight", "analyst",
+      "symbol",
+      "qty",
+      "last",
+      "mktValue",
+      "dayPnl",
+      "weight",
+      "analyst",
     ]);
   });
   it("pins the symbol column left", () => {
@@ -374,7 +549,9 @@ describe("positionColumns", () => {
     expect(positionColumns.find((c) => c.id === "last")?.wrap).toBeFalsy();
   });
   it("marks the analyst column non-sortable", () => {
-    expect(positionColumns.find((c) => c.id === "analyst")?.sortable).toBe(false);
+    expect(positionColumns.find((c) => c.id === "analyst")?.sortable).toBe(
+      false,
+    );
   });
 });
 ```
@@ -388,24 +565,85 @@ Expected: FAIL (module not found).
 
 ```css
 /* apps/website/app/components/heroGrid/cells.module.css */
-.symbol { font-weight: 700; }
-.symbolSub { display: block; font-size: 11px; opacity: 0.55; font-weight: 400; }
-.num { font-variant-numeric: tabular-nums; }
-.up { color: var(--pretable-pos, #1a8f50); }
-.down { color: var(--pretable-neg, #c0392b); }
-.flash { display: inline-block; padding: 0 2px; border-radius: 3px; }
-.flashUp { animation: flashUp 1s ease-out; }
-.flashDown { animation: flashDown 1s ease-out; }
-@keyframes flashUp { from { background: rgba(26, 143, 80, 0.28); } to { background: transparent; } }
-@keyframes flashDown { from { background: rgba(192, 57, 57, 0.28); } to { background: transparent; } }
-.analyst { line-height: 1.45; }
-.subline { display: block; font-size: 11px; opacity: 0.55; }
-.pill { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; }
-.pillTrim, .pillWatch { background: rgba(184, 120, 0, 0.16); color: #b87800; }
-.pillRisk { background: rgba(192, 57, 57, 0.16); color: #c0392b; }
-.pillHold { background: rgba(26, 143, 80, 0.16); color: #1a8f50; }
+.symbol {
+  font-weight: 700;
+}
+.symbolSub {
+  display: block;
+  font-size: 11px;
+  opacity: 0.55;
+  font-weight: 400;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.up {
+  color: var(--pretable-pos, #1a8f50);
+}
+.down {
+  color: var(--pretable-neg, #c0392b);
+}
+.flash {
+  display: inline-block;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.flashUp {
+  animation: flashUp 1s ease-out;
+}
+.flashDown {
+  animation: flashDown 1s ease-out;
+}
+@keyframes flashUp {
+  from {
+    background: rgba(26, 143, 80, 0.28);
+  }
+  to {
+    background: transparent;
+  }
+}
+@keyframes flashDown {
+  from {
+    background: rgba(192, 57, 57, 0.28);
+  }
+  to {
+    background: transparent;
+  }
+}
+.analyst {
+  line-height: 1.45;
+}
+.subline {
+  display: block;
+  font-size: 11px;
+  opacity: 0.55;
+}
+.pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.pillTrim,
+.pillWatch {
+  background: rgba(184, 120, 0, 0.16);
+  color: #b87800;
+}
+.pillRisk {
+  background: rgba(192, 57, 57, 0.16);
+  color: #c0392b;
+}
+.pillHold {
+  background: rgba(26, 143, 80, 0.16);
+  color: #1a8f50;
+}
 @media (prefers-reduced-motion: reduce) {
-  .flashUp, .flashDown { animation: none; }
+  .flashUp,
+  .flashDown {
+    animation: none;
+  }
 }
 ```
 
@@ -452,11 +690,19 @@ export const positionColumns: PretableColumn<PositionRow>[] = [
     widthPx: 96,
     value: (row) => row.last,
     render: ({ row }) => {
-      const dirClass = row.lastDir === "up" ? styles.flashUp : row.lastDir === "down" ? styles.flashDown : "";
+      const dirClass =
+        row.lastDir === "up"
+          ? styles.flashUp
+          : row.lastDir === "down"
+            ? styles.flashDown
+            : "";
       return (
         <span className={styles.num}>
           {/* key on tickSeq so React remounts the span and the CSS flash restarts each tick */}
-          <span key={row.tickSeq ?? 0} className={`${styles.flash} ${dirClass}`}>
+          <span
+            key={row.tickSeq ?? 0}
+            className={`${styles.flash} ${dirClass}`}
+          >
             {fmtPrice(row.last)}
           </span>
         </span>
@@ -476,7 +722,9 @@ export const positionColumns: PretableColumn<PositionRow>[] = [
     widthPx: 120,
     value: (row) => row.dayPnl,
     render: ({ row }) => (
-      <span className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}>
+      <span
+        className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}
+      >
         {fmtSignedUsd(row.dayPnl)}
         <span className={styles.subline}>{fmtPct(row.dayPnlPct)}</span>
       </span>
@@ -500,7 +748,9 @@ export const positionColumns: PretableColumn<PositionRow>[] = [
       <span className={styles.analyst}>
         {row.analyst}
         {row.analyst.length > 0 && (
-          <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>{row.flag}</span>
+          <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>
+            {row.flag}
+          </span>
         )}
       </span>
     ),
@@ -527,6 +777,7 @@ git commit -m "feat(website): PMS columns with flashing price + wrapped analyst 
 A seeded generator producing the deterministic recording. Models `generate-race.ts`. Phase 1 streams the roster as chunked JSON deltas; Phase 2 emits interleaved `tick` (price/P&L/weight), `commentary` (chunked analyst text — 2–4 deltas per holding, NOT per-character), and `flag` events.
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/scripts/generate-portfolio.ts` (replaces `generate-race.ts`)
 - Create: `apps/website/app/components/heroGrid/commentary.ts` (pre-authored analyst notes + flags)
 - Test: `apps/website/app/components/heroGrid/scripts/__tests__/generate-portfolio.test.ts` (replaces `generate-race.test.ts`)
@@ -550,30 +801,70 @@ export interface CommentaryScript {
  * times per holding (controlled cadence), not per character.
  */
 export const COMMENTARY: CommentaryScript[] = [
-  { symbol: "NVDA", flag: "trim", chunks: [
-    "Up on hyperscaler capex headlines.",
-    " Position now 8.4% of book — above the 7% single-name guardrail." ] },
-  { symbol: "PFE", flag: "hold", chunks: [
-    "Trial readout miss reported minutes ago.",
-    " Dividend + pipeline thesis intact; drawdown inside the 1.5σ band." ] },
-  { symbol: "MSFT", flag: "watch", chunks: [
-    "Correlates 0.71 with NVDA.",
-    " Combined AI-compute exposure 15.3% — watch if trimming into the same theme." ] },
-  { symbol: "TSLA", flag: "watch", chunks: [
-    "Recovered intraday but red vs cost basis.",
-    " Beta to book is 1.8 — largest single contributor to today's vol." ] },
-  { symbol: "XOM", flag: "hold", chunks: [
-    "Tracking crude + sector rotation.",
-    " Unrealized still positive; no action vs target weight." ] },
-  { symbol: "META", flag: "watch", chunks: [
-    "Momentum strong into the print.",
-    " Options skew rich; size is already at the model cap." ] },
-  { symbol: "JPM", flag: "hold", chunks: [
-    "Net-interest-income guide reaffirmed.",
-    " Defensive ballast for the book; hold at weight." ] },
-  { symbol: "UNH", flag: "risk", chunks: [
-    "Headline risk on a regulatory probe.",
-    " Flagged for review — drawdown breached the 2σ stop band." ] },
+  {
+    symbol: "NVDA",
+    flag: "trim",
+    chunks: [
+      "Up on hyperscaler capex headlines.",
+      " Position now 8.4% of book — above the 7% single-name guardrail.",
+    ],
+  },
+  {
+    symbol: "PFE",
+    flag: "hold",
+    chunks: [
+      "Trial readout miss reported minutes ago.",
+      " Dividend + pipeline thesis intact; drawdown inside the 1.5σ band.",
+    ],
+  },
+  {
+    symbol: "MSFT",
+    flag: "watch",
+    chunks: [
+      "Correlates 0.71 with NVDA.",
+      " Combined AI-compute exposure 15.3% — watch if trimming into the same theme.",
+    ],
+  },
+  {
+    symbol: "TSLA",
+    flag: "watch",
+    chunks: [
+      "Recovered intraday but red vs cost basis.",
+      " Beta to book is 1.8 — largest single contributor to today's vol.",
+    ],
+  },
+  {
+    symbol: "XOM",
+    flag: "hold",
+    chunks: [
+      "Tracking crude + sector rotation.",
+      " Unrealized still positive; no action vs target weight.",
+    ],
+  },
+  {
+    symbol: "META",
+    flag: "watch",
+    chunks: [
+      "Momentum strong into the print.",
+      " Options skew rich; size is already at the model cap.",
+    ],
+  },
+  {
+    symbol: "JPM",
+    flag: "hold",
+    chunks: [
+      "Net-interest-income guide reaffirmed.",
+      " Defensive ballast for the book; hold at weight.",
+    ],
+  },
+  {
+    symbol: "UNH",
+    flag: "risk",
+    chunks: [
+      "Headline risk on a regulatory probe.",
+      " Flagged for review — drawdown breached the 2σ stop band.",
+    ],
+  },
 ];
 ```
 
@@ -590,16 +881,29 @@ describe("generatePortfolioRecording", () => {
   });
 
   it("emits a Phase-1 element stream that parses into the full roster", () => {
-    const lines = generatePortfolioRecording().trim().split("\n").map((l) => JSON.parse(l));
-    const deltas = lines.filter((e) => e.type === "response.output_text.delta").map((e) => e.delta);
+    const lines = generatePortfolioRecording()
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    const deltas = lines
+      .filter((e) => e.type === "response.output_text.delta")
+      .map((e) => e.delta);
     const parsed = JSON.parse(deltas.join(""));
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed.length).toBe(20);
-    expect(parsed[0]).toMatchObject({ id: "NVDA", symbol: "NVDA", flag: "hold", analyst: "" });
+    expect(parsed[0]).toMatchObject({
+      id: "NVDA",
+      symbol: "NVDA",
+      flag: "hold",
+      analyst: "",
+    });
   });
 
   it("emits tick and commentary events with id-keyed patches", () => {
-    const lines = generatePortfolioRecording().trim().split("\n").map((l) => JSON.parse(l));
+    const lines = generatePortfolioRecording()
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     const ticks = lines.filter((e) => e.type === "tick");
     const commentary = lines.filter((e) => e.type === "commentary");
     expect(ticks.length).toBeGreaterThan(100);
@@ -612,7 +916,10 @@ describe("generatePortfolioRecording", () => {
   });
 
   it("tick patches carry numeric last/mktValue/dayPnl", () => {
-    const tick = generatePortfolioRecording().trim().split("\n").map((l) => JSON.parse(l))
+    const tick = generatePortfolioRecording()
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l))
       .find((e) => e.type === "tick");
     expect(typeof tick.patches[0].last).toBe("number");
     expect(typeof tick.patches[0].mktValue).toBe("number");
@@ -782,15 +1089,18 @@ git commit -m "feat(website): deterministic PMS recording generator + analyst sc
 ## Task 6: Generate & commit the recording
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/recordings/portfolio.jsonl`
 - Create: `apps/website/app/components/heroGrid/recordings/portfolio.ts`
 
 - [ ] **Step 1: Run the generator**
 
 Run:
+
 ```bash
 cd apps/website && npx tsx app/components/heroGrid/scripts/generate-portfolio.ts
 ```
+
 Expected: prints `wrote .../portfolio.jsonl — <n> bytes, <m> lines`. (If `tsx` is unavailable, use `npx vite-node` or the same runner the repo uses for `generate-race.ts`; check `package.json` scripts / how race was generated.)
 
 - [ ] **Step 2: Sanity-check the output**
@@ -812,6 +1122,7 @@ git commit -m "feat(website): commit generated PMS recording"
 Rewrite the race engine for portfolio events. Same two-phase structure and rAF virtual clock, but Phase-2 event types are `tick | commentary | flag`. The rate tier gates tick density: LIGHT (10) drops a fraction of ticks, PRODUCTION (60) all ticks, HEAVY (250) all ticks + duplicates them to raise throughput. Commentary/flag always fire.
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/replay-engine.ts` (replaces existing)
 - Test: `apps/website/app/components/heroGrid/__tests__/replay-engine.test.ts` (replaces existing)
 
@@ -824,30 +1135,72 @@ import { createPortfolioReplay } from "../replay-engine";
 import type { PositionRow } from "../types";
 
 // Minimal recording: 2 rows via element stream + one tick + one commentary.
-const RECORDING = [
-  JSON.stringify({ type: "response.created", t: 0 }),
-  JSON.stringify({
-    type: "response.output_text.delta", t: 10,
-    delta: JSON.stringify([
-      { id: "AAA", symbol: "AAA", name: "Aaa", sector: "Technology", qty: 10, last: 100, mktValue: 1000, dayPnl: 0, dayPnlPct: 0, weight: 60, analyst: "", flag: "hold" },
-      { id: "BBB", symbol: "BBB", name: "Bbb", sector: "Energy", qty: 5, last: 50, mktValue: 250, dayPnl: 0, dayPnlPct: 0, weight: 40, analyst: "", flag: "hold" },
-    ]),
-  }),
-  JSON.stringify({ type: "response.completed", t: 20 }),
-  JSON.stringify({ t: 0.4, type: "tick", patches: [{ id: "AAA", last: 101, mktValue: 1010, dayPnl: 10, dayPnlPct: 1 }] }),
-  JSON.stringify({ t: 0.8, type: "commentary", patches: [{ id: "AAA", analyst: "Up on volume." }] }),
-].join("\n") + "\n";
+const RECORDING =
+  [
+    JSON.stringify({ type: "response.created", t: 0 }),
+    JSON.stringify({
+      type: "response.output_text.delta",
+      t: 10,
+      delta: JSON.stringify([
+        {
+          id: "AAA",
+          symbol: "AAA",
+          name: "Aaa",
+          sector: "Technology",
+          qty: 10,
+          last: 100,
+          mktValue: 1000,
+          dayPnl: 0,
+          dayPnlPct: 0,
+          weight: 60,
+          analyst: "",
+          flag: "hold",
+        },
+        {
+          id: "BBB",
+          symbol: "BBB",
+          name: "Bbb",
+          sector: "Energy",
+          qty: 5,
+          last: 50,
+          mktValue: 250,
+          dayPnl: 0,
+          dayPnlPct: 0,
+          weight: 40,
+          analyst: "",
+          flag: "hold",
+        },
+      ]),
+    }),
+    JSON.stringify({ type: "response.completed", t: 20 }),
+    JSON.stringify({
+      t: 0.4,
+      type: "tick",
+      patches: [
+        { id: "AAA", last: 101, mktValue: 1010, dayPnl: 10, dayPnlPct: 1 },
+      ],
+    }),
+    JSON.stringify({
+      t: 0.8,
+      type: "commentary",
+      patches: [{ id: "AAA", analyst: "Up on volume." }],
+    }),
+  ].join("\n") + "\n";
 
 let rafCbs: Array<(t: number) => void>;
 beforeEach(() => {
   rafCbs = [];
-  vi.stubGlobal("requestAnimationFrame", (cb: (t: number) => void) => { rafCbs.push(cb); return rafCbs.length; });
+  vi.stubGlobal("requestAnimationFrame", (cb: (t: number) => void) => {
+    rafCbs.push(cb);
+    return rafCbs.length;
+  });
   vi.stubGlobal("cancelAnimationFrame", () => {});
 });
 afterEach(() => vi.unstubAllGlobals());
 
 function flushRaf(nowMs: number) {
-  const cbs = rafCbs; rafCbs = [];
+  const cbs = rafCbs;
+  rafCbs = [];
   for (const cb of cbs) cb(nowMs);
 }
 
@@ -855,23 +1208,39 @@ describe("createPortfolioReplay", () => {
   it("emits add transactions for each parsed row (Phase 1)", async () => {
     const adds: PositionRow[] = [];
     const replay = createPortfolioReplay({
-      recording: RECORDING, ratePerSec: 60, isPlaying: true,
-      onTransaction: (tx) => { if (tx.add) adds.push(...tx.add); },
+      recording: RECORDING,
+      ratePerSec: 60,
+      isPlaying: true,
+      onTransaction: (tx) => {
+        if (tx.add) adds.push(...tx.add);
+      },
     });
-    await vi.waitFor(() => expect(adds.map((r) => r.id)).toEqual(["AAA", "BBB"]));
+    await vi.waitFor(() =>
+      expect(adds.map((r) => r.id)).toEqual(["AAA", "BBB"]),
+    );
     replay.dispose();
   });
 
   it("drains tick + commentary patches on the virtual clock (Phase 2)", async () => {
     const updates: Array<Partial<PositionRow>> = [];
     const replay = createPortfolioReplay({
-      recording: RECORDING, ratePerSec: 60, isPlaying: true,
-      onTransaction: (tx) => { if (tx.update) updates.push(...tx.update); },
+      recording: RECORDING,
+      ratePerSec: 60,
+      isPlaying: true,
+      onTransaction: (tx) => {
+        if (tx.update) updates.push(...tx.update);
+      },
     });
-    flushRaf(0);     // establish clock baseline
-    flushRaf(1000);  // advance 1 virtual second → both t=0.4 and t=0.8 fire
-    expect(updates.find((u) => (u as { last?: number }).last === 101)).toBeTruthy();
-    expect(updates.find((u) => (u as { analyst?: string }).analyst === "Up on volume.")).toBeTruthy();
+    flushRaf(0); // establish clock baseline
+    flushRaf(1000); // advance 1 virtual second → both t=0.4 and t=0.8 fire
+    expect(
+      updates.find((u) => (u as { last?: number }).last === 101),
+    ).toBeTruthy();
+    expect(
+      updates.find(
+        (u) => (u as { analyst?: string }).analyst === "Up on volume.",
+      ),
+    ).toBeTruthy();
     replay.dispose();
   });
 });
@@ -896,7 +1265,10 @@ export interface PortfolioReplayOptions {
   recording: string;
   ratePerSec: TickRate;
   isPlaying: boolean;
-  onTransaction: (tx: { add?: PositionRow[]; update?: Array<Partial<PositionRow> & { id: string }> }) => void;
+  onTransaction: (tx: {
+    add?: PositionRow[];
+    update?: Array<Partial<PositionRow> & { id: string }>;
+  }) => void;
 }
 
 export interface PortfolioReplay {
@@ -905,7 +1277,11 @@ export interface PortfolioReplay {
   dispose(): void;
 }
 
-interface Phase2Event { t: number; type: Phase2Type; patches: Array<Partial<PositionRow> & { id: string }> }
+interface Phase2Event {
+  t: number;
+  type: Phase2Type;
+  patches: Array<Partial<PositionRow> & { id: string }>;
+}
 
 /** LIGHT drops ~⅔ of ticks; PRODUCTION keeps all; HEAVY keeps all (caller dups for throughput). */
 function tickAllowed(rate: TickRate, index: number): boolean {
@@ -913,43 +1289,73 @@ function tickAllowed(rate: TickRate, index: number): boolean {
   return true;
 }
 
-export function createPortfolioReplay(options: PortfolioReplayOptions): PortfolioReplay {
+export function createPortfolioReplay(
+  options: PortfolioReplayOptions,
+): PortfolioReplay {
   let rate: TickRate = options.ratePerSec;
   let playing = options.isPlaying;
   let disposed = false;
 
-  const lines = options.recording.split("\n").filter((l) => l.trim().length > 0);
+  const lines = options.recording
+    .split("\n")
+    .filter((l) => l.trim().length > 0);
   const phase1Deltas: string[] = [];
   const phase2Events: Phase2Event[] = [];
 
   for (const line of lines) {
     let parsed: unknown;
-    try { parsed = JSON.parse(line); } catch { continue; }
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
     if (!parsed || typeof parsed !== "object") continue;
-    const ev = parsed as { type?: string; delta?: string; t?: number; patches?: unknown };
-    if (ev.type === "response.output_text.delta" && typeof ev.delta === "string") {
+    const ev = parsed as {
+      type?: string;
+      delta?: string;
+      t?: number;
+      patches?: unknown;
+    };
+    if (
+      ev.type === "response.output_text.delta" &&
+      typeof ev.delta === "string"
+    ) {
       phase1Deltas.push(ev.delta);
-    } else if ((ev.type === "tick" || ev.type === "commentary" || ev.type === "flag") && Array.isArray(ev.patches) && typeof ev.t === "number") {
+    } else if (
+      (ev.type === "tick" || ev.type === "commentary" || ev.type === "flag") &&
+      Array.isArray(ev.patches) &&
+      typeof ev.t === "number"
+    ) {
       // Recording emits seconds. (Race used ms>1000 heuristic; portfolio is always seconds.)
-      phase2Events.push({ t: ev.t, type: ev.type, patches: ev.patches as Phase2Event["patches"] });
+      phase2Events.push({
+        t: ev.t,
+        type: ev.type,
+        patches: ev.patches as Phase2Event["patches"],
+      });
     }
   }
   phase2Events.sort((a, b) => a.t - b.t);
-  const lastT = phase2Events.length > 0 ? phase2Events[phase2Events.length - 1].t : 0;
+  const lastT =
+    phase2Events.length > 0 ? phase2Events[phase2Events.length - 1].t : 0;
   const loopDuration = lastT + 3;
 
   // Phase 1
   (async () => {
     if (disposed) return;
     async function* gen(): AsyncIterable<string> {
-      for (const d of phase1Deltas) { if (disposed) return; yield d; }
+      for (const d of phase1Deltas) {
+        if (disposed) return;
+        yield d;
+      }
     }
     try {
       for await (const row of parseElementStream<PositionRow>(gen())) {
         if (disposed) return;
         options.onTransaction({ add: [row] });
       }
-    } catch { /* resilient: swallow parse errors */ }
+    } catch {
+      /* resilient: swallow parse errors */
+    }
   })();
 
   // Phase 2 — rAF virtual clock
@@ -962,11 +1368,18 @@ export function createPortfolioReplay(options: PortfolioReplayOptions): Portfoli
 
   function tick(now: number) {
     if (disposed) return;
-    if (!playing || lastWall === 0) { lastWall = now; rafId = requestAnimationFrame(tick); return; }
+    if (!playing || lastWall === 0) {
+      lastWall = now;
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
     virtualT += (now - lastWall) / 1000;
     lastWall = now;
 
-    while (phase2Index < phase2Events.length && phase2Events[phase2Index].t <= virtualT) {
+    while (
+      phase2Index < phase2Events.length &&
+      phase2Events[phase2Index].t <= virtualT
+    ) {
       const ev = phase2Events[phase2Index++];
       if (ev.type === "tick") {
         if (tickAllowed(rate, tickCounter++)) {
@@ -978,18 +1391,27 @@ export function createPortfolioReplay(options: PortfolioReplayOptions): Portfoli
       }
     }
 
-    if (virtualT >= loopDuration) { virtualT = 0; phase2Index = 0; }
+    if (virtualT >= loopDuration) {
+      virtualT = 0;
+      phase2Index = 0;
+    }
     rafId = requestAnimationFrame(tick);
   }
 
   if (hasRaf) rafId = requestAnimationFrame(tick);
 
   return {
-    setRate(r) { rate = r; },
-    setPlaying(p) { playing = p; if (!p) lastWall = 0; },
+    setRate(r) {
+      rate = r;
+    },
+    setPlaying(p) {
+      playing = p;
+      if (!p) lastWall = 0;
+    },
     dispose() {
       disposed = true;
-      if (rafId !== null && typeof cancelAnimationFrame !== "undefined") cancelAnimationFrame(rafId);
+      if (rafId !== null && typeof cancelAnimationFrame !== "undefined")
+        cancelAnimationFrame(rafId);
       rafId = null;
     },
   };
@@ -1015,6 +1437,7 @@ git commit -m "feat(website): portfolio replay engine (tick/commentary/flag even
 Rewrite `HeroGrid.tsx` to use `PositionRow`, the new engine, `positionColumns`, the portfolio sort, and a reducer that computes `lastDir`/`tickSeq` on tick patches. No row buffer cap (the book is a fixed ~20 rows; rows are keyed by symbol so updates merge in place).
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/HeroGrid.tsx` (the file is at `apps/website/app/components/HeroGrid.tsx`)
 
 > Path note: `HeroGrid.tsx` lives at `apps/website/app/components/HeroGrid.tsx` (one level above the `heroGrid/` folder). Confirm with `git ls-files apps/website/app/components/HeroGrid.tsx`.
@@ -1043,17 +1466,24 @@ export function HeroGrid() {
   const { ratePerSec, isPlaying } = useControlState();
   const [rows, setRows] = useState<PositionRow[]>([]);
   const [userSort, setUserSort] = useState<SortState | null>(null);
-  const replayRef = useRef<ReturnType<typeof createPortfolioReplay> | null>(null);
+  const replayRef = useRef<ReturnType<typeof createPortfolioReplay> | null>(
+    null,
+  );
 
   const sortedRows = useMemo(() => applySort(rows, userSort), [rows, userSort]);
 
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const [viewportHeight, setViewportHeight] = useState(FALLBACK_VIEWPORT_HEIGHT);
+  const [viewportHeight, setViewportHeight] = useState(
+    FALLBACK_VIEWPORT_HEIGHT,
+  );
   useLayoutEffect(() => {
     const el = surfaceRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const measure = () => {
-      const next = Math.max(FALLBACK_VIEWPORT_HEIGHT, Math.round(el.clientHeight));
+      const next = Math.max(
+        FALLBACK_VIEWPORT_HEIGHT,
+        Math.round(el.clientHeight),
+      );
       setViewportHeight((prev) => (prev === next ? prev : next));
     };
     measure();
@@ -1064,7 +1494,8 @@ export function HeroGrid() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const reduce =
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     if (reduce) return;
 
     const replay = createPortfolioReplay({
@@ -1099,12 +1530,19 @@ export function HeroGrid() {
       },
     });
     replayRef.current = replay;
-    return () => { replay.dispose(); replayRef.current = null; };
+    return () => {
+      replay.dispose();
+      replayRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once; rate/playing go through separate effects
   }, []);
 
-  useEffect(() => { replayRef.current?.setRate(ratePerSec); }, [ratePerSec]);
-  useEffect(() => { replayRef.current?.setPlaying(isPlaying); }, [isPlaying]);
+  useEffect(() => {
+    replayRef.current?.setRate(ratePerSec);
+  }, [ratePerSec]);
+  useEffect(() => {
+    replayRef.current?.setPlaying(isPlaying);
+  }, [isPlaying]);
 
   return (
     <section className={`hero ${styles.heroBackdrop}`}>
@@ -1117,8 +1555,14 @@ export function HeroGrid() {
               getRowId={(row) => row.id}
               state={userSort ? { sort: userSort } : null}
               onSortChange={(next) => {
-                if (next === null) { setUserSort(null); return; }
-                setUserSort({ columnId: next.columnId as ColumnId, direction: next.direction });
+                if (next === null) {
+                  setUserSort(null);
+                  return;
+                }
+                setUserSort({
+                  columnId: next.columnId as ColumnId,
+                  direction: next.direction,
+                });
               }}
               rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
               rows={sortedRows}
@@ -1154,6 +1598,7 @@ git commit -m "feat(website): wire HeroGrid to PositionRow + flash-direction red
 Replaces `Scoreboard`. Derives NAV, total Day P&L, sector allocation, and an AI-Alerts digest (rows whose `flag` is `watch`/`risk`) from the row stream.
 
 **Files:**
+
 - Create: `apps/website/app/components/heroGrid/PortfolioSummary.tsx` (replaces `Scoreboard.tsx`)
 - Create: `apps/website/app/components/heroGrid/portfolioSummary.module.css` (replaces `scoreboard.module.css`)
 - Test: `apps/website/app/components/heroGrid/__tests__/PortfolioSummary.test.tsx`
@@ -1168,14 +1613,40 @@ import { PortfolioSummary } from "../PortfolioSummary";
 import type { PositionRow } from "../types";
 
 function row(p: Partial<PositionRow> & { id: string }): PositionRow {
-  return { symbol: p.id, name: p.id, sector: "Technology", qty: 0, last: 0,
-    mktValue: 0, dayPnl: 0, dayPnlPct: 0, weight: 0, analyst: "", flag: "hold", ...p };
+  return {
+    symbol: p.id,
+    name: p.id,
+    sector: "Technology",
+    qty: 0,
+    last: 0,
+    mktValue: 0,
+    dayPnl: 0,
+    dayPnlPct: 0,
+    weight: 0,
+    analyst: "",
+    flag: "hold",
+    ...p,
+  };
 }
 
 describe("PortfolioSummary", () => {
   const rows = [
-    row({ id: "A", sector: "Technology", mktValue: 30_000_000, dayPnl: 200_000, flag: "risk", analyst: "x" }),
-    row({ id: "B", sector: "Energy", mktValue: 18_240_000, dayPnl: 112_480, flag: "watch", analyst: "y" }),
+    row({
+      id: "A",
+      sector: "Technology",
+      mktValue: 30_000_000,
+      dayPnl: 200_000,
+      flag: "risk",
+      analyst: "x",
+    }),
+    row({
+      id: "B",
+      sector: "Energy",
+      mktValue: 18_240_000,
+      dayPnl: 112_480,
+      flag: "watch",
+      analyst: "y",
+    }),
   ];
   it("shows NAV as the summed market value", () => {
     render(<PortfolioSummary rows={rows} />);
@@ -1203,20 +1674,77 @@ Expected: FAIL (module not found).
 
 ```css
 /* apps/website/app/components/heroGrid/portfolioSummary.module.css */
-.board { display: flex; flex-direction: column; gap: 16px; padding: 14px; font-size: 12px; }
-.section { display: flex; flex-direction: column; gap: 2px; }
-.label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.55; }
-.nav { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.pnl { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.up { color: var(--pretable-pos, #1a8f50); }
-.down { color: var(--pretable-neg, #c0392b); }
-.alloc { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 6px 0 4px; }
-.alloc > span { display: block; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 10px; opacity: 0.75; }
-.key { display: inline-flex; align-items: center; gap: 4px; }
-.sw { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
-.alert { padding: 6px 8px; border-radius: 7px; background: rgba(128, 128, 128, 0.08); line-height: 1.35; }
-.alert strong { font-weight: 700; }
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 14px;
+  font-size: 12px;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.55;
+}
+.nav {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pnl {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.up {
+  color: var(--pretable-pos, #1a8f50);
+}
+.down {
+  color: var(--pretable-neg, #c0392b);
+}
+.alloc {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+.alloc > span {
+  display: block;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 10px;
+  opacity: 0.75;
+}
+.key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sw {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.alert {
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: rgba(128, 128, 128, 0.08);
+  line-height: 1.35;
+}
+.alert strong {
+  font-weight: 700;
+}
 ```
 
 - [ ] **Step 4: Implement `PortfolioSummary.tsx`**
@@ -1256,13 +1784,20 @@ function buildModel(rows: readonly PositionRow[]): Model {
   const dayPnlPct = prevNav > 0 ? (dayPnl / prevNav) * 100 : 0;
 
   const bySector = new Map<string, number>();
-  for (const r of rows) bySector.set(r.sector, (bySector.get(r.sector) ?? 0) + r.mktValue);
+  for (const r of rows)
+    bySector.set(r.sector, (bySector.get(r.sector) ?? 0) + r.mktValue);
   const sectors = [...bySector.entries()]
-    .map(([name, mkt]) => ({ name, pct: nav > 0 ? (mkt / nav) * 100 : 0, color: SECTOR_COLORS[name] ?? OTHER_COLOR }))
+    .map(([name, mkt]) => ({
+      name,
+      pct: nav > 0 ? (mkt / nav) * 100 : 0,
+      color: SECTOR_COLORS[name] ?? OTHER_COLOR,
+    }))
     .sort((a, b) => b.pct - a.pct);
 
   const alerts = rows
-    .filter((r) => (r.flag === "risk" || r.flag === "watch") && r.analyst.length > 0)
+    .filter(
+      (r) => (r.flag === "risk" || r.flag === "watch") && r.analyst.length > 0,
+    )
     .map((r) => ({ id: r.id, symbol: r.symbol, flag: r.flag }));
 
   return { nav, dayPnl, dayPnlPct, sectors, alerts };
@@ -1275,13 +1810,19 @@ export function PortfolioSummary({ rows }: PortfolioSummaryProps) {
     <aside aria-label="Portfolio summary" className={styles.board}>
       <section className={styles.section}>
         <span className={styles.label}>Net Asset Value</span>
-        <span className={styles.nav} data-testid="summary-nav">{fmtCompactUsd(model.nav)}</span>
+        <span className={styles.nav} data-testid="summary-nav">
+          {fmtCompactUsd(model.nav)}
+        </span>
       </section>
 
       <section className={styles.section}>
         <span className={styles.label}>Day P&amp;L</span>
-        <span className={`${styles.pnl} ${model.dayPnl >= 0 ? styles.up : styles.down}`} data-testid="summary-pnl">
-          {fmtSignedUsd(model.dayPnl)} <span style={{ fontSize: 11 }}>{fmtPct(model.dayPnlPct)}</span>
+        <span
+          className={`${styles.pnl} ${model.dayPnl >= 0 ? styles.up : styles.down}`}
+          data-testid="summary-pnl"
+        >
+          {fmtSignedUsd(model.dayPnl)}{" "}
+          <span style={{ fontSize: 11 }}>{fmtPct(model.dayPnlPct)}</span>
         </span>
       </section>
 
@@ -1290,7 +1831,10 @@ export function PortfolioSummary({ rows }: PortfolioSummaryProps) {
           <span className={styles.label}>Allocation</span>
           <div className={styles.alloc}>
             {model.sectors.map((s) => (
-              <span key={s.name} style={{ width: `${s.pct}%`, background: s.color }} />
+              <span
+                key={s.name}
+                style={{ width: `${s.pct}%`, background: s.color }}
+              />
             ))}
           </div>
           <div className={styles.legend}>
@@ -1308,8 +1852,13 @@ export function PortfolioSummary({ rows }: PortfolioSummaryProps) {
         <section className={styles.section}>
           <span className={styles.label}>AI Alerts</span>
           {model.alerts.map((a) => (
-            <div className={styles.alert} data-testid="summary-alert" key={a.id}>
-              <strong>{a.symbol}</strong> {a.flag === "risk" ? "flagged for review" : "on watch"}
+            <div
+              className={styles.alert}
+              data-testid="summary-alert"
+              key={a.id}
+            >
+              <strong>{a.symbol}</strong>{" "}
+              {a.flag === "risk" ? "flagged for review" : "on watch"}
             </div>
           ))}
         </section>
@@ -1327,6 +1876,7 @@ Expected: PASS. (`@testing-library/react` is already used in the repo — see ex
 - [ ] **Step 6: Typecheck + commit**
 
 Run: `pnpm --filter @pretable/app-website typecheck` → Expected: PASS.
+
 ```bash
 git add apps/website/app/components/heroGrid/PortfolioSummary.tsx apps/website/app/components/heroGrid/portfolioSummary.module.css apps/website/app/components/heroGrid/__tests__/PortfolioSummary.test.tsx apps/website/app/components/HeroGrid.tsx
 git commit -m "feat(website): PortfolioSummary sidebar (NAV, P&L, allocation, AI alerts)"
@@ -1339,6 +1889,7 @@ git commit -m "feat(website): PortfolioSummary sidebar (NAV, P&L, allocation, AI
 Repurpose `TopControlBar`/`HomeStreamHeader`/`controlState` wording from race to market.
 
 **Files:**
+
 - Modify: `apps/website/app/components/TopControlBar.tsx`
 - Modify: `apps/website/app/components/HomeStreamHeader.tsx`
 - Modify: `apps/website/app/components/heroGrid/controlState.tsx` (rename `RateTier` semantics only via labels; values stay `10|60|250`)
@@ -1347,6 +1898,7 @@ Repurpose `TopControlBar`/`HomeStreamHeader`/`controlState` wording from race to
 - [ ] **Step 1: `TopControlBar.tsx` — rename the metric + tier labels**
 
 In `TopControlBar.tsx`:
+
 - Rename prop `eventsPerSec` → `ticksPerSec` (and the `TopControlBarProps` field).
 - Change the metric label from `ev/s` to `ticks/s`.
 - Change `TIERS` labels to market wording:
@@ -1358,12 +1910,15 @@ const TIERS: { value: RateTier; label: string }[] = [
   { value: 250, label: "Volatile" },
 ];
 ```
+
 - Update the metric block:
+
 ```tsx
 <span className={styles.metric}>
   <strong>{eventsFormatter.format(ticksPerSec)}</strong> ticks/s
 </span>
 ```
+
 - Update `aria-label="Grid stream controls"` → `aria-label="Market stream controls"` and `aria-label="Stream rate"` → `aria-label="Market activity"`; pause button labels `"Resume stream"`/`"Pause stream"` → `"Resume market"`/`"Pause market"`.
 
 - [ ] **Step 2: `HomeStreamHeader.tsx` — rename the derived value**
@@ -1392,6 +1947,7 @@ Expected: PASS.
 - [ ] **Step 5: Typecheck + commit**
 
 Run: `pnpm --filter @pretable/app-website typecheck` → Expected: PASS.
+
 ```bash
 git add apps/website/app/components/TopControlBar.tsx apps/website/app/components/HomeStreamHeader.tsx apps/website/app/components/heroGrid/controlState.tsx apps/website/app/components/heroGrid/__tests__/controlState.test.tsx
 git commit -m "feat(website): relabel hero control bar to market ticks/s"
@@ -1404,6 +1960,7 @@ git commit -m "feat(website): relabel hero control bar to market ticks/s"
 Update `heroGrid.module.css` so the leader-row styling is gone (HeroGrid no longer passes `getRowClassName`) and the surface/sidebar split fits the cockpit. Most layout (`heroBezel`, `heroSplit`, `heroSurface`, `heroSidebar`) is reusable as-is.
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/heroGrid.module.css`
 
 - [ ] **Step 1: Open `heroGrid.module.css` and remove the now-unused `.leaderRow` rule** (HeroGrid dropped `getRowClassName`). Leave `.heroBackdrop`, `.heroBezel`, `.heroSplit`, `.heroSurface`, `.heroSidebar` intact. If `.heroSidebar` has a fixed width that clipped the scoreboard, confirm it fits the 220px summary; adjust `width`/`min-width` if needed.
@@ -1427,6 +1984,7 @@ git commit -m "style(website): drop leader-row skin; fit PMS cockpit split"
 Reframe the homepage copy from racing to live, AI-augmented portfolio data, and add the synthetic-data disclaimer.
 
 **Files:**
+
 - Modify: `apps/website/app/components/DrawerHero.tsx`
 - Modify: any hero copy in `apps/website/app/components/HomeStreamHeader.tsx`-adjacent sections that name "ski"/"race" (grep first).
 
@@ -1444,6 +2002,7 @@ Expected: a short list. Each hit in user-visible copy must be reworded; each hit
   AI-augmented data, not retrofitted from a batch-era table.
 </p>
 ```
+
 Leave the `DRAWER_HERO_PROMPT` largely intact (it already says "streaming data grid"); no race wording there.
 
 - [ ] **Step 3: Add a disclaimer line** near the hero metrics. In `DrawerHero.tsx`, below the existing "MIT licensed · open source" line, add:
@@ -1457,6 +2016,7 @@ Leave the `DRAWER_HERO_PROMPT` largely intact (it already says "streaming data g
 - [ ] **Step 4: Lint + commit**
 
 Run: `pnpm --filter @pretable/app-website lint` → Expected: PASS.
+
 ```bash
 git add apps/website/app/components/DrawerHero.tsx
 git commit -m "copy(website): reframe hero for live AI-augmented portfolio data"
@@ -1469,6 +2029,7 @@ git commit -m "copy(website): reframe hero for live AI-augmented portfolio data"
 The headline claim is "wrapped analyst text streams with zero row drift." Validate it, and confirm reduced-motion renders a static snapshot.
 
 **Files:**
+
 - Modify: `apps/website/e2e/` (add or extend the homepage smoke spec — check existing specs for the pattern)
 
 - [ ] **Step 1: Find the existing homepage smoke spec**
@@ -1482,11 +2043,15 @@ Add to the existing `/` test (adapt selectors to the project's Playwright style)
 
 ```ts
 // within the existing homepage smoke test
-await expect(page.getByRole("grid", { name: /portfolio positions/i })).toBeVisible();
+await expect(
+  page.getByRole("grid", { name: /portfolio positions/i }),
+).toBeVisible();
 // control bar metric is present
 await expect(page.getByText(/ticks\/s/i)).toBeVisible();
 // AI analyst commentary streams in: a known holding eventually shows wrapped prose
-await expect(page.getByText(/single-name guardrail/i)).toBeVisible({ timeout: 10_000 });
+await expect(page.getByText(/single-name guardrail/i)).toBeVisible({
+  timeout: 10_000,
+});
 
 // Row-drift check: the grid's top offset must not jump while commentary streams.
 const bezel = page.getByTestId("hero-bezel");
@@ -1508,8 +2073,12 @@ Expected: the grid renders empty/static (current behavior: the replay effect ret
 
 ```tsx
 // inside HeroGrid, replacing the early `return` path under reduced motion:
-if (reduce) { setRows(STARTING_SNAPSHOT); return; }
+if (reduce) {
+  setRows(STARTING_SNAPSHOT);
+  return;
+}
 ```
+
 where `STARTING_SNAPSHOT` is imported from a small `recordings/snapshot.ts` exporting the parsed Phase-1 roster (add it if the empty state looks wrong; otherwise skip).
 
 - [ ] **Step 5: Commit**
@@ -1526,6 +2095,7 @@ git commit -m "test(website): smoke + row-drift assertions for PMS hero"
 Align the README, delete dead race files, and run the full validation suite.
 
 **Files:**
+
 - Modify: `README.md`
 - Delete: any remaining race-named files not already replaced.
 
@@ -1538,7 +2108,9 @@ agent transcripts, eval results, support queues, and other workflows that mix
 dense numbers with wrapped, variable-height text where fixed-height rows break
 down.
 ```
+
 Add one bullet under "Why Pretable":
+
 ```md
 - Live numbers and streaming AI narrative coexist in one grid — ticking prices
   beside wrapped, variable-height analyst text, with no row drift.
@@ -1547,6 +2119,7 @@ Add one bullet under "Why Pretable":
 - [ ] **Step 2: Delete dead race files** (confirm each is fully replaced first)
 
 Run:
+
 ```bash
 git rm apps/website/app/components/heroGrid/raceColumns.ts \
        apps/website/app/components/heroGrid/Scoreboard.tsx \
@@ -1557,6 +2130,7 @@ git rm apps/website/app/components/heroGrid/raceColumns.ts \
        apps/website/app/components/heroGrid/scripts/__tests__/generate-race.test.ts \
        apps/website/app/components/heroGrid/__tests__/raceColumns.test.ts
 ```
+
 (`sort.ts`, `types.ts`, `replay-engine.ts`, `sort.test.ts`, `replay-engine.test.ts` were overwritten in place — do NOT `git rm` those.)
 
 - [ ] **Step 3: Final grep for stragglers**
@@ -1567,6 +2141,7 @@ Expected: no hits. Fix any.
 - [ ] **Step 4: Full validation**
 
 Run (from repo root):
+
 ```bash
 pnpm --filter @pretable/app-website test
 pnpm --filter @pretable/app-website typecheck
@@ -1574,6 +2149,7 @@ pnpm --filter @pretable/app-website lint
 pnpm --filter @pretable/app-website build
 pnpm --filter @pretable/app-website smoke
 ```
+
 Expected: all PASS.
 
 - [ ] **Step 5: Commit**

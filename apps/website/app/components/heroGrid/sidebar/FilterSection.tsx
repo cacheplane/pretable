@@ -8,7 +8,12 @@ export interface FilterSectionProps {
   onSector: (value: string) => void;
 }
 
-export function FilterSection({ search, sector, onSearch, onSector }: FilterSectionProps) {
+export function FilterSection({
+  search,
+  sector,
+  onSearch,
+  onSector,
+}: FilterSectionProps) {
   return (
     <section className={styles.section} aria-label="Filters">
       <span className={styles.label}>Filter</span>

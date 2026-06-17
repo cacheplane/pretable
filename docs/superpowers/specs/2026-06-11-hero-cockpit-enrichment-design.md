@@ -130,7 +130,7 @@ All engine/surface capabilities already exist; this wires and surfaces them:
 - **Search box** (sidebar, top of the Filters section): filters by symbol or
   name substring, case-insensitive. Debounce ~150 ms.
 - **Sector chips** (sidebar, under the search box): `All · Technology ·
-  Consumer · Health Care · Financials · Energy`. Single-select; `All` clears.
+Consumer · Health Care · Financials · Energy`. Single-select; `All` clears.
 - **Engine filter model (verified):** `filters` is `Record<columnId, string>`;
   each entry is a case-insensitive **substring** test against that column's
   `value(row)`, and multiple entries are **AND**-combined. A filter whose

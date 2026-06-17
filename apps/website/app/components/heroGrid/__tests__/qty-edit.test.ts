@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseQty, sanityCheckQty, breachesGuardrail, isDeskRejected, GUARDRAIL_PCT } from "../qty-edit";
+import {
+  parseQty,
+  sanityCheckQty,
+  breachesGuardrail,
+  isDeskRejected,
+  GUARDRAIL_PCT,
+} from "../qty-edit";
 
 describe("qty-edit", () => {
   it("parseQty strips commas/spaces to an integer", () => {
@@ -17,8 +23,12 @@ describe("qty-edit", () => {
     expect(sanityCheckQty(900, 100)).toBe(true);
   });
   it("breachesGuardrail compares the new single-name weight against NAV", () => {
-    expect(breachesGuardrail({ newMktValue: 50, otherMktValue: 100 })).toBe(true);
-    expect(breachesGuardrail({ newMktValue: 5, otherMktValue: 200 })).toBe(false);
+    expect(breachesGuardrail({ newMktValue: 50, otherMktValue: 100 })).toBe(
+      true,
+    );
+    expect(breachesGuardrail({ newMktValue: 5, otherMktValue: 200 })).toBe(
+      false,
+    );
     expect(GUARDRAIL_PCT).toBe(7);
   });
   it("isDeskRejected is deterministic per symbol+qty", () => {

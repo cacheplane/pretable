@@ -1,12 +1,56 @@
-.wrap { position: relative; display: inline-flex; align-items: center; gap: 4px; }
-.input { width: 64px; font: inherit; font-variant-numeric: tabular-nums; padding: 1px 4px;
-  border: 1px solid var(--pt-rule-strong, #888); border-radius: 4px; background: var(--pt-bg-card, #fff); }
-.icon { font-size: 11px; line-height: 1; }
-.spin { animation: spin 0.8s linear infinite; display: inline-block; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.pending { color: var(--pt-color-warning, #b87800); }
-.error { color: var(--pt-color-negative, #c0392b); }
-.popover { position: absolute; top: 100%; left: 0; margin-top: 3px; z-index: 5; white-space: nowrap;
-  font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--pt-rule, #ddd);
-  background: var(--pt-bg-card, #fff); box-shadow: 0 2px 8px rgba(0,0,0,.12); display: inline-flex; gap: 5px; align-items: center; }
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.input {
+  width: 64px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 4px;
+  border: 1px solid var(--pt-rule-strong, #888);
+  border-radius: 4px;
+  background: var(--pt-bg-card, #fff);
+}
+.icon {
+  font-size: 11px;
+  line-height: 1;
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pending {
+  color: var(--pt-color-warning, #b87800);
+}
+.error {
+  color: var(--pt-color-negative, #c0392b);
+}
+.popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 3px;
+  z-index: 5;
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--pt-rule, #ddd);
+  background: var(--pt-bg-card, #fff);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}

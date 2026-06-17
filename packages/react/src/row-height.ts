@@ -42,7 +42,8 @@ function measureCellContentHeight(cell: HTMLElement): number {
   const padding =
     parsePxLength(style.paddingTop) + parsePxLength(style.paddingBottom);
   const border =
-    parsePxLength(style.borderTopWidth) + parsePxLength(style.borderBottomWidth);
+    parsePxLength(style.borderTopWidth) +
+    parsePxLength(style.borderBottomWidth);
 
   // Measure the intrinsic content extent with a Range — independent of the
   // cell's flex-stretched box height, so the result is idempotent. We must NOT
