@@ -1,6 +1,6 @@
 import type { PretableColumn } from "@pretable/react";
 
-export interface LayoutRow {
+export interface LayoutRow extends Record<string, unknown> {
   id: string;
   symbol: string;
   name: string;

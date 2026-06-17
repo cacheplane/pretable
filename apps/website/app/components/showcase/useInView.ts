@@ -12,14 +12,15 @@ export function useInView<T extends Element = HTMLDivElement>(
   rootMargin = "200px",
 ): [RefObject<T | null>, boolean] {
   const ref = useRef<T | null>(null);
-  const [inView, setInView] = useState(false);
+  // When IntersectionObserver is unavailable (e.g. SSR or old browsers), mount
+  // immediately by starting in-view. Lazy initializer runs once, avoiding a
+  // synchronous setState inside the effect.
+  const [inView, setInView] = useState(
+    () => typeof IntersectionObserver === "undefined",
+  );
 
   useEffect(() => {
     if (inView) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setInView(true);
-      return;
-    }
     const node = ref.current;
     if (!node) return;
     const observer = new IntersectionObserver(

@@ -5,7 +5,7 @@ export const COL_COUNT = 500;
 export const TOTAL_CELLS = ROW_COUNT * COL_COUNT;
 
 /** A row is just its index — cell values are derived lazily from (row, col). */
-export interface ScaleRow {
+export interface ScaleRow extends Record<string, unknown> {
   i: number;
 }
 
