@@ -147,12 +147,14 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   // getRowId may be an inline closure that changes identity every render. Wrap
   // it in a stable function so it never forces the grid — and the selection /
   // focus state it holds — to be recreated. Mirrors createSourceRows' default.
+  /* eslint-disable react-hooks/refs -- intentional stable wrapper: the inner fn reads ref.current lazily at call time (not during render), giving a stable identity that always calls the latest getRowId. Mirrors HeroGrid.tsx's columns factory. */
   const getRowIdRef = useRef(getRowId);
   getRowIdRef.current = getRowId;
   const stableGetRowId = useRef(
     (row: TRow, index: number): string =>
       getRowIdRef.current?.(row, index) ?? String(index),
   ).current;
+  /* eslint-enable react-hooks/refs */
 
   // Create the grid once per columns/getRowId/autosize identity. Row data is
   // reconciled in place via grid.setRows (below) rather than by recreating the

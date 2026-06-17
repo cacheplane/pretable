@@ -33,6 +33,12 @@ describe("ScaleGrid", () => {
     globalThis.IntersectionObserver = original;
   });
 
+  // jsdom has no layout, so column virtualization can't engage (clientWidth is
+  // 0) and the surface renders all 501 columns for the visible rows. That makes
+  // the synchronous mount heavy — fast locally but several seconds on CI's
+  // slower runners — so this test gets a generous timeout. The real
+  // virtualization proof (DOM cells far below the model) lives in the Playwright
+  // smoke, which runs in a browser with real layout.
   it("shows the model-cell total and renders far fewer cells than the model", async () => {
     const { container } = render(<ScaleGrid />);
     // Counter shows the formatted model total (1,250,000).
@@ -45,5 +51,5 @@ describe("ScaleGrid", () => {
       expect(cells).toBeGreaterThan(0);
       expect(cells).toBeLessThan(TOTAL_CELLS);
     });
-  });
+  }, 30_000);
 });
