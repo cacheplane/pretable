@@ -180,3 +180,83 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   await page.waitForTimeout(2000); // ticks
   await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
 });
+
+test("showcase: scale grid virtualizes; column layout resizes + resets", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("drawer-handle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-drawer", "open");
+
+  // --- Scale section: scroll into view, grid mounts, counter proves virtualization ---
+  await page.locator("#scale").scrollIntoViewIfNeeded();
+  const scaleGrid = page.getByRole("grid", { name: /2,500 by 500/i });
+  await expect(scaleGrid).toBeVisible({ timeout: 10_000 });
+  // Model total is shown.
+  await expect(page.getByTestId("scale-counter")).toContainText("1,250,000");
+  // DOM-rendered cell count is tiny relative to 1.25M (virtualization on).
+  await expect
+    .poll(async () => await page.locator("#scale [data-pretable-cell]").count(), {
+      timeout: 10_000,
+    })
+    .toBeLessThan(2000);
+  // The DOM count must also be positive (the grid actually rendered cells).
+  expect(await page.locator("#scale [data-pretable-cell]").count()).toBeGreaterThan(
+    0,
+  );
+  // Scroll the grid; the rendered count stays small.
+  await page
+    .locator("#scale [data-pretable-scroll-viewport]")
+    .evaluate((el) => {
+      el.scrollTop = 4000;
+      el.scrollLeft = 6000;
+    });
+  await expect
+    .poll(async () => await page.locator("#scale [data-pretable-cell]").count())
+    .toBeLessThan(2000);
+
+  // --- Column-layout section: resize a column, then reset ---
+  await page.locator("#column-layout").scrollIntoViewIfNeeded();
+  const layoutGrid = page.getByRole("grid", {
+    name: /resizable, reorderable/i,
+  });
+  await expect(layoutGrid).toBeVisible({ timeout: 10_000 });
+
+  // The header cell and its resize handle are SIBLINGS in the header row, each
+  // tagged with the same data-pretable-column-id (verified against
+  // packages/react/src/pretable-surface.tsx) — the handle is NOT nested inside
+  // the header cell, so both are scoped from the column-layout section root.
+  const layout = page.locator("#column-layout");
+  const symbolHeader = layout.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="symbol"]',
+  );
+  await expect(symbolHeader).toBeVisible();
+  const widthBefore = (await symbolHeader.boundingBox())?.width ?? 0;
+
+  // Drag the symbol column's resize handle to the right by ~80px. The handle
+  // listens for pointer events and uses setPointerCapture; WebKit only engages
+  // capture once the pointer actually traverses intermediate positions, so the
+  // drag moves in steps (a short hop, then the full distance) rather than a
+  // single jump.
+  const handle = layout.locator(
+    '[data-pretable-resize-handle][data-pretable-column-id="symbol"]',
+  );
+  const hb = await handle.boundingBox();
+  expect(hb).not.toBeNull();
+  if (hb) {
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(hb.x + 20, hb.y + hb.height / 2, { steps: 4 });
+    await page.mouse.move(hb.x + 80, hb.y + hb.height / 2, { steps: 8 });
+    await page.mouse.up();
+  }
+  await expect
+    .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(widthBefore + 20);
+
+  // Reset restores the original width.
+  await page.getByTestId("reset-layout").click();
+  await expect
+    .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
+    .toBeLessThan(widthBefore + 20);
+});
