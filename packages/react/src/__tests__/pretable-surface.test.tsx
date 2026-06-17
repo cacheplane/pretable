@@ -1006,6 +1006,8 @@ const gridColumns = [
   { id: "c", header: "C", widthPx: 100 },
 ];
 
+const getGridRowId = (row: GridRow) => row.id;
+
 const gridRows: GridRow[] = [
   { id: "r1", a: "a1", b: "b1", c: "c1" },
   { id: "r2", a: "a2", b: "b2", c: "c2" },
@@ -1473,6 +1475,65 @@ describe("keyboard contract", () => {
 });
 
 describe("controlled-mode round-trips", () => {
+  it("does not emit to the external store during render when a controlled prop changes (no React 'update while rendering' warning)", () => {
+    // Repro of the website-hero bug: the headless `usePretable` grid is shared
+    // between the surface and a sibling control panel (both subscribe to the
+    // grid's external store). A controlled prop (`state.filters`) is driven by
+    // sibling state. Applying the grid mutation *during render* emits to the
+    // store synchronously, which notifies the *already-mounted sibling*
+    // subscriber mid-render — tripping React's "Cannot update a component
+    // while rendering a different component" warning on every keystroke.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // A sibling that independently subscribes to the same grid store — stands
+    // in for the hero's control-panel / result-count readout.
+    function ResultCount({ grid }: { grid: PretableGrid<GridRow> }) {
+      const snap = React.useSyncExternalStore(grid.subscribe, grid.getSnapshot);
+      return <span data-testid="count">{snap.visibleRows.length}</span>;
+    }
+
+    function HeadlessHarness() {
+      const [query, setQuery] = React.useState("");
+      const { grid, renderSnapshot } = usePretable<GridRow>({
+        columns: gridColumns,
+        getRowId: getGridRowId,
+        overscan: 0,
+        rows: gridRows,
+        state: { filters: query ? { a: query } : {} },
+        viewportHeight: 300,
+      });
+
+      return (
+        <div>
+          <input
+            aria-label="filter"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <ResultCount grid={grid} />
+          <output data-testid="rendered">{renderSnapshot.rows.length}</output>
+        </div>
+      );
+    }
+
+    const view = render(<HeadlessHarness />);
+    const input = view.getByLabelText("filter");
+
+    fireEvent.change(input, { target: { value: "a1" } });
+    fireEvent.change(input, { target: { value: "a12" } });
+
+    const renderWhileRenderingWarning = errorSpy.mock.calls.some((call) =>
+      String(call[0]).includes("Cannot update a component"),
+    );
+    expect(renderWhileRenderingWarning).toBe(false);
+
+    // Filtering still works: query "a1" matches only r1 (column a = "a1").
+    fireEvent.change(input, { target: { value: "a1" } });
+    expect(view.getByTestId("count")).toHaveTextContent("1");
+
+    errorSpy.mockRestore();
+  });
+
   it("state.selection: arrow does not mutate rendered selection when controlled and consumer ignores callback", () => {
     const onSelectionChange = vi.fn();
     const controlledSelection: PretableSelectionState = {
@@ -4291,7 +4352,11 @@ describe("cell renderers", () => {
 
     const view = render(<Harness focusRowId="r1" />);
     const initialCalls = renderFn.mock.calls.length;
-    expect(initialCalls).toBe(gridRows.length);
+    // Controlled focus is applied in a layout effect (post-commit, pre-paint)
+    // rather than during render, so the focused cell (r1/a) re-renders once
+    // after mount when focus lands on it — one extra call beyond the per-row
+    // baseline. The non-focused rows still render exactly once.
+    expect(initialCalls).toBe(gridRows.length + 1);
 
     // Re-render with focus moved from r1 -> r2 (column "a"). r1 loses focus,
     // r2 gains focus, both isFocused props change -> both should re-render.
