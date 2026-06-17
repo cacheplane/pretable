@@ -172,7 +172,31 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   void onSelectionChange;
   void onFocusChange;
 
-  if (state) {
+  const snapshot = useSyncExternalStore(
+    grid.subscribe,
+    grid.getSnapshot,
+    grid.getSnapshot,
+  );
+
+  // Apply controlled state in a layout effect rather than during render: the
+  // grid mutators emit to the external store synchronously, and emitting while
+  // rendering trips React's "Cannot update a component while rendering a
+  // different component" warning (see useSyncExternalStore). Running it post-
+  // commit (but before paint) keeps the controlled value authoritative without
+  // the during-render emit.
+  //
+  // The effect depends on `snapshot` so it re-runs after *internal* grid events
+  // (keyboard, click) as well as prop changes: when an internal event tries to
+  // change a controlled slice and the consumer ignores the callback, the engine
+  // has diverged from the prop, and this re-assert forces it back. Every grid
+  // mutator self-guards against equal values (no emit when unchanged), so the
+  // effect converges — the re-assert after our own emit is a no-op — and never
+  // loops.
+  useLayoutEffect(() => {
+    if (!state) {
+      return;
+    }
+
     if (state.sort !== undefined) {
       grid.setSort(state.sort?.columnId ?? null, state.sort?.direction ?? null);
     }
@@ -233,13 +257,9 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
         grid.setFocus(null);
       }
     }
-  }
-
-  const snapshot = useSyncExternalStore(
-    grid.subscribe,
-    grid.getSnapshot,
-    grid.getSnapshot,
-  );
+    // `snapshot` is an intentional dependency: it makes the effect re-assert the
+    // controlled value after internal grid mutations, not just prop changes.
+  }, [grid, state, snapshot]);
 
   useLayoutEffect(() => {
     if (
