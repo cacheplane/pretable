@@ -281,6 +281,8 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     clearSelection(): void;
     // (undocumented)
     commitEditSucceeded(): void;
+    // (undocumented)
+    distinctColumnValues(columnId: string): string[];
     // Warning: (ae-forgotten-export) The symbol "PretableCellAddress" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -307,19 +309,21 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     moveFocus(direction: PretableFocusDirection, options?: PretableMoveFocusOptions): void;
     readonly options: PretableGridOptions<TRow>;
     // (undocumented)
-    replaceFilters(nextFilters: Record<string, string>): void;
+    replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
     // (undocumented)
     resetColumnLayout(): void;
     // (undocumented)
     selectAll(): void;
+    // Warning: (ae-forgotten-export) The symbol "ColumnFilter" needs to be exported by the entry point index.d.ts
+    //
+    // (undocumented)
+    setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
     // (undocumented)
     setColumnPinned(columnId: string, pinned: "left" | null): void;
     // (undocumented)
     setColumnWidth(columnId: string, width: number): void;
     // (undocumented)
     setEditDraft(value: unknown): void;
-    // (undocumented)
-    setFilter(columnId: string, value: string): void;
     // (undocumented)
     setFocus(addr: PretableCellAddress | null): void;
     setRows(rows: TRow[]): void;
@@ -357,7 +361,7 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     editing: PretableEditState | null;
     // (undocumented)
-    filters: Record<string, string>;
+    filters: Record<string, ColumnFilter>;
     // Warning: (ae-forgotten-export) The symbol "PretableFocusState" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)

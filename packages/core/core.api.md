@@ -17,7 +17,32 @@ export interface AutosizeOptions {
 }
 
 // @public
+export interface ColumnFilter {
+    // (undocumented)
+    operator: FilterOperator;
+    // (undocumented)
+    value?: FilterValue;
+}
+
+// @public
 export function createGrid<TRow extends PretableRow = PretableRow>(options: PretableGridOptions<TRow>): PretableGrid<TRow>;
+
+// @public (undocumented)
+export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith" | "gt" | "gte" | "lt" | "lte" | "between" | "isAnyOf" | "isNoneOf" | "on" | "before" | "after" | "dateBetween" | "isEmpty" | "isNotEmpty";
+
+// @public (undocumented)
+export interface FilterOption {
+    // (undocumented)
+    label?: string;
+    // (undocumented)
+    value: string;
+}
+
+// @public (undocumented)
+export type FilterType = "text" | "number" | "date" | "enum";
+
+// @public (undocumented)
+export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
 // @public
 export interface PretableCellAddress {
@@ -45,6 +70,10 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
     // (undocumented)
     filterable?: boolean;
+    // (undocumented)
+    filterOptions?: FilterOption[];
+    // (undocumented)
+    filterType?: FilterType;
     // (undocumented)
     format?: (input: PretableFormatInput<TRow>) => string;
     // (undocumented)
@@ -153,6 +182,8 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     commitEditSucceeded(): void;
     // (undocumented)
+    distinctColumnValues(columnId: string): string[];
+    // (undocumented)
     extendRangeFromAnchor(addr: PretableCellAddress): void;
     getSnapshot(): PretableGridSnapshot<TRow>;
     readonly kind: "pretable-grid";
@@ -174,19 +205,19 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     moveFocus(direction: PretableFocusDirection, options?: PretableMoveFocusOptions): void;
     readonly options: PretableGridOptions<TRow>;
     // (undocumented)
-    replaceFilters(nextFilters: Record<string, string>): void;
+    replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
     // (undocumented)
     resetColumnLayout(): void;
     // (undocumented)
     selectAll(): void;
+    // (undocumented)
+    setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
     // (undocumented)
     setColumnPinned(columnId: string, pinned: "left" | null): void;
     // (undocumented)
     setColumnWidth(columnId: string, width: number): void;
     // (undocumented)
     setEditDraft(value: unknown): void;
-    // (undocumented)
-    setFilter(columnId: string, value: string): void;
     // (undocumented)
     setFocus(addr: PretableCellAddress | null): void;
     setRows(rows: TRow[]): void;
@@ -220,7 +251,7 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     editing: PretableEditState | null;
     // (undocumented)
-    filters: Record<string, string>;
+    filters: Record<string, ColumnFilter>;
     // (undocumented)
     focus: PretableFocusState;
     // (undocumented)
