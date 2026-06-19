@@ -119,7 +119,7 @@ interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRow> {
 ```ts
 interface PretableSurfaceState {
   sort?: PretableSortState;
-  filters?: Record<string, string>;
+  filters?: Record<string, ColumnFilter>;
   selection?: PretableSelectionState;
   focus?: PretableFocusState;
   columnWidths?: Record<string, number>;
@@ -220,7 +220,7 @@ interface PretableGridSnapshot<TRow> {
     width: number;
   };
   sort: { columnId: string | null; direction: "asc" | "desc" | null };
-  filters: Record<string, string>;
+  filters: Record<string, ColumnFilter>;
   selection: {
     ranges: Array<{
       startRowId: string;
@@ -267,7 +267,7 @@ interface UsePretableOptions<TRow> extends UsePretableOptions<TRow> {
 
 interface PretableSurfaceState {
   sort?: PretableSortState;
-  filters?: Record<string, string>;
+  filters?: Record<string, ColumnFilter>;
   selection?: PretableSelectionState;
   focus?: PretableFocusState;
   columnWidths?: Record<string, number>;

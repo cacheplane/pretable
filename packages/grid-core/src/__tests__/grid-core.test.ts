@@ -558,4 +558,25 @@ describe("grid-core — filter operators", () => {
     expect(grid.distinctColumnValues("priority")).toEqual(["1", "2", "3", "5"]);
     expect(grid.distinctColumnValues("missing")).toEqual([]);
   });
+
+  test("distinctColumnValues reads through the column value accessor", () => {
+    const grid = createGridCore({
+      columns: [
+        {
+          id: "team",
+          header: "Team",
+          filterType: "enum" as const,
+          value: (row) => `${row.org}/${row.squad}`,
+        },
+      ],
+      rows: [
+        { id: "a", org: "eng", squad: "core" },
+        { id: "b", org: "eng", squad: "core" },
+        { id: "c", org: "eng", squad: "web" },
+      ],
+      getRowId: (row) => row.id as string,
+    });
+
+    expect(grid.distinctColumnValues("team")).toEqual(["eng/core", "eng/web"]);
+  });
 });
