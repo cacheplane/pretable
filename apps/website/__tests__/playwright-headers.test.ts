@@ -12,14 +12,16 @@ describe("getVercelProtectionBypassHeaders", () => {
     ).toBeUndefined();
   });
 
-  it("returns Vercel protection bypass headers for protected previews", () => {
+  it("returns the bypass header (only) for protected previews", () => {
+    // No x-vercel-set-bypass-cookie: that triggers a 307 cookie-seeding
+    // redirect, which breaks responses fetched with maxRedirects: 0. The header
+    // alone authorizes every request (Playwright sends it on all of them).
     expect(
       getVercelProtectionBypassHeaders({
         VERCEL_AUTOMATION_BYPASS_SECRET: "preview-secret",
       }),
     ).toEqual({
       "x-vercel-protection-bypass": "preview-secret",
-      "x-vercel-set-bypass-cookie": "true",
     });
   });
 });
