@@ -5,7 +5,9 @@ import {
   deriveVisibleRows,
   type SourceRow,
 } from "./derived-rows";
+import { isFilterActive } from "./evaluate-filter";
 import type {
+  ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,
@@ -85,9 +87,9 @@ export function createGridCore<TRow extends PretableRow>(
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
   let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
   let cachedDerivedSort: PretableSortState | null = null;
-  let cachedDerivedFilters: Record<string, string> | null = null;
+  let cachedDerivedFilters: Record<string, ColumnFilter> | null = null;
   let sort: PretableSortState = { columnId: null, direction: null };
-  let filters: Record<string, string> = {};
+  let filters: Record<string, ColumnFilter> = {};
   let selection: PretableSelectionState = { ranges: [], anchor: null };
   let focus: PretableFocusState = { rowId: null, columnId: null };
   let editing: PretableEditState | null = null;
@@ -118,18 +120,17 @@ export function createGridCore<TRow extends PretableRow>(
       sort = { columnId, direction };
       emit();
     },
-    setFilter(columnId: string, value: string) {
-      const trimmed = value.trim();
-      const currentValue = filters[columnId];
+    setColumnFilter(columnId: string, filter: ColumnFilter | null) {
+      const current = filters[columnId];
 
-      if (trimmed) {
-        if (currentValue === trimmed) {
+      if (filter && isFilterActive(filter)) {
+        if (current && columnFilterEqual(current, filter)) {
           return;
         }
 
-        filters = { ...filters, [columnId]: trimmed };
+        filters = { ...filters, [columnId]: filter };
       } else {
-        if (currentValue === undefined) {
+        if (current === undefined) {
           return;
         }
 
@@ -149,14 +150,12 @@ export function createGridCore<TRow extends PretableRow>(
       filters = {};
       emit();
     },
-    replaceFilters(nextFilters: Record<string, string>) {
-      const normalized: Record<string, string> = {};
+    replaceFilters(nextFilters: Record<string, ColumnFilter>) {
+      const normalized: Record<string, ColumnFilter> = {};
 
-      for (const [columnId, value] of Object.entries(nextFilters)) {
-        const trimmed = value.trim();
-
-        if (trimmed) {
-          normalized[columnId] = trimmed;
+      for (const [columnId, filter] of Object.entries(nextFilters)) {
+        if (filter && isFilterActive(filter)) {
+          normalized[columnId] = filter;
         }
       }
 
@@ -166,6 +165,33 @@ export function createGridCore<TRow extends PretableRow>(
 
       filters = normalized;
       emit();
+    },
+    distinctColumnValues(columnId: string): string[] {
+      const column = options.columns.find((c) => c.id === columnId);
+
+      if (!column) {
+        return [];
+      }
+
+      const seen = new Set<string>();
+
+      for (const entry of sourceRows) {
+        const raw = column.value ? column.value(entry.row) : entry.row[columnId];
+
+        if (raw === null || raw === undefined) {
+          continue;
+        }
+
+        const s = String(raw);
+
+        if (s.trim() === "") {
+          continue;
+        }
+
+        seen.add(s);
+      }
+
+      return [...seen].sort((a, b) => a.localeCompare(b));
     },
     setSelection(next: PretableSelectionState) {
       if (selectionsEqual(selection, next)) {
@@ -987,9 +1013,24 @@ function selectionsEqual(
   );
 }
 
+function columnFilterEqual(a: ColumnFilter, b: ColumnFilter): boolean {
+  if (a.operator !== b.operator) {
+    return false;
+  }
+
+  const av = a.value;
+  const bv = b.value;
+
+  if (Array.isArray(av) && Array.isArray(bv)) {
+    return av.length === bv.length && av.every((v, i) => v === bv[i]);
+  }
+
+  return av === bv;
+}
+
 function filtersEqual(
-  a: Record<string, string>,
-  b: Record<string, string>,
+  a: Record<string, ColumnFilter>,
+  b: Record<string, ColumnFilter>,
 ): boolean {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
@@ -999,7 +1040,10 @@ function filtersEqual(
   }
 
   for (const key of aKeys) {
-    if (a[key] !== b[key]) {
+    const av = a[key];
+    const bv = b[key];
+
+    if (!av || !bv || !columnFilterEqual(av, bv)) {
       return false;
     }
   }

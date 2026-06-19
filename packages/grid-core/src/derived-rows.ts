@@ -1,10 +1,12 @@
 import type {
+  ColumnFilter,
   PretableColumn,
   PretableGridOptions,
   PretableRow,
   PretableVisibleRow,
   PretableSortState,
 } from "./types";
+import { evaluateFilter, isFilterActive } from "./evaluate-filter";
 
 export interface SourceRow<TRow extends PretableRow> {
   id: string;
@@ -24,7 +26,7 @@ export function createSourceRows<TRow extends PretableRow>(
 
 export function deriveVisibleRows<TRow extends PretableRow>(input: {
   columns: PretableColumn<TRow>[];
-  filters: Record<string, string>;
+  filters: Record<string, ColumnFilter>;
   rows: SourceRow<TRow>[];
   sort: PretableSortState;
 }): PretableVisibleRow<TRow>[] {
@@ -43,28 +45,21 @@ export function deriveVisibleRows<TRow extends PretableRow>(input: {
 
 interface ResolvedFilter<TRow extends PretableRow> {
   column: PretableColumn<TRow>;
-  needle: string;
+  filter: ColumnFilter;
 }
 
 function resolveFilters<TRow extends PretableRow>(
   columns: PretableColumn<TRow>[],
-  filters: Record<string, string>,
+  filters: Record<string, ColumnFilter>,
 ): ResolvedFilter<TRow>[] {
   const columnMap = new Map(columns.map((c) => [c.id, c]));
   const resolved: ResolvedFilter<TRow>[] = [];
 
-  for (const [columnId, rawNeedle] of Object.entries(filters)) {
-    if (!rawNeedle) {
-      continue;
-    }
-
+  for (const [columnId, filter] of Object.entries(filters)) {
+    if (!filter || !isFilterActive(filter)) continue;
     const column = columnMap.get(columnId);
-
-    if (!column) {
-      continue;
-    }
-
-    resolved.push({ column, needle: rawNeedle.toLowerCase() });
+    if (!column || column.filterable === false) continue;
+    resolved.push({ column, filter });
   }
 
   return resolved;
@@ -74,10 +69,16 @@ function matchesFilters<TRow extends PretableRow>(
   row: TRow,
   resolvedFilters: ResolvedFilter<TRow>[],
 ): boolean {
-  for (const { column, needle } of resolvedFilters) {
-    const haystack = String(readCellValue(row, column)).toLowerCase();
-
-    if (!haystack.includes(needle)) {
+  for (const { column, filter } of resolvedFilters) {
+    const cell = readCellValue(row, column);
+    if (
+      !evaluateFilter(
+        cell,
+        column.filterType ?? "text",
+        filter.operator,
+        filter.value,
+      )
+    ) {
       return false;
     }
   }

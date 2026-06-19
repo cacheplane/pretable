@@ -31,7 +31,7 @@ describe("grid-core", () => {
 
     grid.toggleRowSelection("b");
     grid.setSort("name", "asc");
-    grid.setFilter("status", "open");
+    grid.setColumnFilter("status", { operator: "contains", value: "open" });
 
     const snapshot = grid.getSnapshot();
 
@@ -54,7 +54,7 @@ describe("grid-core", () => {
     });
 
     grid.toggleRowSelection("c");
-    grid.setFilter("message", "error");
+    grid.setColumnFilter("message", { operator: "contains", value: "error" });
 
     const snapshot = grid.getSnapshot();
 
@@ -436,5 +436,128 @@ describe("grid-core", () => {
     expect(after.visibleRows.find((r) => r.id === "a")?.row).toMatchObject({
       name: "Changed",
     });
+  });
+});
+
+interface OpRow {
+  id: string;
+  status: string;
+  priority: number;
+}
+
+const opColumns = [
+  { id: "status", header: "Status", filterType: "enum" as const },
+  { id: "priority", header: "Priority", filterType: "number" as const },
+] as const;
+
+const opRows: OpRow[] = [
+  { id: "a", status: "open", priority: 1 },
+  { id: "b", status: "open", priority: 3 },
+  { id: "c", status: "closed", priority: 5 },
+  { id: "d", status: "closed", priority: 2 },
+];
+
+const makeOpGrid = () =>
+  createGridCore({
+    columns: [...opColumns],
+    rows: opRows,
+    getRowId: (row) => row.id,
+  });
+
+describe("grid-core — filter operators", () => {
+  test("setColumnFilter applies an operator and AND-combines across columns", () => {
+    const grid = makeOpGrid();
+
+    grid.setColumnFilter("status", { operator: "isAnyOf", value: ["open"] });
+    expect(grid.getSnapshot().visibleRows.map((r) => r.id)).toEqual(["a", "b"]);
+
+    grid.setColumnFilter("priority", { operator: "gt", value: 2 });
+    expect(grid.getSnapshot().visibleRows.map((r) => r.id)).toEqual(["b"]);
+
+    grid.setColumnFilter("status", null);
+    expect(grid.getSnapshot().visibleRows.map((r) => r.id)).toEqual(["b", "c"]);
+  });
+
+  test("snapshot.filters carries the typed ColumnFilter record", () => {
+    const grid = makeOpGrid();
+
+    grid.setColumnFilter("priority", { operator: "between", value: [2, 4] });
+
+    expect(grid.getSnapshot().filters).toEqual({
+      priority: { operator: "between", value: [2, 4] },
+    });
+    expect(grid.getSnapshot().visibleRows.map((r) => r.id)).toEqual(["b", "d"]);
+  });
+
+  test("replaceFilters drops inactive filters and is change-guarded", () => {
+    const grid = makeOpGrid();
+
+    grid.replaceFilters({ status: { operator: "contains", value: "" } });
+    expect(Object.keys(grid.getSnapshot().filters)).toHaveLength(0);
+
+    grid.replaceFilters({
+      status: { operator: "isAnyOf", value: ["closed"] },
+    });
+    const snapshot = grid.getSnapshot();
+    expect(snapshot.visibleRows.map((r) => r.id)).toEqual(["c", "d"]);
+
+    // change-guard: replacing with an equal record keeps the same snapshot ref.
+    grid.replaceFilters({
+      status: { operator: "isAnyOf", value: ["closed"] },
+    });
+    expect(grid.getSnapshot()).toBe(snapshot);
+  });
+
+  test("setColumnFilter is emit-guarded for equal filters", () => {
+    const grid = makeOpGrid();
+    let notifications = 0;
+    grid.subscribe(() => {
+      notifications += 1;
+    });
+
+    grid.setColumnFilter("priority", { operator: "gte", value: 3 });
+    grid.setColumnFilter("priority", { operator: "gte", value: 3 });
+
+    expect(notifications).toBe(1);
+  });
+
+  test("isEmpty / isNotEmpty operate without an operand", () => {
+    const grid = createGridCore({
+      columns: [{ id: "note", header: "Note", filterType: "text" as const }],
+      rows: [
+        { id: "a", note: "hi" },
+        { id: "b", note: "" },
+        { id: "c", note: "yo" },
+      ],
+      getRowId: (row) => row.id as string,
+    });
+
+    grid.setColumnFilter("note", { operator: "isNotEmpty" });
+    expect(grid.getSnapshot().visibleRows.map((r) => r.id)).toEqual(["a", "c"]);
+  });
+
+  test("filterable:false columns ignore their filter entry", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "status", header: "Status", filterable: false },
+      ],
+      rows: opRows,
+      getRowId: (row) => row.id,
+    });
+
+    grid.setColumnFilter("status", { operator: "equals", value: "open" });
+    expect(grid.getSnapshot().visibleRows.map((r) => r.id)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
+  });
+
+  test("distinctColumnValues returns sorted de-duped non-empty values", () => {
+    const grid = makeOpGrid();
+    expect(grid.distinctColumnValues("status")).toEqual(["closed", "open"]);
+    expect(grid.distinctColumnValues("priority")).toEqual(["1", "2", "3", "5"]);
+    expect(grid.distinctColumnValues("missing")).toEqual([]);
   });
 });

@@ -255,7 +255,7 @@ export interface PretableVisibleRow<TRow extends PretableRow = PretableRow> {
 export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   viewport: PretableViewportState;
   sort: PretableSortState;
-  filters: Record<string, string>;
+  filters: Record<string, ColumnFilter>;
   selection: PretableSelectionState;
   focus: PretableFocusState;
   totalRowCount: number;
@@ -270,9 +270,10 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   subscribe(listener: () => void): () => void;
   getSnapshot(): PretableGridSnapshot<TRow>;
   setSort(columnId: string | null, direction: PretableSortDirection): void;
-  setFilter(columnId: string, value: string): void;
+  setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   clearFilters(): void;
-  replaceFilters(nextFilters: Record<string, string>): void;
+  replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
+  distinctColumnValues(columnId: string): string[];
   // selection actions
   setSelection(state: PretableSelectionState): void;
   selectAll(): void;
