@@ -1,3 +1,4 @@
+import type { ColumnFilter } from "@pretable/react";
 import type {
   ScenarioDataset,
   ScenarioRow,
@@ -7,7 +8,7 @@ import type { BenchQueryState } from "./bench-types";
 
 export interface BenchInteractionPlan {
   focusedRowId: string | null;
-  filters: Record<string, string>;
+  filters: Record<string, ColumnFilter>;
   mode: Exclude<BenchQueryState["scriptName"], "initial" | "scroll">;
   probeColumnId: string;
   resultRowCount: number;
@@ -65,7 +66,10 @@ export function createBenchInteractionPlan(
     return {
       focusedRowId: probeRowId,
       filters: {
-        [METADATA_FILTER.columnId]: METADATA_FILTER.value,
+        [METADATA_FILTER.columnId]: {
+          operator: "contains",
+          value: METADATA_FILTER.value,
+        },
       },
       mode: "filter-metadata",
       probeColumnId: METADATA_FILTER.columnId,
@@ -88,7 +92,10 @@ export function createBenchInteractionPlan(
     return {
       focusedRowId: probeRowId,
       filters: {
-        [TEXT_FILTER.columnId]: TEXT_FILTER.value,
+        [TEXT_FILTER.columnId]: {
+          operator: "contains",
+          value: TEXT_FILTER.value,
+        },
       },
       mode: "filter-text",
       probeColumnId: TEXT_FILTER.columnId,

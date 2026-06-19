@@ -64,7 +64,7 @@ describe("grid-core derivation caching", () => {
       getRowId: (row) => row.id,
     });
 
-    grid.setFilter("status", "open");
+    grid.setColumnFilter("status", { operator: "contains", value: "open" });
     const before = grid.getSnapshot().visibleRows;
 
     grid.toggleRowSelection("a");
@@ -109,7 +109,7 @@ describe("grid-core derivation caching", () => {
 
     const before = grid.getSnapshot().visibleRows;
 
-    grid.setFilter("status", "open");
+    grid.setColumnFilter("status", { operator: "contains", value: "open" });
 
     expect(grid.getSnapshot().visibleRows).not.toBe(before);
   });
@@ -138,13 +138,19 @@ describe("grid-core emit behavior", () => {
     expect(instrumented.emits).toBe(1);
   });
 
-  test("setFilter with identical value does not emit", () => {
+  test("setColumnFilter with identical value does not emit", () => {
     const instrumented = createInstrumentedGrid();
 
-    instrumented.grid.setFilter("status", "open");
+    instrumented.grid.setColumnFilter("status", {
+      operator: "contains",
+      value: "open",
+    });
     instrumented.reset();
 
-    instrumented.grid.setFilter("status", "open");
+    instrumented.grid.setColumnFilter("status", {
+      operator: "contains",
+      value: "open",
+    });
 
     expect(instrumented.emits).toBe(0);
   });

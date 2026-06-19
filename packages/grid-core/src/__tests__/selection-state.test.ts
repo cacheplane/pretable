@@ -175,7 +175,7 @@ describe("selection state", () => {
 
   test("setSelectAllVisible(true) creates one full-row range per visible row", () => {
     const grid = makeGrid();
-    grid.setFilter("status", "open");
+    grid.setColumnFilter("status", { operator: "contains", value: "open" });
 
     grid.setSelectAllVisible(true);
 
@@ -235,7 +235,7 @@ describe("selection state", () => {
       anchor: { rowId: "c", columnId: "name" },
     });
 
-    grid.setFilter("status", "open");
+    grid.setColumnFilter("status", { operator: "contains", value: "open" });
 
     expect(grid.getSnapshot().selection.ranges).toEqual([
       {

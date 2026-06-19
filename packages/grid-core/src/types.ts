@@ -58,6 +58,52 @@ export interface PretableEditState {
   error?: string;
 }
 
+/** @public */
+export type FilterType = "text" | "number" | "date" | "enum";
+
+/** @public */
+export type FilterOperator =
+  | "contains"
+  | "notContains"
+  | "equals"
+  | "notEquals"
+  | "startsWith"
+  | "endsWith"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "isAnyOf"
+  | "isNoneOf"
+  | "on"
+  | "before"
+  | "after"
+  | "dateBetween"
+  | "isEmpty"
+  | "isNotEmpty";
+
+/** @public */
+export type FilterValue =
+  | string
+  | number
+  | readonly [number, number]
+  | readonly [string, string]
+  | readonly string[]
+  | null;
+
+/** @public — one column's active filter. `value` is omitted for isEmpty/isNotEmpty. */
+export interface ColumnFilter {
+  operator: FilterOperator;
+  value?: FilterValue;
+}
+
+/** @public */
+export interface FilterOption {
+  value: string;
+  label?: string;
+}
+
 /**
  * Engine-level column definition. `@pretable/react` extends this with React-specific render fields.
  *
@@ -71,6 +117,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   pinned?: "left";
   sortable?: boolean;
   filterable?: boolean;
+  filterType?: FilterType;
+  filterOptions?: FilterOption[];
   value?: (row: TRow) => unknown;
   format?: (input: PretableFormatInput<TRow>) => string;
   // new in sub-project C:
@@ -207,7 +255,7 @@ export interface PretableVisibleRow<TRow extends PretableRow = PretableRow> {
 export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   viewport: PretableViewportState;
   sort: PretableSortState;
-  filters: Record<string, string>;
+  filters: Record<string, ColumnFilter>;
   selection: PretableSelectionState;
   focus: PretableFocusState;
   totalRowCount: number;
@@ -222,9 +270,10 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   subscribe(listener: () => void): () => void;
   getSnapshot(): PretableGridSnapshot<TRow>;
   setSort(columnId: string | null, direction: PretableSortDirection): void;
-  setFilter(columnId: string, value: string): void;
+  setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   clearFilters(): void;
-  replaceFilters(nextFilters: Record<string, string>): void;
+  replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
+  distinctColumnValues(columnId: string): string[];
   // selection actions
   setSelection(state: PretableSelectionState): void;
   selectAll(): void;

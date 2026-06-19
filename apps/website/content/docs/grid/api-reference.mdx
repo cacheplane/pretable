@@ -119,7 +119,7 @@ interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRow> {
 ```ts
 interface PretableSurfaceState {
   sort?: PretableSortState;
-  filters?: Record<string, string>;
+  filters?: Record<string, ColumnFilter>;
   selection?: PretableSelectionState;
   focus?: PretableFocusState;
   columnWidths?: Record<string, number>;
@@ -181,9 +181,10 @@ The `grid` returned by `usePretable`.
 | `getSnapshot(): PretableGridSnapshot<TRow>`                                   | Read the current state.                                                                         |
 | `subscribe(listener: () => void): () => void`                                 | Subscribe to state changes. Returns an unsubscribe fn.                                          |
 | `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Set the sort state. Pass `null` to clear.                                                       |
-| `setFilter(columnId: string, value: string): void`                            | Set a filter value for one column.                                                              |
+| `setColumnFilter(columnId: string, filter: ColumnFilter \| null): void`       | Set one column's filter. Pass `null` to remove it.                                              |
 | `clearFilters(): void`                                                        | Remove all filters.                                                                             |
-| `replaceFilters(map: Record<string, string>): void`                           | Replace all filters with a new map.                                                             |
+| `replaceFilters(map: Record<string, ColumnFilter>): void`                     | Replace all filters with a new map.                                                             |
+| `distinctColumnValues(columnId: string): string[]`                            | Sorted, de-duped non-empty cell values for a column (for enum filter options).                  |
 | `setSelection(state): void`                                                   | Replace the full selection state ({ ranges, anchor }).                                          |
 | `selectAll(): void`                                                           | Select every visible cell as a single full-grid range.                                          |
 | `clearSelection(): void`                                                      | Collapse selection to the focused cell (or empty if no focus).                                  |
@@ -219,7 +220,7 @@ interface PretableGridSnapshot<TRow> {
     width: number;
   };
   sort: { columnId: string | null; direction: "asc" | "desc" | null };
-  filters: Record<string, string>;
+  filters: Record<string, ColumnFilter>;
   selection: {
     ranges: Array<{
       startRowId: string;
@@ -266,7 +267,7 @@ interface UsePretableOptions<TRow> extends UsePretableOptions<TRow> {
 
 interface PretableSurfaceState {
   sort?: PretableSortState;
-  filters?: Record<string, string>;
+  filters?: Record<string, ColumnFilter>;
   selection?: PretableSelectionState;
   focus?: PretableFocusState;
   columnWidths?: Record<string, number>;

@@ -1,5 +1,6 @@
 import {
   type AutosizeOptions,
+  type ColumnFilter,
   createGrid,
   type PretableFocusState,
   type PretableGrid,
@@ -73,7 +74,7 @@ export interface PretableTelemetry {
  * @public
  */
 export interface PretableSurfaceState {
-  filters?: Record<string, string>;
+  filters?: Record<string, ColumnFilter>;
   focus?: PretableFocusState;
   selection?: PretableSelectionState;
   sort?: PretableSortState | null;

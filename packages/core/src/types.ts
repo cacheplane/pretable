@@ -1,5 +1,10 @@
 export type {
   AutosizeOptions,
+  ColumnFilter,
+  FilterOperator,
+  FilterOption,
+  FilterType,
+  FilterValue,
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,

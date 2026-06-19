@@ -58,6 +58,11 @@ export type { DensityHeights } from "@pretable/ui";
 // Re-exports from @pretable/core (the engine types react users typically
 // touch — full headless surface lives in @pretable/core)
 export type {
+  ColumnFilter,
+  FilterOperator,
+  FilterOption,
+  FilterType,
+  FilterValue,
   PretableEditInput,
   PretableEditState,
   PretableEditStatus,

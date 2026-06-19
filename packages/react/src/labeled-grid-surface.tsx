@@ -1,4 +1,5 @@
 import type {
+  ColumnFilter,
   PretableGridOptions,
   PretableRow,
   PretableSortDirection,
@@ -8,6 +9,18 @@ import type { PretableTelemetry } from "./use-pretable";
 
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 import type { PretableColumn } from "./types";
+
+const NO_OPERAND_OPERATORS = new Set(["isEmpty", "isNotEmpty"]);
+
+/** Mirrors `isFilterActive` from the engine: a filter with a usable operand. */
+function isColumnFilterActive(filter: ColumnFilter): boolean {
+  const { operator, value } = filter;
+  if (NO_OPERAND_OPERATORS.has(operator)) return true;
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.length > 0;
+  return true; // number
+}
 
 /**
  * Input passed to a {@link LabeledGridSurface} format function.
@@ -110,7 +123,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
     column.pinned === "left" && pinnedClassName ? pinnedClassName : undefined;
   const activeFilterColumns = new Set(
     Object.entries(state?.filters ?? {})
-      .filter(([, value]) => value.trim() !== "")
+      .filter(([, filter]) => isColumnFilterActive(filter))
       .map(([columnId]) => columnId),
   );
   const getFormattedValue = ({

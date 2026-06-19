@@ -49,7 +49,14 @@ export function HeadlessTable() {
         <input
           aria-label="Filter by team"
           defaultValue=""
-          onChange={(e) => grid.setFilter("team", e.target.value)}
+          onChange={(e) =>
+            grid.setColumnFilter(
+              "team",
+              e.target.value
+                ? { operator: "contains", value: e.target.value }
+                : null,
+            )
+          }
         />
       </label>
       <table>

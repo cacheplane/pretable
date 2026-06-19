@@ -1,5 +1,6 @@
 import type {
   AutosizeOptions,
+  ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,
@@ -36,9 +37,10 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
 
   // sort / filter
   setSort(columnId: string | null, direction: PretableSortDirection): void;
-  setFilter(columnId: string, value: string): void;
+  setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   clearFilters(): void;
-  replaceFilters(nextFilters: Record<string, string>): void;
+  replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
+  distinctColumnValues(columnId: string): string[];
 
   // selection
   setSelection(state: PretableSelectionState): void;

@@ -44,12 +44,13 @@ readonly options: PretableGridOptions<TRow>;
 
 ### Sort & filter
 
-| Method           | Signature                                                              |
-| ---------------- | ---------------------------------------------------------------------- |
-| `setSort`        | `(columnId: string \| null, direction: PretableSortDirection) => void` |
-| `setFilter`      | `(columnId: string, value: string) => void`                            |
-| `replaceFilters` | `(nextFilters: Record<string, string>) => void`                        |
-| `clearFilters`   | `() => void`                                                           |
+| Method                 | Signature                                                              |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `setSort`              | `(columnId: string \| null, direction: PretableSortDirection) => void` |
+| `setColumnFilter`      | `(columnId: string, filter: ColumnFilter \| null) => void`             |
+| `replaceFilters`       | `(nextFilters: Record<string, ColumnFilter>) => void`                  |
+| `clearFilters`         | `() => void`                                                           |
+| `distinctColumnValues` | `(columnId: string) => string[]`                                       |
 
 ### Selection & ranges
 
@@ -101,6 +102,8 @@ interface PretableColumn<TRow = PretableRow> {
   format?: (input: PretableFormatInput<TRow>) => string;
   sortable?: boolean;
   filterable?: boolean;
+  filterType?: FilterType;
+  filterOptions?: FilterOption[];
   reorderable?: boolean;
   resizable?: boolean;
   pinned?: "left";
@@ -110,6 +113,56 @@ interface PretableColumn<TRow = PretableRow> {
   maxWidthPx?: number;
 }
 ```
+
+### Filter types
+
+```ts
+type FilterType = "text" | "number" | "date" | "enum";
+
+type FilterOperator =
+  | "contains"
+  | "notContains"
+  | "equals"
+  | "notEquals"
+  | "startsWith"
+  | "endsWith"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "isAnyOf"
+  | "isNoneOf"
+  | "on"
+  | "before"
+  | "after"
+  | "dateBetween"
+  | "isEmpty"
+  | "isNotEmpty";
+
+type FilterValue =
+  | string
+  | number
+  | readonly [number, number]
+  | readonly [string, string]
+  | readonly string[]
+  | null;
+
+interface ColumnFilter {
+  operator: FilterOperator;
+  value?: FilterValue;
+}
+
+interface FilterOption {
+  value: string;
+  label?: string;
+}
+```
+
+Each column's `filterType` (default `"text"`) selects which operators apply and how
+values are compared. Columns are AND-combined. `filterOptions` supplies the choices for
+an `enum` column; when omitted, call `distinctColumnValues(columnId)` to derive them from
+the data.
 
 ### `PretableRow`
 
@@ -125,7 +178,7 @@ interface PretableGridSnapshot<TRow = PretableRow> {
   visibleRange: PretableRowRange;
   totalRowCount: number;
   sort: PretableSortState;
-  filters: Record<string, string>;
+  filters: Record<string, ColumnFilter>;
   selection: PretableSelectionState;
   focus: PretableFocusState;
   viewport: PretableViewportState;

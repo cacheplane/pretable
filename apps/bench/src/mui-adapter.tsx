@@ -153,11 +153,11 @@ export function MuiAdapter({
       interactionPlan.mode === "filter-text"
     ) {
       const items = Object.entries(interactionPlan.filters).map(
-        ([field, value]) => ({
+        ([field, filter]) => ({
           field,
           operator:
             interactionPlan.mode === "filter-metadata" ? "equals" : "contains",
-          value,
+          value: filter.value,
         }),
       );
       api.setFilterModel({ items });

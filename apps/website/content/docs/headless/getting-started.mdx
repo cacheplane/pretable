@@ -62,7 +62,7 @@ Call methods on the engine; the snapshot updates and React re-renders:
 
 ```ts
 grid.setSort("latencyMs", "asc"); // sort ascending by a column
-grid.setFilter("team", "payments"); // filter a column by substring
+grid.setColumnFilter("team", { operator: "contains", value: "payments" }); // filter a column
 grid.toggleRowSelection(rowId); // toggle a row in the selection
 ```
 

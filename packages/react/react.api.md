@@ -10,6 +10,14 @@ import * as react from 'react';
 import { ReactNode } from 'react';
 
 // @public
+export interface ColumnFilter {
+    // (undocumented)
+    operator: FilterOperator;
+    // (undocumented)
+    value?: FilterValue;
+}
+
+// @public
 export interface CopyPayload {
     // (undocumented)
     html?: string;
@@ -27,6 +35,23 @@ export interface DensityHeights {
     // (undocumented)
     rowHeight: number;
 }
+
+// @public (undocumented)
+export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith" | "gt" | "gte" | "lt" | "lte" | "between" | "isAnyOf" | "isNoneOf" | "on" | "before" | "after" | "dateBetween" | "isEmpty" | "isNotEmpty";
+
+// @public (undocumented)
+export interface FilterOption {
+    // (undocumented)
+    label?: string;
+    // (undocumented)
+    value: string;
+}
+
+// @public (undocumented)
+export type FilterType = "text" | "number" | "date" | "enum";
+
+// @public (undocumented)
+export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
 // @beta
 export function InspectionGrid(input: InspectionGridProps): react.JSX.Element;
@@ -281,6 +306,8 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     clearSelection(): void;
     // (undocumented)
     commitEditSucceeded(): void;
+    // (undocumented)
+    distinctColumnValues(columnId: string): string[];
     // Warning: (ae-forgotten-export) The symbol "PretableCellAddress" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -307,19 +334,19 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     moveFocus(direction: PretableFocusDirection, options?: PretableMoveFocusOptions): void;
     readonly options: PretableGridOptions<TRow>;
     // (undocumented)
-    replaceFilters(nextFilters: Record<string, string>): void;
+    replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
     // (undocumented)
     resetColumnLayout(): void;
     // (undocumented)
     selectAll(): void;
+    // (undocumented)
+    setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
     // (undocumented)
     setColumnPinned(columnId: string, pinned: "left" | null): void;
     // (undocumented)
     setColumnWidth(columnId: string, width: number): void;
     // (undocumented)
     setEditDraft(value: unknown): void;
-    // (undocumented)
-    setFilter(columnId: string, value: string): void;
     // (undocumented)
     setFocus(addr: PretableCellAddress | null): void;
     setRows(rows: TRow[]): void;
@@ -357,7 +384,7 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     editing: PretableEditState | null;
     // (undocumented)
-    filters: Record<string, string>;
+    filters: Record<string, ColumnFilter>;
     // Warning: (ae-forgotten-export) The symbol "PretableFocusState" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -587,7 +614,7 @@ export interface PretableSurfaceState {
     // (undocumented)
     columnWidths?: Record<string, number>;
     // (undocumented)
-    filters?: Record<string, string>;
+    filters?: Record<string, ColumnFilter>;
     // (undocumented)
     focus?: PretableFocusState;
     // (undocumented)

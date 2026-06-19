@@ -4,7 +4,13 @@ export {
   rangeContainsCell,
   type PretableRowSelectionTriState,
 } from "./derived-selection";
+export { evaluateFilter, isFilterActive } from "./evaluate-filter";
 export type {
+  ColumnFilter,
+  FilterOperator,
+  FilterOption,
+  FilterType,
+  FilterValue,
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,
