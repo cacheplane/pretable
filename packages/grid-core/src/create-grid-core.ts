@@ -176,7 +176,9 @@ export function createGridCore<TRow extends PretableRow>(
       const seen = new Set<string>();
 
       for (const entry of sourceRows) {
-        const raw = column.value ? column.value(entry.row) : entry.row[columnId];
+        const raw = column.value
+          ? column.value(entry.row)
+          : entry.row[columnId];
 
         if (raw === null || raw === undefined) {
           continue;

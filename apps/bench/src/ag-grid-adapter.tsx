@@ -141,12 +141,12 @@ export function AgGridAdapter({
       interactionPlan.mode === "filter-text"
     ) {
       const model: Record<string, unknown> = {};
-      for (const [colId, value] of Object.entries(interactionPlan.filters)) {
+      for (const [colId, filter] of Object.entries(interactionPlan.filters)) {
         model[colId] = {
           filterType: "text",
           type:
             interactionPlan.mode === "filter-metadata" ? "equals" : "contains",
-          filter: value,
+          filter: filter.value,
         };
       }
       api.setFilterModel(model);

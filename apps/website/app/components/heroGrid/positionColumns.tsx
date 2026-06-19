@@ -30,6 +30,7 @@ export function makePositionColumns(
       header: "Symbol",
       widthPx: 150,
       pinned: "left",
+      filterType: "text",
       value: (row) => `${row.symbol} ${row.name}`,
       render: ({ row }) => (
         <span className={styles.symbol}>
@@ -42,6 +43,7 @@ export function makePositionColumns(
       id: "sector",
       header: "Sector",
       widthPx: 110,
+      filterType: "enum",
       value: (row) => row.sector,
     },
     {

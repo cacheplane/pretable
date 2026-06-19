@@ -141,10 +141,16 @@ describe("grid-core emit behavior", () => {
   test("setColumnFilter with identical value does not emit", () => {
     const instrumented = createInstrumentedGrid();
 
-    instrumented.grid.setColumnFilter("status", { operator: "contains", value: "open" });
+    instrumented.grid.setColumnFilter("status", {
+      operator: "contains",
+      value: "open",
+    });
     instrumented.reset();
 
-    instrumented.grid.setColumnFilter("status", { operator: "contains", value: "open" });
+    instrumented.grid.setColumnFilter("status", {
+      operator: "contains",
+      value: "open",
+    });
 
     expect(instrumented.emits).toBe(0);
   });

@@ -39,7 +39,7 @@ const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
 
 What you get back:
 
-- **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `setFilter(columnId, value)`, `clearFilters()`, `replaceFilters(map)`, `setSelection(state)`, `selectAll()`, `clearSelection()`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `toggleRowSelection(id)`, `setSelectAllVisible(checked)`, `setFocus({rowId, columnId} | null)`, `moveFocus(direction, options?)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
+- **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `setColumnFilter(columnId, filter)`, `clearFilters()`, `replaceFilters(map)`, `distinctColumnValues(columnId)`, `setSelection(state)`, `selectAll()`, `clearSelection()`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `toggleRowSelection(id)`, `setSelectAllVisible(checked)`, `setFocus({rowId, columnId} | null)`, `moveFocus(direction, options?)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
 - **`snapshot`** — current state. Shape: `{viewport, sort, filters, selection, focus, totalRowCount, visibleRows, visibleRange}`.
 - **`renderSnapshot`** — what to render right now. Shape: `{columns: PlannedColumn[], rows: PretableRenderRow[], nodeCount, totalHeight, totalWidth}`. Each `PretableRenderRow` has `{id, row, rowIndex, top, height}`.
 - **`telemetry`** — `{focusedRowId, rowModelRowCount, renderedRowCount, selectedRowId, totalRowCount, ...}`.
@@ -223,7 +223,7 @@ The minimal example above is a starting point. For production grids, you'll like
 - **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus("up")` / `grid.moveFocus("down")`. The full keyboard contract (shift+arrow extend, Cmd/Ctrl+arrow jump, Tab wrap, Cmd+A, Esc) is wired by `<PretableSurface>` automatically.
 - **Pinned columns sticky positioning** — apply `position: sticky; left: ${pinnedOffset}px` to pinned cells. The bench's adapter computes pinned offsets via the same algorithm `<PretableSurface>` uses internally; see `packages/react-surface/src/rendering.ts` (function `getPinnedLeftOffsets`) for the canonical implementation.
 - **Per-row measured heights** — use `useLayoutEffect` to measure rendered row heights and pass `measuredHeights: Record<string, number>` to `usePretable` for content-aware sizing.
-- **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setFilter(columnId, value)` per change.
+- **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setColumnFilter(columnId, { operator: "contains", value })` per change (pass `null` to clear).
 - **Telemetry instrumentation** — use the `telemetry` return value to track visible row counts, frame budget overruns, etc.
 
 For the full reference implementation, see `packages/react-surface/src/pretable-surface.tsx` in the repository — that's what the bench's pretable adapter and the website's playground use internally. It's marked private (lives at `@pretable-internal/react-surface`), but reading its source is the canonical reference for the patterns above.

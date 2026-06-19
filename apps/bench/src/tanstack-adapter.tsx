@@ -145,7 +145,7 @@ export function TanstackAdapter({
       interactionPlan.mode === "filter-text"
     ) {
       const filters = Object.entries(interactionPlan.filters).map(
-        ([id, value]) => ({ id, value }),
+        ([id, filter]) => ({ id, value: filter.value }),
       );
       t.setColumnFilters(filters);
     }

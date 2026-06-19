@@ -13,8 +13,12 @@ Every change to the grid goes through a method on the engine handle. Each one up
 grid.setSort("latencyMs", "asc"); // sort a column "asc" | "desc"
 grid.setSort(null, null); // clear the sort
 
-grid.setFilter("team", "payments"); // filter one column
-grid.replaceFilters({ team: "search", status: "down" }); // replace all filters at once
+grid.setColumnFilter("team", { operator: "contains", value: "payments" }); // filter one column
+grid.setColumnFilter("team", null); // remove that column's filter
+grid.replaceFilters({
+  team: { operator: "contains", value: "search" },
+  status: { operator: "isAnyOf", value: ["down"] },
+}); // replace all filters at once
 grid.clearFilters(); // remove every filter
 ```
 

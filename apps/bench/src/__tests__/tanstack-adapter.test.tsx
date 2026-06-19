@@ -30,7 +30,7 @@ const statusDataset = {
 
 function filterPlan(
   mode: "filter-metadata" | "filter-text",
-  filters: Record<string, string>,
+  filters: BenchInteractionPlan["filters"],
 ): BenchInteractionPlan {
   return {
     focusedRowId: null,
@@ -118,7 +118,9 @@ describe("TanstackAdapter", () => {
         dataset={statusDataset as never}
         runKey={0}
         scriptName="filter-metadata"
-        interactionPlan={filterPlan("filter-metadata", { status: "running" })}
+        interactionPlan={filterPlan("filter-metadata", {
+          status: { operator: "contains", value: "running" },
+        })}
       />,
     );
 

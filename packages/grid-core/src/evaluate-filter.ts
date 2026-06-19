@@ -1,6 +1,14 @@
-import type { ColumnFilter, FilterOperator, FilterType, FilterValue } from "./types";
+import type {
+  ColumnFilter,
+  FilterOperator,
+  FilterType,
+  FilterValue,
+} from "./types";
 
-const NO_OPERAND: ReadonlySet<FilterOperator> = new Set(["isEmpty", "isNotEmpty"]);
+const NO_OPERAND: ReadonlySet<FilterOperator> = new Set([
+  "isEmpty",
+  "isNotEmpty",
+]);
 
 /** Is this filter active (has a usable operand)? Blank/empty operands are inactive. */
 export function isFilterActive(filter: ColumnFilter): boolean {
@@ -45,12 +53,18 @@ export function evaluateFilter(
       const n = typeof cell === "number" ? cell : Number(cell);
       if (Number.isNaN(n)) return false;
       switch (operator) {
-        case "equals": return n === Number(value);
-        case "notEquals": return n !== Number(value);
-        case "gt": return n > Number(value);
-        case "gte": return n >= Number(value);
-        case "lt": return n < Number(value);
-        case "lte": return n <= Number(value);
+        case "equals":
+          return n === Number(value);
+        case "notEquals":
+          return n !== Number(value);
+        case "gt":
+          return n > Number(value);
+        case "gte":
+          return n >= Number(value);
+        case "lt":
+          return n < Number(value);
+        case "lte":
+          return n <= Number(value);
         case "between": {
           if (!Array.isArray(value)) return false;
           const a = Number(value[0]);
@@ -59,16 +73,20 @@ export function evaluateFilter(
           const hi = Math.max(a, b);
           return n >= lo && n <= hi;
         }
-        default: return false;
+        default:
+          return false;
       }
     }
     case "date": {
       const c = toDayMs(cell);
       if (Number.isNaN(c)) return false;
       switch (operator) {
-        case "on": return c === toDayMs(value);
-        case "before": return c < toDayMs(value);
-        case "after": return c > toDayMs(value);
+        case "on":
+          return c === toDayMs(value);
+        case "before":
+          return c < toDayMs(value);
+        case "after":
+          return c > toDayMs(value);
         case "dateBetween": {
           if (!Array.isArray(value)) return false;
           const a = toDayMs(value[0]);
@@ -78,7 +96,8 @@ export function evaluateFilter(
           const hi = Math.max(a, b);
           return c >= lo && c <= hi;
         }
-        default: return false;
+        default:
+          return false;
       }
     }
     case "enum": {
@@ -86,9 +105,12 @@ export function evaluateFilter(
       const set = Array.isArray(value) ? value.map(String) : [];
       if (set.length === 0) return true; // empty selection = no constraint
       switch (operator) {
-        case "isAnyOf": return set.includes(c);
-        case "isNoneOf": return !set.includes(c);
-        default: return false;
+        case "isAnyOf":
+          return set.includes(c);
+        case "isNoneOf":
+          return !set.includes(c);
+        default:
+          return false;
       }
     }
     case "text":
@@ -96,13 +118,20 @@ export function evaluateFilter(
       const hay = String(cell ?? "").toLowerCase();
       const needle = String(value ?? "").toLowerCase();
       switch (operator) {
-        case "contains": return hay.includes(needle);
-        case "notContains": return !hay.includes(needle);
-        case "equals": return hay === needle;
-        case "notEquals": return hay !== needle;
-        case "startsWith": return hay.startsWith(needle);
-        case "endsWith": return hay.endsWith(needle);
-        default: return false;
+        case "contains":
+          return hay.includes(needle);
+        case "notContains":
+          return !hay.includes(needle);
+        case "equals":
+          return hay === needle;
+        case "notEquals":
+          return hay !== needle;
+        case "startsWith":
+          return hay.startsWith(needle);
+        case "endsWith":
+          return hay.endsWith(needle);
+        default:
+          return false;
       }
     }
   }

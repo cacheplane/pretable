@@ -1,3 +1,5 @@
+import type { ColumnFilter } from "@pretable/core";
+
 export const SECTORS = [
   "All",
   "Technology",
@@ -12,10 +14,12 @@ export interface FilterState {
   sector: string | null; // null or "All" → no sector filter
 }
 
-export function buildFilters(state: FilterState): Record<string, string> {
-  const out: Record<string, string> = {};
+export function buildFilters(state: FilterState): Record<string, ColumnFilter> {
+  const out: Record<string, ColumnFilter> = {};
   const search = state.search.trim();
-  if (search) out.symbol = search;
-  if (state.sector && state.sector !== "All") out.sector = state.sector;
+  if (search) out.symbol = { operator: "contains", value: search };
+  if (state.sector && state.sector !== "All") {
+    out.sector = { operator: "isAnyOf", value: [state.sector] };
+  }
   return out;
 }

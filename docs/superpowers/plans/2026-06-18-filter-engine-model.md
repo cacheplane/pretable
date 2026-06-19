@@ -9,6 +9,7 @@
 **Tech Stack:** TypeScript, Vitest, api-extractor (required "report freshness" CI gate). `packages/*` is vanilla (no UI here at all). Commands: `pnpm -r typecheck`, `pnpm -r lint`, `pnpm -r test`, `pnpm format` (check; `format:write` fixes), `pnpm api` (regen api reports), `pnpm --filter @pretable/grid-core test`.
 
 **Key facts (verified against code):**
+
 - Filter state: `create-grid-core.ts:90` `let filters: Record<string,string> = {}`; methods at `:121` (`setFilter`), `:144` (`clearFilters`), `:152` (`replaceFilters`); `filtersEqual` at `:990`; snapshot build `:868-907` (`filters: { ...filters }`, `cachedDerivedFilters`).
 - Evaluation: `derived-rows.ts` — `deriveVisibleRows` (filters param `Record<string,string>`), `resolveFilters`, `matchesFilters`, `readCellValue` (uses `column.value` then `row[id]`).
 - Types: `grid-core/src/types.ts` — `PretableColumn` (:66, has `filterable?`, `value?`), `PretableGridSnapshot.filters` (:210), `PretableEngine` (:220, has `setFilter/clearFilters/replaceFilters`).
@@ -34,6 +35,7 @@
 ## Task 1: Filter types + `evaluateFilter` (pure, fully tested)
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts`
 - Create: `packages/grid-core/src/evaluate-filter.ts`
 - Test: `packages/grid-core/src/__tests__/evaluate-filter.test.ts`
@@ -50,11 +52,25 @@ export type FilterType = "text" | "number" | "date" | "enum";
 
 /** @public */
 export type FilterOperator =
-  | "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith"
-  | "gt" | "gte" | "lt" | "lte" | "between"
-  | "isAnyOf" | "isNoneOf"
-  | "on" | "before" | "after" | "dateBetween"
-  | "isEmpty" | "isNotEmpty";
+  | "contains"
+  | "notContains"
+  | "equals"
+  | "notEquals"
+  | "startsWith"
+  | "endsWith"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "isAnyOf"
+  | "isNoneOf"
+  | "on"
+  | "before"
+  | "after"
+  | "dateBetween"
+  | "isEmpty"
+  | "isNotEmpty";
 
 /** @public */
 export type FilterValue =
@@ -102,16 +118,30 @@ const ev = (
 
 describe("evaluateFilter — text", () => {
   it("contains / notContains are case-insensitive", () => {
-    expect(ev("Hello", "text", { operator: "contains", value: "ell" })).toBe(true);
-    expect(ev("Hello", "text", { operator: "contains", value: "ELL" })).toBe(true);
-    expect(ev("Hello", "text", { operator: "notContains", value: "xyz" })).toBe(true);
-    expect(ev("Hello", "text", { operator: "notContains", value: "ell" })).toBe(false);
+    expect(ev("Hello", "text", { operator: "contains", value: "ell" })).toBe(
+      true,
+    );
+    expect(ev("Hello", "text", { operator: "contains", value: "ELL" })).toBe(
+      true,
+    );
+    expect(ev("Hello", "text", { operator: "notContains", value: "xyz" })).toBe(
+      true,
+    );
+    expect(ev("Hello", "text", { operator: "notContains", value: "ell" })).toBe(
+      false,
+    );
   });
   it("equals / notEquals / startsWith / endsWith", () => {
     expect(ev("abc", "text", { operator: "equals", value: "ABC" })).toBe(true);
-    expect(ev("abc", "text", { operator: "notEquals", value: "abd" })).toBe(true);
-    expect(ev("abcdef", "text", { operator: "startsWith", value: "ABC" })).toBe(true);
-    expect(ev("abcdef", "text", { operator: "endsWith", value: "DEF" })).toBe(true);
+    expect(ev("abc", "text", { operator: "notEquals", value: "abd" })).toBe(
+      true,
+    );
+    expect(ev("abcdef", "text", { operator: "startsWith", value: "ABC" })).toBe(
+      true,
+    );
+    expect(ev("abcdef", "text", { operator: "endsWith", value: "DEF" })).toBe(
+      true,
+    );
   });
 });
 
@@ -127,7 +157,9 @@ describe("evaluateFilter — number", () => {
   it("between is inclusive and tolerates reversed bounds", () => {
     expect(ev(5, "number", { operator: "between", value: [1, 10] })).toBe(true);
     expect(ev(5, "number", { operator: "between", value: [10, 1] })).toBe(true);
-    expect(ev(11, "number", { operator: "between", value: [1, 10] })).toBe(false);
+    expect(ev(11, "number", { operator: "between", value: [1, 10] })).toBe(
+      false,
+    );
   });
   it("non-numeric cell fails comparisons (but not isEmpty)", () => {
     expect(ev("oops", "number", { operator: "gt", value: 1 })).toBe(false);
@@ -137,23 +169,47 @@ describe("evaluateFilter — number", () => {
 
 describe("evaluateFilter — enum", () => {
   it("isAnyOf / isNoneOf; empty selection = no constraint", () => {
-    expect(ev("a", "enum", { operator: "isAnyOf", value: ["a", "b"] })).toBe(true);
-    expect(ev("c", "enum", { operator: "isAnyOf", value: ["a", "b"] })).toBe(false);
-    expect(ev("c", "enum", { operator: "isNoneOf", value: ["a", "b"] })).toBe(true);
+    expect(ev("a", "enum", { operator: "isAnyOf", value: ["a", "b"] })).toBe(
+      true,
+    );
+    expect(ev("c", "enum", { operator: "isAnyOf", value: ["a", "b"] })).toBe(
+      false,
+    );
+    expect(ev("c", "enum", { operator: "isNoneOf", value: ["a", "b"] })).toBe(
+      true,
+    );
     expect(ev("a", "enum", { operator: "isAnyOf", value: [] })).toBe(true);
   });
 });
 
 describe("evaluateFilter — date", () => {
   it("on / before / after / dateBetween (inclusive)", () => {
-    expect(ev("2026-06-18", "date", { operator: "on", value: "2026-06-18" })).toBe(true);
-    expect(ev("2026-06-18", "date", { operator: "before", value: "2026-06-19" })).toBe(true);
-    expect(ev("2026-06-18", "date", { operator: "after", value: "2026-06-17" })).toBe(true);
-    expect(ev("2026-06-18", "date", { operator: "dateBetween", value: ["2026-06-01", "2026-06-30"] })).toBe(true);
-    expect(ev("2026-07-01", "date", { operator: "dateBetween", value: ["2026-06-01", "2026-06-30"] })).toBe(false);
+    expect(
+      ev("2026-06-18", "date", { operator: "on", value: "2026-06-18" }),
+    ).toBe(true);
+    expect(
+      ev("2026-06-18", "date", { operator: "before", value: "2026-06-19" }),
+    ).toBe(true);
+    expect(
+      ev("2026-06-18", "date", { operator: "after", value: "2026-06-17" }),
+    ).toBe(true);
+    expect(
+      ev("2026-06-18", "date", {
+        operator: "dateBetween",
+        value: ["2026-06-01", "2026-06-30"],
+      }),
+    ).toBe(true);
+    expect(
+      ev("2026-07-01", "date", {
+        operator: "dateBetween",
+        value: ["2026-06-01", "2026-06-30"],
+      }),
+    ).toBe(false);
   });
   it("unparseable cell fails (but not isEmpty)", () => {
-    expect(ev("not-a-date", "date", { operator: "before", value: "2026-06-19" })).toBe(false);
+    expect(
+      ev("not-a-date", "date", { operator: "before", value: "2026-06-19" }),
+    ).toBe(false);
     expect(ev("", "date", { operator: "isEmpty" })).toBe(true);
   });
 });
@@ -188,9 +244,17 @@ Expected: FAIL — `Cannot find module '../evaluate-filter'`.
 - [ ] **Step 4: Write `packages/grid-core/src/evaluate-filter.ts`**
 
 ```ts
-import type { ColumnFilter, FilterOperator, FilterType, FilterValue } from "./types";
+import type {
+  ColumnFilter,
+  FilterOperator,
+  FilterType,
+  FilterValue,
+} from "./types";
 
-const NO_OPERAND: ReadonlySet<FilterOperator> = new Set(["isEmpty", "isNotEmpty"]);
+const NO_OPERAND: ReadonlySet<FilterOperator> = new Set([
+  "isEmpty",
+  "isNotEmpty",
+]);
 
 /** Is this filter active (has a usable operand)? Blank/empty operands are inactive. */
 export function isFilterActive(filter: ColumnFilter): boolean {
@@ -235,12 +299,18 @@ export function evaluateFilter(
       const n = typeof cell === "number" ? cell : Number(cell);
       if (Number.isNaN(n)) return false;
       switch (operator) {
-        case "equals": return n === Number(value);
-        case "notEquals": return n !== Number(value);
-        case "gt": return n > Number(value);
-        case "gte": return n >= Number(value);
-        case "lt": return n < Number(value);
-        case "lte": return n <= Number(value);
+        case "equals":
+          return n === Number(value);
+        case "notEquals":
+          return n !== Number(value);
+        case "gt":
+          return n > Number(value);
+        case "gte":
+          return n >= Number(value);
+        case "lt":
+          return n < Number(value);
+        case "lte":
+          return n <= Number(value);
         case "between": {
           if (!Array.isArray(value)) return false;
           const a = Number(value[0]);
@@ -249,16 +319,20 @@ export function evaluateFilter(
           const hi = Math.max(a, b);
           return n >= lo && n <= hi;
         }
-        default: return false;
+        default:
+          return false;
       }
     }
     case "date": {
       const c = toDayMs(cell);
       if (Number.isNaN(c)) return false;
       switch (operator) {
-        case "on": return c === toDayMs(value);
-        case "before": return c < toDayMs(value);
-        case "after": return c > toDayMs(value);
+        case "on":
+          return c === toDayMs(value);
+        case "before":
+          return c < toDayMs(value);
+        case "after":
+          return c > toDayMs(value);
         case "dateBetween": {
           if (!Array.isArray(value)) return false;
           const a = toDayMs(value[0]);
@@ -268,7 +342,8 @@ export function evaluateFilter(
           const hi = Math.max(a, b);
           return c >= lo && c <= hi;
         }
-        default: return false;
+        default:
+          return false;
       }
     }
     case "enum": {
@@ -276,9 +351,12 @@ export function evaluateFilter(
       const set = Array.isArray(value) ? value.map(String) : [];
       if (set.length === 0) return true; // empty selection = no constraint
       switch (operator) {
-        case "isAnyOf": return set.includes(c);
-        case "isNoneOf": return !set.includes(c);
-        default: return false;
+        case "isAnyOf":
+          return set.includes(c);
+        case "isNoneOf":
+          return !set.includes(c);
+        default:
+          return false;
       }
     }
     case "text":
@@ -286,13 +364,20 @@ export function evaluateFilter(
       const hay = String(cell ?? "").toLowerCase();
       const needle = String(value ?? "").toLowerCase();
       switch (operator) {
-        case "contains": return hay.includes(needle);
-        case "notContains": return !hay.includes(needle);
-        case "equals": return hay === needle;
-        case "notEquals": return hay !== needle;
-        case "startsWith": return hay.startsWith(needle);
-        case "endsWith": return hay.endsWith(needle);
-        default: return false;
+        case "contains":
+          return hay.includes(needle);
+        case "notContains":
+          return !hay.includes(needle);
+        case "equals":
+          return hay === needle;
+        case "notEquals":
+          return hay !== needle;
+        case "startsWith":
+          return hay.startsWith(needle);
+        case "endsWith":
+          return hay.endsWith(needle);
+        default:
+          return false;
       }
     }
   }
@@ -316,6 +401,7 @@ git commit -m "feat(grid-core): typed filter operators + pure evaluateFilter"
 ## Task 2: Wire operators into the engine (grid-core)
 
 **Files:**
+
 - Modify: `packages/grid-core/src/derived-rows.ts`
 - Modify: `packages/grid-core/src/create-grid-core.ts`
 - Modify: `packages/grid-core/src/types.ts` (retype snapshot + engine)
@@ -325,12 +411,15 @@ git commit -m "feat(grid-core): typed filter operators + pure evaluateFilter"
 
 - `PretableGridSnapshot.filters`: `Record<string, string>` → `Record<string, ColumnFilter>`.
 - In `PretableEngine`, replace:
+
   ```ts
   setFilter(columnId: string, value: string): void;
   clearFilters(): void;
   replaceFilters(nextFilters: Record<string, string>): void;
   ```
+
   with:
+
   ```ts
   setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   clearFilters(): void;
@@ -396,7 +485,12 @@ function matchesFilters<TRow extends PretableRow>(
   for (const { column, filter } of resolvedFilters) {
     const cell = readCellValue(row, column);
     if (
-      !evaluateFilter(cell, column.filterType ?? "text", filter.operator, filter.value)
+      !evaluateFilter(
+        cell,
+        column.filterType ?? "text",
+        filter.operator,
+        filter.value,
+      )
     ) {
       return false;
     }
@@ -410,13 +504,16 @@ function matchesFilters<TRow extends PretableRow>(
 - [ ] **Step 3: Update `create-grid-core.ts`**
 
 1. State + cache types:
+
    ```ts
    let cachedDerivedFilters: Record<string, ColumnFilter> | null = null;
    let filters: Record<string, ColumnFilter> = {};
    ```
+
    (Add `ColumnFilter` to the existing type import from `./types`.)
 
 2. Replace `setFilter` (the whole method, `:121-143`) with:
+
    ```ts
    setColumnFilter(columnId: string, filter: ColumnFilter | null) {
      const current = filters[columnId];
@@ -434,6 +531,7 @@ function matchesFilters<TRow extends PretableRow>(
    ```
 
 3. Replace `replaceFilters` body to normalize via `isFilterActive` and compare with the new `filtersEqual`:
+
    ```ts
    replaceFilters(nextFilters: Record<string, ColumnFilter>) {
      const normalized: Record<string, ColumnFilter> = {};
@@ -449,6 +547,7 @@ function matchesFilters<TRow extends PretableRow>(
 4. `clearFilters` stays as-is (already type-agnostic).
 
 5. Add `distinctColumnValues` to the `store` object (it has `sourceRows` + `options` in closure scope):
+
    ```ts
    distinctColumnValues(columnId: string): string[] {
      const column = options.columns.find((c) => c.id === columnId);
@@ -468,6 +567,7 @@ function matchesFilters<TRow extends PretableRow>(
 6. Snapshot: `filters: { ...filters },` stays (shallow copy of the record; `ColumnFilter` values are treated as immutable).
 
 7. Replace `filtersEqual` (`:990`) with a structural version + add `columnFilterEqual`:
+
    ```ts
    function columnFilterEqual(a: ColumnFilter, b: ColumnFilter): boolean {
      if (a.operator !== b.operator) return false;
@@ -520,7 +620,9 @@ it("replaceFilters drops inactive filters and is change-guarded", () => {
 
 it("distinctColumnValues returns sorted de-duped non-empty values", () => {
   const grid = makeGrid();
-  expect(grid.distinctColumnValues("status")).toEqual([/* sorted distinct */]);
+  expect(grid.distinctColumnValues("status")).toEqual([
+    /* sorted distinct */
+  ]);
 });
 ```
 
@@ -544,19 +646,23 @@ git commit -m "feat(grid-core): operator-based filter engine (setColumnFilter, d
 ## Task 3: Propagate to public API (`core` + `react`)
 
 **Files:**
+
 - Modify: `packages/core/src/pretable-grid.ts`, `create-grid.ts`, `public_api.ts`
 - Modify: `packages/react/src/use-pretable.ts`, `public_api.ts`
 
 - [ ] **Step 1: `core/src/pretable-grid.ts`** — in the `PretableGrid` interface, replace the three filter method signatures (`:39-41`) with:
+
 ```ts
   setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   clearFilters(): void;
   replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
   distinctColumnValues(columnId: string): string[];
 ```
+
 Add `ColumnFilter` to the type import from `@pretable-internal/grid-core` (match how this file imports other engine types).
 
 - [ ] **Step 2: `core/src/create-grid.ts`** — update forwarding (`:34-37`):
+
 ```ts
     setSort: engine.setSort,
     setColumnFilter: engine.setColumnFilter,
@@ -564,9 +670,11 @@ Add `ColumnFilter` to the type import from `@pretable-internal/grid-core` (match
     replaceFilters: engine.replaceFilters,
     distinctColumnValues: engine.distinctColumnValues,
 ```
+
 (Remove the old `setFilter` line.) If any JSDoc example in this file uses `setFilter(...)`, update it to `setColumnFilter("age", { operator: "gt", value: 30 })`.
 
 - [ ] **Step 3: `core/src/public_api.ts`** — export the new types. Add to the existing `export type { ... } from "@pretable-internal/grid-core"` block (or wherever types are re-exported):
+
 ```ts
   ColumnFilter,
   FilterOperator,
@@ -599,12 +707,14 @@ git commit -m "feat(core,react): expose operator filter API (setColumnFilter, fi
 ## Task 4: Migrate website + regenerate API reports + full validation
 
 **Files:**
+
 - Modify: `apps/website/app/components/heroGrid/filters.ts` (+ `__tests__/filters.test.ts`)
 - Modify: `*.api.md` (generated)
 
 - [ ] **Step 1: Migrate `buildFilters`** in `apps/website/app/components/heroGrid/filters.ts`
 
 Change the return type to `Record<string, ColumnFilter>` (import from `@pretable/core`) and emit operator filters:
+
 - search term → `{ symbol: { operator: "contains", value: search } }` (only when non-empty)
 - sector (when not "All") → `{ sector: { operator: "isAnyOf", value: [sector] } }`
 
@@ -622,6 +732,7 @@ This rewrites `packages/core/.../core.api.md` and `packages/react/.../react.api.
 - [ ] **Step 3: Full validation sweep (repo + website)**
 
 Run:
+
 ```bash
 pnpm -r typecheck
 pnpm -r lint
@@ -630,6 +741,7 @@ pnpm format
 pnpm --filter @pretable/app-website build
 pnpm api  # second run must be a no-op (clean) — proves reports are committed/fresh
 ```
+
 Expected: all green; the second `pnpm api` reports no changes. Fix anything red (run `pnpm format:write` if format check fails).
 
 - [ ] **Step 4: Commit**

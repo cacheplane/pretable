@@ -538,9 +538,7 @@ describe("grid-core — filter operators", () => {
 
   test("filterable:false columns ignore their filter entry", () => {
     const grid = createGridCore({
-      columns: [
-        { id: "status", header: "Status", filterable: false },
-      ],
+      columns: [{ id: "status", header: "Status", filterable: false }],
       rows: opRows,
       getRowId: (row) => row.id,
     });

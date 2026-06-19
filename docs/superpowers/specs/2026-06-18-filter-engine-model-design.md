@@ -41,24 +41,38 @@ no React, no DOM, no UI in this sub-project.
 /** @public */
 export type FilterOperator =
   // text
-  | "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith"
+  | "contains"
+  | "notContains"
+  | "equals"
+  | "notEquals"
+  | "startsWith"
+  | "endsWith"
   // number
-  | "gt" | "gte" | "lt" | "lte" | "between"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
   // enum / set
-  | "isAnyOf" | "isNoneOf"
+  | "isAnyOf"
+  | "isNoneOf"
   // date
-  | "on" | "before" | "after" | "dateBetween"
+  | "on"
+  | "before"
+  | "after"
+  | "dateBetween"
   // shared (any type)
-  | "isEmpty" | "isNotEmpty";
+  | "isEmpty"
+  | "isNotEmpty";
 
 /** @public */
 export type FilterValue =
-  | string            // text ops, single date (ISO yyyy-mm-dd) for on/before/after
-  | number            // number comparisons
-  | [number, number]  // between
-  | [string, string]  // dateBetween (ISO start, ISO end)
-  | string[]          // isAnyOf / isNoneOf
-  | null;             // isEmpty / isNotEmpty (no operand)
+  | string // text ops, single date (ISO yyyy-mm-dd) for on/before/after
+  | number // number comparisons
+  | [number, number] // between
+  | [string, string] // dateBetween (ISO start, ISO end)
+  | string[] // isAnyOf / isNoneOf
+  | null; // isEmpty / isNotEmpty (no operand)
 
 /** @public — one column's filter. `value` omitted for isEmpty/isNotEmpty. */
 export interface ColumnFilter {
@@ -70,6 +84,7 @@ export interface ColumnFilter {
 ```
 
 Notes:
+
 - `equals`/`notEquals` live in the **text** family (case-insensitive string equality).
   Numeric equality uses the number family's `equals` semantics via the column's
   `filterType` (the operator string `equals` is shared text+number; evaluation branches
@@ -88,11 +103,11 @@ export type FilterType = "text" | "number" | "date" | "enum";
 
 interface PretableColumn<TRow> {
   // ...existing...
-  filterType?: FilterType;        // default "text"
-  filterable?: boolean;           // EXISTING — keep; default true (a false value means
-                                  // the engine ignores any filter targeting this column)
+  filterType?: FilterType; // default "text"
+  filterable?: boolean; // EXISTING — keep; default true (a false value means
+  // the engine ignores any filter targeting this column)
   filterOptions?: { value: string; label?: string }[]; // enum only; if omitted, the
-                                  // distinct values are auto-derived from the rows.
+  // distinct values are auto-derived from the rows.
 }
 ```
 
@@ -165,12 +180,13 @@ In `packages/grid-core/src/create-grid-core.ts` and the public `PretableGrid`
 - `apps/website/app/components/heroGrid/filters.ts` + `HeroGrid.tsx` — migrate
   `buildFilters` to emit `ColumnFilter`s (e.g. `{operator:"contains",value}` for search,
   `{operator:"isAnyOf",value:[sector]}` for sector) so the website compiles. The hero's
-  *UX* redesign is sub-project 3; this is the minimal keep-it-building change.
+  _UX_ redesign is sub-project 3; this is the minimal keep-it-building change.
 - `*.api.md` (api-extractor reports) for `core` and `react` — regenerated via `pnpm api`.
 
 ## Testing
 
 `packages/grid-core/src/__tests__/` (new `filter-operators.test.ts` + extend existing):
+
 - **text:** contains/notContains/equals/notEquals/startsWith/endsWith, case-insensitive.
 - **number:** gt/gte/lt/lte/equals/notEquals; between inclusive + reversed-bounds; NaN cell fails.
 - **enum:** isAnyOf/isNoneOf; empty selection = no constraint.
