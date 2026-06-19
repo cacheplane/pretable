@@ -10,6 +10,14 @@ import * as react from 'react';
 import { ReactNode } from 'react';
 
 // @public
+export interface ColumnFilter {
+    // (undocumented)
+    operator: FilterOperator;
+    // (undocumented)
+    value?: FilterValue;
+}
+
+// @public
 export interface CopyPayload {
     // (undocumented)
     html?: string;
@@ -27,6 +35,23 @@ export interface DensityHeights {
     // (undocumented)
     rowHeight: number;
 }
+
+// @public (undocumented)
+export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith" | "gt" | "gte" | "lt" | "lte" | "between" | "isAnyOf" | "isNoneOf" | "on" | "before" | "after" | "dateBetween" | "isEmpty" | "isNotEmpty";
+
+// @public (undocumented)
+export interface FilterOption {
+    // (undocumented)
+    label?: string;
+    // (undocumented)
+    value: string;
+}
+
+// @public (undocumented)
+export type FilterType = "text" | "number" | "date" | "enum";
+
+// @public (undocumented)
+export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
 // @beta
 export function InspectionGrid(input: InspectionGridProps): react.JSX.Element;
@@ -314,8 +339,6 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     resetColumnLayout(): void;
     // (undocumented)
     selectAll(): void;
-    // Warning: (ae-forgotten-export) The symbol "ColumnFilter" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
     // (undocumented)
@@ -591,7 +614,7 @@ export interface PretableSurfaceState {
     // (undocumented)
     columnWidths?: Record<string, number>;
     // (undocumented)
-    filters?: Record<string, string>;
+    filters?: Record<string, ColumnFilter>;
     // (undocumented)
     focus?: PretableFocusState;
     // (undocumented)
