@@ -253,10 +253,15 @@ jobs:
       - name: Wait for preview to respond
         if: steps.preview-access.outputs.mode == 'browser'
         run: |
+          # Readiness ping only: send the bypass header alone. Do NOT send
+          # `x-vercel-set-bypass-cookie: true` here — that makes Vercel answer
+          # with a 307 + Set-Cookie (to seed the bypass cookie) rather than 200,
+          # which a cookieless curl can't satisfy. Playwright keeps the cookie
+          # header (it persists the cookie across requests); this plain curl
+          # just needs a 200 to know the deployment is live.
           for i in 1 2 3 4 5 6; do
             code=$(curl -sS -o /dev/null -w "%{http_code}" \
               -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
-              -H "x-vercel-set-bypass-cookie: true" \
               "$PREVIEW_URL" || true)
             echo "Attempt $i: HTTP $code"
             if [ "$code" = "200" ]; then exit 0; fi
