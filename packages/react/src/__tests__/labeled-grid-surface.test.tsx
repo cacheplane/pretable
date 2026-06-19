@@ -199,7 +199,7 @@ describe("LabeledGridSurface", () => {
         headerCellClassName="inspection-header-cell"
         state={{
           sort: null,
-          filters: { severity: "error" },
+          filters: { severity: { operator: "contains", value: "error" } },
         }}
         overscan={0}
         rows={rows}

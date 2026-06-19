@@ -1499,7 +1499,11 @@ describe("controlled-mode round-trips", () => {
         getRowId: getGridRowId,
         overscan: 0,
         rows: gridRows,
-        state: { filters: query ? { a: query } : {} },
+        state: {
+          filters: query
+            ? { a: { operator: "contains" as const, value: query } }
+            : {},
+        },
         viewportHeight: 300,
       });
 

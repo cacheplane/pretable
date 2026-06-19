@@ -11,6 +11,11 @@ export type { PretableGrid } from "./pretable-grid";
 
 export type {
   AutosizeOptions,
+  ColumnFilter,
+  FilterOperator,
+  FilterOption,
+  FilterType,
+  FilterValue,
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,
