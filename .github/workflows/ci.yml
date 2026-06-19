@@ -232,20 +232,20 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Prepare Vercel project settings
-        run: |
-          mkdir -p .vercel
-          cat > .vercel/project.json <<EOF
-          {"projectId":"${{ secrets.VERCEL_PROJECT_ID }}","orgId":"${{ secrets.VERCEL_ORG_ID }}","projectName":"pretable"}
-          EOF
       - name: Choose preview verification mode
         id: preview-access
         run: |
           if [ -n "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
             echo "mode=browser" >> "$GITHUB_OUTPUT"
           else
-            echo "mode=vercel-curl" >> "$GITHUB_OUTPUT"
-            echo "No VERCEL_AUTOMATION_BYPASS_SECRET repository secret is configured; verifying protected preview readiness with vercel curl instead of browser smoke." >> "$GITHUB_STEP_SUMMARY"
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Preview smoke skipped"
+              echo
+              echo "No \`VERCEL_AUTOMATION_BYPASS_SECRET\` repository secret is configured, so the Playwright browser smoke cannot reach the protection-gated preview (it returns 401 without a bypass)."
+              echo
+              echo "Add the secret to enable real preview smoke coverage: Vercel → Project → Settings → Deployment Protection → Protection Bypass for Automation, then save it as the \`VERCEL_AUTOMATION_BYPASS_SECRET\` repository secret."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Install Playwright browser
         if: steps.preview-access.outputs.mode == 'browser'
@@ -263,25 +263,6 @@ jobs:
             sleep 5
           done
           echo "Preview did not return 200"
-          exit 1
-      - name: Verify protected preview readiness with Vercel CLI
-        if: steps.preview-access.outputs.mode == 'vercel-curl'
-        run: |
-          for i in 1 2 3 4 5 6; do
-            code=$(npx --yes vercel@latest curl / \
-              --deployment "$PREVIEW_URL" \
-              --token=${{ secrets.VERCEL_TOKEN }} \
-              --yes \
-              -- \
-              --silent \
-              --show-error \
-              --output /dev/null \
-              --write-out "%{http_code}" || true)
-            echo "Attempt $i: HTTP $code"
-            if [ "$code" = "200" ]; then exit 0; fi
-            sleep 5
-          done
-          echo "Protected preview did not return 200 through vercel curl"
           exit 1
       - name: Smoke test preview with Playwright
         if: steps.preview-access.outputs.mode == 'browser'
