@@ -84,6 +84,42 @@ describe("PretableSurface — built-in filter funnel", () => {
     expect(funnels.length).toBe(3);
   });
 
+  it("re-hydrates the dialog when switching directly between two open funnels", () => {
+    // Regression: clicking a second column's funnel while one is open must
+    // remount the menu so its draft re-hydrates from the new column's filter.
+    // (The second funnel's pointerdown stops propagation, so the open menu's
+    // outside-click never fires and the FilterMenu instance would be reused
+    // unless it is keyed by columnId.)
+    const view = renderSurface({
+      state: {
+        filters: {
+          title: { operator: "endsWith", value: "crash" } as ColumnFilter,
+          count: { operator: "gt", value: 5 } as ColumnFilter,
+        },
+      },
+    });
+
+    // Open Title → operator hydrates to its filter.
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+    let dialog = view.getByRole("dialog", { name: "Filter Title" });
+    expect(
+      dialog.querySelector<HTMLSelectElement>("[data-pretable-filter-operator]")
+        ?.value,
+    ).toBe("endsWith");
+
+    // Click Count's funnel WHILE Title's menu is open → switch + re-hydrate.
+    fireEvent.click(view.getByRole("button", { name: "Filter Count" }));
+    dialog = view.getByRole("dialog", { name: "Filter Count" });
+    expect(
+      dialog.querySelector<HTMLSelectElement>("[data-pretable-filter-operator]")
+        ?.value,
+    ).toBe("gt");
+    expect(
+      dialog.querySelector<HTMLInputElement>("[data-pretable-filter-value]")
+        ?.value,
+    ).toBe("5");
+  });
+
   it("nests funnels inside the header row so the CSS hover selector matches", () => {
     // The grid.css reveal rule is
     //   [data-pretable-header-row]:hover [data-pretable-filter-funnel]

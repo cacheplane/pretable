@@ -2005,6 +2005,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 .map((v) => ({ value: v }));
             return (
               <FilterMenu
+                key={filterOpenState.columnId}
                 columnId={filterOpenState.columnId}
                 label={col.header ?? filterOpenState.columnId}
                 filterType={col.filterType ?? "text"}
