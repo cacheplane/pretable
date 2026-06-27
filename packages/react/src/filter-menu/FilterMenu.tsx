@@ -48,8 +48,12 @@ export function FilterMenu({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep the latest draft in a ref so the unmount flush sees current state.
+  // Synced in an effect (not during render) so the ref write is not a render
+  // side effect; the flush only fires on unmount, after this has run.
   const latestDraftRef = useRef(draft);
-  latestDraftRef.current = draft;
+  useEffect(() => {
+    latestDraftRef.current = draft;
+  }, [draft]);
 
   const apply = useCallback(
     (next: FilterDraft) => {

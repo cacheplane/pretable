@@ -218,6 +218,77 @@
     pointer-events: none;
   }
 
+  /* Built-in column filter menu (sub-project 2/3) */
+  :where([data-pretable-filter-funnel]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--pretable-radius);
+    background: transparent;
+    color: var(--pretable-text-dim);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+  /* Reveal funnels on header-row hover, on funnel keyboard focus, or when a
+     filter is active. The header row is a flat list of sibling header cells,
+     resize handles, and funnel slots (see pretable-surface.tsx), so a
+     per-column `~` hover selector would over-match every column to the right
+     of the hovered one; hovering the whole header row is the structurally
+     correct trigger. Active/focus-visible funnels stay lit regardless. */
+  :where(
+    [data-pretable-header-row]:hover [data-pretable-filter-funnel]
+  ),
+  :where([data-pretable-filter-funnel]:focus-visible),
+  :where([data-pretable-filter-funnel][data-pretable-filter-active="true"]) {
+    opacity: 1;
+  }
+  :where([data-pretable-filter-funnel][data-pretable-filter-active="true"]) {
+    color: var(--pretable-accent);
+  }
+  :where([data-pretable-filter-funnel]:hover) {
+    background: var(--pretable-bg-hover);
+  }
+
+  :where([data-pretable-filter-menu]) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    box-shadow: var(--pretable-reorder-ghost-shadow);
+    font: inherit;
+  }
+  :where([data-pretable-filter-menu]) select,
+  :where([data-pretable-filter-menu]) input[type="text"],
+  :where([data-pretable-filter-menu]) input[type="date"],
+  :where([data-pretable-filter-menu]) input:not([type]) {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 7px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+  }
+  :where([data-pretable-filter-set]) label {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  :where([data-pretable-filter-clear]) {
+    align-self: flex-end;
+    background: transparent;
+    border: 0;
+    color: var(--pretable-accent);
+    cursor: pointer;
+    padding: 2px 4px;
+  }
+
   /* Tooltip / popover */
   :where([data-pretable-popover]) {
     background: var(--pretable-bg-tooltip);
