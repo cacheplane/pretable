@@ -146,7 +146,7 @@ export function FilterMenu({
   const operators = operatorsForType(filterType);
   const inputType = filterType === "date" ? "date" : "text";
   const numericProps =
-    filterType === "number" ? ({ inputMode: "numeric" as const }) : {};
+    filterType === "number" ? { inputMode: "numeric" as const } : {};
 
   const onClear = useCallback(() => {
     clearTimer();
@@ -232,7 +232,11 @@ export function FilterMenu({
       ) : null}
 
       {shape === "set" ? (
-        <div data-pretable-filter-set="" role="group" aria-label="Filter values">
+        <div
+          data-pretable-filter-set=""
+          role="group"
+          aria-label="Filter values"
+        >
           {options.map((opt) => {
             const checked = (draft.selected ?? []).includes(opt.value);
             return (
@@ -249,11 +253,7 @@ export function FilterMenu({
         </div>
       ) : null}
 
-      <button
-        type="button"
-        data-pretable-filter-clear=""
-        onClick={onClear}
-      >
+      <button type="button" data-pretable-filter-clear="" onClick={onClear}>
         Clear
       </button>
     </div>

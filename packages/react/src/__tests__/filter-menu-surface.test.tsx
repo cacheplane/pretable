@@ -75,9 +75,7 @@ describe("PretableSurface — built-in filter funnel", () => {
     expect(view.getByRole("button", { name: "Filter Title" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Filter Severity" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Filter Count" })).toBeTruthy();
-    expect(
-      view.queryByRole("button", { name: "Filter Internal" }),
-    ).toBeNull();
+    expect(view.queryByRole("button", { name: "Filter Internal" })).toBeNull();
 
     // Sanity: every funnel carries the stable hooks.
     const funnels = view.container.querySelectorAll(

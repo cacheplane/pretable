@@ -2009,7 +2009,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 label={col.header ?? filterOpenState.columnId}
                 filterType={col.filterType ?? "text"}
                 options={options}
-                initialFilter={snapshot.filters[filterOpenState.columnId] ?? null}
+                initialFilter={
+                  snapshot.filters[filterOpenState.columnId] ?? null
+                }
                 style={popoverStyle(filterOpenState.rect)}
                 onChange={(id, filter) => {
                   grid.setColumnFilter(id, filter);

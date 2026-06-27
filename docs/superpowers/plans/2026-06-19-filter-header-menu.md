@@ -9,6 +9,7 @@
 **Tech Stack:** React 19, TypeScript, Vitest + Testing Library, vanilla CSS (no Tailwind in packages, no runtime deps). api-extractor (required gate). Commands: `pnpm -r typecheck`/`lint`/`test`, `pnpm --filter @pretable/react test`, `pnpm format`(check)/`format:write`, `pnpm api`.
 
 **Key facts (verified against code):**
+
 - Engine API (merged #180): `grid.setColumnFilter(id, ColumnFilter | null)`, `grid.replaceFilters(Record<string,ColumnFilter>)`, `grid.distinctColumnValues(id): string[]`, `snapshot.filters: Record<string,ColumnFilter>`. Types `ColumnFilter`/`FilterOperator`/`FilterType`/`FilterOption`/`FilterValue` are exported from `@pretable/core` and re-exported from `@pretable/react` (`react/src/public_api.ts:61-64`). Columns carry `filterType`/`filterOptions`/`filterable`.
 - Header render: `pretable-surface.tsx` returns per-column an array `[<button role="columnheader" …>, resizeHandle?]` (header button ~`:1281`, resize handle ~`:1479`). `effWidth`, `plannedCol.left`, `plannedCol.pinned`, `pinnedOffset` are in scope. The resize handle is `position:absolute; top:0; height:100%; width:4; left: plannedCol.left + effWidth - 4; zIndex:4` with a `handlePinnedStyle` (sticky) for pinned columns. **Mirror this for the funnel overlay**, offset further left.
 - Props: `PretableSurfaceProps` (~`:188-287`) has `onSortChange`, `onColumnWidthsChange`, etc.; destructured ~`:428-451`. Controlled `state.filters` already applies via `usePretable` (`use-pretable.ts`, `grid.replaceFilters(state.filters)`).
@@ -21,6 +22,7 @@
 ## File Structure
 
 New under `packages/react/src/filter-menu/`:
+
 - `filter-operators.ts` — pure helpers (no React).
 - `FunnelButton.tsx` — header funnel overlay button.
 - `useFilterPopover.ts` — open-state + fixed-position-from-rect + outside-click/Escape.
@@ -28,6 +30,7 @@ New under `packages/react/src/filter-menu/`:
 - `index.ts` — barrel for the above (internal).
 
 Modified:
+
 - `packages/react/src/pretable-surface.tsx` — funnel overlay per header, single `FilterMenu` at root, `onFiltersChange` prop.
 - `packages/ui/src/grid.css` — `data-pretable-filter-*` styling.
 - Tests: `packages/react/src/__tests__/filter-operators.test.ts`, `packages/react/src/__tests__/filter-menu.test.tsx`.
@@ -38,6 +41,7 @@ Modified:
 ## Task 1: `filter-operators.ts` (pure helpers, fully tested)
 
 **Files:**
+
 - Create: `packages/react/src/filter-menu/filter-operators.ts`
 - Test: `packages/react/src/__tests__/filter-operators.test.ts`
 
@@ -59,18 +63,39 @@ import {
 describe("operatorsForType", () => {
   it("lists the operators for each type incl. shared empties", () => {
     expect(operatorsForType("text")).toEqual([
-      "contains", "notContains", "equals", "notEquals",
-      "startsWith", "endsWith", "isEmpty", "isNotEmpty",
+      "contains",
+      "notContains",
+      "equals",
+      "notEquals",
+      "startsWith",
+      "endsWith",
+      "isEmpty",
+      "isNotEmpty",
     ]);
     expect(operatorsForType("number")).toEqual([
-      "equals", "notEquals", "gt", "gte", "lt", "lte",
-      "between", "isEmpty", "isNotEmpty",
+      "equals",
+      "notEquals",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "between",
+      "isEmpty",
+      "isNotEmpty",
     ]);
     expect(operatorsForType("date")).toEqual([
-      "on", "before", "after", "dateBetween", "isEmpty", "isNotEmpty",
+      "on",
+      "before",
+      "after",
+      "dateBetween",
+      "isEmpty",
+      "isNotEmpty",
     ]);
     expect(operatorsForType("enum")).toEqual([
-      "isAnyOf", "isNoneOf", "isEmpty", "isNotEmpty",
+      "isAnyOf",
+      "isNoneOf",
+      "isEmpty",
+      "isNotEmpty",
     ]);
   });
   it("every operator has a label", () => {
@@ -95,56 +120,97 @@ describe("isComplete + toColumnFilter (gating)", () => {
   it("text single value", () => {
     const d: FilterDraft = { operator: "contains", text: "ab" };
     expect(isComplete("text", d)).toBe(true);
-    expect(toColumnFilter("text", d)).toEqual({ operator: "contains", value: "ab" });
+    expect(toColumnFilter("text", d)).toEqual({
+      operator: "contains",
+      value: "ab",
+    });
     expect(isComplete("text", { operator: "contains", text: "" })).toBe(false);
-    expect(toColumnFilter("text", { operator: "contains", text: "" })).toBeNull();
+    expect(
+      toColumnFilter("text", { operator: "contains", text: "" }),
+    ).toBeNull();
   });
   it("number single + parses", () => {
-    expect(toColumnFilter("number", { operator: "gt", text: "5" }))
-      .toEqual({ operator: "gt", value: 5 });
+    expect(toColumnFilter("number", { operator: "gt", text: "5" })).toEqual({
+      operator: "gt",
+      value: 5,
+    });
     expect(toColumnFilter("number", { operator: "gt", text: "x" })).toBeNull();
   });
   it("between needs both bounds", () => {
-    expect(isComplete("number", { operator: "between", min: "1", max: "" })).toBe(false);
-    expect(toColumnFilter("number", { operator: "between", min: "1", max: "" })).toBeNull();
-    expect(toColumnFilter("number", { operator: "between", min: "1", max: "10" }))
-      .toEqual({ operator: "between", value: [1, 10] });
+    expect(
+      isComplete("number", { operator: "between", min: "1", max: "" }),
+    ).toBe(false);
+    expect(
+      toColumnFilter("number", { operator: "between", min: "1", max: "" }),
+    ).toBeNull();
+    expect(
+      toColumnFilter("number", { operator: "between", min: "1", max: "10" }),
+    ).toEqual({ operator: "between", value: [1, 10] });
   });
   it("dateBetween needs both ISO bounds", () => {
-    expect(toColumnFilter("date", { operator: "dateBetween", min: "2026-01-01", max: "" })).toBeNull();
-    expect(toColumnFilter("date", { operator: "dateBetween", min: "2026-01-01", max: "2026-02-01" }))
-      .toEqual({ operator: "dateBetween", value: ["2026-01-01", "2026-02-01"] });
+    expect(
+      toColumnFilter("date", {
+        operator: "dateBetween",
+        min: "2026-01-01",
+        max: "",
+      }),
+    ).toBeNull();
+    expect(
+      toColumnFilter("date", {
+        operator: "dateBetween",
+        min: "2026-01-01",
+        max: "2026-02-01",
+      }),
+    ).toEqual({ operator: "dateBetween", value: ["2026-01-01", "2026-02-01"] });
   });
   it("date single", () => {
-    expect(toColumnFilter("date", { operator: "before", text: "2026-06-18" }))
-      .toEqual({ operator: "before", value: "2026-06-18" });
+    expect(
+      toColumnFilter("date", { operator: "before", text: "2026-06-18" }),
+    ).toEqual({ operator: "before", value: "2026-06-18" });
   });
   it("enum set; empty selection is incomplete", () => {
-    expect(isComplete("enum", { operator: "isAnyOf", selected: [] })).toBe(false);
-    expect(toColumnFilter("enum", { operator: "isAnyOf", selected: [] })).toBeNull();
-    expect(toColumnFilter("enum", { operator: "isAnyOf", selected: ["a", "b"] }))
-      .toEqual({ operator: "isAnyOf", value: ["a", "b"] });
+    expect(isComplete("enum", { operator: "isAnyOf", selected: [] })).toBe(
+      false,
+    );
+    expect(
+      toColumnFilter("enum", { operator: "isAnyOf", selected: [] }),
+    ).toBeNull();
+    expect(
+      toColumnFilter("enum", { operator: "isAnyOf", selected: ["a", "b"] }),
+    ).toEqual({ operator: "isAnyOf", value: ["a", "b"] });
   });
   it("none-shape ops are always complete with no value", () => {
     expect(isComplete("text", { operator: "isEmpty" })).toBe(true);
-    expect(toColumnFilter("text", { operator: "isEmpty" })).toEqual({ operator: "isEmpty" });
+    expect(toColumnFilter("text", { operator: "isEmpty" })).toEqual({
+      operator: "isEmpty",
+    });
   });
 });
 
 describe("fromColumnFilter (hydrate)", () => {
   it("round-trips each shape", () => {
-    expect(fromColumnFilter("text", { operator: "contains", value: "ab" }))
-      .toEqual({ operator: "contains", text: "ab" });
-    expect(fromColumnFilter("number", { operator: "between", value: [1, 10] }))
-      .toEqual({ operator: "between", min: "1", max: "10" });
-    expect(fromColumnFilter("enum", { operator: "isAnyOf", value: ["a"] }))
-      .toEqual({ operator: "isAnyOf", selected: ["a"] });
-    expect(fromColumnFilter("text", { operator: "isEmpty" }))
-      .toEqual({ operator: "isEmpty" });
+    expect(
+      fromColumnFilter("text", { operator: "contains", value: "ab" }),
+    ).toEqual({ operator: "contains", text: "ab" });
+    expect(
+      fromColumnFilter("number", { operator: "between", value: [1, 10] }),
+    ).toEqual({ operator: "between", min: "1", max: "10" });
+    expect(
+      fromColumnFilter("enum", { operator: "isAnyOf", value: ["a"] }),
+    ).toEqual({ operator: "isAnyOf", selected: ["a"] });
+    expect(fromColumnFilter("text", { operator: "isEmpty" })).toEqual({
+      operator: "isEmpty",
+    });
   });
   it("returns a default draft for null", () => {
-    expect(fromColumnFilter("text", null)).toEqual({ operator: "contains", text: "" });
-    expect(fromColumnFilter("enum", null)).toEqual({ operator: "isAnyOf", selected: [] });
+    expect(fromColumnFilter("text", null)).toEqual({
+      operator: "contains",
+      text: "",
+    });
+    expect(fromColumnFilter("enum", null)).toEqual({
+      operator: "isAnyOf",
+      selected: [],
+    });
   });
 });
 ```
@@ -163,19 +229,30 @@ import type { ColumnFilter, FilterOperator, FilterType } from "@pretable/core";
 /** Local editing shape for the popover. One field set per value-shape. */
 export interface FilterDraft {
   operator: FilterOperator;
-  text?: string;            // single (text/number/date)
-  min?: string;             // range lower
-  max?: string;             // range upper
-  selected?: string[];      // set (enum)
+  text?: string; // single (text/number/date)
+  min?: string; // range lower
+  max?: string; // range upper
+  selected?: string[]; // set (enum)
 }
 
 export type ValueShape = "none" | "single" | "range" | "set";
 
 const TEXT_OPS: FilterOperator[] = [
-  "contains", "notContains", "equals", "notEquals", "startsWith", "endsWith",
+  "contains",
+  "notContains",
+  "equals",
+  "notEquals",
+  "startsWith",
+  "endsWith",
 ];
 const NUMBER_OPS: FilterOperator[] = [
-  "equals", "notEquals", "gt", "gte", "lt", "lte", "between",
+  "equals",
+  "notEquals",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "between",
 ];
 const DATE_OPS: FilterOperator[] = ["on", "before", "after", "dateBetween"];
 const ENUM_OPS: FilterOperator[] = ["isAnyOf", "isNoneOf"];
@@ -183,10 +260,13 @@ const SHARED_OPS: FilterOperator[] = ["isEmpty", "isNotEmpty"];
 
 export function operatorsForType(type: FilterType): FilterOperator[] {
   const base =
-    type === "number" ? NUMBER_OPS
-    : type === "date" ? DATE_OPS
-    : type === "enum" ? ENUM_OPS
-    : TEXT_OPS;
+    type === "number"
+      ? NUMBER_OPS
+      : type === "date"
+        ? DATE_OPS
+        : type === "enum"
+          ? ENUM_OPS
+          : TEXT_OPS;
   return [...base, ...SHARED_OPS];
 }
 
@@ -226,7 +306,8 @@ export function operatorValueShape(op: FilterOperator): ValueShape {
 export function defaultDraft(type: FilterType): FilterDraft {
   const operator = operatorsForType(type)[0]!;
   if (operatorValueShape(operator) === "set") return { operator, selected: [] };
-  if (operatorValueShape(operator) === "range") return { operator, min: "", max: "" };
+  if (operatorValueShape(operator) === "range")
+    return { operator, min: "", max: "" };
   return { operator, text: "" };
 }
 
@@ -246,13 +327,17 @@ export function isComplete(type: FilterType, d: FilterDraft): boolean {
   return !!d.text && d.text.trim() !== "";
 }
 
-export function toColumnFilter(type: FilterType, d: FilterDraft): ColumnFilter | null {
+export function toColumnFilter(
+  type: FilterType,
+  d: FilterDraft,
+): ColumnFilter | null {
   const shape = operatorValueShape(d.operator);
   if (shape === "none") return { operator: d.operator };
   if (!isComplete(type, d)) return null;
   if (shape === "set") return { operator: d.operator, value: [...d.selected!] };
   if (shape === "range") {
-    if (type === "number") return { operator: d.operator, value: [Number(d.min), Number(d.max)] };
+    if (type === "number")
+      return { operator: d.operator, value: [Number(d.min), Number(d.max)] };
     return { operator: d.operator, value: [d.min!, d.max!] };
   }
   // single
@@ -260,17 +345,27 @@ export function toColumnFilter(type: FilterType, d: FilterDraft): ColumnFilter |
   return { operator: d.operator, value: d.text! };
 }
 
-export function fromColumnFilter(type: FilterType, filter: ColumnFilter | null): FilterDraft {
+export function fromColumnFilter(
+  type: FilterType,
+  filter: ColumnFilter | null,
+): FilterDraft {
   if (!filter) return defaultDraft(type);
   const { operator, value } = filter;
   const shape = operatorValueShape(operator);
   if (shape === "none") return { operator };
-  if (shape === "set") return { operator, selected: Array.isArray(value) ? value.map(String) : [] };
+  if (shape === "set")
+    return {
+      operator,
+      selected: Array.isArray(value) ? value.map(String) : [],
+    };
   if (shape === "range") {
     const arr = Array.isArray(value) ? value : ["", ""];
     return { operator, min: String(arr[0] ?? ""), max: String(arr[1] ?? "") };
   }
-  return { operator, text: value === null || value === undefined ? "" : String(value) };
+  return {
+    operator,
+    text: value === null || value === undefined ? "" : String(value),
+  };
 }
 ```
 
@@ -291,6 +386,7 @@ git commit -m "feat(react): pure filter-operators helpers for the header menu"
 ## Task 2: `FunnelButton`, `useFilterPopover`, `FilterMenu` components (+ direct RTL tests)
 
 **Files:**
+
 - Create: `packages/react/src/filter-menu/FunnelButton.tsx`, `useFilterPopover.ts`, `FilterMenu.tsx`, `index.ts`
 - Test: `packages/react/src/__tests__/filter-menu.test.tsx` (component-level, rendering `FilterMenu` directly)
 
@@ -333,7 +429,13 @@ export function FunnelButton({
         onToggle(columnId);
       }}
     >
-      <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" focusable="false">
+      <svg
+        viewBox="0 0 16 16"
+        width="11"
+        height="11"
+        aria-hidden="true"
+        focusable="false"
+      >
         <path d="M1.5 2.5h13l-5 6v4l-3 1.5v-5.5l-5-6z" fill="currentColor" />
       </svg>
     </button>
@@ -357,13 +459,16 @@ export interface PopoverState {
 export function useFilterPopover() {
   const [openState, setOpenState] = useState<PopoverState | null>(null);
 
-  const toggle = useCallback((columnId: string, anchorEl: HTMLElement | null) => {
-    setOpenState((prev) => {
-      if (prev?.columnId === columnId) return null;
-      const rect = anchorEl?.getBoundingClientRect();
-      return rect ? { columnId, rect } : null;
-    });
-  }, []);
+  const toggle = useCallback(
+    (columnId: string, anchorEl: HTMLElement | null) => {
+      setOpenState((prev) => {
+        if (prev?.columnId === columnId) return null;
+        const rect = anchorEl?.getBoundingClientRect();
+        return rect ? { columnId, rect } : null;
+      });
+    },
+    [],
+  );
 
   const close = useCallback(() => setOpenState(null), []);
 
@@ -406,9 +511,17 @@ export function popoverStyle(rect: DOMRect): React.CSSProperties {
 - [ ] **Step 3: Write `FilterMenu.tsx`** — the dialog. Renders operator `<select>` + value control by shape; live-applies via the `onChange` prop (debounced for `single`/`range` text inputs); a Clear button; hydrates draft from `initialFilter`; closes on outside-click.
 
 Contract:
+
 ```tsx
 export function FilterMenu({
-  columnId, label, filterType, options, initialFilter, style, onChange, onClose,
+  columnId,
+  label,
+  filterType,
+  options,
+  initialFilter,
+  style,
+  onChange,
+  onClose,
 }: {
   columnId: string;
   label: string;
@@ -418,9 +531,11 @@ export function FilterMenu({
   style?: React.CSSProperties;
   onChange: (columnId: string, filter: ColumnFilter | null) => void; // null = clear
   onClose: () => void;
-}): JSX.Element
+}): JSX.Element;
 ```
+
 Implementation notes (write idiomatic React; the exact JSX is yours but must satisfy the tests):
+
 - `const [draft, setDraft] = useState(() => fromColumnFilter(filterType, initialFilter));`
 - On operator change: reset value fields to the new shape's empty draft (keep selection only if still a set op), then push.
 - A single `push(nextDraft)` helper computes `toColumnFilter(filterType, nextDraft)` and calls `onChange(columnId, result)` (result may be `null` → clears). For `single`/`range` **text** inputs, debounce `push` ~200ms (use a ref'd timer; flush on unmount); for `select`/`checkbox`/`date`/number-step changes call `push` immediately. (Simplest: debounce only the free-text `single` `text` input; number/date inputs can debounce too — acceptable. Keep one debounce path keyed on "is this a typed text field".)
@@ -468,6 +583,7 @@ git commit -m "feat(react): FunnelButton, FilterMenu, useFilterPopover component
 ## Task 3: Wire into the surface + `@pretable/ui` CSS + integration test
 
 **Files:**
+
 - Modify: `packages/react/src/pretable-surface.tsx`
 - Modify: `packages/ui/src/grid.css`
 - Test: extend `packages/react/src/__tests__/filter-menu.test.tsx` with surface-integration cases (or a new `filter-menu-surface.test.tsx`).
@@ -475,18 +591,23 @@ git commit -m "feat(react): FunnelButton, FilterMenu, useFilterPopover component
 - [ ] **Step 1: Add the `onFiltersChange` prop**
 
 In `PretableSurfaceProps`, after `onTelemetryChange` (~`:235`):
+
 ```ts
   onFiltersChange?: (filters: Record<string, ColumnFilter>) => void;
 ```
+
 Import `ColumnFilter` from `@pretable/core` if not already. Destructure `onFiltersChange` in the component signature (~`:428-451`).
 
 - [ ] **Step 2: Funnel overlay per header**
 
 Bring in the popover hook near the other surface hooks:
+
 ```ts
 const { openState, toggle, close } = useFilterPopover();
 ```
+
 In the per-column header render (the array currently `[<button>, resizeHandle]`), append a funnel overlay element when `column.filterable !== false`. Position it like the resize handle but offset left of it (so it doesn't overlap the 4px resize strip):
+
 ```tsx
 column.filterable !== false ? (
   <div
@@ -520,7 +641,9 @@ column.filterable !== false ? (
   </div>
 ) : null,
 ```
+
 Notes:
+
 - `active` reads `snapshot.filters[column.id]` so the funnel stays lit while a filter is set.
 - The anchor element passed to `toggle` is the funnel button itself (look it up by the column-id within the funnel slot, or thread a ref). Simplest robust approach: have `FunnelButton`'s `onToggle` receive the event and pass `e.currentTarget` up — change the `FunnelButton` `onClick` to `onToggle(columnId, e.currentTarget)` and the prop type to `(columnId: string, anchor: HTMLElement) => void`. Update Task 2's `FunnelButton` accordingly and pass `anchor` straight to `toggle`. (Prefer this over DOM querying.)
 - Filter out the `null` entries when building the children array.
@@ -528,30 +651,38 @@ Notes:
 - [ ] **Step 3: Render one `FilterMenu` at the surface root**
 
 Near where the reorder ghost is rendered (surface root, after the scroll container), add:
+
 ```tsx
-{openState ? (() => {
-  const col = effectiveColumns.find((c) => c.id === openState.columnId);
-  if (!col) return null;
-  const options =
-    col.filterOptions ??
-    grid.distinctColumnValues(openState.columnId).map((v) => ({ value: v }));
-  return (
-    <FilterMenu
-      columnId={openState.columnId}
-      label={col.header ?? openState.columnId}
-      filterType={col.filterType ?? "text"}
-      options={options}
-      initialFilter={snapshot.filters[openState.columnId] ?? null}
-      style={popoverStyle(openState.rect)}
-      onChange={(id, filter) => {
-        grid.setColumnFilter(id, filter);
-        onFiltersChange?.(grid.getSnapshot().filters);
-      }}
-      onClose={close}
-    />
-  );
-})() : null}
+{
+  openState
+    ? (() => {
+        const col = effectiveColumns.find((c) => c.id === openState.columnId);
+        if (!col) return null;
+        const options =
+          col.filterOptions ??
+          grid
+            .distinctColumnValues(openState.columnId)
+            .map((v) => ({ value: v }));
+        return (
+          <FilterMenu
+            columnId={openState.columnId}
+            label={col.header ?? openState.columnId}
+            filterType={col.filterType ?? "text"}
+            options={options}
+            initialFilter={snapshot.filters[openState.columnId] ?? null}
+            style={popoverStyle(openState.rect)}
+            onChange={(id, filter) => {
+              grid.setColumnFilter(id, filter);
+              onFiltersChange?.(grid.getSnapshot().filters);
+            }}
+            onClose={close}
+          />
+        );
+      })()
+    : null;
+}
 ```
+
 (Confirm the in-scope names for the planned columns + grid handle — `effectiveColumns`/`grid`/`snapshot` exist in the surface; adjust to the actual identifiers.)
 
 - [ ] **Step 4: `@pretable/ui/grid.css`** — add filter styling (reuse tokens; no new tokens):
@@ -572,7 +703,11 @@ Near where the reorder ghost is rendered (surface root, after the scroll contain
   opacity: 0;
   transition: opacity 0.1s ease;
 }
-:where([data-pretable-header-cell]:hover ~ [data-pretable-filter-funnel-slot] [data-pretable-filter-funnel]),
+:where(
+  [data-pretable-header-cell]:hover
+    ~ [data-pretable-filter-funnel-slot]
+    [data-pretable-filter-funnel]
+),
 :where([data-pretable-filter-funnel]:focus-visible),
 :where([data-pretable-filter-funnel][data-pretable-filter-active="true"]) {
   opacity: 1;
@@ -580,7 +715,9 @@ Near where the reorder ghost is rendered (surface root, after the scroll contain
 :where([data-pretable-filter-funnel][data-pretable-filter-active="true"]) {
   color: var(--pretable-accent);
 }
-:where([data-pretable-filter-funnel]:hover) { background: var(--pretable-bg-hover); }
+:where([data-pretable-filter-funnel]:hover) {
+  background: var(--pretable-bg-hover);
+}
 
 :where([data-pretable-filter-menu]) {
   display: flex;
@@ -621,6 +758,7 @@ Near where the reorder ghost is rendered (surface root, after the scroll contain
   padding: 2px 4px;
 }
 ```
+
 Note: the hover selector relies on the funnel slot being a following-sibling of the header button within the header row. If the actual DOM nesting differs (e.g. funnel slot is a child of a wrapper, not a sibling of the header `<button>`), use the structurally-correct selector — the requirement is "funnel visible on header hover OR focus-within OR active". Verify against the rendered DOM and adjust the selector; do not ship a selector that doesn't actually match.
 
 - [ ] **Step 5: Integration tests** (via `PretableSurface`): mirror the sort-click test setup. Cover:
@@ -656,6 +794,7 @@ Run: `pnpm api`. Review the diff: `react.api.md` should gain `onFiltersChange` o
 - [ ] **Step 2: Full validation sweep**
 
 Run from the worktree root:
+
 ```bash
 pnpm -r typecheck
 pnpm -r lint
@@ -664,6 +803,7 @@ pnpm format
 pnpm --filter @pretable/app-website build
 pnpm api   # second run must be a clean no-op
 ```
+
 All green; second `pnpm api` reports no changes. If `pnpm format` fails, run `pnpm format:write` and re-commit. (Website still uses controlled `state.filters` on the hero — confirm it still builds; the hero does NOT adopt the menu here.)
 
 - [ ] **Step 3: Commit**

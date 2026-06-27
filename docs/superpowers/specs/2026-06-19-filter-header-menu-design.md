@@ -61,7 +61,7 @@ New, all under `packages/react/src/filter-menu/`:
     (controlled or re-open).
   - Fully unit-tested in isolation.
 - `FunnelButton.tsx` — the header affordance. `<button aria-haspopup="dialog"
-  aria-expanded data-pretable-filter-funnel data-pretable-filter-active={active}>` with an
+aria-expanded data-pretable-filter-funnel data-pretable-filter-active={active}>` with an
   inline-SVG funnel (no icon font). Calls back to toggle the popover for its column.
 - `useFilterPopover.ts` — open state (`openColumnId | null`), anchor rect, outside-click +
   Escape close, and a fixed-position style computed from the funnel's
@@ -120,11 +120,13 @@ Wiring in `packages/react/src/pretable-surface.tsx`:
 ## Testing (RTL, `packages/react/src/__tests__/`)
 
 `filter-operators.test.ts` (pure):
+
 - `operatorsForType` returns the right set per type; `operatorValueShape`/`isComplete`/
   `toColumnFilter`/`fromColumnFilter` round-trips incl. number/date parsing and the
   `between` gating (incomplete → `null`).
 
 `filter-menu.test.tsx` (component, via `PretableSurface`):
+
 - Funnel hidden until hover/focus; shown + `data-pretable-filter-active` when a filter
   exists.
 - Open menu → operator select lists the type's operators; switching operator swaps the

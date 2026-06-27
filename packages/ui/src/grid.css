@@ -240,9 +240,7 @@
      per-column `~` hover selector would over-match every column to the right
      of the hovered one; hovering the whole header row is the structurally
      correct trigger. Active/focus-visible funnels stay lit regardless. */
-  :where(
-    [data-pretable-header-row]:hover [data-pretable-filter-funnel]
-  ),
+  :where([data-pretable-header-row]:hover [data-pretable-filter-funnel]),
   :where([data-pretable-filter-funnel]:focus-visible),
   :where([data-pretable-filter-funnel][data-pretable-filter-active="true"]) {
     opacity: 1;

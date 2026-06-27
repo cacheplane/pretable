@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ColumnFilter } from "@pretable/core";
 
@@ -70,7 +76,10 @@ describe("FilterMenu — text live-apply (debounced)", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
     });
-    expect(lastCall(onChange)).toEqual(["c", { operator: "contains", value: "ad" }]);
+    expect(lastCall(onChange)).toEqual([
+      "c",
+      { operator: "contains", value: "ad" },
+    ]);
   });
 });
 
@@ -139,7 +148,10 @@ describe("FilterMenu — enum set", () => {
     act(() => {
       fireEvent.click(alpha);
     });
-    expect(lastCall(onChange)).toEqual(["c", { operator: "isAnyOf", value: ["a"] }]);
+    expect(lastCall(onChange)).toEqual([
+      "c",
+      { operator: "isAnyOf", value: ["a"] },
+    ]);
 
     act(() => {
       fireEvent.click(beta);
@@ -184,7 +196,9 @@ describe("FilterMenu — hydrate from initialFilter", () => {
       name: "Filter operator",
     }) as HTMLSelectElement;
     expect(select.value).toBe("startsWith");
-    expect(screen.getByRole("textbox", { name: "Filter value" })).toHaveValue("Ad");
+    expect(screen.getByRole("textbox", { name: "Filter value" })).toHaveValue(
+      "Ad",
+    );
   });
 });
 
@@ -251,6 +265,9 @@ describe("FilterMenu — flush on unmount", () => {
     act(() => {
       unmount();
     });
-    expect(lastCall(onChange)).toEqual(["c", { operator: "contains", value: "x" }]);
+    expect(lastCall(onChange)).toEqual([
+      "c",
+      { operator: "contains", value: "x" },
+    ]);
   });
 });
