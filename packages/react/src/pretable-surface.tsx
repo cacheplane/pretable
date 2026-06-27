@@ -14,6 +14,7 @@ import {
 } from "react";
 import type {
   AutosizeOptions,
+  ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
   PretableFocusState,
@@ -60,6 +61,12 @@ export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
+import {
+  FilterMenu,
+  FunnelButton,
+  popoverStyle,
+  useFilterPopover,
+} from "./filter-menu";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
@@ -233,6 +240,12 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   onColumnOrderChange?: (next: readonly string[]) => void;
   onColumnPinnedChange?: (next: Record<string, "left" | null>) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
+  /**
+   * Called when the built-in column filter menu mutates the active filter set.
+   * Receives the engine's full `filters` map after the change. Use to mirror
+   * filter state externally (e.g. controlled `state.filters`).
+   */
+  onFiltersChange?: (filters: Record<string, ColumnFilter>) => void;
   onGridReady?: (grid: PretableGrid<TRow>) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellRenderInput<TRow>,
@@ -435,6 +448,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   onColumnOrderChange,
   onColumnPinnedChange,
   onTelemetryChange,
+  onFiltersChange,
   renderBodyCell,
   renderHeaderCell,
   rows,
@@ -597,6 +611,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       [],
     ),
   });
+
+  // Built-in column filter menu: one open-state for the whole surface.
+  const {
+    openState: filterOpenState,
+    toggle: toggleFilter,
+    close: closeFilter,
+  } = useFilterPopover();
 
   const pinnedOffsets = useMemo(
     () => getPinnedLeftOffsets(effectiveColumns),
@@ -1561,6 +1582,39 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 }}
               />
             ) : null,
+            // Built-in filter funnel overlay — an absolutely-positioned sibling
+            // of the resize handle (NOT nested in the header <button>, which
+            // would be invalid HTML). Offset left of the 4px resize strip.
+            column.filterable !== false ? (
+              <div
+                key={`${column.id}::filter-funnel`}
+                data-pretable-filter-funnel-slot=""
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  left: plannedCol.left + effWidth - 22,
+                  zIndex: 4,
+                  ...(plannedCol.pinned === "left" && pinnedOffset !== undefined
+                    ? {
+                        position: "sticky" as const,
+                        zIndex: 5,
+                        left: pinnedOffset + effWidth - 22,
+                      }
+                    : {}),
+                }}
+              >
+                <FunnelButton
+                  columnId={column.id}
+                  label={label}
+                  active={Boolean(snapshot.filters[column.id])}
+                  open={filterOpenState?.columnId === column.id}
+                  onToggle={(id, anchor) => toggleFilter(id, anchor)}
+                />
+              </div>
+            ) : null,
           ];
         })}
       </div>
@@ -1938,6 +1992,37 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           />
         </>
       ) : null}
+      {filterOpenState
+        ? (() => {
+            const col = effectiveColumns.find(
+              (c) => c.id === filterOpenState.columnId,
+            );
+            if (!col) return null;
+            const options =
+              col.filterOptions ??
+              grid
+                .distinctColumnValues(filterOpenState.columnId)
+                .map((v) => ({ value: v }));
+            return (
+              <FilterMenu
+                key={filterOpenState.columnId}
+                columnId={filterOpenState.columnId}
+                label={col.header ?? filterOpenState.columnId}
+                filterType={col.filterType ?? "text"}
+                options={options}
+                initialFilter={
+                  snapshot.filters[filterOpenState.columnId] ?? null
+                }
+                style={popoverStyle(filterOpenState.rect)}
+                onChange={(id, filter) => {
+                  grid.setColumnFilter(id, filter);
+                  onFiltersChange?.(grid.getSnapshot().filters);
+                }}
+                onClose={closeFilter}
+              />
+            );
+          })()
+        : null}
     </div>
   );
 }

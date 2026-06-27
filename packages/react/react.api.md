@@ -566,6 +566,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     onColumnWidthsChange?: (next: Record<string, number>) => void;
     onCopy?: (args: SerializeRangesArgs<TRow>) => CopyPayload | null;
+    onFiltersChange?: (filters: Record<string, ColumnFilter>) => void;
     // (undocumented)
     onFocusChange?: (next: PretableFocusState) => void;
     // (undocumented)
@@ -721,7 +722,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:466:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:472:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
