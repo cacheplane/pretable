@@ -47,6 +47,7 @@ readonly options: PretableGridOptions<TRow>;
 | Method                 | Signature                                                              |
 | ---------------------- | ---------------------------------------------------------------------- |
 | `setSort`              | `(columnId: string \| null, direction: PretableSortDirection) => void` |
+| `replaceSort`          | `(entries: PretableSortEntry[]) => void`                               |
 | `setColumnFilter`      | `(columnId: string, filter: ColumnFilter \| null) => void`             |
 | `replaceFilters`       | `(nextFilters: Record<string, ColumnFilter>) => void`                  |
 | `clearFilters`         | `() => void`                                                           |
@@ -177,7 +178,7 @@ interface PretableGridSnapshot<TRow = PretableRow> {
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
   totalRowCount: number;
-  sort: PretableSortState;
+  sort: PretableSortEntry[];
   filters: Record<string, ColumnFilter>;
   selection: PretableSelectionState;
   focus: PretableFocusState;
@@ -206,16 +207,18 @@ interface PretableRowRange {
 }
 ```
 
-### `PretableSortState` / `PretableSortDirection`
+### `PretableSortEntry` / `PretableSortDirection`
 
 ```ts
 type PretableSortDirection = "asc" | "desc" | null;
 
-interface PretableSortState {
-  columnId: string | null;
-  direction: PretableSortDirection;
+interface PretableSortEntry {
+  columnId: string;
+  direction: "asc" | "desc";
 }
 ```
+
+`snapshot.sort` is an ordered `PretableSortEntry[]` — index in the list is the sort priority, `[]` means unsorted. `setSort` takes a `PretableSortDirection` (`null` clears); `replaceSort` swaps in a whole entry list atomically, dropping entries for unknown or `sortable: false` columns.
 
 ### `PretableSelectionState`
 

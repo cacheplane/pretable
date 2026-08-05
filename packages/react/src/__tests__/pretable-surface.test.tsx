@@ -869,21 +869,19 @@ describe("PretableSurface", () => {
 
     fireEvent.click(timestampHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith({
-      columnId: "timestamp",
-      direction: "desc",
-    });
+    expect(onSortChange).toHaveBeenCalledWith([
+      { columnId: "timestamp", direction: "desc" },
+    ]);
 
     fireEvent.click(timestampHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith({
-      columnId: "timestamp",
-      direction: "asc",
-    });
+    expect(onSortChange).toHaveBeenCalledWith([
+      { columnId: "timestamp", direction: "asc" },
+    ]);
 
     fireEvent.click(timestampHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith(null);
+    expect(onSortChange).toHaveBeenCalledWith([]);
   });
 
   it("does not remeasure a cached tall row height when a sort reorders the same rows", async () => {
@@ -4493,7 +4491,7 @@ describe("cell renderers", () => {
         getRowId={(row: GridRow) => row.id}
         overscan={0}
         rows={gridRows}
-        state={{ sort: { columnId: "a", direction: "desc" } }}
+        state={{ sort: [{ columnId: "a", direction: "desc" }] }}
         viewportHeight={300}
       />,
     );
@@ -4507,7 +4505,7 @@ describe("cell renderers", () => {
         getRowId={(row: GridRow) => row.id}
         overscan={0}
         rows={gridRows}
-        state={{ sort: { columnId: "a", direction: "asc" } }}
+        state={{ sort: [{ columnId: "a", direction: "asc" }] }}
         viewportHeight={300}
       />,
     );

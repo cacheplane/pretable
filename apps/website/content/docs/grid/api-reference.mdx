@@ -117,8 +117,13 @@ interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRow> {
 ## Surface configuration types
 
 ```ts
+interface PretableSortEntry {
+  columnId: string;
+  direction: "asc" | "desc";
+}
+
 interface PretableSurfaceState {
-  sort?: PretableSortState;
+  sort?: PretableSortEntry[];
   filters?: Record<string, ColumnFilter>;
   selection?: PretableSelectionState;
   focus?: PretableFocusState;
@@ -149,6 +154,7 @@ interface PretableSurfaceMessages {
 }
 ```
 
+- `PretableSortEntry` — one entry in the ordered sort list; index in the list = priority, `[]` = unsorted. See [Sorting](/docs/grid/sorting).
 - `PretableSurfaceState` — the slice-based controlled-state shape passed via the surface's `state` prop. Each slice is independently controlled.
 - `RowSelectionColumnConfig` — opts for the built-in checkbox column. Pass to `<PretableSurface>`'s `rowSelectionColumn` prop.
 - `PretableSurfaceMessages` — overrides for the polite `aria-live` announcements (select-all and copy success/failure).
@@ -180,7 +186,8 @@ The `grid` returned by `usePretable`.
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `getSnapshot(): PretableGridSnapshot<TRow>`                                   | Read the current state.                                                                         |
 | `subscribe(listener: () => void): () => void`                                 | Subscribe to state changes. Returns an unsubscribe fn.                                          |
-| `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Set the sort state. Pass `null` to clear.                                                       |
+| `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Single-column sort: replaces the whole sort list with one entry. Pass `null` to clear.          |
+| `replaceSort(entries: PretableSortEntry[]): void`                             | Atomic multi-sort: replace the ordered entry list. Drops unknown / `sortable: false` columns.   |
 | `setColumnFilter(columnId: string, filter: ColumnFilter \| null): void`       | Set one column's filter. Pass `null` to remove it.                                              |
 | `clearFilters(): void`                                                        | Remove all filters.                                                                             |
 | `replaceFilters(map: Record<string, ColumnFilter>): void`                     | Replace all filters with a new map.                                                             |
@@ -219,7 +226,7 @@ interface PretableGridSnapshot<TRow> {
     height: number;
     width: number;
   };
-  sort: { columnId: string | null; direction: "asc" | "desc" | null };
+  sort: { columnId: string; direction: "asc" | "desc" }[]; // PretableSortEntry[] — index = priority
   filters: Record<string, ColumnFilter>;
   selection: {
     ranges: Array<{
@@ -266,7 +273,7 @@ interface UsePretableOptions<TRow> extends UsePretableOptions<TRow> {
 }
 
 interface PretableSurfaceState {
-  sort?: PretableSortState;
+  sort?: PretableSortEntry[];
   filters?: Record<string, ColumnFilter>;
   selection?: PretableSelectionState;
   focus?: PretableFocusState;

@@ -11,6 +11,7 @@ import type {
   PretableRow,
   PretableSelectionState,
   PretableSortDirection,
+  PretableSortEntry,
   PretableTransaction,
   PretableViewportState,
 } from "@pretable-internal/grid-core";
@@ -37,6 +38,8 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
 
   // sort / filter
   setSort(columnId: string | null, direction: PretableSortDirection): void;
+  /** Atomically replace the ordered sort list. Unknown and `sortable: false` columns are dropped. */
+  replaceSort(entries: PretableSortEntry[]): void;
   setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   clearFilters(): void;
   replaceFilters(nextFilters: Record<string, ColumnFilter>): void;

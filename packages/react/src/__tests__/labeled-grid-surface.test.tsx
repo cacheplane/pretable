@@ -152,7 +152,7 @@ describe("LabeledGridSurface", () => {
         columns={columns}
         getRowId={(row) => row.id}
         state={{
-          sort: { columnId: "timestamp", direction: "desc" },
+          sort: [{ columnId: "timestamp", direction: "desc" }],
           filters: {},
         }}
         overscan={0}
@@ -178,7 +178,7 @@ describe("LabeledGridSurface", () => {
         columns={columns}
         getRowId={(row) => row.id}
         state={{
-          sort: { columnId: "timestamp", direction: "asc" },
+          sort: [{ columnId: "timestamp", direction: "asc" }],
           filters: {},
         }}
         overscan={0}
@@ -198,7 +198,7 @@ describe("LabeledGridSurface", () => {
         getRowId={(row) => row.id}
         headerCellClassName="inspection-header-cell"
         state={{
-          sort: null,
+          sort: [],
           filters: { severity: { operator: "contains", value: "error" } },
         }}
         overscan={0}
@@ -226,7 +226,7 @@ describe("LabeledGridSurface", () => {
         columns={columns}
         getRowId={(row) => row.id}
         state={{
-          sort: { columnId: "timestamp", direction: "desc" },
+          sort: [{ columnId: "timestamp", direction: "desc" }],
           filters: {},
         }}
         onSortChange={onSortChange}
@@ -242,9 +242,8 @@ describe("LabeledGridSurface", () => {
 
     fireEvent.click(severityHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith({
-      columnId: "severity",
-      direction: "desc",
-    });
+    expect(onSortChange).toHaveBeenCalledWith([
+      { columnId: "severity", direction: "desc" },
+    ]);
   });
 });

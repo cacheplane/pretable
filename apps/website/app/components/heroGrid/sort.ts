@@ -1,23 +1,8 @@
+import type { PretableSortEntry } from "@pretable/react";
+
 import type { PositionRow } from "./types";
 
-export type ColumnId =
-  | "symbol"
-  | "name"
-  | "sector"
-  | "qty"
-  | "last"
-  | "mktValue"
-  | "dayPnl"
-  | "dayPnlPct"
-  | "weight";
-
-export type SortDirection = "asc" | "desc";
-export interface SortState {
-  columnId: ColumnId;
-  direction: SortDirection;
-}
-
-const NUMERIC: ReadonlySet<ColumnId> = new Set([
+const NUMERIC: ReadonlySet<string> = new Set([
   "qty",
   "last",
   "mktValue",
@@ -25,18 +10,23 @@ const NUMERIC: ReadonlySet<ColumnId> = new Set([
   "dayPnlPct",
   "weight",
 ]);
-const TEXT: ReadonlySet<ColumnId> = new Set(["symbol", "name", "sector"]);
+const TEXT: ReadonlySet<string> = new Set(["symbol", "name", "sector"]);
 
 function compareByColumn(
   a: PositionRow,
   b: PositionRow,
-  columnId: ColumnId,
+  columnId: string,
 ): number {
   if (NUMERIC.has(columnId)) {
-    return (a[columnId] as number) - (b[columnId] as number);
+    return (
+      (a[columnId as keyof PositionRow] as number) -
+      (b[columnId as keyof PositionRow] as number)
+    );
   }
   if (TEXT.has(columnId)) {
-    return String(a[columnId]).localeCompare(String(b[columnId]));
+    return String(a[columnId as keyof PositionRow]).localeCompare(
+      String(b[columnId as keyof PositionRow]),
+    );
   }
   return 0; // unknown / non-sortable: stable no-op
 }
@@ -46,14 +36,29 @@ export function rankRows(rows: readonly PositionRow[]): PositionRow[] {
   return [...rows].sort((a, b) => b.weight - a.weight);
 }
 
+/**
+ * Multi-key cascade over the ordered sort entries (index = priority).
+ * `[]` falls back to the default weight ranking; entries on non-sortable
+ * columns are skipped (a list of only those preserves the current order).
+ * Ties across every key keep their input order (Array.prototype.sort is
+ * stable).
+ */
 export function applySort(
   rows: readonly PositionRow[],
-  sort: SortState | null,
+  sort: readonly PretableSortEntry[],
 ): PositionRow[] {
-  if (sort === null) return rankRows(rows);
-  if (!NUMERIC.has(sort.columnId) && !TEXT.has(sort.columnId)) {
-    return [...rows]; // non-sortable column: preserve order
+  if (sort.length === 0) return rankRows(rows);
+  const keys = sort.filter(
+    (entry) => NUMERIC.has(entry.columnId) || TEXT.has(entry.columnId),
+  );
+  if (keys.length === 0) {
+    return [...rows]; // non-sortable columns only: preserve order
   }
-  const sign = sort.direction === "asc" ? 1 : -1;
-  return [...rows].sort((a, b) => sign * compareByColumn(a, b, sort.columnId));
+  return [...rows].sort((a, b) => {
+    for (const entry of keys) {
+      const cmp = compareByColumn(a, b, entry.columnId);
+      if (cmp !== 0) return entry.direction === "asc" ? cmp : -cmp;
+    }
+    return 0;
+  });
 }

@@ -71,6 +71,7 @@ export type {
   PretableGridOptions,
   PretableGridSnapshot,
   PretableRow,
+  PretableSortEntry,
 } from "@pretable/core";
 
 // Internal-but-exported (ɵ-prefix marks these as not API-stable)

@@ -22,7 +22,7 @@ export type {
   PretableRowSelectionTriState,
   PretableSelectionState,
   PretableSortDirection,
-  PretableSortState,
+  PretableSortEntry,
   PretableTransaction,
   PretableViewportState,
   PretableVisibleRow,

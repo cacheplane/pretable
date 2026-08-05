@@ -1,6 +1,6 @@
 "use client";
 
-import { PretableSurface } from "@pretable/react";
+import { PretableSurface, type PretableSortEntry } from "@pretable/react";
 import {
   useCallback,
   useEffect,
@@ -23,7 +23,7 @@ import { PORTFOLIO_RECORDING } from "./heroGrid/recordings/portfolio";
 import { createPortfolioReplay } from "./heroGrid/replay-engine";
 import { PortfolioSummary } from "./heroGrid/PortfolioSummary";
 import { startingPositions } from "./heroGrid/roster";
-import { applySort, type ColumnId, type SortState } from "./heroGrid/sort";
+import { applySort } from "./heroGrid/sort";
 import type { PositionRow } from "./heroGrid/types";
 import styles from "./heroGrid/heroGrid.module.css";
 
@@ -32,7 +32,7 @@ const FALLBACK_VIEWPORT_HEIGHT = 520;
 export function HeroGrid() {
   const { ratePerSec, isPlaying } = useControlState();
   const [rows, setRows] = useState<PositionRow[]>([]);
-  const [userSort, setUserSort] = useState<SortState | null>(null);
+  const [userSort, setUserSort] = useState<PretableSortEntry[]>([]);
   const replayRef = useRef<ReturnType<typeof createPortfolioReplay> | null>(
     null,
   );
@@ -233,19 +233,10 @@ export function HeroGrid() {
               getRowId={(row) => row.id}
               onCellEdit={handleCellEdit}
               onSelectionChange={handleSelectionChange}
-              onSortChange={(next) => {
-                if (next === null) {
-                  setUserSort(null);
-                  return;
-                }
-                setUserSort({
-                  columnId: next.columnId as ColumnId,
-                  direction: next.direction,
-                });
-              }}
+              onSortChange={(entries) => setUserSort(entries)}
               rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
               rows={sortedRows}
-              state={{ ...(userSort ? { sort: userSort } : {}) }}
+              state={{ sort: userSort }}
               viewportHeight={viewportHeight}
             />
             <p className={styles.legend}>

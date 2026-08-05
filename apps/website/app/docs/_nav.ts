@@ -32,6 +32,7 @@ export const docsNav: DocsNavSection[] = [
       { title: "Keyboard", href: "/docs/grid/keyboard" },
       { title: "Clipboard", href: "/docs/grid/clipboard" },
       { title: "Editing", href: "/docs/grid/editing" },
+      { title: "Sorting", href: "/docs/grid/sorting" },
       { title: "Filtering", href: "/docs/grid/filtering" },
       { title: "Column layout", href: "/docs/grid/column-layout" },
       { title: "Cell renderers", href: "/docs/grid/cell-renderers" },

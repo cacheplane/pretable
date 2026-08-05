@@ -130,13 +130,15 @@ export function TanstackAdapter({
     const t = tableRef.current;
     if (!t || !interactionPlan) return;
 
-    if (interactionPlan.mode === "sort" && interactionPlan.sort) {
-      t.setSorting([
-        {
-          id: interactionPlan.sort.columnId,
-          desc: interactionPlan.sort.direction === "desc",
-        },
-      ]);
+    if (interactionPlan.mode === "sort" && interactionPlan.sort.length > 0) {
+      // Entry-list order maps 1:1 onto TanStack's SortingState array —
+      // index = priority in both models.
+      t.setSorting(
+        interactionPlan.sort.map((entry) => ({
+          id: entry.columnId,
+          desc: entry.direction === "desc",
+        })),
+      );
       return;
     }
 

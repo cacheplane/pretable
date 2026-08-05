@@ -206,6 +206,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     readonly options: PretableGridOptions<TRow>;
     // (undocumented)
     replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
+    replaceSort(entries: PretableSortEntry[]): void;
     // (undocumented)
     resetColumnLayout(): void;
     // (undocumented)
@@ -257,7 +258,7 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     selection: PretableSelectionState;
     // (undocumented)
-    sort: PretableSortState;
+    sort: PretableSortEntry[];
     // (undocumented)
     totalRowCount: number;
     // (undocumented)
@@ -304,11 +305,11 @@ export interface PretableSelectionState {
 export type PretableSortDirection = "asc" | "desc" | null;
 
 // @public
-export interface PretableSortState {
+export interface PretableSortEntry {
     // (undocumented)
-    columnId: string | null;
+    columnId: string;
     // (undocumented)
-    direction: PretableSortDirection;
+    direction: "asc" | "desc";
 }
 
 // @public

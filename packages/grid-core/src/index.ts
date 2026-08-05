@@ -28,7 +28,7 @@ export type {
   PretableSelectionState,
   PretableGridSnapshot,
   PretableSortDirection,
-  PretableSortState,
+  PretableSortEntry,
   PretableEngine,
   PretableTransaction,
   PretableViewportState,

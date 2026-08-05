@@ -39,7 +39,7 @@ const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
 
 What you get back:
 
-- **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `setColumnFilter(columnId, filter)`, `clearFilters()`, `replaceFilters(map)`, `distinctColumnValues(columnId)`, `setSelection(state)`, `selectAll()`, `clearSelection()`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `toggleRowSelection(id)`, `setSelectAllVisible(checked)`, `setFocus({rowId, columnId} | null)`, `moveFocus(direction, options?)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
+- **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `replaceSort(entries)`, `setColumnFilter(columnId, filter)`, `clearFilters()`, `replaceFilters(map)`, `distinctColumnValues(columnId)`, `setSelection(state)`, `selectAll()`, `clearSelection()`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `toggleRowSelection(id)`, `setSelectAllVisible(checked)`, `setFocus({rowId, columnId} | null)`, `moveFocus(direction, options?)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
 - **`snapshot`** — current state. Shape: `{viewport, sort, filters, selection, focus, totalRowCount, visibleRows, visibleRange}`.
 - **`renderSnapshot`** — what to render right now. Shape: `{columns: PlannedColumn[], rows: PretableRenderRow[], nodeCount, totalHeight, totalWidth}`. Each `PretableRenderRow` has `{id, row, rowIndex, top, height}`.
 - **`telemetry`** — `{focusedRowId, rowModelRowCount, renderedRowCount, selectedRowId, totalRowCount, ...}`.
@@ -75,8 +75,10 @@ export function MyGrid({ rows }: { rows: Person[] }) {
     viewportHeight,
   });
 
-  const sortedColumn = snapshot.sort.columnId;
-  const sortedDirection = snapshot.sort.direction;
+  // snapshot.sort is an ordered PretableSortEntry[]; this renderer keeps a
+  // single-column cycle, so it only reads the primary entry.
+  const sortedColumn = snapshot.sort[0]?.columnId ?? null;
+  const sortedDirection = snapshot.sort[0]?.direction ?? null;
 
   return (
     <div

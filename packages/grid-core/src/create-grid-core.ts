@@ -21,7 +21,7 @@ import type {
   PretableSelectionState,
   PretableGridSnapshot,
   PretableSortDirection,
-  PretableSortState,
+  PretableSortEntry,
   PretableEngine,
   PretableTransaction,
   PretableViewportState,
@@ -86,9 +86,9 @@ export function createGridCore<TRow extends PretableRow>(
   );
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
   let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
-  let cachedDerivedSort: PretableSortState | null = null;
+  let cachedDerivedSort: PretableSortEntry[] | null = null;
   let cachedDerivedFilters: Record<string, ColumnFilter> | null = null;
-  let sort: PretableSortState = { columnId: null, direction: null };
+  let sort: PretableSortEntry[] = [];
   let filters: Record<string, ColumnFilter> = {};
   let selection: PretableSelectionState = { ranges: [], anchor: null };
   let focus: PretableFocusState = { rowId: null, columnId: null };
@@ -113,11 +113,28 @@ export function createGridCore<TRow extends PretableRow>(
     },
     getSnapshot,
     setSort(columnId: string | null, direction: PretableSortDirection) {
-      if (sort.columnId === columnId && sort.direction === direction) {
+      const candidate: PretableSortEntry[] =
+        columnId && direction ? [{ columnId, direction }] : [];
+      // Same validation as replaceSort: unknown or sortable:false columns are
+      // dropped, so an invalid target resolves to [] (clear), never a phantom
+      // entry that sortRows would ignore.
+      const next = sanitizeSortEntries(candidate, options.columns);
+
+      if (sortsEqual(sort, next)) {
         return;
       }
 
-      sort = { columnId, direction };
+      sort = next;
+      emit();
+    },
+    replaceSort(entries: PretableSortEntry[]) {
+      const next = sanitizeSortEntries(entries, options.columns);
+
+      if (sortsEqual(sort, next)) {
+        return;
+      }
+
+      sort = next;
       emit();
     },
     setColumnFilter(columnId: string, filter: ColumnFilter | null) {
@@ -916,7 +933,7 @@ export function createGridCore<TRow extends PretableRow>(
 
     cachedSnapshot = {
       viewport,
-      sort,
+      sort: sort.map((entry) => ({ ...entry })),
       filters: { ...filters },
       selection: {
         ranges: selection.ranges.map((r) => ({ ...r })),
@@ -1013,6 +1030,34 @@ function selectionsEqual(
   return (
     a.anchor.rowId === b.anchor.rowId && a.anchor.columnId === b.anchor.columnId
   );
+}
+
+/** Drop entries targeting unknown or sortable:false columns (shared by setSort + replaceSort). */
+function sanitizeSortEntries<TRow extends PretableRow>(
+  entries: PretableSortEntry[],
+  columns: PretableColumn<TRow>[],
+): PretableSortEntry[] {
+  return entries.filter((entry) => {
+    const column = columns.find((c) => c.id === entry.columnId);
+    return column !== undefined && column.sortable !== false;
+  });
+}
+
+function sortsEqual(a: PretableSortEntry[], b: PretableSortEntry[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  for (let i = 0; i < a.length; i += 1) {
+    const ae = a[i]!;
+    const be = b[i]!;
+
+    if (ae.columnId !== be.columnId || ae.direction !== be.direction) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function columnFilterEqual(a: ColumnFilter, b: ColumnFilter): boolean {

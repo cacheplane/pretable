@@ -162,13 +162,13 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
 }
 
 /**
- * Active sort. `columnId` is null when no column is sorted.
+ * One entry in the ordered sort list; index in the list = priority.
  *
  * @public
  */
-export interface PretableSortState {
-  columnId: string | null;
-  direction: PretableSortDirection;
+export interface PretableSortEntry {
+  columnId: string;
+  direction: "asc" | "desc";
 }
 
 /**
@@ -254,7 +254,7 @@ export interface PretableVisibleRow<TRow extends PretableRow = PretableRow> {
  */
 export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   viewport: PretableViewportState;
-  sort: PretableSortState;
+  sort: PretableSortEntry[];
   filters: Record<string, ColumnFilter>;
   selection: PretableSelectionState;
   focus: PretableFocusState;
@@ -270,6 +270,7 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   subscribe(listener: () => void): () => void;
   getSnapshot(): PretableGridSnapshot<TRow>;
   setSort(columnId: string | null, direction: PretableSortDirection): void;
+  replaceSort(entries: PretableSortEntry[]): void;
   setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   clearFilters(): void;
   replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
