@@ -37,12 +37,14 @@ Website-only. Three deliverables:
 ## 1 — Hero adoption
 
 Delete (in `apps/website/app/components/heroGrid/`):
+
 - `sidebar/FilterSection.tsx` and its sidebar.module.css rules that only it uses
   (`.search`, `.chips`, `.chip` — verify no other consumer).
 - `filters.ts` (`SECTORS`, `FilterState`, `buildFilters`) and
   `__tests__/filters.test.ts`.
 
 Modify:
+
 - `HeroGrid.tsx`: remove `filter`/`setFilter` state, the 150ms search-debounce
   state/effect (`appliedSearch`), `filterMap`, and the `filters:` slice from the
   surface `state` prop (sort stays controlled; filters become **uncontrolled** — the
@@ -69,10 +71,11 @@ active filter persists across ticks. The e2e proves this.
 ## 2 — Docs page
 
 New `apps/website/content/docs/grid/filtering.mdx`:
+
 - Frontmatter: `title: Filtering`, `description`, `nav: Grid`, `order: 8`.
 - **Register in the hardcoded nav** `apps/website/app/docs/_nav.ts`: insert
   `{ title: "Filtering", href: "/docs/grid/filtering" }` between "Editing" and
-  "Column layout". (The nav is NOT frontmatter-derived; prev/next flows from _nav.ts.)
+  "Column layout". (The nav is NOT frontmatter-derived; prev/next flows from \_nav.ts.)
 - Content sections:
   - Quick start: columns are filterable by default; funnel appears on hover/active;
     `filterable: false` opts out.
@@ -92,6 +95,7 @@ New `apps/website/content/docs/grid/filtering.mdx`:
 ## 3 — E2E (Playwright, `apps/website/e2e/smoke.spec.ts`)
 
 Rewrite the filter phase of the existing `"cockpit: …"` test to drive funnels:
+
 - Open the Symbol funnel (`role=button`, name `Filter Symbol`) → dialog appears →
   type `NVDA` in the value input → after the ~200ms live-apply debounce, 1 row.
 - Clear → rows restored (>5).
@@ -111,7 +115,7 @@ Rewrite the filter phase of the existing `"cockpit: …"` test to drive funnels:
 - Website unit (vitest): updated HeroGrid/PortfolioSummary tests; deleted
   filters.test.ts; suite green.
 - `pnpm typecheck && pnpm lint && pnpm test && pnpm build` in `apps/website`; repo-wide
-  `pnpm format`. No `pnpm api` needed (no packages/* change) — but run it once to
+  `pnpm format`. No `pnpm api` needed (no packages/\* change) — but run it once to
   confirm a no-op.
 - Playwright smoke locally against a built server (BASE_URL pattern used previously).
 
