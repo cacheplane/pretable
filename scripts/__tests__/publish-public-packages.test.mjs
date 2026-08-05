@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   publishPublicPackages,
+  runPublishCli,
   spawnChangesetsPublish,
 } from "../publish-public-packages.mjs";
 
@@ -92,4 +93,65 @@ test("propagates errors from spawning Changesets", async () => {
   child.emit("error", spawnError);
 
   await assert.rejects(publishing, (error) => error === spawnError);
+});
+
+test("the publish CLI propagates a terminating signal", async () => {
+  const publishError = new Error("publish terminated");
+  publishError.signal = "SIGTERM";
+  const signals = [];
+  const messages = [];
+  const processLike = {
+    pid: 1234,
+    kill: (pid, signal) => signals.push([pid, signal]),
+  };
+
+  await runPublishCli({
+    processLike,
+    publish: async () => {
+      throw publishError;
+    },
+    reportError: (message) => messages.push(message),
+  });
+
+  assert.deepEqual(signals, [[1234, "SIGTERM"]]);
+  assert.equal(processLike.exitCode, undefined);
+  assert.deepEqual(messages, [
+    "Public package publish failed: publish terminated",
+  ]);
+});
+
+test("the publish CLI preserves a nonzero exit code", async () => {
+  const publishError = new Error("publish failed");
+  publishError.exitCode = 17;
+  const processLike = {
+    pid: 1234,
+    kill: () => assert.fail("unexpected signal propagation"),
+  };
+
+  await runPublishCli({
+    processLike,
+    publish: async () => {
+      throw publishError;
+    },
+    reportError: () => {},
+  });
+
+  assert.equal(processLike.exitCode, 17);
+});
+
+test("the publish CLI exits with 1 for a generic failure", async () => {
+  const processLike = {
+    pid: 1234,
+    kill: () => assert.fail("unexpected signal propagation"),
+  };
+
+  await runPublishCli({
+    processLike,
+    publish: async () => {
+      throw new Error("preflight failed");
+    },
+    reportError: () => {},
+  });
+
+  assert.equal(processLike.exitCode, 1);
 });

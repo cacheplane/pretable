@@ -48,3 +48,27 @@ export async function publishPublicPackages({
   await preflight();
   await spawnPublish();
 }
+
+export async function runPublishCli({
+  processLike = process,
+  publish = publishPublicPackages,
+  reportError = (message) => console.error(message),
+} = {}) {
+  try {
+    await publish();
+  } catch (error) {
+    reportError(
+      `Public package publish failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+
+    if (error?.signal) {
+      processLike.kill(processLike.pid, error.signal);
+      return;
+    }
+
+    processLike.exitCode =
+      Number.isInteger(error?.exitCode) && error.exitCode !== 0
+        ? error.exitCode
+        : 1;
+  }
+}
