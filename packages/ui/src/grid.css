@@ -195,6 +195,10 @@
     opacity: 0.5;
     cursor: wait;
   }
+  :where(button[data-pretable-bool-cell][aria-invalid="true"]) {
+    outline: 1px solid var(--pretable-text-error);
+    outline-offset: 1px;
+  }
 
   /* Column resize handle (sub-project C) */
   :where([data-pretable-resize-handle]) {

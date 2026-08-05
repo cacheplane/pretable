@@ -5,6 +5,8 @@ export interface BooleanCellControlProps {
   editable: boolean;
   /** Edit status when this cell holds the active edit, else null. */
   status: PretableEditStatus | null;
+  /** True when this cell's edit failed (validate/onCellEdit error). */
+  error?: boolean;
   label: string;
   onToggle: () => void;
 }
@@ -12,11 +14,14 @@ export interface BooleanCellControlProps {
 /**
  * In-cell boolean control: toggles-and-commits directly (no editor popover).
  * Non-editable cells render the same control disabled for a consistent look.
+ * Stays enabled in failed states (`editing`-with-error / `error`) so a click
+ * can cancel-and-retry the toggle.
  */
 export function BooleanCellControl({
   checked,
   editable,
   status,
+  error,
   label,
   onToggle,
 }: BooleanCellControlProps) {
@@ -30,6 +35,7 @@ export function BooleanCellControl({
       aria-checked={checked}
       aria-label={label}
       aria-busy={busy || undefined}
+      aria-invalid={error ? true : undefined}
       disabled={!editable || busy}
       tabIndex={-1}
       onClick={(e) => {

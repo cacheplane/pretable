@@ -17,6 +17,9 @@ describe("grid.css cascade contract", () => {
     expect(css).toMatch(/:where\(\[data-pretable-number-editor\]\)/);
     expect(css).toMatch(/:where\(textarea\.pretable-cell-editor\)/);
     expect(css).toMatch(/data-pretable-bool-cell/);
+    expect(css).toMatch(
+      /:where\(button\[data-pretable-bool-cell\]\[aria-invalid="true"\]\)/,
+    );
     expect(css).toMatch(/var\(--pretable-edit-bg\)/);
     expect(css).toMatch(/var\(--pretable-text-error\)/);
   });

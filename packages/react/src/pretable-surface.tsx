@@ -622,7 +622,22 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     rowId: string,
     column: PretableColumn<TRow>,
   ) => {
-    if (!column.editable || snapshot.editing) return;
+    if (!column.editable) return;
+    const editing = grid.getSnapshot().editing;
+    if (editing) {
+      // A FAILED edit on this same cell (validate reject leaves status
+      // "editing" with error set; onCellEdit throw leaves status "error") is
+      // cancelled so the click becomes a fresh toggle attempt. Anything
+      // in-flight — including a just-begun edit from a rapid double-click
+      // (status "editing", no error) — or another cell's edit still bails.
+      const failedHere =
+        editing.rowId === rowId &&
+        editing.columnId === column.id &&
+        (editing.status === "error" ||
+          (editing.status === "editing" && editing.error != null));
+      if (!failedHere) return;
+      editController.cancel();
+    }
     const row = editVisibleRowsRef.current.find((r) => r.id === rowId)?.row;
     if (!row) return;
     const current = Boolean(resolveCellValue(row, column));
@@ -1011,7 +1026,19 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         // (typing, arrows, Home/End, Cmd+A) must drive the input, not the grid,
         // so bail before any copy/select/navigation handling. Do NOT
         // preventDefault — the input still needs default text behavior.
+        // EXCEPTION: boolean edits have no editor input mounted (the cell
+        // control commits directly), so nothing else can handle Escape after a
+        // failed commit — cancel here or the failed edit is a dead-end.
         if (snapshot.editing) {
+          if (event.key === "Escape" || event.key === "Esc") {
+            const editingColumn = effectiveColumns.find(
+              (c) => c.id === snapshot.editing?.columnId,
+            );
+            if (editingColumn?.type === "boolean") {
+              editController.cancel();
+              event.preventDefault();
+            }
+          }
           return;
         }
 
@@ -1896,14 +1923,29 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     {column.type === "boolean" && !isRowSelectCell ? (
                       // Boolean cells render the toggle control instead of
                       // cell content AND instead of the CellEditor popover —
-                      // an active boolean edit shows as the busy control.
-                      <BooleanCellControl
-                        checked={Boolean(value)}
-                        editable={Boolean(column.editable)}
-                        status={cellEdit ? cellEdit.status : null}
-                        label={column.header ?? column.id}
-                        onToggle={() => void toggleBooleanCell(id, column)}
-                      />
+                      // an active boolean edit shows as the busy control. A
+                      // failed commit (validate reject / onCellEdit throw)
+                      // renders the same error element CellEditor uses, since
+                      // this branch always wins over the popover branch.
+                      <>
+                        <BooleanCellControl
+                          checked={Boolean(value)}
+                          editable={Boolean(column.editable)}
+                          status={cellEdit ? cellEdit.status : null}
+                          error={Boolean(cellEdit?.error)}
+                          label={column.header ?? column.id}
+                          onToggle={() => void toggleBooleanCell(id, column)}
+                        />
+                        {cellEdit?.error ? (
+                          <div
+                            id={`pretable-edit-error-${id}-${column.id}`}
+                            data-pretable-edit-error
+                            role="alert"
+                          >
+                            {cellEdit.error}
+                          </div>
+                        ) : null}
+                      </>
                     ) : cellEdit ? (
                       <CellEditor
                         input={
