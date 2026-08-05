@@ -66,7 +66,7 @@ describe("InspectionGrid", () => {
         ariaLabel="Inspection grid"
         filterableColumnIds={inspectionFilterableColumnIds}
         interactionState={{
-          sort: null,
+          sort: [],
           filters: {},
         }}
         onSortChange={onSortChange}

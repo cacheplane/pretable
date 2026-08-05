@@ -4493,7 +4493,7 @@ describe("cell renderers", () => {
         getRowId={(row: GridRow) => row.id}
         overscan={0}
         rows={gridRows}
-        state={{ sort: { columnId: "a", direction: "desc" } }}
+        state={{ sort: [{ columnId: "a", direction: "desc" }] }}
         viewportHeight={300}
       />,
     );
@@ -4507,7 +4507,7 @@ describe("cell renderers", () => {
         getRowId={(row: GridRow) => row.id}
         overscan={0}
         rows={gridRows}
-        state={{ sort: { columnId: "a", direction: "asc" } }}
+        state={{ sort: [{ columnId: "a", direction: "asc" }] }}
         viewportHeight={300}
       />,
     );

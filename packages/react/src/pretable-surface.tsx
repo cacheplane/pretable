@@ -1264,9 +1264,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
           const label = column.header ?? column.id;
           const sortDirection =
-            snapshot.sort.columnId === column.id
-              ? snapshot.sort.direction
-              : null;
+            snapshot.sort.find((entry) => entry.columnId === column.id)
+              ?.direction ?? null;
           const headerProps =
             getHeaderCellProps?.({
               column,

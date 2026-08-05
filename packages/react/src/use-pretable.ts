@@ -8,7 +8,7 @@ import {
   type PretableGridSnapshot,
   type PretableRow,
   type PretableSelectionState,
-  type PretableSortState,
+  type PretableSortEntry,
 } from "@pretable/core";
 import type { PretableColumn } from "./types";
 import {
@@ -77,7 +77,7 @@ export interface PretableSurfaceState {
   filters?: Record<string, ColumnFilter>;
   focus?: PretableFocusState;
   selection?: PretableSelectionState;
-  sort?: PretableSortState | null;
+  sort?: PretableSortEntry[];
   columnWidths?: Record<string, number>;
   columnOrder?: readonly string[];
   columnPinned?: Record<string, "left" | null>;
@@ -228,7 +228,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     }
 
     if (state.sort !== undefined) {
-      grid.setSort(state.sort?.columnId ?? null, state.sort?.direction ?? null);
+      grid.replaceSort(state.sort);
     }
 
     if (state.filters !== undefined) {
