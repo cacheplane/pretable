@@ -10,8 +10,14 @@ Every change to the grid goes through a method on the engine handle. Each one up
 ## Sort & filter
 
 ```ts
-grid.setSort("latencyMs", "asc"); // sort a column "asc" | "desc"
+grid.setSort("latencyMs", "asc"); // single-column sort "asc" | "desc"
 grid.setSort(null, null); // clear the sort
+
+grid.replaceSort([
+  { columnId: "team", direction: "asc" },
+  { columnId: "latencyMs", direction: "desc" },
+]); // atomic multi-sort — index = priority
+grid.replaceSort([]); // clear the sort
 
 grid.setColumnFilter("team", { operator: "contains", value: "payments" }); // filter one column
 grid.setColumnFilter("team", null); // remove that column's filter
@@ -22,7 +28,7 @@ grid.replaceFilters({
 grid.clearFilters(); // remove every filter
 ```
 
-`setSort(columnId, direction)` takes a `PretableSortDirection` (`"asc"`, `"desc"`, or `null`); pass `null` for both to clear. Sorting and filtering both re-derive `visibleRows`.
+`setSort(columnId, direction)` takes a `PretableSortDirection` (`"asc"`, `"desc"`, or `null`); pass `null` for both to clear. It replaces the whole sort list with a single entry. `replaceSort(entries)` swaps in a complete ordered `PretableSortEntry[]` — later entries break ties left by earlier ones; entries for unknown or `sortable: false` columns are dropped. Sorting and filtering both re-derive `visibleRows`.
 
 ## Selection & ranges
 

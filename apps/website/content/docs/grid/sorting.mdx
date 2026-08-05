@@ -1,0 +1,115 @@
+---
+title: Sorting
+description: "Ordered multi-column sort: the click and shift-click header cycles, priority badges, the controlled sort API, and headless setSort/replaceSort."
+nav: Grid
+order: 8
+---
+
+Every column is sortable **by default**. Click a header to sort by that column; **shift-click** other headers to build an ordered multi-column cascade — later keys break ties left by earlier ones. Set `sortable: false` on a column to opt it out: clicks and shift-clicks on it are no-ops.
+
+## The sort model
+
+Sort state is an **ordered list of entries**, not a single column:
+
+```ts
+interface PretableSortEntry {
+  columnId: string;
+  direction: "asc" | "desc";
+}
+
+// snapshot.sort, state.sort, and the onSortChange payload are all:
+type Sort = PretableSortEntry[];
+```
+
+- **Index = priority.** `sort[0]` is the primary key, `sort[1]` breaks its ties, and so on.
+- **`[]` means unsorted** — rows appear in source order.
+- **Sorting is stable.** Rows tied on every key keep their source order.
+- **Comparison keys on the values.** When every cell value in a column is a number, the column compares numerically; otherwise values are stringified and compared locale-aware (numeric-aware, case-insensitive).
+- Entries for unknown column ids or `sortable: false` columns are dropped by the engine.
+
+## Header interactions
+
+**Plain click** cycles a single-column sort: unsorted → `desc` → `asc` → unsorted. It always **replaces** the whole list — clicking a header while a multi-column cascade is active collapses the sort to just that column.
+
+**Shift-click** edits the list in place, one column at a time:
+
+- On an **unsorted column**: appends `{ columnId, direction: "desc" }` to the end of the list (lowest priority).
+- On a column already sorted **`desc`**: flips that entry to `asc` without moving it.
+- On a column already sorted **`asc`**: removes just that entry — the other entries keep their relative order, and their priorities renumber.
+
+So shift-click walks the same desc → asc → none cycle as a plain click, scoped to one entry of the list.
+
+### Priority badges
+
+When two or more columns are sorted, each sorted header shows its 1-based priority next to the direction indicator. The badge is a `<span data-pretable-sort-priority>` whose text is the priority number — style or query it via that attribute. With a single sorted column no badge renders.
+
+Each sorted header also carries `aria-sort="ascending"` or `"descending"` (`"none"` otherwise), keyed to that column's own entry.
+
+## Reacting to changes
+
+Sort is **uncontrolled** by default — the engine owns the list. To observe it, pass `onSortChange` to `<PretableSurface>`. It fires after every sort interaction (click or shift-click) with the full ordered list:
+
+```tsx
+import { PretableSurface, type PretableSortEntry } from "@pretable/react";
+
+<PretableSurface<Order>
+  ariaLabel="Orders"
+  columns={columns}
+  rows={rows}
+  getRowId={(row) => row.id}
+  onSortChange={(sort: PretableSortEntry[]) => {
+    console.log(sort); // e.g. [{ columnId: "total", direction: "desc" }]
+  }}
+/>;
+```
+
+## Controlling sort
+
+To own the sort state, pass the `sort` slice of the surface's `state` prop. Like the other slices (`filters`, `selection`, `focus`), a provided slice forces the engine to it on every render; pair it with `onSortChange` so header clicks round-trip through your state:
+
+```tsx
+import { useState } from "react";
+import { PretableSurface, type PretableSortEntry } from "@pretable/react";
+
+function OrdersGrid() {
+  const [sort, setSort] = useState<PretableSortEntry[]>([
+    { columnId: "status", direction: "asc" },
+    { columnId: "total", direction: "desc" }, // tie-break within status
+  ]);
+
+  return (
+    <PretableSurface<Order>
+      ariaLabel="Orders"
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      state={{ sort }}
+      onSortChange={setSort}
+    />
+  );
+}
+```
+
+Passing `[]` is an explicit "unsorted" — to hand the slice back to the engine, omit `sort` from `state` entirely.
+
+## Headless
+
+The engine exposes two mutation methods:
+
+```ts
+grid.setSort("total", "desc"); // single-column: replaces the whole list with one entry
+grid.setSort(null, null); // clear (equivalent to replaceSort([]))
+
+grid.replaceSort([
+  { columnId: "status", direction: "asc" },
+  { columnId: "total", direction: "desc" },
+]); // atomic multi-sort: replace the whole ordered list
+```
+
+`setSort(columnId, direction)` is the single-column shorthand — pass `null` for either argument to clear. `replaceSort(entries)` swaps in a complete list; it silently drops entries whose column id doesn't exist or has `sortable: false`, and it's a no-op (no notification) when the effective list equals the current one. `snapshot.sort` always holds the current `PretableSortEntry[]`, and `snapshot.visibleRows` reflects it. See the [headless API reference](/docs/headless/api-reference).
+
+## See also
+
+- [Filtering](/docs/grid/filtering) — the neighboring header interaction; sort applies after filters.
+- [`<PretableSurface>`](/docs/grid/pretable-surface) — the `state` prop and the controlled/uncontrolled pattern.
+- [API reference](/docs/grid/api-reference) — `PretableSortEntry`, `setSort`, `replaceSort` signatures.
