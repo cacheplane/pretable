@@ -126,6 +126,31 @@ describe("EnumCellEditor (via dispatcher)", () => {
     ]);
   });
 
+  it("a type-to-replace seed highlights the first visible option", () => {
+    // The seeded highlight is an index into the *full* option list (here
+    // "done" = 2), but the list starts filtered — so it must clamp to the
+    // filtered list or a bare Enter would commit the raw seed text.
+    const setDraft = vi.fn();
+    const commit = vi.fn();
+    render(
+      <CellEditor
+        input={makeInput({ draft: "r", value: "done", setDraft, commit })}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(setDraft).toHaveBeenCalledWith("Running");
+    expect(commit).toHaveBeenCalledWith("down");
+  });
+
+  it("Enter on text matching no option falls through to the shared chrome", () => {
+    // Strict rejection is parseDraftForType's job; the editor just must not
+    // swallow the key when there is nothing highlighted to choose.
+    const commit = vi.fn();
+    render(<CellEditor input={makeInput({ draft: "zzz", commit })} />);
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(commit).toHaveBeenCalledWith("down");
+  });
+
   it("falls back to the text editor when the column declares no options", () => {
     render(
       <CellEditor

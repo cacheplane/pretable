@@ -31,7 +31,19 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
   });
 
   useLayoutEffect(() => {
-    if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
+    const measure = () => {
+      if (anchorRef.current) setRect(anchorRef.current.getBoundingClientRect());
+    };
+    measure();
+    // The listbox is portaled and `position: fixed`, so it detaches visually
+    // when anything scrolls. Capture phase catches grid-internal scrollers,
+    // which don't bubble.
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
   }, []);
 
   // The controller seeds the draft with the raw cell value; show the option's
@@ -47,7 +59,11 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
 
   const text = String(input.draft ?? "");
   const visible = dirty ? filterOptions(options, text) : options;
-  const active = visible[highlight];
+  // `highlight` indexes the full option list on mount, and a type-to-replace
+  // seed renders already-filtered — so clamp at render rather than trusting
+  // an onChange to have reset it.
+  const index = highlight < visible.length ? highlight : 0;
+  const active = visible[index];
 
   const choose = (
     option: ColumnOption | undefined,
@@ -72,7 +88,7 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
         aria-expanded
         aria-controls={listId}
         aria-autocomplete="list"
-        aria-activedescendant={active ? `${listId}-${highlight}` : undefined}
+        aria-activedescendant={active ? `${listId}-${index}` : undefined}
         value={text}
         onChange={(e) => {
           setDirty(true);
@@ -125,7 +141,7 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
               key={option.value}
               id={`${listId}-${i}`}
               role="option"
-              aria-selected={i === highlight}
+              aria-selected={i === index}
               data-pretable-enum-option=""
               onClick={() => choose(option)}
             >
