@@ -68,7 +68,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
   autosizeColumns(options?: AutosizeOptions): void;
   setColumnWidth(columnId: string, width: number): void;
   moveColumn(columnId: string, toIndex: number): void;
-  setColumnPinned(columnId: string, pinned: "left" | null): void;
+  setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
   autosizeColumn(columnId: string, options?: AutosizeOptions): void;
   resetColumnLayout(): void;
   mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void;

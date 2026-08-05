@@ -185,6 +185,87 @@ describe("renderer-dom", () => {
     expect(pinnedIds).toEqual(["pinned_0", "pinned_1"]);
   });
 
+  test("carries right-pinned columns through the column plan", () => {
+    const columnsWithPinned = [
+      { id: "first", header: "First", widthPx: 100, pinned: "left" as const },
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: `col_${i}`,
+        header: `Column ${i}`,
+        widthPx: 140,
+      })),
+      {
+        id: "status",
+        header: "Status",
+        widthPx: 120,
+        pinned: "right" as const,
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        widthPx: 80,
+        pinned: "right" as const,
+      },
+    ];
+    const grid = createGridCore({
+      columns: columnsWithPinned,
+      rows: [
+        {
+          id: "row-0",
+          ...Object.fromEntries(columnsWithPinned.map((c) => [c.id, "v"])),
+        },
+      ],
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      scrollLeft: 1500,
+      viewportHeight: 320,
+      viewportWidth: 400,
+      overscan: 1,
+    });
+
+    const rightPinned = render.columns.filter((c) => c.pinned === "right");
+
+    expect(rightPinned.map((c) => c.id)).toEqual(["status", "actions"]);
+    // Offsets from the viewport's right edge: last one flush, the previous
+    // one pushed in by the width of the one after it.
+    expect(rightPinned.map((c) => c.right)).toEqual([80, 0]);
+    // Right-pinned columns render last, after the scrollable window.
+    expect(render.columns[render.columns.length - 1]?.id).toBe("actions");
+    expect(render.columns[0]?.id).toBe("first");
+  });
+
+  test("carries right-pinned columns through the no-viewportWidth fallback", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "a", header: "A", widthPx: 140 },
+        { id: "b", header: "B", widthPx: 120, pinned: "right" as const },
+        { id: "c", header: "C", widthPx: 80, pinned: "right" as const },
+      ],
+      rows: [{ id: "row-0", a: "1", b: "2", c: "3" }],
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 320,
+      overscan: 1,
+    });
+
+    expect(render.columns.map((c) => c.pinned)).toEqual([
+      undefined,
+      "right",
+      "right",
+    ]);
+    expect(render.columns.map((c) => c.right)).toEqual([undefined, 80, 0]);
+    expect(render.totalWidth).toBe(340);
+  });
+
   test("returns all columns when viewportWidth is not provided (backwards compatible)", () => {
     const grid = createGridCore({
       columns: [
