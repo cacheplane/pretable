@@ -95,6 +95,28 @@ test("propagates errors from spawning Changesets", async () => {
   await assert.rejects(publishing, (error) => error === spawnError);
 });
 
+test("propagates an error thrown synchronously while spawning Changesets", async () => {
+  const spawnError = new Error("spawn threw");
+  const publishing = spawnChangesetsPublish({
+    spawn: () => {
+      throw spawnError;
+    },
+  });
+
+  await assert.rejects(publishing, (error) => error === spawnError);
+});
+
+test("keeps the first spawn error when the child subsequently exits", async () => {
+  const child = new EventEmitter();
+  const spawnError = new Error("unable to spawn pnpm");
+  const publishing = spawnChangesetsPublish({ spawn: () => child });
+
+  child.emit("error", spawnError);
+  child.emit("exit", 17, null);
+
+  await assert.rejects(publishing, (error) => error === spawnError);
+});
+
 test("the publish CLI propagates a terminating signal", async () => {
   const publishError = new Error("publish terminated");
   publishError.signal = "SIGTERM";
@@ -155,3 +177,28 @@ test("the publish CLI exits with 1 for a generic failure", async () => {
 
   assert.equal(processLike.exitCode, 1);
 });
+
+for (const argument of ["--dry-run", "--unknown"]) {
+  test(`the publish CLI rejects unsupported argument ${argument} without publishing`, async () => {
+    const operations = [];
+    const messages = [];
+    const processLike = {};
+
+    await runPublishCli({
+      args: [argument],
+      processLike,
+      publish: () =>
+        publishPublicPackages({
+          preflight: async () => operations.push("preflight"),
+          spawnPublish: async () => operations.push("publish"),
+        }),
+      reportError: (message) => messages.push(message),
+    });
+
+    assert.deepEqual(operations, []);
+    assert.equal(processLike.exitCode, 1);
+    assert.equal(messages.length, 1);
+    assert.match(messages[0], /unsupported argument/i);
+    assert.match(messages[0], new RegExp(argument));
+  });
+}

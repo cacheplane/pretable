@@ -50,10 +50,19 @@ export async function publishPublicPackages({
 }
 
 export async function runPublishCli({
+  args = process.argv.slice(2),
   processLike = process,
   publish = publishPublicPackages,
   reportError = (message) => console.error(message),
 } = {}) {
+  if (args.length > 0) {
+    reportError(
+      `Public package publish failed: unsupported argument${args.length === 1 ? "" : "s"}: ${args.join(" ")}`,
+    );
+    processLike.exitCode = 1;
+    return;
+  }
+
   try {
     await publish();
   } catch (error) {
