@@ -33,11 +33,13 @@ export function HeadlessTable() {
   // renderer keeps a single-column asc → desc → none cycle, so it only ever
   // reads/writes one entry via setSort (which replaces the whole list).
   const toggleSort = (columnId: string) => {
-    const current = snapshot.sort.find(
-      (entry) => entry.columnId === columnId,
-    );
+    const current = snapshot.sort.find((entry) => entry.columnId === columnId);
     const next: PretableSortDirection =
-      current === undefined ? "asc" : current.direction === "asc" ? "desc" : null;
+      current === undefined
+        ? "asc"
+        : current.direction === "asc"
+          ? "desc"
+          : null;
     grid.setSort(next ? columnId : null, next);
   };
 
