@@ -31,7 +31,7 @@
 
 ## File structure
 
-Rename sweep (Task 1) touches: `packages/grid-core/src/{types,evaluate-filter,derived-rows,index}.ts`, `packages/core/src/{types,public_api}.ts`, `packages/react/src/{public_api.ts,pretable-surface.tsx}`, `packages/react/src/filter-menu/{filter-operators.ts,FilterMenu.tsx}`, `apps/website/app/components/heroGrid/positionColumns.tsx`, `apps/website/content/docs/headless/api-reference.mdx`, plus all `__tests__` referencing the old names. Regenerate `core.api.md` + `react.api.md`.
+Rename sweep (Task 1) touches: `packages/grid-core/src/{types,evaluate-filter,derived-rows,index}.ts`, `packages/core/src/{types,public_api}.ts`, `packages/react/src/{public_api.ts,pretable-surface.tsx}`, `packages/react/src/filter-menu/{filter-operators.ts,FilterMenu.tsx}`, `apps/website/app/components/heroGrid/positionColumns.tsx`, `apps/website/content/docs/headless/api-reference.mdx`, `apps/website/content/docs/grid/filtering.mdx` (new in #195 — the filtering docs page documents `filterType`/`filterOptions` and must adopt the new names), plus all `__tests__` referencing the old names. Regenerate `core.api.md` + `react.api.md`.
 
 Create:
 
