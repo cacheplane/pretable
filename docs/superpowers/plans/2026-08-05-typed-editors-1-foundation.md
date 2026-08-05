@@ -660,7 +660,11 @@ export function NumberCellEditor({ input }: { input: PretableEditorInput }) {
           fieldProps.onKeyDown(e);
         }}
       />
-      <span data-pretable-number-steppers="">
+      {/* keep focus in the input; a focused stepper would blur-commit the edit */}
+      <span
+        data-pretable-number-steppers=""
+        onMouseDown={(e) => e.preventDefault()}
+      >
         <button
           type="button"
           tabIndex={-1}
@@ -1111,3 +1115,4 @@ git commit -m "docs(website): typed editors — number, multi-line, boolean; col
 - Env gotchas: ignore `pyenv: cannot rehash` noise; if a run fails with an esbuild error, relink `ESB=$(ls -d node_modules/.pnpm/esbuild@*/node_modules/esbuild | head -1); rm -rf node_modules/esbuild; ln -s "${ESB#node_modules/}" node_modules/esbuild`.
 - API reports are a REQUIRED CI gate (`API Extractor — report freshness`); Tasks 1, 2 regenerate them — keep them fresh in the same commit as the surface change.
 - Boolean display for non-boolean cell values: `Boolean(value)` coercion is the shipped behavior (spec §4.6's `format` fallback nuance is out — YAGNI'd to coercion; the spec's cut list governs).
+- Number-editor steppers must preventDefault on mousedown — focus moving to the button blur-commits the edit in Chromium.

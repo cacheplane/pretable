@@ -35,7 +35,11 @@ export function NumberCellEditor({ input }: { input: PretableEditorInput }) {
           fieldProps.onKeyDown(e);
         }}
       />
-      <span data-pretable-number-steppers="">
+      {/* keep focus in the input; a focused stepper would blur-commit the edit */}
+      <span
+        data-pretable-number-steppers=""
+        onMouseDown={(e) => e.preventDefault()}
+      >
         <button
           type="button"
           tabIndex={-1}

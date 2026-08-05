@@ -64,6 +64,15 @@ describe("NumberCellEditor (via dispatcher)", () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
+  it("stepper mousedown is default-prevented so the input never blurs (Chromium)", () => {
+    render(<CellEditor input={makeInput()} />);
+    const notPrevented = fireEvent.mouseDown(
+      screen.getByRole("button", { name: /increment/i }),
+    );
+    // fireEvent returns false when preventDefault was called
+    expect(notPrevented).toBe(false);
+  });
+
   it("still commits on Enter (shared chrome intact)", () => {
     const commit = vi.fn();
     render(<CellEditor input={makeInput({ commit })} />);
