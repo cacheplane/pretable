@@ -59,7 +59,7 @@ export interface PretableEditState {
 }
 
 /** @public */
-export type FilterType = "text" | "number" | "date" | "enum";
+export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 /** @public */
 export type FilterOperator =
@@ -99,7 +99,7 @@ export interface ColumnFilter {
 }
 
 /** @public */
-export interface FilterOption {
+export interface ColumnOption {
   value: string;
   label?: string;
 }
@@ -116,9 +116,11 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   widthPx?: number;
   pinned?: "left";
   sortable?: boolean;
+  /** Number-editor increment for ArrowUp/Down and steppers. Default 1. */
+  step?: number;
   filterable?: boolean;
-  filterType?: FilterType;
-  filterOptions?: FilterOption[];
+  type?: ColumnType;
+  options?: ColumnOption[];
   value?: (row: TRow) => unknown;
   format?: (input: PretableFormatInput<TRow>) => string;
   // new in sub-project C:

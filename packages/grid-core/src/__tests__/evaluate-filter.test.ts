@@ -4,9 +4,9 @@ import type { ColumnFilter } from "../types";
 
 const ev = (
   cell: unknown,
-  filterType: "text" | "number" | "date" | "enum",
+  type: "text" | "number" | "date" | "enum",
   f: ColumnFilter,
-) => evaluateFilter(cell, filterType, f.operator, f.value);
+) => evaluateFilter(cell, type, f.operator, f.value);
 
 describe("evaluateFilter — text", () => {
   it("contains / notContains are case-insensitive", () => {

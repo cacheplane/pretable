@@ -27,14 +27,14 @@ type Bug = {
 };
 
 const columns: PretableColumn<Bug>[] = [
-  { id: "title", header: "Title", widthPx: 200, filterType: "text" },
+  { id: "title", header: "Title", widthPx: 200, type: "text" },
   {
     id: "severity",
     header: "Severity",
     widthPx: 140,
-    filterType: "enum",
+    type: "enum",
   },
-  { id: "count", header: "Count", widthPx: 120, filterType: "number" },
+  { id: "count", header: "Count", widthPx: 120, type: "number" },
   // Non-filterable column: no funnel should render.
   {
     id: "internal",
@@ -227,7 +227,7 @@ describe("PretableSurface — built-in filter funnel", () => {
     expect(ids).toEqual(["b1", "b3"]);
   });
 
-  it("enum options come from distinctColumnValues when filterOptions is absent", () => {
+  it("enum options come from distinctColumnValues when options is absent", () => {
     const view = renderSurface();
 
     fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));

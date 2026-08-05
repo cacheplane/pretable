@@ -95,6 +95,30 @@ describe("cell edit controller", () => {
     });
   });
 
+  it("rejects a non-numeric draft for a number column via built-in parsing", async () => {
+    const onCellEdit = vi.fn();
+    const { grid, controller } = setup({ type: "number" }, onCellEdit);
+    await controller.begin({ rowId: "r1", columnId: "name" });
+    grid.setEditDraft("abc");
+    await controller.commit("down");
+    expect(grid.getSnapshot().editing).toMatchObject({
+      status: "editing",
+      error: "Not a number",
+    });
+    expect(onCellEdit).not.toHaveBeenCalled();
+  });
+
+  it("commits a parsed number (and null for empty) for number columns", async () => {
+    const onCellEdit = vi.fn().mockResolvedValue(undefined);
+    const { grid, controller } = setup({ type: "number" }, onCellEdit);
+    await controller.begin({ rowId: "r1", columnId: "name" });
+    grid.setEditDraft("42.5");
+    await controller.commit("down");
+    expect(onCellEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ value: 42.5 }),
+    );
+  });
+
   it("drops a stale async-editable resolution after cancel (staleness guard)", async () => {
     let resolve!: (v: boolean) => void;
     const { grid, controller } = setup({

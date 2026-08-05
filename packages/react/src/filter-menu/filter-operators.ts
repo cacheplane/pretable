@@ -1,5 +1,10 @@
 // packages/react/src/filter-menu/filter-operators.ts
-import type { ColumnFilter, FilterOperator, FilterType } from "@pretable/core";
+import type {
+  ColumnFilter,
+  ColumnOption,
+  ColumnType,
+  FilterOperator,
+} from "@pretable/core";
 
 /** Local editing shape for the popover. One field set per value-shape. */
 export interface FilterDraft {
@@ -33,13 +38,13 @@ const DATE_OPS: FilterOperator[] = ["on", "before", "after", "dateBetween"];
 const ENUM_OPS: FilterOperator[] = ["isAnyOf", "isNoneOf"];
 const SHARED_OPS: FilterOperator[] = ["isEmpty", "isNotEmpty"];
 
-export function operatorsForType(type: FilterType): FilterOperator[] {
+export function operatorsForType(type: ColumnType): FilterOperator[] {
   const base =
     type === "number"
       ? NUMBER_OPS
       : type === "date"
         ? DATE_OPS
-        : type === "enum"
+        : type === "enum" || type === "boolean"
           ? ENUM_OPS
           : TEXT_OPS;
   return [...base, ...SHARED_OPS];
@@ -78,7 +83,7 @@ export function operatorValueShape(op: FilterOperator): ValueShape {
   return "single";
 }
 
-export function defaultDraft(type: FilterType): FilterDraft {
+export function defaultDraft(type: ColumnType): FilterDraft {
   const operator = operatorsForType(type)[0]!;
   if (operatorValueShape(operator) === "set") return { operator, selected: [] };
   if (operatorValueShape(operator) === "range")
@@ -89,7 +94,7 @@ export function defaultDraft(type: FilterType): FilterDraft {
 const isNum = (s: string | undefined): s is string =>
   s !== undefined && s.trim() !== "" && !Number.isNaN(Number(s));
 
-export function isComplete(type: FilterType, d: FilterDraft): boolean {
+export function isComplete(type: ColumnType, d: FilterDraft): boolean {
   const shape = operatorValueShape(d.operator);
   if (shape === "none") return true;
   if (shape === "set") return (d.selected?.length ?? 0) > 0;
@@ -103,7 +108,7 @@ export function isComplete(type: FilterType, d: FilterDraft): boolean {
 }
 
 export function toColumnFilter(
-  type: FilterType,
+  type: ColumnType,
   d: FilterDraft,
 ): ColumnFilter | null {
   const shape = operatorValueShape(d.operator);
@@ -121,7 +126,7 @@ export function toColumnFilter(
 }
 
 export function fromColumnFilter(
-  type: FilterType,
+  type: ColumnType,
   filter: ColumnFilter | null,
 ): FilterDraft {
   if (!filter) return defaultDraft(type);
@@ -141,4 +146,22 @@ export function fromColumnFilter(
     operator,
     text: value === null || value === undefined ? "" : String(value),
   };
+}
+
+const BOOLEAN_OPTIONS: ColumnOption[] = [
+  { value: "true", label: "True" },
+  { value: "false", label: "False" },
+];
+
+/**
+ * The option set a column's enum-style UI should offer. Boolean columns get
+ * implicit True/False; enum columns use their declared options, falling back
+ * to the caller-supplied distinct values.
+ */
+export function resolveColumnOptions(
+  column: { type?: ColumnType; options?: ColumnOption[] },
+  distinctValues: () => string[],
+): ColumnOption[] {
+  if (column.type === "boolean") return BOOLEAN_OPTIONS;
+  return column.options ?? distinctValues().map((value) => ({ value }));
 }

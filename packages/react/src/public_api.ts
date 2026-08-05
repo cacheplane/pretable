@@ -60,8 +60,8 @@ export type { DensityHeights } from "@pretable/ui";
 export type {
   ColumnFilter,
   FilterOperator,
-  FilterOption,
-  FilterType,
+  ColumnOption,
+  ColumnType,
   FilterValue,
   PretableEditInput,
   PretableEditState,

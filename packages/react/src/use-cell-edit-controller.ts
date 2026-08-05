@@ -9,6 +9,8 @@ import type {
   PretableRow,
 } from "@pretable/core";
 
+import { parseDraftForType } from "./editors/type-parsing";
+
 export interface CellEditController {
   begin(addr: PretableCellAddress, initialDraft?: unknown): Promise<void>;
   commit(moveDirection?: PretableFocusDirection): Promise<void>;
@@ -85,9 +87,17 @@ export function createCellEditController<TRow extends PretableRow>(
       if (!input) return;
       const myToken = (token += 1);
       const draft = editing.draft;
-      const value = input.column.parseEditValue
-        ? input.column.parseEditValue(String(draft ?? ""), input)
-        : draft;
+      let value: unknown;
+      if (input.column.parseEditValue) {
+        value = input.column.parseEditValue(String(draft ?? ""), input);
+      } else {
+        const parsed = parseDraftForType(input.column, draft);
+        if (!parsed.ok) {
+          grid.markEditInvalid(parsed.message);
+          return;
+        }
+        value = parsed.value;
+      }
 
       if (input.column.validate) {
         grid.markEditValidating();

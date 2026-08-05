@@ -446,8 +446,8 @@ interface OpRow {
 }
 
 const opColumns = [
-  { id: "status", header: "Status", filterType: "enum" as const },
-  { id: "priority", header: "Priority", filterType: "number" as const },
+  { id: "status", header: "Status", type: "enum" as const },
+  { id: "priority", header: "Priority", type: "number" as const },
 ] as const;
 
 const opRows: OpRow[] = [
@@ -523,7 +523,7 @@ describe("grid-core — filter operators", () => {
 
   test("isEmpty / isNotEmpty operate without an operand", () => {
     const grid = createGridCore({
-      columns: [{ id: "note", header: "Note", filterType: "text" as const }],
+      columns: [{ id: "note", header: "Note", type: "text" as const }],
       rows: [
         { id: "a", note: "hi" },
         { id: "b", note: "" },
@@ -565,7 +565,7 @@ describe("grid-core — filter operators", () => {
         {
           id: "team",
           header: "Team",
-          filterType: "enum" as const,
+          type: "enum" as const,
           value: (row) => `${row.org}/${row.squad}`,
         },
       ],

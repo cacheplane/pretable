@@ -62,12 +62,14 @@ export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
+import { BooleanCellControl } from "./editors/BooleanCellControl";
 import {
   FilterMenu,
   FunnelButton,
   popoverStyle,
   useFilterPopover,
 } from "./filter-menu";
+import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
@@ -623,6 +625,37 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     ),
   });
 
+  // Boolean cells toggle-and-commit directly through the edit lifecycle (no
+  // popover): begin seeds the negated value as the draft, commit runs the
+  // usual parse/validate/onCellEdit path (async `editable` gates and staleness
+  // tokens all apply).
+  const toggleBooleanCell = async (
+    rowId: string,
+    column: PretableColumn<TRow>,
+  ) => {
+    if (!column.editable) return;
+    const editing = grid.getSnapshot().editing;
+    if (editing) {
+      // A FAILED edit on this same cell (validate reject leaves status
+      // "editing" with error set; onCellEdit throw leaves status "error") is
+      // cancelled so the click becomes a fresh toggle attempt. Anything
+      // in-flight — including a just-begun edit from a rapid double-click
+      // (status "editing", no error) — or another cell's edit still bails.
+      const failedHere =
+        editing.rowId === rowId &&
+        editing.columnId === column.id &&
+        (editing.status === "error" ||
+          (editing.status === "editing" && editing.error != null));
+      if (!failedHere) return;
+      editController.cancel();
+    }
+    const row = editVisibleRowsRef.current.find((r) => r.id === rowId)?.row;
+    if (!row) return;
+    const current = Boolean(resolveCellValue(row, column));
+    await editController.begin({ rowId, columnId: column.id }, !current);
+    await editController.commit();
+  };
+
   // Built-in column filter menu: one open-state for the whole surface.
   const {
     openState: filterOpenState,
@@ -1004,7 +1037,19 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         // (typing, arrows, Home/End, Cmd+A) must drive the input, not the grid,
         // so bail before any copy/select/navigation handling. Do NOT
         // preventDefault — the input still needs default text behavior.
+        // EXCEPTION: boolean edits have no editor input mounted (the cell
+        // control commits directly), so nothing else can handle Escape after a
+        // failed commit — cancel here or the failed edit is a dead-end.
         if (snapshot.editing) {
+          if (event.key === "Escape" || event.key === "Esc") {
+            const editingColumn = effectiveColumns.find(
+              (c) => c.id === snapshot.editing?.columnId,
+            );
+            if (editingColumn?.type === "boolean") {
+              editController.cancel();
+              event.preventDefault();
+            }
+          }
           return;
         }
 
@@ -1074,14 +1119,32 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             : undefined;
           if (focusAddr && focusedColumn?.editable) {
             const cmd = event.metaKey || event.ctrlKey;
-            if (event.key === "Enter" || event.key === "F2") {
+            // Editable boolean columns toggle in place on Enter/Space; no
+            // popover editing ever applies (F2/type-to-replace included).
+            // Non-editable boolean columns skip this whole block, so
+            // Enter/Space keep their row-selection behavior untouched.
+            if (focusedColumn.type === "boolean") {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                void toggleBooleanCell(focusAddr.rowId, focusedColumn);
+                return;
+              }
+              if (event.key === "F2") {
+                event.preventDefault();
+                return;
+              }
+              // Everything else (arrows, shortcuts) falls through to normal
+              // grid handling — printable keys must not seed a popover draft.
+            } else if (event.key === "Enter" || event.key === "F2") {
               event.preventDefault();
               void editController.begin(focusAddr);
               return;
             }
             // type-to-replace: a single printable, non-whitespace character
-            // seeds the draft. Space is reserved for row selection.
+            // seeds the draft. Space is reserved for row selection. Never
+            // applies to boolean columns (no popover draft to seed).
             if (
+              focusedColumn.type !== "boolean" &&
               event.key.length === 1 &&
               event.key !== " " &&
               !cmd &&
@@ -1793,6 +1856,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     onDoubleClick={() => {
                       if (column.id === ROW_SELECT_COLUMN_ID) return;
+                      // Boolean cells never popover-edit; the control's own
+                      // click toggles (a hidden begin() here would strand an
+                      // active edit with no editor rendered).
+                      if (column.type === "boolean") return;
                       if (column.editable) {
                         void editController.begin({
                           rowId: id,
@@ -1890,7 +1957,37 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     tabIndex={cellIsFocused ? 0 : -1}
                   >
-                    {cellEdit ? (
+                    {column.type === "boolean" && !isRowSelectCell ? (
+                      // Boolean cells render the toggle control instead of
+                      // cell content AND instead of the CellEditor popover —
+                      // an active boolean edit shows as the busy control. A
+                      // failed commit (validate reject / onCellEdit throw)
+                      // renders the same error element CellEditor uses, since
+                      // this branch always wins over the popover branch.
+                      <>
+                        <BooleanCellControl
+                          checked={Boolean(value)}
+                          editable={Boolean(column.editable)}
+                          status={cellEdit ? cellEdit.status : null}
+                          errorId={
+                            cellEdit?.error
+                              ? `pretable-edit-error-${id}-${column.id}`
+                              : undefined
+                          }
+                          label={column.header ?? column.id}
+                          onToggle={() => void toggleBooleanCell(id, column)}
+                        />
+                        {cellEdit?.error ? (
+                          <div
+                            id={`pretable-edit-error-${id}-${column.id}`}
+                            data-pretable-edit-error
+                            role="alert"
+                          >
+                            {cellEdit.error}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : cellEdit ? (
                       <CellEditor
                         input={
                           {
@@ -2035,17 +2132,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               (c) => c.id === filterOpenState.columnId,
             );
             if (!col) return null;
-            const options =
-              col.filterOptions ??
-              grid
-                .distinctColumnValues(filterOpenState.columnId)
-                .map((v) => ({ value: v }));
+            const options = resolveColumnOptions(col, () =>
+              grid.distinctColumnValues(filterOpenState.columnId),
+            );
             return (
               <FilterMenu
                 key={filterOpenState.columnId}
                 columnId={filterOpenState.columnId}
                 label={col.header ?? filterOpenState.columnId}
-                filterType={col.filterType ?? "text"}
+                type={col.type ?? "text"}
                 options={options}
                 initialFilter={
                   snapshot.filters[filterOpenState.columnId] ?? null

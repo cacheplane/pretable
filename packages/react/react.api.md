@@ -17,6 +17,17 @@ export interface ColumnFilter {
     value?: FilterValue;
 }
 
+// @public (undocumented)
+export interface ColumnOption {
+    // (undocumented)
+    label?: string;
+    // (undocumented)
+    value: string;
+}
+
+// @public (undocumented)
+export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
+
 // @public
 export interface CopyPayload {
     // (undocumented)
@@ -38,17 +49,6 @@ export interface DensityHeights {
 
 // @public (undocumented)
 export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith" | "gt" | "gte" | "lt" | "lte" | "between" | "isAnyOf" | "isNoneOf" | "on" | "before" | "after" | "dateBetween" | "isEmpty" | "isNotEmpty";
-
-// @public (undocumented)
-export interface FilterOption {
-    // (undocumented)
-    label?: string;
-    // (undocumented)
-    value: string;
-}
-
-// @public (undocumented)
-export type FilterType = "text" | "number" | "date" | "enum";
 
 // @public (undocumented)
 export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;

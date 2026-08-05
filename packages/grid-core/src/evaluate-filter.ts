@@ -1,7 +1,7 @@
 import type {
   ColumnFilter,
   FilterOperator,
-  FilterType,
+  ColumnType,
   FilterValue,
 } from "./types";
 
@@ -35,20 +35,20 @@ function toDayMs(input: unknown): number {
 }
 
 /**
- * Pure per-operator filter match. Evaluation is keyed on `filterType` (not the
+ * Pure per-operator filter match. Evaluation is keyed on `type` (not the
  * operator name), so `equals` means string-equality for text and numeric-equality
  * for number. An operator outside the column's family returns false (no match).
  */
 export function evaluateFilter(
   cell: unknown,
-  filterType: FilterType,
+  type: ColumnType,
   operator: FilterOperator,
   value: FilterValue | undefined,
 ): boolean {
   if (operator === "isEmpty") return isEmptyCell(cell);
   if (operator === "isNotEmpty") return !isEmptyCell(cell);
 
-  switch (filterType) {
+  switch (type) {
     case "number": {
       const n = typeof cell === "number" ? cell : Number(cell);
       if (Number.isNaN(n)) return false;
@@ -100,6 +100,7 @@ export function evaluateFilter(
           return false;
       }
     }
+    case "boolean":
     case "enum": {
       const c = String(cell);
       const set = Array.isArray(value) ? value.map(String) : [];

@@ -28,7 +28,7 @@ function renderMenu(over: Partial<Props> = {}) {
   const props: Props = {
     columnId: "c",
     label: "Name",
-    filterType: "text",
+    type: "text",
     options: [],
     initialFilter: null,
     onChange,
@@ -54,7 +54,7 @@ describe("FilterMenu — dialog basics", () => {
   });
 
   it("defaults a text column to the `contains` operator", () => {
-    renderMenu({ filterType: "text" });
+    renderMenu({ type: "text" });
     const select = screen.getByRole("combobox", {
       name: "Filter operator",
     }) as HTMLSelectElement;
@@ -64,7 +64,7 @@ describe("FilterMenu — dialog basics", () => {
 
 describe("FilterMenu — text live-apply (debounced)", () => {
   it("debounces typing then fires onChange with the contains filter", async () => {
-    const { onChange } = renderMenu({ filterType: "text" });
+    const { onChange } = renderMenu({ type: "text" });
     const input = screen.getByRole("textbox", { name: "Filter value" });
 
     act(() => {
@@ -85,7 +85,7 @@ describe("FilterMenu — text live-apply (debounced)", () => {
 
 describe("FilterMenu — operator switch", () => {
   it("switching to isEmpty hides the value input and applies immediately", () => {
-    const { onChange } = renderMenu({ filterType: "text" });
+    const { onChange } = renderMenu({ type: "text" });
     const select = screen.getByRole("combobox", { name: "Filter operator" });
 
     act(() => {
@@ -99,7 +99,7 @@ describe("FilterMenu — operator switch", () => {
 
 describe("FilterMenu — number between gating", () => {
   it("clears when only min is set, applies when both bounds present", async () => {
-    const { onChange } = renderMenu({ filterType: "number" });
+    const { onChange } = renderMenu({ type: "number" });
     const select = screen.getByRole("combobox", { name: "Filter operator" });
 
     act(() => {
@@ -135,7 +135,7 @@ describe("FilterMenu — number between gating", () => {
 describe("FilterMenu — enum set", () => {
   it("renders options as checkboxes; checking applies, unchecking all clears", () => {
     const { onChange } = renderMenu({
-      filterType: "enum",
+      type: "enum",
       options: [
         { value: "a", label: "Alpha" },
         { value: "b", label: "Beta" },
@@ -175,7 +175,7 @@ describe("FilterMenu — enum set", () => {
 describe("FilterMenu — clear", () => {
   it("Clear button fires onChange(id, null)", () => {
     const { onChange } = renderMenu({
-      filterType: "text",
+      type: "text",
       initialFilter: { operator: "contains", value: "ada" },
     });
     const clear = screen.getByRole("button", { name: "Clear" });
@@ -189,7 +189,7 @@ describe("FilterMenu — clear", () => {
 describe("FilterMenu — hydrate from initialFilter", () => {
   it("seeds the operator and value from an existing filter", () => {
     renderMenu({
-      filterType: "text",
+      type: "text",
       initialFilter: { operator: "startsWith", value: "Ad" },
     });
     const select = screen.getByRole("combobox", {
@@ -204,7 +204,7 @@ describe("FilterMenu — hydrate from initialFilter", () => {
 
 describe("FilterMenu — date single applies immediately", () => {
   it("date input applies without waiting for the debounce", () => {
-    const { onChange } = renderMenu({ filterType: "date" });
+    const { onChange } = renderMenu({ type: "date" });
     const select = screen.getByRole("combobox", { name: "Filter operator" });
     act(() => {
       fireEvent.change(select, { target: { value: "before" } });
@@ -248,7 +248,7 @@ describe("FilterMenu — flush on unmount", () => {
         <FilterMenu
           columnId="c"
           label="Name"
-          filterType="text"
+          type="text"
           options={[]}
           initialFilter={null}
           onChange={onChange}
