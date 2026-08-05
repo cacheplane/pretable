@@ -1,0 +1,50 @@
+import { spawn as nodeSpawn } from "node:child_process";
+
+import { runPublishPreflight } from "./publish-preflight.mjs";
+
+export function spawnChangesetsPublish({ spawn = nodeSpawn } = {}) {
+  return new Promise((resolve, reject) => {
+    let child;
+
+    try {
+      child = spawn("pnpm", ["exec", "changeset", "publish"], {
+        shell: false,
+        stdio: "inherit",
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    child.once("error", reject);
+    child.once("exit", (exitCode, signal) => {
+      if (signal) {
+        const error = new Error(`Changesets publish terminated by ${signal}`);
+        error.exitCode = exitCode;
+        error.signal = signal;
+        reject(error);
+        return;
+      }
+
+      if (exitCode !== 0) {
+        const error = new Error(
+          `Changesets publish exited with code ${String(exitCode)}`,
+        );
+        error.exitCode = exitCode;
+        error.signal = signal;
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+export async function publishPublicPackages({
+  preflight = runPublishPreflight,
+  spawnPublish = spawnChangesetsPublish,
+} = {}) {
+  await preflight();
+  await spawnPublish();
+}

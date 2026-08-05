@@ -89,6 +89,19 @@ jobs:
       - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' --filter '@pretable/stream-adapter' --filter '@pretable/ui' build
       - run: pnpm lint:packaging
 
+  publish-preflight:
+    name: Publish preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm publish:preflight
+
   api-report:
     name: API Extractor — report freshness
     runs-on: ubuntu-latest
@@ -106,7 +119,17 @@ jobs:
 
   deploy-prod:
     name: Deploy → Vercel (production)
-    needs: [test, typecheck, lint, format, build, packaging, api-report]
+    needs:
+      [
+        test,
+        typecheck,
+        lint,
+        format,
+        build,
+        packaging,
+        publish-preflight,
+        api-report,
+      ]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     # Required GitHub secrets:
@@ -166,7 +189,17 @@ jobs:
 
   deploy-preview:
     name: Deploy → Vercel (preview)
-    needs: [test, typecheck, lint, format, build, packaging, api-report]
+    needs:
+      [
+        test,
+        typecheck,
+        lint,
+        format,
+        build,
+        packaging,
+        publish-preflight,
+        api-report,
+      ]
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'pull_request' &&
