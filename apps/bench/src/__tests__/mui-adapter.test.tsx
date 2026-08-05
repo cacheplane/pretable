@@ -40,7 +40,7 @@ function filterPlan(
     resultRowCount: 0,
     rows: [],
     selectedRowId: null,
-    sort: null,
+    sort: [],
   };
 }
 

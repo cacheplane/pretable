@@ -1,4 +1,4 @@
-import type { ColumnFilter } from "@pretable/react";
+import type { ColumnFilter, PretableSortEntry } from "@pretable/react";
 import type {
   ScenarioDataset,
   ScenarioRow,
@@ -14,10 +14,8 @@ export interface BenchInteractionPlan {
   resultRowCount: number;
   rows: readonly ScenarioRow[];
   selectedRowId: string | null;
-  sort: {
-    columnId: string;
-    direction: "asc" | "desc";
-  } | null;
+  /** Ordered multi-sort entry list; `[]` = unsorted. */
+  sort: PretableSortEntry[];
 }
 
 const SORT_COLUMN_ID = "col_3";
@@ -47,10 +45,12 @@ export function createBenchInteractionPlan(
       resultRowCount: rows.length,
       rows,
       selectedRowId: probeRowId,
-      sort: {
-        columnId: SORT_COLUMN_ID,
-        direction: "desc",
-      },
+      sort: [
+        {
+          columnId: SORT_COLUMN_ID,
+          direction: "desc",
+        },
+      ],
     };
   }
 
@@ -76,7 +76,7 @@ export function createBenchInteractionPlan(
       resultRowCount: rows.length,
       rows,
       selectedRowId: probeRowId,
-      sort: null,
+      sort: [],
     };
   }
 
@@ -102,7 +102,7 @@ export function createBenchInteractionPlan(
       resultRowCount: rows.length,
       rows,
       selectedRowId: probeRowId,
-      sort: null,
+      sort: [],
     };
   }
 

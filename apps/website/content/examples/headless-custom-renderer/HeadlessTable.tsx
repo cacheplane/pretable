@@ -29,16 +29,15 @@ export function HeadlessTable() {
       .map((r) => r.startRowId),
   );
 
+  // snapshot.sort is an ordered PretableSortEntry[] (index = priority). This
+  // renderer keeps a single-column asc → desc → none cycle, so it only ever
+  // reads/writes one entry via setSort (which replaces the whole list).
   const toggleSort = (columnId: string) => {
-    const current = snapshot.sort;
+    const current = snapshot.sort.find(
+      (entry) => entry.columnId === columnId,
+    );
     const next: PretableSortDirection =
-      current.columnId !== columnId
-        ? "asc"
-        : current.direction === "asc"
-          ? "desc"
-          : current.direction === "desc"
-            ? null
-            : "asc";
+      current === undefined ? "asc" : current.direction === "asc" ? "desc" : null;
     grid.setSort(next ? columnId : null, next);
   };
 
@@ -62,24 +61,27 @@ export function HeadlessTable() {
       <table>
         <thead>
           <tr>
-            {columns.map((c) => (
-              <th key={c.id} scope="col">
-                {c.sortable ? (
-                  <button type="button" onClick={() => toggleSort(c.id)}>
-                    {c.header ?? c.id}
-                    {snapshot.sort.columnId === c.id
-                      ? snapshot.sort.direction === "asc"
-                        ? " ▲"
-                        : snapshot.sort.direction === "desc"
-                          ? " ▼"
-                          : ""
-                      : ""}
-                  </button>
-                ) : (
-                  (c.header ?? c.id)
-                )}
-              </th>
-            ))}
+            {columns.map((c) => {
+              const sortEntry = snapshot.sort.find(
+                (entry) => entry.columnId === c.id,
+              );
+              return (
+                <th key={c.id} scope="col">
+                  {c.sortable ? (
+                    <button type="button" onClick={() => toggleSort(c.id)}>
+                      {c.header ?? c.id}
+                      {sortEntry
+                        ? sortEntry.direction === "asc"
+                          ? " ▲"
+                          : " ▼"
+                        : ""}
+                    </button>
+                  ) : (
+                    (c.header ?? c.id)
+                  )}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>

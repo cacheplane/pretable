@@ -138,13 +138,15 @@ export function MuiAdapter({
     const api = apiRef.current;
     if (!api || !interactionPlan) return;
 
-    if (interactionPlan.mode === "sort" && interactionPlan.sort) {
-      api.setSortModel([
-        {
-          field: interactionPlan.sort.columnId,
-          sort: interactionPlan.sort.direction,
-        },
-      ]);
+    if (interactionPlan.mode === "sort" && interactionPlan.sort.length > 0) {
+      // MUI's GridSortModel is already an ordered array — entry-list order
+      // maps 1:1 onto sort-model priority.
+      api.setSortModel(
+        interactionPlan.sort.map((entry) => ({
+          field: entry.columnId,
+          sort: entry.direction,
+        })),
+      );
       return;
     }
 

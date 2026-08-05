@@ -123,14 +123,15 @@ export function AgGridAdapter({
     const api = apiRef.current;
     if (!api || !interactionPlan) return;
 
-    if (interactionPlan.mode === "sort" && interactionPlan.sort) {
+    if (interactionPlan.mode === "sort" && interactionPlan.sort.length > 0) {
+      // AG Grid's multi-sort priority lives in ColumnState.sortIndex;
+      // the entry list's index is the priority, so map it straight across.
       api.applyColumnState({
-        state: [
-          {
-            colId: interactionPlan.sort.columnId,
-            sort: interactionPlan.sort.direction,
-          },
-        ],
+        state: interactionPlan.sort.map((entry, index) => ({
+          colId: entry.columnId,
+          sort: entry.direction,
+          sortIndex: index,
+        })),
         defaultState: { sort: null },
       });
       return;
