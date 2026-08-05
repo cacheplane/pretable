@@ -120,7 +120,7 @@ function OrdersGrid() {
 }
 ```
 
-Because you own the map, you can seed initial filters (as above), clear everything with `setFilters({})`, or drive filters from UI of your own — the built-in menu reflects whatever you pass down.
+Because you own the map, you can seed initial filters (as above), clear everything with `setFilters({})`, or drive filters from UI of your own — the funnels and, on open, the menu reflect whatever you pass down. (An already-open menu keeps its in-progress draft; it re-reads the controlled value the next time it opens.)
 
 <Callout type="note">
   `onFiltersChange` and `state` are `<PretableSurface>` props. The drop-in
