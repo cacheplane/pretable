@@ -35,7 +35,8 @@ function ColumnLayoutGridLive() {
     <>
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="font-mono text-[13px] text-text-secondary">
-          drag a column border to resize · drag a header to reorder
+          drag a column border to resize · drag a header to reorder · the note
+          column is pinned right
         </p>
         <button
           type="button"

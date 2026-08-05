@@ -302,4 +302,59 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   await expect
     .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
     .toBeLessThan(widthBefore + 20);
+
+  // --- Right-pinned column stays glued to the viewport's right edge ---
+  // The showcase's "Analyst note" column is pinned right, and the column set is
+  // wider than the container, so there is real horizontal scroll to exercise.
+  const layoutViewport = layout.locator("[data-pretable-scroll-viewport]");
+  const noteCell = layout.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="note"]',
+  );
+  // `qty` is a plain scrollable column that stays rendered at both scroll
+  // extremes — it is the control that proves the scroll actually moved content.
+  const qtyCell = layout.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="qty"]',
+  );
+  await expect(noteCell).toHaveAttribute("data-pretable-pinned", "right");
+
+  // Measure in one reference frame: the scrollport's inner right edge (client
+  // box, so a classic scrollbar is excluded — that is what `right: 0` resolves
+  // against) versus the pinned cell's right edge.
+  const measure = async () => {
+    const viewport = await layoutViewport.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        innerRight: rect.left + el.clientLeft + el.clientWidth,
+        scrollLeft: el.scrollLeft,
+        maxScrollLeft: el.scrollWidth - el.clientWidth,
+      };
+    });
+    const noteRight = await noteCell.evaluate(
+      (el) => el.getBoundingClientRect().right,
+    );
+    const qtyLeft = await qtyCell.evaluate(
+      (el) => el.getBoundingClientRect().left,
+    );
+    return { ...viewport, noteRight, qtyLeft };
+  };
+
+  const before = await measure();
+  expect(before.scrollLeft).toBe(0);
+  expect(before.maxScrollLeft).toBeGreaterThan(60);
+  expect(Math.abs(before.noteRight - before.innerRight)).toBeLessThan(2);
+
+  await layoutViewport.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth - el.clientWidth;
+  });
+  await expect
+    .poll(async () => await layoutViewport.evaluate((el) => el.scrollLeft))
+    .toBeGreaterThan(60);
+
+  const after = await measure();
+  // The unpinned control column moved left by exactly the scroll distance...
+  expect(
+    Math.abs(before.qtyLeft - after.qtyLeft - after.scrollLeft),
+  ).toBeLessThan(2);
+  // ...while the right-pinned cell did not move off the viewport's right edge.
+  expect(Math.abs(after.noteRight - after.innerRight)).toBeLessThan(2);
 });

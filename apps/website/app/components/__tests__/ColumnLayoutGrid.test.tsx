@@ -43,4 +43,28 @@ describe("ColumnLayoutGrid", () => {
       expect(screen.getByText("Symbol")).toBeInTheDocument();
     });
   });
+
+  it("renders the analyst note column pinned right", async () => {
+    const { container } = render(<ColumnLayoutGrid />);
+    await waitFor(() => {
+      expect(screen.getByText("Symbol")).toBeInTheDocument();
+    });
+
+    const noteCells = container.querySelectorAll(
+      '[data-pretable-cell][data-pretable-column-id="note"]',
+    );
+    expect(noteCells.length).toBeGreaterThan(0);
+    for (const cell of noteCells) {
+      expect(cell).toHaveAttribute("data-pretable-pinned", "right");
+      // Last column in the grid → flush against the viewport's right edge.
+      expect((cell as HTMLElement).style.position).toBe("sticky");
+      expect((cell as HTMLElement).style.right).toBe("0px");
+    }
+
+    // No other column is pinned.
+    expect(
+      container.querySelectorAll("[data-pretable-cell][data-pretable-pinned]")
+        .length,
+    ).toBe(noteCells.length);
+  });
 });
