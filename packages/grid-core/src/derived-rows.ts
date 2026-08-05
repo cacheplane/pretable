@@ -4,7 +4,7 @@ import type {
   PretableGridOptions,
   PretableRow,
   PretableVisibleRow,
-  PretableSortState,
+  PretableSortEntry,
 } from "./types";
 import { evaluateFilter, isFilterActive } from "./evaluate-filter";
 
@@ -28,7 +28,7 @@ export function deriveVisibleRows<TRow extends PretableRow>(input: {
   columns: PretableColumn<TRow>[];
   filters: Record<string, ColumnFilter>;
   rows: SourceRow<TRow>[];
-  sort: PretableSortState;
+  sort: PretableSortEntry[];
 }): PretableVisibleRow<TRow>[] {
   const resolvedFilters = resolveFilters(input.columns, input.filters);
   const filtered = input.rows.filter((entry) =>
@@ -91,47 +91,49 @@ const collator = new Intl.Collator(undefined, {
   sensitivity: "base",
 });
 
+type SortKey =
+  | { kind: "num"; keys: number[]; multiplier: number }
+  | { kind: "str"; keys: string[]; multiplier: number };
+
 function sortRows<TRow extends PretableRow>(
   rows: SourceRow<TRow>[],
   columns: PretableColumn<TRow>[],
-  sort: PretableSortState,
+  sort: PretableSortEntry[],
 ): SourceRow<TRow>[] {
-  if (!sort.columnId || !sort.direction) {
+  // Precompute per-entry key arrays once — preserves the single-key perf shape.
+  const keys = sort
+    .map((entry): SortKey | null => {
+      const column = columns.find((c) => c.id === entry.columnId);
+      if (!column) return null;
+      const rawKeys = rows.map((r) => readCellValue(r.row, column));
+      const allNumeric = rawKeys.every((v) => typeof v === "number");
+      const multiplier = entry.direction === "asc" ? 1 : -1;
+      return allNumeric
+        ? { kind: "num", keys: rawKeys as number[], multiplier }
+        : {
+            kind: "str",
+            keys: rawKeys.map((v) => String(v ?? "")),
+            multiplier,
+          };
+    })
+    .filter((k): k is SortKey => k !== null);
+
+  if (keys.length === 0) {
     return [...rows];
   }
 
-  const column = columns.find((candidate) => candidate.id === sort.columnId);
-
-  if (!column) {
-    return [...rows];
-  }
-
-  const multiplier = sort.direction === "asc" ? 1 : -1;
-  const rawKeys = rows.map((entry) => readCellValue(entry.row, column));
-  const allNumeric = rawKeys.every((v) => typeof v === "number");
-
-  if (allNumeric) {
-    const numKeys = rawKeys as number[];
-    const indexed = rows.map((_, i) => i);
-
-    indexed.sort((a, b) => {
-      const diff = numKeys[a] - numKeys[b];
-      return diff !== 0
-        ? diff * multiplier
-        : rows[a].sourceIndex - rows[b].sourceIndex;
-    });
-
-    return indexed.map((i) => rows[i]);
-  }
-
-  const strKeys = rawKeys.map((v) => String(v ?? ""));
   const indexed = rows.map((_, i) => i);
-
   indexed.sort((a, b) => {
-    const comparison = collator.compare(strKeys[a], strKeys[b]);
-    return comparison !== 0
-      ? comparison * multiplier
-      : rows[a].sourceIndex - rows[b].sourceIndex;
+    for (const key of keys) {
+      const cmp =
+        key.kind === "num"
+          ? key.keys[a] - key.keys[b]
+          : collator.compare(key.keys[a], key.keys[b]);
+      if (cmp !== 0) {
+        return cmp * key.multiplier;
+      }
+    }
+    return rows[a].sourceIndex - rows[b].sourceIndex;
   });
 
   return indexed.map((i) => rows[i]);
