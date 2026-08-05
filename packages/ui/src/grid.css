@@ -101,6 +101,23 @@
     z-index: 1;
   }
 
+  /* Pinned cells (sticky right) — mirror of the left rule */
+  :where([data-pretable-cell][data-pretable-pinned="right"]) {
+    background: var(--pretable-bg-header);
+    z-index: 1;
+  }
+
+  /* The left-pinned group is bounded by the base cell's border-right; the
+     right-pinned group's boundary is its LEADING edge, so draw the rule on the
+     first right-pinned cell only (avoids doubling up with the previous cell's
+     border-right between two right-pinned columns). */
+  :where(
+    [data-pretable-cell]:not([data-pretable-pinned="right"])
+      + [data-pretable-cell][data-pretable-pinned="right"]
+  ) {
+    border-left: 1px solid var(--pretable-rule);
+  }
+
   /* Selection — wins over zebra/hover via source order (they precede it) */
   :where([data-pretable-cell][data-pretable-selected="true"]) {
     background: var(--pretable-bg-selected);

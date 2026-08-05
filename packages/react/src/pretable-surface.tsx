@@ -53,6 +53,7 @@ import {
   getHeaderCellStyle,
   getHeaderRowStyle,
   getPinnedCellStyle,
+  getPinnedRightCellStyle,
   getRowStyle,
   getScrollContentStyle,
   getViewportStyle,
@@ -244,7 +245,9 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   onSortChange?: (sort: PretableSortEntry[]) => void;
   onColumnWidthsChange?: (next: Record<string, number>) => void;
   onColumnOrderChange?: (next: readonly string[]) => void;
-  onColumnPinnedChange?: (next: Record<string, "left" | null>) => void;
+  onColumnPinnedChange?: (
+    next: Record<string, "left" | "right" | null>,
+  ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   /**
    * Called when the built-in column filter menu mutates the active filter set.
@@ -1255,7 +1258,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
                     ...getPinnedCellStyle(pinnedOffset),
                   }
-                : getHeaderCellStyle(plannedCol.left, plannedCol.width);
+                : plannedCol.pinned === "right" &&
+                    plannedCol.right !== undefined
+                  ? {
+                      ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
+                      ...getPinnedRightCellStyle(plannedCol.right),
+                    }
+                  : getHeaderCellStyle(plannedCol.left, plannedCol.width);
             const visibleRows = snapshot.visibleRows;
             const allFullySelected =
               visibleRows.length > 0 &&
@@ -1277,9 +1286,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 aria-colindex={plannedCol.index + 1}
                 data-pretable-header-cell=""
                 data-pretable-row-select-header=""
-                data-pretable-pinned={
-                  plannedCol.pinned === "left" ? "left" : undefined
-                }
+                data-pretable-pinned={plannedCol.pinned}
                 key={column.id}
                 role="columnheader"
                 style={{
@@ -1350,13 +1357,23 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               sortDirection,
             }) ?? {};
           const pinnedOffset = pinnedOffsets[column.id];
+          // `plannedCol.right` IS the sticky inset for right-pinned columns
+          // (pixels from the viewport's right edge), so no offsets memo is
+          // needed on this side.
+          const pinnedRight =
+            plannedCol.pinned === "right" ? plannedCol.right : undefined;
           const positionStyle =
             plannedCol.pinned === "left" && pinnedOffset !== undefined
               ? {
                   ...getHeaderCellStyle(plannedCol.left, effWidth),
                   ...getPinnedCellStyle(pinnedOffset),
                 }
-              : getHeaderCellStyle(plannedCol.left, effWidth);
+              : pinnedRight !== undefined
+                ? {
+                    ...getHeaderCellStyle(plannedCol.left, effWidth),
+                    ...getPinnedRightCellStyle(pinnedRight),
+                  }
+                : getHeaderCellStyle(plannedCol.left, effWidth);
 
           const ariaSort: "ascending" | "descending" | "none" =
             sortDirection === "asc"
@@ -1375,7 +1392,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   zIndex: 3,
                   left: pinnedOffset + effWidth - 4,
                 }
-              : null;
+              : pinnedRight !== undefined
+                ? {
+                    // The 4px handle hugs the column's TRAILING edge. On the
+                    // left the inset is measured from the leading edge, hence
+                    // `+ effWidth - 4`; `plannedCol.right` already measures the
+                    // trailing edge from the viewport's right edge, and a
+                    // `right` inset positions the box's right edge — so the
+                    // inset is exactly `pinnedRight`.
+                    position: "sticky" as const,
+                    zIndex: 3,
+                    left: "auto" as const,
+                    right: pinnedRight,
+                  }
+                : null;
 
           return [
             <button
@@ -1389,9 +1419,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               })}
               data-pretable-header-cell=""
               data-pretable-column-id={column.id}
-              data-pretable-pinned={
-                plannedCol.pinned === "left" ? "left" : undefined
-              }
+              data-pretable-pinned={plannedCol.pinned}
               key={column.id}
               role="columnheader"
               onClick={(event) => {
@@ -1703,7 +1731,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         zIndex: 5,
                         left: pinnedOffset + effWidth - 22,
                       }
-                    : {}),
+                    : pinnedRight !== undefined
+                      ? {
+                          // The 18px funnel sits immediately left of the 4px
+                          // resize strip: on the left that reads as
+                          // `leading + width - 22`; from the right, the slot's
+                          // right edge is 4px inside the trailing edge, and the
+                          // box grows leftward by its own 18px width — so the
+                          // inset is `pinnedRight + 4` (not `+ 22`, which would
+                          // assume positioning from the leading edge).
+                          position: "sticky" as const,
+                          zIndex: 5,
+                          left: "auto" as const,
+                          right: pinnedRight + 4,
+                        }
+                      : {}),
                 }}
               >
                 <FunnelButton
@@ -1805,13 +1847,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   dragLiveWidth?.columnId === column.id
                     ? dragLiveWidth.width
                     : plannedCol.width;
+                const pinnedRight =
+                  plannedCol.pinned === "right" ? plannedCol.right : undefined;
                 const positionStyle =
                   plannedCol.pinned === "left" && pinnedOffset !== undefined
                     ? {
                         ...getCellStyle(plannedCol.left, cellEffWidth),
                         ...getPinnedCellStyle(pinnedOffset),
                       }
-                    : getCellStyle(plannedCol.left, cellEffWidth);
+                    : pinnedRight !== undefined
+                      ? {
+                          ...getCellStyle(plannedCol.left, cellEffWidth),
+                          ...getPinnedRightCellStyle(pinnedRight),
+                        }
+                      : getCellStyle(plannedCol.left, cellEffWidth);
 
                 const isRowSelectCell = column.id === ROW_SELECT_COLUMN_ID;
                 const rowCheckState: "true" | "false" | "mixed" =
@@ -1829,9 +1878,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     className={getBodyCellClassName?.(bodyInput)}
                     data-pretable-column-id={column.id}
                     data-pretable-focused={cellIsFocused ? "true" : "false"}
-                    data-pretable-pinned={
-                      column.pinned === "left" ? "left" : undefined
-                    }
+                    data-pretable-pinned={column.pinned}
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
                     data-pretable-row-select-cell={
@@ -2648,18 +2695,18 @@ function buildWidthsMap<TRow extends PretableRow>(
 
 function buildPinnedMap<TRow extends PretableRow>(
   grid: PretableGrid<TRow>,
-): Record<string, "left" | null> {
-  const result: Record<string, "left" | null> = {};
+): Record<string, "left" | "right" | null> {
+  const result: Record<string, "left" | "right" | null> = {};
   for (const col of grid.options.columns) {
     if (col.id === ROW_SELECT_COLUMN_ID) continue;
-    result[col.id] = col.pinned === "left" ? "left" : null;
+    result[col.id] = col.pinned ?? null;
   }
   return result;
 }
 
 function pinnedMapsEqual(
-  a: Record<string, "left" | null>,
-  b: Record<string, "left" | null>,
+  a: Record<string, "left" | "right" | null>,
+  b: Record<string, "left" | "right" | null>,
 ): boolean {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);

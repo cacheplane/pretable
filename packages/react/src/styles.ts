@@ -91,3 +91,21 @@ export function getPinnedCellStyle(left: number): CSSProperties {
     zIndex: 1,
   };
 }
+
+/**
+ * Sticky style for a right-pinned cell. `right` is the offset from the
+ * viewport's RIGHT edge (`PlannedColumn.right`): the last right-pinned column
+ * is 0, earlier ones carry the summed width of the right-pinned columns after
+ * them. Mirrors {@link getPinnedCellStyle}'s z-index tier.
+ */
+export function getPinnedRightCellStyle(right: number): CSSProperties {
+  return {
+    // The absolute base style positions from the left; a sticky box with both
+    // insets set is over-constrained (left wins), so drop the left inset.
+    left: "auto",
+    position: "sticky",
+    right,
+    top: 0,
+    zIndex: 1,
+  };
+}

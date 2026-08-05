@@ -80,7 +80,7 @@ export interface PretableSurfaceState {
   sort?: PretableSortEntry[];
   columnWidths?: Record<string, number>;
   columnOrder?: readonly string[];
-  columnPinned?: Record<string, "left" | null>;
+  columnPinned?: Record<string, "left" | "right" | null>;
 }
 
 /**
@@ -266,7 +266,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
       for (const [id, value] of Object.entries(pinned)) {
         const column = grid.options.columns.find((c) => c.id === id);
         if (!column) continue;
-        const targetPinned = value === "left" ? "left" : null;
+        const targetPinned = value ?? null;
         const currentPinned = column.pinned ?? null;
         if (currentPinned !== targetPinned) {
           grid.setColumnPinned(id, targetPinned);
