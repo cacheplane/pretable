@@ -9,6 +9,7 @@ import { runPublishPreflight } from "../publish-preflight.mjs";
 
 async function createFixture(t, { packages, registry = {} }) {
   const rootDir = await mkdtemp(join(tmpdir(), "pretable-publish-preflight-"));
+  t.after(() => rm(rootDir, { force: true, recursive: true }));
 
   await Promise.all(
     packages.map(async (manifest, index) => {
@@ -52,12 +53,12 @@ async function createFixture(t, { packages, registry = {} }) {
     server.listen(0, "127.0.0.1", resolve);
   });
 
-  t.after(async () => {
-    await new Promise((resolve, reject) => {
-      server.close((error) => (error ? reject(error) : resolve()));
-    });
-    await rm(rootDir, { force: true, recursive: true });
-  });
+  t.after(
+    () =>
+      new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      }),
+  );
 
   const address = server.address();
   assert.ok(address && typeof address !== "string");
@@ -103,6 +104,38 @@ test("reports the dependent package, dependency, and missing version", async (t)
   );
 });
 
+test("rejects an optional dependency whose version is missing", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/react", "0.0.2", {
+        optionalDependencies: { "@pretable/ui": "0.0.2" },
+      }),
+    ],
+    registry: { "@pretable/ui": ["0.0.1"] },
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    /@pretable\/react.*@pretable\/ui.*0\.0\.2/,
+  );
+});
+
+test("rejects a peer dependency whose version is missing", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/react", "0.0.2", {
+        peerDependencies: { "@pretable/ui": "0.0.2" },
+      }),
+    ],
+    registry: { "@pretable/ui": ["0.0.1"] },
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    /@pretable\/react.*@pretable\/ui.*0\.0\.2/,
+  );
+});
+
 test("rejects when registry metadata cannot be read", async (t) => {
   const { rootDir, registryUrl } = await createFixture(t, {
     packages: [
@@ -135,6 +168,63 @@ test("accepts an unpublished non-private local dependency in the same batch", as
 
   await assert.doesNotReject(() =>
     runPublishPreflight({ rootDir, registryUrl }),
+  );
+});
+
+test("accepts unpublished exact and range dependencies from the same batch", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/react", "0.0.2", {
+        dependencies: {
+          "@pretable/exact-local": "1.2.3",
+          "@pretable/range-local": "^1.2.0",
+        },
+      }),
+      publicPackage("@pretable/exact-local", "1.2.3"),
+      publicPackage("@pretable/range-local", "1.2.3"),
+    ],
+  });
+
+  await assert.doesNotReject(() =>
+    runPublishPreflight({ rootDir, registryUrl }),
+  );
+});
+
+test("rejects an unpublished local dependency whose version does not satisfy the specification", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/react", "0.0.2", {
+        dependencies: { "@pretable/ui": "1.2.3" },
+      }),
+      publicPackage("@pretable/ui", "1.2.4"),
+    ],
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    /@pretable\/react.*@pretable\/ui.*1\.2\.3/,
+  );
+});
+
+test("rejects a workspace dependency that has no matching local package", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/react", "0.0.2", {
+        dependencies: { "@pretable/ui": "workspace:*" },
+      }),
+    ],
+    registry: { "@pretable/ui": ["1.2.3"] },
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    (error) => {
+      assert.match(error.message, /@pretable\/react/);
+      assert.match(error.message, /@pretable\/ui/);
+      assert.match(error.message, /workspace:\*/);
+      assert.match(error.message, /local/i);
+      return true;
+    },
   );
 });
 
@@ -187,6 +277,22 @@ test("accepts exact, range, and workspace dependency specifications", async (t) 
   );
 });
 
+test("rejects a semantic range with no satisfying registry version", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/react", "0.0.2", {
+        dependencies: { "@pretable/ui": "^1.2.0" },
+      }),
+    ],
+    registry: { "@pretable/ui": ["2.0.0"] },
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    /@pretable\/react.*@pretable\/ui.*\^1\.2\.0/,
+  );
+});
+
 for (const specification of [
   "file:../ui",
   "link:../ui",
@@ -208,6 +314,7 @@ for (const specification of [
       (error) => {
         assert.match(error.message, /@pretable\/react/);
         assert.match(error.message, /@pretable\/ui/);
+        assert.match(error.message, /unsupported|protocol/i);
         assert.match(
           error.message,
           new RegExp(specification.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
