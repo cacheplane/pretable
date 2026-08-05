@@ -72,7 +72,7 @@ export interface PlanColumnsInput {
 export interface PlanColumnsColumnInput {
   id: string;
   width: number;
-  pinned?: "left";
+  pinned?: "left" | "right";
 }
 
 /** @internal */
@@ -81,7 +81,13 @@ export interface PlannedColumn {
   id: string;
   left: number;
   width: number;
-  pinned?: "left";
+  pinned?: "left" | "right";
+  /**
+   * Offset from the viewport's right edge, in px. Set only for right-pinned
+   * columns (the last one is flush at `0`); left-pinned and scrollable
+   * columns position themselves with `left`.
+   */
+  right?: number;
 }
 
 /** @internal */
@@ -89,6 +95,7 @@ export interface ColumnPlan {
   columns: PlannedColumn[];
   totalWidth: number;
   pinnedLeftWidth: number;
+  pinnedRightWidth: number;
 }
 
 /** @internal */
