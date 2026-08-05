@@ -104,6 +104,7 @@ interface PretableColumn<TRow = PretableRow> {
   filterable?: boolean;
   type?: ColumnType;
   options?: ColumnOption[];
+  step?: number;
   reorderable?: boolean;
   resizable?: boolean;
   pinned?: "left";
@@ -117,7 +118,7 @@ interface PretableColumn<TRow = PretableRow> {
 ### Filter types
 
 ```ts
-type ColumnType = "text" | "number" | "date" | "enum";
+type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 type FilterOperator =
   | "contains"
@@ -162,7 +163,8 @@ interface ColumnOption {
 Each column's `type` (default `"text"`) selects which operators apply and how
 values are compared. Columns are AND-combined. `options` supplies the choices for
 an `enum` column; when omitted, call `distinctColumnValues(columnId)` to derive them from
-the data.
+the data. A `boolean` column filters with enum semantics over implicit `True`/`False`
+options — no `options` needed.
 
 ### `PretableRow`
 

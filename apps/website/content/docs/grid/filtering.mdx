@@ -13,11 +13,11 @@ The active filter set is a plain map — `Record<string, ColumnFilter>`, one ent
 
 Three column fields shape filtering:
 
-| Field           | Type                                     | Notes                                                                     |
-| --------------- | ---------------------------------------- | ------------------------------------------------------------------------- |
-| `type`    | `"text" \| "number" \| "date" \| "enum"` | picks the operator family and value control; defaults to `"text"`         |
-| `options` | `{ value: string; label?: string }[]`    | the checklist for an `enum` column; omit to auto-derive from the rows     |
-| `filterable`    | `boolean`                                | `false` removes the funnel and makes the engine ignore filters for the id |
+| Field        | Type                                                  | Notes                                                                     |
+| ------------ | ----------------------------------------------------- | ------------------------------------------------------------------------- |
+| `type`       | `"text" \| "number" \| "date" \| "enum" \| "boolean"` | picks the operator family and value control; defaults to `"text"`         |
+| `options`    | `{ value: string; label?: string }[]`                 | the checklist for an `enum` column; omit to auto-derive from the rows     |
+| `filterable` | `boolean`                                             | `false` removes the funnel and makes the engine ignore filters for the id |
 
 ```tsx
 import type { PretableColumn } from "@pretable/react";
@@ -45,13 +45,14 @@ When an `enum` column omits `options`, the menu derives the checklist from the d
 
 Each `type` gets its own operator family, plus two shared operators available everywhere:
 
-| Family   | Operators                                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------- |
-| `text`   | `contains`, `notContains`, `equals`, `notEquals`, `startsWith`, `endsWith`                                    |
-| `number` | `equals`, `notEquals`, `gt` (greater than), `gte`, `lt` (less than), `lte`, `between`                         |
-| `date`   | `on`, `before`, `after`, `dateBetween`                                                                        |
-| `enum`   | `isAnyOf`, `isNoneOf`                                                                                         |
-| shared   | `isEmpty`, `isNotEmpty` — no value; a cell is "empty" when it's `null`, `undefined`, `NaN`, or a blank string |
+| Family    | Operators                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------- |
+| `text`    | `contains`, `notContains`, `equals`, `notEquals`, `startsWith`, `endsWith`                                    |
+| `number`  | `equals`, `notEquals`, `gt` (greater than), `gte`, `lt` (less than), `lte`, `between`                         |
+| `date`    | `on`, `before`, `after`, `dateBetween`                                                                        |
+| `enum`    | `isAnyOf`, `isNoneOf`                                                                                         |
+| `boolean` | enum operators (`isAnyOf`, `isNoneOf`, plus the shared empty checks) over implicit `True`/`False` options     |
+| shared    | `isEmpty`, `isNotEmpty` — no value; a cell is "empty" when it's `null`, `undefined`, `NaN`, or a blank string |
 
 Semantics worth knowing:
 
