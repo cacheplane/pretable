@@ -89,6 +89,10 @@ describe("PretableSurface boolean columns", () => {
     await flush();
     expect(screen.getByRole("alert")).toHaveTextContent("nope");
     expect(box).toHaveAttribute("aria-invalid", "true");
+    expect(box).toHaveAttribute(
+      "aria-errormessage",
+      screen.getByRole("alert").id,
+    );
     expect(onCellEdit).not.toHaveBeenCalled();
 
     // Escape cancels the failed edit — alert gone.

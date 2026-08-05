@@ -5,8 +5,11 @@ export interface BooleanCellControlProps {
   editable: boolean;
   /** Edit status when this cell holds the active edit, else null. */
   status: PretableEditStatus | null;
-  /** True when this cell's edit failed (validate/onCellEdit error). */
-  error?: boolean;
+  /**
+   * Id of the rendered error element when this cell's edit failed
+   * (validate/onCellEdit error); wires aria-invalid + aria-errormessage.
+   */
+  errorId?: string;
   label: string;
   onToggle: () => void;
 }
@@ -21,7 +24,7 @@ export function BooleanCellControl({
   checked,
   editable,
   status,
-  error,
+  errorId,
   label,
   onToggle,
 }: BooleanCellControlProps) {
@@ -35,7 +38,8 @@ export function BooleanCellControl({
       aria-checked={checked}
       aria-label={label}
       aria-busy={busy || undefined}
-      aria-invalid={error ? true : undefined}
+      aria-invalid={errorId ? true : undefined}
+      aria-errormessage={errorId}
       disabled={!editable || busy}
       tabIndex={-1}
       onClick={(e) => {

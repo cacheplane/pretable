@@ -1932,7 +1932,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                           checked={Boolean(value)}
                           editable={Boolean(column.editable)}
                           status={cellEdit ? cellEdit.status : null}
-                          error={Boolean(cellEdit?.error)}
+                          errorId={
+                            cellEdit?.error
+                              ? `pretable-edit-error-${id}-${column.id}`
+                              : undefined
+                          }
                           label={column.header ?? column.id}
                           onToggle={() => void toggleBooleanCell(id, column)}
                         />
