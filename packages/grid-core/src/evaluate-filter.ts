@@ -100,6 +100,7 @@ export function evaluateFilter(
           return false;
       }
     }
+    case "boolean":
     case "enum": {
       const c = String(cell);
       const set = Array.isArray(value) ? value.map(String) : [];

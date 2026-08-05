@@ -7,6 +7,7 @@ import {
   toColumnFilter,
   fromColumnFilter,
   OPERATOR_LABELS,
+  resolveColumnOptions,
   type FilterDraft,
 } from "../filter-menu/filter-operators";
 
@@ -161,5 +162,34 @@ describe("fromColumnFilter (hydrate)", () => {
       operator: "isAnyOf",
       selected: [],
     });
+  });
+});
+
+describe("boolean menu mapping", () => {
+  it("boolean columns get enum operators", () => {
+    expect(operatorsForType("boolean")).toEqual([
+      "isAnyOf",
+      "isNoneOf",
+      "isEmpty",
+      "isNotEmpty",
+    ]);
+  });
+
+  it("boolean columns get implicit True/False options", () => {
+    expect(resolveColumnOptions({ type: "boolean" }, () => ["x"])).toEqual([
+      { value: "true", label: "True" },
+      { value: "false", label: "False" },
+    ]);
+  });
+
+  it("enum columns prefer declared options, else distinct values", () => {
+    expect(
+      resolveColumnOptions({ type: "enum", options: [{ value: "a" }] }, () => [
+        "b",
+      ]),
+    ).toEqual([{ value: "a" }]);
+    expect(resolveColumnOptions({ type: "enum" }, () => ["b"])).toEqual([
+      { value: "b" },
+    ]);
   });
 });

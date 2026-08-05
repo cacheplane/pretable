@@ -67,6 +67,7 @@ import {
   popoverStyle,
   useFilterPopover,
 } from "./filter-menu";
+import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
@@ -1998,11 +1999,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               (c) => c.id === filterOpenState.columnId,
             );
             if (!col) return null;
-            const options =
-              col.options ??
-              grid
-                .distinctColumnValues(filterOpenState.columnId)
-                .map((v) => ({ value: v }));
+            const options = resolveColumnOptions(col, () =>
+              grid.distinctColumnValues(filterOpenState.columnId),
+            );
             return (
               <FilterMenu
                 key={filterOpenState.columnId}

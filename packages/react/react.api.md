@@ -26,7 +26,7 @@ export interface ColumnOption {
 }
 
 // @public (undocumented)
-export type ColumnType = "text" | "number" | "date" | "enum";
+export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 // @public
 export interface CopyPayload {

@@ -1,5 +1,10 @@
 // packages/react/src/filter-menu/filter-operators.ts
-import type { ColumnFilter, FilterOperator, ColumnType } from "@pretable/core";
+import type {
+  ColumnFilter,
+  ColumnOption,
+  ColumnType,
+  FilterOperator,
+} from "@pretable/core";
 
 /** Local editing shape for the popover. One field set per value-shape. */
 export interface FilterDraft {
@@ -39,7 +44,7 @@ export function operatorsForType(type: ColumnType): FilterOperator[] {
       ? NUMBER_OPS
       : type === "date"
         ? DATE_OPS
-        : type === "enum"
+        : type === "enum" || type === "boolean"
           ? ENUM_OPS
           : TEXT_OPS;
   return [...base, ...SHARED_OPS];
@@ -141,4 +146,22 @@ export function fromColumnFilter(
     operator,
     text: value === null || value === undefined ? "" : String(value),
   };
+}
+
+const BOOLEAN_OPTIONS: ColumnOption[] = [
+  { value: "true", label: "True" },
+  { value: "false", label: "False" },
+];
+
+/**
+ * The option set a column's enum-style UI should offer. Boolean columns get
+ * implicit True/False; enum columns use their declared options, falling back
+ * to the caller-supplied distinct values.
+ */
+export function resolveColumnOptions(
+  column: { type?: ColumnType; options?: ColumnOption[] },
+  distinctValues: () => string[],
+): ColumnOption[] {
+  if (column.type === "boolean") return BOOLEAN_OPTIONS;
+  return column.options ?? distinctValues().map((value) => ({ value }));
 }

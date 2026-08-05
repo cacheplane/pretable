@@ -33,7 +33,7 @@ export interface ColumnOption {
 }
 
 // @public (undocumented)
-export type ColumnType = "text" | "number" | "date" | "enum";
+export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 // @public
 export function createGrid<TRow extends PretableRow = PretableRow>(options: PretableGridOptions<TRow>): PretableGrid<TRow>;
@@ -94,6 +94,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     resizable?: boolean;
     // (undocumented)
     sortable?: boolean;
+    step?: number;
     // (undocumented)
     type?: ColumnType;
     // (undocumented)
