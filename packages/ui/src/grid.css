@@ -188,6 +188,9 @@
     align-items: center;
     justify-content: center;
   }
+  :where(button[data-pretable-bool-cell]:disabled) {
+    cursor: default;
+  }
   :where(button[data-pretable-bool-cell][aria-busy="true"]) {
     opacity: 0.5;
     cursor: wait;
