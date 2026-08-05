@@ -7,16 +7,24 @@ import test from "node:test";
 
 import { runPublishPreflight } from "../publish-preflight.mjs";
 
-async function createFixture(t, { packages, registry = {} }) {
+async function createFixture(t, { apps = [], packages, registry = {} }) {
   const rootDir = await mkdtemp(join(tmpdir(), "pretable-publish-preflight-"));
   t.after(() => rm(rootDir, { force: true, recursive: true }));
 
   await Promise.all(
-    packages.map(async (manifest, index) => {
-      const packageDir = join(rootDir, "packages", `package-${index}`);
-      await mkdir(packageDir, { recursive: true });
+    [
+      ...apps.map((manifest, index) => ({
+        directory: join(rootDir, "apps", `app-${index}`),
+        manifest,
+      })),
+      ...packages.map((manifest, index) => ({
+        directory: join(rootDir, "packages", `package-${index}`),
+        manifest,
+      })),
+    ].map(async ({ directory, manifest }) => {
+      await mkdir(directory, { recursive: true });
       await writeFile(
-        join(packageDir, "package.json"),
+        join(directory, "package.json"),
         `${JSON.stringify(manifest, null, 2)}\n`,
       );
     }),
@@ -27,6 +35,10 @@ async function createFixture(t, { packages, registry = {} }) {
       (request.url ?? "/").slice(1).split("?")[0],
     );
     const result = registry[packageName];
+
+    if (result === "hang") {
+      return;
+    }
 
     if (result === "error") {
       response.writeHead(500, { "content-type": "application/json" });
@@ -56,6 +68,7 @@ async function createFixture(t, { packages, registry = {} }) {
   t.after(
     () =>
       new Promise((resolve, reject) => {
+        server.closeAllConnections();
         server.close((error) => (error ? reject(error) : resolve()));
       }),
   );
@@ -72,6 +85,119 @@ async function createFixture(t, { packages, registry = {} }) {
 function publicPackage(name, version, fields = {}) {
   return { name, version, ...fields };
 }
+
+test("rejects duplicate local package names before resolving workspace dependencies", async (t) => {
+  const duplicateName = "@pretable/duplicate";
+  const { rootDir, registryUrl } = await createFixture(t, {
+    apps: [publicPackage(duplicateName, "1.0.0")],
+    packages: [
+      {
+        name: duplicateName,
+        version: "1.0.0",
+        private: true,
+      },
+    ],
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    (error) => {
+      assert.match(error.message, /duplicate/i);
+      assert.match(error.message, /@pretable\/duplicate/);
+      assert.match(error.message, /apps\/app-0\/package\.json/);
+      assert.match(error.message, /packages\/package-0\/package\.json/);
+      return true;
+    },
+  );
+});
+
+test("times out a hanging registry request with package context", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [publicPackage("@pretable/react", "0.0.2")],
+    registry: { "@pretable/react": "hang" },
+  });
+  const watchdogSignal = AbortSignal.timeout(500);
+  const watchdog = new Promise((_, reject) => {
+    watchdogSignal.addEventListener(
+      "abort",
+      () => reject(new Error("Test watchdog expired")),
+      { once: true },
+    );
+  });
+
+  await assert.rejects(
+    Promise.race([
+      runPublishPreflight({ rootDir, registryUrl, registryTimeoutMs: 25 }),
+      watchdog,
+    ]),
+    /registry request timed out for @pretable\/react/i,
+  );
+});
+
+test("rejects malformed dependency fields with manifest context", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/react", "0.0.2", {
+        dependencies: "@pretable/ui@0.0.2",
+      }),
+    ],
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    (error) => {
+      assert.match(error.message, /@pretable\/react/);
+      assert.match(error.message, /dependencies/);
+      assert.match(error.message, /packages\/package-0\/package\.json/);
+      return true;
+    },
+  );
+});
+
+test("caches encoded registry requests while preserving a registry path prefix", async (t) => {
+  const rootDir = await mkdtemp(join(tmpdir(), "pretable-publish-preflight-"));
+  t.after(() => rm(rootDir, { force: true, recursive: true }));
+  const manifests = [
+    publicPackage("@pretable/react", "1.0.0", {
+      dependencies: { "@pretable/ui": "workspace:*" },
+    }),
+    publicPackage("@pretable/ui", "1.0.0"),
+  ];
+  await Promise.all(
+    manifests.map(async (manifest, index) => {
+      const packageDir = join(rootDir, "packages", `package-${index}`);
+      await mkdir(packageDir, { recursive: true });
+      await writeFile(
+        join(packageDir, "package.json"),
+        `${JSON.stringify(manifest, null, 2)}\n`,
+      );
+    }),
+  );
+  const requestedUrls = [];
+  const fetch = async (url) => {
+    requestedUrls.push(url.href);
+    return new Response(JSON.stringify({ versions: {} }), {
+      headers: { "content-type": "application/json" },
+      status: 200,
+    });
+  };
+
+  await runPublishPreflight({
+    fetch,
+    registryUrl: "https://registry.example.test/custom/npm/",
+    rootDir,
+  });
+
+  assert.equal(
+    requestedUrls.filter((url) => url.includes("%40pretable%2Fui")).length,
+    1,
+  );
+  assert.ok(
+    requestedUrls.includes(
+      "https://registry.example.test/custom/npm/%40pretable%2Fui",
+    ),
+  );
+});
 
 test("accepts dependencies whose published versions satisfy their specifications", async (t) => {
   const { rootDir, registryUrl } = await createFixture(t, {

@@ -9,6 +9,7 @@ const DEPENDENCY_FIELDS = [
   "optionalDependencies",
   "peerDependencies",
 ];
+const DEFAULT_REGISTRY_TIMEOUT_MS = 10_000;
 const PRETABLE_SCOPE = "@pretable/";
 
 function registryFromEnvironment() {
@@ -118,17 +119,80 @@ function validatePublishablePackage(workspacePackage) {
   }
 }
 
+function assertUniqueWorkspacePackageNames(workspacePackages) {
+  const packagesByName = new Map();
+
+  for (const workspacePackage of workspacePackages) {
+    const { name } = workspacePackage.manifest;
+    if (typeof name !== "string") {
+      continue;
+    }
+
+    const matchingPackages = packagesByName.get(name) ?? [];
+    matchingPackages.push(workspacePackage);
+    packagesByName.set(name, matchingPackages);
+  }
+
+  const duplicates = [...packagesByName.entries()].filter(
+    ([, matchingPackages]) => matchingPackages.length > 1,
+  );
+  if (duplicates.length > 0) {
+    throw new Error(
+      `Duplicate workspace package names:\n${duplicates
+        .map(
+          ([name, matchingPackages]) =>
+            `- ${name}: ${matchingPackages.map(({ manifestPath }) => manifestPath).join(", ")}`,
+        )
+        .join("\n")}`,
+    );
+  }
+}
+
+function validateDependencyFields(workspacePackage) {
+  const { manifest, manifestPath } = workspacePackage;
+
+  for (const field of DEPENDENCY_FIELDS) {
+    const dependencies = manifest[field];
+    if (dependencies === undefined) {
+      continue;
+    }
+    if (
+      dependencies === null ||
+      typeof dependencies !== "object" ||
+      Array.isArray(dependencies) ||
+      Object.getPrototypeOf(dependencies) !== Object.prototype
+    ) {
+      throw new Error(
+        `Workspace package ${String(manifest.name)} has invalid ${field} in ${manifestPath}: expected a plain object`,
+      );
+    }
+  }
+}
+
 function registryPackageUrl(registryUrl, packageName) {
   const baseUrl = registryUrl.endsWith("/") ? registryUrl : `${registryUrl}/`;
   return new URL(encodeURIComponent(packageName), baseUrl);
 }
 
-async function readRegistryVersions(packageName, registryUrl, fetchImpl) {
+async function readRegistryVersions(
+  packageName,
+  registryUrl,
+  fetchImpl,
+  registryTimeoutMs,
+) {
+  const signal = AbortSignal.timeout(registryTimeoutMs);
   let response;
 
   try {
-    response = await fetchImpl(registryPackageUrl(registryUrl, packageName));
+    response = await fetchImpl(registryPackageUrl(registryUrl, packageName), {
+      signal,
+    });
   } catch (error) {
+    if (signal.aborted) {
+      throw new Error(`Registry request timed out for ${packageName}`, {
+        cause: error,
+      });
+    }
     throw new Error(
       `Registry request failed for ${packageName}: ${error.message}`,
       { cause: error },
@@ -148,6 +212,11 @@ async function readRegistryVersions(packageName, registryUrl, fetchImpl) {
   try {
     metadata = await response.json();
   } catch (error) {
+    if (signal.aborted) {
+      throw new Error(`Registry request timed out for ${packageName}`, {
+        cause: error,
+      });
+    }
     throw new Error(
       `Registry metadata was invalid for ${packageName}: ${error.message}`,
       { cause: error },
@@ -181,7 +250,13 @@ export async function runPublishPreflight(options = {}) {
   const rootDir = resolve(options.rootDir ?? process.cwd());
   const registryUrl = options.registryUrl ?? registryFromEnvironment();
   const fetchImpl = options.fetch ?? globalThis.fetch;
+  const registryTimeoutMs =
+    options.registryTimeoutMs ?? DEFAULT_REGISTRY_TIMEOUT_MS;
+  if (!Number.isInteger(registryTimeoutMs) || registryTimeoutMs < 1) {
+    throw new Error("registryTimeoutMs must be a positive integer");
+  }
   const workspacePackages = await discoverWorkspacePackages(rootDir);
+  assertUniqueWorkspacePackageNames(workspacePackages);
   const localPackages = new Map(
     workspacePackages
       .filter(({ manifest }) => typeof manifest.name === "string")
@@ -196,6 +271,7 @@ export async function runPublishPreflight(options = {}) {
 
   for (const workspacePackage of publicPackages) {
     validatePublishablePackage(workspacePackage);
+    validateDependencyFields(workspacePackage);
   }
 
   const registryCache = new Map();
@@ -203,7 +279,12 @@ export async function runPublishPreflight(options = {}) {
     if (!registryCache.has(packageName)) {
       registryCache.set(
         packageName,
-        readRegistryVersions(packageName, registryUrl, fetchImpl),
+        readRegistryVersions(
+          packageName,
+          registryUrl,
+          fetchImpl,
+          registryTimeoutMs,
+        ),
       );
     }
     return registryCache.get(packageName);
