@@ -343,7 +343,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
     // (undocumented)
-    setColumnPinned(columnId: string, pinned: "left" | null): void;
+    setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
     // (undocumented)
     setColumnWidth(columnId: string, width: number): void;
     // (undocumented)
@@ -569,7 +569,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     onColumnOrderChange?: (next: readonly string[]) => void;
     // (undocumented)
-    onColumnPinnedChange?: (next: Record<string, "left" | null>) => void;
+    onColumnPinnedChange?: (next: Record<string, "left" | "right" | null>) => void;
     // (undocumented)
     onColumnWidthsChange?: (next: Record<string, number>) => void;
     onCopy?: (args: SerializeRangesArgs<TRow>) => CopyPayload | null;
@@ -614,7 +614,7 @@ export interface PretableSurfaceState {
     // (undocumented)
     columnOrder?: readonly string[];
     // (undocumented)
-    columnPinned?: Record<string, "left" | null>;
+    columnPinned?: Record<string, "left" | "right" | null>;
     // (undocumented)
     columnWidths?: Record<string, number>;
     // (undocumented)
@@ -725,7 +725,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:474:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:480:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

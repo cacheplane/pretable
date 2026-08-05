@@ -68,7 +68,9 @@ grid.moveFocus("up", { jumpToEdge: true }); // Ctrl/Cmd+arrow — jump to edge
 
 ```ts
 grid.setColumnWidth("name", 240);
-grid.setColumnPinned("name", "left"); // pin left; pass null to unpin
+grid.setColumnPinned("name", "left"); // pin to an edge: "left" | "right"
+grid.setColumnPinned("actions", "right");
+grid.setColumnPinned("actions", null); // unpin
 grid.moveColumn("status", 0); // reorder to an index
 grid.autosizeColumn("name"); // fit one column to content
 grid.autosizeColumns(); // fit all columns
