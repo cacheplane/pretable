@@ -1,5 +1,5 @@
 // packages/react/src/__tests__/filter-operators.test.ts
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   operatorsForType,
   operatorValueShape,
@@ -191,5 +191,32 @@ describe("boolean menu mapping", () => {
     expect(resolveColumnOptions({ type: "enum" }, () => ["b"])).toEqual([
       { value: "b" },
     ]);
+  });
+});
+
+describe("resolveColumnOptions refinements", () => {
+  it("lets a boolean column override the implicit labels", () => {
+    expect(
+      resolveColumnOptions(
+        {
+          type: "boolean",
+          options: [
+            { value: "true", label: "Yes" },
+            { value: "false", label: "No" },
+          ],
+        },
+        () => [],
+      ),
+    ).toEqual([
+      { value: "true", label: "Yes" },
+      { value: "false", label: "No" },
+    ]);
+  });
+
+  it("skips the distinct-value scan for types without a checklist", () => {
+    const distinct = vi.fn(() => ["a", "b"]);
+    expect(resolveColumnOptions({ type: "text" }, distinct)).toEqual([]);
+    expect(resolveColumnOptions({ type: "number" }, distinct)).toEqual([]);
+    expect(distinct).not.toHaveBeenCalled();
   });
 });

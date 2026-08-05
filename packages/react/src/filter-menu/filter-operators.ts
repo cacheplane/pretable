@@ -155,13 +155,16 @@ const BOOLEAN_OPTIONS: ColumnOption[] = [
 
 /**
  * The option set a column's enum-style UI should offer. Boolean columns get
- * implicit True/False; enum columns use their declared options, falling back
- * to the caller-supplied distinct values.
+ * implicit True/False unless they declare their own; enum columns use their
+ * declared options, falling back to the caller-supplied distinct values.
+ * Every other type has no checklist, so no distinct-value scan runs.
  */
 export function resolveColumnOptions(
   column: { type?: ColumnType; options?: ColumnOption[] },
   distinctValues: () => string[],
 ): ColumnOption[] {
-  if (column.type === "boolean") return BOOLEAN_OPTIONS;
+  // Only enum-style columns render a checklist; skip the scan for the rest.
+  if (column.type === "boolean") return column.options ?? BOOLEAN_OPTIONS;
+  if (column.type !== "enum") return [];
   return column.options ?? distinctValues().map((value) => ({ value }));
 }
