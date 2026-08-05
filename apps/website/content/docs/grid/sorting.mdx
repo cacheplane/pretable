@@ -29,7 +29,7 @@ type Sort = PretableSortEntry[];
 
 ## Header interactions
 
-**Plain click** cycles a single-column sort: unsorted → `desc` → `asc` → unsorted. It always **replaces** the whole list — clicking a header while a multi-column cascade is active collapses the sort to just that column.
+**Plain click** cycles a single-column sort: unsorted → `desc` → `asc` → unsorted. It always **replaces** the whole list — clicking a header while a multi-column cascade is active collapses the sort to just that column's next cycle step. (Edge case: if that column was already `asc`, the next step is unsorted, so the whole sort clears.)
 
 **Shift-click** edits the list in place, one column at a time:
 

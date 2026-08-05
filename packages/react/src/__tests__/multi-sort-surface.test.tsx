@@ -106,6 +106,27 @@ describe("PretableSurface multi-column sort", () => {
     expect(onSortChange).toHaveBeenCalledTimes(3);
   });
 
+  it("plain click on a secondary asc column clears the entire sort", () => {
+    // The per-column cycle drives the replacement: a column already at asc
+    // steps to none, so plain-clicking it collapses the whole list to [].
+    const onSortChange = vi.fn();
+    const view = renderGrid({ onSortChange });
+
+    // Build [group desc, score asc] via shift-clicks (score flipped to asc).
+    fireEvent.click(header(view, "Group"), { shiftKey: true });
+    fireEvent.click(header(view, "Score"), { shiftKey: true });
+    fireEvent.click(header(view, "Score"), { shiftKey: true });
+    expect(onSortChange).toHaveBeenLastCalledWith([
+      { columnId: "group", direction: "desc" },
+      { columnId: "score", direction: "asc" },
+    ]);
+
+    // Plain click on Score (currently asc): next cycle step is none → [].
+    fireEvent.click(header(view, "Score"));
+    expect(onSortChange).toHaveBeenLastCalledWith([]);
+    expect(rowIds(view)).toEqual(["r1", "r2", "r3", "r4"]); // source order
+  });
+
   it("shift-click appends desc, flips to asc in place, then removes only that entry", () => {
     const onSortChange = vi.fn();
     const view = renderGrid({ onSortChange });

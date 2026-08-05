@@ -113,8 +113,12 @@ export function createGridCore<TRow extends PretableRow>(
     },
     getSnapshot,
     setSort(columnId: string | null, direction: PretableSortDirection) {
-      const next: PretableSortEntry[] =
+      const candidate: PretableSortEntry[] =
         columnId && direction ? [{ columnId, direction }] : [];
+      // Same validation as replaceSort: unknown or sortable:false columns are
+      // dropped, so an invalid target resolves to [] (clear), never a phantom
+      // entry that sortRows would ignore.
+      const next = sanitizeSortEntries(candidate, options.columns);
 
       if (sortsEqual(sort, next)) {
         return;
@@ -124,10 +128,7 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     replaceSort(entries: PretableSortEntry[]) {
-      const next = entries.filter((entry) => {
-        const column = options.columns.find((c) => c.id === entry.columnId);
-        return column !== undefined && column.sortable !== false;
-      });
+      const next = sanitizeSortEntries(entries, options.columns);
 
       if (sortsEqual(sort, next)) {
         return;
@@ -932,7 +933,7 @@ export function createGridCore<TRow extends PretableRow>(
 
     cachedSnapshot = {
       viewport,
-      sort: [...sort],
+      sort: sort.map((entry) => ({ ...entry })),
       filters: { ...filters },
       selection: {
         ranges: selection.ranges.map((r) => ({ ...r })),
@@ -1029,6 +1030,17 @@ function selectionsEqual(
   return (
     a.anchor.rowId === b.anchor.rowId && a.anchor.columnId === b.anchor.columnId
   );
+}
+
+/** Drop entries targeting unknown or sortable:false columns (shared by setSort + replaceSort). */
+function sanitizeSortEntries<TRow extends PretableRow>(
+  entries: PretableSortEntry[],
+  columns: PretableColumn<TRow>[],
+): PretableSortEntry[] {
+  return entries.filter((entry) => {
+    const column = columns.find((c) => c.id === entry.columnId);
+    return column !== undefined && column.sortable !== false;
+  });
 }
 
 function sortsEqual(a: PretableSortEntry[], b: PretableSortEntry[]): boolean {

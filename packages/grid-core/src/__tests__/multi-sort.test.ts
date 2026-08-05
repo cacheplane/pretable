@@ -166,4 +166,67 @@ describe("multi-column sort", () => {
     expect(grid.getSnapshot().sort).toEqual([]);
     expect(ids(grid)).toEqual(["1", "2", "3", "4", "5"]);
   });
+
+  test("three-key cascade resolves ties key by key", () => {
+    const grid = makeGrid();
+
+    grid.replaceSort([
+      { columnId: "group", direction: "asc" },
+      { columnId: "score", direction: "desc" },
+      { columnId: "name", direction: "asc" },
+    ]);
+
+    // group a: score 20 → alpha(2), erin(5); score 10 → carol(3).
+    // group b: score 20 → bravo(4); score 10 → delta(1).
+    expect(ids(grid)).toEqual(["2", "5", "3", "4", "1"]);
+  });
+
+  test("a partially-numeric column falls back to collator comparison", () => {
+    const grid = createGridCore({
+      columns: [{ id: "mixed", header: "Mixed" }],
+      rows: [
+        { id: "a", mixed: 20 },
+        { id: "b", mixed: "x" },
+        { id: "c", mixed: 5 },
+      ],
+      getRowId: (row) => row.id as string,
+    });
+
+    grid.replaceSort([{ columnId: "mixed", direction: "asc" }]);
+
+    // Not all-numeric → string keys with a numeric-aware collator:
+    // "5" < "20" numerically, letters after numbers.
+    expect(grid.getSnapshot().visibleRows.map((r) => r.id)).toEqual([
+      "c",
+      "a",
+      "b",
+    ]);
+  });
+
+  test("setSort validates like replaceSort: unknown or unsortable targets clear", () => {
+    const grid = makeGrid();
+
+    grid.setSort("group", "asc");
+    grid.setSort("notes", "asc"); // sortable: false → dropped → clears
+    expect(grid.getSnapshot().sort).toEqual([]);
+    expect(ids(grid)).toEqual(["1", "2", "3", "4", "5"]);
+
+    grid.setSort("group", "asc");
+    grid.setSort("nope", "asc"); // unknown column → dropped → clears
+    expect(grid.getSnapshot().sort).toEqual([]);
+  });
+
+  test("mutating a snapshot sort entry does not corrupt engine state", () => {
+    const grid = makeGrid();
+
+    grid.setSort("group", "asc");
+    const snap = grid.getSnapshot();
+    (snap.sort[0] as { direction: string }).direction = "desc";
+
+    // Force a fresh snapshot; the engine's own entry must be untouched.
+    grid.setViewport({ scrollTop: 1, scrollLeft: 0, height: 320, width: 800 });
+    expect(grid.getSnapshot().sort).toEqual([
+      { columnId: "group", direction: "asc" },
+    ]);
+  });
 });
