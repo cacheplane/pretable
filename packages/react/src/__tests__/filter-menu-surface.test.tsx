@@ -295,6 +295,16 @@ describe("PretableSurface — built-in filter funnel", () => {
     expect(within(dialog).getByLabelText("Filter value")).toHaveValue("beta");
   });
 
+  it("renders the filter popover outside the contained scroll viewport", () => {
+    const view = renderSurface();
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+    const dialog = view.getByRole("dialog", { name: "Filter Title" });
+    // The viewport sets `contain: content`, which traps and clips fixed-position
+    // descendants — the popover must be portaled out of that subtree.
+    expect(dialog.closest("[data-pretable-scroll-viewport]")).toBeNull();
+    expect(dialog.closest("body")).not.toBeNull();
+  });
+
   it("Clear resets the filter and fires onFiltersChange with the column removed", () => {
     const onFiltersChange = vi.fn();
     const view = renderSurface({

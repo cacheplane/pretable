@@ -1,5 +1,7 @@
 // packages/react/src/filter-menu/useFilterPopover.ts
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+export { popoverStyle } from "../overlay/popover-position";
 
 export interface PopoverState {
   columnId: string;
@@ -40,19 +42,4 @@ export function useFilterPopover() {
   }, [openState, close]);
 
   return { openState, toggle, close };
-}
-
-/** Fixed-position style from the anchor rect, flipped near the right/bottom edges. */
-export function popoverStyle(rect: DOMRect): CSSProperties {
-  const WIDTH = 240;
-  const MARGIN = 8;
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
-  const left = Math.min(rect.left, vw - WIDTH - MARGIN);
-  return {
-    position: "fixed",
-    top: rect.bottom + 4,
-    left: Math.max(MARGIN, left),
-    width: WIDTH,
-    zIndex: 50,
-  };
 }
