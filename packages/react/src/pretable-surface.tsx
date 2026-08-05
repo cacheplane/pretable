@@ -61,6 +61,7 @@ export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
+import { BooleanCellControl } from "./editors/BooleanCellControl";
 import {
   FilterMenu,
   FunnelButton,
@@ -613,6 +614,22 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     ),
   });
 
+  // Boolean cells toggle-and-commit directly through the edit lifecycle (no
+  // popover): begin seeds the negated value as the draft, commit runs the
+  // usual parse/validate/onCellEdit path (async `editable` gates and staleness
+  // tokens all apply).
+  const toggleBooleanCell = async (
+    rowId: string,
+    column: PretableColumn<TRow>,
+  ) => {
+    if (!column.editable || snapshot.editing) return;
+    const row = editVisibleRowsRef.current.find((r) => r.id === rowId)?.row;
+    if (!row) return;
+    const current = Boolean(resolveCellValue(row, column));
+    await editController.begin({ rowId, columnId: column.id }, !current);
+    await editController.commit();
+  };
+
   // Built-in column filter menu: one open-state for the whole surface.
   const {
     openState: filterOpenState,
@@ -1064,14 +1081,32 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             : undefined;
           if (focusAddr && focusedColumn?.editable) {
             const cmd = event.metaKey || event.ctrlKey;
-            if (event.key === "Enter" || event.key === "F2") {
+            // Editable boolean columns toggle in place on Enter/Space; no
+            // popover editing ever applies (F2/type-to-replace included).
+            // Non-editable boolean columns skip this whole block, so
+            // Enter/Space keep their row-selection behavior untouched.
+            if (focusedColumn.type === "boolean") {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                void toggleBooleanCell(focusAddr.rowId, focusedColumn);
+                return;
+              }
+              if (event.key === "F2") {
+                event.preventDefault();
+                return;
+              }
+              // Everything else (arrows, shortcuts) falls through to normal
+              // grid handling — printable keys must not seed a popover draft.
+            } else if (event.key === "Enter" || event.key === "F2") {
               event.preventDefault();
               void editController.begin(focusAddr);
               return;
             }
             // type-to-replace: a single printable, non-whitespace character
-            // seeds the draft. Space is reserved for row selection.
+            // seeds the draft. Space is reserved for row selection. Never
+            // applies to boolean columns (no popover draft to seed).
             if (
+              focusedColumn.type !== "boolean" &&
               event.key.length === 1 &&
               event.key !== " " &&
               !cmd &&
@@ -1757,6 +1792,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     onDoubleClick={() => {
                       if (column.id === ROW_SELECT_COLUMN_ID) return;
+                      // Boolean cells never popover-edit; the control's own
+                      // click toggles (a hidden begin() here would strand an
+                      // active edit with no editor rendered).
+                      if (column.type === "boolean") return;
                       if (column.editable) {
                         void editController.begin({
                           rowId: id,
@@ -1854,7 +1893,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     tabIndex={cellIsFocused ? 0 : -1}
                   >
-                    {cellEdit ? (
+                    {column.type === "boolean" && !isRowSelectCell ? (
+                      // Boolean cells render the toggle control instead of
+                      // cell content AND instead of the CellEditor popover —
+                      // an active boolean edit shows as the busy control.
+                      <BooleanCellControl
+                        checked={Boolean(value)}
+                        editable={Boolean(column.editable)}
+                        status={cellEdit ? cellEdit.status : null}
+                        label={column.header ?? column.id}
+                        onToggle={() => void toggleBooleanCell(id, column)}
+                      />
+                    ) : cellEdit ? (
                       <CellEditor
                         input={
                           {

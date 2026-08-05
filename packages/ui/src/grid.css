@@ -146,7 +146,8 @@
   }
   :where(
     button[data-pretable-row-select],
-    button[data-pretable-row-select-all]
+    button[data-pretable-row-select-all],
+    button[data-pretable-bool-cell]
   ) {
     width: 16px;
     height: 16px;
@@ -164,7 +165,8 @@
   }
   :where(
     button[data-pretable-row-select][aria-checked="true"],
-    button[data-pretable-row-select-all][aria-checked="true"]
+    button[data-pretable-row-select-all][aria-checked="true"],
+    button[data-pretable-bool-cell][aria-checked="true"]
   ) {
     background: var(--pretable-checkbox-checked-bg);
     border-color: var(--pretable-checkbox-checked-bg);
@@ -177,6 +179,18 @@
     background: var(--pretable-checkbox-checked-bg);
     border-color: var(--pretable-checkbox-checked-bg);
     color: var(--pretable-checkbox-checked-fg);
+  }
+
+  /* Boolean toggle cell (typed editors) */
+  :where(button[data-pretable-bool-cell]) {
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  :where(button[data-pretable-bool-cell][aria-busy="true"]) {
+    opacity: 0.5;
+    cursor: wait;
   }
 
   /* Column resize handle (sub-project C) */
