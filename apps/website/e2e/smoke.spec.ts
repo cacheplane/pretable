@@ -23,6 +23,12 @@ test("landing renders grid + control bar + drawer handle; drawer opens", async (
     waitUntil: "domcontentloaded",
   });
   expect(docsResponse?.status()).toBe(200);
+
+  // /docs/grid/filtering resolves too
+  const filteringDocs = await page.goto("/docs/grid/filtering", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(filteringDocs?.status()).toBe(200);
 });
 
 test("docs brand link returns to drawer when it was last open", async ({
@@ -119,27 +125,55 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
     timeout: 10_000,
   });
 
-  // --- Filter: search narrows, clear restores, sector chip narrows ---
+  // --- Filter via the built-in header funnels ---
   // ([data-pretable-row] counts only virtualized/visible rows, so assert
   //  deterministic filtered counts and ">5" for the unfiltered view.)
-  const search = page.getByPlaceholder(/filter symbol/i);
-  await search.fill("NVDA");
-  await expect(page.locator("[data-pretable-row]")).toHaveCount(1);
-  await search.fill("");
+  // Symbol funnel → contains NVDA → 1 row. The funnel is opacity-0 until the
+  // header row is hovered; opacity does not block Playwright actionability,
+  // but hover first to mirror real usage (and dodge engine flakiness).
+  await page.locator("[data-pretable-header-row]").first().hover();
+  await page.getByRole("button", { name: "Filter Symbol" }).click();
+  const symbolDialog = page.getByRole("dialog", { name: "Filter Symbol" });
+  await symbolDialog.locator("[data-pretable-filter-value]").fill("NVDA");
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(1); // auto-waits past the ~200ms live-apply debounce
+  // Clear restores the book.
+  await symbolDialog.locator("[data-pretable-filter-clear]").click();
   await expect
     .poll(() => page.locator("[data-pretable-row]").count())
     .toBeGreaterThan(5);
-  const sectors = page.getByRole("group", { name: "Sector" });
-  await sectors.getByRole("button", { name: "Energy" }).click();
+  await page.keyboard.press("Escape");
+  await expect(symbolDialog).toBeHidden();
+
+  // Sector funnel → enum checklist (auto-derived) → Energy → 2 rows.
+  await page.getByRole("button", { name: "Filter Sector" }).click();
+  const sectorDialog = page.getByRole("dialog", { name: "Filter Sector" });
+  await sectorDialog
+    .locator("[data-pretable-filter-set]")
+    .getByRole("checkbox", { name: "Energy" })
+    .check();
   await expect(page.locator("[data-pretable-row]")).toHaveCount(2); // XOM, CVX
   const shown = await page
     .locator('[data-pretable-row] [data-pretable-column-id="sector"]')
     .allInnerTexts();
   expect(new Set(shown.map((s) => s.trim()))).toEqual(new Set(["Energy"]));
-  await sectors.getByRole("button", { name: "All" }).click();
+  // Active-funnel indicator.
+  await expect(
+    page.locator(
+      '[data-pretable-filter-funnel][data-pretable-column-id="sector"]',
+    ),
+  ).toHaveAttribute("data-pretable-filter-active", "true");
+
+  // Filter survives streaming: wait several ticks, still 2 rows.
+  await page.waitForTimeout(2000);
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(2);
+
+  // Clear + close so the edit/copy phases see the full book.
+  await sectorDialog.locator("[data-pretable-filter-clear]").click();
   await expect
     .poll(() => page.locator("[data-pretable-row]").count())
     .toBeGreaterThan(5);
+  await page.keyboard.press("Escape");
+  await expect(sectorDialog).toBeHidden();
 
   // --- Edit qty → 7% guardrail rejection (NVDA is already > 7% of the book) ---
   const nvdaQty = page.locator(
@@ -149,7 +183,13 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   const editor = page.getByLabel("Edit quantity");
   await editor.fill("13000"); // within 10x sanity, but still breaches 7%
   await editor.press("Enter");
-  await expect(page.getByText(/guardrail/i)).toBeVisible({ timeout: 5000 });
+  // Target the rejection alert specifically: the streaming AI-analyst column
+  // also mentions "guardrail" once its commentary has ticked in, so a bare
+  // text locator is ambiguous under strict mode. (Filter by text because
+  // Next's route announcer is also role=alert.)
+  await expect(
+    page.getByRole("alert").filter({ hasText: /guardrail/i }),
+  ).toBeVisible({ timeout: 5000 });
   await editor.press("Escape");
 
   // --- Edit qty → success (low-weight, viewport-visible holding; the qty is a

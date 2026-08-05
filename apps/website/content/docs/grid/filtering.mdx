@@ -1,0 +1,139 @@
+---
+title: Filtering
+description: "Operator-based column filters: the built-in header menu, per-column config, and the controlled filters API."
+nav: Grid
+order: 8
+---
+
+Every column is filterable **by default**. Hover a header row and a funnel button appears in each header; click it and a small menu opens with an operator select and a typed value control. Filters apply live as you type, combine across columns with AND, and survive row updates — set `filterable: false` on a column to opt it out.
+
+The active filter set is a plain map — `Record<string, ColumnFilter>`, one entry per column id — where each `ColumnFilter` is `{ operator, value? }`. The grid owns it by default (uncontrolled); mirror it with `onFiltersChange` or take it over entirely with `state.filters`.
+
+## Column config
+
+Three column fields shape filtering:
+
+| Field           | Type                                     | Notes                                                                     |
+| --------------- | ---------------------------------------- | ------------------------------------------------------------------------- |
+| `filterType`    | `"text" \| "number" \| "date" \| "enum"` | picks the operator family and value control; defaults to `"text"`         |
+| `filterOptions` | `{ value: string; label?: string }[]`    | the checklist for an `enum` column; omit to auto-derive from the rows     |
+| `filterable`    | `boolean`                                | `false` removes the funnel and makes the engine ignore filters for the id |
+
+```tsx
+import type { PretableColumn } from "@pretable/react";
+
+const columns: PretableColumn<Order>[] = [
+  { id: "customer", header: "Customer" }, // text — the default
+  { id: "total", header: "Total", filterType: "number" },
+  {
+    id: "status",
+    header: "Status",
+    filterType: "enum",
+    filterOptions: [
+      { value: "open", label: "Open" },
+      { value: "shipped", label: "Shipped" },
+    ],
+  },
+  { id: "placedAt", header: "Placed", filterType: "date" },
+  { id: "actions", header: "", filterable: false },
+];
+```
+
+When an `enum` column omits `filterOptions`, the menu derives the checklist from the data: the distinct stringified cell values (via `column.value` if supplied, else `row[column.id]`), skipping null and blank cells, sorted locale-aware.
+
+## Operators
+
+Each `filterType` gets its own operator family, plus two shared operators available everywhere:
+
+| Family   | Operators                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------- |
+| `text`   | `contains`, `notContains`, `equals`, `notEquals`, `startsWith`, `endsWith`                                    |
+| `number` | `equals`, `notEquals`, `gt` (greater than), `gte`, `lt` (less than), `lte`, `between`                         |
+| `date`   | `on`, `before`, `after`, `dateBetween`                                                                        |
+| `enum`   | `isAnyOf`, `isNoneOf`                                                                                         |
+| shared   | `isEmpty`, `isNotEmpty` — no value; a cell is "empty" when it's `null`, `undefined`, `NaN`, or a blank string |
+
+Semantics worth knowing:
+
+- **Evaluation keys on `filterType`, not the operator name.** `equals` on a `text` column is case-insensitive string equality; on a `number` column it's numeric equality. An operator outside the column's family simply matches nothing.
+- **Columns AND-combine.** A row must pass every column's active filter. Within an `enum` column, `isAnyOf` is an OR across the selected values.
+- **Text operators are case-insensitive.** Both cell and value are lowercased before comparison.
+- **`between` / `dateBetween` are inclusive** and order-tolerant — swapped bounds are normalized.
+- **Dates compare at day resolution** (calendar day, UTC), so `on` matches any timestamp within that day.
+- **Blank operands are inactive.** A filter with an empty string, empty array, or `null` value is ignored — it's as if the column had no filter.
+
+## The built-in menu
+
+The funnel button renders in every filterable header. With the `@pretable/ui` skin it stays hidden until you hover the header row, focus it with the keyboard, or the column has an active filter — an active funnel stays visible and tinted with the accent color.
+
+Clicking the funnel opens a popover (`role="dialog"`, labeled `Filter {header}`) anchored under the button, with the operator `<select>` focused. From there:
+
+- **Filters apply live.** Free-text and number typing is debounced (~200&nbsp;ms); operator changes, date picks, and enum checkboxes apply immediately. Closing the menu flushes any pending keystrokes.
+- **Ranges wait for both bounds.** `between` / `dateBetween` only take effect once min and max are both set (and numeric, for numbers). An incomplete value clears the column's filter rather than half-applying it.
+- **Enum checklists are permissive when empty.** Zero boxes checked means no constraint, not zero rows.
+- **Clear** resets the column's filter and the menu's controls in one click.
+- **`Escape`, clicking outside, or scrolling** closes the menu. Filters keep applying after it closes — the funnel's tint tells you which columns are constrained.
+
+For styling or testing, the parts expose stable DOM hooks: the button carries `data-pretable-filter-funnel`, `data-pretable-column-id`, and `data-pretable-filter-active`; the menu carries `data-pretable-filter-menu`, with `data-pretable-filter-operator`, `data-pretable-filter-value`, `data-pretable-filter-min` / `-max`, `data-pretable-filter-set`, and `data-pretable-filter-clear` on its controls.
+
+## Reacting to changes
+
+By default filters are **uncontrolled** — the engine owns the map and you don't have to wire anything. To observe it (persist to a URL, show a "3 filters active" badge), pass `onFiltersChange` to `<PretableSurface>`. It fires after every menu mutation with the full map:
+
+```tsx
+import { PretableSurface, type ColumnFilter } from "@pretable/react";
+
+<PretableSurface<Order>
+  ariaLabel="Orders"
+  columns={columns}
+  rows={rows}
+  getRowId={(row) => row.id}
+  onFiltersChange={(filters: Record<string, ColumnFilter>) => {
+    console.log(Object.keys(filters)); // column ids with a filter set
+  }}
+/>;
+```
+
+## Controlling filters
+
+To own the filter state, pass the `filters` slice of the surface's `state` prop. Like the other slices (`sort`, `selection`, `focus`), a provided slice forces the engine to it on every render; pair it with `onFiltersChange` so menu edits round-trip through your state:
+
+```tsx
+import { useState } from "react";
+import { PretableSurface, type ColumnFilter } from "@pretable/react";
+
+function OrdersGrid() {
+  const [filters, setFilters] = useState<Record<string, ColumnFilter>>({
+    status: { operator: "isAnyOf", value: ["open"] },
+  });
+
+  return (
+    <PretableSurface<Order>
+      ariaLabel="Orders"
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      state={{ filters }}
+      onFiltersChange={setFilters}
+    />
+  );
+}
+```
+
+Because you own the map, you can seed initial filters (as above), clear everything with `setFilters({})`, or drive filters from UI of your own — the funnels and, on open, the menu reflect whatever you pass down. (An already-open menu keeps its in-progress draft; it re-reads the controlled value the next time it opens.)
+
+<Callout type="note">
+  `onFiltersChange` and `state` are `<PretableSurface>` props. The drop-in
+  `<Pretable>` component renders the same funnels and menu, but its filters are
+  always uncontrolled.
+</Callout>
+
+## Headless
+
+The same filter model is available on the engine: `setColumnFilter(columnId, filter | null)` sets or clears one column, `replaceFilters(map)` swaps the whole set, `clearFilters()` empties it, and `distinctColumnValues(columnId)` returns the derived enum checklist. `snapshot.visibleRows` always reflects the active filters. See the [headless API reference](/docs/headless/api-reference).
+
+## See also
+
+- [Selection](/docs/grid/selection) — selection state under a filtered row set.
+- [`<PretableSurface>`](/docs/grid/pretable-surface) — the `state` prop and the controlled/uncontrolled pattern.
+- [API reference](/docs/grid/api-reference) — `ColumnFilter`, `FilterOperator`, `FilterType`, `FilterOption` types.

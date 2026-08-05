@@ -55,4 +55,11 @@ describe("HeroGrid", () => {
       }),
     ).toBeInTheDocument();
   });
+
+  it("renders built-in filter funnels on filterable columns", () => {
+    renderHeroGrid();
+    expect(
+      screen.getByRole("button", { name: "Filter Sector" }),
+    ).toBeInTheDocument();
+  });
 });

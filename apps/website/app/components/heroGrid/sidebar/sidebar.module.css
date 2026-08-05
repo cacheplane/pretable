@@ -11,35 +11,6 @@
   letter-spacing: 0.05em;
   opacity: 0.55;
 }
-.search {
-  width: 100%;
-  box-sizing: border-box;
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 8px;
-  border: 1px solid var(--pt-rule-strong, #ccc);
-  border-radius: 6px;
-  background: var(--pt-bg-card, #fff);
-}
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.chip {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  cursor: pointer;
-  border: 1px solid var(--pt-rule-strong, #ccc);
-  background: transparent;
-  color: inherit;
-}
-.chip[aria-pressed="true"] {
-  background: var(--pt-accent, #2563eb);
-  color: #fff;
-  border-color: var(--pt-accent, #2563eb);
-}
 .selsum {
   font-size: 12px;
   font-weight: 600;
