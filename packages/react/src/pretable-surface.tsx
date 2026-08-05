@@ -23,6 +23,7 @@ import type {
   PretableGridSnapshot,
   PretableRow,
   PretableSelectionState,
+  PretableSortEntry,
 } from "@pretable/core";
 import type {
   PretableCellRenderInput,
@@ -233,9 +234,12 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
   onFocusChange?: (next: PretableFocusState) => void;
-  onSortChange?: (
-    sort: { columnId: string; direction: "asc" | "desc" } | null,
-  ) => void;
+  /**
+   * Called after a header click mutates the sort. Receives the engine's full
+   * ordered sort list (index = priority; `[]` = unsorted). Use to mirror sort
+   * state externally (e.g. controlled `state.sort`).
+   */
+  onSortChange?: (sort: PretableSortEntry[]) => void;
   onColumnWidthsChange?: (next: Record<string, number>) => void;
   onColumnOrderChange?: (next: readonly string[]) => void;
   onColumnPinnedChange?: (next: Record<string, "left" | null>) => void;
@@ -352,6 +356,8 @@ interface MemoizedHeaderContentProps {
   columnId: string;
   label: string;
   sortDirection: "asc" | "desc" | null;
+  /** 1-based cascade priority; null unless 2+ columns are sorted. */
+  sortPriority: number | null;
   isSorted: boolean;
   width: number;
   isSortable: boolean;
@@ -371,6 +377,7 @@ interface MemoizedHeaderContentProps {
 function HeaderContentImpl({
   label,
   sortDirection,
+  sortPriority,
   renderHeaderRef,
   fallbackRenderHeaderRef,
   headerRenderInput,
@@ -398,6 +405,9 @@ function HeaderContentImpl({
           : sortDirection === "asc"
             ? "Oldest"
             : "Sort"}
+        {sortPriority !== null ? (
+          <span data-pretable-sort-priority="">{sortPriority}</span>
+        ) : null}
       </strong>
     </>
   );
@@ -411,6 +421,7 @@ function headerContentPropsEqual(
     prev.columnId === next.columnId &&
     prev.label === next.label &&
     prev.sortDirection === next.sortDirection &&
+    prev.sortPriority === next.sortPriority &&
     prev.isSorted === next.isSorted &&
     prev.width === next.width &&
     prev.isSortable === next.isSortable &&
@@ -1263,9 +1274,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           }
 
           const label = column.header ?? column.id;
-          const sortDirection =
-            snapshot.sort.find((entry) => entry.columnId === column.id)
-              ?.direction ?? null;
+          const sortIndex = snapshot.sort.findIndex(
+            (entry) => entry.columnId === column.id,
+          );
+          const sortEntry = sortIndex === -1 ? null : snapshot.sort[sortIndex];
+          const sortDirection = sortEntry?.direction ?? null;
+          const sortPriority =
+            sortIndex !== -1 && snapshot.sort.length > 1 ? sortIndex + 1 : null;
           const headerProps =
             getHeaderCellProps?.({
               column,
@@ -1322,16 +1337,38 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   wasReorderingRef.current = false;
                   return;
                 }
-                const nextDirection = getNextSortDirection(sortDirection);
-                grid.setSort(column.id, nextDirection);
-                if (nextDirection) {
-                  onSortChange?.({
-                    columnId: column.id,
-                    direction: nextDirection,
-                  });
-                } else {
-                  onSortChange?.(null);
+                if (column.sortable === false) {
+                  return;
                 }
+                if (event.shiftKey) {
+                  // Shift-click mirrors the plain-click cycle per column:
+                  // absent → append desc; desc → flip to asc in place;
+                  // asc → remove just this entry (others keep positions).
+                  const current = snapshot.sort;
+                  const idx = current.findIndex(
+                    (entry) => entry.columnId === column.id,
+                  );
+                  let next: PretableSortEntry[];
+                  if (idx === -1) {
+                    next = [
+                      ...current,
+                      { columnId: column.id, direction: "desc" },
+                    ];
+                  } else if (current[idx].direction === "desc") {
+                    next = current.map((entry, i) =>
+                      i === idx
+                        ? { ...entry, direction: "asc" as const }
+                        : entry,
+                    );
+                  } else {
+                    next = current.filter((_, i) => i !== idx);
+                  }
+                  grid.replaceSort(next);
+                } else {
+                  const nextDirection = getNextSortDirection(sortDirection);
+                  grid.setSort(column.id, nextDirection);
+                }
+                onSortChange?.(grid.getSnapshot().sort);
               }}
               {...(column.id !== ROW_SELECT_COLUMN_ID &&
               column.reorderable !== false
@@ -1466,6 +1503,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 columnId={column.id}
                 label={label}
                 sortDirection={sortDirection}
+                sortPriority={sortPriority}
                 isSorted={sortDirection !== null}
                 width={effWidth}
                 isSortable={column.sortable !== false}

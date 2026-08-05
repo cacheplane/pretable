@@ -59,6 +59,15 @@
     border-right: none;
   }
 
+  /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
+  :where([data-pretable-sort-priority]) {
+    margin-left: 2px;
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--pretable-text-dim);
+    vertical-align: super;
+  }
+
   /* Body cells */
   :where([data-pretable-cell]) {
     display: flex;

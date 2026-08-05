@@ -869,21 +869,19 @@ describe("PretableSurface", () => {
 
     fireEvent.click(timestampHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith({
-      columnId: "timestamp",
-      direction: "desc",
-    });
+    expect(onSortChange).toHaveBeenCalledWith([
+      { columnId: "timestamp", direction: "desc" },
+    ]);
 
     fireEvent.click(timestampHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith({
-      columnId: "timestamp",
-      direction: "asc",
-    });
+    expect(onSortChange).toHaveBeenCalledWith([
+      { columnId: "timestamp", direction: "asc" },
+    ]);
 
     fireEvent.click(timestampHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith(null);
+    expect(onSortChange).toHaveBeenCalledWith([]);
   });
 
   it("does not remeasure a cached tall row height when a sort reorders the same rows", async () => {

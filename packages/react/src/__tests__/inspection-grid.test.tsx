@@ -82,10 +82,9 @@ describe("InspectionGrid", () => {
 
     fireEvent.click(timestampHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith({
-      columnId: "timestamp",
-      direction: "desc",
-    });
+    expect(onSortChange).toHaveBeenCalledWith([
+      { columnId: "timestamp", direction: "desc" },
+    ]);
   });
 
   it("preserves the shared row and cell DOM contract across inspection dataset scales", () => {

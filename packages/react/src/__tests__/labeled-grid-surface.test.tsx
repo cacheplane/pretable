@@ -242,9 +242,8 @@ describe("LabeledGridSurface", () => {
 
     fireEvent.click(severityHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith({
-      columnId: "severity",
-      direction: "desc",
-    });
+    expect(onSortChange).toHaveBeenCalledWith([
+      { columnId: "severity", direction: "desc" },
+    ]);
   });
 });
