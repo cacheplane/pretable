@@ -77,10 +77,7 @@ describe("PretableSurface boolean columns", () => {
   });
 
   it("shows the validate error, cancels on Escape, and recovers", async () => {
-    const validate = vi
-      .fn()
-      .mockReturnValueOnce("nope")
-      .mockReturnValue(true);
+    const validate = vi.fn().mockReturnValueOnce("nope").mockReturnValue(true);
     const { onCellEdit } = renderGrid({ validate });
     const box = screen.getAllByRole("checkbox")[0];
 
