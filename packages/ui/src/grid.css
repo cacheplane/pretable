@@ -319,6 +319,14 @@
     cursor: wait;
   }
 
+  /* Multi-line cell editor (wrapped text columns) */
+  :where(textarea.pretable-cell-editor) {
+    resize: none;
+    overflow: auto;
+    max-height: 160px;
+    line-height: inherit;
+  }
+
   /* Number cell editor: input + stacked steppers */
   :where([data-pretable-number-editor]) {
     display: flex;

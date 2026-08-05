@@ -1,3 +1,4 @@
+import { MultilineCellEditor } from "./editors/MultilineCellEditor";
 import { NumberCellEditor } from "./editors/NumberCellEditor";
 import { TextCellEditor } from "./editors/TextCellEditor";
 import type { PretableEditorInput } from "./types";
@@ -7,9 +8,12 @@ export interface CellEditorProps {
 }
 
 function editorFor(input: PretableEditorInput) {
-  if (input.column.type === "number") return <NumberCellEditor input={input} />;
-  // Boolean columns never reach this popover path (the cell control commits
-  // directly); enum/date fall back to text until sub-projects 2/3 land.
+  const type = input.column.type ?? "text";
+  if (type === "number") return <NumberCellEditor input={input} />;
+  if (type === "text" && input.column.wrap)
+    return <MultilineCellEditor input={input} />;
+  // enum/date fall back to text until sub-projects 2/3; boolean never reaches
+  // this popover path (the cell control commits directly).
   return <TextCellEditor input={input} />;
 }
 
