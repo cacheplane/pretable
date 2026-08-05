@@ -752,7 +752,13 @@ test("grid.css styles the enum combobox listbox", () => {
 
 - [ ] **Step 2: Run, verify FAIL** — `pnpm --filter @pretable/ui test -- css-cascade`.
 
-- [ ] **Step 3: Add the rules** — inside the single `@layer pretable { }` block in `packages/ui/src/grid.css`, next to the filter-menu rules (all `:where()`-wrapped, tokens only):
+- [ ] **Step 3a: Fix the portaled filter menu's font** (review finding from Task 1) — `font-family: var(--pretable-font-sans)` was inherited from a real declaration on `[data-pretable-scroll-viewport]` (`grid.css:33`), not from a token on `:root`, so portaled popovers now inherit the host page's font instead. Add the declaration to the existing `:where([data-pretable-filter-menu])` block (~line 285), which currently only sets `font: inherit`:
+
+```css
+font-family: var(--pretable-font-sans);
+```
+
+- [ ] **Step 3b: Add the listbox rules** — inside the single `@layer pretable { }` block in `packages/ui/src/grid.css`, next to the filter-menu rules (all `:where()`-wrapped, tokens only; note the listbox block below already declares `font-family` for the same reason):
 
 ```css
 /* Enum combobox listbox (cell editor) */
