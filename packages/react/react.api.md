@@ -335,6 +335,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     readonly options: PretableGridOptions<TRow>;
     // (undocumented)
     replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
+    replaceSort(entries: PretableSortEntry[]): void;
     // (undocumented)
     resetColumnLayout(): void;
     // (undocumented)
@@ -391,10 +392,8 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     focus: PretableFocusState;
     // (undocumented)
     selection: PretableSelectionState;
-    // Warning: (ae-forgotten-export) The symbol "PretableSortState" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    sort: PretableSortState;
+    sort: PretableSortEntry[];
     // (undocumented)
     totalRowCount: number;
     // (undocumented)
@@ -497,6 +496,14 @@ export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> 
 export type PretableRow = Record<string, unknown>;
 
 // @public
+export interface PretableSortEntry {
+    // (undocumented)
+    columnId: string;
+    // (undocumented)
+    direction: "asc" | "desc";
+}
+
+// @public
 export function PretableSurface<TRow extends PretableRow = PretableRow>(input: PretableSurfaceProps<TRow>): react.JSX.Element;
 
 // @public
@@ -575,11 +582,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     onSelectedRowIdChange?: (rowId: string | null) => void;
     // (undocumented)
     onSelectionChange?: (next: PretableSelectionState) => void;
-    // (undocumented)
-    onSortChange?: (sort: {
-        columnId: string;
-        direction: "asc" | "desc";
-    } | null) => void;
+    onSortChange?: (sort: PretableSortEntry[]) => void;
     // (undocumented)
     onTelemetryChange?: (telemetry: PretableTelemetry) => void;
     // (undocumented)
@@ -621,7 +624,7 @@ export interface PretableSurfaceState {
     // (undocumented)
     selection?: PretableSelectionState;
     // (undocumented)
-    sort?: PretableSortState | null;
+    sort?: PretableSortEntry[];
 }
 
 // @public
@@ -722,7 +725,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:472:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:474:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
