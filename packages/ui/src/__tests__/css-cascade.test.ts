@@ -14,6 +14,7 @@ describe("grid.css cascade contract", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/:where\(\.pretable-cell-editor\)/);
     expect(css).toMatch(/:where\(\[data-pretable-edit-error\]\)/);
+    expect(css).toMatch(/:where\(\[data-pretable-number-editor\]\)/);
     expect(css).toMatch(/var\(--pretable-edit-bg\)/);
     expect(css).toMatch(/var\(--pretable-text-error\)/);
   });

@@ -1,3 +1,4 @@
+import { NumberCellEditor } from "./editors/NumberCellEditor";
 import { TextCellEditor } from "./editors/TextCellEditor";
 import type { PretableEditorInput } from "./types";
 
@@ -6,6 +7,7 @@ export interface CellEditorProps {
 }
 
 function editorFor(input: PretableEditorInput) {
+  if (input.column.type === "number") return <NumberCellEditor input={input} />;
   // Boolean columns never reach this popover path (the cell control commits
   // directly); enum/date fall back to text until sub-projects 2/3 land.
   return <TextCellEditor input={input} />;

@@ -319,6 +319,40 @@
     cursor: wait;
   }
 
+  /* Number cell editor: input + stacked steppers */
+  :where([data-pretable-number-editor]) {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    height: 100%;
+  }
+
+  :where([data-pretable-number-editor] .pretable-cell-editor) {
+    text-align: right;
+    flex: 1;
+    min-width: 0;
+  }
+
+  :where([data-pretable-number-steppers]) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  :where([data-pretable-number-steppers] button) {
+    border: none;
+    background: var(--pretable-bg-header);
+    color: var(--pretable-text-header);
+    font-size: 8px;
+    line-height: 1;
+    padding: 2px 4px;
+    cursor: pointer;
+  }
+
+  :where([data-pretable-number-steppers] button:hover) {
+    background: var(--pretable-bg-hover);
+  }
+
   :where([data-pretable-edit-error]) {
     margin-top: 2px;
     color: var(--pretable-text-error);
