@@ -8,8 +8,8 @@ export { evaluateFilter, isFilterActive } from "./evaluate-filter";
 export type {
   ColumnFilter,
   FilterOperator,
-  FilterOption,
-  FilterType,
+  ColumnOption,
+  ColumnType,
   FilterValue,
   PretableCellAddress,
   PretableCellRange,

@@ -1999,7 +1999,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             );
             if (!col) return null;
             const options =
-              col.filterOptions ??
+              col.options ??
               grid
                 .distinctColumnValues(filterOpenState.columnId)
                 .map((v) => ({ value: v }));
@@ -2008,7 +2008,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 key={filterOpenState.columnId}
                 columnId={filterOpenState.columnId}
                 label={col.header ?? filterOpenState.columnId}
-                filterType={col.filterType ?? "text"}
+                type={col.type ?? "text"}
                 options={options}
                 initialFilter={
                   snapshot.filters[filterOpenState.columnId] ?? null

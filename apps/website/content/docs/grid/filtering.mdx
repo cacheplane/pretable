@@ -15,8 +15,8 @@ Three column fields shape filtering:
 
 | Field           | Type                                     | Notes                                                                     |
 | --------------- | ---------------------------------------- | ------------------------------------------------------------------------- |
-| `filterType`    | `"text" \| "number" \| "date" \| "enum"` | picks the operator family and value control; defaults to `"text"`         |
-| `filterOptions` | `{ value: string; label?: string }[]`    | the checklist for an `enum` column; omit to auto-derive from the rows     |
+| `type`    | `"text" \| "number" \| "date" \| "enum"` | picks the operator family and value control; defaults to `"text"`         |
+| `options` | `{ value: string; label?: string }[]`    | the checklist for an `enum` column; omit to auto-derive from the rows     |
 | `filterable`    | `boolean`                                | `false` removes the funnel and makes the engine ignore filters for the id |
 
 ```tsx
@@ -24,26 +24,26 @@ import type { PretableColumn } from "@pretable/react";
 
 const columns: PretableColumn<Order>[] = [
   { id: "customer", header: "Customer" }, // text — the default
-  { id: "total", header: "Total", filterType: "number" },
+  { id: "total", header: "Total", type: "number" },
   {
     id: "status",
     header: "Status",
-    filterType: "enum",
-    filterOptions: [
+    type: "enum",
+    options: [
       { value: "open", label: "Open" },
       { value: "shipped", label: "Shipped" },
     ],
   },
-  { id: "placedAt", header: "Placed", filterType: "date" },
+  { id: "placedAt", header: "Placed", type: "date" },
   { id: "actions", header: "", filterable: false },
 ];
 ```
 
-When an `enum` column omits `filterOptions`, the menu derives the checklist from the data: the distinct stringified cell values (via `column.value` if supplied, else `row[column.id]`), skipping null and blank cells, sorted locale-aware.
+When an `enum` column omits `options`, the menu derives the checklist from the data: the distinct stringified cell values (via `column.value` if supplied, else `row[column.id]`), skipping null and blank cells, sorted locale-aware.
 
 ## Operators
 
-Each `filterType` gets its own operator family, plus two shared operators available everywhere:
+Each `type` gets its own operator family, plus two shared operators available everywhere:
 
 | Family   | Operators                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------- |
@@ -55,7 +55,7 @@ Each `filterType` gets its own operator family, plus two shared operators availa
 
 Semantics worth knowing:
 
-- **Evaluation keys on `filterType`, not the operator name.** `equals` on a `text` column is case-insensitive string equality; on a `number` column it's numeric equality. An operator outside the column's family simply matches nothing.
+- **Evaluation keys on `type`, not the operator name.** `equals` on a `text` column is case-insensitive string equality; on a `number` column it's numeric equality. An operator outside the column's family simply matches nothing.
 - **Columns AND-combine.** A row must pass every column's active filter. Within an `enum` column, `isAnyOf` is an OR across the selected values.
 - **Text operators are case-insensitive.** Both cell and value are lowercased before comparison.
 - **`between` / `dateBetween` are inclusive** and order-tolerant — swapped bounds are normalized.
@@ -136,4 +136,4 @@ The same filter model is available on the engine: `setColumnFilter(columnId, fil
 
 - [Selection](/docs/grid/selection) — selection state under a filtered row set.
 - [`<PretableSurface>`](/docs/grid/pretable-surface) — the `state` prop and the controlled/uncontrolled pattern.
-- [API reference](/docs/grid/api-reference) — `ColumnFilter`, `FilterOperator`, `FilterType`, `FilterOption` types.
+- [API reference](/docs/grid/api-reference) — `ColumnFilter`, `FilterOperator`, `ColumnType`, `ColumnOption` types.

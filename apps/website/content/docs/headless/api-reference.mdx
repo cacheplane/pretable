@@ -102,8 +102,8 @@ interface PretableColumn<TRow = PretableRow> {
   format?: (input: PretableFormatInput<TRow>) => string;
   sortable?: boolean;
   filterable?: boolean;
-  filterType?: FilterType;
-  filterOptions?: FilterOption[];
+  type?: ColumnType;
+  options?: ColumnOption[];
   reorderable?: boolean;
   resizable?: boolean;
   pinned?: "left";
@@ -117,7 +117,7 @@ interface PretableColumn<TRow = PretableRow> {
 ### Filter types
 
 ```ts
-type FilterType = "text" | "number" | "date" | "enum";
+type ColumnType = "text" | "number" | "date" | "enum";
 
 type FilterOperator =
   | "contains"
@@ -153,14 +153,14 @@ interface ColumnFilter {
   value?: FilterValue;
 }
 
-interface FilterOption {
+interface ColumnOption {
   value: string;
   label?: string;
 }
 ```
 
-Each column's `filterType` (default `"text"`) selects which operators apply and how
-values are compared. Columns are AND-combined. `filterOptions` supplies the choices for
+Each column's `type` (default `"text"`) selects which operators apply and how
+values are compared. Columns are AND-combined. `options` supplies the choices for
 an `enum` column; when omitted, call `distinctColumnValues(columnId)` to derive them from
 the data.
 

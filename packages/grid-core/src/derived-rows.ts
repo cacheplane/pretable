@@ -74,7 +74,7 @@ function matchesFilters<TRow extends PretableRow>(
     if (
       !evaluateFilter(
         cell,
-        column.filterType ?? "text",
+        column.type ?? "text",
         filter.operator,
         filter.value,
       )

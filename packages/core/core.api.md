@@ -24,14 +24,8 @@ export interface ColumnFilter {
     value?: FilterValue;
 }
 
-// @public
-export function createGrid<TRow extends PretableRow = PretableRow>(options: PretableGridOptions<TRow>): PretableGrid<TRow>;
-
 // @public (undocumented)
-export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith" | "gt" | "gte" | "lt" | "lte" | "between" | "isAnyOf" | "isNoneOf" | "on" | "before" | "after" | "dateBetween" | "isEmpty" | "isNotEmpty";
-
-// @public (undocumented)
-export interface FilterOption {
+export interface ColumnOption {
     // (undocumented)
     label?: string;
     // (undocumented)
@@ -39,7 +33,13 @@ export interface FilterOption {
 }
 
 // @public (undocumented)
-export type FilterType = "text" | "number" | "date" | "enum";
+export type ColumnType = "text" | "number" | "date" | "enum";
+
+// @public
+export function createGrid<TRow extends PretableRow = PretableRow>(options: PretableGridOptions<TRow>): PretableGrid<TRow>;
+
+// @public (undocumented)
+export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith" | "gt" | "gte" | "lt" | "lte" | "between" | "isAnyOf" | "isNoneOf" | "on" | "before" | "after" | "dateBetween" | "isEmpty" | "isNotEmpty";
 
 // @public (undocumented)
 export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
@@ -71,10 +71,6 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     filterable?: boolean;
     // (undocumented)
-    filterOptions?: FilterOption[];
-    // (undocumented)
-    filterType?: FilterType;
-    // (undocumented)
     format?: (input: PretableFormatInput<TRow>) => string;
     // (undocumented)
     formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
@@ -87,6 +83,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     minWidthPx?: number;
     // (undocumented)
+    options?: ColumnOption[];
+    // (undocumented)
     parseEditValue?: (raw: string, input: PretableEditInput<TRow>) => unknown;
     // (undocumented)
     pinned?: "left";
@@ -96,6 +94,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     resizable?: boolean;
     // (undocumented)
     sortable?: boolean;
+    // (undocumented)
+    type?: ColumnType;
     // (undocumented)
     validate?: (value: unknown, input: PretableEditInput<TRow>) => (true | string) | Promise<true | string>;
     // (undocumented)

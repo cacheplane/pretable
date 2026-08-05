@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type JSX,
 } from "react";
-import type { ColumnFilter, FilterOperator, FilterType } from "@pretable/core";
+import type { ColumnFilter, FilterOperator, ColumnType } from "@pretable/core";
 import {
   OPERATOR_LABELS,
   defaultDraft,
@@ -23,7 +23,7 @@ const DEBOUNCE_MS = 200;
 export function FilterMenu({
   columnId,
   label,
-  filterType,
+  type,
   options,
   initialFilter,
   style,
@@ -32,7 +32,7 @@ export function FilterMenu({
 }: {
   columnId: string;
   label: string;
-  filterType: FilterType;
+  type: ColumnType;
   options: { value: string; label?: string }[];
   initialFilter: ColumnFilter | null;
   style?: CSSProperties;
@@ -40,7 +40,7 @@ export function FilterMenu({
   onClose: () => void;
 }): JSX.Element {
   const [draft, setDraft] = useState<FilterDraft>(() =>
-    fromColumnFilter(filterType, initialFilter),
+    fromColumnFilter(type, initialFilter),
   );
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -57,9 +57,9 @@ export function FilterMenu({
 
   const apply = useCallback(
     (next: FilterDraft) => {
-      onChange(columnId, toColumnFilter(filterType, next));
+      onChange(columnId, toColumnFilter(type, next));
     },
-    [columnId, filterType, onChange],
+    [columnId, type, onChange],
   );
 
   const clearTimer = useCallback(() => {
@@ -143,16 +143,16 @@ export function FilterMenu({
   );
 
   const shape = operatorValueShape(draft.operator);
-  const operators = operatorsForType(filterType);
-  const inputType = filterType === "date" ? "date" : "text";
+  const operators = operatorsForType(type);
+  const inputType = type === "date" ? "date" : "text";
   const numericProps =
-    filterType === "number" ? { inputMode: "numeric" as const } : {};
+    type === "number" ? { inputMode: "numeric" as const } : {};
 
   const onClear = useCallback(() => {
     clearTimer();
-    setDraft(defaultDraft(filterType));
+    setDraft(defaultDraft(type));
     onChange(columnId, null);
-  }, [clearTimer, columnId, filterType, onChange]);
+  }, [clearTimer, columnId, type, onChange]);
 
   const toggleSelected = useCallback(
     (value: string, checked: boolean) => {

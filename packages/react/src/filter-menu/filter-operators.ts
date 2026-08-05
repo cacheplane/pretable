@@ -1,5 +1,5 @@
 // packages/react/src/filter-menu/filter-operators.ts
-import type { ColumnFilter, FilterOperator, FilterType } from "@pretable/core";
+import type { ColumnFilter, FilterOperator, ColumnType } from "@pretable/core";
 
 /** Local editing shape for the popover. One field set per value-shape. */
 export interface FilterDraft {
@@ -33,7 +33,7 @@ const DATE_OPS: FilterOperator[] = ["on", "before", "after", "dateBetween"];
 const ENUM_OPS: FilterOperator[] = ["isAnyOf", "isNoneOf"];
 const SHARED_OPS: FilterOperator[] = ["isEmpty", "isNotEmpty"];
 
-export function operatorsForType(type: FilterType): FilterOperator[] {
+export function operatorsForType(type: ColumnType): FilterOperator[] {
   const base =
     type === "number"
       ? NUMBER_OPS
@@ -78,7 +78,7 @@ export function operatorValueShape(op: FilterOperator): ValueShape {
   return "single";
 }
 
-export function defaultDraft(type: FilterType): FilterDraft {
+export function defaultDraft(type: ColumnType): FilterDraft {
   const operator = operatorsForType(type)[0]!;
   if (operatorValueShape(operator) === "set") return { operator, selected: [] };
   if (operatorValueShape(operator) === "range")
@@ -89,7 +89,7 @@ export function defaultDraft(type: FilterType): FilterDraft {
 const isNum = (s: string | undefined): s is string =>
   s !== undefined && s.trim() !== "" && !Number.isNaN(Number(s));
 
-export function isComplete(type: FilterType, d: FilterDraft): boolean {
+export function isComplete(type: ColumnType, d: FilterDraft): boolean {
   const shape = operatorValueShape(d.operator);
   if (shape === "none") return true;
   if (shape === "set") return (d.selected?.length ?? 0) > 0;
@@ -103,7 +103,7 @@ export function isComplete(type: FilterType, d: FilterDraft): boolean {
 }
 
 export function toColumnFilter(
-  type: FilterType,
+  type: ColumnType,
   d: FilterDraft,
 ): ColumnFilter | null {
   const shape = operatorValueShape(d.operator);
@@ -121,7 +121,7 @@ export function toColumnFilter(
 }
 
 export function fromColumnFilter(
-  type: FilterType,
+  type: ColumnType,
   filter: ColumnFilter | null,
 ): FilterDraft {
   if (!filter) return defaultDraft(type);
