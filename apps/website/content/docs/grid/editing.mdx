@@ -1,6 +1,6 @@
 ---
 title: Editing
-description: "Controlled inline cell editing with an async editable / validate / commit lifecycle."
+description: "Controlled inline cell editing: typed editors driven by column.type, with an async editable / validate / commit lifecycle."
 nav: Grid
 order: 7
 ---
@@ -35,12 +35,12 @@ Editing is **off by default** — a cell only becomes editable when its column o
 
 The payload is `{ rowId, columnId, value, row }`:
 
-| Field      | Type      | Notes                                                     |
-| ---------- | --------- | --------------------------------------------------------- |
-| `rowId`    | `string`  | the `getRowId` of the edited row                          |
-| `columnId` | `string`  | `column.id` of the edited cell                            |
-| `value`    | `unknown` | the committed value (after `parseEditValue`, if supplied) |
-| `row`      | `TRow`    | the row object the edit targets                           |
+| Field      | Type      | Notes                                                                              |
+| ---------- | --------- | ---------------------------------------------------------------------------------- |
+| `rowId`    | `string`  | the `getRowId` of the edited row                                                   |
+| `columnId` | `string`  | `column.id` of the edited cell                                                     |
+| `value`    | `unknown` | the committed value (after built-in type parsing, or `parseEditValue` if supplied) |
+| `row`      | `TRow`    | the row object the edit targets                                                    |
 
 ## Making a column editable
 
@@ -62,6 +62,56 @@ const columns: PretableColumn<Person>[] = [
 
 The function form receives a `PretableEditInput` (`{ rowId, columnId, row, column, value }`) and may return a `Promise<boolean>`, so a permission check can hit the network before the editor opens. While an async `editable` is pending, the edit sits in the `checking` phase (see [Lifecycle](#lifecycle)); if it resolves `false`, the edit is cancelled and no editor appears.
 
+## Typed editors
+
+`column.type` — the same field that picks the [filter](/docs/grid/filtering) operator family — also selects the built-in editor:
+
+| `type`                  | Editor                                                             |
+| ----------------------- | ------------------------------------------------------------------ |
+| `"text"` (default)      | single-line text input                                             |
+| `"text"` + `wrap: true` | auto-growing multi-line textarea                                   |
+| `"number"`              | right-aligned decimal input with steppers                          |
+| `"boolean"`             | in-cell checkbox — toggles and commits directly, no editor popover |
+| `"enum"`, `"date"`      | the text editor, for now                                           |
+
+`enum` and `date` columns currently fall back to the plain text editor — the option combobox and calendar picker are the next two editors to land.
+
+```tsx
+const columns: PretableColumn<Task>[] = [
+  { id: "title", header: "Title", editable: true }, // text
+  { id: "notes", header: "Notes", editable: true, wrap: true }, // multi-line
+  {
+    id: "estimate",
+    header: "Estimate",
+    editable: true,
+    type: "number",
+    step: 0.5,
+  },
+  { id: "done", header: "Done", editable: true, type: "boolean" },
+];
+```
+
+### Multi-line text
+
+A `wrap: true` text column edits in a textarea that auto-grows with the draft. `Enter` inserts a newline instead of committing; **`Cmd`/`Ctrl` + `Enter`** commits and moves down. `Tab` still commits right, `Escape` cancels, and blur commits in place.
+
+### Numbers
+
+`type: "number"` opens a right-aligned decimal input. `ArrowUp` / `ArrowDown` step the draft by `column.step` (default `1`), and a pair of clickable stepper buttons does the same — stepping edits the draft, it never commits. On commit, built-in parsing runs before your `validate`: a non-numeric draft is rejected with an inline **"Not a number"** and the editor stays open; an empty draft commits `null`.
+
+### Booleans
+
+`type: "boolean"` cells never open an editor. The cell renders a checkbox that toggles and commits immediately — click it, or press `Enter` or `Space` on the focused cell — through the same async lifecycle as every other edit: an async `editable` still gates it, `validate` and `onCellEdit` still await, and while the commit is in flight the control dims and disables. `F2` and type-to-replace don't apply (there's no draft to seed), and non-editable boolean columns render the same checkbox disabled.
+
+When a boolean commit fails — `validate` returned a string, or `onCellEdit` threw — the cell shows the inline error just like the field editors do. Click the checkbox again to retry the toggle, or press `Escape` to cancel the failed edit.
+
+### Overriding the built-ins
+
+Two column hooks take precedence over the typed defaults:
+
+- **`renderEditor` replaces the built-in editor** for any column that opens one — text, multi-line, number, and the enum/date fallback. It does **not** apply to `type: "boolean"`: boolean cells toggle in place and never open an editor, so there is nothing for `renderEditor` to render.
+- **`parseEditValue` replaces the built-in type parsing entirely** — supply it on a number column and the "Not a number" guard and empty-commits-`null` behavior are yours to reimplement.
+
 ## Validating
 
 `validate` runs on commit, before `onCellEdit`. Return `true` to accept, or a **string** to reject — the string becomes the validation message and the cell stays in edit mode so the user can fix it. It can be sync or async:
@@ -72,11 +122,10 @@ const columns: PretableColumn<Person>[] = [
     id: "age",
     header: "Age",
     editable: true,
-    parseEditValue: (raw) => Number(raw),
+    type: "number",
     validate: (value) => {
-      if (typeof value !== "number" || Number.isNaN(value))
-        return "Enter a number";
-      if (value < 0) return "Age cannot be negative";
+      if (typeof value === "number" && value < 0)
+        return "Age cannot be negative";
       return true;
     },
   },
@@ -85,9 +134,11 @@ const columns: PretableColumn<Person>[] = [
 
 `validate(value, input)` receives the parsed value and the same `PretableEditInput`. A returned string keeps the edit open with `snapshot.editing.error` set to that message; a `Promise<true | string>` lets you validate against a server. Commit only proceeds to `onCellEdit` once validation passes.
 
+On a [typed column](#typed-editors), built-in parsing runs first: by the time `validate` sees the value, a `number` column has already rejected non-numeric drafts ("Not a number") and turned an empty draft into `null` — so `validate` is for domain rules, not parsing.
+
 ## Custom editors
 
-The default editor is a text input. To render your own — a `<select>`, a date picker, a numeric stepper — supply `renderEditor`. Pair it with `parseEditValue` (string → your value type) and `formatEditValue` (your value → the string the editor seeds from):
+To render your own editor instead of the [built-in one](#typed-editors) — a `<select>`, a date picker, a tag input — supply `renderEditor`. Pair it with `parseEditValue` (string → your value type) and `formatEditValue` (your value → the string the editor seeds from):
 
 ```tsx
 const columns: PretableColumn<Person>[] = [
@@ -122,7 +173,9 @@ const columns: PretableColumn<Person>[] = [
 | `commit`   | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus (`"down"`, `"right"`, …) |
 | `cancel`   | `() => void`                                   | discard the edit and restore the cell                              |
 
-`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onCellEdit`. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (a number, a `Date`, an enum) so the round-trip stays type-correct.
+`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onCellEdit`, replacing the built-in type parsing entirely. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (a `Date`, an enum) so the round-trip stays type-correct.
+
+`renderEditor` wins over the built-in editor for every column that opens one. The exception is `type: "boolean"` — boolean cells [toggle in place](#booleans) and never open an editor, so `renderEditor` is ignored there.
 
 ## Lifecycle
 
@@ -164,11 +217,13 @@ if (editing?.status === "saving") {
 
 ## Default editor behavior
 
-The default text editor handles commit, errors, and pending state for you — no wiring required:
+The built-in editors handle commit, errors, and pending state for you — no wiring required:
 
 - **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.)
 - **Failures keep the editor open.** When `validate` rejects (returns a string) or `onCellEdit` throws, the editor stays open and renders the message inline below the field — so the user can fix the value and try again. Press `Enter` to retry a failed commit, or `Escape` to cancel.
-- **Async work locks the field.** While an async `editable`, `validate`, or `onCellEdit` is in flight (the `checking`, `validating`, and `saving` phases), the input is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
+- **Async work locks the field.** While an async `editable`, `validate`, or `onCellEdit` is in flight (the `checking`, `validating`, and `saving` phases), the field is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
+
+[Boolean cells](#booleans) have no field: pending renders as a dimmed, disabled checkbox, and a failed commit shows the same inline error on the cell — click to retry, `Escape` to cancel.
 
 For custom styling, two DOM hooks are exposed: the editing cell carries `data-pretable-edit-status` (the current [lifecycle phase](#lifecycle)), and the inline error element carries `data-pretable-edit-error`. The `@pretable/ui` skin styles both — the field outline turns `--pretable-text-error` while invalid, and the message renders in the same color.
 
@@ -176,16 +231,18 @@ For custom styling, two DOM hooks are exposed: the editing cell carries `data-pr
 
 Editing reuses the focused cell from the [selection](/docs/grid/selection) model.
 
-| Key                | When                | Effect                                                                 |
-| ------------------ | ------------------- | ---------------------------------------------------------------------- |
-| `Enter` / `F2`     | cell focused        | begin editing the focused cell                                         |
-| Double-click       | on an editable cell | begin editing that cell                                                |
-| Any printable char | cell focused        | begin editing, seeding the draft with that character (type-to-replace) |
-| `Enter`            | editing             | commit, then move focus **down**                                       |
-| `Tab`              | editing             | commit, then move focus **right**                                      |
-| `Escape`           | editing             | cancel — discard the draft, restore the cell                           |
+| Key                    | When                 | Effect                                                                 |
+| ---------------------- | -------------------- | ---------------------------------------------------------------------- |
+| `Enter` / `F2`         | cell focused         | begin editing the focused cell                                         |
+| Double-click           | on an editable cell  | begin editing that cell                                                |
+| Any printable char     | cell focused         | begin editing, seeding the draft with that character (type-to-replace) |
+| `Enter` / `Space`      | boolean cell focused | toggle the checkbox and commit — no editor opens                       |
+| `Enter`                | editing              | commit, then move focus **down**                                       |
+| `Cmd`/`Ctrl` + `Enter` | editing (multi-line) | commit, then move focus **down** (plain `Enter` inserts a newline)     |
+| `Tab`                  | editing              | commit, then move focus **right**                                      |
+| `Escape`               | editing              | cancel — discard the draft, restore the cell                           |
 
-A begin trigger on a non-editable column is a no-op. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation.
+A begin trigger on a non-editable column is a no-op. Editable [boolean columns](#booleans) never open an editor: `Enter` and `Space` toggle in place, `F2` and type-to-replace do nothing, and `Escape` cancels a failed toggle. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation.
 
 ## Worked example
 
@@ -208,11 +265,9 @@ const columns: PretableColumn<Person>[] = [
     header: "Age",
     widthPx: 100,
     editable: true,
-    parseEditValue: (raw) => Number(raw),
+    type: "number",
     validate: (value) =>
-      typeof value === "number" && !Number.isNaN(value) && value >= 0
-        ? true
-        : "Enter a non-negative number",
+      typeof value === "number" && value < 0 ? "Age cannot be negative" : true,
   },
 ];
 
@@ -243,6 +298,7 @@ Click a cell, press `Enter` (or just start typing), edit, and press `Enter` agai
 
 ## See also
 
+- [Filtering](/docs/grid/filtering) — the same `column.type` picks the filter operator family.
 - [Selection](/docs/grid/selection) — focus is the cell editing begins on.
 - [Keyboard](/docs/grid/keyboard) — the full keyboard contract.
 - [Headless engine](/docs/headless) — read `snapshot.editing` to build your own editor.
