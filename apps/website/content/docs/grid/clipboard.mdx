@@ -16,7 +16,19 @@ The default serializer emits tab-separated cells, newline-separated rows, with a
 - `string` / `number` / `boolean` / `bigint` → `String(value)`
 - plain object → `JSON.stringify(value)` (best-effort fallback)
 
+### Escaping
+
+Cell text and header text are escaped with the RFC 4180 quoting convention, using TAB as the delimiter — the same rule Excel and Google Sheets emit and accept on their plain-text clipboard flavor:
+
+- A field is quoted **iff** it contains a tab, CR, LF, or a double quote.
+- Quoting wraps the field in `"` and doubles every embedded `"` — `he said "no"` becomes `"he said ""no"""`.
+- Every other field is emitted bare, so ordinary values carry no quotes at all.
+
+This matters for wrapped/multi-line cells: a cell holding a newline would otherwise be indistinguishable from a row break, and the paste would split into extra rows. With the rule above, it pastes back into a single cell.
+
 This matches what Excel and Sheets accept on paste, so a copy out of a Pretable grid pastes cleanly into a spreadsheet.
+
+Escaping is applied after your per-column [`format`](#per-column-format) runs, so a `format` that returns text containing a tab or newline is still safe — don't pre-quote in `format`, or the quotes get escaped as literal content. If you write a fully custom serializer, you own the escaping.
 
 ## Per-column `format`
 
@@ -158,6 +170,8 @@ Paste lands in a follow-up phase. The shape will mirror this one symmetrically:
 
 - `parseFromCopy?(text, row): unknown` per column — inverse of `format`.
 - `onPaste?({ text, html, target })` at the surface — full override, returning the rows to apply.
+
+Because copy quotes per the [escaping rule](#escaping) above, the paste path has to unquote the incoming text — splitting rows and columns on raw newlines and tabs — before any per-column `parseFromCopy` sees it. `parseFromCopy` will receive the already-unquoted cell text, so it stays a pure value parser and never has to know about the TSV encoding.
 
 Until paste ships, the browser's default paste applies (which means nothing happens in the grid).
 
