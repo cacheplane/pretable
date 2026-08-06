@@ -1,9 +1,16 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ROW_SELECT_COLUMN_ID, PretableSurface } from "../pretable-surface";
+import type { PretableColumn } from "../types";
 import type { PretableGrid } from "@pretable/core";
 
 // ---------------------------------------------------------------------------
@@ -154,24 +161,29 @@ function recordScrollWrites(el: HTMLElement) {
 
 function renderGrid(
   options: {
-    columns?: typeof PLAIN_COLUMNS | typeof PINNED_COLUMNS;
+    columns?: PretableColumn<Row>[];
     rowSelectionColumn?: { enabled: true };
+    /** Renders a focusable element that is NOT part of the surface. */
+    outsideButton?: boolean;
   } = {},
 ) {
   let grid!: PretableGrid<Row>;
   const { container } = render(
-    <PretableSurface
-      ariaLabel="focus-scroll-grid"
-      columns={options.columns ?? PLAIN_COLUMNS}
-      getRowId={(row: Row) => row.id}
-      onGridReady={(g) => {
-        grid = g as PretableGrid<Row>;
-      }}
-      overscan={0}
-      rows={rows}
-      rowSelectionColumn={options.rowSelectionColumn}
-      viewportHeight={VIEWPORT_HEIGHT}
-    />,
+    <>
+      {options.outsideButton ? <button type="button">outside</button> : null}
+      <PretableSurface
+        ariaLabel="focus-scroll-grid"
+        columns={options.columns ?? PLAIN_COLUMNS}
+        getRowId={(row: Row) => row.id}
+        onGridReady={(g) => {
+          grid = g as PretableGrid<Row>;
+        }}
+        overscan={0}
+        rows={rows}
+        rowSelectionColumn={options.rowSelectionColumn}
+        viewportHeight={VIEWPORT_HEIGHT}
+      />
+    </>,
   );
 
   const viewport = container.querySelector<HTMLElement>(
@@ -179,6 +191,17 @@ function renderGrid(
   )!;
 
   return { container, grid, viewport, writes: recordScrollWrites(viewport) };
+}
+
+/** The `[role=gridcell]` node for an address, or null when it is not rendered. */
+function cellNode(
+  container: HTMLElement,
+  rowId: string,
+  columnId: string,
+): HTMLElement | null {
+  return container.querySelector<HTMLElement>(
+    `[data-pretable-row-id="${rowId}"] [data-pretable-cell][data-pretable-column-id="${columnId}"]`,
+  );
 }
 
 function focusCell(grid: PretableGrid<Row>, rowId: string, columnId: string) {
@@ -473,5 +496,193 @@ describe("measure-then-scroll convergence", () => {
 
     // 4 = MAX_SCROLL_REVEAL_WRITES in pretable-surface.tsx.
     expect(writes.top).toHaveLength(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DOM focus follow.
+//
+// Scrolling the viewport to the engine's focus address is only half the job: a
+// focus ring left behind on the old cell means the wrong cell is announced and
+// the wrong element receives the next keystroke. The surface therefore has to
+// move DOM focus onto the target *after* it enters the virtualization window,
+// which is one or more commits later than the focus address changed.
+//
+// Doing that safely is the whole problem — the effect must be able to fire on
+// arbitrary later renders without ever taking focus away from something the
+// user is actually using (a cell editor's input, a portaled popover, or a
+// wholly unrelated part of the host page).
+// ---------------------------------------------------------------------------
+
+const EDITABLE_COLUMNS: PretableColumn<Row>[] = [
+  { id: "a", header: "A", widthPx: 100, editable: true },
+  { id: "b", header: "B", widthPx: 100 },
+];
+
+describe("DOM focus follows the engine's focus address", () => {
+  it("focuses a cell inside the rendered window (regression guard)", () => {
+    const { container, grid } = renderGrid();
+
+    // Nothing on the page has focus yet, exactly as on a freshly loaded
+    // document. An unowned focus is the grid's to take.
+    expect(document.activeElement).toBe(document.body);
+
+    focusCell(grid, "r1", "a");
+    expect(cellNode(container, "r1", "a")).toHaveFocus();
+
+    // …and a subsequent in-window move hands focus on to the next cell.
+    focusCell(grid, "r2", "b");
+    expect(cellNode(container, "r2", "b")).toHaveFocus();
+  });
+
+  it("focuses a cell that was NOT rendered when focus moved to it", () => {
+    // THE GAP. Task 3 taught the viewport to scroll to an off-window address,
+    // but DOM focus stayed parked on the old cell, so the focus ring, the next
+    // keystroke, and the screen reader all pointed at the wrong row.
+    const { container, grid, viewport } = renderGrid();
+
+    focusCell(grid, "r0", "a");
+    expect(cellNode(container, "r0", "a")).toHaveFocus();
+
+    focusCell(grid, "r30", "a");
+
+    // The scroll offset has been written, but the engine has not seen the
+    // resulting scroll event yet, so the window has not moved and there is
+    // still no node to focus.
+    expect(cellNode(container, "r30", "a")).toBeNull();
+
+    act(() => {
+      fireEvent.scroll(viewport);
+    });
+
+    // r30 is now rendered — and r0's node was unmounted by the same commit,
+    // which is why `document.activeElement` is momentarily `document.body`
+    // here rather than the old cell. Focus must still land on the target.
+    expect(cellNode(container, "r30", "a")).toHaveFocus();
+  });
+
+  it("does not steal focus from an open cell editor", () => {
+    const { container, grid } = renderGrid({ columns: EDITABLE_COLUMNS });
+
+    focusCell(grid, "r0", "a");
+    fireEvent.keyDown(container.querySelector("[data-pretable-cell]")!, {
+      key: "Enter",
+    });
+    const input = screen.getByRole("textbox");
+    expect(input).toHaveFocus();
+
+    // An external focus move landing mid-edit: the surface's own keydown
+    // handler bails while `snapshot.editing` is set, but `usePretable`'s
+    // controlled-state re-assert calls `grid.setFocus` regardless.
+    focusCell(grid, "r1", "a");
+    expect(input).toHaveFocus();
+
+    // …and neither does a streamed row update, which hands the surface a fresh
+    // rendered set on every patch.
+    act(() => {
+      grid.setRows(rows.map((row) => ({ ...row })));
+    });
+    expect(input).toHaveFocus();
+    expect(grid.getSnapshot().editing).not.toBeNull();
+
+    // Once the edit ends the pending move is applied — the focus address the
+    // grid was asked for is honoured, just not at the editor's expense.
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(grid.getSnapshot().editing).toBeNull();
+    expect(cellNode(container, "r1", "a")).toHaveFocus();
+  });
+
+  it("does not steal focus from a portaled overlay", () => {
+    // FilterMenu renders through OverlayPortal into document.body, so it is
+    // outside the viewport subtree even though it is logically part of the
+    // grid — `viewport.contains(activeElement)` is the check that notices.
+    const { container, grid, viewport } = renderGrid();
+
+    focusCell(grid, "r0", "a");
+    focusCell(grid, "r30", "a");
+    expect(cellNode(container, "r30", "a")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter A" }));
+    const select = screen.getByRole("combobox", { name: "Filter operator" });
+    expect(select).toHaveFocus();
+    expect(viewport.contains(select)).toBe(false);
+
+    // Move the render window through the engine rather than by dispatching a
+    // DOM scroll event: the popover closes itself on any capture-phase scroll
+    // (useFilterPopover.ts), which would delete the element under test. The
+    // rendered-set change the surface sees is identical either way.
+    act(() => {
+      const snapshot = grid.getSnapshot();
+      grid.setViewport({
+        ...snapshot.viewport,
+        scrollTop: 31 * ROW_HEIGHT - BODY_HEIGHT,
+      });
+    });
+
+    // r30 is rendered now, so the node the pending move wanted exists — and
+    // must be left alone.
+    expect(cellNode(container, "r30", "a")).not.toBeNull();
+    expect(select).toHaveFocus();
+  });
+
+  it("does not steal focus from outside the grid entirely", () => {
+    const { container, grid, viewport } = renderGrid({ outsideButton: true });
+
+    focusCell(grid, "r0", "a");
+    focusCell(grid, "r30", "a");
+
+    const outside = screen.getByRole("button", { name: "outside" });
+    act(() => {
+      outside.focus();
+    });
+
+    act(() => {
+      fireEvent.scroll(viewport);
+    });
+
+    expect(cellNode(container, "r30", "a")).not.toBeNull();
+    expect(outside).toHaveFocus();
+  });
+
+  it("does not grab focus back once the grid has been blurred", () => {
+    // The steady-state hazard of re-running on the rendered set: under
+    // streaming the surface re-renders continuously. `<body>` counts as
+    // unowned focus, so the ONLY thing standing between a streamed patch and a
+    // stolen focus here is that a satisfied address leaves no pending move.
+    const { container, grid } = renderGrid();
+
+    focusCell(grid, "r1", "a");
+    const cell = cellNode(container, "r1", "a")!;
+    expect(cell).toHaveFocus();
+
+    // The user clicks the page background.
+    act(() => {
+      cell.blur();
+    });
+    expect(document.activeElement).toBe(document.body);
+
+    act(() => {
+      grid.setRows(rows.map((row) => ({ ...row })));
+    });
+
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it("does not pull focus back after the user has moved to another control", () => {
+    const { container, grid } = renderGrid({ outsideButton: true });
+
+    focusCell(grid, "r1", "a");
+    expect(cellNode(container, "r1", "a")).toHaveFocus();
+
+    const outside = screen.getByRole("button", { name: "outside" });
+    act(() => {
+      outside.focus();
+    });
+
+    act(() => {
+      grid.setRows(rows.map((row) => ({ ...row })));
+    });
+
+    expect(outside).toHaveFocus();
   });
 });
