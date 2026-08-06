@@ -3,12 +3,14 @@ import { fmtCompactUsd, fmtSignedUsd, fmtPct } from "./format";
 import type { PositionRow } from "./types";
 import styles from "./portfolioSummary.module.css";
 import { SelectionSection } from "./sidebar/SelectionSection";
+import type { PasteSummary } from "./qty-paste";
 import type { SelectionSummary } from "./selection";
 
 export interface PortfolioSummaryProps {
   rows: readonly PositionRow[];
   selection: SelectionSummary | null;
   copied: boolean;
+  paste?: PasteSummary | null;
 }
 
 const SECTOR_COLORS: Record<string, string> = {
@@ -58,12 +60,13 @@ export function PortfolioSummary({
   rows,
   selection,
   copied,
+  paste = null,
 }: PortfolioSummaryProps) {
   const model = useMemo(() => buildModel(rows), [rows]);
 
   return (
     <aside aria-label="Portfolio summary" className={styles.board}>
-      <SelectionSection summary={selection} copied={copied} />
+      <SelectionSection summary={selection} copied={copied} paste={paste} />
       <section className={styles.section}>
         <span className={styles.label}>Net Asset Value</span>
         <span className={styles.nav} data-testid="summary-nav">

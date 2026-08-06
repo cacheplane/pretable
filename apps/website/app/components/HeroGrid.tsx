@@ -1,6 +1,10 @@
 "use client";
 
-import { PretableSurface, type PretableSortEntry } from "@pretable/react";
+import {
+  PretableSurface,
+  type PastePayload,
+  type PretableSortEntry,
+} from "@pretable/react";
 import {
   useCallback,
   useEffect,
@@ -19,6 +23,7 @@ import {
   type SelectionSummary,
 } from "./heroGrid/selection";
 import { isDeskRejected } from "./heroGrid/qty-edit";
+import { planQtyPaste, type PasteSummary } from "./heroGrid/qty-paste";
 import { PORTFOLIO_RECORDING } from "./heroGrid/recordings/portfolio";
 import { createPortfolioReplay } from "./heroGrid/replay-engine";
 import { PortfolioSummary } from "./heroGrid/PortfolioSummary";
@@ -64,6 +69,7 @@ export function HeroGrid() {
   // funnel menus own it)
   const [selection, setSelection] = useState<SelectionSummary | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pasteSummary, setPasteSummary] = useState<PasteSummary | null>(null);
   const editedQtyByIdRef = useRef<Map<string, number>>(new Map());
 
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -188,6 +194,30 @@ export function HeroGrid() {
     [],
   );
 
+  // onPaste — one bulk callback per clipboard paste. The grid gates every cell
+  // through the qty column's `editable` + `validate` (the same 7% guardrail and
+  // sanity rules an inline edit runs), so `rejected` arrives populated: cells in
+  // any other column are `"not-editable"`, and a quantity the desk's rules
+  // refuse is `"invalid"`. Survivors go through the SAME edited-qty override map
+  // `onCellEdit` writes, so pasted quantities survive streaming ticks.
+  const handlePaste = useCallback((payload: PastePayload<PositionRow>) => {
+    const { qtyById, summary } = planQtyPaste(payload);
+    if (qtyById.size > 0) {
+      for (const [id, qty] of qtyById) editedQtyByIdRef.current.set(id, qty);
+      setRows((prev) =>
+        withDerivedWeights(
+          prev.map((r) => {
+            const qty = qtyById.get(r.id);
+            return qty === undefined
+              ? r
+              : { ...r, qty, mktValue: Math.round(qty * r.last) };
+          }),
+        ),
+      );
+    }
+    setPasteSummary(summary);
+  }, []);
+
   // onSelectionChange → summarize into row/col counts
   const handleSelectionChange = useCallback(
     (next: PretableSelectionState) => {
@@ -232,6 +262,7 @@ export function HeroGrid() {
               copyWithHeaders
               getRowId={(row) => row.id}
               onCellEdit={handleCellEdit}
+              onPaste={handlePaste}
               onSelectionChange={handleSelectionChange}
               onSortChange={(entries) => setUserSort(entries)}
               rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
@@ -240,7 +271,8 @@ export function HeroGrid() {
               viewportHeight={viewportHeight}
             />
             <p className={styles.legend}>
-              double-click to edit · drag to select · ⌘C copy · funnel to filter
+              double-click to edit · drag to select · ⌘C copy · ⌘V paste into
+              Qty · funnel to filter
             </p>
           </div>
           <div className={styles.heroSidebar}>
@@ -248,6 +280,7 @@ export function HeroGrid() {
               rows={rows}
               selection={selection}
               copied={copied}
+              paste={pasteSummary}
             />
           </div>
         </div>
