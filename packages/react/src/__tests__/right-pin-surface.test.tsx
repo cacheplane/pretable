@@ -599,3 +599,54 @@ describe("pin state applied through the engine only", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// The UNMEASURED scrollport. `viewportWidth` starts at 0 and is only corrected
+// by a layout effect, and the surface passes `viewportWidth || undefined` down,
+// so the first committed render — and every SSR render, where the effect never
+// runs — takes the renderer's no-viewportWidth column plan. This describe
+// deliberately drops the 600px `clientWidth` stub the rest of the file relies
+// on (0 is what unstubbed jsdom reports) so that path is the one under test.
+// ---------------------------------------------------------------------------
+
+describe("left pins before the scrollport is measured", () => {
+  beforeEach(() => {
+    clientWidth = 0;
+  });
+
+  it("sticks a prop-declared left pin at its pinned-group offset, not its declaration offset", () => {
+    // `b` is left-pinned but declared SECOND. A left pin is rendered flush
+    // against the scrollport's leading edge, so its sticky inset is its offset
+    // within the left-pinned group (0 — it is the only one), never the 150px
+    // of scrollable content that happens to precede it in the columns prop.
+    // Only a prop-declared pin can hit this: setColumnPinned and controlled
+    // state.columnPinned both relocate the column to the leading region.
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="unmeasured-left-pin"
+        columns={[
+          { id: "a", header: "A", widthPx: 150 },
+          { id: "b", header: "B", pinned: "left" as const, widthPx: 100 },
+        ]}
+        getRowId={(row: PinRow) => row.id}
+        overscan={0}
+        rows={rows}
+        viewportHeight={200}
+      />,
+    );
+
+    const header = headerCell(container, "b");
+    expect(header).toHaveAttribute("data-pretable-pinned", "left");
+    expect(header).toHaveStyle({ position: "sticky", left: "0px" });
+
+    const cell = bodyCell(container, "b");
+    expect(cell).toHaveAttribute("data-pretable-pinned", "left");
+    expect(cell).toHaveStyle({ position: "sticky", left: "0px" });
+
+    // The overlay chrome rides on the same offset: leading edge + width - N.
+    expect(resizeHandle(container, "b")).toHaveStyle({
+      position: "sticky",
+      left: "96px",
+    });
+  });
+});

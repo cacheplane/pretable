@@ -111,18 +111,17 @@ const columns: PretableColumn<Order>[] = [
 
 Every cell is wrapped in `React.memo` with a custom equality check. The cell skips re-render when the following are all reference-equal between renders:
 
-| Field            | Source                                              |
-| ---------------- | --------------------------------------------------- |
-| `rowId`          | the row's id                                        |
-| `columnId`       | the column's id                                     |
-| `value`          | result of `column.value(row)` (or `row[column.id]`) |
-| `formattedValue` | result of `column.format(...)` (or default)         |
-| `isFocused`      | engine focus state for this cell                    |
-| `isSelected`     | derived from selection ranges                       |
-| `pinned`         | pin side from the engine's column plan              |
-| `width`          | column width (post-resize)                          |
-| `dataAttrs`      | per-cell HTML attributes from `getBodyCellProps`    |
-| `renderRef`      | `column.render` reference (or `null`)               |
+| Field               | Source                                              |
+| ------------------- | --------------------------------------------------- |
+| `rowId`             | the row's id                                        |
+| `columnId`          | the column's id                                     |
+| `value`             | result of `column.value(row)` (or `row[column.id]`) |
+| `formattedValue`    | result of `column.format(...)` (or default)         |
+| `isFocused`         | engine focus state for this cell                    |
+| `isSelected`        | derived from selection ranges                       |
+| `pinned`            | pin side from the engine's column plan              |
+| `renderRef`         | `column.render` reference (or `null`)               |
+| `fallbackRenderRef` | grid-level `renderBodyCell` reference (or `null`)   |
 
 `format` and `column.value` are **not** in the memo key. They run unconditionally at the parent every render — but their cost is bounded by the cheapness contract:
 
@@ -177,7 +176,7 @@ function MyGrid({ orders, locale }: { orders: Order[]; locale: string }) {
 }
 ```
 
-Header memoization is parallel: `<MemoizedHeaderContent>` keyed on `(columnId, label, sortDirection, width, isSorted, isSortable, pinned, renderHeaderRef)`.
+Header memoization is parallel: `<MemoizedHeaderContent>` keyed on `(columnId, label, sortDirection, sortPriority, isSorted, width, isSortable, pinned, renderHeaderRef, fallbackRenderHeaderRef)`.
 
 ## Interaction with grid-level `renderBodyCell` / `renderHeaderCell`
 

@@ -315,6 +315,62 @@ describe("renderer-dom", () => {
     expect(planned.totalWidth).toBe(fallback.totalWidth);
   });
 
+  test("agrees with the planned path on a prop-declared left pin that is NOT the leading column", () => {
+    // A left pin declared on a non-leading column is the one shape the engine
+    // never produces (setColumnPinned/state.columnPinned relocate the column
+    // into the leading region), so it is only reachable straight off the
+    // `columns` prop. The planned path buckets it into the left-pinned group —
+    // `left` is its offset WITHIN that group, and it renders first. The
+    // no-viewportWidth path has to agree, because it is what SSR and the
+    // pre-measurement first commit render.
+    const columns = [
+      { id: "a", header: "A", widthPx: 150 },
+      { id: "b", header: "B", widthPx: 100, pinned: "left" as const },
+      { id: "c", header: "C", widthPx: 120 },
+      { id: "d", header: "D", widthPx: 60, pinned: "left" as const },
+    ];
+    const grid = createGridCore({
+      columns,
+      rows: [{ id: "row-0", a: "1", b: "2", c: "3", d: "4" }],
+      getRowId: (row) => String(row.id),
+    });
+    const base = {
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 320,
+      overscan: 2,
+    };
+
+    // Viewport wide enough that nothing is virtualized away.
+    const planned = createDomRenderSnapshot({
+      ...base,
+      scrollLeft: 0,
+      viewportWidth: 1000,
+    });
+    const fallback = createDomRenderSnapshot(base);
+
+    // Same order: left-pinned group first, then the scrollable run.
+    expect(fallback.columns.map((c) => c.id)).toEqual(
+      planned.columns.map((c) => c.id),
+    );
+    expect(planned.columns.map((c) => c.id)).toEqual(["b", "d", "a", "c"]);
+
+    const leftsOf = (snapshot: { columns: { id: string; left: number }[] }) =>
+      new Map(snapshot.columns.map((c) => [c.id, c.left]));
+
+    expect(leftsOf(fallback)).toEqual(leftsOf(planned));
+    // `left` on a left-pinned column is its offset within the left-pinned
+    // group, so the first one is flush at 0 — NOT its declaration offset.
+    expect(Object.fromEntries(leftsOf(planned))).toEqual({
+      b: 0,
+      d: 100,
+      a: 160,
+      c: 310,
+    });
+    expect(fallback.totalWidth).toBe(planned.totalWidth);
+  });
+
   test("returns all columns when viewportWidth is not provided (backwards compatible)", () => {
     const grid = createGridCore({
       columns: [

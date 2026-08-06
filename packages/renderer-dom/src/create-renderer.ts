@@ -75,53 +75,24 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
     pinned: col.pinned,
   }));
 
-  const columnPlan: ColumnPlan =
-    input.viewportWidth !== undefined
-      ? planColumns({
-          columns: columnInputs,
-          scrollLeft: input.scrollLeft ?? 0,
-          viewportWidth: input.viewportWidth,
-          overscan: input.overscan,
-        })
-      : {
-          columns: (() => {
-            let left = 0;
-            // Right offsets are measured from the viewport's right edge, so
-            // each right-pinned column is offset by the total width of the
-            // right-pinned columns after it (same rule as planColumns).
-            let right = 0;
-            const rightById = new Map<string, number>();
-
-            for (let i = columnInputs.length - 1; i >= 0; i--) {
-              const col = columnInputs[i]!;
-
-              if (col.pinned === "right") {
-                rightById.set(col.id, right);
-                right += col.width;
-              }
-            }
-
-            return columnInputs.map((col, index) => {
-              const entry = {
-                index,
-                id: col.id,
-                left,
-                width: col.width,
-                pinned: col.pinned,
-                right: rightById.get(col.id),
-              };
-              left += col.width;
-              return entry;
-            });
-          })(),
-          totalWidth: columnInputs.reduce((sum, col) => sum + col.width, 0),
-          pinnedLeftWidth: columnInputs
-            .filter((col) => col.pinned === "left")
-            .reduce((sum, col) => sum + col.width, 0),
-          pinnedRightWidth: columnInputs
-            .filter((col) => col.pinned === "right")
-            .reduce((sum, col) => sum + col.width, 0),
-        };
+  // No `viewportWidth` means "not measured yet": SSR, and the first committed
+  // render before the surface's layout effect reads the scrollport. There is no
+  // virtualization window to compute, so every column renders — expressed as an
+  // infinitely wide viewport at scrollLeft 0, which makes planColumns' forward
+  // walk consume the whole scrollable run and its overscan clamp a no-op.
+  //
+  // This case used to be a hand-rolled plan built inline. It drifted: that
+  // version accumulated `left` across ALL columns in declaration order and
+  // never reordered into [left-pinned, scrollable, right-pinned], so a
+  // prop-declared left pin on a non-leading column got its content offset as a
+  // sticky inset instead of its offset within the left-pinned group. Delegating
+  // is what keeps the two paths from disagreeing again.
+  const columnPlan: ColumnPlan = planColumns({
+    columns: columnInputs,
+    scrollLeft: input.viewportWidth !== undefined ? (input.scrollLeft ?? 0) : 0,
+    viewportWidth: input.viewportWidth ?? Number.POSITIVE_INFINITY,
+    overscan: input.overscan,
+  });
 
   return {
     frame: {

@@ -60,9 +60,7 @@ export function planColumns(input: PlanColumnsInput): ColumnPlan {
   // scrollport instead), but consumers that map plan entries onto content
   // coordinates do: the drag-to-reorder drop indicator looks up
   // `columnLefts[dropIndex]`, and a placeholder `0` teleports the indicator to
-  // content x=0. Keeping it honest also makes this agree with the renderer's
-  // no-viewportWidth fallback, which accumulates a real `left` for every
-  // column.
+  // content x=0.
   let rightOffset = 0;
 
   for (let i = pinnedRight.length - 1; i >= 0; i--) {
