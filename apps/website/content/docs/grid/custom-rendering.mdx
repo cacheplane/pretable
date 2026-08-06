@@ -239,7 +239,7 @@ The minimal example above is a starting point. For production grids, you'll like
 - **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setColumnFilter(columnId, { operator: "contains", value })` per change (pass `null` to clear).
 - **Telemetry instrumentation** — use the `telemetry` return value to track visible row counts, frame budget overruns, etc.
 
-For the full reference implementation, see `packages/react-surface/src/pretable-surface.tsx` in the repository — that's what the bench's pretable adapter and the website's playground use internally. It's marked private (lives at `@pretable-internal/react-surface`), but reading its source is the canonical reference for the patterns above.
+For the full reference implementation, see `packages/react/src/pretable-surface.tsx` in the repository — that's what the bench's pretable adapter and the website's playground use internally. It ships as the public `PretableSurface` export of `@pretable/react`, and its source is the canonical reference for the patterns above.
 
 ## Where to go next
 
