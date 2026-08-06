@@ -52,8 +52,11 @@ export function toIsoDate(value: unknown): string {
       : typeof value === "number"
         ? value
         : Date.parse(String(value));
-  if (Number.isNaN(ms)) return "";
   const d = new Date(ms);
+  // NaN *and* out-of-range timestamps (|ms| > 8.64e15, e.g. a nanosecond
+  // epoch) both yield an Invalid Date, whose UTC getters would format as
+  // "0NaN-NaN-NaN" rather than failing.
+  if (Number.isNaN(d.getTime())) return "";
   return formatUtc(
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
   );

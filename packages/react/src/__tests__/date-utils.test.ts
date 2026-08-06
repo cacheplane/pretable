@@ -35,6 +35,13 @@ describe("date-utils", () => {
     expect(toIsoDate("not a date")).toBe("");
   });
 
+  it("rejects timestamps outside the Date range instead of formatting NaN", () => {
+    expect(toIsoDate(8.64e15 + 1)).toBe(""); // one ms past the max Date
+    expect(toIsoDate(1.78e18)).toBe(""); // a nanosecond epoch
+    expect(toIsoDate(Number.POSITIVE_INFINITY)).toBe("");
+    expect(toIsoDate(new Date(Number.NaN))).toBe("");
+  });
+
   it("adds days across month and year boundaries", () => {
     expect(addDaysIso("2026-08-06", 1)).toBe("2026-08-07");
     expect(addDaysIso("2026-08-31", 1)).toBe("2026-09-01");
