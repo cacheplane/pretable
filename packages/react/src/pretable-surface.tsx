@@ -1726,10 +1726,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 onPointerDown={(event) => {
                   if (event.button !== 0) return;
                   event.stopPropagation();
-                  const startWidth =
-                    column.widthPx ??
-                    plannedCol.width ??
-                    Math.max(column.minWidthPx ?? 40, 80);
+                  // Start from the PLANNED width — the engine's committed
+                  // width, which is what this column is currently rendering
+                  // (`effWidth`). The `columns` prop is not a source of truth
+                  // for width: the engine owns it after the first resize /
+                  // autosize / controlled `state.columnWidths` apply, and
+                  // `mergeColumnsFromProps` gives engine state precedence, so
+                  // `column.widthPx` still reads as the ORIGINAL declared
+                  // width forever. Anchoring to it made every drag after the
+                  // first recompute from that stale origin instead of
+                  // accumulating (drag +80 then +40 landed on 140, not 220).
+                  const startWidth = plannedCol.width;
                   resizeStateRef.current = {
                     columnId: column.id,
                     startX: event.clientX,

@@ -3401,6 +3401,82 @@ describe("column resize", () => {
     expect(payload.a).toBe(150);
   });
 
+  it("successive drags on one column accumulate from its current width", () => {
+    // Each drag must start from the width the column is CURRENTLY rendering,
+    // not from the `widthPx` the caller declared: the engine owns width after
+    // the first commit, and the `columns` prop never learns about it.
+    const onColumnWidthsChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnWidthsChange={onColumnWidthsChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+
+    const handle = getResizeHandle(view, "a");
+    if (!handle) throw new Error("handle missing");
+    const widthOf = () =>
+      Number.parseFloat(getCell(view, "r1", "a")?.style.width ?? "NaN");
+
+    expect(widthOf()).toBe(100);
+
+    const drag = (pointerId: number, from: number, to: number) => {
+      fireEvent.pointerDown(handle, { button: 0, pointerId, clientX: from });
+      fireEvent.pointerMove(handle, { pointerId, clientX: to });
+      fireEvent.pointerUp(handle, { pointerId, clientX: to });
+    };
+
+    drag(1, 100, 180); // +80 → 180
+    expect(widthOf()).toBe(180);
+
+    drag(2, 300, 340); // +40 from 180 → 220 (NOT 100 + 40)
+    expect(widthOf()).toBe(220);
+
+    drag(3, 400, 340); // −60 from 220 → 160 (NOT 100 − 60)
+    expect(widthOf()).toBe(160);
+
+    expect(
+      onColumnWidthsChange.mock.calls.map(
+        (call) => (call[0] as Record<string, number>).a,
+      ),
+    ).toEqual([180, 220, 160]);
+  });
+
+  it("a drag after autosize starts from the autosized width", () => {
+    const onColumnWidthsChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="resize-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        onColumnWidthsChange={onColumnWidthsChange}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+
+    const handle = getResizeHandle(view, "a");
+    if (!handle) throw new Error("handle missing");
+    const widthOf = () =>
+      Number.parseFloat(getCell(view, "r1", "a")?.style.width ?? "NaN");
+
+    fireEvent.doubleClick(handle);
+    const autosized = widthOf();
+    expect(autosized).not.toBe(100);
+
+    fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 200 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 225 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 225 });
+
+    expect(widthOf()).toBe(autosized + 25);
+  });
+
   it("resize honors per-column minWidthPx", () => {
     const cols = [
       { id: "a", header: "A", widthPx: 100, minWidthPx: 80 },
