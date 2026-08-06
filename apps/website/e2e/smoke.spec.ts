@@ -318,8 +318,23 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   await expect(noteCell).toHaveAttribute("data-pretable-pinned", "right");
 
   // Measure in one reference frame: the scrollport's inner right edge (client
-  // box, so a classic scrollbar is excluded — that is what `right: 0` resolves
-  // against) versus the pinned cell's right edge.
+  // box, so a classic scrollbar is excluded — that is the edge a right-pinned
+  // column resolves against) versus each pinned box's right edge. All four
+  // sticky sites of a right-pinned column are checked, not just the body cell:
+  // the header button, the 4px resize strip on the trailing edge, and the 18px
+  // filter funnel that sits 4px inside it.
+  const noteHeader = layout.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="note"]',
+  );
+  const noteHandle = layout.locator(
+    '[data-pretable-resize-handle][data-pretable-column-id="note"]',
+  );
+  const noteFunnel = layout
+    .locator('[data-pretable-filter-funnel][data-pretable-column-id="note"]')
+    .locator("xpath=..");
+  const rightEdge = (locator: typeof noteCell) =>
+    locator.evaluate((el) => el.getBoundingClientRect().right);
+
   const measure = async () => {
     const viewport = await layoutViewport.evaluate((el) => {
       const rect = el.getBoundingClientRect();
@@ -329,19 +344,38 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
         maxScrollLeft: el.scrollWidth - el.clientWidth,
       };
     });
-    const noteRight = await noteCell.evaluate(
-      (el) => el.getBoundingClientRect().right,
-    );
-    const qtyLeft = await qtyCell.evaluate(
-      (el) => el.getBoundingClientRect().left,
-    );
-    return { ...viewport, noteRight, qtyLeft };
+    return {
+      ...viewport,
+      noteRight: await rightEdge(noteCell),
+      headerRight: await rightEdge(noteHeader),
+      handleRight: await rightEdge(noteHandle),
+      funnelRight: await rightEdge(noteFunnel),
+      qtyLeft: await qtyCell.evaluate((el) => el.getBoundingClientRect().left),
+    };
+  };
+
+  // The body cell, the header button and the resize strip all end on the
+  // scrollport's inner right edge; the funnel ends 4px inside it.
+  const expectPinned = (m: Awaited<ReturnType<typeof measure>>) => {
+    expect(Math.abs(m.noteRight - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.headerRight - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.handleRight - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.funnelRight - (m.innerRight - 4))).toBeLessThan(2);
   };
 
   const before = await measure();
   expect(before.scrollLeft).toBe(0);
   expect(before.maxScrollLeft).toBeGreaterThan(60);
-  expect(Math.abs(before.noteRight - before.innerRight)).toBeLessThan(2);
+  expectPinned(before);
+
+  // Mid-scroll: the pin must hold at every offset, not just the extremes.
+  await layoutViewport.evaluate((el) => {
+    el.scrollLeft = Math.round((el.scrollWidth - el.clientWidth) / 2);
+  });
+  await expect
+    .poll(async () => await layoutViewport.evaluate((el) => el.scrollLeft))
+    .toBeGreaterThan(30);
+  expectPinned(await measure());
 
   await layoutViewport.evaluate((el) => {
     el.scrollLeft = el.scrollWidth - el.clientWidth;
@@ -355,6 +389,6 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   expect(
     Math.abs(before.qtyLeft - after.qtyLeft - after.scrollLeft),
   ).toBeLessThan(2);
-  // ...while the right-pinned cell did not move off the viewport's right edge.
-  expect(Math.abs(after.noteRight - after.innerRight)).toBeLessThan(2);
+  // ...while every right-pinned box stayed on the viewport's right edge.
+  expectPinned(after);
 });

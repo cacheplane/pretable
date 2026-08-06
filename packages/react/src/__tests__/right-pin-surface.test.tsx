@@ -1,13 +1,54 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
 import type { PretableGrid } from "@pretable/core";
 
+// jsdom has no layout: every element reports clientWidth 0. Right-pinning is
+// expressed as a sticky `left` inset resolved against the scrollport's width
+// (see getPinnedRightEdge), so the width has to be stubbed for the inline
+// styles to be meaningful. NOTE: these assertions prove the *style shape* the
+// surface emits — jsdom can never prove that the browser actually sticks. The
+// stickiness itself is covered by the real-browser assertions in
+// apps/website/e2e/smoke.spec.ts.
+const VIEWPORT_WIDTH = 600;
+let clientWidth = VIEWPORT_WIDTH;
+let originalClientWidth: PropertyDescriptor | undefined;
+let resizeCallbacks: ResizeObserverCallback[] = [];
+
+beforeEach(() => {
+  clientWidth = VIEWPORT_WIDTH;
+  originalClientWidth = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientWidth",
+  );
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get: () => clientWidth,
+  });
+  resizeCallbacks = [];
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+    constructor(callback: ResizeObserverCallback) {
+      resizeCallbacks.push(callback);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
+
 afterEach(() => {
   cleanup();
+  if (originalClientWidth) {
+    Object.defineProperty(
+      HTMLElement.prototype,
+      "clientWidth",
+      originalClientWidth,
+    );
+  }
+  delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
 });
 
 type PinRow = {
@@ -109,8 +150,23 @@ function funnelSlot(container: HTMLElement, columnId: string) {
   )?.parentElement;
 }
 
+// Scrollport-relative x of each right-pinned column's trailing edge.
+const ACTIONS_EDGE = VIEWPORT_WIDTH; // last right-pinned column: right = 0
+const STATUS_EDGE = VIEWPORT_WIDTH - RIGHT_LAST_WIDTH;
+
+/**
+ * Right-pinned boxes must position from `left` only. A `right` inset would be
+ * inert here: the row is a flex container whose unpinned cells are absolutely
+ * positioned, so a sticky box's flow position is the row's leading edge and
+ * `right` can only hold a box back, never push it forward.
+ */
+function expectPositionedFromLeft(el: HTMLElement | null | undefined) {
+  expect(el).not.toBeNull();
+  expect(el!.style.right).toBe("");
+}
+
 describe("right-pinned columns — surface sticky sites", () => {
-  it("body cells of right-pinned columns are sticky to the right edge", () => {
+  it("body cells of right-pinned columns are sticky at viewportWidth - right - width", () => {
     const { container } = renderSurface();
 
     const last = bodyCell(container, "actions");
@@ -118,62 +174,104 @@ describe("right-pinned columns — surface sticky sites", () => {
 
     expect(last).not.toBeNull();
     expect(last).toHaveAttribute("data-pretable-pinned", "right");
-    expect(last).toHaveStyle({ position: "sticky", right: "0px" });
+    expect(last).toHaveStyle({
+      position: "sticky",
+      left: `${ACTIONS_EDGE - RIGHT_LAST_WIDTH}px`,
+    });
+    expectPositionedFromLeft(last);
 
     expect(prev).toHaveAttribute("data-pretable-pinned", "right");
     expect(prev).toHaveStyle({
       position: "sticky",
-      right: `${RIGHT_LAST_WIDTH}px`,
+      left: `${STATUS_EDGE - RIGHT_PREV_WIDTH}px`,
     });
+    expectPositionedFromLeft(prev);
   });
 
-  it("header buttons of right-pinned columns are sticky to the right edge", () => {
+  it("header buttons of right-pinned columns are sticky at the same inset as their cells", () => {
     const { container } = renderSurface();
 
     const last = headerCell(container, "actions");
     const prev = headerCell(container, "status");
 
     expect(last).toHaveAttribute("data-pretable-pinned", "right");
-    expect(last).toHaveStyle({ position: "sticky", right: "0px" });
+    expect(last).toHaveStyle({
+      position: "sticky",
+      left: `${ACTIONS_EDGE - RIGHT_LAST_WIDTH}px`,
+    });
+    expectPositionedFromLeft(last);
 
     expect(prev).toHaveAttribute("data-pretable-pinned", "right");
     expect(prev).toHaveStyle({
       position: "sticky",
-      right: `${RIGHT_LAST_WIDTH}px`,
+      left: `${STATUS_EDGE - RIGHT_PREV_WIDTH}px`,
     });
+    expectPositionedFromLeft(prev);
   });
 
   it("resize handles of right-pinned columns stick to the column's trailing edge", () => {
     const { container } = renderSurface();
 
     // The handle is a 4px strip whose RIGHT edge sits on the column's trailing
-    // edge. `plannedCol.right` already measures that trailing edge from the
-    // viewport's right edge, so the sticky inset is exactly `plannedCol.right`
-    // (no `+ width` term — that only appears on the left because the left form
-    // starts from the column's LEADING edge).
+    // edge — the same `- 4` as the left form, measured back from the pinned
+    // trailing edge instead of `pinnedOffset + width`.
     expect(resizeHandle(container, "actions")).toHaveStyle({
       position: "sticky",
-      right: "0px",
+      left: `${ACTIONS_EDGE - 4}px`,
     });
+    expectPositionedFromLeft(resizeHandle(container, "actions"));
+
     expect(resizeHandle(container, "status")).toHaveStyle({
       position: "sticky",
-      right: `${RIGHT_LAST_WIDTH}px`,
+      left: `${STATUS_EDGE - 4}px`,
     });
+    expectPositionedFromLeft(resizeHandle(container, "status"));
   });
 
   it("filter-funnel slots of right-pinned columns sit just inside the resize strip", () => {
     const { container } = renderSurface();
 
     // The 18px funnel sits immediately left of the 4px resize strip, so its
-    // RIGHT edge is 4px inside the column's trailing edge.
+    // leading edge is 22px inside the column's trailing edge.
     expect(funnelSlot(container, "actions")).toHaveStyle({
       position: "sticky",
-      right: "4px",
+      left: `${ACTIONS_EDGE - 22}px`,
     });
+    expectPositionedFromLeft(funnelSlot(container, "actions"));
+
     expect(funnelSlot(container, "status")).toHaveStyle({
       position: "sticky",
-      right: `${RIGHT_LAST_WIDTH + 4}px`,
+      left: `${STATUS_EDGE - 22}px`,
     });
+    expectPositionedFromLeft(funnelSlot(container, "status"));
+  });
+
+  it("right-pinned insets follow the scrollport width on scroll and on resize", () => {
+    const { container } = renderSurface();
+
+    const last = () => bodyCell(container, "actions");
+    expect(last()).toHaveStyle({
+      left: `${VIEWPORT_WIDTH - RIGHT_LAST_WIDTH}px`,
+    });
+
+    // The scroll handler re-reads clientWidth...
+    clientWidth = 500;
+    const viewport = container.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    )!;
+    fireEvent.scroll(viewport);
+    expect(last()).toHaveStyle({ left: `${500 - RIGHT_LAST_WIDTH}px` });
+
+    // ...and so does the ResizeObserver, which is the only signal when the
+    // container changes size without a scroll.
+    clientWidth = 420;
+    expect(resizeCallbacks.length).toBeGreaterThan(0);
+    act(() => {
+      for (const cb of resizeCallbacks) {
+        cb([], {} as ResizeObserver);
+      }
+    });
+    expect(last()).toHaveStyle({ left: `${420 - RIGHT_LAST_WIDTH}px` });
   });
 
   it("two right-pinned columns stack in column order", () => {
@@ -211,7 +309,7 @@ describe("right-pinned columns — surface sticky sites", () => {
 
     expect(bodyCell(container, "actions")).toHaveStyle({
       position: "sticky",
-      right: "0px",
+      left: `${ACTIONS_EDGE - RIGHT_LAST_WIDTH}px`,
     });
   });
 
