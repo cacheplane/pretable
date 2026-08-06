@@ -59,6 +59,18 @@
     border-right: none;
   }
 
+  /* Pinned header cells — the header row paints --pretable-bg-header behind
+     the whole strip, but each header cell on top of it is a transparent box,
+     so an unpinned header's label reads straight through a pinned one once it
+     scrolls underneath. Pinned header cells need their own opaque fill, the
+     same one their body counterparts get below. */
+  :where(
+    [data-pretable-header-cell][data-pretable-pinned="left"],
+    [data-pretable-header-cell][data-pretable-pinned="right"]
+  ) {
+    background: var(--pretable-bg-header);
+  }
+
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
   :where([data-pretable-sort-priority]) {
     margin-left: 2px;
