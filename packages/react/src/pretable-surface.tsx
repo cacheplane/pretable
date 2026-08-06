@@ -148,6 +148,11 @@ interface PretableSurfaceHeaderCellRenderInput<
   column: PretableColumn<TRow>;
   label: string;
   sortDirection: "asc" | "desc" | null;
+  /**
+   * Authoritative pin side, from the engine's column plan rather than the
+   * `columns` prop. Normalized to `null` when unpinned.
+   */
+  pinned: "left" | "right" | null;
 }
 
 type PretableSurfaceBodyCellRenderInput<
@@ -169,6 +174,11 @@ interface PretableSurfaceHeaderClassNameInput<
 > {
   column: PretableColumn<TRow>;
   sortDirection: "asc" | "desc" | null;
+  /**
+   * Authoritative pin side, from the engine's column plan rather than the
+   * `columns` prop. Normalized to `null` when unpinned.
+   */
+  pinned: "left" | "right" | null;
 }
 
 type PretableSurfaceBodyCellClassNameInput<
@@ -317,6 +327,8 @@ interface MemoizedCellContentProps {
   formattedValue: string;
   isFocused: boolean;
   isSelected: boolean;
+  /** Mirrors `cellRenderInput.pinned` so the memo comparator can see it. */
+  pinned: "left" | "right" | null;
   renderRef:
     | ((input: PretableCellRenderInput<PretableRow>) => ReactNode)
     | null;
@@ -352,6 +364,7 @@ function cellContentPropsEqual(
     prev.formattedValue === next.formattedValue &&
     prev.isFocused === next.isFocused &&
     prev.isSelected === next.isSelected &&
+    prev.pinned === next.pinned &&
     prev.renderRef === next.renderRef &&
     prev.fallbackRenderRef === next.fallbackRenderRef
   );
@@ -368,6 +381,8 @@ interface MemoizedHeaderContentProps {
   isSorted: boolean;
   width: number;
   isSortable: boolean;
+  /** Mirrors `headerRenderInput.pinned` so the memo comparator can see it. */
+  pinned: "left" | "right" | null;
   renderHeaderRef:
     | ((input: PretableHeaderRenderInput<PretableRow>) => ReactNode)
     | null;
@@ -376,6 +391,7 @@ interface MemoizedHeaderContentProps {
         column: PretableColumn<PretableRow>;
         label: string;
         sortDirection: "asc" | "desc" | null;
+        pinned: "left" | "right" | null;
       }) => ReactNode)
     | null;
   headerRenderInput: PretableHeaderRenderInput<PretableRow>;
@@ -399,6 +415,7 @@ function HeaderContentImpl({
           column: headerRenderInput.column,
           label,
           sortDirection,
+          pinned: headerRenderInput.pinned,
         })}
       </>
     );
@@ -432,6 +449,7 @@ function headerContentPropsEqual(
     prev.isSorted === next.isSorted &&
     prev.width === next.width &&
     prev.isSortable === next.isSortable &&
+    prev.pinned === next.pinned &&
     prev.renderHeaderRef === next.renderHeaderRef &&
     prev.fallbackRenderHeaderRef === next.fallbackRenderHeaderRef
   );
@@ -1413,6 +1431,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             getHeaderCellProps?.({
               column,
               sortDirection,
+              pinned: plannedCol.pinned ?? null,
             }) ?? {};
           // `plannedCol.right` is the column's trailing-edge offset from the
           // viewport's right edge, and unlike `plannedCol.left` it has to be
@@ -1474,6 +1493,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               className={getHeaderCellClassName?.({
                 column,
                 sortDirection,
+                pinned: plannedCol.pinned ?? null,
               })}
               data-pretable-header-cell=""
               data-pretable-column-id={column.id}
@@ -1656,6 +1676,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 isSorted={sortDirection !== null}
                 width={effWidth}
                 isSortable={column.sortable !== false}
+                pinned={plannedCol.pinned ?? null}
                 renderHeaderRef={
                   (column.renderHeader as
                     | ((
@@ -1669,6 +1690,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         column: PretableColumn<PretableRow>;
                         label: string;
                         sortDirection: "asc" | "desc" | null;
+                        pinned: "left" | "right" | null;
                       }) => ReactNode)
                     | undefined) ?? null
                 }
@@ -1678,6 +1700,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     label,
                     sortDirection,
                     isSorted: sortDirection !== null,
+                    pinned: plannedCol.pinned ?? null,
                   } as unknown as PretableHeaderRenderInput<PretableRow>
                 }
               />
@@ -1892,6 +1915,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   formattedValue,
                   isFocused: cellIsFocused,
                   isSelected: cellIsSelected,
+                  pinned: plannedCol.pinned ?? null,
                   row,
                   rowId: id,
                   rowIndex,
@@ -2181,6 +2205,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         formattedValue={formattedValue}
                         isFocused={cellIsFocused}
                         isSelected={cellIsSelected}
+                        pinned={bodyInput.pinned}
                         renderRef={
                           (column.render as
                             | ((

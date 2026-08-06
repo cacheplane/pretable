@@ -87,11 +87,11 @@ const columns: PretableColumn<Order>[] = [
 ];
 ```
 
-`render` receives `{ value, row, column, formattedValue, rowId, rowIndex, isFocused, isSelected }`. The `formattedValue` is the result of `format` (or the default formatter if `format` was not provided), so most renderers don't need to call `format` themselves.
+`render` receives `{ value, row, column, formattedValue, rowId, rowIndex, isFocused, isSelected, pinned }`. The `formattedValue` is the result of `format` (or the default formatter if `format` was not provided), so most renderers don't need to call `format` themselves. `pinned` is the column's live pin side (`"left" | "right" | null`) taken from the engine's column plan — use it instead of `column.pinned`, which only reflects what the `columns` prop declared and goes stale once a pin is set through controlled state, `grid.setColumnPinned`, or drag-to-pin.
 
 ## `renderHeader`
 
-Per-column header renderer. Receives `{ column, label, sortDirection, isSorted }`.
+Per-column header renderer. Receives `{ column, label, sortDirection, isSorted, pinned }`.
 
 ```tsx
 const columns: PretableColumn<Order>[] = [
@@ -119,6 +119,7 @@ Every cell is wrapped in `React.memo` with a custom equality check. The cell ski
 | `formattedValue` | result of `column.format(...)` (or default)         |
 | `isFocused`      | engine focus state for this cell                    |
 | `isSelected`     | derived from selection ranges                       |
+| `pinned`         | pin side from the engine's column plan              |
 | `width`          | column width (post-resize)                          |
 | `dataAttrs`      | per-cell HTML attributes from `getBodyCellProps`    |
 | `renderRef`      | `column.render` reference (or `null`)               |
@@ -176,7 +177,7 @@ function MyGrid({ orders, locale }: { orders: Order[]; locale: string }) {
 }
 ```
 
-Header memoization is parallel: `<MemoizedHeaderContent>` keyed on `(columnId, label, sortDirection, width, isSorted, isSortable, renderHeaderRef)`.
+Header memoization is parallel: `<MemoizedHeaderContent>` keyed on `(columnId, label, sortDirection, width, isSorted, isSortable, pinned, renderHeaderRef)`.
 
 ## Interaction with grid-level `renderBodyCell` / `renderHeaderCell`
 

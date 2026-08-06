@@ -61,6 +61,14 @@ export interface PretableCellRenderInput<
   rowIndex: number;
   isFocused: boolean;
   isSelected: boolean;
+  /**
+   * Authoritative pin side for this column, from the engine's column plan —
+   * not the `columns` prop, which goes stale the moment a pin is set through
+   * controlled `state.columnPinned`, `grid.setColumnPinned`, or drag-to-pin.
+   * Normalized to `null` when unpinned (the column's own optional `pinned` is
+   * `undefined` in that case) so consumers only ever branch on one shape.
+   */
+  pinned: "left" | "right" | null;
 }
 
 /**
@@ -75,6 +83,14 @@ export interface PretableHeaderRenderInput<
   label: string;
   sortDirection: "asc" | "desc" | null;
   isSorted: boolean;
+  /**
+   * Authoritative pin side for this column, from the engine's column plan —
+   * not the `columns` prop, which goes stale the moment a pin is set through
+   * controlled `state.columnPinned`, `grid.setColumnPinned`, or drag-to-pin.
+   * Normalized to `null` when unpinned (the column's own optional `pinned` is
+   * `undefined` in that case) so consumers only ever branch on one shape.
+   */
+  pinned: "left" | "right" | null;
 }
 
 export type { PretableFormatInput };

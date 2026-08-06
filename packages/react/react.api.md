@@ -197,6 +197,7 @@ export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow>
     isFocused: boolean;
     // (undocumented)
     isSelected: boolean;
+    pinned: "left" | "right" | null;
     // (undocumented)
     rowId: string;
     // (undocumented)
@@ -417,6 +418,7 @@ export interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRo
     isSorted: boolean;
     // (undocumented)
     label: string;
+    pinned: "left" | "right" | null;
     // (undocumented)
     sortDirection: "asc" | "desc" | null;
 }
@@ -726,7 +728,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:498:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:524:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
