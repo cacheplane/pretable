@@ -221,11 +221,13 @@ describe("PretableSurface", () => {
       name: "Sort Severity",
     });
 
-    expect(severityButton).toHaveTextContent("Sort");
+    // Unsorted shows no indicator; aria-sort carries the state.
+    expect(severityButton).toHaveAttribute("aria-sort", "none");
 
     fireEvent.click(severityButton);
 
-    expect(severityButton).toHaveTextContent("Newest");
+    expect(severityButton).toHaveAttribute("aria-sort", "descending");
+    expect(severityButton).toHaveTextContent("▼");
     expect(
       view
         .getAllByTestId("pretable-row")
@@ -234,7 +236,8 @@ describe("PretableSurface", () => {
 
     fireEvent.click(severityButton);
 
-    expect(severityButton).toHaveTextContent("Oldest");
+    expect(severityButton).toHaveAttribute("aria-sort", "ascending");
+    expect(severityButton).toHaveTextContent("▲");
     expect(
       view
         .getAllByTestId("pretable-row")

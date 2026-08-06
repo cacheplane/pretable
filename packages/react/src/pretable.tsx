@@ -13,6 +13,7 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   rows: TRow[];
   rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
+  onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
   tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
   copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
   onCopy?: PretableSurfaceProps<TRow>["onCopy"];
@@ -43,6 +44,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   getRowId,
   rows,
   rowSelectionColumn,
+  onRowActivate,
   tabBehavior,
   copyWithHeaders,
   onCopy,
@@ -134,7 +136,8 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
           </>
         )}
         rows={rows}
-        rowSelectionColumn={rowSelectionColumn}
+        onRowActivate={onRowActivate}
+      rowSelectionColumn={rowSelectionColumn}
         tabBehavior={tabBehavior}
         copyWithHeaders={copyWithHeaders}
         onCopy={onCopy}

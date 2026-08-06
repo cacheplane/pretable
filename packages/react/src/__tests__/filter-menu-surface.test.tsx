@@ -223,10 +223,10 @@ describe("PretableSurface — built-in filter funnel", () => {
       .getAllByTestId("pretable-row")
       .map((r) => r.getAttribute("data-pretable-row-id"));
     expect(orderAfter).toEqual(orderBefore);
-    // The sort header still reads "Sort" (no direction applied).
+    // The sort header still shows no direction indicator.
     expect(
       view.getByRole("columnheader", { name: "Sort Title" }),
-    ).toHaveTextContent("Sort");
+    ).toHaveAttribute("aria-sort", "none");
   });
 
   it("typing into a text filter narrows the rows and fires onFiltersChange", async () => {
