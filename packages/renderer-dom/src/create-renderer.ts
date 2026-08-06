@@ -100,9 +100,15 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
     },
     rows,
     columns: columnPlan.columns,
+    // Passed through, not rebuilt: this index was already constructed above over
+    // every visible row (not just the windowed ones), so exposing it is free and
+    // keeps unrendered-row geometry on the single layout-core source of truth.
+    rowMetrics,
     nodeCount: rows.length * columnPlan.columns.length,
     totalHeight: viewportPlan.totalHeight,
     totalWidth: columnPlan.totalWidth,
+    pinnedLeftWidth: columnPlan.pinnedLeftWidth,
+    pinnedRightWidth: columnPlan.pinnedRightWidth,
   };
 }
 

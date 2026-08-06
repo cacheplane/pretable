@@ -14,6 +14,7 @@ import type { PretableColumn } from "./types";
 import {
   createDomRenderSnapshot,
   type PlannedColumn,
+  type RowMetricsIndex,
 } from "@pretable-internal/renderer-dom";
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
@@ -41,10 +42,32 @@ export interface PretableRenderSnapshot<
   TRow extends PretableRow = PretableRow,
 > {
   columns: PlannedColumn[];
+  /**
+   * Only the rows inside the current virtualization window. For the geometry
+   * of a row outside it, use {@link PretableRenderSnapshot.rowMetrics}.
+   */
   rows: PretableRenderRow<TRow>[];
+  /**
+   * Row offsets and heights for **every** visible row, not just the windowed
+   * ones in `rows`. Read it to position or scroll to a row that is not
+   * currently rendered; treat it as read-only — it is owned by the renderer
+   * and rebuilt on every layout pass.
+   */
+  rowMetrics: RowMetricsIndex;
   nodeCount: number;
   totalHeight: number;
   totalWidth: number;
+  /**
+   * Total width of the left-pinned column group. The group overlays content at
+   * `scrollLeft`, so the horizontally unoccluded band starts at
+   * `scrollLeft + pinnedLeftWidth`.
+   */
+  pinnedLeftWidth: number;
+  /**
+   * Total width of the right-pinned column group. The band ends at
+   * `scrollLeft + viewportWidth - pinnedRightWidth`.
+   */
+  pinnedRightWidth: number;
 }
 
 /**

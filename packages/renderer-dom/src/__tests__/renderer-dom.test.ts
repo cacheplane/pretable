@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { createGridCore } from "@pretable-internal/grid-core";
+import { planColumns } from "@pretable-internal/layout-core";
 import * as textCore from "@pretable-internal/text-core";
 
 import { createDomRenderSnapshot } from "../index";
@@ -429,5 +430,173 @@ describe("renderer-dom", () => {
     });
 
     expect(prepareTextSpy.mock.calls.length).toBe(initialCallCount);
+  });
+
+  test("exposes pinned group widths matching planColumns for the same inputs", () => {
+    const columnsWithPinned = [
+      { id: "sel", header: "Sel", widthPx: 48, pinned: "left" as const },
+      { id: "name", header: "Name", widthPx: 180, pinned: "left" as const },
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: `col_${i}`,
+        header: `Column ${i}`,
+        widthPx: 140,
+      })),
+      {
+        id: "status",
+        header: "Status",
+        widthPx: 120,
+        pinned: "right" as const,
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        widthPx: 90,
+        pinned: "right" as const,
+      },
+    ];
+    const grid = createGridCore({
+      columns: columnsWithPinned,
+      rows: [
+        {
+          id: "row-0",
+          ...Object.fromEntries(columnsWithPinned.map((c) => [c.id, "v"])),
+        },
+      ],
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      scrollLeft: 900,
+      viewportHeight: 320,
+      viewportWidth: 500,
+      overscan: 1,
+    });
+
+    // Same inputs the renderer feeds planColumns internally.
+    const plan = planColumns({
+      columns: grid.options.columns.map((column) => ({
+        id: column.id,
+        width: column.widthPx!,
+        pinned: column.pinned,
+      })),
+      scrollLeft: 900,
+      viewportWidth: 500,
+      overscan: 1,
+    });
+
+    expect(render.pinnedLeftWidth).toBe(plan.pinnedLeftWidth);
+    expect(render.pinnedRightWidth).toBe(plan.pinnedRightWidth);
+    // Guard against both sides being trivially 0 and the assertion passing.
+    expect(render.pinnedLeftWidth).toBe(48 + 180);
+    expect(render.pinnedRightWidth).toBe(120 + 90);
+  });
+
+  test("reports zero pinned widths when no column is pinned", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "a", header: "A", widthPx: 140 },
+        { id: "b", header: "B", widthPx: 140 },
+      ],
+      rows: [{ id: "row-0", a: "1", b: "2" }],
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 320,
+      overscan: 1,
+    });
+
+    expect(render.pinnedLeftWidth).toBe(0);
+    expect(render.pinnedRightWidth).toBe(0);
+  });
+
+  test("exposes row metrics reaching rows outside the rendered window", () => {
+    const grid = createGridCore({
+      columns: [{ id: "message", header: "Message", widthPx: 140 }],
+      rows: Array.from({ length: 500 }, (_, index) => ({
+        id: `row-${index}`,
+        message: `Row ${index}`,
+      })),
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 88,
+      overscan: 1,
+    });
+
+    // The window is tiny; row 400 is nowhere near it.
+    expect(render.rows.some((row) => row.rowIndex === 400)).toBe(false);
+
+    expect(render.rowMetrics.rowCount).toBe(500);
+    expect(render.rowMetrics.getOffsetForIndex(400)).toBe(400 * 44);
+    expect(render.rowMetrics.getHeight(400)).toBe(44);
+    expect(render.rowMetrics.getTotalHeight()).toBe(500 * 44);
+  });
+
+  test("row metrics account for variable heights outside the rendered window", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "message", header: "Message", wrap: true, widthPx: 220 },
+        { id: "status", header: "Status", widthPx: 140 },
+      ],
+      rows: Array.from({ length: 200 }, (_, index) => ({
+        id: `row-${index}`,
+        // Every third row wraps to more than one line, so heights genuinely vary
+        // rather than all falling back to DEFAULT_ROW_HEIGHT.
+        message:
+          index % 3 === 0
+            ? "A much longer multilingual row that should wrap across several lines in the renderer surface and therefore exceed the default row height."
+            : "Short",
+        status: "ready",
+      })),
+      getRowId: (row) => String(row.id),
+    });
+
+    const render = createDomRenderSnapshot({
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 100,
+      overscan: 0,
+      // A measured height for a row far outside the window: only rendered rows
+      // are ever measured in practice, but the index is built over every visible
+      // row, so a measured value must be reflected at any index.
+      measuredHeights: { "row-150": 320 },
+    });
+
+    const renderedIndexes = new Set(render.rows.map((row) => row.rowIndex));
+    expect(renderedIndexes.has(150)).toBe(false);
+    expect(renderedIndexes.has(151)).toBe(false);
+
+    expect(render.rowMetrics.getHeight(150)).toBe(320);
+
+    // Offsets must be the running sum of the mixed measured/estimated heights,
+    // not index * DEFAULT_ROW_HEIGHT.
+    const wrappedHeight = render.rowMetrics.getHeight(0);
+    expect(wrappedHeight).toBeGreaterThan(44);
+
+    let expectedOffset = 0;
+    for (let index = 0; index < 151; index += 1) {
+      expectedOffset += render.rowMetrics.getHeight(index);
+    }
+    expect(render.rowMetrics.getOffsetForIndex(151)).toBe(expectedOffset);
+    expect(render.rowMetrics.getOffsetForIndex(151)).not.toBe(151 * 44);
+
+    // The last row's offset plus its height is the total scrollable height.
+    expect(
+      render.rowMetrics.getOffsetForIndex(199) +
+        render.rowMetrics.getHeight(199),
+    ).toBe(render.rowMetrics.getTotalHeight());
+    expect(render.rowMetrics.getTotalHeight()).toBe(render.totalHeight);
   });
 });

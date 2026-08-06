@@ -487,7 +487,10 @@ export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> 
     columns: PlannedColumn[];
     // (undocumented)
     nodeCount: number;
-    // (undocumented)
+    pinnedLeftWidth: number;
+    pinnedRightWidth: number;
+    // Warning: (ae-forgotten-export) The symbol "RowMetricsIndex" needs to be exported by the entry point index.d.ts
+    rowMetrics: RowMetricsIndex;
     rows: PretableRenderRow<TRow>[];
     // (undocumented)
     totalHeight: number;
@@ -728,7 +731,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:528:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:559:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
