@@ -255,6 +255,10 @@
     opacity: 0.6;
     z-index: 10;
     user-select: none;
+    /* Portaled into <body> — see the filter menu below. The font-family and
+       color declared on the scroll viewport are no longer inherited. */
+    font-family: var(--pretable-font-sans);
+    color: var(--pretable-text-cell);
   }
   :where([data-pretable-reorder-drop-indicator]) {
     position: absolute;
