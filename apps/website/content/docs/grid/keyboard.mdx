@@ -44,9 +44,30 @@ Both behaviors preserve the single-tab-stop model — once Tab leaves, the grid 
 
 `<PretableSurface>` follows the [ARIA grid roving tabindex pattern](https://www.w3.org/WAI/ARIA/apg/patterns/grid/). At any moment exactly one cell has `tabIndex={0}`; every other cell has `tabIndex={-1}`. The 0-tabindex cell is the focused cell from `snapshot.focus`.
 
-When the focused address changes (via keyboard, click, or programmatic `grid.setFocus`), a `useLayoutEffect` calls `.focus()` on the new cell's DOM node, so the browser's focus ring follows the engine state without flicker. Scrolling adjusts to keep the focused cell on-screen if needed.
+When the focused address changes (via keyboard, click, or programmatic `grid.setFocus`), a `useLayoutEffect` calls `.focus()` on the new cell's DOM node, so the browser's focus ring follows the engine state without flicker.
 
-This means consumers don't have to manage `tabIndex` themselves when using `<PretableSurface>`. If you're building with `usePretable` and rendering your own JSX, mirror the pattern:
+## Scroll follows focus
+
+The viewport scrolls to reveal the focused cell whenever the focus address changes. `<PretableSurface>` computes the offsets itself rather than calling `Element.scrollIntoView()`: the keyboard routinely moves focus to a row that is not in the DOM yet (nothing to call `scrollIntoView` on), and the browser has no idea a sticky pinned column group is covering the target.
+
+The exact contract:
+
+- **Minimal scroll, never centered.** The viewport moves by the smallest amount that fully reveals the target — a target below the fold aligns to the bottom edge of the visible band, one above it aligns to the top.
+- **An already-visible target scrolls nothing.** Arrowing around inside the visible window leaves the viewport where it is.
+- **"Revealed" means clear of the chrome, not just inside the box.** The target is revealed clear of the sticky header row and of both the left- and right-pinned column groups, so a cell that would land underneath a pinned group is scrolled past it.
+- **Focusing a pinned cell never scrolls horizontally.** Pinned columns are on screen at every offset, so there is nothing to reveal.
+- **A row taller than the visible band is top-aligned**, so its first line is readable rather than its last.
+- **The grid does not fight your own scrolling.** A focus address that has already been satisfied is never re-scrolled — scroll the focused cell out of view by hand and it stays out of view until focus moves again.
+
+This is what makes the jump keys usable. `PageUp` / `PageDown`, `Cmd/Ctrl + Arrow` and `Cmd/Ctrl + Home` / `End` all land on a cell that is almost certainly outside the rendered window, so without scroll-into-view they look like they did nothing at all.
+
+`.focus()` is called with `preventScroll: true` deliberately — the browser's native focus scroll would fight the math above and knows nothing about the pinned groups.
+
+## Doing this yourself with `usePretable`
+
+Consumers using `<PretableSurface>` don't have to manage `tabIndex` **or** scrolling. If you're building with `usePretable` and rendering your own JSX, you own both halves.
+
+The `tabIndex` half mirrors the roving-tabindex pattern directly:
 
 ```tsx
 const isFocused =
@@ -56,6 +77,27 @@ const isFocused =
   …
 </div>;
 ```
+
+The scrolling half you have to implement — the reveal math lives inside `<PretableSurface>` and is **not** exported from `@pretable/react`. What you do get is the state it runs on, all of it on `renderSnapshot`:
+
+| Field                                  | What it gives you                                                                                                                                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rowMetrics`                           | `rowCount`, `getHeight(i)`, `getOffsetForIndex(i)`, `getTotalHeight()` over **every** visible row — rendered or not. This is what lets you scroll to a row that has no DOM node yet. |
+| `pinnedLeftWidth` / `pinnedRightWidth` | Widths of the two sticky column groups, so you can keep the target clear of them.                                                                                                    |
+| `columns[].left` / `columns[].width`   | Column geometry in content coordinates.                                                                                                                                              |
+
+<Callout type="note">
+  `renderSnapshot.rowMetrics` is public and fully typed, but its interface is
+  not exported under a name — take it as `PretableRenderSnapshot["rowMetrics"]`
+  if you need to write the type down.
+</Callout>
+
+Two coordinate facts you need to get the math right, both of which `renderSnapshot.rows[].top` already assumes:
+
+- **Vertically**, row offsets are relative to the scroll content, whose origin sits below the in-flow sticky header. So at `scrollTop = S` the unoccluded band in row coordinates is `[S, S + (scrollerHeight − headerHeight)]` — subtract the header height, or your target lands underneath it.
+- **Horizontally**, `left` is a content offset with the scrollable run already shifted past the left-pinned group. The pinned groups are sticky overlays on the viewport's edges, so at `scrollLeft = SL` the unoccluded band is `[SL + pinnedLeftWidth, SL + viewportWidth − pinnedRightWidth]`.
+
+Write the new offset **only when it differs from the current one**, and don't re-assert it for a focus address you have already revealed — otherwise you will yank the user back every time they scroll away.
 
 ## Customizing key behavior
 

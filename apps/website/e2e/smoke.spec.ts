@@ -392,3 +392,190 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // ...while every right-pinned box stayed on the viewport's right edge.
   expectPinned(after);
 });
+
+test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)", async ({
+  page,
+}) => {
+  // jsdom does no layout, so the unit/integration tests can only prove that the
+  // surface *wrote* an offset. This is the test that the browser actually moves
+  // and that the focused cell ends up somewhere a human can read it.
+  //
+  // Two heavy showcase grids plus ~30 discrete key presses; the default 30s is
+  // tight on a cold preview deploy.
+  test.slow();
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  // The handle is server-rendered but its onClick only exists after hydration,
+  // so a click that lands early is silently dropped. Retry until it takes.
+  await expect(async () => {
+    await page.getByTestId("drawer-handle").click();
+    await expect(page.locator("html")).toHaveAttribute("data-drawer", "open", {
+      timeout: 2000,
+    });
+  }).toPass({ timeout: 20_000 });
+
+  const mod = process.platform === "darwin" ? "Meta" : "Control";
+
+  // One evaluate per sample so every rect comes from the same layout frame.
+  // `clientTop` / `clientLeft` + `clientWidth` / `clientHeight` give the
+  // scrollport's *inner* box, which excludes any classic scrollbar — that is the
+  // box the reveal math resolves against.
+  const readFrame = (sectionId: string) =>
+    page.evaluate((id) => {
+      const section = document.querySelector(`#${id}`);
+      const viewport = section?.querySelector(
+        "[data-pretable-scroll-viewport]",
+      );
+      const header = section?.querySelector("[data-pretable-header-row]");
+      const cell = section?.querySelector(
+        '[data-pretable-cell][data-pretable-focused="true"]',
+      );
+      if (!(viewport instanceof HTMLElement) || !header || !cell) {
+        return null;
+      }
+      const vr = viewport.getBoundingClientRect();
+      const cr = cell.getBoundingClientRect();
+      const row = cell.closest("[data-pretable-row]");
+      return {
+        scrollTop: viewport.scrollTop,
+        scrollLeft: viewport.scrollLeft,
+        maxScrollTop: viewport.scrollHeight - viewport.clientHeight,
+        maxScrollLeft: viewport.scrollWidth - viewport.clientWidth,
+        innerTop: vr.top + viewport.clientTop,
+        innerBottom: vr.top + viewport.clientTop + viewport.clientHeight,
+        innerLeft: vr.left + viewport.clientLeft,
+        innerRight: vr.left + viewport.clientLeft + viewport.clientWidth,
+        headerBottom: header.getBoundingClientRect().bottom,
+        cellTop: cr.top,
+        cellBottom: cr.bottom,
+        cellLeft: cr.left,
+        cellRight: cr.right,
+        columnId: cell.getAttribute("data-pretable-column-id"),
+        rowIndex: Number(row?.getAttribute("data-pretable-row-index") ?? -1),
+      };
+    }, sectionId);
+
+  type Frame = NonNullable<Awaited<ReturnType<typeof readFrame>>>;
+
+  // The focused cell is inside the scrollport AND below the sticky header — a
+  // cell hidden under the header is "in the viewport rect" but unreadable, which
+  // is exactly the case the reveal math exists to prevent.
+  const expectReadable = (f: Frame) => {
+    expect(f.cellTop).toBeGreaterThanOrEqual(f.headerBottom - 2);
+    expect(f.cellBottom).toBeLessThanOrEqual(f.innerBottom + 2);
+    expect(f.cellLeft).toBeGreaterThanOrEqual(f.innerLeft - 2);
+    expect(f.cellRight).toBeLessThanOrEqual(f.innerRight + 2);
+  };
+
+  // --- Vertical: ArrowDown past the rendered window ---
+  await page.locator("#scale").scrollIntoViewIfNeeded();
+  await expect(page.getByRole("grid", { name: /2,500 by 500/i })).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Start from a scrollable (non-pinned) cell in the first row. `row` is the
+  // grid's left-pinned column, so starting there would never exercise the
+  // horizontal side.
+  await page
+    .locator(
+      '#scale [data-pretable-row][data-pretable-row-index="0"] [data-pretable-column-id="c3"]',
+    )
+    .click();
+  const start = await readFrame("scale");
+  expect(start).not.toBeNull();
+  expect(start?.rowIndex).toBe(0);
+  expect(start?.scrollTop).toBe(0);
+
+  // The scale grid is a 420px viewport over 32px rows with overscan 6, so at
+  // most ~19 rows are ever in the DOM from the top. Row 30 is comfortably past
+  // that: before this behaviour existed the focused cell simply stopped
+  // existing in the DOM here.
+  const TARGET_ROW = 30;
+  for (let i = 0; i < TARGET_ROW; i += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+
+  // The focused cell existing at row 30 at all already proves the viewport
+  // scrolled — an unrendered row has no DOM node to carry the attribute.
+  await expect
+    .poll(async () => (await readFrame("scale"))?.rowIndex ?? -1, {
+      timeout: 10_000,
+    })
+    .toBe(TARGET_ROW);
+
+  const down = (await readFrame("scale")) as Frame;
+  expect(down.scrollTop).toBeGreaterThan(0);
+  expectReadable(down);
+  // Minimal scroll, not centring: walking down off the bottom edge aligns the
+  // target's bottom with the band's bottom.
+  expect(Math.abs(down.cellBottom - down.innerBottom)).toBeLessThan(8);
+  // Focus never left column c3, and c3 was already visible, so nothing should
+  // have moved horizontally.
+  expect(down.columnId).toBe("c3");
+  expect(down.scrollLeft).toBe(0);
+
+  // --- Cmd/Ctrl+End: last cell of the grid, both axes move ---
+  await page.keyboard.press(`${mod}+End`);
+  await expect
+    .poll(async () => (await readFrame("scale"))?.columnId ?? "", {
+      timeout: 10_000,
+    })
+    .toBe("c500");
+
+  const end = (await readFrame("scale")) as Frame;
+  expect(end.rowIndex).toBe(2499);
+  expect(end.scrollTop).toBeGreaterThan(down.scrollTop);
+  expect(end.scrollLeft).toBeGreaterThan(0);
+  expectReadable(end);
+  // `row` is left-pinned and overlays the scrollport's left edge, so the
+  // revealed cell has to clear it, not merely clear `innerLeft`.
+  const pinnedLeftRight = await page
+    .locator(
+      '#scale [data-pretable-row][data-pretable-row-index="2499"] [data-pretable-column-id="row"]',
+    )
+    .evaluate((el) => el.getBoundingClientRect().right);
+  expect(end.cellLeft).toBeGreaterThanOrEqual(pinnedLeftRight - 2);
+
+  // --- Right-pinned group: the revealed cell stops short of it ---
+  // The column-layout showcase pins "Analyst note" right and is wider than its
+  // container, so the last *scrollable* column ("weight") can only be revealed
+  // by scrolling it clear of that sticky group.
+  await page.locator("#column-layout").scrollIntoViewIfNeeded();
+  await expect(
+    page.getByRole("grid", { name: /resizable, reorderable/i }),
+  ).toBeVisible({ timeout: 10_000 });
+
+  await page
+    .locator(
+      '#column-layout [data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="symbol"]',
+    )
+    .click();
+  expect((await readFrame("column-layout"))?.scrollLeft).toBe(0);
+
+  // `End` → last column in the row, which is the right-pinned "note". A pinned
+  // column is on screen at every offset, so this must NOT scroll.
+  await page.keyboard.press("End");
+  await expect
+    .poll(async () => (await readFrame("column-layout"))?.columnId ?? "")
+    .toBe("note");
+  expect((await readFrame("column-layout"))?.scrollLeft).toBe(0);
+
+  // One column left is "weight", the last scrollable column — hidden behind the
+  // pinned group at scrollLeft 0, so revealing it requires real scrolling.
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(async () => (await readFrame("column-layout"))?.columnId ?? "")
+    .toBe("weight");
+
+  const weight = (await readFrame("column-layout")) as Frame;
+  expect(weight.scrollLeft).toBeGreaterThan(0);
+  expectReadable(weight);
+  // The pinned group's left edge is the real right boundary of the readable
+  // band; measure it from the pinned cell rather than assuming its width.
+  const pinnedRightLeft = await page
+    .locator(
+      '#column-layout [data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="note"]',
+    )
+    .evaluate((el) => el.getBoundingClientRect().left);
+  expect(weight.cellRight).toBeLessThanOrEqual(pinnedRightLeft + 2);
+});

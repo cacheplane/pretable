@@ -315,6 +315,16 @@ interface PretableRenderSnapshot<TRow> {
   nodeCount: number;
   totalHeight: number;
   totalWidth: number;
+  // Widths of the two sticky pinned column groups.
+  pinnedLeftWidth: number;
+  pinnedRightWidth: number;
+  // Geometry for EVERY visible row, not just the rendered window.
+  rowMetrics: {
+    readonly rowCount: number;
+    getHeight(index: number): number;
+    getOffsetForIndex(index: number): number;
+    getTotalHeight(): number;
+  };
 }
 
 interface PretableRenderRow<TRow> {
@@ -339,6 +349,8 @@ interface PlannedColumn {
 `renderSnapshot.rows` is the slice of rows currently visible in the viewport (plus overscan). Each has `top` (the absolute Y position) and `height` (the row's height — measured if you provided `measuredHeights`, otherwise estimated). Use these to position your row JSX with `position: absolute; top: ${row.top}px; height: ${row.height}px`.
 
 `renderSnapshot.columns` is the column layout — left offset and width per column, accounting for pinned positioning. Left-pinned columns come first, then the visible scrollable window, then the right-pinned columns. A right-pinned entry additionally carries `right`, its offset from the viewport's right edge, which is what its sticky position is derived from; its `left` is still the column's true content offset (where it sits in the end-to-end layout), so mapping any entry back to a content coordinate works uniformly.
+
+`renderSnapshot.rowMetrics` covers **every** visible row, including rows outside the rendered window that `renderSnapshot.rows` omits — that is what makes it possible to compute a scroll offset for a row that has no DOM node yet. Together with `pinnedLeftWidth` / `pinnedRightWidth` it's the state `<PretableSurface>` uses for [scroll-into-view on keyboard focus](/docs/grid/keyboard#scroll-follows-focus); a custom renderer needs the same inputs to reproduce it. The `rowMetrics` interface is fully typed but isn't exported under a name — write it down as `PretableRenderSnapshot["rowMetrics"]` if you need to.
 
 ## `PretableTelemetry`
 

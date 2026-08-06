@@ -100,6 +100,8 @@ grid.setViewport({ scrollTop, scrollLeft, width, height });
 
 `setViewport` records the scroll position and dimensions. It only affects PageUp / PageDown paging in `moveFocus` — it never changes which rows `visibleRows` returns.
 
+It is a report, not a command: calling it does not scroll anything. `<PretableSurface>` feeds it from its scroll container's `onScroll`, which also covers the scrolling the surface performs itself to [follow keyboard focus](/docs/grid/keyboard#scroll-follows-focus) — the surface assigns `scrollTop` / `scrollLeft`, the browser fires `scroll`, and the resulting position arrives back here. If you render your own DOM, wire it the same way and drive the scroll offsets yourself.
+
 ## Next
 
 <Card title="API reference" href="/docs/headless/api-reference">
