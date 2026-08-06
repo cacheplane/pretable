@@ -13,6 +13,14 @@ import { evaluateFilter } from "../evaluate-filter";
  * `day: null` means "not a date": the engine matches nothing, the editor
  * yields `""`.
  */
+/**
+ * 0050-01-01T13:45Z. Built with an explicit `setUTCFullYear` because
+ * `Date.UTC(50, …)` means *1950* — the two-digit mapping both twins have to
+ * work around.
+ */
+const YEAR_50 = new Date(Date.UTC(2000, 0, 1, 13, 45));
+YEAR_50.setUTCFullYear(50);
+
 const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
   { label: "strict ISO date", cell: "2026-08-06", day: "2026-08-06" },
   {
@@ -67,6 +75,17 @@ const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
     day: "2026-08-06",
   },
   { label: "epoch ms", cell: Date.UTC(2026, 7, 6, 23, 59), day: "2026-08-06" },
+  { label: "year before 0100", cell: "0050-01-01", day: "0050-01-01" },
+  {
+    label: "zoned datetime in a year before 0100",
+    cell: "0050-01-01T13:45:00Z",
+    day: "0050-01-01",
+  },
+  {
+    label: "Date instance in a year before 0100",
+    cell: YEAR_50,
+    day: "0050-01-01",
+  },
   { label: "US/EU-ambiguous locale string", cell: "08/06/2026", day: null },
   { label: "unpadded ISO", cell: "2026-8-6", day: null },
   { label: "prose date", cell: "August 6, 2026", day: null },
@@ -93,6 +112,16 @@ const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
   { label: "undefined", cell: undefined, day: null },
   { label: "invalid Date", cell: new Date(Number.NaN), day: null },
   { label: "out-of-range epoch ms", cell: 8.64e15 + 1, day: null },
+  {
+    label: "max epoch ms — year 275760, past 4-digit ISO",
+    cell: 8.64e15,
+    day: null,
+  },
+  {
+    label: "min epoch ms — year -271821, before 0000",
+    cell: -8.64e15,
+    day: null,
+  },
   { label: "nanosecond epoch", cell: 1.78e18, day: null },
 ];
 

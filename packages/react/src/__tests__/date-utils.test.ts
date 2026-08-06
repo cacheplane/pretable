@@ -6,6 +6,7 @@ import {
   isValidIsoDate,
   monthLabel,
   monthMatrix,
+  parseIsoDate,
   toIsoDate,
 } from "../editors/date-utils";
 
@@ -74,6 +75,32 @@ describe("date-utils", () => {
     expect(toIsoDate(new Date(Number.NaN))).toBe("");
   });
 
+  it("rejects years outside 0000–9999, the 4-digit ISO contract", () => {
+    // `new Date(8.64e15)` is a real instant, but it is year 275760: a 6-digit
+    // year no `yyyy-mm-dd` consumer here can read back, so it is not a date.
+    expect(toIsoDate(8.64e15)).toBe("");
+    expect(toIsoDate(-8.64e15)).toBe("");
+    expect(isValidIsoDate("275760-09-13")).toBe(false);
+  });
+
+  it("handles years 0000–0099 instead of mapping them to 19xx", () => {
+    // `Date.UTC(50, 0, 1)` is 1950; the helpers must not inherit that.
+    const yearFifty = new Date(Date.UTC(2000, 0, 1));
+    yearFifty.setUTCFullYear(50);
+    expect(toIsoDate(yearFifty)).toBe("0050-01-01");
+    expect(isValidIsoDate("0050-01-01")).toBe(true);
+    expect(parseIsoDate("0050-01-01")).toBe(yearFifty.getTime());
+    // Year 0 is a leap year in the proleptic Gregorian calendar 1900 is not.
+    expect(isValidIsoDate("0000-02-29")).toBe(true);
+    expect(isValidIsoDate("0001-02-29")).toBe(false);
+    // Calendar navigation stays in the same century, too.
+    expect(addDaysIso("0050-01-01", -1)).toBe("0049-12-31");
+    expect(addMonthsIso("0050-01-31", 1)).toBe("0050-02-28");
+    expect(addMonthsIso("0050-12-15", 1)).toBe("0051-01-15");
+    expect(monthLabel("0050-01-01")).toBe("January 50");
+    expect(monthMatrix("0050-01-01")[0][0].iso).toBe("0049-12-27");
+  });
+
   it("adds days across month and year boundaries", () => {
     expect(addDaysIso("2026-08-06", 1)).toBe("2026-08-07");
     expect(addDaysIso("2026-08-31", 1)).toBe("2026-09-01");
@@ -119,6 +146,14 @@ describe("date-utils", () => {
  * `day: null` means "not a date": the editor yields `""`, the engine matches
  * nothing.
  */
+/**
+ * 0050-01-01T13:45Z. Built with an explicit `setUTCFullYear` because
+ * `Date.UTC(50, …)` means *1950* — the two-digit mapping both twins have to
+ * work around.
+ */
+const YEAR_50 = new Date(Date.UTC(2000, 0, 1, 13, 45));
+YEAR_50.setUTCFullYear(50);
+
 const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
   { label: "strict ISO date", cell: "2026-08-06", day: "2026-08-06" },
   {
@@ -173,6 +208,17 @@ const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
     day: "2026-08-06",
   },
   { label: "epoch ms", cell: Date.UTC(2026, 7, 6, 23, 59), day: "2026-08-06" },
+  { label: "year before 0100", cell: "0050-01-01", day: "0050-01-01" },
+  {
+    label: "zoned datetime in a year before 0100",
+    cell: "0050-01-01T13:45:00Z",
+    day: "0050-01-01",
+  },
+  {
+    label: "Date instance in a year before 0100",
+    cell: YEAR_50,
+    day: "0050-01-01",
+  },
   { label: "US/EU-ambiguous locale string", cell: "08/06/2026", day: null },
   { label: "unpadded ISO", cell: "2026-8-6", day: null },
   { label: "prose date", cell: "August 6, 2026", day: null },
@@ -199,6 +245,16 @@ const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
   { label: "undefined", cell: undefined, day: null },
   { label: "invalid Date", cell: new Date(Number.NaN), day: null },
   { label: "out-of-range epoch ms", cell: 8.64e15 + 1, day: null },
+  {
+    label: "max epoch ms — year 275760, past 4-digit ISO",
+    cell: 8.64e15,
+    day: null,
+  },
+  {
+    label: "min epoch ms — year -271821, before 0000",
+    cell: -8.64e15,
+    day: null,
+  },
   { label: "nanosecond epoch", cell: 1.78e18, day: null },
 ];
 
@@ -208,4 +264,15 @@ describe("toIsoDate — shared case table (twin of the engine's toDayMs)", () =>
       expect(toIsoDate(cell)).toBe(day ?? "");
     });
   }
+
+  it("is idempotent: every output it produces is an input it accepts", () => {
+    // The editor round-trips its own output (the open value becomes the draft,
+    // the draft is re-validated on commit), so a day `toIsoDate` can emit but
+    // `isValidIsoDate` rejects would commit a value no filter can match.
+    for (const { label, cell } of DATE_CASES) {
+      const once = toIsoDate(cell);
+      expect(toIsoDate(once), label).toBe(once);
+      if (once !== "") expect(isValidIsoDate(once), label).toBe(true);
+    }
+  });
 });

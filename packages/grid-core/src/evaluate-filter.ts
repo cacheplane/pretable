@@ -59,12 +59,37 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_DATETIME_RE =
   /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
 
+/** `yyyy-mm-dd` is four digits of year; the Date range runs far wider. */
+const MAX_ISO_YEAR = 9999;
+/**
+ * 400 Gregorian years, exactly — the calendar repeats on that cycle, so this
+ * many ms is a lossless year shift for any date.
+ */
+const GREGORIAN_400Y_MS = 146_097 * 86_400_000;
+
+/**
+ * `Date.UTC` with years 0–99 meaning themselves, not 1900+y (`Date.UTC(50, …)`
+ * is otherwise 1950). Such a year is built 400 years forward and shifted back,
+ * which gets year 0's leap day right too (0000 is a leap year in the proleptic
+ * Gregorian calendar; 1900 is not).
+ */
+function utcMs(year: number, month: number, day: number): number {
+  return year >= 0 && year < 100
+    ? Date.UTC(year + 400, month, day) - GREGORIAN_400Y_MS
+    : Date.UTC(year, month, day);
+}
+
 /** The UTC-midnight ms of the instant `ms`, or NaN if it isn't a real instant. */
 function utcDayOf(ms: number): number {
   const d = new Date(ms);
   // NaN *and* out-of-range timestamps (|ms| > 8.64e15, e.g. a nanosecond
   // epoch) both yield an Invalid Date, whose UTC getters would read as NaN.
   if (Number.isNaN(d.getTime())) return Number.NaN;
+  // A 4-digit year is the contract shared with the editor's `toIsoDate`: the
+  // extremes of the Date range (year 275760, year -271821) can't be spelled
+  // `yyyy-mm-dd`, so no operand could ever name that day.
+  const year = d.getUTCFullYear();
+  if (year < 0 || year > MAX_ISO_YEAR) return Number.NaN;
   d.setUTCHours(0, 0, 0, 0);
   return d.getTime();
 }
@@ -73,10 +98,9 @@ function utcDayOf(ms: number): number {
 function isoDayMs(iso: string): number {
   if (!ISO_DATE_RE.test(iso)) return Number.NaN;
   const [y, m, d] = iso.split("-").map(Number);
-  const ms = Date.UTC(y, m - 1, d);
+  const ms = utcMs(y, m - 1, d);
   const back = new Date(ms);
-  // Date.UTC rolls 2026-02-30 forward to March (and maps year 0026 to 1926);
-  // the round-trip catches both.
+  // Date.UTC rolls 2026-02-30 forward to March; the round-trip catches that.
   return back.getUTCFullYear() === y &&
     back.getUTCMonth() === m - 1 &&
     back.getUTCDate() === d

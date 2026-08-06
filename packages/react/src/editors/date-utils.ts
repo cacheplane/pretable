@@ -8,6 +8,8 @@ const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_DATETIME_RE =
   /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
 const DAY_MS = 86_400_000;
+/** `yyyy-mm-dd` is four digits of year; the Date range runs far wider. */
+const MAX_ISO_YEAR = 9999;
 const MONTHS = [
   "January",
   "February",
@@ -22,6 +24,26 @@ const MONTHS = [
   "November",
   "December",
 ];
+
+/**
+ * 400 Gregorian years, exactly — the calendar repeats on that cycle, so this
+ * many ms is a lossless year shift for any date.
+ */
+const GREGORIAN_400Y_MS = 146_097 * DAY_MS;
+
+/**
+ * `Date.UTC` with years 0–99 meaning themselves, not 1900+y (`Date.UTC(50, …)`
+ * is otherwise 1950). Such a year is built 400 years forward and shifted back,
+ * which — unlike a follow-up `setUTCFullYear` — survives out-of-range `month`
+ * and `day` arguments (`addMonthsIso` and `monthMatrix` pass them) and gets
+ * year 0's leap day right (0000 is a leap year in the proleptic Gregorian
+ * calendar; 1900 is not).
+ */
+function utcMs(year: number, month: number, day: number): number {
+  return year >= 0 && year < 100
+    ? Date.UTC(year + 400, month, day) - GREGORIAN_400Y_MS
+    : Date.UTC(year, month, day);
+}
 
 /** A UTC-midnight timestamp as `yyyy-mm-dd`. */
 function formatUtc(ms: number): string {
@@ -41,7 +63,7 @@ export function parseIsoDate(text: string): number {
   const trimmed = text.trim();
   if (!ISO_RE.test(trimmed)) return Number.NaN;
   const [y, m, d] = trimmed.split("-").map(Number);
-  const ms = Date.UTC(y, m - 1, d);
+  const ms = utcMs(y, m - 1, d);
   // Date.UTC rolls 2026-02-30 forward to March; the round-trip catches that.
   return formatUtc(ms) === trimmed ? ms : Number.NaN;
 }
@@ -97,6 +119,13 @@ export function toIsoDate(value: unknown): string {
   // epoch) both yield an Invalid Date, whose UTC getters would format as
   // "0NaN-NaN-NaN" rather than failing.
   if (Number.isNaN(d.getTime())) return "";
+  // A 4-digit year is the contract: `yyyy-mm-dd` is what this returns, what
+  // `parseIsoDate` accepts back, and what the engine's `toDayMs` reads. The
+  // extremes of the Date range (year 275760, year -271821) can't be spelled
+  // that way, so they are not dates here rather than output nothing can
+  // round-trip.
+  const year = d.getUTCFullYear();
+  if (year < 0 || year > MAX_ISO_YEAR) return "";
   return formatUtc(d.getTime());
 }
 
@@ -107,7 +136,7 @@ export function toIsoDate(value: unknown): string {
  */
 export function todayIso(): string {
   const now = new Date();
-  return formatUtc(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  return formatUtc(utcMs(now.getFullYear(), now.getMonth(), now.getDate()));
 }
 
 export function addDaysIso(iso: string, days: number): string {
@@ -123,8 +152,8 @@ export function addMonthsIso(iso: string, months: number): string {
   const d = new Date(ms);
   const year = d.getUTCFullYear();
   const month = d.getUTCMonth() + months;
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  return formatUtc(Date.UTC(year, month, Math.min(d.getUTCDate(), lastDay)));
+  const lastDay = new Date(utcMs(year, month + 1, 0)).getUTCDate();
+  return formatUtc(utcMs(year, month, Math.min(d.getUTCDate(), lastDay)));
 }
 
 export function monthLabel(iso: string): string {
@@ -146,7 +175,7 @@ export function monthMatrix(iso: string): CalendarDay[][] {
   if (Number.isNaN(ms)) return [];
   const d = new Date(ms);
   const month = d.getUTCMonth();
-  const first = Date.UTC(d.getUTCFullYear(), month, 1);
+  const first = utcMs(d.getUTCFullYear(), month, 1);
   // getUTCDay is 0=Sunday; shift so Monday is column 0.
   const offset = (new Date(first).getUTCDay() + 6) % 7;
   const start = first - offset * DAY_MS;
