@@ -43,12 +43,21 @@ A DOM `paste` listener on the surface root reads `event.clipboardData.getData("t
 
 The surface stays **inert** — no `preventDefault`, no callback, the browser's default paste applies — in four cases:
 
-| Situation                                       | Why                                                      |
-| ----------------------------------------------- | -------------------------------------------------------- |
-| no `onPaste` prop                               | paste is opt-in, exactly like `onCellEdit`               |
-| a cell editor's `input` / `textarea` is focused | the open [editor](/docs/grid/editing) owns its own paste |
-| the clipboard's `text/plain` is empty           | nothing to parse                                         |
-| nothing is selected **and** nothing is focused  | there is no anchor, so the block has nowhere to land     |
+| Situation                                                      | Why                                                  |
+| -------------------------------------------------------------- | ---------------------------------------------------- |
+| no `onPaste` prop                                              | paste is opt-in, exactly like `onCellEdit`           |
+| an `input` / `textarea` inside the grid is focused or targeted | that input owns its own paste                        |
+| the clipboard's `text/plain` is empty                          | nothing to parse                                     |
+| nothing is selected **and** nothing is focused                 | there is no anchor, so the block has nowhere to land |
+
+<Callout type="warning">
+  That input guard is a **blanket** `input` / `textarea` check, not a
+  cell-editor check. An open [cell editor](/docs/grid/editing) is the case it
+  exists for, but the built-in [filter menu](/docs/grid/filtering)'s fields live
+  inside the surface too — so while a filter menu is open with its value field
+  focused, `Cmd/Ctrl+V` goes to that field and the grid stays inert. Close the
+  menu (`Escape`) and click a cell before pasting.
+</Callout>
 
 Everything else is handled: the surface calls `event.preventDefault()` and fires `onPaste` exactly once. That includes a paste that produces **zero** applicable cells — a block that lands entirely past the last row still calls `preventDefault` and still fires `onPaste`, so the [overflow](#overflow-clips-and-reports) is reportable rather than silent.
 
@@ -66,6 +75,15 @@ The **anchor** is the top-left of the target area:
   **Multi-range selections are not replayed.** ag-grid writes the same matrix
   into every active range; Excel largely refuses multi-area paste. Pretable
   picks one range — the focused one — and writes the block there once.
+</Callout>
+
+<Callout type="warning">
+  **A row checkbox selects the whole row's width.** Because that bound expands
+  to the full data-column span, the selection is `N` columns wide — so a
+  **1-column** clipboard block [tiles](#shape-mismatch) across *every* data
+  column of the row (`N > 1` and `N % 1 === 0`), not just the focused one. To
+  paste one column into checked rows, select the cells in that column instead of
+  the row checkboxes.
 </Callout>
 
 Rows are addressed in the grid's **current filtered and sorted order**, not your source array's order. A row filtered out is not a target; the block walks the rows the user is actually looking at, in the order they see them. The synthetic row-select column is never a target.
@@ -91,12 +109,12 @@ A **ragged** block — rows of differing width, which a hand-edited TSV easily p
 
 `onPaste` receives one `PastePayload<TRow>` and may return a promise:
 
-| Field      | Type                  | Notes                                                                      |
-| ---------- | --------------------- | -------------------------------------------------------------------------- |
-| `cells`    | `PastedCell<TRow>[]`  | cells to apply, in row-major order                                         |
-| `rejected` | `RejectedPasteCell[]` | cells the grid refused, with the reason                                    |
-| `source`   | `{ rows, columns }`   | shape of the parsed clipboard block (`columns` = the widest row)           |
-| `clipped`  | `{ rows, columns }`   | block **rows/columns** dropped past the grid's last row/column — not cells |
+| Field      | Type                  | Notes                                                                            |
+| ---------- | --------------------- | -------------------------------------------------------------------------------- |
+| `cells`    | `PastedCell<TRow>[]`  | cells to apply, in row-major order                                               |
+| `rejected` | `RejectedPasteCell[]` | cells the grid refused, with the reason                                          |
+| `source`   | `{ rows, columns }`   | shape of the parsed clipboard block (`columns` = the widest row)                 |
+| `clipped`  | `{ rows, columns }`   | **target-area** rows/columns dropped past the grid's last row/column — not cells |
 
 `PastedCell<TRow>`:
 
@@ -110,20 +128,30 @@ A **ragged** block — rows of differing width, which a hand-edited TSV easily p
 
 `RejectedPasteCell` carries `rowId`, `columnId`, `raw`, a `reason` of `"not-editable" | "invalid"`, and an optional `message`.
 
-## Coercion
+## The gate
 
-Every target's `raw` text is coerced before it is validated, using the same rules a committed [edit](/docs/grid/editing) gets — so typed columns hand you typed values, not clipboard strings:
+Every target runs the same three steps a committed [edit](/docs/grid/editing) does, in this order, and all targets run in parallel:
+
+1. **`editable`** decides whether the cell can be written at all.
+2. **Coercion** turns the clipboard string into a typed value.
+3. **`validate`** judges that typed value.
+
+`editable` comes **first** on purpose. A cell nobody could ever write is rejected as `"not-editable"` and never coerced, so a read-only number column receiving `"abc"` reports the reason that is actually true rather than complaining about a value that was never going to land. Coercion comes before `validate` so `validate` sees the typed value, not the raw text.
+
+### Coercion
+
+Coercion uses the same rules a committed [edit](/docs/grid/editing) gets — so typed columns hand you typed values, not clipboard strings:
 
 - **`parseEditValue` wins.** When the column supplies it, it runs (`parseEditValue(raw, input)`) and its result is the value. If it **throws**, the cell is rejected as `"invalid"` with the thrown message.
 - **Otherwise the built-in per-type parse runs.** `number` → a number (empty text → `null`; unparseable → rejected `"invalid"`, message `"Not a number"`). `enum` with `options` → the matched option's `value` (empty → `null`; matching nothing → `"Pick an option"`). `date` → a strict `YYYY-MM-DD` string (empty → `null`; anything else → `"Use YYYY-MM-DD"`).
 - **Everything else passes through as the clipboard string** — `text` columns, `enum` columns without `options`, and `boolean` columns. A `boolean` column has no built-in text parse, so a pasted `"true"` arrives as the **string** `"true"`. Supply `parseEditValue` on boolean columns you intend people to paste into.
 
-## Rejections
+### Rejections
 
-Each coerced value is then gated, in parallel, through the column's own hooks:
+Both hooks are awaited, so async permission checks and async validation work here exactly as they do for an inline edit:
 
-1. **`editable`** — `false` by default. A column that never opted into editing rejects every pasted cell with `reason: "not-editable"`. The function form is awaited, so an async permission check works here exactly as it does for an inline edit.
-2. **`validate`** — runs only on cells that passed `editable`, and is awaited. Returning a string rejects the cell with `reason: "invalid"` and that string as `message`.
+1. **`editable`** — `false` by default. A column that never opted into editing rejects every pasted cell with `reason: "not-editable"`, and that cell is never coerced.
+2. **`validate`** — runs only on cells that passed `editable`, against the coerced value. Returning a string rejects the cell with `reason: "invalid"` and that string as `message`.
 
 <Callout type="warning">
   **A rejected cell consumes its position.** The block keeps its rectangle;
@@ -160,19 +188,27 @@ Because rejections are reported rather than swallowed, "N of M applied" is a one
 
 The [homepage hero](/) does exactly this: its Qty column's `validate` enforces a 7% single-name guardrail, so pasting a too-large block comes back part-applied with the desk's reason attached.
 
-### Errors abort the whole paste
+### Errors
 
-If an `editable`, `validate`, or `onPaste` call **throws** (or rejects), the paste is abandoned: the error is caught, logged with `console.warn("[pretable] paste failed", err)`, and `onPaste` either never fires or its own failure is swallowed. Nothing is half-applied. Use `validate`'s string return — not a thrown error — to refuse a single cell.
+A throw is contained to the cell that caused it. If `editable`, `parseEditValue`, or `validate` **throws** (or rejects) for one cell, that cell lands in `rejected` with `reason: "invalid"` and the error's message, and every other cell in the block is gated and applied as normal — one flaky async predicate does not cost you the paste.
+
+A failure outside a single cell's gate — most commonly `onPaste` itself throwing — is caught and logged with `console.warn("[pretable] paste failed", err)`.
+
+Prefer `validate`'s string return to a thrown error when refusing a cell: it is the documented channel, and it lets you supply a message the user can act on.
 
 ### Staleness
 
 The async gate is guarded by a monotonic token: if a second paste starts, or the grid unmounts, while the first one's `editable` / `validate` calls are still in flight, the older result is discarded instead of firing a stale `onPaste`. Row and column changes underneath a pending paste do **not** invalidate it — the payload is addressed by row id, so a streaming grid can replace its rows mid-gate and you still apply the result against your current state, exactly as you would an `onCellEdit`.
 
+That means the payload is a **snapshot**: `PastedCell.row` is the row as it was when the paste started, and `editable` / `validate` judged those pre-tick values. Apply `cells` against your current state and no-op on row ids that have since disappeared — the same contract `onCellEdit` has.
+
 ## Overflow clips and reports
 
 The grid cannot invent row ids under a controlled data model, so a block that runs past the last row is **clipped**, and the dropped rows and columns are counted in `payload.clipped`. Excel grows the sheet; ag-grid clips silently. Pretable clips and tells you, which is enough to grow the data yourself.
 
-`clipped` counts rows and columns, not cells — and it does not carry their text. To append the overflow you need the clipboard text, which you can stash from your own capture-phase listener: React's `onPasteCapture` on a wrapping element runs in the capture phase, before the grid's own bubble-phase listener, so the ref is set well before `onPaste` fires.
+`clipped` counts rows and columns, not cells — and it does not carry their text. It counts the **target area**, i.e. the block _after_ tiling, so when a block [tiled](#shape-mismatch) into a larger selection `clipped.rows` can be larger than the block itself has rows.
+
+To append the overflow you need the clipboard text, which you can stash from your own capture-phase listener. The capture phase is load-bearing: the surface listens for `paste` in the **bubble** phase, so a plain `onPaste` on the same wrapper would run _after_ the grid's handler and the ref would still be empty when your `onPaste` callback reads it. `onPasteCapture` runs before the grid sees the event.
 
 ```tsx
 import { PretableSurface, parseTsv } from "@pretable/react";
@@ -196,10 +232,14 @@ function Sheet() {
           applyCells(cells);
           if (clipped.rows === 0) return;
 
-          // The block was anchored (not tiled), so the rows that fell off the
-          // end are the last `clipped.rows` rows of the parsed matrix.
+          // Anchored (not tiled) case: the rows that fell off the end are the
+          // last `clipped.rows` rows of the parsed matrix. The clamp matters —
+          // a tiled block can report MORE clipped rows than the block has, and
+          // an unclamped negative start would take the whole matrix.
           const matrix = parseTsv(clipboardText.current);
-          const overflow = matrix.slice(matrix.length - clipped.rows);
+          const overflow = matrix.slice(
+            Math.max(0, matrix.length - clipped.rows),
+          );
           setRows((prev) => [
             ...prev,
             ...overflow.map((fields, i) => ({
@@ -215,7 +255,7 @@ function Sheet() {
 }
 ```
 
-Two things to know about that slice: it is correct for an **anchored** paste (the common case — the block wrote once from the top-left). When the block [tiled](#shape-mismatch) into a larger selection, source rows repeat, and the last `clipped.rows` source rows are not what fell off the end. And appended rows land wherever your sort puts them, not necessarily at the bottom of the view.
+Two things to know about that slice. It is scoped to an **anchored** paste — the common case, where the block wrote once from the top-left and `clipped.rows` is therefore at most the block's row count. When the block [tiled](#shape-mismatch) into a larger selection, source rows repeat, `clipped.rows` counts target rows (possibly more than the block has), and the last `clipped.rows` source rows are not what fell off the end; reconstruct the tiling yourself if you need that case. And appended rows land wherever your sort puts them, not necessarily at the bottom of the view.
 
 ## The TSV format
 
@@ -229,6 +269,14 @@ The parser is the exact inverse of the escaping [copy](/docs/grid/clipboard#esca
 - **Empty text parses to `[]`**, i.e. no content, and the paste is inert.
 
 The clipboard is treated as **one matrix**. A [multi-range copy](/docs/grid/clipboard#multi-range-serialization) — whose blocks are separated by a blank line, and whose headers are their own row under `copyWithHeaders` — flattens: the blank separator parses as a one-field empty row and the header row parses as data. Pasting that back writes an empty string into the anchor column at the separator's position. If your app copies multi-range or with headers and needs the paste to round-trip, pre-process the text yourself.
+
+<Callout type="warning">
+  **`copyWithHeaders` does not round-trip, even for a single range.** It emits
+  the header row *and a blank line after it* before the values, so a 3-row copy
+  comes back as 5 rows: the header text as data, an empty row, then the three
+  values — and the first two land on real cells. Strip both yourself with
+  `parseTsv` before applying, as below.
+</Callout>
 
 `parseTsv(text: string): string[][]` is exported from `@pretable/react` (alongside `serializeRangesAsTsv` and `defaultCoerceForCopy`), so pre-processing means reusing the same parser rather than writing a second one:
 

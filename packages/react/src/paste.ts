@@ -28,9 +28,12 @@ import type { PretableColumn } from "./types";
  *
  * Ragged input is preserved: rows keep whatever field count they had.
  *
- * Known ambiguity: an empty string decodes to `[]`, not `[[""]]`. A matrix holding a
- * single empty field encodes to the empty string, so the two are indistinguishable,
- * and "no content" is by far the more useful reading of an empty clipboard.
+ * Known ambiguity: that one-blank-line trim is not round-trippable for any matrix
+ * whose **last row is a single empty field** — `[["a"], [""]]` decodes back as
+ * `[["a"]]`, and `[[""]]` as `[]`. Both encode to text ending in a row terminator
+ * (`"a\n"`, `""`), which is genuinely ambiguous between "trailing terminator" and
+ * "real empty last row"; no parser can tell them apart. Reading it as a terminator
+ * is by far the more useful choice, since that is what Excel-on-Windows emits.
  *
  * @public
  */
@@ -164,9 +167,16 @@ export interface PastePayload<TRow extends PretableRow = PretableRow> {
   /** Shape of the parsed clipboard block (`columns` = the widest row). */
   source: { rows: number; columns: number };
   /**
-   * Block rows/columns dropped past the grid's last row/column — counts of
-   * rows/columns, not cells. The grid never invents rows; append them yourself
-   * from this count if you want Excel's grow-on-overflow behavior.
+   * How many rows/columns of the **target area** fell past the grid's last
+   * row/column and were dropped — counts of rows/columns, not cells.
+   *
+   * The target area is the block after tiling, so when the block tiled into a
+   * larger selection `clipped.rows` can exceed `source.rows` (a 2-row block
+   * tiled 4× that runs 3 rows off the end reports `3`, not `2`). Only in the
+   * anchored, non-tiled case does it match "block rows that fell off".
+   *
+   * The grid never invents rows; append them yourself from this count if you
+   * want Excel's grow-on-overflow behavior.
    */
   clipped: { rows: number; columns: number };
 }
@@ -207,7 +217,11 @@ export interface PasteTarget {
 export interface PasteTargetMap {
   /** Targets in row-major order. */
   cells: PasteTarget[];
-  /** Block rows/columns that fell past the grid's last row/column and were dropped. */
+  /**
+   * Rows/columns of the target area (the block **after** tiling) that fell past
+   * the grid's last row/column and were dropped. Under tiling this can exceed
+   * the block's own row/column count.
+   */
   clipped: { rows: number; columns: number };
 }
 
@@ -219,8 +233,9 @@ export interface PasteTargetMap {
  *   multiple of it in a dimension, the block repeats to fill that dimension.
  *   Otherwise the block is written exactly once from the top-left, leaving the rest
  *   of the selection untouched. Each dimension decides independently.
- * - **Clip.** Rows or columns past the grid's last row/column are dropped and counted
- *   into `clipped`. No rows are invented — the data model is controlled.
+ * - **Clip.** Target rows or columns past the grid's last row/column are dropped and
+ *   counted into `clipped` — target, so a tiled block can clip more rows than it has.
+ *   No rows are invented — the data model is controlled.
  *
  * The synthetic row-select column is never a target; when it *is* the anchor (a row
  * selection) the block anchors on the first data column instead, mirroring how

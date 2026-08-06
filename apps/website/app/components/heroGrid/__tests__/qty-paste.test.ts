@@ -63,6 +63,7 @@ describe("planQtyPaste", () => {
       total: 3,
       rejected: 1,
       clippedRows: 0,
+      clippedColumns: 0,
     });
   });
 
@@ -92,8 +93,9 @@ describe("planQtyPaste", () => {
     expect(plan.summary.total).toBe(2);
   });
 
-  it("passes the clipped row count through", () => {
-    const plan = planQtyPaste(payload({ clipped: { rows: 3, columns: 0 } }));
+  it("passes the clipped row and column counts through", () => {
+    const plan = planQtyPaste(payload({ clipped: { rows: 3, columns: 2 } }));
     expect(plan.summary.clippedRows).toBe(3);
+    expect(plan.summary.clippedColumns).toBe(2);
   });
 });

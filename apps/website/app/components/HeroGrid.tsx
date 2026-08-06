@@ -33,6 +33,8 @@ import type { PositionRow } from "./heroGrid/types";
 import styles from "./heroGrid/heroGrid.module.css";
 
 const FALLBACK_VIEWPORT_HEIGHT = 520;
+/** How long the paste summary stays up before clearing itself. */
+const PASTE_SUMMARY_MS = 5000;
 
 export function HeroGrid() {
   const { ratePerSec, isPlaying } = useControlState();
@@ -70,6 +72,7 @@ export function HeroGrid() {
   const [selection, setSelection] = useState<SelectionSummary | null>(null);
   const [copied, setCopied] = useState(false);
   const [pasteSummary, setPasteSummary] = useState<PasteSummary | null>(null);
+  const pasteSummaryTimerRef = useRef<number | null>(null);
   const editedQtyByIdRef = useRef<Map<string, number>>(new Map());
 
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -215,8 +218,26 @@ export function HeroGrid() {
         ),
       );
     }
+    // Transient, like the "Copied ✓" flash — but held longer, since the line
+    // carries counts worth reading. A second paste restarts the clock.
     setPasteSummary(summary);
+    if (pasteSummaryTimerRef.current !== null) {
+      window.clearTimeout(pasteSummaryTimerRef.current);
+    }
+    pasteSummaryTimerRef.current = window.setTimeout(() => {
+      pasteSummaryTimerRef.current = null;
+      setPasteSummary(null);
+    }, PASTE_SUMMARY_MS);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (pasteSummaryTimerRef.current !== null) {
+        window.clearTimeout(pasteSummaryTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // onSelectionChange → summarize into row/col counts
   const handleSelectionChange = useCallback(

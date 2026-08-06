@@ -6,12 +6,18 @@ import type { PositionRow } from "./types";
 export interface PasteSummary {
   /** Qty cells actually written into the book. */
   applied: number;
-  /** Cells the block landed on (applied + rejected). */
+  /**
+   * Cells the grid gated: survivors + rejections. Usually `applied + rejected`,
+   * but not always — a survivor the hero itself drops (a non-`qty` column, or a
+   * non-finite quantity) counts here without counting in `applied`.
+   */
   total: number;
   /** Cells the grid refused — non-editable columns, guardrail/sanity failures. */
   rejected: number;
-  /** Block rows dropped past the last row (the hero never appends rows). */
+  /** Target rows dropped past the last row (the hero never appends rows). */
   clippedRows: number;
+  /** Target columns dropped past the last column. */
+  clippedColumns: number;
 }
 
 export interface QtyPastePlan {
@@ -45,6 +51,7 @@ export function planQtyPaste(payload: PastePayload<PositionRow>): QtyPastePlan {
       total: payload.cells.length + payload.rejected.length,
       rejected: payload.rejected.length,
       clippedRows: payload.clipped.rows,
+      clippedColumns: payload.clipped.columns,
     },
   };
 }

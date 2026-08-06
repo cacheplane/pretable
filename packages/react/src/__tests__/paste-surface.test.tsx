@@ -255,6 +255,92 @@ describe("PretableSurface paste", () => {
     ]);
   });
 
+  it("gates on editable BEFORE coercing, so a read-only column never reports a parse complaint", async () => {
+    const onPaste = vi.fn();
+    const parseEditValue = vi.fn((raw: string) => raw);
+    renderPasteGrid({
+      columns: [
+        { id: "name", header: "Name", editable: true },
+        { id: "note", header: "Note", editable: false, parseEditValue },
+        COLUMNS[2]!,
+        // A number column nobody can write: "xyz" would fail the built-in
+        // parse, but the cell is unwritable, so that is not the reason.
+        { id: "qty", header: "Qty", type: "number", editable: false },
+      ],
+      state: cellSelection("r1", "note"),
+      onPaste,
+    });
+
+    firePaste(grid(), "abc\tL\txyz");
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<Row>;
+    expect(payload.cells).toEqual([]);
+    // Every reason is "not-editable", and none carries a coercion message.
+    expect(payload.rejected).toEqual([
+      { rowId: "r1", columnId: "note", raw: "abc", reason: "not-editable" },
+      { rowId: "r1", columnId: "locked", raw: "L", reason: "not-editable" },
+      { rowId: "r1", columnId: "qty", raw: "xyz", reason: "not-editable" },
+    ]);
+    // Coercion is skipped entirely for cells that cannot be written.
+    expect(parseEditValue).not.toHaveBeenCalled();
+  });
+
+  it("contains a throwing editable or validate to the cell that threw", async () => {
+    const onPaste = vi.fn();
+    renderPasteGrid({
+      columns: [
+        {
+          id: "name",
+          header: "Name",
+          editable: (input) => {
+            if (input.rowId === "r2") throw new Error("editable blew up");
+            return true;
+          },
+        },
+        {
+          id: "note",
+          header: "Note",
+          editable: true,
+          validate: (value: unknown) => {
+            if (value === "kaboom") throw new Error("validate blew up");
+            return true;
+          },
+        },
+        ...COLUMNS.slice(2),
+      ],
+      state: cellSelection("r1", "name"),
+      onPaste,
+    });
+
+    firePaste(grid(), "ok\tkaboom\nboom\tfine");
+    await flush();
+
+    // One flaky predicate costs its own cell, not the whole paste.
+    expect(onPaste).toHaveBeenCalledTimes(1);
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<Row>;
+    expect(payload.cells.map((c) => [c.rowId, c.columnId, c.value])).toEqual([
+      ["r1", "name", "ok"],
+      ["r2", "note", "fine"],
+    ]);
+    expect(payload.rejected).toEqual([
+      {
+        rowId: "r1",
+        columnId: "note",
+        raw: "kaboom",
+        reason: "invalid",
+        message: "validate blew up",
+      },
+      {
+        rowId: "r2",
+        columnId: "name",
+        raw: "boom",
+        reason: "invalid",
+        message: "editable blew up",
+      },
+    ]);
+  });
+
   it("rejects a cell whose validate returns a message, applying the rest", async () => {
     const onPaste = vi.fn();
     renderPasteGrid({

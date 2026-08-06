@@ -232,6 +232,9 @@ test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async (
   context,
   browserName,
 }) => {
+  // The tail of this test waits for the replay to tick XOM specifically, and
+  // the recording only patches that symbol six times per 27s loop.
+  test.setTimeout(60_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
     timeout: 10_000,
@@ -315,8 +318,51 @@ test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async (
     /Pasted 2 of 4 · 2 rejected/,
   );
 
-  // Pasted values survive streaming ticks (same override map an inline edit uses).
-  await page.waitForTimeout(2000);
+  // Pasted values survive streaming ticks — checked on a DERIVED column, which
+  // is the only place the check has teeth. Every tick patch in the recording
+  // carries {id,last,mktValue,dayPnl,dayPnlPct} and never `qty`, so re-reading
+  // the Qty cell here would pass even with the edited-qty override map deleted.
+  // What the override map actually does is recompute Mkt Val from the NEW share
+  // count: a tick's own mktValue was computed from XOM's ORIGINAL 22,000 shares
+  // (~$2.46M), while the pasted 23,000 shares is ~$2.58M. So: wait for a real
+  // tick to land on XOM (its price changes), then check Mkt Val against the
+  // price the grid is actually showing rather than a hardcoded one.
+  const cellText = async (rowId: string, columnId: string): Promise<string> =>
+    (
+      await page
+        .locator(
+          `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-column-id="${columnId}"]`,
+        )
+        .innerText()
+    ).trim();
+
+  const priceBeforeTick = await cellText("XOM", "last");
+  await expect
+    .poll(() => cellText("XOM", "last"), { timeout: 20_000 })
+    .not.toBe(priceBeforeTick);
+
+  // One evaluate so price and value come from the same rendered commit.
+  const shown = await page.evaluate(() => {
+    const row = document.querySelector(
+      '[data-pretable-row][data-pretable-row-id="XOM"]',
+    );
+    const text = (id: string) =>
+      (
+        row?.querySelector(`[data-pretable-column-id="${id}"]`) as HTMLElement
+      )?.innerText.trim() ?? "";
+    return { last: text("last"), mktValue: text("mktValue") };
+  });
+  const price = Number.parseFloat(shown.last);
+  expect(Number.isFinite(price)).toBe(true);
+  const compactUsd = (shares: number) =>
+    `$${((shares * price) / 1_000_000).toFixed(1)}M`;
+  const live = compactUsd(23_000); // pasted share count
+  const stale = compactUsd(22_000); // the book's original share count
+  // Guard: if the two formatted the same the assertion below would prove
+  // nothing. Across the recording's XOM price range they never do.
+  expect(live).not.toBe(stale);
+  expect(shown.mktValue).toBe(live);
+  // And the qty itself is of course still there.
   await expect(qty("XOM")).toContainText("23,000");
 });
 

@@ -381,7 +381,13 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * `cells` in a single state update.
    *
    * Paste is opt-in — without this prop the surface leaves paste events alone.
-   * Pastes that land while a cell editor is focused belong to that editor.
+   * Pastes that land while an `input`/`textarea` inside the grid has focus (a
+   * cell editor, or a filter menu's field) belong to that input.
+   *
+   * The payload is a **snapshot**: `PastedCell.row` is the row as it was when
+   * the paste started, and `editable`/`validate` ran against those pre-tick
+   * values. Apply the cells against your *current* state and no-op on row ids
+   * that have since vanished — the same contract as {@link onCellEdit}.
    */
   onPaste?: (payload: PastePayload<TRow>) => void | Promise<void>;
 }
@@ -802,9 +808,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     (event: ClipboardEvent) => {
       const onPasteFn = onPasteRef.current;
       if (!onPasteFn) return; // paste is opt-in, exactly like onCellEdit
-      // A focused editor input owns its own paste. Mirrors the Cmd+C guard's
-      // target check, plus an activeElement check so an event that targets the
-      // grid root while the editor holds focus is ignored too.
+      // An input inside the grid owns its own paste. This is a blanket
+      // input/textarea check, not a cell-editor check: the built-in filter
+      // menu's fields live inside the surface too, and a paste aimed at one of
+      // them is not a grid paste. Mirrors the Cmd+C guard's target check, plus
+      // an activeElement check so an event that targets the grid root while an
+      // input holds focus is ignored too.
       if (
         event.target instanceof HTMLInputElement ||
         event.target instanceof HTMLTextAreaElement
@@ -854,8 +863,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       const columnById = new Map(columns.map((c) => [c.id, c]));
       const rowById = new Map(snap.visibleRows.map((r) => [r.id, r.row]));
 
-      // One slot per target, so rejections keep the block's row-major order
-      // whether they came from coercion (sync) or from the gate (async).
+      // One slot per target, so outcomes keep the block's row-major order.
       const outcomes = new Array<PastedCell<TRow> | RejectedPasteCell | null>(
         targets.cells.length,
       ).fill(null);
@@ -863,7 +871,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         index: number;
         target: (typeof targets.cells)[number];
         input: PretableEditInput<TRow>;
-        value: unknown;
       }[] = [];
 
       targets.cells.forEach((target, index) => {
@@ -877,67 +884,71 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           column,
           value: resolveCellValue(row, column),
         };
-        // Same coercion a committed edit gets: the column's parseEditValue
-        // wins, otherwise the built-in per-type parse — so number/date/enum
-        // columns yield typed values instead of clipboard strings.
-        let value: unknown;
-        if (column.parseEditValue) {
-          try {
-            value = column.parseEditValue(target.raw, input);
-          } catch (err) {
-            outcomes[index] = {
-              ...target,
-              reason: "invalid",
-              message: err instanceof Error ? err.message : String(err),
-            };
-            return;
-          }
-        } else {
-          const parsed = parseDraftForType(column, target.raw);
-          if (!parsed.ok) {
-            outcomes[index] = {
-              ...target,
-              reason: "invalid",
-              message: parsed.message,
-            };
-            return;
-          }
-          value = parsed.value;
-        }
-        candidates.push({ index, target, input, value });
+        candidates.push({ index, target, input });
       });
 
       const gate = async (): Promise<void> => {
-        // Candidates are gated in parallel. Within one candidate `validate`
-        // runs only after `editable` said yes — a column's validate may assume
-        // the cell is writable, and there is nothing to learn from a cell that
-        // is already rejected.
+        // Candidates are gated in parallel. Within one candidate the order is
+        // `editable` → coercion → `validate`:
+        //  - `editable` first, so a cell the user could never write reports
+        //    "not-editable" rather than a coercion complaint about a value that
+        //    was never going to land ("abc" into a read-only number column).
+        //  - `validate` last, so it sees the coerced, typed value.
+        // Each candidate is wrapped on its own: one flaky `editable`/`validate`
+        // rejects THAT cell as "invalid" instead of dropping the whole paste.
         const resolved = await Promise.all(
           candidates.map(
             async ({
               target,
               input,
-              value,
             }): Promise<PastedCell<TRow> | RejectedPasteCell> => {
-              const editable = input.column.editable ?? false;
-              const allowed =
-                typeof editable === "function"
-                  ? await editable(input)
-                  : editable;
-              if (!allowed) return { ...target, reason: "not-editable" };
-              if (input.column.validate) {
-                const result = await input.column.validate(value, input);
-                if (result !== true) {
-                  return { ...target, reason: "invalid", message: result };
+              try {
+                const editable = input.column.editable ?? false;
+                const allowed =
+                  typeof editable === "function"
+                    ? await editable(input)
+                    : editable;
+                if (!allowed) return { ...target, reason: "not-editable" };
+
+                // Same coercion a committed edit gets: the column's
+                // parseEditValue wins, otherwise the built-in per-type parse —
+                // so number/date/enum columns yield typed values instead of
+                // clipboard strings.
+                let value: unknown;
+                if (input.column.parseEditValue) {
+                  value = input.column.parseEditValue(target.raw, input);
+                } else {
+                  const parsed = parseDraftForType(input.column, target.raw);
+                  if (!parsed.ok) {
+                    return {
+                      ...target,
+                      reason: "invalid",
+                      message: parsed.message,
+                    };
+                  }
+                  value = parsed.value;
                 }
+
+                if (input.column.validate) {
+                  const result = await input.column.validate(value, input);
+                  if (result !== true) {
+                    return { ...target, reason: "invalid", message: result };
+                  }
+                }
+                return {
+                  rowId: target.rowId,
+                  columnId: target.columnId,
+                  raw: target.raw,
+                  value,
+                  row: input.row,
+                };
+              } catch (err) {
+                return {
+                  ...target,
+                  reason: "invalid",
+                  message: err instanceof Error ? err.message : String(err),
+                };
               }
-              return {
-                rowId: target.rowId,
-                columnId: target.columnId,
-                raw: target.raw,
-                value,
-                row: input.row,
-              };
             },
           ),
         );
