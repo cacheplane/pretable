@@ -3890,8 +3890,9 @@ describe("column reorder", () => {
       clientX: 250,
       clientY: 10,
     });
+    // The ghost is portaled to document.body (see the portal test below).
     expect(
-      view.container.querySelector("[data-pretable-reorder-ghost]"),
+      document.body.querySelector("[data-pretable-reorder-ghost]"),
     ).toBeTruthy();
 
     const grid = view.getByRole("grid");
@@ -3899,10 +3900,55 @@ describe("column reorder", () => {
 
     expect(onColumnOrderChange).not.toHaveBeenCalled();
     expect(
-      view.container.querySelector("[data-pretable-reorder-ghost]"),
+      document.body.querySelector("[data-pretable-reorder-ghost]"),
     ).toBeNull();
     const orderAfter = capturedGrid!.options.columns.map((c) => c.id);
     expect(orderAfter).toEqual(orderBefore);
+  });
+
+  it("renders the drag ghost outside the contained scroll viewport", () => {
+    // The viewport sets `contain: content`, which makes it a containing block
+    // for `position: fixed` descendants *and* clips them. The ghost is fixed and
+    // positioned from clientX/clientY, so it must be portaled out of that
+    // subtree. The drop indicator is `position: absolute` in content
+    // coordinates and must stay put.
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={gridColumns}
+        getRowId={(row: GridRow) => row.id}
+        overscan={0}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+    const header = getHeaderButton(view, "A");
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 1,
+      clientX: 50,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+
+    const ghost = document.body.querySelector("[data-pretable-reorder-ghost]");
+    expect(ghost).toBeTruthy();
+    expect(ghost?.closest("[data-pretable-scroll-viewport]")).toBeNull();
+
+    // The drop indicator stays inside the viewport (absolute, content coords).
+    const indicator = document.body.querySelector(
+      "[data-pretable-reorder-drop-indicator]",
+    );
+    expect(indicator).toBeTruthy();
+    expect(
+      indicator?.closest("[data-pretable-scroll-viewport]"),
+    ).not.toBeNull();
+
+    fireEvent.pointerUp(header, { pointerId: 1, clientX: 250, clientY: 10 });
   });
 
   it("synthetic row-select column header is non-draggable", () => {

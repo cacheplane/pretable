@@ -72,6 +72,7 @@ import {
   useFilterPopover,
 } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
+import { OverlayPortal } from "./overlay/OverlayPortal";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
@@ -2183,20 +2184,27 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       </div>
       {reorderDrag ? (
         <>
-          <div
-            data-pretable-reorder-ghost=""
-            style={{
-              left: reorderDrag.cursorX + 8,
-              top: reorderDrag.cursorY + 8,
-              width: reorderDrag.ghostWidth,
-              height: reorderDrag.ghostHeight,
-              display: "flex",
-              alignItems: "center",
-              paddingLeft: 12,
-            }}
-          >
-            {reorderDrag.ghostHeader}
-          </div>
+          {/* The ghost is `position: fixed` at cursor (viewport) coordinates.
+              The scroll viewport's `contain: content` would make it the
+              containing block AND clip the ghost, so it must be portaled to
+              document.body. The drop indicator below is `position: absolute`
+              in content coordinates and must stay inside the viewport. */}
+          <OverlayPortal>
+            <div
+              data-pretable-reorder-ghost=""
+              style={{
+                left: reorderDrag.cursorX + 8,
+                top: reorderDrag.cursorY + 8,
+                width: reorderDrag.ghostWidth,
+                height: reorderDrag.ghostHeight,
+                display: "flex",
+                alignItems: "center",
+                paddingLeft: 12,
+              }}
+            >
+              {reorderDrag.ghostHeader}
+            </div>
+          </OverlayPortal>
           <div
             data-pretable-reorder-drop-indicator=""
             style={{
