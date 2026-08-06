@@ -289,6 +289,9 @@
     padding: 10px;
     box-shadow: var(--pretable-reorder-ghost-shadow);
     font: inherit;
+    /* Portaled into <body>, so the font-family declared on the scroll
+       viewport is no longer inherited — declare it here. */
+    font-family: var(--pretable-font-sans);
   }
   :where([data-pretable-filter-menu]) select,
   :where([data-pretable-filter-menu]) input[type="text"],
@@ -315,6 +318,48 @@
     color: var(--pretable-accent);
     cursor: pointer;
     padding: 2px 4px;
+  }
+
+  /* Enum combobox listbox (cell editor) */
+  :where([data-pretable-enum-editor]) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  :where([data-pretable-enum-listbox]) {
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--pretable-bg-grid);
+    border: 1px solid var(--pretable-rule-strong);
+    border-radius: var(--pretable-radius);
+    box-shadow: var(--pretable-reorder-ghost-shadow);
+    /* Portaled into <body> — see the filter menu above. */
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    color: var(--pretable-text-cell);
+  }
+
+  /* Typed text matching nothing leaves an empty list; don't paint a bare box. */
+  :where([data-pretable-enum-listbox]:empty) {
+    display: none;
+  }
+
+  :where([data-pretable-enum-option]) {
+    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
+    cursor: pointer;
+  }
+
+  :where([data-pretable-enum-option]:hover) {
+    background: var(--pretable-bg-hover);
+  }
+
+  :where([data-pretable-enum-option][aria-selected="true"]) {
+    background: var(--pretable-bg-selected);
+    color: var(--pretable-text-selected);
   }
 
   /* Tooltip / popover */

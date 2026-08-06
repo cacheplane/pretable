@@ -42,3 +42,42 @@ describe("parseDraftForType", () => {
     });
   });
 });
+
+describe("parseDraftForType — enum", () => {
+  const column = {
+    type: "enum" as const,
+    options: [{ value: "running", label: "Running" }, { value: "done" }],
+  };
+
+  it("maps a matching label to the option value", () => {
+    expect(parseDraftForType(column, "Running")).toEqual({
+      ok: true,
+      value: "running",
+    });
+  });
+
+  it("accepts a raw value too", () => {
+    expect(parseDraftForType(column, "done")).toEqual({
+      ok: true,
+      value: "done",
+    });
+  });
+
+  it("rejects text that matches no option", () => {
+    expect(parseDraftForType(column, "nope")).toEqual({
+      ok: false,
+      message: "Pick an option",
+    });
+  });
+
+  it("commits null for an empty draft", () => {
+    expect(parseDraftForType(column, "")).toEqual({ ok: true, value: null });
+  });
+
+  it("passes through when the column declares no options (text behavior)", () => {
+    expect(parseDraftForType({ type: "enum" }, "anything")).toEqual({
+      ok: true,
+      value: "anything",
+    });
+  });
+});

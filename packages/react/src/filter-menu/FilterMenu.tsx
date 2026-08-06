@@ -17,6 +17,7 @@ import {
   toColumnFilter,
   type FilterDraft,
 } from "./filter-operators";
+import { OverlayPortal } from "../overlay/OverlayPortal";
 
 const DEBOUNCE_MS = 200;
 
@@ -165,97 +166,101 @@ export function FilterMenu({
   );
 
   return (
-    <div
-      ref={rootRef}
-      role="dialog"
-      aria-label={`Filter ${label}`}
-      data-pretable-filter-menu=""
-      data-pretable-popover=""
-      style={style}
-    >
-      <select
-        ref={selectRef}
-        data-pretable-filter-operator=""
-        aria-label="Filter operator"
-        value={draft.operator}
-        onChange={(e) => onOperatorChange(e.target.value as FilterOperator)}
+    <OverlayPortal>
+      <div
+        ref={rootRef}
+        role="dialog"
+        aria-label={`Filter ${label}`}
+        data-pretable-filter-menu=""
+        data-pretable-popover=""
+        style={style}
       >
-        {operators.map((op) => (
-          <option key={op} value={op}>
-            {OPERATOR_LABELS[op]}
-          </option>
-        ))}
-      </select>
-
-      {shape === "single" ? (
-        <input
-          type={inputType}
-          {...numericProps}
-          data-pretable-filter-value=""
-          aria-label={`Filter value`}
-          value={draft.text ?? ""}
-          onChange={(e) =>
-            inputType === "date"
-              ? pushNow({ ...draft, text: e.target.value })
-              : pushDebounced({ ...draft, text: e.target.value })
-          }
-        />
-      ) : null}
-
-      {shape === "range" ? (
-        <>
-          <input
-            type={inputType}
-            {...numericProps}
-            data-pretable-filter-min=""
-            aria-label="Filter minimum"
-            value={draft.min ?? ""}
-            onChange={(e) =>
-              inputType === "date"
-                ? pushNow({ ...draft, min: e.target.value })
-                : pushDebounced({ ...draft, min: e.target.value })
-            }
-          />
-          <input
-            type={inputType}
-            {...numericProps}
-            data-pretable-filter-max=""
-            aria-label="Filter maximum"
-            value={draft.max ?? ""}
-            onChange={(e) =>
-              inputType === "date"
-                ? pushNow({ ...draft, max: e.target.value })
-                : pushDebounced({ ...draft, max: e.target.value })
-            }
-          />
-        </>
-      ) : null}
-
-      {shape === "set" ? (
-        <div
-          data-pretable-filter-set=""
-          role="group"
-          aria-label="Filter values"
+        <select
+          ref={selectRef}
+          data-pretable-filter-operator=""
+          aria-label="Filter operator"
+          value={draft.operator}
+          onChange={(e) => onOperatorChange(e.target.value as FilterOperator)}
         >
-          {options.map((opt) => {
-            const checked = (draft.selected ?? []).includes(opt.value);
-            return (
-              <label key={opt.value}>
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(e) => toggleSelected(opt.value, e.target.checked)}
-                />
-                {opt.label ?? opt.value}
-              </label>
-            );
-          })}
-        </div>
-      ) : null}
+          {operators.map((op) => (
+            <option key={op} value={op}>
+              {OPERATOR_LABELS[op]}
+            </option>
+          ))}
+        </select>
 
-      <button type="button" data-pretable-filter-clear="" onClick={onClear}>
-        Clear
-      </button>
-    </div>
+        {shape === "single" ? (
+          <input
+            type={inputType}
+            {...numericProps}
+            data-pretable-filter-value=""
+            aria-label={`Filter value`}
+            value={draft.text ?? ""}
+            onChange={(e) =>
+              inputType === "date"
+                ? pushNow({ ...draft, text: e.target.value })
+                : pushDebounced({ ...draft, text: e.target.value })
+            }
+          />
+        ) : null}
+
+        {shape === "range" ? (
+          <>
+            <input
+              type={inputType}
+              {...numericProps}
+              data-pretable-filter-min=""
+              aria-label="Filter minimum"
+              value={draft.min ?? ""}
+              onChange={(e) =>
+                inputType === "date"
+                  ? pushNow({ ...draft, min: e.target.value })
+                  : pushDebounced({ ...draft, min: e.target.value })
+              }
+            />
+            <input
+              type={inputType}
+              {...numericProps}
+              data-pretable-filter-max=""
+              aria-label="Filter maximum"
+              value={draft.max ?? ""}
+              onChange={(e) =>
+                inputType === "date"
+                  ? pushNow({ ...draft, max: e.target.value })
+                  : pushDebounced({ ...draft, max: e.target.value })
+              }
+            />
+          </>
+        ) : null}
+
+        {shape === "set" ? (
+          <div
+            data-pretable-filter-set=""
+            role="group"
+            aria-label="Filter values"
+          >
+            {options.map((opt) => {
+              const checked = (draft.selected ?? []).includes(opt.value);
+              return (
+                <label key={opt.value}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) =>
+                      toggleSelected(opt.value, e.target.checked)
+                    }
+                  />
+                  {opt.label ?? opt.value}
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+
+        <button type="button" data-pretable-filter-clear="" onClick={onClear}>
+          Clear
+        </button>
+      </div>
+    </OverlayPortal>
   );
 }

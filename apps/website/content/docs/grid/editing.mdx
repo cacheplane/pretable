@@ -72,9 +72,10 @@ The function form receives a `PretableEditInput` (`{ rowId, columnId, row, colum
 | `"text"` + `wrap: true` | auto-growing multi-line textarea                                   |
 | `"number"`              | right-aligned decimal input with steppers                          |
 | `"boolean"`             | in-cell checkbox — toggles and commits directly, no editor popover |
-| `"enum"`, `"date"`      | the text editor, for now                                           |
+| `"enum"` + `options`    | strict combobox with a typeahead-filtered option list              |
+| `"date"`                | the text editor, for now                                           |
 
-`enum` and `date` columns currently fall back to the plain text editor — the option combobox and calendar picker are the next two editors to land.
+An `enum` column **without** `options` and every `date` column fall back to the plain text editor — the calendar picker is the next editor to land.
 
 ```tsx
 const columns: PretableColumn<Task>[] = [
@@ -88,6 +89,17 @@ const columns: PretableColumn<Task>[] = [
     step: 0.5,
   },
   { id: "done", header: "Done", editable: true, type: "boolean" },
+  {
+    id: "status",
+    header: "Status",
+    editable: true,
+    type: "enum",
+    options: [
+      { value: "queued", label: "Queued" },
+      { value: "running", label: "Running" },
+      { value: "done", label: "Done" },
+    ],
+  },
 ];
 ```
 
@@ -105,11 +117,25 @@ A `wrap: true` text column edits in a textarea that auto-grows with the draft. `
 
 When a boolean commit fails — `validate` returned a string, or `onCellEdit` threw — the cell shows the inline error just like the field editors do. Click the checkbox again to retry the toggle, or press `Escape` to cancel the failed edit.
 
+### Enums
+
+An `enum` column that declares `options` (the same `{ value, label? }[]` the [filter checklist](/docs/grid/filtering) uses) edits in a combobox: a text input plus a listbox of the column's options.
+
+- **Seeded with the label.** The field opens showing the current option's `label` (falling back to its `value`), so it reads the way the cell does.
+- **Typing filters the list.** The draft is matched as a case-insensitive substring against both the label and the value; the full list shows until the user types.
+- **Keyboard.** `ArrowUp` / `ArrowDown` move the highlight (wrapping at the ends). `Enter` commits the highlighted option and moves **down**; `Tab` commits it and moves **right**; `Escape` cancels. Clicking an option commits it in place.
+- **Strict by default.** Committing text that matches no option is rejected with an inline **"Pick an option"** and the editor stays open. The combobox always resolves to one of the declared options — clearing a cell isn't reachable from it, because an emptied field just shows the full list again. Use [`renderEditor`](#custom-editors) if you need a clearable control.
+- **Blur reverts.** Clicking away with unmatched text cancels the edit rather than leaving a rejected value stuck open on the cell. (Text that _does_ match an option commits in place, like the other editors.)
+
+The strictness is the point: the combobox picks from the declared set, it doesn't create new members. For a creatable or multi-select control, use [`renderEditor`](#custom-editors).
+
+An `enum` column with **no** `options` gets the plain text editor and no strictness — the draft commits as typed.
+
 ### Overriding the built-ins
 
 Two column hooks take precedence over the typed defaults:
 
-- **`renderEditor` replaces the built-in editor** for any column that opens one — text, multi-line, number, and the enum/date fallback. It does **not** apply to `type: "boolean"`: boolean cells toggle in place and never open an editor, so there is nothing for `renderEditor` to render.
+- **`renderEditor` replaces the built-in editor** for any column that opens one — text, multi-line, number, the enum combobox, and the date fallback. It does **not** apply to `type: "boolean"`: boolean cells toggle in place and never open an editor, so there is nothing for `renderEditor` to render.
 - **`parseEditValue` replaces the built-in type parsing entirely** — supply it on a number column and the "Not a number" guard and empty-commits-`null` behavior are yours to reimplement.
 
 ## Validating
@@ -134,7 +160,7 @@ const columns: PretableColumn<Person>[] = [
 
 `validate(value, input)` receives the parsed value and the same `PretableEditInput`. A returned string keeps the edit open with `snapshot.editing.error` set to that message; a `Promise<true | string>` lets you validate against a server. Commit only proceeds to `onCellEdit` once validation passes.
 
-On a [typed column](#typed-editors), built-in parsing runs first: by the time `validate` sees the value, a `number` column has already rejected non-numeric drafts ("Not a number") and turned an empty draft into `null` — so `validate` is for domain rules, not parsing.
+On a [typed column](#typed-editors), built-in parsing runs first: by the time `validate` sees the value, a `number` column has already rejected non-numeric drafts ("Not a number") and turned an empty draft into `null`, and an `enum` column with `options` has resolved the typed label to that option's `value` (rejecting anything that matches none) — so `validate` is for domain rules, not parsing.
 
 ## Custom editors
 
@@ -219,7 +245,7 @@ if (editing?.status === "saving") {
 
 The built-in editors handle commit, errors, and pending state for you — no wiring required:
 
-- **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.)
+- **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.) The one exception is the [enum combobox](#enums), where text matching no option reverts on blur instead.
 - **Failures keep the editor open.** When `validate` rejects (returns a string) or `onCellEdit` throws, the editor stays open and renders the message inline below the field — so the user can fix the value and try again. Press `Enter` to retry a failed commit, or `Escape` to cancel.
 - **Async work locks the field.** While an async `editable`, `validate`, or `onCellEdit` is in flight (the `checking`, `validating`, and `saving` phases), the field is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
 

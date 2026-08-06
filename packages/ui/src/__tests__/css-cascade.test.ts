@@ -24,6 +24,29 @@ describe("grid.css cascade contract", () => {
     expect(css).toMatch(/var\(--pretable-text-error\)/);
   });
 
+  test("grid.css styles the enum combobox listbox", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]\)/);
+    expect(css).toMatch(
+      /:where\(\[data-pretable-enum-option\]\[aria-selected="true"\]\)/,
+    );
+    // An empty result set must not paint a bare popover box.
+    expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]:empty\)/);
+  });
+
+  test("portaled popovers declare the sans font themselves", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    // These render into document.body, so they can't inherit the font-family
+    // declared on the scroll viewport.
+    for (const block of [
+      /:where\(\[data-pretable-filter-menu\]\)\s*\{[^}]*\}/,
+      /:where\(\[data-pretable-enum-listbox\]\)\s*\{[^}]*\}/,
+    ]) {
+      const match = css.match(block);
+      expect(match?.[0]).toMatch(/font-family:\s*var\(--pretable-font-sans\)/);
+    }
+  });
+
   test("every grid.css rule selector is wrapped in :where()", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
