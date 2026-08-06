@@ -625,6 +625,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // with the typed character, so the editor must not select it (the next
   // keystroke would replace it). Every begin() that opens an editor sets this,
   // batched with the begin in the same event, so the editor mounts knowing it.
+  //
+  // It is surface state rather than something the controller derives from
+  // `initialDraft !== undefined`, because deriving it would still not cover
+  // the one path that can go stale: `grid.beginEdit()` called imperatively
+  // bypasses the controller entirely, so an editor opened that way inherits
+  // whichever value the *previous* edit left behind. Closing that hole means
+  // carrying the flag in the engine's edit state, which is a public-API
+  // decision, not a rendering detail. The consequence today is cosmetic: an
+  // imperatively opened editor may put the caret at the end instead of
+  // selecting the draft.
   const [seededFromTyping, setSeededFromTyping] = useState(false);
   const editController = useCellEditController<TRow>({
     grid,
