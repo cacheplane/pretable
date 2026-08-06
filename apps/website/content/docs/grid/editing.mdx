@@ -120,6 +120,8 @@ When a boolean commit fails — `validate` returned a string, or `onCellEdit` th
 
 Non-boolean cell values are **coerced**, by the same rule the [boolean filter](/docs/grid/filtering) uses: `"true"` / `1` / `"1"` are checked, `"false"` / `0` / `"0"` are unchecked, and anything else falls back to plain truthiness. So a cell holding `1` renders checked, matches the **True** filter, and toggles to `false`. Storing real booleans is still the better idea — a commit always writes one, so the first edit converts the cell anyway.
 
+A boolean column may declare `options` to **relabel** its two states — `[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]` — but the values must stay `"true"` and `"false"`. Matching happens on the coerced boolean, which is only ever one of those two strings, so an option carrying any other `value` would render in the filter checklist and then match no rows.
+
 ### Enums
 
 An `enum` column that declares `options` (the same `{ value, label? }[]` the [filter checklist](/docs/grid/filtering) uses) edits in a combobox: a text input plus a listbox of the column's options.
