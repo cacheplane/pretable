@@ -1,3 +1,3 @@
-export { createDomRenderSnapshot } from "./create-renderer";
+export { createDomRenderSnapshot, planColumnLayout } from "./create-renderer";
 export type { DomRenderInput, DomRenderRow, DomRenderSnapshot } from "./types";
-export type { PlannedColumn } from "@pretable-internal/layout-core";
+export type { ColumnPlan, PlannedColumn } from "@pretable-internal/layout-core";
