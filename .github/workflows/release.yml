@@ -41,7 +41,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
-      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@cacheplane/json-stream' lint:packaging
+      - run: pnpm lint:packaging
+      - run: pnpm publish:preflight
 
       - name: Version PR or publish
         id: changesets
