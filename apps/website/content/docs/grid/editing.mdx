@@ -118,6 +118,8 @@ A `wrap: true` text column edits in a textarea that auto-grows with the draft. `
 
 When a boolean commit fails — `validate` returned a string, or `onCellEdit` threw — the cell shows the inline error just like the field editors do. Click the checkbox again to retry the toggle, or press `Escape` to cancel the failed edit.
 
+Non-boolean cell values are **coerced**, by the same rule the [boolean filter](/docs/grid/filtering) uses: `"true"` / `1` / `"1"` are checked, `"false"` / `0` / `"0"` are unchecked, and anything else falls back to plain truthiness. So a cell holding `1` renders checked, matches the **True** filter, and toggles to `false`. Storing real booleans is still the better idea — a commit always writes one, so the first edit converts the cell anyway.
+
 ### Enums
 
 An `enum` column that declares `options` (the same `{ value, label? }[]` the [filter checklist](/docs/grid/filtering) uses) edits in a combobox: a text input plus a listbox of the column's options.

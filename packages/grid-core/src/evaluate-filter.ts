@@ -26,6 +26,29 @@ function isEmptyCell(cell: unknown): boolean {
   return String(cell).trim() === "";
 }
 
+/**
+ * A cell value → the boolean a `type: "boolean"` column means by it.
+ *
+ * The stringy/numeric spellings a JSON or SQL backend might emit (`"true"`,
+ * `1`, `"0"`) resolve to the obvious boolean; anything else falls back to
+ * plain truthiness.
+ *
+ * TWIN: `toBooleanCell` in `packages/react/src/editors/boolean-utils.ts`
+ * drives the checkbox's `checked` (grid-core must not depend on
+ * @pretable/react). Change one and you must change the other — that is the
+ * whole point: a cell holding `1` must render checked *and* match the "True"
+ * filter. The shared case table in `__tests__/evaluate-filter-boolean.test.ts`
+ * and its twin in
+ * `packages/react/src/__tests__/pretable-surface-boolean.test.tsx` pin them
+ * together.
+ */
+function toBooleanCell(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === 1 || value === "1") return true;
+  if (value === "false" || value === 0 || value === "0") return false;
+  return Boolean(value);
+}
+
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** An ISO datetime; group 1 is the date portion, group 2 the zone if spelled out. */
 const ISO_DATETIME_RE =
@@ -158,7 +181,22 @@ export function evaluateFilter(
           return false;
       }
     }
-    case "boolean":
+    case "boolean": {
+      // Compare the *coerced* value, so a cell holding `1` matches the "True"
+      // option the same way it renders checked. `isEmpty`/`isNotEmpty` ran
+      // above the switch, so null/undefined still read as empty, not false.
+      const c = String(toBooleanCell(cell));
+      const set = Array.isArray(value) ? value.map(String) : [];
+      if (set.length === 0) return true; // empty selection = no constraint
+      switch (operator) {
+        case "isAnyOf":
+          return set.includes(c);
+        case "isNoneOf":
+          return !set.includes(c);
+        default:
+          return false;
+      }
+    }
     case "enum": {
       const c = String(cell);
       const set = Array.isArray(value) ? value.map(String) : [];

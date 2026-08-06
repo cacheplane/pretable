@@ -65,6 +65,7 @@ import { ROW_SELECT_COLUMN_ID } from "./constants";
 import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
+import { toBooleanCell } from "./editors/boolean-utils";
 import {
   FilterMenu,
   FunnelButton,
@@ -670,7 +671,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     }
     const row = editVisibleRowsRef.current.find((r) => r.id === rowId)?.row;
     if (!row) return;
-    const current = Boolean(resolveCellValue(row, column));
+    // Negate the value the checkbox is *showing*, not raw truthiness: a cell
+    // holding `"false"` renders unchecked, so its toggle must commit `true`.
+    const current = toBooleanCell(resolveCellValue(row, column));
     await editController.begin({ rowId, columnId: column.id }, !current);
     await editController.commit();
   };
@@ -2059,7 +2062,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       // this branch always wins over the popover branch.
                       <>
                         <BooleanCellControl
-                          checked={Boolean(value)}
+                          checked={toBooleanCell(value)}
                           editable={Boolean(column.editable)}
                           status={cellEdit ? cellEdit.status : null}
                           errorId={
