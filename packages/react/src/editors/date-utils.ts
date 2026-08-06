@@ -1,4 +1,7 @@
 const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** An ISO datetime whose zone is spelled out, so it resolves the same everywhere. */
+const ZONED_DATETIME_RE =
+  /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
 const DAY_MS = 86_400_000;
 const MONTHS = [
   "January",
@@ -42,16 +45,32 @@ export function isValidIsoDate(text: string): boolean {
   return !Number.isNaN(parseIsoDate(text));
 }
 
-/** Any cell value (ISO string, `Date`, timestamp, datetime string) → `yyyy-mm-dd`, or "". */
+/**
+ * A cell value → `yyyy-mm-dd`, or `""`.
+ *
+ * Only *unambiguous* sources are accepted: a strict `yyyy-mm-dd` string, a
+ * `Date`, a finite epoch-ms number, or a datetime string carrying an explicit
+ * zone (`Z` or a `±HH:MM`/`±HHMM` offset). Everything else — `2026-8-6`,
+ * `08/06/2026`, `2026-08-06T00:00:00` — is refused rather than run through
+ * `Date.parse`, which resolves them in the *viewer's* timezone (so the same
+ * cell would show a different day for different users) and silently rolls
+ * calendar overflow forward (`2026-02-30` → March 2). Zoned datetimes yield
+ * the *UTC* day, matching the filter engine's `toDayMs`.
+ */
 export function toIsoDate(value: unknown): string {
   if (value === null || value === undefined || value === "") return "";
-  if (typeof value === "string" && isValidIsoDate(value)) return value.trim();
-  const ms =
-    value instanceof Date
-      ? value.getTime()
-      : typeof value === "number"
-        ? value
-        : Date.parse(String(value));
+  let ms: number;
+  if (value instanceof Date) ms = value.getTime();
+  else if (typeof value === "number") ms = value;
+  else if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (isValidIsoDate(trimmed)) return trimmed;
+    const zoned = ZONED_DATETIME_RE.exec(trimmed);
+    // Guard the date portion too: `Date.parse` rolls `2026-02-30T00:00:00Z`
+    // forward to March, the very thing `parseIsoDate` exists to reject.
+    if (!zoned || !isValidIsoDate(zoned[1])) return "";
+    ms = Date.parse(trimmed);
+  } else return "";
   const d = new Date(ms);
   // NaN *and* out-of-range timestamps (|ms| > 8.64e15, e.g. a nanosecond
   // epoch) both yield an Invalid Date, whose UTC getters would format as

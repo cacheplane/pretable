@@ -35,6 +35,31 @@ describe("date-utils", () => {
     expect(toIsoDate("not a date")).toBe("");
   });
 
+  it("normalises datetime strings that carry an explicit zone", () => {
+    expect(toIsoDate("2026-08-06T12:00:00Z")).toBe("2026-08-06");
+    expect(toIsoDate("2026-08-06T12:00Z")).toBe("2026-08-06");
+    expect(toIsoDate("2026-08-06T12:00:00.500Z")).toBe("2026-08-06");
+    // The zone is honoured, so the UTC day can differ from the literal date —
+    // this matches the engine's `toDayMs`, which also reads UTC getters.
+    expect(toIsoDate("2026-08-06T00:00:00+02:00")).toBe("2026-08-05");
+    expect(toIsoDate("2026-08-06T00:00:00+0200")).toBe("2026-08-05");
+    expect(toIsoDate("2026-08-06T23:00:00-11:00")).toBe("2026-08-07");
+  });
+
+  it("rejects ambiguous strings rather than resolving them in local time", () => {
+    // Each of these would resolve differently for viewers in different zones.
+    expect(toIsoDate("2026-8-6")).toBe("");
+    expect(toIsoDate("08/06/2026")).toBe("");
+    expect(toIsoDate("2026-08-06T00:00:00")).toBe("");
+    expect(toIsoDate("August 6, 2026")).toBe("");
+  });
+
+  it("rejects calendar overflow rather than rolling it forward", () => {
+    expect(toIsoDate("2026-02-30")).toBe("");
+    expect(toIsoDate("2026-02-30T00:00:00Z")).toBe("");
+    expect(toIsoDate("2026-13-01")).toBe("");
+  });
+
   it("rejects timestamps outside the Date range instead of formatting NaN", () => {
     expect(toIsoDate(8.64e15 + 1)).toBe(""); // one ms past the max Date
     expect(toIsoDate(1.78e18)).toBe(""); // a nanosecond epoch
