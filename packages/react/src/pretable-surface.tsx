@@ -31,6 +31,12 @@ import type {
   PretableEditorInput,
   PretableHeaderRenderInput,
 } from "./types";
+import {
+  type PlanColumnsColumnInput,
+  resolveColumnWidth,
+  scrollLeftToReveal,
+  scrollTopToReveal,
+} from "@pretable-internal/renderer-dom";
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
 
@@ -139,6 +145,23 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
+
+/**
+ * How many `scrollTop` writes scroll-into-view may make for a single focus
+ * address before it gives up and leaves the target slightly off.
+ *
+ * Scrolling to a distant row uses *estimated* heights for every row in
+ * between, because only rendered rows are ever measured. When the target
+ * finally renders it gets measured, every offset after it shifts, and the
+ * offset we just wrote is a little wrong — so the effect re-asserts on the
+ * next measurement pass. That normally converges in one or two passes:
+ * `scrollTopToReveal` returns `null` as soon as the target is fully revealed
+ * (including when it is clamped against the scroll extent), which is what ends
+ * the loop. This bound exists purely so a pathological case — heights that
+ * never settle, e.g. wrapped text re-measured under high-frequency streaming —
+ * degrades to "slightly off" instead of scrolling forever.
+ */
+const MAX_SCROLL_REVEAL_WRITES = 4;
 
 const REORDER_THRESHOLD_PX = 5;
 
@@ -761,6 +784,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return { columnLefts: lefts, columnWidths: widths };
   }, [renderSnapshot.columns, grid.options.columns]);
 
+  // Column-plan input for scroll-into-view, in engine order and with the same
+  // no-`widthPx` fallbacks the render pass applies (hence `resolveColumnWidth`
+  // rather than a second copy of them here). `renderSnapshot.columns` cannot
+  // answer this: it is the *virtualized* plan, so the off-window columns
+  // scroll-into-view exists to reach are exactly the ones missing from it.
+  const scrollRevealColumns = useMemo<PlanColumnsColumnInput[]>(
+    () =>
+      grid.options.columns.map((column) => ({
+        id: column.id,
+        width: resolveColumnWidth(column),
+        pinned: column.pinned,
+      })),
+    [grid.options.columns],
+  );
+
   const visibleRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
     for (let i = 0; i < snapshot.visibleRows.length; i += 1) {
@@ -976,9 +1014,138 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     );
 
     if (cellNode && document.activeElement !== cellNode) {
+      // `preventScroll` is deliberate, and must stay. The surface owns
+      // scroll-into-view itself (the effect directly below), computed from
+      // layout-core against the *unoccluded* band. The browser's native
+      // focus-scroll knows nothing about the sticky header or the sticky
+      // pinned column groups, so it would happily park the cell underneath one
+      // — and, running after ours, it would overwrite the offset we just
+      // computed. It also cannot help in the case that motivated all of this:
+      // when the target cell is outside the virtualization window there is no
+      // node here to scroll to at all.
       cellNode.focus({ preventScroll: true });
     }
   }, [focusedRowId, focusedColumnId]);
+
+  // Scroll-into-view for keyboard focus. The engine's focus address can move
+  // to a cell that is outside the virtualization window, or behind a sticky
+  // pinned column group; either way the browser will not move the viewport for
+  // us (see the `preventScroll` note above), so we compute the minimal offset
+  // and assign it ourselves.
+  //
+  // Deliberately does NOT call `grid.setViewport`: assigning scroll fires a
+  // native `scroll` event, and the existing `onScroll` handler already feeds
+  // the engine. Reporting it here as well would double-report.
+  const scrollRevealRef = useRef<{
+    rowId: string;
+    columnId: string;
+    /** `scrollTop` writes made for this address; see MAX_SCROLL_REVEAL_WRITES. */
+    writes: number;
+    /** Vertically resolved — nothing this effect can usefully do any more. */
+    settled: boolean;
+  } | null>(null);
+  const scrollRevealColumnIdRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+
+    if (!el || !focusedRowId || !focusedColumnId) {
+      scrollRevealRef.current = null;
+      scrollRevealColumnIdRef.current = null;
+      return;
+    }
+
+    // Runs on focus changes AND on every subsequent layout pass for the same
+    // address, which is what lets a distant target be re-asserted once its
+    // real height is measured. Everything below hinges on `pending` carrying
+    // over across those passes: once an address is satisfied it is marked
+    // settled and never scrolls again, so a user who scrolls the focused cell
+    // out of view is not yanked back on the next measurement or row update.
+    const previous = scrollRevealRef.current;
+    const pending =
+      previous !== null &&
+      previous.rowId === focusedRowId &&
+      previous.columnId === focusedColumnId
+        ? previous
+        : {
+            rowId: focusedRowId,
+            columnId: focusedColumnId,
+            writes: 0,
+            settled: false,
+          };
+    scrollRevealRef.current = pending;
+
+    // Horizontal, only when the focused COLUMN changed. Column geometry does
+    // not depend on row measurement, so the vertical re-assert passes have
+    // nothing new to say about it — and skipping keeps `scrollLeftToReveal`'s
+    // O(columns) plan allocation off the ArrowDown hot path, where the column
+    // never moves. The trade-off is that a user who scrolls horizontally away
+    // from the focused column is not dragged back by a later vertical move,
+    // which matches the no-fighting rule the rest of this effect follows.
+    if (scrollRevealColumnIdRef.current !== focusedColumnId) {
+      scrollRevealColumnIdRef.current = focusedColumnId;
+
+      const nextScrollLeft = scrollLeftToReveal({
+        columns: scrollRevealColumns,
+        targetColumnId: focusedColumnId,
+        scrollLeft: el.scrollLeft,
+        // 0 before the scrollport is measured (SSR, first commit). That is a
+        // real state, not a bug: `scrollLeftToReveal` returns null for a
+        // non-positive band rather than inventing an offset we would only
+        // have to undo.
+        viewportWidth,
+      });
+
+      if (nextScrollLeft !== null) {
+        el.scrollLeft = nextScrollLeft;
+      }
+    }
+
+    if (pending.settled || pending.writes >= MAX_SCROLL_REVEAL_WRITES) {
+      return;
+    }
+
+    // O(1) per keypress: `visibleRowIndexById` is memoized on
+    // `snapshot.visibleRows` identity. A linear scan here would land on
+    // ArrowDown's p95 < 16ms budget.
+    const targetIndex = visibleRowIndexById.get(focusedRowId);
+
+    if (targetIndex === undefined) {
+      // Focused on a row the row model no longer produces (filtered out mid
+      // flight). Nothing to reveal.
+      pending.settled = true;
+      return;
+    }
+
+    const nextScrollTop = scrollTopToReveal({
+      // Covers *every* visible row, not just the windowed ones, so this is
+      // valid for a target that is nowhere in the DOM.
+      rowMetrics: renderSnapshot.rowMetrics,
+      targetIndex,
+      scrollTop: el.scrollTop,
+      // The band below the sticky header — the same height fed to the row
+      // planner, and the coordinate space row offsets live in.
+      viewportHeight: bodyViewportHeight,
+    });
+
+    if (nextScrollTop === null) {
+      pending.settled = true;
+      return;
+    }
+
+    pending.writes += 1;
+    el.scrollTop = nextScrollTop;
+  }, [
+    bodyViewportHeight,
+    focusedColumnId,
+    focusedRowId,
+    // `renderSnapshot` is rebuilt whenever `measuredHeights` changes, which is
+    // the signal the convergence re-assert waits for.
+    renderSnapshot,
+    scrollRevealColumns,
+    viewportWidth,
+    visibleRowIndexById,
+  ]);
 
   useLayoutEffect(() => {
     const injectedSelectedRowId =
