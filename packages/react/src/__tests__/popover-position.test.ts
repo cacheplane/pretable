@@ -66,7 +66,7 @@ describe("popoverStyle", () => {
 
   it("stays downward when neither side has room (below is the larger side)", () => {
     setViewport(1024, 240);
-    // Anchor mid-viewport in a very short window: 116 below, 96 above.
+    // Anchor mid-viewport in a very short window: 108 usable below, 96 above.
     const style = popoverStyle(rect(108, 200, 120, 300));
 
     expect(style.top).toBe(124);
