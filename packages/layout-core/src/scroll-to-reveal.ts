@@ -12,11 +12,11 @@ import type { PlanColumnsColumnInput, RowMetricsReader } from "./types";
  * ## Coordinate spaces (verified against @pretable/react, not assumed)
  *
  * **Vertical.** The scroller is a single element, `[data-pretable-scroll-viewport]`
- * (`pretable-surface.tsx:1072`), with `overflow: auto` and no padding
+ * (`pretable-surface.tsx:1331-1336`), with `overflow: auto` and no padding
  * (`styles.ts:14-25`). Its in-flow children, in order, are:
  *
  * 1. the aria-live region — `.pt-sr-only`, which is `position: absolute`
- *    (`packages/ui/src/grid.css:19`), so it is out of flow and contributes no
+ *    (`packages/ui/src/grid.css:19-29`), so it is out of flow and contributes no
  *    height;
  * 2. `[data-pretable-header-row]` — `position: sticky; top: 0; height: headerHeight`
  *    (`styles.ts:27-40`), in flow, so it occupies exactly `headerHeight` at the top
@@ -35,16 +35,31 @@ import type { PlanColumnsColumnInput, RowMetricsReader } from "./types";
  *     [S, S + (viewportHeight - headerHeight)] = [S, S + bodyViewportHeight]
  *
  * which is the same `bodyViewportHeight` the surface already computes at
- * `pretable-surface.tsx:591` and feeds to the row planner. `viewportHeight` below
+ * `pretable-surface.tsx:614` and feeds to the row planner. `viewportHeight` below
  * is therefore that body height, not the scroller's height.
  *
- * (Caveat, sub-pixel only: `[data-pretable-header-row]` also carries a 1px
- * `border-bottom` from `@pretable/ui`'s grid.css, and `getHeaderRowStyle` does not
- * set `box-sizing`. Under a `border-box` reset — which every app in this repo has —
- * the border is inside `headerHeight` and the relationship above is exact; without
- * one the header is 1px taller than `headerHeight`. A 1px error is not worth
- * complicating this math for, and it biases toward revealing slightly more of the
- * target, not less.)
+ * (Caveat, a few pixels at most. Two `@pretable/ui` borders sit outside this math,
+ * because neither `getViewportStyle` nor `getHeaderRowStyle` sets `box-sizing`:
+ *
+ * - `[data-pretable-header-row]` carries a 1px `border-bottom` (`grid.css:41-44`).
+ *   Under a `border-box` reset — which every app in this repo has — that border is
+ *   inside `headerHeight` and the relationship above is exact; without one the
+ *   header is 1px taller than `headerHeight`.
+ * - `[data-pretable-scroll-viewport]` carries a 1px `border` on all four sides
+ *   (`grid.css:32-38`). Here it is the reset that costs us: under `border-box` the
+ *   declared `height` includes both borders, so the real `clientHeight` is
+ *   `viewportHeight - 2` and the band is 2px smaller than assumed. Without a reset
+ *   `height` is already the content box and this term is exact.
+ *
+ * The two therefore never bite at once, and the worst case is a band about 2px
+ * larger than the truth. That errs toward revealing slightly LESS of the target,
+ * not more: a band believed to be too tall produces a scroll offset a couple of
+ * pixels short, leaving up to 2px of the target's trailing edge clipped. It does
+ * not oscillate — the visibility test and the offset use the same `viewportHeight`,
+ * so the next pass agrees the target is revealed and settles. `maxScrollTop` is
+ * understated by the same 2px, which is why the effect is easiest to see on the
+ * very last row. Sharpening this would mean measuring `clientHeight` on every pass
+ * and giving up a prop-driven, allocation-free band for two pixels.)
  *
  * **Horizontal.** `planColumns` reports each column's `left` as a *content* offset,
  * with the scrollable run already shifted past the left-pinned group
@@ -178,7 +193,7 @@ export function scrollLeftToReveal(
   // viewport width would omit the very columns this function exists to scroll to.
   // An infinitely wide viewport at scrollLeft 0 makes its forward walk consume the
   // whole run and its overscan clamp a no-op, so every column is present with its
-  // true content offset — the same trick `create-renderer.ts:88` uses for its
+  // true content offset — the same trick `create-renderer.ts:78-95` uses for its
   // no-viewport path.
   const plan = planColumns({
     columns,
