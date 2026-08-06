@@ -52,7 +52,36 @@ export function defaultCoerceForCopy(value: unknown): string {
 }
 
 /**
+ * Escape one already-stringified field for the TSV clipboard flavor.
+ *
+ * Follows the RFC 4180 quoting convention with TAB as the delimiter — the same
+ * rule Excel and Google Sheets both emit and accept on their `text/plain`
+ * clipboard flavor:
+ *
+ * - A field is quoted **iff** it contains a TAB, CR, LF, or a double quote.
+ * - Quoting wraps the field in `"` and doubles every embedded `"`.
+ * - Everything else is emitted bare, so ordinary values keep byte-for-byte
+ *   the payload they had before escaping existed.
+ *
+ * Quoting on an embedded quote is what makes the encoding unambiguous to
+ * decode: a parser treats a field that *starts* with `"` as quoted, so a bare
+ * value beginning with a quote would be misread.
+ *
+ * Exported for the eventual paste path, which needs the exact inverse.
+ *
+ * @internal
+ */
+export function escapeTsvField(text: string): string {
+  if (!/["\t\r\n]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+/**
  * Serialize one or more `PretableCellRange`s to a tab-separated text + HTML payload suitable for clipboard write.
+ *
+ * Cell and header text is escaped with {@link escapeTsvField}, so values
+ * holding tabs, newlines (a wrapped/multi-line cell) or quotes survive a paste
+ * into Excel or Sheets without breaking the row/column structure.
  *
  * @public
  */
@@ -119,7 +148,7 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
       const headerCells: string[] = [];
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;
-        headerCells.push(col.header ?? col.id);
+        headerCells.push(escapeTsvField(col.header ?? col.id));
       }
       lines.push(headerCells.join("\t"));
       lines.push("");
@@ -136,7 +165,7 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
         const text = col.format
           ? col.format({ value: raw, row: row.row, column: col })
           : defaultCoerceForCopy(raw);
-        cells.push(text);
+        cells.push(escapeTsvField(text));
       }
       lines.push(cells.join("\t"));
     }

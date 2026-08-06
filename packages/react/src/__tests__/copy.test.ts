@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultCoerceForCopy,
+  escapeTsvField,
   serializeRangesAsTsv,
   type SerializeRangesArgs,
 } from "../copy";
@@ -193,5 +194,112 @@ describe("serializeRangesAsTsv", () => {
       columns: [{ id: ROW_SELECT_COLUMN_ID, header: "" }],
     };
     expect(serializeRangesAsTsv(args)).toBeNull();
+  });
+});
+
+describe("escapeTsvField", () => {
+  it("emits plain values bare — no quoting", () => {
+    // Regression guard: quoting unconditionally would change every existing
+    // copy payload and surface literal quotes in consumers that don't parse.
+    expect(escapeTsvField("")).toBe("");
+    expect(escapeTsvField("plain")).toBe("plain");
+    expect(escapeTsvField("has spaces")).toBe("has spaces");
+    expect(escapeTsvField("a,b;c'd")).toBe("a,b;c'd");
+    expect(escapeTsvField("1234.56")).toBe("1234.56");
+  });
+
+  it("quotes fields containing a tab", () => {
+    expect(escapeTsvField("a\tb")).toBe('"a\tb"');
+  });
+
+  it("quotes fields containing LF or CR", () => {
+    expect(escapeTsvField("a\nb")).toBe('"a\nb"');
+    expect(escapeTsvField("a\rb")).toBe('"a\rb"');
+    expect(escapeTsvField("a\r\nb")).toBe('"a\r\nb"');
+  });
+
+  it("quotes fields containing a double quote and doubles it", () => {
+    expect(escapeTsvField('say "hi"')).toBe('"say ""hi"""');
+    expect(escapeTsvField('"')).toBe('""""');
+  });
+});
+
+describe("serializeRangesAsTsv escaping", () => {
+  function oneCell(
+    value: string,
+    columnOverrides?: Partial<PretableColumn<Row>>,
+  ) {
+    const row: Row = { id: "r1", a: value, b: "b1", c: "c1" };
+    return serializeRangesAsTsv<Row>({
+      ranges: [range("r1", "r1", "a", "b")],
+      visibleRows: makeVisibleRows([row]),
+      columns: [
+        { id: "a", header: "A", ...columnOverrides },
+        { id: "b", header: "B" },
+      ],
+    });
+  }
+
+  it("quotes a cell value containing a tab", () => {
+    expect(oneCell("left\tright")).toEqual({ text: '"left\tright"\tb1' });
+  });
+
+  it("quotes a cell value containing a newline (multi-line editor case)", () => {
+    expect(oneCell("line one\nline two")).toEqual({
+      text: '"line one\nline two"\tb1',
+    });
+  });
+
+  it("quotes a cell value containing a double quote and doubles it", () => {
+    expect(oneCell('he said "no"')).toEqual({ text: '"he said ""no"""\tb1' });
+  });
+
+  it("quotes a cell value containing both a quote and a newline", () => {
+    expect(oneCell('he said "no"\nthen left')).toEqual({
+      text: '"he said ""no""\nthen left"\tb1',
+    });
+  });
+
+  it("quotes a cell value containing CRLF", () => {
+    expect(oneCell("first\r\nsecond")).toEqual({
+      text: '"first\r\nsecond"\tb1',
+    });
+  });
+
+  it("escapes values produced by a per-column format", () => {
+    expect(oneCell("x", { format: () => 'a\tb"c' })).toEqual({
+      text: '"a\tb""c"\tb1',
+    });
+  });
+
+  it("leaves ordinary cell values bare", () => {
+    expect(oneCell("ordinary value")).toEqual({ text: "ordinary value\tb1" });
+  });
+
+  it("quotes headers containing a tab or newline", () => {
+    const cols: PretableColumn<Row>[] = [
+      { id: "a", header: "Col\tA" },
+      { id: "b", header: "Col\nB" },
+      { id: "c", header: 'Col "C"' },
+    ];
+    const out = serializeRangesAsTsv<Row>({
+      ranges: [range("r1", "r1", "a", "c")],
+      visibleRows: makeVisibleRows(rows),
+      columns: cols,
+      copyWithHeaders: true,
+    });
+    expect(out).toEqual({
+      text: '"Col\tA"\t"Col\nB"\t"Col ""C"""\n\na1\tb1\tc1',
+    });
+  });
+
+  it("leaves ordinary headers bare", () => {
+    const out = serializeRangesAsTsv<Row>({
+      ranges: [range("r1", "r1", "a", "b")],
+      visibleRows: makeVisibleRows(rows),
+      columns: baseColumns,
+      copyWithHeaders: true,
+    });
+    expect(out).toEqual({ text: "A\tB\n\na1\tb1" });
   });
 });
