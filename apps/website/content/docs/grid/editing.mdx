@@ -166,12 +166,13 @@ The editor seeds itself from the cell value and normalises it to ISO. It accepts
 | ---------------------------------------------- | ------------------------------------ |
 | `"2026-08-06"` (strict ISO)                    | `2026-08-06`                         |
 | `"2026-08-06T13:45:00"` (no zone)              | `2026-08-06` — the literal date, UTC |
+| `"2026-08-06 13:45:00"` (space separator)      | `2026-08-06` — the literal date, UTC |
 | `"2026-08-06T12:34:56Z"`, `"…T12:34:56+02:00"` | the **UTC** day of that instant      |
 | `new Date(Date.UTC(2026, 7, 6))`               | `2026-08-06`                         |
 | `1785974400000` (epoch milliseconds)           | the UTC day of that instant          |
 | `"08/06/2026"`, `"2026-8-6"`, `"2026-02-30"`   | not a date — see the callout below   |
 
-A **zone-less** datetime — `"2026-08-06T00:00:00"`, the shape many JSON and SQL backends emit — is read as UTC, which means its literal date portion is taken. That's deterministic: every viewer sees `2026-08-06`, wherever they are. A datetime that _does_ carry a zone is resolved to its **UTC** day, so `"2026-08-06T00:00:00+02:00"` is 6 August in Berlin but buckets as `2026-08-05`.
+A **zone-less** datetime — `"2026-08-06T00:00:00"`, the shape many JSON and SQL backends emit — is read as UTC, which means its literal date portion is taken. That's deterministic: every viewer sees `2026-08-06`, wherever they are. A datetime that _does_ carry a zone is resolved to its **UTC** day, so `"2026-08-06T00:00:00+02:00"` is 6 August in Berlin but buckets as `2026-08-05`. The separator may be `T` or a space, so the `"2026-08-06 13:45:00"` that MySQL, SQLite, Postgres-as-text and `pandas.to_csv` emit is read the same way.
 
 <Callout type="warning">
   Locale strings like `"08/06/2026"` (6 August or 6 June, depending on who is

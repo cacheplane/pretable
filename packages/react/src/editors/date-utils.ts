@@ -1,7 +1,12 @@
 const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-/** An ISO datetime; group 1 is the date portion, group 2 the zone if spelled out. */
+/**
+ * An ISO datetime; group 1 is the date portion, group 2 the zone if spelled
+ * out. The separator may be `T` or a space: `2026-08-06 13:45:00` is what
+ * MySQL, SQLite, Postgres-as-text and `pandas.to_csv` emit, and its date
+ * portion is exactly as unambiguous as the `T` form's.
+ */
 const ISO_DATETIME_RE =
-  /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
+  /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
 const DAY_MS = 86_400_000;
 const MONTHS = [
   "January",
@@ -48,8 +53,9 @@ export function isValidIsoDate(text: string): boolean {
 /**
  * A cell value → `yyyy-mm-dd`, or `""`.
  *
- * Accepts a strict `yyyy-mm-dd` string, an ISO datetime (zoned or not), a
- * `Date`, or a finite epoch-ms number. A **zone-less** datetime
+ * Accepts a strict `yyyy-mm-dd` string, an ISO datetime (zoned or not,
+ * `T`- or space-separated), a `Date`, or a finite epoch-ms number. A
+ * **zone-less** datetime
  * (`2026-08-06T00:00:00`, the shape most JSON and SQL backends emit) is
  * interpreted as UTC, i.e. its literal date portion is taken — deterministic,
  * so the cell reads the same day for every viewer. A zoned datetime yields the
@@ -82,7 +88,9 @@ export function toIsoDate(value: unknown): string {
     // Zone-less → the literal date portion, UTC-interpreted. Zoned → the UTC
     // day of that instant, so `2026-08-06T00:00:00+02:00` is 2026-08-05.
     if (!parts[2]) return parts[1];
-    ms = Date.parse(trimmed);
+    // A space separator is normalised to `T` first: only the `T` spelling is
+    // in the `Date.parse` spec, the space form is engine-specific.
+    ms = Date.parse(trimmed.replace(" ", "T"));
   } else return "";
   const d = new Date(ms);
   // NaN *and* out-of-range timestamps (|ms| > 8.64e15, e.g. a nanosecond

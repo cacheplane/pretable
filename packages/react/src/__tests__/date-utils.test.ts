@@ -153,6 +153,21 @@ const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
     day: "2026-08-05",
   },
   {
+    label: "space-separated datetime → literal date portion (UTC)",
+    cell: "2026-08-06 13:45:00",
+    day: "2026-08-06",
+  },
+  {
+    label: "space-separated datetime with a Z zone",
+    cell: "2026-08-06 13:45:00Z",
+    day: "2026-08-06",
+  },
+  {
+    label: "space-separated datetime whose offset shifts the UTC day",
+    cell: "2026-08-06 23:00:00-11:00",
+    day: "2026-08-07",
+  },
+  {
     label: "Date instance",
     cell: new Date(Date.UTC(2026, 7, 6, 13, 45)),
     day: "2026-08-06",
@@ -171,6 +186,11 @@ const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
   {
     label: "calendar overflow, zoned datetime",
     cell: "2026-02-30T00:00:00Z",
+    day: null,
+  },
+  {
+    label: "calendar overflow, space-separated datetime",
+    cell: "2026-02-30 12:00:00",
     day: null,
   },
   { label: "month overflow", cell: "2026-13-01", day: null },

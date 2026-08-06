@@ -50,9 +50,14 @@ function toBooleanCell(value: unknown): boolean {
 }
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-/** An ISO datetime; group 1 is the date portion, group 2 the zone if spelled out. */
+/**
+ * An ISO datetime; group 1 is the date portion, group 2 the zone if spelled
+ * out. The separator may be `T` or a space: `2026-08-06 13:45:00` is what
+ * MySQL, SQLite, Postgres-as-text and `pandas.to_csv` emit, and its date
+ * portion is exactly as unambiguous as the `T` form's.
+ */
 const ISO_DATETIME_RE =
-  /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
+  /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
 
 /** The UTC-midnight ms of the instant `ms`, or NaN if it isn't a real instant. */
 function utcDayOf(ms: number): number {
@@ -83,8 +88,9 @@ function isoDayMs(iso: string): number {
  * A cell (or filter operand) → the UTC-midnight ms of its calendar day, or NaN
  * for "not a date" (which the date branch reads as "no match").
  *
- * Accepts a strict `yyyy-mm-dd` string, an ISO datetime (zoned or not), a
- * `Date`, or finite epoch ms. A **zone-less** datetime is interpreted as UTC,
+ * Accepts a strict `yyyy-mm-dd` string, an ISO datetime (zoned or not, `T`-
+ * or space-separated), a `Date`, or finite epoch ms. A **zone-less** datetime
+ * is interpreted as UTC,
  * i.e. its literal date portion is taken — deterministic, so the same cell
  * buckets into the same day for every viewer. Locale/loose strings
  * (`08/06/2026`, `2026-8-6`, `August 6, 2026`) are refused rather than run
@@ -111,8 +117,10 @@ function toDayMs(input: unknown): number {
   const day = isoDayMs(parts[1]);
   if (Number.isNaN(day)) return Number.NaN;
   // Zone-less → the literal date portion, UTC-interpreted. Zoned → the UTC
-  // day of that instant, so `2026-08-06T00:00:00+02:00` is 2026-08-05.
-  return parts[2] ? utcDayOf(Date.parse(trimmed)) : day;
+  // day of that instant, so `2026-08-06T00:00:00+02:00` is 2026-08-05. A
+  // space separator is normalised to `T` first: only the `T` spelling is in
+  // the `Date.parse` spec, the space form is engine-specific.
+  return parts[2] ? utcDayOf(Date.parse(trimmed.replace(" ", "T"))) : day;
 }
 
 /**
