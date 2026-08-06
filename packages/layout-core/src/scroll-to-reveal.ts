@@ -56,11 +56,31 @@ import type { PlanColumnsColumnInput, RowMetricsReader } from "./types";
  *
  * in the same content coordinates the `left` values use.
  *
- * Both functions return `null` when nothing needs to move, so the caller can skip
- * the DOM write entirely — that is what keeps this feature from fighting a user's
- * own scrolling. `null` also covers "no offset can do better than the current one"
- * (a target larger than the band and already aligned, or one clamped against the
- * scroll extent), so a caller that re-asserts until it gets `null` terminates.
+ * ## Return contract — three states, not two
+ *
+ * - a `number` is the offset to write;
+ * - `null` means **decided: nothing to do**. The target is already revealed, or no
+ *   offset could do better than the current one (a target larger than the band and
+ *   already aligned, one clamped against the scroll extent, a sticky pinned column
+ *   that is on screen at every offset). A caller that re-asserts until it gets
+ *   `null` therefore terminates, and may mark the address permanently resolved.
+ * - `undefined` means **not decidable on this pass**: the band is empty or
+ *   inverted, so the question "which offset reveals the target" has no answer yet.
+ *   The only causes are container geometry — an unmeasured scrollport (SSR, the
+ *   first commit, a grid inside a `display: none` tab) or pinned groups at least as
+ *   wide as the viewport.
+ *
+ * The `null` / `undefined` split exists for callers that latch. Collapsing them
+ * (`== null`) latches an address on a pass that measured nothing, which disarms the
+ * reveal for good: the geometry that caused it is transient, and the very next pass
+ * — with a real width, or after a resize — would have produced a real offset. Both
+ * causes are container-level, so they cannot coincide with a keypress (a grid the
+ * user is typing into is measured), which is why retrying costs nothing on the hot
+ * path.
+ *
+ * Returning nothing at all when nothing needs to move is also what keeps this
+ * feature from fighting a user's own scrolling: the caller skips the DOM write
+ * entirely rather than re-asserting an offset the user has deliberately left.
  */
 
 /** @internal */
@@ -83,8 +103,8 @@ export interface ScrollLeftToRevealInput {
 }
 
 /**
- * Minimal `scrollTop` that fully reveals the target row, or `null` if it already
- * is (or if no offset would help).
+ * Minimal `scrollTop` that fully reveals the target row, `null` if it already is
+ * (or if no offset would help), `undefined` if the band cannot be resolved yet.
  *
  * On the ArrowDown hot path — allocation-free, O(1).
  *
@@ -92,7 +112,7 @@ export interface ScrollLeftToRevealInput {
  */
 export function scrollTopToReveal(
   input: ScrollTopToRevealInput,
-): number | null {
+): number | null | undefined {
   const { rowMetrics, targetIndex, scrollTop, viewportHeight } = input;
 
   if (targetIndex < 0 || targetIndex >= rowMetrics.rowCount) {
@@ -101,9 +121,10 @@ export function scrollTopToReveal(
 
   // An empty band cannot reveal anything, and this is also what an unmeasured
   // viewport looks like (SSR, first commit). Writing a scroll offset from an
-  // unmeasured viewport would only have to be undone.
+  // unmeasured viewport would only have to be undone — but the caller must not
+  // latch on it either, hence `undefined` rather than `null`.
   if (viewportHeight <= 0) {
-    return null;
+    return undefined;
   }
 
   const top = rowMetrics.getOffsetForIndex(targetIndex);
@@ -137,16 +158,20 @@ export function scrollTopToReveal(
 
 /**
  * Minimal `scrollLeft` that fully reveals the target column clear of both pinned
- * groups, or `null` if it already is (or if no offset would help).
+ * groups, `null` if it already is (or if no offset would help), `undefined` if the
+ * band cannot be resolved yet.
  *
  * Delegates all bucketing to `planColumns` rather than re-deriving it — PR #203
- * fixed a bug whose root cause was a second, drifted copy of that math.
+ * fixed a bug whose root cause was a second, drifted copy of that math. That is
+ * also why the undecidable band is reported from in here rather than re-tested by
+ * the caller: `pinnedLeftWidth` / `pinnedRightWidth` come off the same plan the
+ * offset does, so there is no second copy to drift.
  *
  * @internal
  */
 export function scrollLeftToReveal(
   input: ScrollLeftToRevealInput,
-): number | null {
+): number | null | undefined {
   const { columns, targetColumnId, scrollLeft, viewportWidth } = input;
 
   // `planColumns` virtualizes the scrollable run, so a plan built at the real
@@ -171,6 +196,10 @@ export function scrollLeftToReveal(
     }
   }
 
+  // Decided, not undecidable: a column id the engine does not have is a caller
+  // bug, not a transient measurement gap. Reporting it as retryable would put
+  // this function's O(columns) plan allocation on every subsequent effect pass —
+  // including every ArrowDown — forever.
   if (!target) {
     return null;
   }
@@ -187,8 +216,10 @@ export function scrollLeftToReveal(
   // Pinned groups at least as wide as the viewport leave an empty or inverted
   // band: every scrollable column is covered at every offset, so any number we
   // returned would be noise. Also covers viewportWidth <= 0 (unmeasured viewport).
+  // Both are container geometry that a resize or a first measurement can change,
+  // so this is `undefined` — the caller must retry, not latch.
   if (bandWidth <= 0) {
-    return null;
+    return undefined;
   }
 
   const bandStart = scrollLeft + pinnedLeftWidth;

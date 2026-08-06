@@ -1144,29 +1144,44 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           };
     scrollRevealRef.current = pending;
 
-    // Horizontal, only when the focused COLUMN changed. Column geometry does
-    // not depend on row measurement, so the vertical re-assert passes have
-    // nothing new to say about it — and skipping keeps `scrollLeftToReveal`'s
-    // O(columns) plan allocation off the ArrowDown hot path, where the column
-    // never moves. The trade-off is that a user who scrolls horizontally away
-    // from the focused column is not dragged back by a later vertical move,
-    // which matches the no-fighting rule the rest of this effect follows.
+    // Horizontal, only when the focused COLUMN changed — or when no earlier
+    // pass managed to resolve it. Column geometry does not depend on row
+    // measurement, so the vertical re-assert passes have nothing new to say
+    // about it, and skipping keeps `scrollLeftToReveal`'s O(columns) plan
+    // allocation off the ArrowDown hot path, where the column never moves. The
+    // trade-off is that a user who scrolls horizontally away from the focused
+    // column is not dragged back by a later vertical move, which matches the
+    // no-fighting rule the rest of this effect follows.
+    //
+    // "Resolved" is doing real work in that first sentence: the ref is the
+    // latch, so it may only be consumed by a pass that actually decided
+    // something. See the `undefined` branch below.
     if (scrollRevealColumnIdRef.current !== focusedColumnId) {
-      scrollRevealColumnIdRef.current = focusedColumnId;
-
       const nextScrollLeft = scrollLeftToReveal({
         columns: scrollRevealColumns,
         targetColumnId: focusedColumnId,
         scrollLeft: el.scrollLeft,
-        // 0 before the scrollport is measured (SSR, first commit). That is a
-        // real state, not a bug: `scrollLeftToReveal` returns null for a
-        // non-positive band rather than inventing an offset we would only
-        // have to undo.
+        // 0 before the scrollport is measured (SSR, the first commit, a grid
+        // inside a `display: none` tab or a collapsed accordion). That is a
+        // real state, not a bug: `scrollLeftToReveal` reports it as undecidable
+        // rather than inventing an offset we would only have to undo.
         viewportWidth,
       });
 
-      if (nextScrollLeft !== null) {
-        el.scrollLeft = nextScrollLeft;
+      // Consume the ref only on a pass that could actually decide. `undefined`
+      // means the band was empty — an unmeasured scrollport, or pinned groups
+      // wider than it — and advancing on that would disarm this column for
+      // good: `viewportWidth` is a dependency, so a later pass with a real
+      // width re-runs this effect, but it would find the ref already spent and
+      // skip. The bug that motivated this: focus moves to a far-right column
+      // while the grid is in a hidden tab, the user opens the tab, and the
+      // vertical reveal works while `scrollLeft` stays parked at 0.
+      if (nextScrollLeft !== undefined) {
+        scrollRevealColumnIdRef.current = focusedColumnId;
+
+        if (nextScrollLeft !== null) {
+          el.scrollLeft = nextScrollLeft;
+        }
       }
     }
 
@@ -1180,9 +1195,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     const targetIndex = visibleRowIndexById.get(focusedRowId);
 
     if (targetIndex === undefined) {
-      // Focused on a row the row model no longer produces (filtered out mid
-      // flight). Nothing to reveal.
-      pending.settled = true;
+      // The row model does not produce this row *yet*: an address set for a row
+      // that arrives on a later streaming patch, or one a filter is currently
+      // hiding. That is "nothing to reveal now", not "nothing to reveal ever",
+      // so do NOT settle — settling here would mean the viewport never scrolls
+      // to the row once it appears, even though focus and the DOM focus-follow
+      // both land on it correctly.
+      //
+      // Retrying is free: the miss is the same O(1) `Map.get` above, with no
+      // allocation, so a row id that never arrives costs one lookup per pass
+      // rather than unbounded work.
       return;
     }
 
@@ -1196,6 +1218,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       // planner, and the coordinate space row offsets live in.
       viewportHeight: bodyViewportHeight,
     });
+
+    if (nextScrollTop === undefined) {
+      // Band not resolvable yet (`viewportHeight <= headerHeight`). Same rule as
+      // the horizontal axis: a pass that measured nothing must not latch.
+      return;
+    }
 
     if (nextScrollTop === null) {
       pending.settled = true;

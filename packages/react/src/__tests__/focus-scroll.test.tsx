@@ -59,9 +59,24 @@ const TOTAL_HEIGHT = ROW_COUNT * ROW_HEIGHT; // 1760
 
 let clientWidth = VIEWPORT_WIDTH;
 let originalClientWidth: PropertyDescriptor | undefined;
+/** Live ResizeObserver callbacks, so a test can stage a real container resize. */
+let resizeCallbacks: (() => void)[] = [];
+
+/**
+ * Give the scrollport a width and tell the surface about it the way a browser
+ * would — this is the only path by which `viewportWidth` leaves 0, and it is
+ * what a hidden tab becoming visible looks like.
+ */
+function resizeScrollport(width: number) {
+  clientWidth = width;
+  act(() => {
+    for (const cb of resizeCallbacks) cb();
+  });
+}
 
 beforeEach(() => {
   clientWidth = VIEWPORT_WIDTH;
+  resizeCallbacks = [];
   originalClientWidth = Object.getOwnPropertyDescriptor(
     HTMLElement.prototype,
     "clientWidth",
@@ -71,9 +86,14 @@ beforeEach(() => {
     get: () => clientWidth,
   });
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
-    observe() {}
+    constructor(private readonly cb: () => void) {}
+    observe() {
+      resizeCallbacks.push(this.cb);
+    }
     unobserve() {}
-    disconnect() {}
+    disconnect() {
+      resizeCallbacks = resizeCallbacks.filter((cb) => cb !== this.cb);
+    }
   };
 });
 
@@ -397,6 +417,48 @@ describe("keyboard focus scrolls the viewport into view", () => {
     });
 
     expect(writes.top).toEqual([]);
+  });
+
+  it("retries the horizontal reveal after an UNMEASURED pass", () => {
+    // The grid is mounted inside a hidden tab / collapsed accordion, so the
+    // scrollport reports clientWidth 0 and `viewportWidth` is 0. Focus moves to
+    // a far-right column while it is hidden.
+    clientWidth = 0;
+    const { grid, writes } = renderGrid();
+
+    focusCell(grid, "r0", "h");
+
+    // Nothing is computable against an empty band, so nothing is written — and
+    // crucially, the column must NOT be recorded as handled.
+    expect(writes.left).toEqual([]);
+
+    // The user opens the tab. `viewportWidth` is a dependency of the reveal
+    // effect, so this re-runs it with a real width and the SAME focused column.
+    resizeScrollport(VIEWPORT_WIDTH);
+
+    // `h` spans [700, 800) with no pinned groups, so the band is the whole
+    // 600px scrollport. Before this fix the column id had already been consumed
+    // by the unmeasured pass and scrollLeft stayed parked at 0 forever.
+    expect(writes.left).toEqual([800 - VIEWPORT_WIDTH]);
+  });
+
+  it("retries the vertical reveal for a row that has not arrived YET", () => {
+    // An address set for a row the row model does not produce: it arrives on a
+    // later streaming patch, or a filter is hiding it right now. "Nothing to
+    // reveal now" must not be recorded as "nothing to reveal ever".
+    const { grid, writes } = renderGrid();
+
+    focusCell(grid, "r99", "a");
+    expect(writes.top).toEqual([]);
+
+    // The row streams in.
+    act(() => {
+      grid.setRows([...rows, { ...rows[0]!, id: "r99" }]);
+    });
+
+    // r99 is index 40, spanning [1760, 1804). Aligning its bottom edge gives
+    // 1804 - 132, which is also the new maximum scrollTop.
+    expect(writes.top).toEqual([41 * ROW_HEIGHT - BODY_HEIGHT]);
   });
 });
 

@@ -180,7 +180,11 @@ describe("scrollTopToReveal", () => {
     ).toBeNull();
   });
 
-  test("a zero-height band reveals nothing, so no scroll is requested", () => {
+  test("a zero-height band is UNDECIDABLE, not resolved", () => {
+    // `undefined`, emphatically not `null`: a caller that latches on "resolved"
+    // must be able to tell "the target is revealed" from "I could not measure".
+    // Latching here would leave the address permanently unrevealed once the
+    // band does get a height.
     const rowMetrics = uniformRows();
 
     expect(
@@ -190,7 +194,7 @@ describe("scrollTopToReveal", () => {
         scrollTop: 0,
         viewportHeight: 0,
       }),
-    ).toBeNull();
+    ).toBeUndefined();
   });
 
   test("an empty grid never scrolls", () => {
@@ -440,8 +444,10 @@ describe("scrollLeftToReveal", () => {
     ).toBeNull();
   });
 
-  test("returns null when the pinned groups are at least as wide as the viewport", () => {
-    // 40 + 60 = 100 > 90: the band is inverted, so no offset can reveal anything.
+  test("pinned groups at least as wide as the viewport are UNDECIDABLE", () => {
+    // 40 + 60 = 100 > 90: the band is inverted, so no offset can reveal anything
+    // — but only until the container is resized wider, so this is `undefined`
+    // and the caller must retry rather than latch.
     expect(
       scrollLeftToReveal({
         columns,
@@ -449,7 +455,7 @@ describe("scrollLeftToReveal", () => {
         scrollLeft: 0,
         viewportWidth: 90,
       }),
-    ).toBeNull();
+    ).toBeUndefined();
 
     // Exactly equal: the band is empty.
     expect(
@@ -459,10 +465,23 @@ describe("scrollLeftToReveal", () => {
         scrollLeft: 0,
         viewportWidth: 100,
       }),
-    ).toBeNull();
+    ).toBeUndefined();
+
+    // …and the very same call at a width that leaves a real band resolves.
+    expect(
+      scrollLeftToReveal({
+        columns,
+        targetColumnId: "c",
+        scrollLeft: 0,
+        viewportWidth: 300,
+      }),
+    ).not.toBeUndefined();
   });
 
-  test("returns null for an unknown column id", () => {
+  test("an unknown column id is RESOLVED, not undecidable", () => {
+    // Deliberately `null`: a column the engine does not have is a caller bug,
+    // not a measurement gap. Reporting it retryable would put this function's
+    // O(columns) plan allocation on every later effect pass, forever.
     expect(
       scrollLeftToReveal({
         columns,
@@ -473,7 +492,10 @@ describe("scrollLeftToReveal", () => {
     ).toBeNull();
   });
 
-  test("returns null for a zero-width viewport", () => {
+  test("a zero-width viewport is UNDECIDABLE, not resolved", () => {
+    // The unmeasured scrollport: SSR, the first commit, or a grid inside a
+    // `display: none` tab. A caller that latched here would never scroll to the
+    // column once the tab is opened.
     expect(
       scrollLeftToReveal({
         columns: [
@@ -484,7 +506,7 @@ describe("scrollLeftToReveal", () => {
         scrollLeft: 0,
         viewportWidth: 0,
       }),
-    ).toBeNull();
+    ).toBeUndefined();
   });
 
   test("reveals a target far outside planColumns' virtualization window", () => {
