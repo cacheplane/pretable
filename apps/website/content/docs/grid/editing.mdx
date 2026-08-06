@@ -73,9 +73,9 @@ The function form receives a `PretableEditInput` (`{ rowId, columnId, row, colum
 | `"number"`              | right-aligned decimal input with steppers                          |
 | `"boolean"`             | in-cell checkbox — toggles and commits directly, no editor popover |
 | `"enum"` + `options`    | strict combobox with a typeahead-filtered option list              |
-| `"date"`                | the text editor, for now                                           |
+| `"date"`                | strict `YYYY-MM-DD` field with a month-grid calendar popover       |
 
-An `enum` column **without** `options` and every `date` column fall back to the plain text editor — the calendar picker is the next editor to land.
+An `enum` column **without** `options` falls back to the plain text editor — with no options to pick from there is nothing to be strict about.
 
 ```tsx
 const columns: PretableColumn<Task>[] = [
@@ -100,6 +100,7 @@ const columns: PretableColumn<Task>[] = [
       { value: "done", label: "Done" },
     ],
   },
+  { id: "due", header: "Due", editable: true, type: "date" },
 ];
 ```
 
@@ -131,11 +132,65 @@ The strictness is the point: the combobox picks from the declared set, it doesn'
 
 An `enum` column with **no** `options` gets the plain text editor and no strictness — the draft commits as typed.
 
+### Dates
+
+`type: "date"` opens a strict `YYYY-MM-DD` text field with a month-grid calendar in a popover anchored to the cell. The calendar starts weeks on **Monday**, marks today and the currently highlighted day, and dims days from the neighbouring months. A commit always produces the ISO string `YYYY-MM-DD` (or `null`) — the same shape the [date filter](/docs/grid/filtering) operators compare against.
+
+- **Strict ISO only.** Locale formats (`08/06/2026`), unpadded parts (`2026-8-6`), and calendar overflow (`2026-02-30`, `2026-13-01`) are rejected on commit with an inline **"Use YYYY-MM-DD"**, and the editor stays open. Leap days are checked properly: `2024-02-29` is accepted, `2026-02-29` is not.
+- **An empty field commits `null`.** Clearing the field is how you clear a date cell.
+- **Typing retargets the calendar.** As soon as the field holds a complete valid date, the popover jumps to that month and highlights that day.
+- **Month navigation.** `PageDown` / `PageUp` move forward and back a month, as do the **‹** and **›** buttons in the popover header. The day-of-month is clamped to the target month's length, so 31 January + 1 month is 28 (or 29) February.
+- **Commit keys.** `Enter` commits the highlighted day and moves **down**; `Tab` commits it and moves **right**; clicking a day commits it in place; `Escape` cancels. `Enter` only substitutes the calendar's day when the typed text is _itself_ a valid date — type garbage and press `Enter` and it still reaches the parser and is still rejected, rather than silently committing whatever month the calendar drifted to.
+- **Blur commits or reverts.** Clicking away with a valid (or empty) field commits; clicking away with an unparseable date cancels the edit rather than leaving a rejected value stuck open on the cell.
+- **Focus never leaves the field.** The popover is a passive surface: it takes no focus, so the day cells are announced through `aria-activedescendant` on the input rather than by moving focus into the grid.
+
+#### Arrow keys move the calendar, not the caret
+
+This is the one behavior worth knowing before you use it. Inside a date editor:
+
+| Key                        | Effect                                    |
+| -------------------------- | ----------------------------------------- |
+| `ArrowLeft` / `ArrowRight` | highlighted day **−1 / +1 day**           |
+| `ArrowUp` / `ArrowDown`    | highlighted day **−7 / +7 days** (a week) |
+| `PageUp` / `PageDown`      | **−1 / +1 month**                         |
+
+The field is a fixed ten-character date that opens fully selected, so caret movement is worth little and picking a nearby day is the common action. The trade-off is real, though: because navigating writes the highlighted day back into the field, **pressing an arrow key while a partial date is typed replaces what you typed**. Type `2026-08`, press `ArrowRight`, and the field becomes a full date. To correct a mistake, use `Backspace` and retype rather than arrowing back to it.
+
+#### What the editor accepts from your cell values
+
+The editor seeds itself from the cell value and normalises it to ISO. It deliberately accepts only values whose day is **unambiguous**:
+
+| Cell value                                     | Opens as                        |
+| ---------------------------------------------- | ------------------------------- |
+| `"2026-08-06"` (strict ISO)                    | `2026-08-06`                    |
+| `new Date(Date.UTC(2026, 7, 6))`               | `2026-08-06`                    |
+| `1785974400000` (epoch milliseconds)           | the UTC day of that instant     |
+| `"2026-08-06T12:34:56Z"`, `"…T12:34:56+02:00"` | the **UTC** day of that instant |
+
+A zoned datetime resolves to its **UTC** day, matching how the filter engine buckets the same value — so a cell reads the same day for every viewer, and editing it can't move a row out from under its own filter.
+
+<Callout type="warning">
+  A **zone-less** datetime — `"2026-08-06T00:00:00"`, the shape many JSON and
+  SQL backends emit — is deliberately **not** accepted, and neither are locale
+  strings like `"08/06/2026"`. Without a zone they mean a different day
+  depending on who is looking, so the editor refuses to guess: such a cell opens
+  showing its raw text and is rejected on commit with "Use YYYY-MM-DD".
+
+Filtering is currently more forgiving here and _does_ resolve these shapes in
+the viewer's local time, so the same value can bucket into different days for
+different people. That's a second reason to store plain `YYYY-MM-DD` strings
+(or bridge with `parseEditValue` / `formatEditValue`) rather than relying on
+either behaviour.
+
+</Callout>
+
+Out of scope for the built-in editor, by design: time-of-day, date ranges, `min`/`max` bounds, and a configurable week start. Reach for [`renderEditor`](#custom-editors) — paired with `parseEditValue` and `formatEditValue` — when you need any of them.
+
 ### Overriding the built-ins
 
 Two column hooks take precedence over the typed defaults:
 
-- **`renderEditor` replaces the built-in editor** for any column that opens one — text, multi-line, number, the enum combobox, and the date fallback. It does **not** apply to `type: "boolean"`: boolean cells toggle in place and never open an editor, so there is nothing for `renderEditor` to render.
+- **`renderEditor` replaces the built-in editor** for any column that opens one — text, multi-line, number, the enum combobox, and the date calendar. It does **not** apply to `type: "boolean"`: boolean cells toggle in place and never open an editor, so there is nothing for `renderEditor` to render.
 - **`parseEditValue` replaces the built-in type parsing entirely** — supply it on a number column and the "Not a number" guard and empty-commits-`null` behavior are yours to reimplement.
 
 ## Validating
@@ -160,11 +215,11 @@ const columns: PretableColumn<Person>[] = [
 
 `validate(value, input)` receives the parsed value and the same `PretableEditInput`. A returned string keeps the edit open with `snapshot.editing.error` set to that message; a `Promise<true | string>` lets you validate against a server. Commit only proceeds to `onCellEdit` once validation passes.
 
-On a [typed column](#typed-editors), built-in parsing runs first: by the time `validate` sees the value, a `number` column has already rejected non-numeric drafts ("Not a number") and turned an empty draft into `null`, and an `enum` column with `options` has resolved the typed label to that option's `value` (rejecting anything that matches none) — so `validate` is for domain rules, not parsing.
+On a [typed column](#typed-editors), built-in parsing runs first: by the time `validate` sees the value, a `number` column has already rejected non-numeric drafts ("Not a number") and turned an empty draft into `null`, an `enum` column with `options` has resolved the typed label to that option's `value` (rejecting anything that matches none), and a `date` column has rejected anything that isn't a real `YYYY-MM-DD` day ("Use YYYY-MM-DD") — so `validate` is for domain rules, not parsing.
 
 ## Custom editors
 
-To render your own editor instead of the [built-in one](#typed-editors) — a `<select>`, a date picker, a tag input — supply `renderEditor`. Pair it with `parseEditValue` (string → your value type) and `formatEditValue` (your value → the string the editor seeds from):
+To render your own editor instead of the [built-in one](#typed-editors) — a `<select>`, a date-range picker, a tag input — supply `renderEditor`. Pair it with `parseEditValue` (string → your value type) and `formatEditValue` (your value → the string the editor seeds from):
 
 ```tsx
 const columns: PretableColumn<Person>[] = [
@@ -245,7 +300,7 @@ if (editing?.status === "saving") {
 
 The built-in editors handle commit, errors, and pending state for you — no wiring required:
 
-- **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.) The one exception is the [enum combobox](#enums), where text matching no option reverts on blur instead.
+- **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.) The exceptions are the [enum combobox](#enums) and the [date editor](#dates), where a draft the editor can't resolve — text matching no option, or an unparseable date — reverts on blur instead.
 - **Failures keep the editor open.** When `validate` rejects (returns a string) or `onCellEdit` throws, the editor stays open and renders the message inline below the field — so the user can fix the value and try again. Press `Enter` to retry a failed commit, or `Escape` to cancel.
 - **Async work locks the field.** While an async `editable`, `validate`, or `onCellEdit` is in flight (the `checking`, `validating`, and `saving` phases), the field is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
 
@@ -266,9 +321,11 @@ Editing reuses the focused cell from the [selection](/docs/grid/selection) model
 | `Enter`                | editing              | commit, then move focus **down**                                       |
 | `Cmd`/`Ctrl` + `Enter` | editing (multi-line) | commit, then move focus **down** (plain `Enter` inserts a newline)     |
 | `Tab`                  | editing              | commit, then move focus **right**                                      |
+| Arrow keys             | editing (date)       | move the calendar's highlighted day — ±1 day, ±7 for up/down           |
+| `PageUp` / `PageDown`  | editing (date)       | move the calendar back / forward a month                               |
 | `Escape`               | editing              | cancel — discard the draft, restore the cell                           |
 
-A begin trigger on a non-editable column is a no-op. Editable [boolean columns](#booleans) never open an editor: `Enter` and `Space` toggle in place, `F2` and type-to-replace do nothing, and `Escape` cancels a failed toggle. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation.
+A begin trigger on a non-editable column is a no-op. Editable [boolean columns](#booleans) never open an editor: `Enter` and `Space` toggle in place, `F2` and type-to-replace do nothing, and `Escape` cancels a failed toggle. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation — as are `ArrowUp` / `ArrowDown` in the [number](#numbers) and [enum](#enums) editors, and every arrow key in the [date](#dates) editor.
 
 ## Worked example
 
