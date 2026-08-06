@@ -362,6 +362,80 @@
     color: var(--pretable-text-selected);
   }
 
+  /* Date calendar (cell editor) */
+  :where([data-pretable-date-editor]) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  :where([data-pretable-date-popover]) {
+    padding: 8px;
+    background: var(--pretable-bg-grid);
+    border: 1px solid var(--pretable-rule-strong);
+    border-radius: var(--pretable-radius);
+    box-shadow: var(--pretable-reorder-ghost-shadow);
+    /* Portaled into <body> — see the filter menu above. */
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    color: var(--pretable-text-cell);
+  }
+
+  :where([data-pretable-date-header]) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    padding-bottom: 6px;
+  }
+
+  :where([data-pretable-date-header] button) {
+    border: none;
+    background: none;
+    color: var(--pretable-text-header);
+    cursor: pointer;
+    padding: 0 6px;
+  }
+
+  :where([data-pretable-date-header] button:hover) {
+    color: var(--pretable-accent);
+  }
+
+  :where([data-pretable-date-popover] [role="row"]) {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+
+  :where([data-pretable-date-weekdays] [role="columnheader"]) {
+    text-align: center;
+    padding: 2px 0;
+    color: var(--pretable-text-dim);
+  }
+
+  :where([data-pretable-date-day]) {
+    text-align: center;
+    padding: 4px 0;
+    border-radius: var(--pretable-radius);
+    cursor: pointer;
+  }
+
+  :where([data-pretable-date-day]:hover) {
+    background: var(--pretable-bg-hover);
+  }
+
+  :where([data-pretable-date-day][data-pretable-date-outside]) {
+    color: var(--pretable-text-dim);
+  }
+
+  :where([data-pretable-date-day][data-pretable-date-today]) {
+    box-shadow: inset 0 0 0 1px var(--pretable-focus-ring);
+  }
+
+  :where([data-pretable-date-day][aria-selected="true"]) {
+    background: var(--pretable-bg-selected);
+    color: var(--pretable-text-selected);
+  }
+
   /* Tooltip / popover */
   :where([data-pretable-popover]) {
     background: var(--pretable-bg-tooltip);

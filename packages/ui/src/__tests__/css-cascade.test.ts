@@ -34,6 +34,17 @@ describe("grid.css cascade contract", () => {
     expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]:empty\)/);
   });
 
+  test("grid.css styles the date calendar popover", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).toMatch(/:where\(\[data-pretable-date-popover\]\)/);
+    expect(css).toMatch(
+      /:where\(\[data-pretable-date-day\]\[aria-selected="true"\]\)/,
+    );
+    expect(css).toMatch(
+      /:where\(\[data-pretable-date-day\]\[data-pretable-date-today\]\)/,
+    );
+  });
+
   test("portaled popovers declare the sans font themselves", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     // These render into document.body, so they can't inherit the font-family
@@ -41,6 +52,7 @@ describe("grid.css cascade contract", () => {
     for (const block of [
       /:where\(\[data-pretable-filter-menu\]\)\s*\{[^}]*\}/,
       /:where\(\[data-pretable-enum-listbox\]\)\s*\{[^}]*\}/,
+      /:where\(\[data-pretable-date-popover\]\)\s*\{[^}]*\}/,
     ]) {
       const match = css.match(block);
       expect(match?.[0]).toMatch(/font-family:\s*var\(--pretable-font-sans\)/);

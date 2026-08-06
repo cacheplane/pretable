@@ -16,7 +16,18 @@ import {
 } from "./date-utils";
 import { useEditorField } from "./use-editor-field";
 
-const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+/** Column headers, Monday-first. The visible label stays two characters; the
+ * `aria-label` spells the day out, since "Mo" is not a word a screen reader
+ * pronounces usefully. */
+const WEEKDAYS = [
+  ["Mo", "Monday"],
+  ["Tu", "Tuesday"],
+  ["We", "Wednesday"],
+  ["Th", "Thursday"],
+  ["Fr", "Friday"],
+  ["Sa", "Saturday"],
+  ["Su", "Sunday"],
+] as const;
 
 /**
  * Date editor: a strict ISO field plus a month grid in a portaled popover.
@@ -177,9 +188,9 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
           </div>
           <div id={gridId} role="grid" aria-label={monthLabel(active)}>
             <div role="row" data-pretable-date-weekdays="">
-              {WEEKDAYS.map((w) => (
-                <span key={w} role="columnheader" aria-label={w}>
-                  {w}
+              {WEEKDAYS.map(([short, full]) => (
+                <span key={short} role="columnheader" aria-label={full}>
+                  {short}
                 </span>
               ))}
             </div>
