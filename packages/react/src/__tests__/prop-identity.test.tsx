@@ -100,7 +100,9 @@ describe("columns prop identity", () => {
     rerender(<Grid columns={freshColumns()} rows={rows} />);
 
     expect(
-      container.querySelector('[data-pretable-cell][data-pretable-focused="true"]'),
+      container.querySelector(
+        '[data-pretable-cell][data-pretable-focused="true"]',
+      ),
     ).not.toBeNull();
   });
 

@@ -90,7 +90,9 @@ describe("onRowActivate", () => {
     const { container } = renderGrid(onRowActivate);
 
     focusFirstCell(container);
-    fireEvent.keyDown(document.activeElement ?? container, { key: "ArrowDown" });
+    fireEvent.keyDown(document.activeElement ?? container, {
+      key: "ArrowDown",
+    });
     fireEvent.keyDown(document.activeElement ?? container, { key: " " });
 
     expect(onRowActivate).toHaveBeenCalledTimes(1);
@@ -133,6 +135,8 @@ describe("onRowActivate", () => {
       />,
     );
 
-    expect(() => fireEvent.click(cellFor(container, "a", "name"))).not.toThrow();
+    expect(() =>
+      fireEvent.click(cellFor(container, "a", "name")),
+    ).not.toThrow();
   });
 });

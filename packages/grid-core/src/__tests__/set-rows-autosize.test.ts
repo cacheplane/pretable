@@ -22,7 +22,9 @@ const LONG_ROW: DemoRow[] = [
   { id: "a", name: "a value far longer than the header text" },
 ];
 
-function widthOf(grid: ReturnType<typeof emptyAutosizedGrid>): number | undefined {
+function widthOf(
+  grid: ReturnType<typeof emptyAutosizedGrid>,
+): number | undefined {
   return grid.options.columns.find((c) => c.id === "name")?.widthPx;
 }
 

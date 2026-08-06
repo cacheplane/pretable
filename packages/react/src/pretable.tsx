@@ -137,7 +137,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
         )}
         rows={rows}
         onRowActivate={onRowActivate}
-      rowSelectionColumn={rowSelectionColumn}
+        rowSelectionColumn={rowSelectionColumn}
         tabBehavior={tabBehavior}
         copyWithHeaders={copyWithHeaders}
         onCopy={onCopy}
