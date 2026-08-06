@@ -170,6 +170,44 @@ describe("PretableSurface — built-in filter funnel", () => {
     expect(view.queryByRole("dialog")).toBeNull();
   });
 
+  it("closes on a real pointerdown+click on the open funnel", () => {
+    // A real pointer interaction fires pointerdown BEFORE click, and the
+    // existing toggle test above only fires click — so nothing covered the
+    // realistic sequence. It matters: FilterMenu closes on any outside
+    // pointerdown and the funnel sits outside the menu root, so an unguarded
+    // pointerdown would close the menu and let the following click's toggle()
+    // see no open menu and reopen it (a flicker that never closes). What
+    // prevents that is FunnelButton's `onPointerDown` stopPropagation — remove
+    // it and this test fails.
+    const view = renderSurface();
+    const funnel = view.getByRole("button", { name: "Filter Title" });
+
+    fireEvent.pointerDown(funnel);
+    fireEvent.click(funnel);
+    expect(view.getByRole("dialog", { name: "Filter Title" })).toBeTruthy();
+
+    fireEvent.pointerDown(funnel);
+    fireEvent.click(funnel);
+    expect(view.queryByRole("dialog")).toBeNull();
+    expect(funnel).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("switches menus on a real pointerdown+click on a different funnel", () => {
+    const view = renderSurface();
+    const title = view.getByRole("button", { name: "Filter Title" });
+    const count = view.getByRole("button", { name: "Filter Count" });
+
+    fireEvent.pointerDown(title);
+    fireEvent.click(title);
+    expect(view.getByRole("dialog", { name: "Filter Title" })).toBeTruthy();
+
+    // A different column's funnel must switch, not close.
+    fireEvent.pointerDown(count);
+    fireEvent.click(count);
+    expect(view.getByRole("dialog", { name: "Filter Count" })).toBeTruthy();
+    expect(view.queryByRole("dialog", { name: "Filter Title" })).toBeNull();
+  });
+
   it("clicking the funnel does not sort the column", () => {
     const onSortChange = vi.fn();
     const view = renderSurface({ onSortChange });

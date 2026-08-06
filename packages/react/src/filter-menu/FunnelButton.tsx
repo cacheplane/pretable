@@ -26,6 +26,12 @@ export function FunnelButton({
       aria-expanded={open}
       aria-label={`Filter ${label}`}
       style={style}
+      // Load-bearing: React delegates at the root container, so stopping here
+      // also keeps the pointerdown off `document` — where the open FilterMenu
+      // listens for outside-clicks. Without it, pointerdown would close the
+      // menu and the following click would reopen it, so the menu could never
+      // be dismissed by clicking its own funnel. Covered by
+      // "closes on a real pointerdown+click on the open funnel".
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
