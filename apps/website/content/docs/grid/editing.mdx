@@ -171,12 +171,17 @@ A zoned datetime resolves to its **UTC** day, matching how the filter engine buc
 
 <Callout type="warning">
   A **zone-less** datetime — `"2026-08-06T00:00:00"`, the shape many JSON and
-  SQL backends emit — is deliberately **not** accepted. Without a zone it means
-  a different day depending on who is looking, and resolving it in the browser's
-  local time would disagree with how filtering buckets it. Such a cell opens
-  showing its raw text and is rejected on commit with "Use YYYY-MM-DD". Bridge
-  it with `parseEditValue` / `formatEditValue`, or store plain `YYYY-MM-DD`
-  strings.
+  SQL backends emit — is deliberately **not** accepted, and neither are locale
+  strings like `"08/06/2026"`. Without a zone they mean a different day
+  depending on who is looking, so the editor refuses to guess: such a cell opens
+  showing its raw text and is rejected on commit with "Use YYYY-MM-DD".
+
+Filtering is currently more forgiving here and _does_ resolve these shapes in
+the viewer's local time, so the same value can bucket into different days for
+different people. That's a second reason to store plain `YYYY-MM-DD` strings
+(or bridge with `parseEditValue` / `formatEditValue`) rather than relying on
+either behaviour.
+
 </Callout>
 
 Out of scope for the built-in editor, by design: time-of-day, date ranges, `min`/`max` bounds, and a configurable week start. Reach for [`renderEditor`](#custom-editors) — paired with `parseEditValue` and `formatEditValue` — when you need any of them.
