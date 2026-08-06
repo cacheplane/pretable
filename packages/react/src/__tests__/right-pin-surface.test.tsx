@@ -382,6 +382,26 @@ describe("right-pinned columns — surface sticky sites", () => {
     fireEvent.pointerUp(handle, { pointerId: 1 });
   });
 
+  it("successive drags on a right-pinned column accumulate", () => {
+    const { container } = renderSurface();
+
+    const handle = resizeHandle(container, "actions")!;
+    const widthOf = (columnId: string) =>
+      Number.parseFloat(headerCell(container, columnId)!.style.width);
+
+    // Right-pinned drags are inverted (leftward grows), but the start width
+    // has to come from the committed width all the same.
+    fireEvent.pointerDown(handle, { button: 0, clientX: 500, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 470, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 470, pointerId: 1 });
+    expect(widthOf("actions")).toBe(RIGHT_LAST_WIDTH + 30);
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 470, pointerId: 2 });
+    fireEvent.pointerMove(handle, { clientX: 450, pointerId: 2 });
+    fireEvent.pointerUp(handle, { clientX: 450, pointerId: 2 });
+    expect(widthOf("actions")).toBe(RIGHT_LAST_WIDTH + 50);
+  });
+
   it("resizing an unpinned column keeps the plain (non-inverted) direction", () => {
     const { container } = renderSurface();
 
