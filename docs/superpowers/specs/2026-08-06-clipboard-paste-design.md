@@ -75,7 +75,10 @@ closing quote, `""` → `"`, and a quoted field may contain TAB/CR/LF. Handles C
 and LF row separators. **Trims exactly one trailing blank line** (Excel-on-Windows).
 Round-trip property tests against `escapeTsvField` are the acceptance bar.
 
-### `mapPasteToTargets(args): { cells, rejected, clippedRows, clippedColumns }`
+### `mapPasteToTargets(args): { cells, clipped: { rows, columns } }`
+
+(Geometry only — `rejected` comes from the surface's async gate, not from here.
+`clipped` counts dropped **rows/columns**, not cells.)
 
 Pure geometry — no validation, no async:
 
