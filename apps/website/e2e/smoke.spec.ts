@@ -30,6 +30,12 @@ test("landing renders grid + control bar + drawer handle; drawer opens", async (
     waitUntil: "domcontentloaded",
   });
   expect(filteringDocs?.status()).toBe(200);
+
+  // ...as does /docs/grid/paste
+  const pasteDocs = await page.goto("/docs/grid/paste", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(pasteDocs?.status()).toBe(200);
 });
 
 test("docs brand link returns to drawer when it was last open", async ({
@@ -219,6 +225,99 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   await expect(page.getByText(/Copied/i)).toBeVisible();
   await page.waitForTimeout(2000); // ticks
   await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
+});
+
+test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async ({
+  page,
+  context,
+  browserName,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Filter to Energy first: the book is ranked by live weight, so an unfiltered
+  // "the row below XOM" is not stable under streaming. Energy is exactly
+  // {XOM, CVX} and their weights are far enough apart that the order holds.
+  await page.locator("[data-pretable-header-row]").first().hover();
+  await page.getByRole("button", { name: "Filter Sector" }).click();
+  const sectorDialog = page.getByRole("dialog", { name: "Filter Sector" });
+  await sectorDialog
+    .locator("[data-pretable-filter-set]")
+    .getByRole("checkbox", { name: "Energy" })
+    .check();
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(2); // XOM, CVX
+  // Close the menu: its value input would otherwise hold focus, and a paste
+  // into an input belongs to that input, not to the grid.
+  await page.keyboard.press("Escape");
+  await expect(sectorDialog).toBeHidden();
+
+  const qty = (rowId: string) =>
+    page.locator(
+      `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-column-id="qty"]`,
+    );
+
+  // CRITICAL: a paste event is delivered to document.activeElement, so focus
+  // has to be inside the grid before the keystroke. Clicking a cell moves the
+  // roving tabindex onto it.
+  await qty("XOM").click();
+  await expect(qty("XOM")).toBeFocused();
+
+  // 2 rows × 2 cols anchored on Qty: the first column lands on Qty (editable),
+  // the second on Last (not editable) and comes back rejected.
+  const tsv = "23000\t999\n12800\t888";
+
+  if (browserName === "chromium") {
+    // Real OS-clipboard path: write the text with the page's own Clipboard API,
+    // then press the paste shortcut. Playwright maps it to Chromium's editing
+    // command, so the browser produces a genuine `paste` event.
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.evaluate(
+      async (text) => await navigator.clipboard.writeText(text),
+      tsv,
+    );
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+v" : "Control+v",
+    );
+  } else {
+    // WebKit exposes no clipboard permission to Playwright and refuses
+    // programmatic clipboard writes outside a user gesture, so this engine
+    // dispatches a synthetic `paste` event carrying the same text. That still
+    // exercises the surface's real listener and the whole gate/apply pipeline —
+    // it is NOT coverage of the OS clipboard or of the ⌘V key path.
+    await page.evaluate((text) => {
+      const target = document.activeElement ?? document.body;
+      let event: Event;
+      try {
+        const data = new DataTransfer();
+        data.setData("text/plain", text);
+        event = new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        });
+      } catch {
+        event = new Event("paste", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "clipboardData", {
+          value: { getData: () => text },
+        });
+      }
+      target.dispatchEvent(event);
+    }, tsv);
+  }
+
+  // The pasted quantities actually land in the cells...
+  await expect(qty("XOM")).toContainText("23,000", { timeout: 10_000 });
+  await expect(qty("CVX")).toContainText("12,800");
+  // ...and the non-editable Last column's two cells come back rejected.
+  await expect(page.getByTestId("paste-summary")).toHaveText(
+    /Pasted 2 of 4 · 2 rejected/,
+  );
+
+  // Pasted values survive streaming ticks (same override map an inline edit uses).
+  await page.waitForTimeout(2000);
+  await expect(qty("XOM")).toContainText("23,000");
 });
 
 test("showcase: scale grid virtualizes; column layout resizes + resets", async ({
