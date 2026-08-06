@@ -124,7 +124,7 @@ An `enum` column that declares `options` (the same `{ value, label? }[]` the [fi
 - **Seeded with the label.** The field opens showing the current option's `label` (falling back to its `value`), so it reads the way the cell does.
 - **Typing filters the list.** The draft is matched as a case-insensitive substring against both the label and the value; the full list shows until the user types.
 - **Keyboard.** `ArrowUp` / `ArrowDown` move the highlight (wrapping at the ends). `Enter` commits the highlighted option and moves **down**; `Tab` commits it and moves **right**; `Escape` cancels. Clicking an option commits it in place.
-- **Strict by default.** Committing text that matches no option is rejected with an inline **"Pick an option"** and the editor stays open. An empty draft commits `null`.
+- **Strict by default.** Committing text that matches no option is rejected with an inline **"Pick an option"** and the editor stays open. The combobox always resolves to one of the declared options — clearing a cell isn't reachable from it, because an emptied field just shows the full list again. Use [`renderEditor`](#custom-editors) if you need a clearable control.
 - **Blur reverts.** Clicking away with unmatched text cancels the edit rather than leaving a rejected value stuck open on the cell. (Text that _does_ match an option commits in place, like the other editors.)
 
 The strictness is the point: the combobox picks from the declared set, it doesn't create new members. For a creatable or multi-select control, use [`renderEditor`](#custom-editors).

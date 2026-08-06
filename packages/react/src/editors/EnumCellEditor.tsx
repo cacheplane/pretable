@@ -109,9 +109,14 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
             e.stopPropagation();
             const n = visible.length;
             if (n > 0) {
-              setHighlight((h) =>
-                e.key === "ArrowDown" ? (h + 1) % n : (h - 1 + n) % n,
-              );
+              setHighlight((h) => {
+                // Step from the value the render clamped to, not the stale raw
+                // one, or the first press from a clamped mount skips a row.
+                const from = h < n ? h : 0;
+                return e.key === "ArrowDown"
+                  ? (from + 1) % n
+                  : (from - 1 + n) % n;
+              });
             }
             return;
           }

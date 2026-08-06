@@ -142,6 +142,48 @@ describe("EnumCellEditor (via dispatcher)", () => {
     expect(commit).toHaveBeenCalledWith("down");
   });
 
+  it("ArrowDown steps from the clamped highlight, not the raw seed", () => {
+    // The seeded highlight is an index into the *full* list ("cancelled" = 4),
+    // but the seed "n" renders the list already filtered to three — so the
+    // render clamps to Running. The arrow arithmetic has to start from that
+    // same clamped value, or the first press skips a row: (4 + 1) % 3 = 2
+    // lands on Cancelled instead of Done.
+    const setDraft = vi.fn();
+    const commit = vi.fn();
+    render(
+      <CellEditor
+        input={makeInput({
+          column: {
+            id: "status",
+            header: "Status",
+            type: "enum",
+            options: [
+              { value: "queued", label: "Queued" },
+              { value: "running", label: "Running" },
+              { value: "done", label: "Done" },
+              { value: "blocked", label: "Blocked" },
+              { value: "cancelled", label: "Cancelled" },
+            ],
+          },
+          value: "cancelled",
+          draft: "n",
+          setDraft,
+          commit,
+        })}
+      />,
+    );
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Running",
+      "Done",
+      "Cancelled",
+    ]);
+    const box = screen.getByRole("combobox");
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(setDraft).toHaveBeenCalledWith("Done");
+    expect(commit).toHaveBeenCalledWith("down");
+  });
+
   it("Enter on text matching no option falls through to the shared chrome", () => {
     // Strict rejection is parseDraftForType's job; the editor just must not
     // swallow the key when there is nothing highlighted to choose.
