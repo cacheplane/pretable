@@ -50,6 +50,7 @@ import {
 import {
   getCellStyle,
   getHeaderCellStyle,
+  getHeaderOverlayAnchorStyle,
   getHeaderRowStyle,
   getPinnedCellStyle,
   getPinnedRightCellStyle,
@@ -1462,27 +1463,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 : "none";
 
           const showResizeHandle = column.resizable !== false;
+          const showFilterFunnel = column.filterable !== false;
           const isDragging = dragLiveWidth?.columnId === column.id;
-          const handleLeft = plannedCol.left + effWidth - 4;
-          const handlePinnedStyle =
-            plannedCol.pinned === "left"
-              ? {
-                  // A left-pinned column's sticky inset IS `plannedCol.left`,
-                  // so the sticky handle lands exactly on `handleLeft`.
-                  position: "sticky" as const,
-                  zIndex: 3,
-                  left: handleLeft,
-                }
-              : pinnedRightEdge !== undefined
-                ? {
-                    // The 4px handle hugs the column's TRAILING edge — the same
-                    // `- 4` as the left form, just measured back from the
-                    // right-pinned anchor instead of `plannedCol.left + effWidth`.
-                    position: "sticky" as const,
-                    zIndex: 3,
-                    left: pinnedRightEdge - 4,
-                  }
-                : null;
+          // Both header overlays hang off one zero-width anchor parked on the
+          // column's trailing edge — `pinnedRightEdge` for a right-pinned
+          // column, `plannedCol.left + effWidth` for every other column (that
+          // is also a left-pinned overlay anchor's flow position, which is
+          // exactly why the anchor holds at scrollLeft 0; see
+          // getHeaderOverlayAnchorStyle).
+          const overlayAnchorStyle = getHeaderOverlayAnchorStyle(
+            pinnedRightEdge ?? plannedCol.left + effWidth,
+            plannedCol.pinned === "left" || pinnedRightEdge !== undefined,
+          );
 
           return [
             <button
@@ -1705,142 +1697,142 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 }
               />
             </button>,
-            showResizeHandle ? (
+            showResizeHandle || showFilterFunnel ? (
+              // Header overlays — the resize strip and the filter funnel — are
+              // NOT nested in the header <button> (interactive controls inside
+              // a button is invalid HTML). They live in a zero-width anchor
+              // parked on the column's trailing edge, so both are placed by
+              // counting back from that edge and both hold their place at every
+              // scroll offset, scrollLeft 0 included.
               <div
-                key={`${column.id}::resize-handle`}
-                data-pretable-resize-handle=""
+                key={`${column.id}::header-overlays`}
+                data-pretable-header-overlays=""
                 data-pretable-column-id={column.id}
-                data-pretable-dragging={isDragging ? "true" : "false"}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  height: "100%",
-                  width: 4,
-                  left: handleLeft,
-                  cursor: "col-resize",
-                  zIndex: 4,
-                  touchAction: "none",
-                  userSelect: "none",
-                  ...(handlePinnedStyle ?? {}),
-                }}
-                onPointerDown={(event) => {
-                  if (event.button !== 0) return;
-                  event.stopPropagation();
-                  // Start from the PLANNED width — the engine's committed
-                  // width, which is what this column is currently rendering
-                  // (`effWidth`). The `columns` prop is not a source of truth
-                  // for width: the engine owns it after the first resize /
-                  // autosize / controlled `state.columnWidths` apply, and
-                  // `mergeColumnsFromProps` gives engine state precedence, so
-                  // `column.widthPx` still reads as the ORIGINAL declared
-                  // width forever. Anchoring to it made every drag after the
-                  // first recompute from that stale origin instead of
-                  // accumulating (drag +80 then +40 landed on 140, not 220).
-                  const startWidth = plannedCol.width;
-                  resizeStateRef.current = {
-                    columnId: column.id,
-                    startX: event.clientX,
-                    startWidth,
-                    pointerId: event.pointerId,
-                    widthSign: plannedCol.pinned === "right" ? -1 : 1,
-                  };
-                  wasResizingRef.current = false;
-                  try {
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                  } catch {
-                    // jsdom — no-op
-                  }
-                  setDragLiveWidth({ columnId: column.id, width: startWidth });
-                }}
-                onPointerMove={(event) => {
-                  const drag = resizeStateRef.current;
-                  if (!drag || drag.columnId !== column.id) return;
-                  const min = column.minWidthPx ?? 40;
-                  const max = column.maxWidthPx ?? Infinity;
-                  const next = Math.max(
-                    min,
-                    Math.min(
-                      max,
-                      drag.startWidth +
-                        drag.widthSign * (event.clientX - drag.startX),
-                    ),
-                  );
-                  if (Math.abs(next - drag.startWidth) > 0) {
-                    wasResizingRef.current = true;
-                  }
-                  setDragLiveWidth({ columnId: column.id, width: next });
-                }}
-                onPointerUp={(event) => {
-                  const drag = resizeStateRef.current;
-                  if (!drag || drag.columnId !== column.id) return;
-                  const finalWidth = dragLiveWidth?.width ?? drag.startWidth;
-                  try {
-                    event.currentTarget.releasePointerCapture(drag.pointerId);
-                  } catch {
-                    // jsdom — no-op
-                  }
-                  grid.setColumnWidth(column.id, finalWidth);
-                  onColumnWidthsChange?.(buildWidthsMap(grid));
-                  resizeStateRef.current = null;
-                  setDragLiveWidth(null);
-                }}
-                onPointerCancel={() => {
-                  resizeStateRef.current = null;
-                  setDragLiveWidth(null);
-                  wasResizingRef.current = false;
-                }}
-                onDoubleClick={(event) => {
-                  if (wasResizingRef.current) {
-                    event.preventDefault();
-                    wasResizingRef.current = false;
-                    return;
-                  }
-                  grid.autosizeColumn(column.id);
-                  onColumnWidthsChange?.(buildWidthsMap(grid));
-                }}
-              />
-            ) : null,
-            // Built-in filter funnel overlay — an absolutely-positioned sibling
-            // of the resize handle (NOT nested in the header <button>, which
-            // would be invalid HTML). Offset left of the 4px resize strip.
-            column.filterable !== false ? (
-              <div
-                key={`${column.id}::filter-funnel`}
-                data-pretable-filter-funnel-slot=""
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  left: plannedCol.left + effWidth - 22,
-                  zIndex: 4,
-                  ...(plannedCol.pinned === "left"
-                    ? {
-                        // Same inset as the non-pinned `left` above: a
-                        // left-pinned column's sticky offset is plannedCol.left.
-                        position: "sticky" as const,
-                        zIndex: 5,
-                      }
-                    : pinnedRightEdge !== undefined
-                      ? {
-                          // The 18px funnel sits immediately left of the 4px
-                          // resize strip: `- 22` back from the column's
-                          // trailing edge, exactly as on the left.
-                          position: "sticky" as const,
-                          zIndex: 5,
-                          left: pinnedRightEdge - 22,
-                        }
-                      : {}),
-                }}
+                style={overlayAnchorStyle}
               >
-                <FunnelButton
-                  columnId={column.id}
-                  label={label}
-                  active={Boolean(snapshot.filters[column.id])}
-                  open={filterOpenState?.columnId === column.id}
-                  onToggle={(id, anchor) => toggleFilter(id, anchor)}
-                />
+                {showResizeHandle ? (
+                  <div
+                    data-pretable-resize-handle=""
+                    data-pretable-column-id={column.id}
+                    data-pretable-dragging={isDragging ? "true" : "false"}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      height: "100%",
+                      width: 4,
+                      // The 4px strip hugs the trailing edge from the inside.
+                      left: -4,
+                      cursor: "col-resize",
+                      touchAction: "none",
+                      userSelect: "none",
+                    }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      event.stopPropagation();
+                      // Start from the PLANNED width — the engine's committed
+                      // width, which is what this column is currently rendering
+                      // (`effWidth`). The `columns` prop is not a source of
+                      // truth for width: the engine owns it after the first
+                      // resize / autosize / controlled `state.columnWidths`
+                      // apply, and `mergeColumnsFromProps` gives engine state
+                      // precedence, so `column.widthPx` still reads as the
+                      // ORIGINAL declared width forever. Anchoring to it made
+                      // every drag after the first recompute from that stale
+                      // origin instead of accumulating (drag +80 then +40
+                      // landed on 140, not 220).
+                      const startWidth = plannedCol.width;
+                      resizeStateRef.current = {
+                        columnId: column.id,
+                        startX: event.clientX,
+                        startWidth,
+                        pointerId: event.pointerId,
+                        widthSign: plannedCol.pinned === "right" ? -1 : 1,
+                      };
+                      wasResizingRef.current = false;
+                      try {
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      } catch {
+                        // jsdom — no-op
+                      }
+                      setDragLiveWidth({
+                        columnId: column.id,
+                        width: startWidth,
+                      });
+                    }}
+                    onPointerMove={(event) => {
+                      const drag = resizeStateRef.current;
+                      if (!drag || drag.columnId !== column.id) return;
+                      const min = column.minWidthPx ?? 40;
+                      const max = column.maxWidthPx ?? Infinity;
+                      const next = Math.max(
+                        min,
+                        Math.min(
+                          max,
+                          drag.startWidth +
+                            drag.widthSign * (event.clientX - drag.startX),
+                        ),
+                      );
+                      if (Math.abs(next - drag.startWidth) > 0) {
+                        wasResizingRef.current = true;
+                      }
+                      setDragLiveWidth({ columnId: column.id, width: next });
+                    }}
+                    onPointerUp={(event) => {
+                      const drag = resizeStateRef.current;
+                      if (!drag || drag.columnId !== column.id) return;
+                      const finalWidth =
+                        dragLiveWidth?.width ?? drag.startWidth;
+                      try {
+                        event.currentTarget.releasePointerCapture(
+                          drag.pointerId,
+                        );
+                      } catch {
+                        // jsdom — no-op
+                      }
+                      grid.setColumnWidth(column.id, finalWidth);
+                      onColumnWidthsChange?.(buildWidthsMap(grid));
+                      resizeStateRef.current = null;
+                      setDragLiveWidth(null);
+                    }}
+                    onPointerCancel={() => {
+                      resizeStateRef.current = null;
+                      setDragLiveWidth(null);
+                      wasResizingRef.current = false;
+                    }}
+                    onDoubleClick={(event) => {
+                      if (wasResizingRef.current) {
+                        event.preventDefault();
+                        wasResizingRef.current = false;
+                        return;
+                      }
+                      grid.autosizeColumn(column.id);
+                      onColumnWidthsChange?.(buildWidthsMap(grid));
+                    }}
+                  />
+                ) : null}
+                {showFilterFunnel ? (
+                  <div
+                    data-pretable-filter-funnel-slot=""
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      // The 18px funnel sits immediately left of the 4px resize
+                      // strip: 22px back from the trailing edge.
+                      left: -22,
+                    }}
+                  >
+                    <FunnelButton
+                      columnId={column.id}
+                      label={label}
+                      active={Boolean(snapshot.filters[column.id])}
+                      open={filterOpenState?.columnId === column.id}
+                      onToggle={(id, anchor) => toggleFilter(id, anchor)}
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : null,
           ];

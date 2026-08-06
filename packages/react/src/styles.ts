@@ -131,6 +131,49 @@ export function getPinnedRightEdge(
 }
 
 /**
+ * Zero-width anchor parked on a column's TRAILING edge. The header overlays —
+ * the 4px resize strip and the 18px filter funnel — are absolutely positioned
+ * inside it at negative offsets, so all of their geometry is expressed as
+ * "N px back from this column's trailing edge".
+ *
+ * The overlays cannot carry a sticky inset themselves. The header row is a flex
+ * container whose unpinned cells are `position: absolute` (out of flow), so its
+ * in-flow items are exactly the sticky ones — the pinned header cells, in
+ * order. An overlay rendered after its own pinned header cell therefore has a
+ * FLOW position of `pinnedOffset + width`, the trailing edge, while its target
+ * sits 4px or 22px BEFORE that edge. A sticky `left` inset can only push a box
+ * further right than flow already put it, never pull it left, so at scrollLeft
+ * 0 such an overlay stays at its flow position and overhangs the next column;
+ * only once the row has scrolled far enough for the flow position to fall left
+ * of the inset does the inset take over.
+ *
+ * Anchoring on the trailing edge is what makes the sticky inset well-behaved:
+ * the anchor's target IS its flow position, so the inset is already satisfied
+ * at scrollLeft 0 (no shift) and clamps the box at every offset after that. And
+ * because the anchor is zero-width it adds nothing to the flow, so the next
+ * pinned column's cell still starts at its own pinned offset.
+ *
+ * `sticky` is false for unpinned columns, whose overlays ride the scrolling
+ * content — an absolute box at the same trailing edge, with no inset to satisfy.
+ * The z-index is set either way so the anchor forms a stacking context: pinned
+ * overlays paint above the pinned cells ({@link getPinnedCellStyle} tier 1),
+ * while unpinned overlays stay below them and scroll under the pinned group.
+ */
+export function getHeaderOverlayAnchorStyle(
+  trailingEdge: number,
+  sticky: boolean,
+): CSSProperties {
+  return {
+    height: "100%",
+    left: trailingEdge,
+    position: sticky ? "sticky" : "absolute",
+    top: 0,
+    width: 0,
+    zIndex: sticky ? 5 : 0,
+  };
+}
+
+/**
  * Sticky style for a right-pinned cell. `trailingEdge` comes from
  * {@link getPinnedRightEdge}; `width` is the cell's rendered width, so the
  * cell's leading edge lands at `trailingEdge - width`. Mirrors
