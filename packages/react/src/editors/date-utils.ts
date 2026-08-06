@@ -81,6 +81,11 @@ export function toIsoDate(value: unknown): string {
   );
 }
 
+/**
+ * The *viewer's* today. Deliberately local (unlike `toIsoDate`, which resolves
+ * stored values to their UTC day): the "today" marker should be the day the
+ * user is living in, not the one their stored values are bucketed into.
+ */
 export function todayIso(): string {
   const now = new Date();
   return formatUtc(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));

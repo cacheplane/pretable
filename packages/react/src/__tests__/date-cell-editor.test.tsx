@@ -96,6 +96,46 @@ describe("DateCellEditor (via dispatcher)", () => {
     expect(commit).toHaveBeenCalledWith("down");
   });
 
+  it("Enter on an empty field commits null instead of the calendar's day", () => {
+    const setDraft = vi.fn();
+    const commit = vi.fn();
+    render(<CellEditor input={makeInput({ draft: "", setDraft, commit })} />);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    // No substitution: the empty draft reaches parseDraftForType, which maps
+    // it to null.
+    expect(setDraft).not.toHaveBeenCalled();
+    expect(commit).toHaveBeenCalledWith("down");
+  });
+
+  it("leaves a type-to-replace seed alone instead of rewriting it to a date", () => {
+    const setDraft = vi.fn();
+    render(<CellEditor input={makeInput({ draft: "2", setDraft })} />);
+    expect(setDraft).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox")).toHaveValue("2");
+  });
+
+  it("keeps aria-activedescendant resolvable when PageDown clamps the day", () => {
+    render(
+      <CellEditor
+        input={makeInput({ draft: "2026-08-31", value: "2026-08-31" })}
+      />,
+    );
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "PageDown" });
+    // September has 30 days, so the cursor clamps — and the clamped day is
+    // still a rendered cell, so the id always resolves.
+    expect(activeDay()).toBe(dayCell("2026-09-30").id);
+    expect(document.getElementById(activeDay() as string)).not.toBeNull();
+  });
+
+  it("ignores calendar navigation while an edit is in flight", () => {
+    const setDraft = vi.fn();
+    render(<CellEditor input={makeInput({ status: "saving", setDraft })} />);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+    expect(setDraft).not.toHaveBeenCalled();
+    expect(screen.getByText("August 2026")).toBeInTheDocument();
+  });
+
   it("mousedown on the popover is default-prevented so the input never blurs", () => {
     render(<CellEditor input={makeInput()} />);
     const notPrevented = fireEvent.mouseDown(screen.getByRole("grid"));

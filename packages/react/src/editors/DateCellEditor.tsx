@@ -78,6 +78,9 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
   };
 
   const move = (next: string) => {
+    // Same guard as `choose`: the field is readOnly while an edit is in flight,
+    // so navigation must not rewrite the draft behind a pending save either.
+    if (pending) return;
     setCursor(next);
     // Keep the field and the calendar in step while navigating.
     input.setDraft(next);
