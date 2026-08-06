@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { createGridCore } from "../index";
 
@@ -192,6 +192,141 @@ describe("setColumnPinned", () => {
     expect(aAfter?.pinned).toBeUndefined();
     // a should now be at the start of the unpinned region (index 1, after b).
     expect(grid.options.columns.map((col) => col.id)).toEqual(["b", "a", "c"]);
+  });
+
+  test("pins a column to the right", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnPinned("a", "right");
+    const aAfter = grid.options.columns.find((col) => col.id === "a");
+    expect(aAfter?.pinned).toBe("right");
+    // Pinning right moves it to the start of the right-pinned region (the end).
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["b", "c", "a"]);
+  });
+
+  test("stacks right-pinned columns in pin order at the end", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnPinned("a", "right");
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["b", "a", "c"]);
+    expect(
+      grid.options.columns.filter((col) => col.pinned === "right").length,
+    ).toBe(2);
+  });
+
+  test("re-pins a left-pinned column to the right", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", pinned: "left", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnPinned("a", "right");
+    expect(grid.options.columns.find((col) => col.id === "a")?.pinned).toBe(
+      "right",
+    );
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["b", "c", "a"]);
+  });
+
+  test("unpins a right-pinned column", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnPinned("b", null);
+    expect(
+      grid.options.columns.find((col) => col.id === "b")?.pinned,
+    ).toBeUndefined();
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["a", "b"]);
+  });
+
+  test("unpinning a right-pinned column leaves it at the boundary, not the front", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", pinned: "left", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", widthPx: 100 },
+        { id: "d", header: "D", pinned: "right", widthPx: 100 },
+        { id: "e", header: "E", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnPinned("d", null);
+    expect(
+      grid.options.columns.find((col) => col.id === "d")?.pinned,
+    ).toBeUndefined();
+    // d stays at the trailing end of the scrollable run (just before the
+    // remaining right-pinned group) rather than jumping to its front.
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+    ]);
+  });
+
+  test("re-pins a right-pinned column to the left", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", pinned: "left", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnPinned("c", "left");
+    expect(grid.options.columns.find((col) => col.id === "c")?.pinned).toBe(
+      "left",
+    );
+    // Joining the left region puts it at that region's trailing edge — it must
+    // not be left stranded at the right boundary.
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["a", "c", "b"]);
+  });
+
+  test("does not emit when the pin state is unchanged", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", pinned: "right", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    grid.setColumnPinned("a", "right");
+    expect(listener).not.toHaveBeenCalled();
+
+    grid.setColumnPinned("b", null);
+    expect(listener).not.toHaveBeenCalled();
+
+    grid.setColumnPinned("b", "right");
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });
 

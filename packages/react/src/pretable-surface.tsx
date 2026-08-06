@@ -53,6 +53,8 @@ import {
   getHeaderCellStyle,
   getHeaderRowStyle,
   getPinnedCellStyle,
+  getPinnedRightCellStyle,
+  getPinnedRightEdge,
   getRowStyle,
   getScrollContentStyle,
   getViewportStyle,
@@ -244,7 +246,9 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   onSortChange?: (sort: PretableSortEntry[]) => void;
   onColumnWidthsChange?: (next: Record<string, number>) => void;
   onColumnOrderChange?: (next: readonly string[]) => void;
-  onColumnPinnedChange?: (next: Record<string, "left" | null>) => void;
+  onColumnPinnedChange?: (
+    next: Record<string, "left" | "right" | null>,
+  ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   /**
    * Called when the built-in column filter menu mutates the active filter set.
@@ -488,6 +492,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     startX: number;
     startWidth: number;
     pointerId: number;
+    /**
+     * +1 normally, -1 for right-pinned columns. A right-pinned column's
+     * trailing edge is anchored to the scrollport and cannot move, so the only
+     * edge a resize can move is the LEADING one — and it moves left as the
+     * column grows. Adding the raw pointer delta would therefore grow the
+     * column away from the pointer; negating it keeps the movable edge
+     * travelling in the same direction as the pointer.
+     */
+    widthSign: 1 | -1;
   } | null>(null);
   const wasResizingRef = useRef(false);
   const wasReorderingRef = useRef(false);
@@ -883,6 +896,24 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     }
   }, [viewportWidth]);
 
+  // Right-pinned columns resolve their sticky inset against the scrollport's
+  // width, so a container resize has to re-render them — `onScroll` alone would
+  // leave them parked at the old edge until the user happens to scroll. This
+  // also keeps the column plan's horizontal window honest on resize.
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      setViewportWidth((prev) =>
+        prev === el.clientWidth ? prev : el.clientWidth,
+      );
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
   useLayoutEffect(() => {
     onTelemetryChange?.(telemetry);
   }, [onTelemetryChange, telemetry]);
@@ -1249,13 +1280,25 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
           if (column.id === ROW_SELECT_COLUMN_ID) {
             const pinnedOffset = pinnedOffsets[column.id];
+            const pinnedRightEdge =
+              plannedCol.pinned === "right" && plannedCol.right !== undefined
+                ? getPinnedRightEdge(viewportWidth, plannedCol.right)
+                : undefined;
             const positionStyle =
               plannedCol.pinned === "left" && pinnedOffset !== undefined
                 ? {
                     ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
                     ...getPinnedCellStyle(pinnedOffset),
                   }
-                : getHeaderCellStyle(plannedCol.left, plannedCol.width);
+                : pinnedRightEdge !== undefined
+                  ? {
+                      ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
+                      ...getPinnedRightCellStyle(
+                        pinnedRightEdge,
+                        plannedCol.width,
+                      ),
+                    }
+                  : getHeaderCellStyle(plannedCol.left, plannedCol.width);
             const visibleRows = snapshot.visibleRows;
             const allFullySelected =
               visibleRows.length > 0 &&
@@ -1277,9 +1320,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 aria-colindex={plannedCol.index + 1}
                 data-pretable-header-cell=""
                 data-pretable-row-select-header=""
-                data-pretable-pinned={
-                  plannedCol.pinned === "left" ? "left" : undefined
-                }
+                data-pretable-pinned={plannedCol.pinned}
                 key={column.id}
                 role="columnheader"
                 style={{
@@ -1350,13 +1391,27 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               sortDirection,
             }) ?? {};
           const pinnedOffset = pinnedOffsets[column.id];
+          // `plannedCol.right` is the column's trailing-edge offset from the
+          // viewport's right edge, so no offsets memo is needed on this side —
+          // but it has to be resolved against the live viewport width, because
+          // right-pinning is expressed as a sticky `left` inset (see
+          // getPinnedRightEdge).
+          const pinnedRightEdge =
+            plannedCol.pinned === "right" && plannedCol.right !== undefined
+              ? getPinnedRightEdge(viewportWidth, plannedCol.right)
+              : undefined;
           const positionStyle =
             plannedCol.pinned === "left" && pinnedOffset !== undefined
               ? {
                   ...getHeaderCellStyle(plannedCol.left, effWidth),
                   ...getPinnedCellStyle(pinnedOffset),
                 }
-              : getHeaderCellStyle(plannedCol.left, effWidth);
+              : pinnedRightEdge !== undefined
+                ? {
+                    ...getHeaderCellStyle(plannedCol.left, effWidth),
+                    ...getPinnedRightCellStyle(pinnedRightEdge, effWidth),
+                  }
+                : getHeaderCellStyle(plannedCol.left, effWidth);
 
           const ariaSort: "ascending" | "descending" | "none" =
             sortDirection === "asc"
@@ -1375,7 +1430,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   zIndex: 3,
                   left: pinnedOffset + effWidth - 4,
                 }
-              : null;
+              : pinnedRightEdge !== undefined
+                ? {
+                    // The 4px handle hugs the column's TRAILING edge — the same
+                    // `- 4` as the left form, just measured back from the
+                    // right-pinned anchor instead of `pinnedOffset + effWidth`.
+                    position: "sticky" as const,
+                    zIndex: 3,
+                    left: pinnedRightEdge - 4,
+                  }
+                : null;
 
           return [
             <button
@@ -1389,9 +1453,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               })}
               data-pretable-header-cell=""
               data-pretable-column-id={column.id}
-              data-pretable-pinned={
-                plannedCol.pinned === "left" ? "left" : undefined
-              }
+              data-pretable-pinned={plannedCol.pinned}
               key={column.id}
               role="columnheader"
               onClick={(event) => {
@@ -1626,6 +1688,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     startX: event.clientX,
                     startWidth,
                     pointerId: event.pointerId,
+                    widthSign: plannedCol.pinned === "right" ? -1 : 1,
                   };
                   wasResizingRef.current = false;
                   try {
@@ -1644,7 +1707,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     min,
                     Math.min(
                       max,
-                      drag.startWidth + (event.clientX - drag.startX),
+                      drag.startWidth +
+                        drag.widthSign * (event.clientX - drag.startX),
                     ),
                   );
                   if (Math.abs(next - drag.startWidth) > 0) {
@@ -1703,7 +1767,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         zIndex: 5,
                         left: pinnedOffset + effWidth - 22,
                       }
-                    : {}),
+                    : pinnedRightEdge !== undefined
+                      ? {
+                          // The 18px funnel sits immediately left of the 4px
+                          // resize strip: `- 22` back from the column's
+                          // trailing edge, exactly as on the left.
+                          position: "sticky" as const,
+                          zIndex: 5,
+                          left: pinnedRightEdge - 22,
+                        }
+                      : {}),
                 }}
               >
                 <FunnelButton
@@ -1805,13 +1878,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   dragLiveWidth?.columnId === column.id
                     ? dragLiveWidth.width
                     : plannedCol.width;
+                const pinnedRightEdge =
+                  plannedCol.pinned === "right" &&
+                  plannedCol.right !== undefined
+                    ? getPinnedRightEdge(viewportWidth, plannedCol.right)
+                    : undefined;
                 const positionStyle =
                   plannedCol.pinned === "left" && pinnedOffset !== undefined
                     ? {
                         ...getCellStyle(plannedCol.left, cellEffWidth),
                         ...getPinnedCellStyle(pinnedOffset),
                       }
-                    : getCellStyle(plannedCol.left, cellEffWidth);
+                    : pinnedRightEdge !== undefined
+                      ? {
+                          ...getCellStyle(plannedCol.left, cellEffWidth),
+                          ...getPinnedRightCellStyle(
+                            pinnedRightEdge,
+                            cellEffWidth,
+                          ),
+                        }
+                      : getCellStyle(plannedCol.left, cellEffWidth);
 
                 const isRowSelectCell = column.id === ROW_SELECT_COLUMN_ID;
                 const rowCheckState: "true" | "false" | "mixed" =
@@ -1829,9 +1915,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     className={getBodyCellClassName?.(bodyInput)}
                     data-pretable-column-id={column.id}
                     data-pretable-focused={cellIsFocused ? "true" : "false"}
-                    data-pretable-pinned={
-                      column.pinned === "left" ? "left" : undefined
-                    }
+                    data-pretable-pinned={column.pinned}
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
                     data-pretable-row-select-cell={
@@ -2648,18 +2732,18 @@ function buildWidthsMap<TRow extends PretableRow>(
 
 function buildPinnedMap<TRow extends PretableRow>(
   grid: PretableGrid<TRow>,
-): Record<string, "left" | null> {
-  const result: Record<string, "left" | null> = {};
+): Record<string, "left" | "right" | null> {
+  const result: Record<string, "left" | "right" | null> = {};
   for (const col of grid.options.columns) {
     if (col.id === ROW_SELECT_COLUMN_ID) continue;
-    result[col.id] = col.pinned === "left" ? "left" : null;
+    result[col.id] = col.pinned ?? null;
   }
   return result;
 }
 
 function pinnedMapsEqual(
-  a: Record<string, "left" | null>,
-  b: Record<string, "left" | null>,
+  a: Record<string, "left" | "right" | null>,
+  b: Record<string, "left" | "right" | null>,
 ): boolean {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);

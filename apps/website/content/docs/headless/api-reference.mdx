@@ -74,15 +74,15 @@ readonly options: PretableGridOptions<TRow>;
 
 ### Column layout
 
-| Method                  | Signature                                               |
-| ----------------------- | ------------------------------------------------------- |
-| `setColumnWidth`        | `(columnId: string, width: number) => void`             |
-| `setColumnPinned`       | `(columnId: string, pinned: "left" \| null) => void`    |
-| `moveColumn`            | `(columnId: string, toIndex: number) => void`           |
-| `autosizeColumn`        | `(columnId: string, options?: AutosizeOptions) => void` |
-| `autosizeColumns`       | `(options?: AutosizeOptions) => void`                   |
-| `resetColumnLayout`     | `() => void`                                            |
-| `mergeColumnsFromProps` | `(nextColumns: PretableColumn<TRow>[]) => void`         |
+| Method                  | Signature                                                       |
+| ----------------------- | --------------------------------------------------------------- |
+| `setColumnWidth`        | `(columnId: string, width: number) => void`                     |
+| `setColumnPinned`       | `(columnId: string, pinned: "left" \| "right" \| null) => void` |
+| `moveColumn`            | `(columnId: string, toIndex: number) => void`                   |
+| `autosizeColumn`        | `(columnId: string, options?: AutosizeOptions) => void`         |
+| `autosizeColumns`       | `(options?: AutosizeOptions) => void`                           |
+| `resetColumnLayout`     | `() => void`                                                    |
+| `mergeColumnsFromProps` | `(nextColumns: PretableColumn<TRow>[]) => void`                 |
 
 ### Data & viewport
 
@@ -108,7 +108,7 @@ interface PretableColumn<TRow = PretableRow> {
   step?: number;
   reorderable?: boolean;
   resizable?: boolean;
-  pinned?: "left";
+  pinned?: "left" | "right";
   wrap?: boolean;
   widthPx?: number;
   minWidthPx?: number;

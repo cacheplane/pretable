@@ -25,11 +25,31 @@ While dragging, a ghost element follows the cursor and a 2px drop indicator snap
 
 **Cross-boundary auto-pin.** Dragging a column into the leftmost pinned region pins it there; dragging a pinned column out unpins it. When pin state changes alongside the reorder, `onColumnPinnedChange` fires alongside `onColumnOrderChange` in the same commit.
 
+Right pinning has no drag affordance — a right-pinned column keeps its pin through a reorder, and pinning to the right edge is a config or `setColumnPinned` call.
+
 Per-column `reorderable: false` opts out. The synthetic row-select column is never reorderable.
 
 ## Pin
 
-Programmatic pinning is `grid.setColumnPinned(columnId, "left" | null)`. Setting a pin repositions the column to the pin-region boundary; unpinning leaves it at the current boundary position.
+Columns pin to either edge. Declare it on the column, or set it at runtime:
+
+```tsx
+const columns: PretableColumn<Row>[] = [
+  { id: "symbol", header: "Symbol", widthPx: 120, pinned: "left" },
+  { id: "name", header: "Name", widthPx: 240 },
+  { id: "actions", header: "", widthPx: 80, pinned: "right" },
+];
+
+grid.setColumnPinned("symbol", "left");
+grid.setColumnPinned("actions", "right");
+grid.setColumnPinned("actions", null); // unpin
+```
+
+Left-pinned columns render first, in a sticky group flush against the viewport's left edge; right-pinned columns render last, stacked from the right edge inward in column order. Everything else scrolls between the two groups. Cells in a pinned group carry `data-pretable-pinned="left"` or `data-pretable-pinned="right"`, and the sticky treatment covers the whole column — body cell, header, sort control, resize handle, and filter funnel.
+
+**Pinned columns are never virtualized away.** Horizontal virtualization only windows the scrollable group, and that window runs from `scrollLeft` to `scrollLeft + viewportWidth - pinnedRightWidth`: it ends before the right-pinned group, which overlays the viewport's trailing edge, but it deliberately does _not_ subtract the left-pinned width. That over-includes the columns currently hidden behind the left-pinned group, which is the conservative direction — a column is rendered when in doubt, never dropped. A pinned column is in the render snapshot at every scroll position, so a pinned "actions" or identity column can't scroll out from under the user.
+
+Setting a pin repositions the column to that pin-region boundary; unpinning leaves it at the current boundary position. Pin both edges wider than the viewport and the scrollable window clamps to zero rather than producing negative geometry — but a grid that is all pinned has nothing left to scroll, so keep the pinned groups a modest fraction of the viewport.
 
 The synthetic row-select column is always at position 0; it is never pinnable, reorderable, or resizable through the gesture or programmatic APIs.
 
@@ -51,7 +71,7 @@ Three independently-controlled slices on `state`:
 
 - `columnWidths: Record<string, number>`
 - `columnOrder: readonly string[]`
-- `columnPinned: Record<string, "left" | null>`
+- `columnPinned: Record<string, "left" | "right" | null>`
 
 Three matching callbacks:
 

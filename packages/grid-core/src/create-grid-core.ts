@@ -627,17 +627,23 @@ export function createGridCore<TRow extends PretableRow>(
       // pinned region iff clampedTo < boundary.
       const landsInPinned = clampedTo < boundary;
 
-      const wasPinned = moved.pinned === "left";
-      const nextPinned: "left" | undefined = landsInPinned ? "left" : undefined;
+      // Right-pinned columns keep their pin through a reorder — the
+      // left-region auto-pin/unpin rule below only governs the leading region.
+      if (moved.pinned !== "right") {
+        const wasPinned = moved.pinned === "left";
+        const nextPinned: "left" | undefined = landsInPinned
+          ? "left"
+          : undefined;
 
-      if (nextPinned !== moved.pinned || wasPinned !== landsInPinned) {
-        nextColumns[clampedTo] = { ...moved, pinned: nextPinned };
+        if (nextPinned !== moved.pinned || wasPinned !== landsInPinned) {
+          nextColumns[clampedTo] = { ...moved, pinned: nextPinned };
+        }
       }
 
       options = { ...options, columns: nextColumns };
       emit();
     },
-    setColumnPinned(columnId: string, pinned: "left" | null) {
+    setColumnPinned(columnId: string, pinned: "left" | "right" | null) {
       if (columnId === ROW_SELECT_COLUMN_ID) {
         return;
       }
@@ -646,7 +652,8 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
       const column = options.columns[idx]!;
-      const nextPinnedValue = pinned === "left" ? ("left" as const) : undefined;
+      const nextPinnedValue =
+        pinned === "left" || pinned === "right" ? pinned : undefined;
       if (column.pinned === nextPinnedValue) {
         return;
       }
@@ -664,7 +671,27 @@ export function createGridCore<TRow extends PretableRow>(
         boundary += 1;
       }
 
-      const insertAt = boundary;
+      // Right-pinned columns live in a trailing region; a newly right-pinned
+      // column joins it at its leading edge (mirror of a left-pinned column
+      // joining the leading region at its trailing edge).
+      let rightBoundary = nextColumns.length;
+      while (
+        rightBoundary > boundary &&
+        nextColumns[rightBoundary - 1]?.pinned === "right"
+      ) {
+        rightBoundary -= 1;
+      }
+
+      // A column lands at the right region's leading edge when it is joining
+      // that region, and also when it is *leaving* it by being unpinned —
+      // unpinning leaves a column where it already sits, and a right-pinned
+      // column sits at the trailing end of the scrollable run, not its front.
+      // Re-pinning right -> left is not "leaving to stay put": it joins the
+      // left region, so it takes `boundary` like any other left pin.
+      const staysAtRightBoundary =
+        nextPinnedValue === "right" ||
+        (nextPinnedValue === undefined && column.pinned === "right");
+      const insertAt = staysAtRightBoundary ? rightBoundary : boundary;
       const nextColumn: PretableColumn<TRow> = {
         ...column,
         pinned: nextPinnedValue,

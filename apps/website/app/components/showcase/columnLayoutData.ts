@@ -63,44 +63,54 @@ export function makeLayoutColumns(): PretableColumn<LayoutRow>[] {
   const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
   const signedUsd = (n: number) =>
     `${n < 0 ? "-" : "+"}$${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
+  // Total width (1390px) intentionally exceeds the showcase container so the
+  // grid scrolls horizontally — that is what makes the right-pinned "Analyst
+  // note" column visibly stick to the viewport's right edge.
   return [
-    { id: "symbol", header: "Symbol", widthPx: 110, value: (r) => r.symbol },
-    { id: "sector", header: "Sector", widthPx: 130, value: (r) => r.sector },
+    { id: "symbol", header: "Symbol", widthPx: 120, value: (r) => r.symbol },
+    { id: "name", header: "Name", widthPx: 210, value: (r) => r.name },
+    { id: "sector", header: "Sector", widthPx: 160, value: (r) => r.sector },
     {
       id: "qty",
       header: "Qty",
-      widthPx: 96,
+      widthPx: 120,
       value: (r) => r.qty,
       format: ({ value }) => (value as number).toLocaleString("en-US"),
     },
     {
       id: "last",
       header: "Last",
-      widthPx: 96,
+      widthPx: 120,
       value: (r) => r.last,
       format: ({ value }) => usd(value as number),
     },
     {
       id: "mktValue",
       header: "Mkt Value",
-      widthPx: 120,
+      widthPx: 160,
       value: (r) => r.mktValue,
       format: ({ value }) => usd(value as number),
     },
     {
       id: "dayPnl",
       header: "Day P&L",
-      widthPx: 110,
+      widthPx: 140,
       value: (r) => r.dayPnl,
       format: ({ value }) => signedUsd(value as number),
     },
     {
       id: "weight",
       header: "Weight",
-      widthPx: 96,
+      widthPx: 120,
       value: (r) => r.weight,
       format: ({ value }) => `${(value as number).toFixed(1)}%`,
     },
-    { id: "note", header: "Analyst note", widthPx: 180, value: (r) => r.note },
+    {
+      id: "note",
+      header: "Analyst note",
+      widthPx: 240,
+      pinned: "right",
+      value: (r) => r.note,
+    },
   ];
 }

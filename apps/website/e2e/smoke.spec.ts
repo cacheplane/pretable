@@ -302,4 +302,93 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   await expect
     .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
     .toBeLessThan(widthBefore + 20);
+
+  // --- Right-pinned column stays glued to the viewport's right edge ---
+  // The showcase's "Analyst note" column is pinned right, and the column set is
+  // wider than the container, so there is real horizontal scroll to exercise.
+  const layoutViewport = layout.locator("[data-pretable-scroll-viewport]");
+  const noteCell = layout.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="note"]',
+  );
+  // `qty` is a plain scrollable column that stays rendered at both scroll
+  // extremes — it is the control that proves the scroll actually moved content.
+  const qtyCell = layout.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="qty"]',
+  );
+  await expect(noteCell).toHaveAttribute("data-pretable-pinned", "right");
+
+  // Measure in one reference frame: the scrollport's inner right edge (client
+  // box, so a classic scrollbar is excluded — that is the edge a right-pinned
+  // column resolves against) versus each pinned box's right edge. All four
+  // sticky sites of a right-pinned column are checked, not just the body cell:
+  // the header button, the 4px resize strip on the trailing edge, and the 18px
+  // filter funnel that sits 4px inside it.
+  const noteHeader = layout.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="note"]',
+  );
+  const noteHandle = layout.locator(
+    '[data-pretable-resize-handle][data-pretable-column-id="note"]',
+  );
+  const noteFunnel = layout
+    .locator('[data-pretable-filter-funnel][data-pretable-column-id="note"]')
+    .locator("xpath=..");
+  const rightEdge = (locator: typeof noteCell) =>
+    locator.evaluate((el) => el.getBoundingClientRect().right);
+
+  const measure = async () => {
+    const viewport = await layoutViewport.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        innerRight: rect.left + el.clientLeft + el.clientWidth,
+        scrollLeft: el.scrollLeft,
+        maxScrollLeft: el.scrollWidth - el.clientWidth,
+      };
+    });
+    return {
+      ...viewport,
+      noteRight: await rightEdge(noteCell),
+      headerRight: await rightEdge(noteHeader),
+      handleRight: await rightEdge(noteHandle),
+      funnelRight: await rightEdge(noteFunnel),
+      qtyLeft: await qtyCell.evaluate((el) => el.getBoundingClientRect().left),
+    };
+  };
+
+  // The body cell, the header button and the resize strip all end on the
+  // scrollport's inner right edge; the funnel ends 4px inside it.
+  const expectPinned = (m: Awaited<ReturnType<typeof measure>>) => {
+    expect(Math.abs(m.noteRight - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.headerRight - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.handleRight - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.funnelRight - (m.innerRight - 4))).toBeLessThan(2);
+  };
+
+  const before = await measure();
+  expect(before.scrollLeft).toBe(0);
+  expect(before.maxScrollLeft).toBeGreaterThan(60);
+  expectPinned(before);
+
+  // Mid-scroll: the pin must hold at every offset, not just the extremes.
+  await layoutViewport.evaluate((el) => {
+    el.scrollLeft = Math.round((el.scrollWidth - el.clientWidth) / 2);
+  });
+  await expect
+    .poll(async () => await layoutViewport.evaluate((el) => el.scrollLeft))
+    .toBeGreaterThan(30);
+  expectPinned(await measure());
+
+  await layoutViewport.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth - el.clientWidth;
+  });
+  await expect
+    .poll(async () => await layoutViewport.evaluate((el) => el.scrollLeft))
+    .toBeGreaterThan(60);
+
+  const after = await measure();
+  // The unpinned control column moved left by exactly the scroll distance...
+  expect(
+    Math.abs(before.qtyLeft - after.qtyLeft - after.scrollLeft),
+  ).toBeLessThan(2);
+  // ...while every right-pinned box stayed on the viewport's right edge.
+  expectPinned(after);
 });

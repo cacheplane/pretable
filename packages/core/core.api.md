@@ -87,7 +87,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     parseEditValue?: (raw: string, input: PretableEditInput<TRow>) => unknown;
     // (undocumented)
-    pinned?: "left";
+    pinned?: "left" | "right";
     // (undocumented)
     reorderable?: boolean;
     // (undocumented)
@@ -215,7 +215,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
     // (undocumented)
-    setColumnPinned(columnId: string, pinned: "left" | null): void;
+    setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
     // (undocumented)
     setColumnWidth(columnId: string, width: number): void;
     // (undocumented)

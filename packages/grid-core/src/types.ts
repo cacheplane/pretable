@@ -114,7 +114,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   header?: string;
   wrap?: boolean;
   widthPx?: number;
-  pinned?: "left";
+  pinned?: "left" | "right";
   sortable?: boolean;
   /** Number-editor increment for ArrowUp/Down and steppers. Default 1. */
   step?: number;
@@ -300,7 +300,7 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   // column-layout actions (sub-project C):
   setColumnWidth(columnId: string, width: number): void;
   moveColumn(columnId: string, toIndex: number): void;
-  setColumnPinned(columnId: string, pinned: "left" | null): void;
+  setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
   autosizeColumn(columnId: string, options?: AutosizeOptions): void;
   resetColumnLayout(): void;
   mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void;

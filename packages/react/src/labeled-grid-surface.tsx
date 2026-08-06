@@ -120,7 +120,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   viewportHeight,
 }: LabeledGridSurfaceProps<TRow>) {
   const getPinnedClassName = (column: PretableColumn<TRow>) =>
-    column.pinned === "left" && pinnedClassName ? pinnedClassName : undefined;
+    column.pinned != null && pinnedClassName ? pinnedClassName : undefined;
   const activeFilterColumns = new Set(
     Object.entries(state?.filters ?? {})
       .filter(([, filter]) => isColumnFilterActive(filter))
@@ -144,9 +144,9 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       }
       getBodyCellProps={(input) =>
         mergeProps(
-          input.column.pinned === "left"
+          input.column.pinned != null
             ? ({
-                "data-pretable-pinned": "left",
+                "data-pretable-pinned": input.column.pinned,
               } as HTMLAttributes<HTMLDivElement>)
             : undefined,
           getBodyCellProps?.(input),
@@ -161,9 +161,9 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       }
       getHeaderCellProps={(input) =>
         mergeProps(
-          input.column.pinned === "left"
+          input.column.pinned != null
             ? ({
-                "data-pretable-pinned": "left",
+                "data-pretable-pinned": input.column.pinned,
               } as HTMLAttributes<HTMLButtonElement>)
             : undefined,
           getHeaderCellProps?.(input),

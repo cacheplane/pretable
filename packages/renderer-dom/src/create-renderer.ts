@@ -3,6 +3,7 @@ import {
   planColumns,
   planViewport,
 } from "@pretable-internal/layout-core";
+import type { ColumnPlan } from "@pretable-internal/layout-core";
 import type { PretableColumn, PretableRow } from "@pretable-internal/grid-core";
 import { layoutPreparedText, prepareText } from "@pretable-internal/text-core";
 
@@ -74,7 +75,7 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
     pinned: col.pinned,
   }));
 
-  const columnPlan =
+  const columnPlan: ColumnPlan =
     input.viewportWidth !== undefined
       ? planColumns({
           columns: columnInputs,
@@ -85,6 +86,21 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
       : {
           columns: (() => {
             let left = 0;
+            // Right offsets are measured from the viewport's right edge, so
+            // each right-pinned column is offset by the total width of the
+            // right-pinned columns after it (same rule as planColumns).
+            let right = 0;
+            const rightById = new Map<string, number>();
+
+            for (let i = columnInputs.length - 1; i >= 0; i--) {
+              const col = columnInputs[i]!;
+
+              if (col.pinned === "right") {
+                rightById.set(col.id, right);
+                right += col.width;
+              }
+            }
+
             return columnInputs.map((col, index) => {
               const entry = {
                 index,
@@ -92,6 +108,7 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
                 left,
                 width: col.width,
                 pinned: col.pinned,
+                right: rightById.get(col.id),
               };
               left += col.width;
               return entry;
@@ -100,6 +117,9 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
           totalWidth: columnInputs.reduce((sum, col) => sum + col.width, 0),
           pinnedLeftWidth: columnInputs
             .filter((col) => col.pinned === "left")
+            .reduce((sum, col) => sum + col.width, 0),
+          pinnedRightWidth: columnInputs
+            .filter((col) => col.pinned === "right")
             .reduce((sum, col) => sum + col.width, 0),
         };
 

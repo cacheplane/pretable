@@ -91,3 +91,59 @@ export function getPinnedCellStyle(left: number): CSSProperties {
     zIndex: 1,
   };
 }
+
+/**
+ * Scrollport-relative x of a right-pinned column's TRAILING edge — the anchor
+ * every right-pinned overlay is measured back from, mirroring the left side's
+ * `pinnedOffset + width`.
+ *
+ * `right` is `PlannedColumn.right`: the offset from the viewport's right edge
+ * (the last right-pinned column is 0, earlier ones carry the summed width of
+ * the right-pinned columns after them). `viewportWidth` is the scroll
+ * viewport's `clientWidth`, i.e. the width of the sticky constraint rect.
+ *
+ * Right-pinning is expressed in `left` terms on purpose. Body/header rows are
+ * flex containers whose unpinned cells are `position: absolute` (out of flow),
+ * so a sticky cell is typically the FIRST in-flow item and its flow position is
+ * the row's leading edge. A sticky `right` inset only holds a box BACK from
+ * scrolling past that inset — it never pushes a box forward past its flow
+ * position — so `right: 0` leaves a right-pinned cell stranded at the row's
+ * left edge. A sticky `left` inset clamps from the other side: it pushes the
+ * box right until its leading edge sits `left` px from the scrollport's left
+ * edge and holds it there through the scroll, which is exactly right-pinning.
+ *
+ * Returns `undefined` when the scrollport has not been measured yet
+ * (`viewportWidth` of 0 before hydration/layout, or NaN): the whole technique
+ * is relative to a real measured width, and `0 - right` would be a NEGATIVE
+ * left inset that parks right-pinned cells off-screen to the left. Callers
+ * must fall back to the plain, non-sticky cell style; the first measurement
+ * re-renders them into place.
+ */
+export function getPinnedRightEdge(
+  viewportWidth: number,
+  right: number,
+): number | undefined {
+  if (!(viewportWidth > 0)) {
+    return undefined;
+  }
+
+  return viewportWidth - right;
+}
+
+/**
+ * Sticky style for a right-pinned cell. `trailingEdge` comes from
+ * {@link getPinnedRightEdge}; `width` is the cell's rendered width, so the
+ * cell's leading edge lands at `trailingEdge - width`. Mirrors
+ * {@link getPinnedCellStyle}'s z-index tier.
+ */
+export function getPinnedRightCellStyle(
+  trailingEdge: number,
+  width: number,
+): CSSProperties {
+  return {
+    left: trailingEdge - width,
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
+  };
+}
