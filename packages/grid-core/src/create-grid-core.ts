@@ -682,7 +682,16 @@ export function createGridCore<TRow extends PretableRow>(
         rightBoundary -= 1;
       }
 
-      const insertAt = nextPinnedValue === "right" ? rightBoundary : boundary;
+      // A column lands at the right region's leading edge when it is joining
+      // that region, and also when it is *leaving* it by being unpinned —
+      // unpinning leaves a column where it already sits, and a right-pinned
+      // column sits at the trailing end of the scrollable run, not its front.
+      // Re-pinning right -> left is not "leaving to stay put": it joins the
+      // left region, so it takes `boundary` like any other left pin.
+      const staysAtRightBoundary =
+        nextPinnedValue === "right" ||
+        (nextPinnedValue === undefined && column.pinned === "right");
+      const insertAt = staysAtRightBoundary ? rightBoundary : boundary;
       const nextColumn: PretableColumn<TRow> = {
         ...column,
         pinned: nextPinnedValue,

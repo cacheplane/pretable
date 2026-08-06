@@ -362,4 +362,68 @@ describe("planColumns — right-pinned columns", () => {
     expect(plan.columns.find((c) => c.id === "c2")?.left).toBe(200);
     expect(plan.columns.find((c) => c.id === "c3")?.left).toBe(300);
   });
+
+  test("gives right-pinned columns their true content offset as `left`", () => {
+    // c0 (left, 100) | c1..c3 (scrollable, 100 each) | c4, c5 (right, 100
+    // each). Laid out end to end the content offsets are 0, 100, 200, 300,
+    // 400, 500 — the right-pinned pair belongs at 400 and 500, not at 0.
+    // Consumers map plan entries onto content coordinates (the reorder drop
+    // indicator reads `columnLefts[dropIndex]`), so a placeholder would put
+    // the indicator at content x=0.
+    const plan = planColumns({
+      columns: mixedColumns,
+      scrollLeft: 0,
+      viewportWidth: 600,
+      overscan: 0,
+    });
+    const byId = new Map(plan.columns.map((c) => [c.id, c]));
+
+    expect(byId.get("c4")?.left).toBe(400);
+    expect(byId.get("c5")?.left).toBe(500);
+    // The last right-pinned column ends exactly at the total content width.
+    expect((byId.get("c5")?.left ?? 0) + (byId.get("c5")?.width ?? 0)).toBe(
+      plan.totalWidth,
+    );
+  });
+
+  test("keeps right-pinned `left` stable across scroll positions and viewports", () => {
+    // `left` is a content coordinate, so unlike `right` it must not move with
+    // the scrollport.
+    for (const [scrollLeft, viewportWidth] of [
+      [0, 600],
+      [150, 400],
+      [300, 300],
+    ]) {
+      const plan = planColumns({
+        columns: mixedColumns,
+        scrollLeft,
+        viewportWidth,
+        overscan: 0,
+      });
+      const byId = new Map(plan.columns.map((c) => [c.id, c]));
+
+      expect(byId.get("c4")?.left).toBe(400);
+      expect(byId.get("c5")?.left).toBe(500);
+    }
+  });
+
+  test("gives right-pinned columns a true content offset when everything is pinned", () => {
+    // a (left, 100) | b (right, 150) | c (right, 50) — no scrollable run at
+    // all, so the right group starts right after the left group.
+    const plan = planColumns({
+      columns: [
+        { id: "a", width: 100, pinned: "left" as const },
+        { id: "b", width: 150, pinned: "right" as const },
+        { id: "c", width: 50, pinned: "right" as const },
+      ],
+      scrollLeft: 0,
+      viewportWidth: 400,
+      overscan: 2,
+    });
+    const byId = new Map(plan.columns.map((c) => [c.id, c]));
+
+    expect(byId.get("a")?.left).toBe(0);
+    expect(byId.get("b")?.left).toBe(100);
+    expect(byId.get("c")?.left).toBe(250);
+  });
 });

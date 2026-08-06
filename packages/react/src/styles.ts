@@ -111,11 +111,22 @@ export function getPinnedCellStyle(left: number): CSSProperties {
  * left edge. A sticky `left` inset clamps from the other side: it pushes the
  * box right until its leading edge sits `left` px from the scrollport's left
  * edge and holds it there through the scroll, which is exactly right-pinning.
+ *
+ * Returns `undefined` when the scrollport has not been measured yet
+ * (`viewportWidth` of 0 before hydration/layout, or NaN): the whole technique
+ * is relative to a real measured width, and `0 - right` would be a NEGATIVE
+ * left inset that parks right-pinned cells off-screen to the left. Callers
+ * must fall back to the plain, non-sticky cell style; the first measurement
+ * re-renders them into place.
  */
 export function getPinnedRightEdge(
   viewportWidth: number,
   right: number,
-): number {
+): number | undefined {
+  if (!(viewportWidth > 0)) {
+    return undefined;
+  }
+
   return viewportWidth - right;
 }
 

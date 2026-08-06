@@ -26,8 +26,9 @@ export function planColumns(input: PlanColumnsInput): ColumnPlan {
       });
       pinnedLeftWidth += col.width;
     } else if (col.pinned === "right") {
-      // `right` depends on the columns that come after this one, so it is
-      // filled in by a second pass below.
+      // Both `right` and `left` depend on columns that come after this one
+      // (and on the final scrollable width), so they are filled in by a
+      // second pass below.
       pinnedRight.push({
         index: i,
         id: col.id,
@@ -51,11 +52,28 @@ export function planColumns(input: PlanColumnsInput): ColumnPlan {
   // Second pass, from the end: each right-pinned column is offset from the
   // viewport's right edge by the total width of the right-pinned columns
   // after it, so the last one sits flush at `right: 0`.
+  //
+  // `left` is filled in too, and it is the column's *true content offset* —
+  // where the column would sit if nothing were pinned, i.e. after the
+  // left-pinned group and the whole scrollable run. Rendering never reads it
+  // (the sticky style positions right-pinned cells from the measured
+  // scrollport instead), but consumers that map plan entries onto content
+  // coordinates do: the drag-to-reorder drop indicator looks up
+  // `columnLefts[dropIndex]`, and a placeholder `0` teleports the indicator to
+  // content x=0. Keeping it honest also makes this agree with the renderer's
+  // no-viewportWidth fallback, which accumulates a real `left` for every
+  // column.
   let rightOffset = 0;
 
   for (let i = pinnedRight.length - 1; i >= 0; i--) {
     const col = pinnedRight[i];
     col.right = rightOffset;
+    // Widths of the right-pinned columns *before* this one is the group total
+    // minus this column and everything after it.
+    col.left =
+      pinnedLeftWidth +
+      scrollableLeft +
+      (pinnedRightWidth - rightOffset - col.width);
     rightOffset += col.width;
   }
 

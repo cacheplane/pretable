@@ -492,6 +492,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     startX: number;
     startWidth: number;
     pointerId: number;
+    /**
+     * +1 normally, -1 for right-pinned columns. A right-pinned column's
+     * trailing edge is anchored to the scrollport and cannot move, so the only
+     * edge a resize can move is the LEADING one — and it moves left as the
+     * column grows. Adding the raw pointer delta would therefore grow the
+     * column away from the pointer; negating it keeps the movable edge
+     * travelling in the same direction as the pointer.
+     */
+    widthSign: 1 | -1;
   } | null>(null);
   const wasResizingRef = useRef(false);
   const wasReorderingRef = useRef(false);
@@ -1271,18 +1280,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
           if (column.id === ROW_SELECT_COLUMN_ID) {
             const pinnedOffset = pinnedOffsets[column.id];
+            const pinnedRightEdge =
+              plannedCol.pinned === "right" && plannedCol.right !== undefined
+                ? getPinnedRightEdge(viewportWidth, plannedCol.right)
+                : undefined;
             const positionStyle =
               plannedCol.pinned === "left" && pinnedOffset !== undefined
                 ? {
                     ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
                     ...getPinnedCellStyle(pinnedOffset),
                   }
-                : plannedCol.pinned === "right" &&
-                    plannedCol.right !== undefined
+                : pinnedRightEdge !== undefined
                   ? {
                       ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
                       ...getPinnedRightCellStyle(
-                        getPinnedRightEdge(viewportWidth, plannedCol.right),
+                        pinnedRightEdge,
                         plannedCol.width,
                       ),
                     }
@@ -1676,6 +1688,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     startX: event.clientX,
                     startWidth,
                     pointerId: event.pointerId,
+                    widthSign: plannedCol.pinned === "right" ? -1 : 1,
                   };
                   wasResizingRef.current = false;
                   try {
@@ -1694,7 +1707,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     min,
                     Math.min(
                       max,
-                      drag.startWidth + (event.clientX - drag.startX),
+                      drag.startWidth +
+                        drag.widthSign * (event.clientX - drag.startX),
                     ),
                   );
                   if (Math.abs(next - drag.startWidth) > 0) {

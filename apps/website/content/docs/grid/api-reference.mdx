@@ -330,7 +330,7 @@ interface PlannedColumn {
 
 `renderSnapshot.rows` is the slice of rows currently visible in the viewport (plus overscan). Each has `top` (the absolute Y position) and `height` (the row's height — measured if you provided `measuredHeights`, otherwise estimated). Use these to position your row JSX with `position: absolute; top: ${row.top}px; height: ${row.height}px`.
 
-`renderSnapshot.columns` is the column layout — left offset and width per column, accounting for pinned positioning. Left-pinned columns come first, then the visible scrollable window, then the right-pinned columns; a right-pinned entry carries `right` (its offset from the viewport's right edge) instead of a meaningful `left`.
+`renderSnapshot.columns` is the column layout — left offset and width per column, accounting for pinned positioning. Left-pinned columns come first, then the visible scrollable window, then the right-pinned columns. A right-pinned entry additionally carries `right`, its offset from the viewport's right edge, which is what its sticky position is derived from; its `left` is still the column's true content offset (where it sits in the end-to-end layout), so mapping any entry back to a content coordinate works uniformly.
 
 ## `PretableTelemetry`
 

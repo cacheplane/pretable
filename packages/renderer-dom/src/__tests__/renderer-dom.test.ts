@@ -266,6 +266,55 @@ describe("renderer-dom", () => {
     expect(render.totalWidth).toBe(340);
   });
 
+  test("agrees on right-pinned `left` between the planned and fallback paths", () => {
+    // The planned path buckets columns (left | scrollable | right) and the
+    // fallback just accumulates in declaration order, so for columns already
+    // declared in bucket order the two must produce identical content
+    // offsets — including for the right-pinned pair, whose `left` is a real
+    // content coordinate rather than a placeholder.
+    const columns = [
+      { id: "a", header: "A", widthPx: 100, pinned: "left" as const },
+      { id: "b", header: "B", widthPx: 140 },
+      { id: "c", header: "C", widthPx: 120 },
+      { id: "d", header: "D", widthPx: 120, pinned: "right" as const },
+      { id: "e", header: "E", widthPx: 80, pinned: "right" as const },
+    ];
+    const grid = createGridCore({
+      columns,
+      rows: [{ id: "row-0", a: "1", b: "2", c: "3", d: "4", e: "5" }],
+      getRowId: (row) => String(row.id),
+    });
+    const base = {
+      columns: grid.options.columns,
+      snapshot: grid.getSnapshot(),
+      scrollTop: 0,
+      viewportHeight: 320,
+      overscan: 2,
+    };
+
+    // Viewport wide enough that nothing is virtualized away.
+    const planned = createDomRenderSnapshot({
+      ...base,
+      scrollLeft: 0,
+      viewportWidth: 1000,
+    });
+    const fallback = createDomRenderSnapshot(base);
+
+    const leftsOf = (snapshot: { columns: { id: string; left: number }[] }) =>
+      new Map(snapshot.columns.map((c) => [c.id, c.left]));
+
+    expect(leftsOf(planned)).toEqual(leftsOf(fallback));
+    // And those offsets are the real end-to-end content layout.
+    expect(Object.fromEntries(leftsOf(planned))).toEqual({
+      a: 0,
+      b: 100,
+      c: 240,
+      d: 360,
+      e: 480,
+    });
+    expect(planned.totalWidth).toBe(fallback.totalWidth);
+  });
+
   test("returns all columns when viewportWidth is not provided (backwards compatible)", () => {
     const grid = createGridCore({
       columns: [

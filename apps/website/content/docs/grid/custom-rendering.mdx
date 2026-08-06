@@ -221,7 +221,20 @@ This renders a working sortable grid with click-to-select. Wire `@pretable/ui/th
 The minimal example above is a starting point. For production grids, you'll likely also need:
 
 - **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus("up")` / `grid.moveFocus("down")`. The full keyboard contract (shift+arrow extend, Cmd/Ctrl+arrow jump, Tab wrap, Cmd+A, Esc) is wired by `<PretableSurface>` automatically.
-- **Pinned columns sticky positioning** — apply `position: sticky; left: ${col.left}px` to left-pinned cells and `position: sticky; right: ${col.right}px` to right-pinned ones. `renderSnapshot.columns` already carries `pinned` plus the resolved `left` / `right` offsets, which is exactly what `<PretableSurface>` positions against.
+- **Pinned columns sticky positioning** — `renderSnapshot.columns` carries `pinned` plus the resolved `left` / `right` offsets. Left-pinned cells are straightforward: `position: sticky; left: ${col.left}px`.
+
+  Right-pinned cells need more care, and a `right` inset is **not** the answer for a row shaped like the example above. Each row is a flex container whose cells are `position: absolute` (out of flow), so a sticky cell is effectively the first in-flow item and its flow position is the row's leading edge. A sticky `right` inset can only hold a box _back_ from scrolling past that inset — it never pushes a box _forward_ past its flow position — so `right: 0` leaves the cell stranded at the row's left edge.
+
+  `<PretableSurface>` instead expresses right-pinning as a sticky **left** inset measured against the live scrollport, which clamps from the other side: measure the scroll viewport's `clientWidth`, then apply
+
+  ```ts
+  { position: "sticky", left: viewportWidth - col.right - col.width }
+  ```
+
+  Re-measure on scroll and with a `ResizeObserver`, and fall back to the plain non-sticky style while `viewportWidth` is still `0` (pre-hydration) — otherwise the inset goes negative and parks the cell off-screen. See the doc comment on `getPinnedRightEdge` in `packages/react/src/styles.ts` for the full rationale.
+
+  If your rows keep cells in normal flow instead, a plain `right` inset does work; the technique above is what an absolutely-positioned row layout requires.
+
 - **Per-row measured heights** — use `useLayoutEffect` to measure rendered row heights and pass `measuredHeights: Record<string, number>` to `usePretable` for content-aware sizing.
 - **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setColumnFilter(columnId, { operator: "contains", value })` per change (pass `null` to clear).
 - **Telemetry instrumentation** — use the `telemetry` return value to track visible row counts, frame budget overruns, etc.

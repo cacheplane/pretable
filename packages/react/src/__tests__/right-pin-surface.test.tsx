@@ -328,6 +328,79 @@ describe("right-pinned columns — surface sticky sites", () => {
     expect(funnelSlot(container, "c")).toHaveStyle({ position: "absolute" });
   });
 
+  it("falls back to the plain cell style until the scrollport is measured", () => {
+    // Pre-hydration (and whenever the surface is display:none) clientWidth is
+    // 0. `viewportWidth - right` would then be a NEGATIVE left inset, parking
+    // every right-pinned cell off-screen to the left, so the surface must emit
+    // the plain non-sticky style instead and wait for a real measurement.
+    clientWidth = 0;
+    const { container } = renderSurface();
+
+    for (const el of [
+      bodyCell(container, "actions"),
+      headerCell(container, "actions"),
+      resizeHandle(container, "actions"),
+      funnelSlot(container, "actions"),
+    ]) {
+      expect(el).not.toBeNull();
+      expect(el).toHaveStyle({ position: "absolute" });
+      expect(el!.style.left.startsWith("-")).toBe(false);
+    }
+
+    // Once measured, the sticky inset appears.
+    clientWidth = VIEWPORT_WIDTH;
+    fireEvent.scroll(
+      container.querySelector<HTMLElement>("[data-pretable-scroll-viewport]")!,
+    );
+    expect(bodyCell(container, "actions")).toHaveStyle({
+      position: "sticky",
+      left: `${VIEWPORT_WIDTH - RIGHT_LAST_WIDTH}px`,
+    });
+  });
+
+  it("resizing a right-pinned column follows the pointer's direction", () => {
+    const { container } = renderSurface();
+
+    const handle = resizeHandle(container, "actions")!;
+    const widthOf = (columnId: string) =>
+      Number.parseFloat(headerCell(container, columnId)!.style.width);
+
+    expect(widthOf("actions")).toBe(RIGHT_LAST_WIDTH);
+
+    // A right-pinned column's trailing edge is anchored to the scrollport, so
+    // its LEADING edge is the only one a drag can move — and it moves left as
+    // the column grows. Dragging left must therefore GROW the column, so that
+    // the edge the user sees move travels with the pointer.
+    fireEvent.pointerDown(handle, { button: 0, clientX: 500, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 470, pointerId: 1 });
+    expect(widthOf("actions")).toBe(RIGHT_LAST_WIDTH + 30);
+
+    // ...and dragging back to the right shrinks it again.
+    fireEvent.pointerMove(handle, { clientX: 520, pointerId: 1 });
+    expect(widthOf("actions")).toBe(RIGHT_LAST_WIDTH - 20);
+
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+  });
+
+  it("resizing an unpinned column keeps the plain (non-inverted) direction", () => {
+    const { container } = renderSurface();
+
+    const handle = resizeHandle(container, "c")!;
+    const widthOf = (columnId: string) =>
+      Number.parseFloat(headerCell(container, columnId)!.style.width);
+
+    // The unpinned handle sits on a trailing edge that really does move, so
+    // dragging right grows the column, exactly as before.
+    fireEvent.pointerDown(handle, { button: 0, clientX: 300, pointerId: 2 });
+    fireEvent.pointerMove(handle, { clientX: 340, pointerId: 2 });
+    expect(widthOf("c")).toBe(140);
+
+    fireEvent.pointerMove(handle, { clientX: 275, pointerId: 2 });
+    expect(widthOf("c")).toBe(75);
+
+    fireEvent.pointerUp(handle, { pointerId: 2 });
+  });
+
   it("controlled state.columnPinned round-trips 'right' into the engine", () => {
     let capturedGrid: PretableGrid<PinRow> | null = null;
     render(
