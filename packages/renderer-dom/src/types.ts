@@ -6,7 +6,7 @@ import type {
 } from "@pretable-internal/grid-core";
 import type {
   PlannedColumn,
-  RowMetricsIndex,
+  RowMetricsReader,
 } from "@pretable-internal/layout-core";
 
 export interface DomRenderInput<TRow extends PretableRow = PretableRow> {
@@ -40,8 +40,13 @@ export interface DomRenderSnapshot<TRow extends PretableRow = PretableRow> {
    * unrendered row (scroll-into-view for keyboard focus, for one) read it here
    * instead of re-deriving offsets, which is what keeps them from drifting
    * from `layout-core`.
+   *
+   * Typed as the read-only `RowMetricsReader` rather than the full index: the
+   * snapshot is a render *output*, and the live index it aliases is owned and
+   * rebuilt by the renderer on every layout pass, so a caller that mutated it
+   * would only have its write discarded.
    */
-  rowMetrics: RowMetricsIndex;
+  rowMetrics: RowMetricsReader;
   nodeCount: number;
   totalHeight: number;
   totalWidth: number;

@@ -48,7 +48,7 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
       .filter((column) => column.pinned === "left")
       .map((column) => ({
         columnId: column.id,
-        width: getColumnWidth(column),
+        width: resolveColumnWidth(column),
       })),
   });
   const rows = viewportPlan.rows.flatMap((plannedRow) => {
@@ -71,7 +71,7 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
 
   const columnInputs = input.columns.map((col) => ({
     id: col.id,
-    width: getColumnWidth(col),
+    width: resolveColumnWidth(col),
     pinned: col.pinned,
   }));
 
@@ -141,7 +141,7 @@ function estimateRowHeight<TRow extends PretableRow>(
       fontKey: ESTIMATE_FONT_KEY,
       averageCharWidth: ESTIMATED_CHARACTER_WIDTH,
     });
-    const layout = layoutPreparedText(prepared, getColumnWidth(column), {
+    const layout = layoutPreparedText(prepared, resolveColumnWidth(column), {
       lineHeightPx: ROW_LINE_HEIGHT,
       wrapMode: "wrap",
     });
@@ -170,7 +170,7 @@ function getEstimatedRowHeightSignature<TRow extends PretableRow>(
     .map((column) => {
       const value = String(readCellValue(row, column) ?? "");
 
-      return `${column.id}:${getColumnWidth(column)}:${value}`;
+      return `${column.id}:${resolveColumnWidth(column)}:${value}`;
     })
     .join("|");
 }
@@ -182,7 +182,14 @@ function readCellValue<TRow extends PretableRow>(
   return column.value ? column.value(row) : row[column.id];
 }
 
-function getColumnWidth<TRow extends PretableRow>(
+/**
+ * The width `planColumns` is fed for a column, including the fallbacks applied
+ * when the column declares no `widthPx`. Exported so callers that build a
+ * column-plan input outside this module — scroll-into-view, which re-plans at
+ * an unbounded width so it can reach unrendered columns — resolve widths the
+ * same way the render pass does instead of re-deriving the fallbacks.
+ */
+export function resolveColumnWidth<TRow extends PretableRow>(
   column: PretableColumn<TRow>,
 ): number {
   return (

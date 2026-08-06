@@ -22,5 +22,6 @@ export type {
   PlannedRow,
   PlanViewportInput,
   RowMetricsIndex,
+  RowMetricsReader,
   ViewportPlan,
 } from "./types";

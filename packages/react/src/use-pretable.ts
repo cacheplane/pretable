@@ -14,7 +14,7 @@ import type { PretableColumn } from "./types";
 import {
   createDomRenderSnapshot,
   type PlannedColumn,
-  type RowMetricsIndex,
+  type RowMetricsReader,
 } from "@pretable-internal/renderer-dom";
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
@@ -50,10 +50,10 @@ export interface PretableRenderSnapshot<
   /**
    * Row offsets and heights for **every** visible row, not just the windowed
    * ones in `rows`. Read it to position or scroll to a row that is not
-   * currently rendered; treat it as read-only — it is owned by the renderer
-   * and rebuilt on every layout pass.
+   * currently rendered. Read-only: the underlying index is owned by the
+   * renderer and rebuilt on every layout pass.
    */
-  rowMetrics: RowMetricsIndex;
+  rowMetrics: RowMetricsReader;
   nodeCount: number;
   totalHeight: number;
   totalWidth: number;

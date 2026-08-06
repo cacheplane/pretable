@@ -1,5 +1,5 @@
 import { planColumns } from "./column-plan";
-import type { PlanColumnsColumnInput, RowMetricsIndex } from "./types";
+import type { PlanColumnsColumnInput, RowMetricsReader } from "./types";
 
 /**
  * Minimal scroll offsets that reveal a target row or column.
@@ -66,7 +66,7 @@ import type { PlanColumnsColumnInput, RowMetricsIndex } from "./types";
 /** @internal */
 export interface ScrollTopToRevealInput {
   /** Built over *every* visible row, so any index is valid — rendered or not. */
-  rowMetrics: RowMetricsIndex;
+  rowMetrics: RowMetricsReader;
   targetIndex: number;
   scrollTop: number;
   /** Unoccluded height: the scroller's height minus the sticky header. */
