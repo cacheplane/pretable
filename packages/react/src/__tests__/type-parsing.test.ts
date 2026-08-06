@@ -81,3 +81,43 @@ describe("parseDraftForType — enum", () => {
     });
   });
 });
+
+describe("parseDraftForType — date", () => {
+  const column = { type: "date" as const };
+
+  it("accepts a strict ISO date", () => {
+    expect(parseDraftForType(column, "2026-08-06")).toEqual({
+      ok: true,
+      value: "2026-08-06",
+    });
+  });
+
+  it("normalises a Date instance or timestamp draft to ISO", () => {
+    expect(parseDraftForType(column, new Date(Date.UTC(2026, 7, 6)))).toEqual({
+      ok: true,
+      value: "2026-08-06",
+    });
+  });
+
+  it("commits null for an empty draft", () => {
+    expect(parseDraftForType(column, "")).toEqual({ ok: true, value: null });
+  });
+
+  it("rejects locale formats and nonsense", () => {
+    expect(parseDraftForType(column, "08/06/2026")).toEqual({
+      ok: false,
+      message: "Use YYYY-MM-DD",
+    });
+    expect(parseDraftForType(column, "nope")).toEqual({
+      ok: false,
+      message: "Use YYYY-MM-DD",
+    });
+  });
+
+  it("rejects calendar overflow", () => {
+    expect(parseDraftForType(column, "2026-02-30")).toEqual({
+      ok: false,
+      message: "Use YYYY-MM-DD",
+    });
+  });
+});
