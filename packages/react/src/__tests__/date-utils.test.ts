@@ -46,11 +46,18 @@ describe("date-utils", () => {
     expect(toIsoDate("2026-08-06T23:00:00-11:00")).toBe("2026-08-07");
   });
 
+  it("reads a zone-less datetime as its literal date portion", () => {
+    // No zone → interpreted as UTC, so the day is viewer-independent.
+    expect(toIsoDate("2026-08-06T00:00:00")).toBe("2026-08-06");
+    expect(toIsoDate("2026-08-06T23:59:59")).toBe("2026-08-06");
+    expect(toIsoDate("2026-08-06T13:45")).toBe("2026-08-06");
+    expect(toIsoDate("2026-08-06T13:45:00.500")).toBe("2026-08-06");
+  });
+
   it("rejects ambiguous strings rather than resolving them in local time", () => {
     // Each of these would resolve differently for viewers in different zones.
     expect(toIsoDate("2026-8-6")).toBe("");
     expect(toIsoDate("08/06/2026")).toBe("");
-    expect(toIsoDate("2026-08-06T00:00:00")).toBe("");
     expect(toIsoDate("August 6, 2026")).toBe("");
   });
 
@@ -99,4 +106,86 @@ describe("date-utils", () => {
     expect(monthLabel("2026-08-06")).toBe("August 2026");
     expect(monthLabel("2025-12-01")).toBe("December 2025");
   });
+});
+
+/**
+ * Shared date case table. The twin lives in
+ * `packages/grid-core/src/__tests__/evaluate-filter-date.test.ts` and
+ * exercises the engine's `toDayMs`; this one exercises the editor's
+ * `toIsoDate`. The two helpers are deliberate duplicates of one rule
+ * (grid-core must not depend on @pretable/react), so the tables must stay
+ * identical — that is what stops the two halves from drifting apart.
+ *
+ * `day: null` means "not a date": the editor yields `""`, the engine matches
+ * nothing.
+ */
+const DATE_CASES: { label: string; cell: unknown; day: string | null }[] = [
+  { label: "strict ISO date", cell: "2026-08-06", day: "2026-08-06" },
+  {
+    label: "zone-less datetime → literal date portion (UTC)",
+    cell: "2026-08-06T13:45:00",
+    day: "2026-08-06",
+  },
+  {
+    label: "zone-less datetime, no seconds",
+    cell: "2026-08-06T13:45",
+    day: "2026-08-06",
+  },
+  {
+    label: "zone-less datetime at midnight",
+    cell: "2026-08-06T00:00:00",
+    day: "2026-08-06",
+  },
+  { label: "Z datetime", cell: "2026-08-06T23:00:00Z", day: "2026-08-06" },
+  {
+    label: "positive offset shifts the UTC day back",
+    cell: "2026-08-06T00:00:00+02:00",
+    day: "2026-08-05",
+  },
+  {
+    label: "negative offset shifts the UTC day forward",
+    cell: "2026-08-06T23:00:00-11:00",
+    day: "2026-08-07",
+  },
+  {
+    label: "offset without a colon",
+    cell: "2026-08-06T00:00:00+0200",
+    day: "2026-08-05",
+  },
+  {
+    label: "Date instance",
+    cell: new Date(Date.UTC(2026, 7, 6, 13, 45)),
+    day: "2026-08-06",
+  },
+  { label: "epoch ms", cell: Date.UTC(2026, 7, 6, 23, 59), day: "2026-08-06" },
+  { label: "US/EU-ambiguous locale string", cell: "08/06/2026", day: null },
+  { label: "unpadded ISO", cell: "2026-8-6", day: null },
+  { label: "prose date", cell: "August 6, 2026", day: null },
+  { label: "nonsense", cell: "nope", day: null },
+  { label: "calendar overflow", cell: "2026-02-30", day: null },
+  {
+    label: "calendar overflow, zone-less datetime",
+    cell: "2026-02-30T00:00:00",
+    day: null,
+  },
+  {
+    label: "calendar overflow, zoned datetime",
+    cell: "2026-02-30T00:00:00Z",
+    day: null,
+  },
+  { label: "month overflow", cell: "2026-13-01", day: null },
+  { label: "empty string", cell: "", day: null },
+  { label: "null", cell: null, day: null },
+  { label: "undefined", cell: undefined, day: null },
+  { label: "invalid Date", cell: new Date(Number.NaN), day: null },
+  { label: "out-of-range epoch ms", cell: 8.64e15 + 1, day: null },
+  { label: "nanosecond epoch", cell: 1.78e18, day: null },
+];
+
+describe("toIsoDate — shared case table (twin of the engine's toDayMs)", () => {
+  for (const { label, cell, day } of DATE_CASES) {
+    it(`${label}: ${day ?? "not a date"}`, () => {
+      expect(toIsoDate(cell)).toBe(day ?? "");
+    });
+  }
 });

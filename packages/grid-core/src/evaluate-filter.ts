@@ -26,12 +26,70 @@ function isEmptyCell(cell: unknown): boolean {
   return String(cell).trim() === "";
 }
 
-function toDayMs(input: unknown): number {
-  // Day-resolution: parse and zero the time so "on"/range compare by calendar day.
-  const ms = typeof input === "number" ? input : Date.parse(String(input));
-  if (Number.isNaN(ms)) return Number.NaN;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** An ISO datetime; group 1 is the date portion, group 2 the zone if spelled out. */
+const ISO_DATETIME_RE =
+  /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
+
+/** The UTC-midnight ms of the instant `ms`, or NaN if it isn't a real instant. */
+function utcDayOf(ms: number): number {
   const d = new Date(ms);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  // NaN *and* out-of-range timestamps (|ms| > 8.64e15, e.g. a nanosecond
+  // epoch) both yield an Invalid Date, whose UTC getters would read as NaN.
+  if (Number.isNaN(d.getTime())) return Number.NaN;
+  d.setUTCHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** Strict `yyyy-mm-dd` → UTC-midnight ms, or NaN. Refuses calendar overflow. */
+function isoDayMs(iso: string): number {
+  if (!ISO_DATE_RE.test(iso)) return Number.NaN;
+  const [y, m, d] = iso.split("-").map(Number);
+  const ms = Date.UTC(y, m - 1, d);
+  const back = new Date(ms);
+  // Date.UTC rolls 2026-02-30 forward to March (and maps year 0026 to 1926);
+  // the round-trip catches both.
+  return back.getUTCFullYear() === y &&
+    back.getUTCMonth() === m - 1 &&
+    back.getUTCDate() === d
+    ? ms
+    : Number.NaN;
+}
+
+/**
+ * A cell (or filter operand) → the UTC-midnight ms of its calendar day, or NaN
+ * for "not a date" (which the date branch reads as "no match").
+ *
+ * Accepts a strict `yyyy-mm-dd` string, an ISO datetime (zoned or not), a
+ * `Date`, or finite epoch ms. A **zone-less** datetime is interpreted as UTC,
+ * i.e. its literal date portion is taken — deterministic, so the same cell
+ * buckets into the same day for every viewer. Locale/loose strings
+ * (`08/06/2026`, `2026-8-6`, `August 6, 2026`) are refused rather than run
+ * through `Date.parse`, which resolves them in the *viewer's* timezone and
+ * silently rolls calendar overflow forward (`2026-02-30` → March 2).
+ *
+ * TWIN: `toIsoDate` in `packages/react/src/editors/date-utils.ts` implements
+ * the same rule for the cell editor (grid-core must not depend on
+ * @pretable/react). Change one and you must change the other; the shared case
+ * table in `__tests__/evaluate-filter-date.test.ts` and its twin in
+ * `packages/react/src/__tests__/date-utils.test.ts` pin them together.
+ */
+function toDayMs(input: unknown): number {
+  if (input instanceof Date) return utcDayOf(input.getTime());
+  if (typeof input === "number") return utcDayOf(input);
+  if (typeof input !== "string") return Number.NaN;
+  const trimmed = input.trim();
+  const dateOnly = isoDayMs(trimmed);
+  if (!Number.isNaN(dateOnly)) return dateOnly;
+  const parts = ISO_DATETIME_RE.exec(trimmed);
+  if (!parts) return Number.NaN;
+  // Guard the date portion whether or not a zone follows: `Date.parse` would
+  // roll `2026-02-30T00:00:00Z` forward to March.
+  const day = isoDayMs(parts[1]);
+  if (Number.isNaN(day)) return Number.NaN;
+  // Zone-less → the literal date portion, UTC-interpreted. Zoned → the UTC
+  // day of that instant, so `2026-08-06T00:00:00+02:00` is 2026-08-05.
+  return parts[2] ? utcDayOf(Date.parse(trimmed)) : day;
 }
 
 /**

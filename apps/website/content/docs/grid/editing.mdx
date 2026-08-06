@@ -158,30 +158,28 @@ The field is a fixed ten-character date that opens fully selected, so caret move
 
 #### What the editor accepts from your cell values
 
-The editor seeds itself from the cell value and normalises it to ISO. It deliberately accepts only values whose day is **unambiguous**:
+The editor seeds itself from the cell value and normalises it to ISO. It accepts only values whose day is **unambiguous**, and it reads them exactly the way the [filter engine](/docs/grid/filtering) buckets the same value — so a cell reads the same day for every viewer, and editing it can't move a row out from under its own filter:
 
-| Cell value                                     | Opens as                        |
-| ---------------------------------------------- | ------------------------------- |
-| `"2026-08-06"` (strict ISO)                    | `2026-08-06`                    |
-| `new Date(Date.UTC(2026, 7, 6))`               | `2026-08-06`                    |
-| `1785974400000` (epoch milliseconds)           | the UTC day of that instant     |
-| `"2026-08-06T12:34:56Z"`, `"…T12:34:56+02:00"` | the **UTC** day of that instant |
+| Cell value                                     | Opens as                             |
+| ---------------------------------------------- | ------------------------------------ |
+| `"2026-08-06"` (strict ISO)                    | `2026-08-06`                         |
+| `"2026-08-06T13:45:00"` (no zone)              | `2026-08-06` — the literal date, UTC |
+| `"2026-08-06T12:34:56Z"`, `"…T12:34:56+02:00"` | the **UTC** day of that instant      |
+| `new Date(Date.UTC(2026, 7, 6))`               | `2026-08-06`                         |
+| `1785974400000` (epoch milliseconds)           | the UTC day of that instant          |
+| `"08/06/2026"`, `"2026-8-6"`, `"2026-02-30"`   | not a date — see the callout below   |
 
-A zoned datetime resolves to its **UTC** day, matching how the filter engine buckets the same value — so a cell reads the same day for every viewer, and editing it can't move a row out from under its own filter.
+A **zone-less** datetime — `"2026-08-06T00:00:00"`, the shape many JSON and SQL backends emit — is read as UTC, which means its literal date portion is taken. That's deterministic: every viewer sees `2026-08-06`, wherever they are. A datetime that _does_ carry a zone is resolved to its **UTC** day, so `"2026-08-06T00:00:00+02:00"` is 6 August in Berlin but buckets as `2026-08-05`.
 
 <Callout type="warning">
-  A **zone-less** datetime — `"2026-08-06T00:00:00"`, the shape many JSON and
-  SQL backends emit — is deliberately **not** accepted, and neither are locale
-  strings like `"08/06/2026"`. Without a zone they mean a different day
-  depending on who is looking, so the editor refuses to guess: such a cell opens
-  showing its raw text and is rejected on commit with "Use YYYY-MM-DD".
-
-Filtering is currently more forgiving here and _does_ resolve these shapes in
-the viewer's local time, so the same value can bucket into different days for
-different people. That's a second reason to store plain `YYYY-MM-DD` strings
-(or bridge with `parseEditValue` / `formatEditValue`) rather than relying on
-either behaviour.
-
+  Locale strings like `"08/06/2026"` (6 August or 6 June, depending on who is
+  looking), unpadded parts like `"2026-8-6"`, and calendar overflow like
+  `"2026-02-30"` are **not** dates — to the editor _or_ the filter engine.
+  Rather than guess, both halves refuse: such a cell opens showing its raw text
+  and is rejected on commit with "Use YYYY-MM-DD", and it matches no date filter
+  at all (though `isEmpty` / `isNotEmpty` still see it as non-empty). Store
+  plain `YYYY-MM-DD` strings — or bridge with `parseEditValue` /
+  `formatEditValue` — if your data has shapes like these.
 </Callout>
 
 Out of scope for the built-in editor, by design: time-of-day, date ranges, `min`/`max` bounds, and a configurable week start. Reach for [`renderEditor`](#custom-editors) — paired with `parseEditValue` and `formatEditValue` — when you need any of them.

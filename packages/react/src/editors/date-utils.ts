@@ -1,7 +1,7 @@
 const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-/** An ISO datetime whose zone is spelled out, so it resolves the same everywhere. */
-const ZONED_DATETIME_RE =
-  /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
+/** An ISO datetime; group 1 is the date portion, group 2 the zone if spelled out. */
+const ISO_DATETIME_RE =
+  /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
 const DAY_MS = 86_400_000;
 const MONTHS = [
   "January",
@@ -48,14 +48,23 @@ export function isValidIsoDate(text: string): boolean {
 /**
  * A cell value → `yyyy-mm-dd`, or `""`.
  *
- * Only *unambiguous* sources are accepted: a strict `yyyy-mm-dd` string, a
- * `Date`, a finite epoch-ms number, or a datetime string carrying an explicit
- * zone (`Z` or a `±HH:MM`/`±HHMM` offset). Everything else — `2026-8-6`,
- * `08/06/2026`, `2026-08-06T00:00:00` — is refused rather than run through
- * `Date.parse`, which resolves them in the *viewer's* timezone (so the same
- * cell would show a different day for different users) and silently rolls
- * calendar overflow forward (`2026-02-30` → March 2). Zoned datetimes yield
- * the *UTC* day, matching the filter engine's `toDayMs`.
+ * Accepts a strict `yyyy-mm-dd` string, an ISO datetime (zoned or not), a
+ * `Date`, or a finite epoch-ms number. A **zone-less** datetime
+ * (`2026-08-06T00:00:00`, the shape most JSON and SQL backends emit) is
+ * interpreted as UTC, i.e. its literal date portion is taken — deterministic,
+ * so the cell reads the same day for every viewer. A zoned datetime yields the
+ * *UTC* day of that instant. Everything else — `2026-8-6`, `08/06/2026`,
+ * `August 6, 2026` — is refused rather than run through `Date.parse`, which
+ * resolves them in the *viewer's* timezone (so the same cell would show a
+ * different day for different users) and silently rolls calendar overflow
+ * forward (`2026-02-30` → March 2).
+ *
+ * TWIN: `toDayMs` in `packages/grid-core/src/evaluate-filter.ts` implements
+ * the same rule for the filter engine (grid-core must not depend on
+ * @pretable/react). Change one and you must change the other; the shared case
+ * table in `../__tests__/date-utils.test.ts` and its twin in
+ * `packages/grid-core/src/__tests__/evaluate-filter-date.test.ts` pin them
+ * together.
  */
 export function toIsoDate(value: unknown): string {
   if (value === null || value === undefined || value === "") return "";
@@ -65,10 +74,14 @@ export function toIsoDate(value: unknown): string {
   else if (typeof value === "string") {
     const trimmed = value.trim();
     if (isValidIsoDate(trimmed)) return trimmed;
-    const zoned = ZONED_DATETIME_RE.exec(trimmed);
-    // Guard the date portion too: `Date.parse` rolls `2026-02-30T00:00:00Z`
-    // forward to March, the very thing `parseIsoDate` exists to reject.
-    if (!zoned || !isValidIsoDate(zoned[1])) return "";
+    const parts = ISO_DATETIME_RE.exec(trimmed);
+    // Guard the date portion whether or not a zone follows: `Date.parse` rolls
+    // `2026-02-30T00:00:00Z` forward to March, the very thing `parseIsoDate`
+    // exists to reject.
+    if (!parts || !isValidIsoDate(parts[1])) return "";
+    // Zone-less → the literal date portion, UTC-interpreted. Zoned → the UTC
+    // day of that instant, so `2026-08-06T00:00:00+02:00` is 2026-08-05.
+    if (!parts[2]) return parts[1];
     ms = Date.parse(trimmed);
   } else return "";
   const d = new Date(ms);
@@ -76,9 +89,7 @@ export function toIsoDate(value: unknown): string {
   // epoch) both yield an Invalid Date, whose UTC getters would format as
   // "0NaN-NaN-NaN" rather than failing.
   if (Number.isNaN(d.getTime())) return "";
-  return formatUtc(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
-  );
+  return formatUtc(d.getTime());
 }
 
 /**
