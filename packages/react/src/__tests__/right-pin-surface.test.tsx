@@ -401,9 +401,9 @@ describe("right-pinned columns — surface sticky sites", () => {
     fireEvent.pointerUp(handle, { pointerId: 2 });
   });
 
-  it("controlled state.columnPinned round-trips 'right' into the engine", () => {
+  it("controlled state.columnPinned round-trips 'right' into the engine and into the DOM", () => {
     let capturedGrid: PretableGrid<PinRow> | null = null;
-    render(
+    const { container } = render(
       <PretableSurface
         ariaLabel="controlled-pin-grid"
         columns={[
@@ -429,5 +429,173 @@ describe("right-pinned columns — surface sticky sites", () => {
     expect(cols.find((col) => col.id === "actions")?.pinned).toBe("right");
     expect(cols.find((col) => col.id === "first")?.pinned).toBe("left");
     expect(cols.find((col) => col.id === "c")?.pinned).toBeUndefined();
+
+    // Engine state alone is not the contract — the cells have to actually
+    // render pinned. The prop columns carry no `pinned`, so this is the only
+    // assertion that catches the surface reading pin state off the props.
+    expect(bodyCell(container, "actions")).toHaveAttribute(
+      "data-pretable-pinned",
+      "right",
+    );
+    expect(bodyCell(container, "actions")).toHaveStyle({ position: "sticky" });
+    expect(bodyCell(container, "first")).toHaveAttribute(
+      "data-pretable-pinned",
+      "left",
+    );
+    expect(bodyCell(container, "first")).toHaveStyle({ position: "sticky" });
+    expect(bodyCell(container, "c")).not.toHaveAttribute(
+      "data-pretable-pinned",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pin state applied through the ENGINE only (controlled state.columnPinned or
+// an imperative grid.setColumnPinned). The prop `columns` array never catches
+// up — mergeColumnsFromProps only re-runs on an id-list change and gives
+// engine state precedence — so every render site has to read the planned
+// column, not the prop column.
+// ---------------------------------------------------------------------------
+
+const UNPINNED_COLUMNS = [
+  { id: "first", header: "First", widthPx: 120 },
+  { id: "b", header: "B", widthPx: 100 },
+  { id: "c", header: "C", widthPx: 100 },
+  { id: "d", header: "D", widthPx: 100 },
+  { id: "status", header: "Status", widthPx: 90 },
+  { id: "actions", header: "Actions", widthPx: 80 },
+];
+
+describe("pin state applied through the engine only", () => {
+  it("right pin via controlled state.columnPinned renders a sticky, marked body cell", () => {
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="engine-right-pin"
+        columns={UNPINNED_COLUMNS}
+        getRowId={(row: PinRow) => row.id}
+        overscan={0}
+        rows={rows}
+        state={{ columnPinned: { actions: "right" } }}
+        viewportHeight={200}
+      />,
+    );
+
+    const cell = bodyCell(container, "actions");
+    // Without the attribute the pinned-cell CSS in @pretable/ui never applies,
+    // so the cell renders transparent and scrolled rows show through it.
+    expect(cell).toHaveAttribute("data-pretable-pinned", "right");
+    expect(cell).toHaveStyle({
+      position: "sticky",
+      left: `${VIEWPORT_WIDTH - RIGHT_LAST_WIDTH}px`,
+    });
+    expectPositionedFromLeft(cell);
+  });
+
+  it("left pin via controlled state.columnPinned sticks header and body at the planned offset", () => {
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="engine-left-pin"
+        columns={UNPINNED_COLUMNS}
+        getRowId={(row: PinRow) => row.id}
+        overscan={0}
+        rows={rows}
+        state={{ columnPinned: { first: "left", b: "left" } }}
+        viewportHeight={200}
+      />,
+    );
+
+    for (const [columnId, left] of [
+      ["first", 0],
+      ["b", 120],
+    ] as const) {
+      const header = headerCell(container, columnId);
+      expect(header).toHaveAttribute("data-pretable-pinned", "left");
+      expect(header).toHaveStyle({ position: "sticky", left: `${left}px` });
+
+      const cell = bodyCell(container, columnId);
+      expect(cell).toHaveAttribute("data-pretable-pinned", "left");
+      expect(cell).toHaveStyle({ position: "sticky", left: `${left}px` });
+    }
+  });
+
+  it("unpinning a prop-pinned column through the engine drops the sticky style and the attribute", () => {
+    let capturedGrid: PretableGrid<PinRow> | null = null;
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="engine-unpin"
+        columns={columns}
+        getRowId={(row: PinRow) => row.id}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={0}
+        rows={rows}
+        viewportHeight={200}
+      />,
+    );
+
+    expect(bodyCell(container, "actions")).toHaveAttribute(
+      "data-pretable-pinned",
+      "right",
+    );
+
+    act(() => {
+      capturedGrid!.setColumnPinned("actions", null);
+    });
+
+    // A stale attribute would give a normally-scrolling column the pinned
+    // background, z-index and leading divider.
+    const cell = bodyCell(container, "actions");
+    expect(cell).not.toHaveAttribute("data-pretable-pinned");
+    expect(cell).not.toHaveStyle({ position: "sticky" });
+    expect(headerCell(container, "actions")).not.toHaveAttribute(
+      "data-pretable-pinned",
+    );
+  });
+
+  it("left-pin offsets follow engine widths, not the prop widths", () => {
+    let capturedGrid: PretableGrid<PinRow> | null = null;
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="engine-left-pin-widths"
+        columns={[
+          {
+            id: "first",
+            header: "First",
+            pinned: "left" as const,
+            widthPx: 120,
+          },
+          { id: "b", header: "B", pinned: "left" as const, widthPx: 100 },
+          { id: "c", header: "C", widthPx: 100 },
+          { id: "d", header: "D", widthPx: 100 },
+          { id: "status", header: "Status", widthPx: 90 },
+          { id: "actions", header: "Actions", widthPx: 80 },
+        ]}
+        getRowId={(row: PinRow) => row.id}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={0}
+        rows={rows}
+        viewportHeight={200}
+      />,
+    );
+
+    expect(bodyCell(container, "b")).toHaveStyle({ left: "120px" });
+
+    act(() => {
+      capturedGrid!.setColumnWidth("first", 200);
+    });
+
+    // The prop column still says 120; the engine says 200. The second
+    // left-pinned column must sit flush against the resized first one.
+    expect(headerCell(container, "b")).toHaveStyle({
+      position: "sticky",
+      left: "200px",
+    });
+    expect(bodyCell(container, "b")).toHaveStyle({
+      position: "sticky",
+      left: "200px",
+    });
   });
 });
