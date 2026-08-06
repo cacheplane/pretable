@@ -9,7 +9,8 @@ const PENDING_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Shared field chrome for typed cell editors: autofocus+select, ARIA
+ * Shared field chrome for typed cell editors: autofocus (select-all, or
+ * caret-at-end when the draft was seeded by type-to-replace), ARIA
  * (label/invalid/errormessage/busy), readOnly-while-pending, blur-commit
  * guarded to the editing phase, and Enter/Tab/Escape commit keys.
  */
@@ -18,8 +19,19 @@ export function useEditorField<
 >(input: PretableEditorInput) {
   const ref = useRef<E>(null);
   useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    if (input.seededFromTyping) {
+      // The draft IS the character the user just typed: collapse the caret
+      // after it so the next keystroke appends rather than replacing.
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    } else {
+      el.select();
+    }
+    // Mount-only: the entry path can't change for the life of one edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pending = PENDING_STATUSES.has(input.status);

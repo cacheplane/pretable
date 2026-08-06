@@ -620,6 +620,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     editVisibleRowsRef.current = snapshot.visibleRows;
     onCellEditRef.current = onCellEdit;
   });
+  // Which entry path opened the active edit. Type-to-replace seeds the draft
+  // with the typed character, so the editor must not select it (the next
+  // keystroke would replace it). Every begin() that opens an editor sets this,
+  // batched with the begin in the same event, so the editor mounts knowing it.
+  const [seededFromTyping, setSeededFromTyping] = useState(false);
   const editController = useCellEditController<TRow>({
     grid,
     getColumns: useCallback(() => editColumnsRef.current, []),
@@ -1169,6 +1174,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               // grid handling — printable keys must not seed a popover draft.
             } else if (event.key === "Enter" || event.key === "F2") {
               event.preventDefault();
+              setSeededFromTyping(false);
               void editController.begin(focusAddr);
               return;
             }
@@ -1183,6 +1189,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               !event.altKey
             ) {
               event.preventDefault();
+              setSeededFromTyping(true);
               void editController.begin(focusAddr, event.key);
               return;
             }
@@ -1946,6 +1953,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       // active edit with no editor rendered).
                       if (column.type === "boolean") return;
                       if (column.editable) {
+                        setSeededFromTyping(false);
                         void editController.begin({
                           rowId: id,
                           columnId: column.id,
@@ -2088,6 +2096,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             commit: (dir?: PretableFocusDirection) =>
                               void editController.commit(dir),
                             cancel: () => editController.cancel(),
+                            seededFromTyping,
                           } as unknown as PretableEditorInput
                         }
                       />
