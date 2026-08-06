@@ -1,3 +1,4 @@
+import { DateCellEditor } from "./editors/DateCellEditor";
 import { EnumCellEditor } from "./editors/EnumCellEditor";
 import { MultilineCellEditor } from "./editors/MultilineCellEditor";
 import { NumberCellEditor } from "./editors/NumberCellEditor";
@@ -13,11 +14,11 @@ function editorFor(input: PretableEditorInput) {
   if (type === "number") return <NumberCellEditor input={input} />;
   if (type === "enum" && (input.column.options?.length ?? 0) > 0)
     return <EnumCellEditor input={input} />;
+  if (type === "date") return <DateCellEditor input={input} />;
   if (type === "text" && input.column.wrap)
     return <MultilineCellEditor input={input} />;
-  // date falls back to text until sub-project 3; boolean never reaches this
-  // popover path (the cell control commits directly); an enum column without
-  // options behaves as text.
+  // boolean never reaches this popover path (the cell control commits
+  // directly); an enum column without options behaves as text.
   return <TextCellEditor input={input} />;
 }
 
