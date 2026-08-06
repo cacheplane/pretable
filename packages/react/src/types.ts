@@ -38,6 +38,14 @@ export interface PretableEditorInput<
   setDraft: (value: unknown) => void;
   commit: (direction?: PretableFocusDirection) => void;
   cancel: () => void;
+  /**
+   * True when the edit began by typing a printable character on the focused
+   * cell (type-to-replace), so the draft is already that character. Editors
+   * put the caret at the end in that case — select-all would make the next
+   * keystroke replace the seed instead of appending to it. Absent/false for
+   * Enter, F2 and double-click, where select-all is the wanted behavior.
+   */
+  seededFromTyping?: boolean;
 }
 
 /**

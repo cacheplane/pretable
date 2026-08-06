@@ -65,6 +65,7 @@ import { ROW_SELECT_COLUMN_ID } from "./constants";
 import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
+import { toBooleanCell } from "./editors/boolean-utils";
 import {
   FilterMenu,
   FunnelButton,
@@ -620,6 +621,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     editVisibleRowsRef.current = snapshot.visibleRows;
     onCellEditRef.current = onCellEdit;
   });
+  // Which entry path opened the active edit. Type-to-replace seeds the draft
+  // with the typed character, so the editor must not select it (the next
+  // keystroke would replace it). Every begin() that opens an editor sets this,
+  // batched with the begin in the same event, so the editor mounts knowing it.
+  //
+  // It is surface state rather than something the controller derives from
+  // `initialDraft !== undefined`, because deriving it would still not cover
+  // the one path that can go stale: `grid.beginEdit()` called imperatively
+  // bypasses the controller entirely, so an editor opened that way inherits
+  // whichever value the *previous* edit left behind. Closing that hole means
+  // carrying the flag in the engine's edit state, which is a public-API
+  // decision, not a rendering detail. The consequence today is cosmetic: an
+  // imperatively opened editor may put the caret at the end instead of
+  // selecting the draft.
+  const [seededFromTyping, setSeededFromTyping] = useState(false);
   const editController = useCellEditController<TRow>({
     grid,
     getColumns: useCallback(() => editColumnsRef.current, []),
@@ -665,7 +681,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     }
     const row = editVisibleRowsRef.current.find((r) => r.id === rowId)?.row;
     if (!row) return;
-    const current = Boolean(resolveCellValue(row, column));
+    // Negate the value the checkbox is *showing*, not raw truthiness: a cell
+    // holding `"false"` renders unchecked, so its toggle must commit `true`.
+    const current = toBooleanCell(resolveCellValue(row, column));
     await editController.begin({ rowId, columnId: column.id }, !current);
     await editController.commit();
   };
@@ -1169,6 +1187,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               // grid handling — printable keys must not seed a popover draft.
             } else if (event.key === "Enter" || event.key === "F2") {
               event.preventDefault();
+              setSeededFromTyping(false);
               void editController.begin(focusAddr);
               return;
             }
@@ -1183,6 +1202,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               !event.altKey
             ) {
               event.preventDefault();
+              setSeededFromTyping(true);
               void editController.begin(focusAddr, event.key);
               return;
             }
@@ -1946,6 +1966,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       // active edit with no editor rendered).
                       if (column.type === "boolean") return;
                       if (column.editable) {
+                        setSeededFromTyping(false);
                         void editController.begin({
                           rowId: id,
                           columnId: column.id,
@@ -2051,7 +2072,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       // this branch always wins over the popover branch.
                       <>
                         <BooleanCellControl
-                          checked={Boolean(value)}
+                          checked={toBooleanCell(value)}
                           editable={Boolean(column.editable)}
                           status={cellEdit ? cellEdit.status : null}
                           errorId={
@@ -2088,6 +2109,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             commit: (dir?: PretableFocusDirection) =>
                               void editController.commit(dir),
                             cancel: () => editController.cancel(),
+                            seededFromTyping,
                           } as unknown as PretableEditorInput
                         }
                       />

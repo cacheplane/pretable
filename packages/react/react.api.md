@@ -241,6 +241,7 @@ export interface PretableEditorInput<TRow extends PretableRow = PretableRow> ext
     draft: unknown;
     // (undocumented)
     error?: string;
+    seededFromTyping?: boolean;
     // (undocumented)
     setDraft: (value: unknown) => void;
     // (undocumented)
@@ -725,7 +726,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:490:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:498:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -120,3 +120,51 @@ describe("CellEditor (default)", () => {
     );
   });
 });
+
+describe("editor caret placement on mount", () => {
+  it("selects the whole draft for a normal edit (Enter / F2 / double-click)", () => {
+    render(<CellEditor input={makeInput({ draft: "Ada" })} />);
+    const box = screen.getByRole("textbox") as HTMLInputElement;
+    expect(box).toHaveFocus();
+    expect(box.selectionStart).toBe(0);
+    expect(box.selectionEnd).toBe(3);
+  });
+
+  it("puts the caret at the end when the draft was seeded by typing", () => {
+    render(
+      <CellEditor input={makeInput({ draft: "a", seededFromTyping: true })} />,
+    );
+    const box = screen.getByRole("textbox") as HTMLInputElement;
+    expect(box).toHaveFocus();
+    // Nothing selected — the next keystroke appends instead of replacing.
+    expect(box.selectionStart).toBe(1);
+    expect(box.selectionEnd).toBe(1);
+  });
+
+  it("applies to every built-in editor, not just text", () => {
+    const cases: Partial<PretableEditorInput>[] = [
+      { column: { id: "n", type: "number" }, draft: "7" },
+      { column: { id: "d", type: "date" }, draft: "2" },
+      { column: { id: "w", type: "text", wrap: true }, draft: "z" },
+      {
+        column: {
+          id: "e",
+          type: "enum",
+          options: [{ value: "queued", label: "Queued" }],
+        },
+        draft: "q",
+      },
+    ];
+    for (const over of cases) {
+      const { unmount } = render(
+        <CellEditor input={makeInput({ ...over, seededFromTyping: true })} />,
+      );
+      const box = document.querySelector(
+        ".pretable-cell-editor",
+      ) as HTMLInputElement;
+      expect(box.selectionStart).toBe(1);
+      expect(box.selectionEnd).toBe(1);
+      unmount();
+    }
+  });
+});
