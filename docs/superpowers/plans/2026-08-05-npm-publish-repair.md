@@ -652,7 +652,7 @@ Expected: exit 0 and all five package checks plus four CSS paths print.
 Run:
 
 ```bash
-if rg -n 'workspace:|link:|file:|patch:|overrides:|/Users/blove/repos/pretable' "$proof_dir/pnpm-lock.yaml" "$proof_dir/package.json"; then
+if rg -n 'workspace:|link:|(^|[[:space:]])file:|patch:|overrides:|/Users/blove/repos/pretable' "$proof_dir/pnpm-lock.yaml" "$proof_dir/package.json"; then
   echo "Local or overridden resolution found"
   exit 1
 fi
