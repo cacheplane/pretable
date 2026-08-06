@@ -4097,9 +4097,9 @@ describe("column reorder", () => {
     ]);
   });
 
-  it("controlled state.columnPinned round-trip pins the column in the engine", () => {
+  it("controlled state.columnPinned round-trip pins the column in the engine and in the DOM", () => {
     let capturedGrid: PretableGrid<GridRow> | null = null;
-    render(
+    const { container } = render(
       <PretableSurface
         ariaLabel="reorder-grid"
         columns={gridColumns}
@@ -4115,6 +4115,20 @@ describe("column reorder", () => {
     );
     const colC = capturedGrid!.options.columns.find((c) => c.id === "c");
     expect(colC?.pinned).toBe("left");
+
+    // `gridColumns` carries no `pinned`, so the DOM assertions are what prove
+    // the surface renders from engine state rather than from the prop array.
+    const header = container.querySelector<HTMLElement>(
+      '[data-pretable-header-cell][data-pretable-column-id="c"]',
+    );
+    expect(header).toHaveAttribute("data-pretable-pinned", "left");
+    expect(header).toHaveStyle({ position: "sticky", left: "0px" });
+
+    const cell = container.querySelector<HTMLElement>(
+      '[data-pretable-cell][data-pretable-column-id="c"]',
+    );
+    expect(cell).toHaveAttribute("data-pretable-pinned", "left");
+    expect(cell).toHaveStyle({ position: "sticky", left: "0px" });
   });
 });
 

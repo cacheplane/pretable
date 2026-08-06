@@ -119,8 +119,11 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   valueClassName,
   viewportHeight,
 }: LabeledGridSurfaceProps<TRow>) {
-  const getPinnedClassName = (column: PretableColumn<TRow>) =>
-    column.pinned != null && pinnedClassName ? pinnedClassName : undefined;
+  // `pinned` comes off the engine's column plan, not the `columns` prop — pins
+  // set through controlled state, `grid.setColumnPinned` or drag-to-pin never
+  // write back to the prop.
+  const getPinnedClassName = (pinned: "left" | "right" | null) =>
+    pinned != null && pinnedClassName ? pinnedClassName : undefined;
   const activeFilterColumns = new Set(
     Object.entries(state?.filters ?? {})
       .filter(([, filter]) => isColumnFilterActive(filter))
@@ -139,36 +142,18 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
     <PretableSurface
       ariaLabel={ariaLabel}
       columns={columns}
-      getBodyCellClassName={({ column }) =>
-        joinClassNames(bodyCellClassName, getPinnedClassName(column))
+      getBodyCellClassName={({ pinned }) =>
+        joinClassNames(bodyCellClassName, getPinnedClassName(pinned))
       }
-      getBodyCellProps={(input) =>
-        mergeProps(
-          input.column.pinned != null
-            ? ({
-                "data-pretable-pinned": input.column.pinned,
-              } as HTMLAttributes<HTMLDivElement>)
-            : undefined,
-          getBodyCellProps?.(input),
-        )
-      }
-      getHeaderCellClassName={({ column }) =>
+      getBodyCellProps={getBodyCellProps}
+      getHeaderCellClassName={({ column, pinned }) =>
         joinClassNames(
           headerCellClassName,
-          getPinnedClassName(column),
+          getPinnedClassName(pinned),
           activeFilterColumns.has(column.id) ? "is-filtered" : undefined,
         )
       }
-      getHeaderCellProps={(input) =>
-        mergeProps(
-          input.column.pinned != null
-            ? ({
-                "data-pretable-pinned": input.column.pinned,
-              } as HTMLAttributes<HTMLButtonElement>)
-            : undefined,
-          getHeaderCellProps?.(input),
-        )
-      }
+      getHeaderCellProps={getHeaderCellProps}
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
       state={state}
@@ -218,24 +203,6 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ") || undefined;
-}
-
-function mergeProps<T extends HTMLAttributes<HTMLElement>>(
-  base: T | undefined,
-  extra: T | undefined,
-) {
-  if (!base) {
-    return extra;
-  }
-
-  if (!extra) {
-    return base;
-  }
-
-  return {
-    ...base,
-    ...extra,
-  };
 }
 
 function formatDefaultValue(value: unknown) {

@@ -121,6 +121,52 @@ describe("LabeledGridSurface", () => {
     expect(timestampHeader).toHaveTextContent("Timestamp▼");
   }, 15_000);
 
+  it("applies pinnedClassName for columns pinned through the engine only", () => {
+    // None of these prop columns declare `pinned` — the pin lives solely in
+    // controlled engine state, which is the authoritative source.
+    const unpinnedColumns = columns.map((column) => {
+      const next = { ...column };
+      delete next.pinned;
+      return next;
+    });
+
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Inspection grid"
+        bodyCellClassName="inspection-cell"
+        columns={unpinnedColumns}
+        getRowId={(row) => row.id}
+        headerCellClassName="inspection-header-cell"
+        state={{
+          sort: [],
+          filters: {},
+          columnPinned: { severity: "left" },
+        }}
+        overscan={0}
+        pinnedClassName="is-pinned"
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    const severityHeader = view.getByRole("columnheader", {
+      name: "Sort Severity",
+    });
+    const tagsHeader = view.getByRole("columnheader", { name: "Sort Tags" });
+    const firstRow = view.getAllByTestId("pretable-row")[0]!;
+    const severityCell = within(firstRow)
+      .getAllByText("Severity")[0]!
+      .closest("[data-pretable-cell]");
+    const tagsCell = within(firstRow)
+      .getAllByText("Tags")[0]!
+      .closest("[data-pretable-cell]");
+
+    expect(severityHeader).toHaveClass("inspection-header-cell", "is-pinned");
+    expect(severityCell).toHaveClass("inspection-cell", "is-pinned");
+    expect(tagsHeader).not.toHaveClass("is-pinned");
+    expect(tagsCell).not.toHaveClass("is-pinned");
+  }, 15_000);
+
   it("forwards selected row id changes from the shared surface (keyboard row-toggle)", () => {
     const onSelectedRowIdChange = vi.fn();
     const view = render(
