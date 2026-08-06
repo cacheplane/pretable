@@ -369,9 +369,27 @@ describe("keyboard focus scrolls the viewport into view", () => {
     focusCell(grid, "r10", "a");
     expect(writes.top).toEqual([11 * ROW_HEIGHT - BODY_HEIGHT]); // 352
 
-    // Simulate the user scrolling the focused row clean out of view. The
-    // surface sees the resulting scroll event and re-renders; it must not put
-    // the offset back.
+    // Let the engine catch up with the offset the surface just wrote, which is
+    // what the browser's own scroll event does and what actually SETTLES the
+    // address: the effect re-runs against a viewport that really is at 352,
+    // `scrollTopToReveal` reports the target revealed, and the address is
+    // marked never-again.
+    //
+    // Skipping this step is what made an earlier version of this test vacuous.
+    // Assigning `scrollTop` fires no scroll event in jsdom, so the engine's
+    // viewport would still read 0; the staged scroll below would then call
+    // `setViewport` with values the engine already holds, `setViewport` would
+    // bail without emitting, and no re-render — and therefore no effect pass —
+    // would ever happen. `writes.top` would be empty however the surface
+    // behaved.
+    act(() => {
+      fireEvent.scroll(viewport);
+    });
+    expect(writes.top).toEqual([11 * ROW_HEIGHT - BODY_HEIGHT]);
+
+    // NOW simulate the user scrolling the focused row clean out of view. This
+    // is a real change to the engine's viewport, so the surface does re-render
+    // and the effect does run — and it must not put the offset back.
     viewport.scrollTop = 0;
     writes.top.length = 0;
     act(() => {
