@@ -17,6 +17,7 @@ import type {
   ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
+  PretableEditInput,
   PretableFocusState,
   PretableGrid,
   PretableGridOptions,
@@ -24,6 +25,7 @@ import type {
   PretableRow,
   PretableSelectionState,
   PretableSortEntry,
+  PretableVisibleRow,
 } from "@pretable/core";
 import type {
   PretableCellRenderInput,
@@ -85,6 +87,14 @@ import {
   type SerializeRangesArgs,
   serializeRangesAsTsv,
 } from "./copy";
+import {
+  mapPasteToTargets,
+  type PastedCell,
+  type PastePayload,
+  parseTsv,
+  type RejectedPasteCell,
+} from "./paste";
+import { parseDraftForType } from "./editors/type-parsing";
 
 async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -363,6 +373,17 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     value: unknown;
     row: TRow;
   }) => void | Promise<void>;
+  /**
+   * Called once per clipboard paste, with every cell the block landed on that
+   * survived the gate (`parseEditValue`/type coercion → `editable` →
+   * `validate`), the ones that did not, and how much of the block fell off the
+   * grid's edges. The grid is controlled and never mutates rows: apply
+   * `cells` in a single state update.
+   *
+   * Paste is opt-in — without this prop the surface leaves paste events alone.
+   * Pastes that land while a cell editor is focused belong to that editor.
+   */
+  onPaste?: (payload: PastePayload<TRow>) => void | Promise<void>;
 }
 
 interface MemoizedCellContentProps {
@@ -549,6 +570,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   copyToClipboard,
   messages,
   onCellEdit,
+  onPaste,
 }: PretableSurfaceProps<TRow>) {
   const [measuredHeights, setMeasuredHeights] = useState<
     Record<string, number>
@@ -690,10 +712,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const editColumnsRef = useRef(effectiveColumns);
   const editVisibleRowsRef = useRef(snapshot.visibleRows);
   const onCellEditRef = useRef(onCellEdit);
+  const onPasteRef = useRef(onPaste);
   useLayoutEffect(() => {
     editColumnsRef.current = effectiveColumns;
     editVisibleRowsRef.current = snapshot.visibleRows;
     onCellEditRef.current = onCellEdit;
+    onPasteRef.current = onPaste;
   });
   // Which entry path opened the active edit. Type-to-replace seeds the draft
   // with the typed character, so the editor must not select it (the next
@@ -761,6 +785,200 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     await editController.begin({ rowId, columnId: column.id }, !current);
     await editController.commit();
   };
+
+  // ---------------------------------------------------------------------
+  // Clipboard paste
+  // ---------------------------------------------------------------------
+  // Monotonic token mirroring useCellEditController's: the async gate captures
+  // it before awaiting and re-checks after, so a paste that resolves once a
+  // newer paste has started (or after unmount) is discarded rather than firing
+  // a stale onPaste. Deliberately NOT bumped when rows/columns change identity:
+  // a streaming grid replaces `visibleRows` constantly, and the payload is
+  // addressed by row id — the consumer applies it against its own current
+  // state, exactly as it does for onCellEdit.
+  const pasteTokenRef = useRef(0);
+
+  const handlePaste = useCallback(
+    (event: ClipboardEvent) => {
+      const onPasteFn = onPasteRef.current;
+      if (!onPasteFn) return; // paste is opt-in, exactly like onCellEdit
+      // A focused editor input owns its own paste. Mirrors the Cmd+C guard's
+      // target check, plus an activeElement check so an event that targets the
+      // grid root while the editor holds focus is ignored too.
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      const active = viewportRef.current?.ownerDocument.activeElement;
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (text === "") return;
+      const matrix = parseTsv(text);
+      if (matrix.length === 0) return;
+
+      const snap = grid.getSnapshot();
+      const columns = editColumnsRef.current;
+      const anchored = resolvePasteAnchor(
+        snap.selection.ranges,
+        snap.focus,
+        snap.visibleRows,
+        columns,
+      );
+      if (!anchored) return; // nothing selected or focused: not ours to handle
+
+      const targets = mapPasteToTargets<TRow>({
+        matrix,
+        anchor: anchored.anchor,
+        selectionSize: anchored.selectionSize,
+        visibleRows: snap.visibleRows,
+        columns,
+      });
+
+      // From here the grid owns this paste; the browser must not also insert it.
+      event.preventDefault();
+
+      let sourceColumns = 0;
+      for (const row of matrix) {
+        sourceColumns = Math.max(sourceColumns, row.length);
+      }
+
+      const myToken = (pasteTokenRef.current += 1);
+      const columnById = new Map(columns.map((c) => [c.id, c]));
+      const rowById = new Map(snap.visibleRows.map((r) => [r.id, r.row]));
+
+      // One slot per target, so rejections keep the block's row-major order
+      // whether they came from coercion (sync) or from the gate (async).
+      const outcomes = new Array<PastedCell<TRow> | RejectedPasteCell | null>(
+        targets.cells.length,
+      ).fill(null);
+      const candidates: {
+        index: number;
+        target: (typeof targets.cells)[number];
+        input: PretableEditInput<TRow>;
+        value: unknown;
+      }[] = [];
+
+      targets.cells.forEach((target, index) => {
+        const column = columnById.get(target.columnId);
+        const row = rowById.get(target.rowId);
+        if (!column || !row) return;
+        const input: PretableEditInput<TRow> = {
+          rowId: target.rowId,
+          columnId: target.columnId,
+          row,
+          column,
+          value: resolveCellValue(row, column),
+        };
+        // Same coercion a committed edit gets: the column's parseEditValue
+        // wins, otherwise the built-in per-type parse — so number/date/enum
+        // columns yield typed values instead of clipboard strings.
+        let value: unknown;
+        if (column.parseEditValue) {
+          try {
+            value = column.parseEditValue(target.raw, input);
+          } catch (err) {
+            outcomes[index] = {
+              ...target,
+              reason: "invalid",
+              message: err instanceof Error ? err.message : String(err),
+            };
+            return;
+          }
+        } else {
+          const parsed = parseDraftForType(column, target.raw);
+          if (!parsed.ok) {
+            outcomes[index] = {
+              ...target,
+              reason: "invalid",
+              message: parsed.message,
+            };
+            return;
+          }
+          value = parsed.value;
+        }
+        candidates.push({ index, target, input, value });
+      });
+
+      const gate = async (): Promise<void> => {
+        // Candidates are gated in parallel. Within one candidate `validate`
+        // runs only after `editable` said yes — a column's validate may assume
+        // the cell is writable, and there is nothing to learn from a cell that
+        // is already rejected.
+        const resolved = await Promise.all(
+          candidates.map(
+            async ({
+              target,
+              input,
+              value,
+            }): Promise<PastedCell<TRow> | RejectedPasteCell> => {
+              const editable = input.column.editable ?? false;
+              const allowed =
+                typeof editable === "function"
+                  ? await editable(input)
+                  : editable;
+              if (!allowed) return { ...target, reason: "not-editable" };
+              if (input.column.validate) {
+                const result = await input.column.validate(value, input);
+                if (result !== true) {
+                  return { ...target, reason: "invalid", message: result };
+                }
+              }
+              return {
+                rowId: target.rowId,
+                columnId: target.columnId,
+                raw: target.raw,
+                value,
+                row: input.row,
+              };
+            },
+          ),
+        );
+        if (myToken !== pasteTokenRef.current) return; // stale
+        candidates.forEach((candidate, i) => {
+          outcomes[candidate.index] = resolved[i]!;
+        });
+
+        const cells: PastedCell<TRow>[] = [];
+        const rejected: RejectedPasteCell[] = [];
+        for (const outcome of outcomes) {
+          if (!outcome) continue;
+          if ("reason" in outcome) rejected.push(outcome);
+          else cells.push(outcome);
+        }
+        await onPasteFn({
+          cells,
+          rejected,
+          source: { rows: matrix.length, columns: sourceColumns },
+          clipped: targets.clipped,
+        });
+      };
+
+      void gate().catch((err) => {
+        console.warn("[pretable] paste failed", err);
+      });
+    },
+    [grid],
+  );
+
+  useEffect(() => {
+    // The listener lives on the surface root, not the document, so two grids
+    // on one page never handle each other's paste.
+    const node = viewportRef.current;
+    if (!node) return;
+    node.addEventListener("paste", handlePaste);
+    return () => {
+      node.removeEventListener("paste", handlePaste);
+      pasteTokenRef.current += 1; // unmount invalidates an in-flight gate
+    };
+  }, [handlePaste]);
 
   // Built-in column filter menu: one open-state for the whole surface.
   const {
@@ -2773,6 +2991,119 @@ function singleFullRowSelection<TRow extends PretableRow>(
     (startMatchesLast && endMatchesFirst);
 
   return coversAllColumns ? range.startRowId : null;
+}
+
+/**
+ * Where a clipboard block should land: the top-left of the active selection,
+ * or the focused cell when nothing is selected.
+ *
+ * Multi-range selections are not replayed (Excel refuses multi-area paste and
+ * ag-grid's replay is documented as lossy) — the range holding the focused
+ * cell wins, falling back to the first range. Row-select bounds resolve to the
+ * full data-column span, which is how a full-row selection encodes itself.
+ * Returns null when there is nothing to anchor on.
+ */
+function resolvePasteAnchor<TRow extends PretableRow>(
+  ranges: readonly PretableCellRange[],
+  focus: PretableFocusState,
+  visibleRows: readonly PretableVisibleRow<TRow>[],
+  effectiveColumns: readonly PretableColumn<TRow>[],
+): {
+  anchor: PretableCellAddress;
+  selectionSize: { rows: number; columns: number };
+} | null {
+  const dataColumns = effectiveColumns.filter(
+    (c) => c.id !== ROW_SELECT_COLUMN_ID,
+  );
+  if (dataColumns.length === 0 || visibleRows.length === 0) return null;
+
+  if (ranges.length === 0) {
+    return focus.rowId && focus.columnId
+      ? {
+          anchor: { rowId: focus.rowId, columnId: focus.columnId },
+          selectionSize: { rows: 1, columns: 1 },
+        }
+      : null;
+  }
+
+  const rowOrder = new Map<string, number>();
+  for (let i = 0; i < visibleRows.length; i += 1) {
+    const row = visibleRows[i];
+    if (row) rowOrder.set(row.id, i);
+  }
+  const colOrder = new Map<string, number>();
+  for (let i = 0; i < dataColumns.length; i += 1) {
+    colOrder.set(dataColumns[i]!.id, i);
+  }
+
+  const resolve = (
+    range: PretableCellRange,
+  ): {
+    rowLo: number;
+    rowHi: number;
+    colLo: number;
+    colHi: number;
+  } | null => {
+    const r1 = rowOrder.get(range.startRowId);
+    const r2 = rowOrder.get(range.endRowId);
+    if (r1 === undefined || r2 === undefined) return null;
+    const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+    const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+    let colLo: number;
+    let colHi: number;
+    if (startSynth && endSynth) {
+      colLo = 0;
+      colHi = dataColumns.length - 1;
+    } else if (startSynth || endSynth) {
+      const other = colOrder.get(
+        startSynth ? range.endColumnId : range.startColumnId,
+      );
+      if (other === undefined) return null;
+      colLo = 0;
+      colHi = other;
+    } else {
+      const c1 = colOrder.get(range.startColumnId);
+      const c2 = colOrder.get(range.endColumnId);
+      if (c1 === undefined || c2 === undefined) return null;
+      colLo = Math.min(c1, c2);
+      colHi = Math.max(c1, c2);
+    }
+    return { rowLo: Math.min(r1, r2), rowHi: Math.max(r1, r2), colLo, colHi };
+  };
+
+  const focusRow = focus.rowId === null ? undefined : rowOrder.get(focus.rowId);
+  const focusCol =
+    focus.columnId === null ? undefined : colOrder.get(focus.columnId);
+
+  let chosen: ReturnType<typeof resolve> = null;
+  for (const range of ranges) {
+    const box = resolve(range);
+    if (!box) continue;
+    if (!chosen) chosen = box;
+    if (
+      focusRow !== undefined &&
+      focusCol !== undefined &&
+      focusRow >= box.rowLo &&
+      focusRow <= box.rowHi &&
+      focusCol >= box.colLo &&
+      focusCol <= box.colHi
+    ) {
+      chosen = box;
+      break;
+    }
+  }
+  if (!chosen) return null;
+
+  return {
+    anchor: {
+      rowId: visibleRows[chosen.rowLo]!.id,
+      columnId: dataColumns[chosen.colLo]!.id,
+    },
+    selectionSize: {
+      rows: chosen.rowHi - chosen.rowLo + 1,
+      columns: chosen.colHi - chosen.colLo + 1,
+    },
+  };
 }
 
 function getRowMeasurementKey(rowNode: HTMLDivElement) {

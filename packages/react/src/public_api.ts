@@ -53,6 +53,10 @@ export type {
 export { defaultCoerceForCopy, serializeRangesAsTsv } from "./copy";
 export type { CopyPayload, SerializeRangesArgs } from "./copy";
 
+// Paste (mapPasteToTargets stays internal)
+export { parseTsv } from "./paste";
+export type { PastedCell, PastePayload, RejectedPasteCell } from "./paste";
+
 // Density (canonical home is @pretable/ui)
 export type { DensityHeights } from "@pretable/ui";
 

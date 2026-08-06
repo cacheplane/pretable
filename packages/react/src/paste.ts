@@ -112,6 +112,66 @@ export function parseTsv(text: string): string[][] {
 }
 
 /**
+ * One clipboard cell that survived the paste gate (editable, and `validate`
+ * said yes). `value` is post-coercion — the column's `parseEditValue`, or the
+ * built-in per-type parse for `number`/`date`/`enum` columns, has already run.
+ *
+ * The grid never mutates rows: apply these to your own state, exactly as you
+ * would a single `onCellEdit`.
+ *
+ * @public
+ */
+export interface PastedCell<TRow extends PretableRow = PretableRow> {
+  rowId: string;
+  columnId: string;
+  /** Coerced value, ready to write. */
+  value: unknown;
+  /** The clipboard text this cell came from, before coercion. */
+  raw: string;
+  /** The row as it was when the paste was gated. */
+  row: TRow;
+}
+
+/**
+ * One clipboard cell the grid refused to apply. A rejected cell still
+ * **consumed** its position in the block — nothing re-flows.
+ *
+ * @public
+ */
+export interface RejectedPasteCell {
+  rowId: string;
+  columnId: string;
+  raw: string;
+  /**
+   * `"not-editable"` — the column's `editable` said no.
+   * `"invalid"` — coercion threw/failed, or `validate` returned a message.
+   */
+  reason: "not-editable" | "invalid";
+  /** The message `validate` (or the failed coercion) supplied, when there was one. */
+  message?: string;
+}
+
+/**
+ * Payload handed to `PretableSurface`'s `onPaste`, once per paste.
+ *
+ * @public
+ */
+export interface PastePayload<TRow extends PretableRow = PretableRow> {
+  /** Cells to apply, in row-major order. */
+  cells: PastedCell<TRow>[];
+  /** Cells that were skipped, with the reason. */
+  rejected: RejectedPasteCell[];
+  /** Shape of the parsed clipboard block (`columns` = the widest row). */
+  source: { rows: number; columns: number };
+  /**
+   * Block rows/columns dropped past the grid's last row/column — counts of
+   * rows/columns, not cells. The grid never invents rows; append them yourself
+   * from this count if you want Excel's grow-on-overflow behavior.
+   */
+  clipped: { rows: number; columns: number };
+}
+
+/**
  * Input for {@link mapPasteToTargets}.
  *
  * @internal
