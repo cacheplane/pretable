@@ -15,24 +15,6 @@ export function getColumnWidth<TRow extends PretableRow = PretableRow>(
   );
 }
 
-export function getPinnedLeftOffsets<TRow extends PretableRow = PretableRow>(
-  columns: PretableColumn<TRow>[],
-) {
-  const offsets: Record<string, number> = {};
-  let left = 0;
-
-  for (const column of columns) {
-    if (column.pinned !== "left") {
-      continue;
-    }
-
-    offsets[column.id] = left;
-    left += getColumnWidth(column);
-  }
-
-  return offsets;
-}
-
 export function getNextSortDirection(current: PretableSortDirection) {
   if (current === null) {
     return "desc";

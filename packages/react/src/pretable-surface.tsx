@@ -45,7 +45,6 @@ import {
   DEFAULT_ROW_HEIGHT,
   formatCellValue,
   getNextSortDirection,
-  getPinnedLeftOffsets,
   resolveCellValue,
 } from "./rendering";
 import {
@@ -695,10 +694,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     close: closeFilter,
   } = useFilterPopover();
 
-  const pinnedOffsets = useMemo(
-    () => getPinnedLeftOffsets(effectiveColumns),
-    [effectiveColumns],
-  );
+  // Pin state and pinned offsets are read from the PLANNED column
+  // (`renderSnapshot.columns`), never from the prop column. The engine is the
+  // single source of truth: controlled `state.columnPinned`, imperative
+  // `grid.setColumnPinned` and drag-to-reorder all mutate engine state, and
+  // `mergeColumnsFromProps` only re-runs on an id-list change (and gives
+  // engine state precedence), so the `columns` prop can be permanently stale.
+  // `PlannedColumn.left` is a left-pinned column's sticky offset — the summed
+  // width of the left-pinned columns before it, measured with engine widths so
+  // it also tracks resize and autosize.
 
   // Build per-column left/width arrays indexed by effectiveColumn index.
   // After a reorder, grid.options.columns (engine state, used to build
@@ -1300,16 +1304,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               : plannedCol.width;
 
           if (column.id === ROW_SELECT_COLUMN_ID) {
-            const pinnedOffset = pinnedOffsets[column.id];
             const pinnedRightEdge =
               plannedCol.pinned === "right" && plannedCol.right !== undefined
                 ? getPinnedRightEdge(viewportWidth, plannedCol.right)
                 : undefined;
             const positionStyle =
-              plannedCol.pinned === "left" && pinnedOffset !== undefined
+              plannedCol.pinned === "left"
                 ? {
                     ...getHeaderCellStyle(plannedCol.left, plannedCol.width),
-                    ...getPinnedCellStyle(pinnedOffset),
+                    ...getPinnedCellStyle(plannedCol.left),
                   }
                 : pinnedRightEdge !== undefined
                   ? {
@@ -1411,21 +1414,19 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               column,
               sortDirection,
             }) ?? {};
-          const pinnedOffset = pinnedOffsets[column.id];
           // `plannedCol.right` is the column's trailing-edge offset from the
-          // viewport's right edge, so no offsets memo is needed on this side —
-          // but it has to be resolved against the live viewport width, because
-          // right-pinning is expressed as a sticky `left` inset (see
-          // getPinnedRightEdge).
+          // viewport's right edge, and unlike `plannedCol.left` it has to be
+          // resolved against the live viewport width, because right-pinning is
+          // expressed as a sticky `left` inset (see getPinnedRightEdge).
           const pinnedRightEdge =
             plannedCol.pinned === "right" && plannedCol.right !== undefined
               ? getPinnedRightEdge(viewportWidth, plannedCol.right)
               : undefined;
           const positionStyle =
-            plannedCol.pinned === "left" && pinnedOffset !== undefined
+            plannedCol.pinned === "left"
               ? {
                   ...getHeaderCellStyle(plannedCol.left, effWidth),
-                  ...getPinnedCellStyle(pinnedOffset),
+                  ...getPinnedCellStyle(plannedCol.left),
                 }
               : pinnedRightEdge !== undefined
                 ? {
@@ -1445,17 +1446,19 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           const isDragging = dragLiveWidth?.columnId === column.id;
           const handleLeft = plannedCol.left + effWidth - 4;
           const handlePinnedStyle =
-            plannedCol.pinned === "left" && pinnedOffset !== undefined
+            plannedCol.pinned === "left"
               ? {
+                  // A left-pinned column's sticky inset IS `plannedCol.left`,
+                  // so the sticky handle lands exactly on `handleLeft`.
                   position: "sticky" as const,
                   zIndex: 3,
-                  left: pinnedOffset + effWidth - 4,
+                  left: handleLeft,
                 }
               : pinnedRightEdge !== undefined
                 ? {
                     // The 4px handle hugs the column's TRAILING edge — the same
                     // `- 4` as the left form, just measured back from the
-                    // right-pinned anchor instead of `pinnedOffset + effWidth`.
+                    // right-pinned anchor instead of `plannedCol.left + effWidth`.
                     position: "sticky" as const,
                     zIndex: 3,
                     left: pinnedRightEdge - 4,
@@ -1782,11 +1785,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   alignItems: "center",
                   left: plannedCol.left + effWidth - 22,
                   zIndex: 4,
-                  ...(plannedCol.pinned === "left" && pinnedOffset !== undefined
+                  ...(plannedCol.pinned === "left"
                     ? {
+                        // Same inset as the non-pinned `left` above: a
+                        // left-pinned column's sticky offset is plannedCol.left.
                         position: "sticky" as const,
                         zIndex: 5,
-                        left: pinnedOffset + effWidth - 22,
                       }
                     : pinnedRightEdge !== undefined
                       ? {
@@ -1894,7 +1898,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   value,
                 } satisfies PretableSurfaceBodyCellRenderInput<TRow>;
                 const bodyProps = getBodyCellProps?.(bodyInput) ?? {};
-                const pinnedOffset = pinnedOffsets[column.id];
                 const cellEffWidth =
                   dragLiveWidth?.columnId === column.id
                     ? dragLiveWidth.width
@@ -1905,10 +1908,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     ? getPinnedRightEdge(viewportWidth, plannedCol.right)
                     : undefined;
                 const positionStyle =
-                  plannedCol.pinned === "left" && pinnedOffset !== undefined
+                  plannedCol.pinned === "left"
                     ? {
                         ...getCellStyle(plannedCol.left, cellEffWidth),
-                        ...getPinnedCellStyle(pinnedOffset),
+                        ...getPinnedCellStyle(plannedCol.left),
                       }
                     : pinnedRightEdge !== undefined
                       ? {
@@ -1936,7 +1939,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     className={getBodyCellClassName?.(bodyInput)}
                     data-pretable-column-id={column.id}
                     data-pretable-focused={cellIsFocused ? "true" : "false"}
-                    data-pretable-pinned={column.pinned}
+                    data-pretable-pinned={plannedCol.pinned}
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
                     data-pretable-row-select-cell={
