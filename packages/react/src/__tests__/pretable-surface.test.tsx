@@ -4176,6 +4176,25 @@ describe("column reorder", () => {
     ]);
   });
 
+  // -------------------------------------------------------------------------
+  // A grid pinned on both sides. Drop-index geometry itself lives in
+  // column-drag-geometry.ts and is covered by its own unit tests; what
+  // matters here is that the rendered result stays coherent — array order is
+  // visual order, so aria-colindex ascends with the DOM.
+  // -------------------------------------------------------------------------
+  const regionColumns = [
+    { id: "l1", header: "L1", widthPx: 100, pinned: "left" as const },
+    { id: "l2", header: "L2", widthPx: 100, pinned: "left" as const },
+    { id: "s1", header: "S1", widthPx: 150 },
+    { id: "s2", header: "S2", widthPx: 150 },
+    { id: "s3", header: "S3", widthPx: 150 },
+    { id: "s4", header: "S4", widthPx: 150 },
+    { id: "s5", header: "S5", widthPx: 150 },
+    { id: "s6", header: "S6", widthPx: 150 },
+    { id: "rp1", header: "RP1", widthPx: 100, pinned: "right" as const },
+    { id: "rp2", header: "RP2", widthPx: 100, pinned: "right" as const },
+  ];
+
   it("controlled state.columnPinned round-trip pins the column in the engine and in the DOM", () => {
     let capturedGrid: PretableGrid<GridRow> | null = null;
     const { container } = render(
@@ -4208,6 +4227,144 @@ describe("column reorder", () => {
     );
     expect(cell).toHaveAttribute("data-pretable-pinned", "left");
     expect(cell).toHaveStyle({ position: "sticky", left: "0px" });
+  });
+
+  // -------------------------------------------------------------------------
+  // aria-colindex is `plannedCol.index + 1`, and `index` is the column's engine
+  // array position. That is only a true *visual* index while the engine array
+  // stays grouped as [left-pinned…, unpinned…, right-pinned…] — the invariant
+  // `moveColumn` and `groupColumnsByPin` maintain. These cases assert the
+  // rendered result rather than the engine array, so they fail if the two ever
+  // drift apart again.
+  // -------------------------------------------------------------------------
+  function headerColIndexes(container: HTMLElement): {
+    ids: string[];
+    colIndexes: number[];
+  } {
+    const headers = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-pretable-header-cell]"),
+    );
+    return {
+      ids: headers.map((h) => h.dataset.pretableColumnId ?? ""),
+      colIndexes: headers.map((h) => Number(h.getAttribute("aria-colindex"))),
+    };
+  }
+
+  it("aria-colindex ascends with visual order when columns are pinned both ways", () => {
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={[
+          { id: "a", header: "A", widthPx: 100 },
+          { id: "b", header: "B", widthPx: 100, pinned: "right" },
+          { id: "c", header: "C", widthPx: 100 },
+          { id: "d", header: "D", widthPx: 100, pinned: "left" },
+        ]}
+        getRowId={getGridRowId}
+        overscan={20}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+
+    const { ids, colIndexes } = headerColIndexes(container);
+    // Declared order interleaves the pins; the grid renders d | a c | b.
+    expect(ids).toEqual(["d", "a", "c", "b"]);
+    expect(colIndexes).toEqual([1, 2, 3, 4]);
+  });
+
+  it("aria-colindex still matches visual order after a drag re-pins a column", () => {
+    let capturedGrid: PretableGrid<GridRow> | null = null;
+    const view = render(
+      <PretableSurface
+        ariaLabel="reorder-grid"
+        columns={regionColumns}
+        getRowId={getGridRowId}
+        onGridReady={(g) => {
+          capturedGrid = g;
+        }}
+        overscan={20}
+        rows={gridRows}
+        viewportHeight={300}
+      />,
+    );
+
+    const grid = capturedGrid as unknown as PretableGrid<GridRow>;
+    const ascending = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+
+    // Drag the trailing right-pinned column all the way to index 0. Before the
+    // fix it kept `pinned: "right"` there — rendered last, announced as column
+    // 1. Index 0 is inside the leading pinned run, so it now left-pins.
+    act(() => {
+      grid.moveColumn("rp2", 0);
+    });
+    expect(grid.options.columns.find((c) => c.id === "rp2")?.pinned).toBe(
+      "left",
+    );
+    {
+      const { ids, colIndexes } = headerColIndexes(view.container);
+      expect(ids[0]).toBe("rp2");
+      expect(colIndexes).toEqual(ascending(ids.length));
+    }
+
+    // Drag it back out into the scrollable middle: no region, so no pin.
+    act(() => {
+      grid.moveColumn("rp2", 4);
+    });
+    expect(
+      grid.options.columns.find((c) => c.id === "rp2")?.pinned,
+    ).toBeUndefined();
+    {
+      const { ids, colIndexes } = headerColIndexes(view.container);
+      expect(ids.indexOf("rp2")).toBe(4);
+      expect(colIndexes).toEqual(ascending(ids.length));
+    }
+  });
+
+  it("a controlled columnOrder that disagrees with columnPinned settles", () => {
+    // The order slice asks for "rp" first; the pin slice says "rp" is pinned
+    // right. Replaying the order as per-column moves would unpin it, the pin
+    // pass would re-pin and reposition it, and the effect would run forever.
+    let capturedGrid: PretableGrid<GridRow> | null = null;
+    let renders = 0;
+    function Probe() {
+      renders += 1;
+      return (
+        <PretableSurface
+          ariaLabel="reorder-grid"
+          columns={[
+            { id: "a", header: "A", widthPx: 100 },
+            { id: "b", header: "B", widthPx: 100 },
+            { id: "rp", header: "RP", widthPx: 100 },
+          ]}
+          getRowId={getGridRowId}
+          onGridReady={(g) => {
+            capturedGrid = g;
+          }}
+          overscan={0}
+          rows={gridRows}
+          state={{
+            columnOrder: ["rp", "a", "b"],
+            columnPinned: { rp: "right" },
+          }}
+          viewportHeight={300}
+        />
+      );
+    }
+    render(<Probe />);
+
+    const grid = capturedGrid as unknown as PretableGrid<GridRow>;
+    // Pin wins over the literal position: "rp" is regrouped to the trailing
+    // region, and its relative-order request is honoured within that region.
+    expect(grid.options.columns.map((c) => c.id)).toEqual(["a", "b", "rp"]);
+    expect(grid.options.columns.find((c) => c.id === "rp")?.pinned).toBe(
+      "right",
+    );
+
+    // A settled effect chain, not an unbounded re-render loop.
+    const settled = renders;
+    act(() => {});
+    expect(renders).toBe(settled);
   });
 });
 
