@@ -22,6 +22,46 @@ it before starting. It records _why_ several obvious implementations are wrong.
 
 ---
 
+## Status — Tasks 1, 2 and 3 are DONE (`e22fd88`, `d747d0c`, `8c5a573`, `9d8dfd1`)
+
+React is at **716 passing (41 files)**, up from 682. Nine negative controls run.
+
+**What later tasks depend on:**
+
+1. **`applyRowGroups` in `pretable-surface.tsx` is the single commit funnel.**
+   It calls `setRowGroups` and then reports `getSnapshot().rowGroups` — the
+   _sanitized_ list, not the argument. Tasks 4, 5 and 6 must call it rather than
+   touching the engine directly.
+2. **`group-panel-model.ts` helpers, with their edge semantics:** `moveGroupLevel`
+   refuses an out-of-range index; `insertGroupLevel` **clamps** (it is a drop
+   position) and **moves rather than duplicates** an already-grouped column. Each
+   returns the original array reference on a no-op, which is how "no wrap at the
+   ends" falls out for free. Drag paths must reuse these, not reimplement them.
+3. **Chips emit `data-pretable-column-id` and `data-pretable-chip-label`** in
+   addition to the Task 2 table.
+4. **`--pretable-group-panel-height` is NOT yet defined in either theme.** Task 1
+   was scoped out of `packages/ui/`, so the React side reads it reactively with a
+   documented 36px fallback. **Task 7 must still add it** to both themes across
+   all three density tiers; the values then flow through with no React change.
+
+**Two test-integrity findings:**
+
+- Task 2's empty-message snippet as I wrote it was **vacuous**: the rerender
+  dropped `emptyMessage`, so the query would have returned null because the prop
+  vanished, not because grouping appeared. Fixed in place.
+- **"Focus follows the moved chip" is not provable in jsdom** — jsdom does not
+  drop focus when React re-inserts a keyed node to reorder it, but real browsers
+  do. The refocus effect is therefore only half-covered: its negative control
+  fires on the post-removal test but not on the reorder one. Task 8 must add a
+  keyboard assertion (see its Step 2, item 6).
+
+**Known and accepted:** the ✕ sits inside `role="option"`, whose children ARIA
+treats as presentational, so it is not reachable by a screen reader's own means.
+That is exactly why the `Delete` binding exists. Do not "fix" this by moving the
+button out of the option — it is documented at the call site.
+
+---
+
 ## Ground rules for every task
 
 - **Vanilla CSS in `packages/*`.** No Tailwind. `:where()` + existing
@@ -523,6 +563,10 @@ drop-zone rect test cannot be verified there at all.
   4. **Escape mid-drag leaves grouping exactly as it was** — the behaviour we
      deliberately do differently from ag-grid.
   5. Releasing over neither zone changes nothing.
+  6. **`Shift+ArrowRight` twice walks the same level two places** — focus must
+     travel with the chip. This is the only place that can be verified: jsdom
+     does not drop focus when React re-inserts a keyed node to reorder it, but
+     browsers do, so the refocus effect is untestable in the unit suite.
 
   Follow `apps/website/e2e/smoke.spec.ts:885-983`: `waitForStablePosition`, the
   retry grab loop, and `mouse.move(..., { steps: 3 })` — WebKit only engages
