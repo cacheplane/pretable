@@ -47,7 +47,7 @@ Excel and Sheets both prefer `text/html` when both flavors are present, so in pr
 
 `<thead>` appears only when [`copyWithHeaders`](#copywithheaders) is on. The blank line the TSV puts between headers and body has no HTML analogue and is not reproduced.
 
-Writing two flavors at once needs `ClipboardItem`. Where that is missing — an older browser, a non-DOM test environment — the surface falls back to `navigator.clipboard.writeText` and only the TSV reaches the clipboard. The serializer still produces both; the write is what degrades.
+Writing two flavors at once needs `ClipboardItem`. Where that is missing — an older browser, a non-DOM test environment — the surface falls back to `navigator.clipboard.writeText` and only the TSV reaches the clipboard. The same fallback runs when `ClipboardItem` is present but the two-flavor write is rejected, as it can be in a restricted embedding context or against a polyfill: rather than report a failed copy, the surface retries with `writeText` so the TSV still lands. The serializer always produces both; the write is what degrades.
 
 The `white-space:pre-wrap` on the table is not cosmetic. HTML collapses runs of whitespace, so without it a cell holding `a  b` would paste as `a b`. It sits on the `<table>` because `white-space` inherits, covering every cell with one declaration.
 

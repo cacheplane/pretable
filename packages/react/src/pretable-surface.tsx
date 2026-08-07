@@ -122,15 +122,24 @@ async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
     typeof globalThis.ClipboardItem !== "undefined" &&
     typeof navigator.clipboard.write === "function"
   ) {
-    await navigator.clipboard.write([
-      new globalThis.ClipboardItem({
-        "text/plain": new Blob([payload.text], { type: "text/plain" }),
-        "text/html": new Blob([payload.html], { type: "text/html" }),
-      }),
-    ]);
-  } else {
-    await navigator.clipboard.writeText(payload.text);
+    try {
+      await navigator.clipboard.write([
+        new globalThis.ClipboardItem({
+          "text/plain": new Blob([payload.text], { type: "text/plain" }),
+          "text/html": new Blob([payload.html], { type: "text/html" }),
+        }),
+      ]);
+      return;
+    } catch {
+      // Feature detection only proves ClipboardItem and write() exist, not
+      // that the write succeeds — a polyfilled ClipboardItem, a restricted
+      // embedding context, or an extension page can all reject here. Landing
+      // the TSV alone beats leaving the clipboard empty, so fall through
+      // rather than surfacing a failure the single-flavor path would not have
+      // had. If writeText rejects too, that rejection is the real one.
+    }
   }
+  await navigator.clipboard.writeText(payload.text);
 }
 
 /**

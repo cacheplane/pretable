@@ -3281,6 +3281,57 @@ describe("aria-live announcements", () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 
+  it("a rejected two-flavor write falls back to writeText and still succeeds", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const write = vi.fn().mockRejectedValue(new Error("blocked"));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    // jsdom defines neither ClipboardItem nor navigator.clipboard, so every
+    // other test in this file never reaches the two-flavor branch at all.
+    // Define both here — and tear them down in the finally — so the next test
+    // sees jsdom's bare navigator again.
+    vi.stubGlobal(
+      "ClipboardItem",
+      class {
+        constructor(public items: Record<string, Blob>) {}
+      },
+    );
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write, writeText },
+    });
+
+    try {
+      // No copyToClipboard override: this exercises defaultCopyToClipboard.
+      const view = renderAnnounceHarness({
+        initialState: singleCellSelection("r1", "a"),
+      });
+      fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+      await act(async () => {
+        for (let i = 0; i < 6; i += 1) await Promise.resolve();
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      // Feature detection passed, the write was attempted, and the rejection
+      // degraded to the TSV rather than losing the copy entirely.
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(writeText).toHaveBeenCalledWith("a1");
+      expect(getLiveRegion(view)).toHaveTextContent(
+        "1 rows × 1 columns copied",
+      );
+      expect(getLiveRegion(view)).not.toHaveTextContent("Copy failed");
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        "[pretable] clipboard copy failed",
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      delete (navigator as { clipboard?: unknown }).clipboard;
+    }
+  });
+
   it("custom messages.copyFailedAnnouncement overrides the failure text", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const copyToClipboard = vi.fn().mockRejectedValue(new Error("boom"));
