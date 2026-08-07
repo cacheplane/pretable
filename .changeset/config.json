@@ -9,7 +9,14 @@
   ],
   "access": "public",
   "commit": false,
-  "fixed": [["@pretable/core", "@pretable/react"]],
+  "fixed": [
+    [
+      "@pretable/core",
+      "@pretable/react",
+      "@pretable/stream-adapter",
+      "@pretable/ui"
+    ]
+  ],
   "linked": [],
   "ignore": [],
   "updateInternalDependencies": "patch"
