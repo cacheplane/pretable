@@ -22,12 +22,13 @@ describe("columnLayoutData", () => {
     ]);
   });
 
-  it("pins the analyst note column to the right", () => {
+  it("pins symbol left and the analyst note column right", () => {
     const columns = makeLayoutColumns();
-    const note = columns.find((c) => c.id === "note");
-    expect(note?.pinned).toBe("right");
-    // Exactly one pinned column keeps the showcase legible.
-    expect(columns.filter((c) => c.pinned !== undefined)).toHaveLength(1);
+    expect(columns.find((c) => c.id === "symbol")?.pinned).toBe("left");
+    expect(columns.find((c) => c.id === "note")?.pinned).toBe("right");
+    // One pin per edge keeps the showcase legible — and gives the smoke suite
+    // a left-pinned column whose header overlays it can measure at scrollLeft 0.
+    expect(columns.filter((c) => c.pinned !== undefined)).toHaveLength(2);
   });
 
   it("is wider than the showcase container so the grid scrolls horizontally", () => {

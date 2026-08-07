@@ -67,6 +67,24 @@ describe("ColumnLayoutGrid", () => {
     });
   });
 
+  it("renders the symbol column pinned left", async () => {
+    const { container } = render(<ColumnLayoutGrid />);
+    await waitFor(() => {
+      expect(screen.getByText("Symbol")).toBeInTheDocument();
+    });
+
+    const symbolCells = container.querySelectorAll(
+      '[data-pretable-cell][data-pretable-column-id="symbol"]',
+    );
+    expect(symbolCells.length).toBeGreaterThan(0);
+    for (const cell of symbolCells) {
+      expect(cell).toHaveAttribute("data-pretable-pinned", "left");
+      // First column in the grid → flush against the viewport's left edge.
+      expect((cell as HTMLElement).style.position).toBe("sticky");
+      expect((cell as HTMLElement).style.left).toBe("0px");
+    }
+  });
+
   it("renders the analyst note column pinned right", async () => {
     const { container } = render(<ColumnLayoutGrid />);
     await waitFor(() => {
@@ -90,10 +108,13 @@ describe("ColumnLayoutGrid", () => {
       expect((cell as HTMLElement).style.right).toBe("");
     }
 
-    // No other column is pinned.
+    // Symbol (left) and note (right) are the only pinned columns.
+    const symbolCells = container.querySelectorAll(
+      '[data-pretable-cell][data-pretable-column-id="symbol"]',
+    );
     expect(
       container.querySelectorAll("[data-pretable-cell][data-pretable-pinned]")
         .length,
-    ).toBe(noteCells.length);
+    ).toBe(noteCells.length + symbolCells.length);
   });
 });
