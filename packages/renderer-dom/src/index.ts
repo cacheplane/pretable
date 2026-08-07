@@ -2,7 +2,6 @@ export { createDomRenderSnapshot, planColumnLayout } from "./create-renderer";
 export type { DomRenderInput, DomRenderRow, DomRenderSnapshot } from "./types";
 export type {
   ColumnPlan,
-  PlanColumnsColumnInput,
   PlannedColumn,
   RowMetricsReader,
 } from "@pretable-internal/layout-core";
@@ -14,4 +13,3 @@ export {
   scrollLeftToReveal,
   scrollTopToReveal,
 } from "@pretable-internal/layout-core";
-export { resolveColumnWidth } from "./create-renderer";

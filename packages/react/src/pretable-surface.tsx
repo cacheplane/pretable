@@ -32,8 +32,6 @@ import type {
   PretableHeaderRenderInput,
 } from "./types";
 import {
-  type PlanColumnsColumnInput,
-  resolveColumnWidth,
   scrollLeftToReveal,
   scrollTopToReveal,
 } from "@pretable-internal/renderer-dom";
@@ -793,28 +791,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return map;
   }, [effectiveColumns]);
 
-  // Used by the reorder gesture to hit-test the cursor against the columns.
-  // renderSnapshot.columns only carries the virtualization window, and a
-  // scrolled-out column is still a legitimate drop target, so the layout is
-  // re-planned over the whole engine column set. Content order, and each
-  // entry's `index` is its engine index — what grid.moveColumn takes.
-  const dragColumnLayout = useMemo(
-    () => planColumnLayout(grid.options.columns).columns,
-    [grid.options.columns],
-  );
-
-  // Column-plan input for scroll-into-view, in engine order and with the same
-  // no-`widthPx` fallbacks the render pass applies (hence `resolveColumnWidth`
-  // rather than a second copy of them here). `renderSnapshot.columns` cannot
-  // answer this: it is the *virtualized* plan, so the off-window columns
-  // scroll-into-view exists to reach are exactly the ones missing from it.
-  const scrollRevealColumns = useMemo<PlanColumnsColumnInput[]>(
-    () =>
-      grid.options.columns.map((column) => ({
-        id: column.id,
-        width: resolveColumnWidth(column),
-        pinned: column.pinned,
-      })),
+  // One plan over the whole engine column set, shared by the two features that
+  // need to reason about columns `renderSnapshot.columns` does not carry:
+  // reorder hit-testing (a scrolled-out column is still a legitimate drop
+  // target) and scroll-into-view (an off-window column is the only reason it
+  // runs). Both want identical geometry, so they read the same object rather
+  // than each deriving one — see `planColumnLayout` for why that matters.
+  // Content order, and each entry's `index` is its engine index — what
+  // grid.moveColumn takes.
+  const columnLayout = useMemo(
+    () => planColumnLayout(grid.options.columns),
     [grid.options.columns],
   );
 
@@ -1166,8 +1152,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // Horizontal, only when the focused COLUMN changed — or when no earlier
     // pass managed to resolve it. Column geometry does not depend on row
     // measurement, so the vertical re-assert passes have nothing new to say
-    // about it, and skipping keeps `scrollLeftToReveal`'s O(columns) plan
-    // allocation off the ArrowDown hot path, where the column never moves. The
+    // about it, and skipping keeps `scrollLeftToReveal`'s O(columns) scan off
+    // the ArrowDown hot path, where the column never moves. The
     // trade-off is that a user who scrolls horizontally away from the focused
     // column is not dragged back by a later vertical move, which matches the
     // no-fighting rule the rest of this effect follows.
@@ -1177,7 +1163,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // something. See the `undefined` branch below.
     if (scrollRevealColumnIdRef.current !== focusedColumnId) {
       const nextScrollLeft = scrollLeftToReveal({
-        columns: scrollRevealColumns,
+        plan: columnLayout,
         targetColumnId: focusedColumnId,
         scrollLeft: el.scrollLeft,
         // 0 before the scrollport is measured (SSR, the first commit, a grid
@@ -1253,12 +1239,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     el.scrollTop = nextScrollTop;
   }, [
     bodyViewportHeight,
+    columnLayout,
     focusedColumnId,
     focusedRowId,
     // `renderSnapshot` is rebuilt whenever `measuredHeights` changes, which is
     // the signal the convergence re-assert waits for.
     renderSnapshot,
-    scrollRevealColumns,
     viewportWidth,
     visibleRowIndexById,
   ]);
@@ -1849,7 +1835,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       // the cursor.
                       const scrollport = viewportRef.current;
                       const target = computeColumnDropTarget({
-                        layout: dragColumnLayout,
+                        layout: columnLayout.columns,
                         draggedIndex: grid.options.columns.findIndex(
                           (c) => c.id === column.id,
                         ),
