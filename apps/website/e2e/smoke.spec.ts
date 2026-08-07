@@ -702,26 +702,62 @@ test("showcase: column reorder drops where the indicator points, scrolled sidewa
     .poll(async () => await viewport.evaluate((el) => el.scrollLeft))
     .toBeGreaterThan(60);
 
-  const before = await headerBoxes();
-  const source = before.find((b) => b.id === "sector");
-  const targetCol = before.find((b) => b.id === "weight");
-  expect(source).toBeTruthy();
-  expect(targetCol).toBeTruthy();
-  if (!source || !targetCol) return;
+  // A drag is driven by raw coordinates, so the page has to stop moving before
+  // they are measured — the drawer animates open and the section is still
+  // settling, and a box measured mid-flight puts the pointerdown on empty space
+  // (or another row) and the gesture silently never starts. Note this cannot be
+  // hover(): Playwright would scroll the header into view and undo the very
+  // horizontal scroll under test.
+  const sectorHeader = layout.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="sector"]',
+  );
+  let lastTop: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const top = await sectorHeader.evaluate(
+          (el) => el.getBoundingClientRect().top,
+        );
+        const settled = lastTop !== null && Math.abs(top - lastTop) < 0.5;
+        lastTop = top;
+        return settled;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
 
-  // Drag "sector" onto the left half of "weight". WebKit only engages pointer
-  // capture once the pointer has traversed intermediate positions, so the drag
-  // moves in steps rather than a single jump.
-  const y = await layout
-    .locator('[data-pretable-header-cell][data-pretable-column-id="sector"]')
-    .evaluate((el) => {
-      const rect = el.getBoundingClientRect();
-      return rect.top + rect.height / 2;
-    });
+  // Grab "sector" and drag it onto the left half of "weight". Grabbing is the
+  // fragile half — a header is flanked by a 22px funnel slot and a 4px resize
+  // strip, so coordinates measured a frame too early press one of those and
+  // start a resize instead — so it is re-measured and retried until the ghost
+  // proves the reorder engaged. The assertions below stay single-shot.
+  const ghost = page.locator("[data-pretable-reorder-ghost]");
+  let grabbed = false;
+  let y = 0;
+  for (let attempt = 0; attempt < 3 && !grabbed; attempt += 1) {
+    const box = await sectorHeader.boundingBox();
+    if (!box) continue;
+    y = box.y + box.height / 2;
+    const grabX = box.x + box.width / 2;
+    await page.mouse.move(grabX, y);
+    await page.mouse.down();
+    // WebKit only engages pointer capture once the pointer has traversed
+    // intermediate positions, so the drag moves in steps, not a single jump.
+    await page.mouse.move(grabX + 10, y, { steps: 3 });
+    grabbed = (await ghost.count()) > 0;
+    if (!grabbed) await page.mouse.up();
+  }
+  expect(grabbed, "reorder drag did not engage on the sector header").toBe(
+    true,
+  );
+
+  // Positions hold still for the rest of the gesture, so measure the target now.
+  const before = await headerBoxes();
+  const targetCol = before.find((b) => b.id === "weight");
+  expect(targetCol).toBeTruthy();
+  if (!targetCol) return;
+
   const cursorX = targetCol.left + 20;
-  await page.mouse.move((source.left + source.right) / 2, y);
-  await page.mouse.down();
-  await page.mouse.move((source.left + source.right) / 2 + 10, y, { steps: 3 });
   await page.mouse.move(cursorX, y, { steps: 10 });
 
   // The indicator marks the boundary the cursor is nearest — "weight"'s left
