@@ -324,7 +324,7 @@ The clipboard is treated as **one matrix**. A [multi-range copy](/docs/grid/clip
   `parseTsv` before applying, as below.
 </Callout>
 
-`parseTsv(text: string): string[][]` is exported from `@pretable/react` (alongside `serializeRangesAsTsv` and `defaultCoerceForCopy`), so pre-processing means reusing the same parser rather than writing a second one:
+`parseTsv(text: string): string[][]` is exported from `@pretable/react` (alongside `serializeRanges` and `defaultCoerceForCopy`), so pre-processing means reusing the same parser rather than writing a second one:
 
 ```tsx
 import { parseTsv } from "@pretable/react";

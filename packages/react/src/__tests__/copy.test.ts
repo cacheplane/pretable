@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultCoerceForCopy,
   escapeTsvField,
-  serializeRangesAsTsv,
+  serializeRanges,
   type SerializeRangesArgs,
 } from "../copy";
 import { ROW_SELECT_COLUMN_ID } from "../pretable-surface";
@@ -68,9 +68,9 @@ describe("defaultCoerceForCopy", () => {
   });
 });
 
-describe("serializeRangesAsTsv", () => {
+describe("serializeRanges", () => {
   it("returns null for empty ranges", () => {
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
@@ -79,7 +79,7 @@ describe("serializeRangesAsTsv", () => {
   });
 
   it("single cell, single column", () => {
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", "a", "a")],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
@@ -88,7 +88,7 @@ describe("serializeRangesAsTsv", () => {
   });
 
   it("multi-row range joined with \\n", () => {
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r3", "a", "a")],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
@@ -97,7 +97,7 @@ describe("serializeRangesAsTsv", () => {
   });
 
   it("multi-column range joined with \\t", () => {
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", "a", "c")],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
@@ -106,7 +106,7 @@ describe("serializeRangesAsTsv", () => {
   });
 
   it("multi-range blocks joined with \\n\\n", () => {
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", "a", "a"), range("r3", "r3", "c", "c")],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
@@ -115,7 +115,7 @@ describe("serializeRangesAsTsv", () => {
   });
 
   it("copyWithHeaders=true emits header row + blank line + body", () => {
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r2", "a", "b")],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
@@ -133,7 +133,7 @@ describe("serializeRangesAsTsv", () => {
       },
       { id: "b", header: "B" },
     ];
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", "a", "b")],
       visibleRows: makeVisibleRows(rows),
       columns: cols,
@@ -146,7 +146,7 @@ describe("serializeRangesAsTsv", () => {
       { id: ROW_SELECT_COLUMN_ID, header: "" },
       ...baseColumns,
     ];
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, ROW_SELECT_COLUMN_ID)],
       visibleRows: makeVisibleRows(rows),
       columns: cols,
@@ -163,7 +163,7 @@ describe("serializeRangesAsTsv", () => {
     // whose startColumnId === ROW_SELECT_COLUMN_ID. The synthetic column is
     // positioned before all data columns; treat it as "start of data" so
     // copy emits every cell in the row.
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, "c")],
       visibleRows: makeVisibleRows(rows),
       columns: cols,
@@ -176,7 +176,7 @@ describe("serializeRangesAsTsv", () => {
       { id: ROW_SELECT_COLUMN_ID, header: "" },
       ...baseColumns,
     ];
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", "b", ROW_SELECT_COLUMN_ID)],
       visibleRows: makeVisibleRows(rows),
       columns: cols,
@@ -185,7 +185,7 @@ describe("serializeRangesAsTsv", () => {
   });
 
   it("range with row id not in visibleRows returns null", () => {
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("missing", "missing", "a", "a")],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
@@ -199,7 +199,7 @@ describe("serializeRangesAsTsv", () => {
       visibleRows: makeVisibleRows(rows),
       columns: [{ id: ROW_SELECT_COLUMN_ID, header: "" }],
     };
-    expect(serializeRangesAsTsv(args)).toBeNull();
+    expect(serializeRanges(args)).toBeNull();
   });
 });
 
@@ -230,13 +230,13 @@ describe("escapeTsvField", () => {
   });
 });
 
-describe("serializeRangesAsTsv escaping", () => {
+describe("serializeRanges escaping", () => {
   function oneCell(
     value: string,
     columnOverrides?: Partial<PretableColumn<Row>>,
   ) {
     const row: Row = { id: "r1", a: value, b: "b1", c: "c1" };
-    return serializeRangesAsTsv<Row>({
+    return serializeRanges<Row>({
       ranges: [range("r1", "r1", "a", "b")],
       visibleRows: makeVisibleRows([row]),
       columns: [
@@ -288,7 +288,7 @@ describe("serializeRangesAsTsv escaping", () => {
       { id: "b", header: "Col\nB" },
       { id: "c", header: 'Col "C"' },
     ];
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", "a", "c")],
       visibleRows: makeVisibleRows(rows),
       columns: cols,
@@ -300,7 +300,7 @@ describe("serializeRangesAsTsv escaping", () => {
   });
 
   it("leaves ordinary headers bare", () => {
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r1", "a", "b")],
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,

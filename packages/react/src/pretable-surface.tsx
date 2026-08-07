@@ -104,7 +104,7 @@ import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
-  serializeRangesAsTsv,
+  serializeRanges,
 } from "./copy";
 import {
   mapPasteToTargets,
@@ -426,7 +426,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   copyWithHeaders?: boolean;
   /**
    * Override the TSV serialization step. Receives the args that would be
-   * passed to {@link serializeRangesAsTsv}; returning `null` cancels the copy.
+   * passed to {@link serializeRanges}; returning `null` cancels the copy.
    */
   onCopy?: (args: SerializeRangesArgs<TRow>) => CopyPayload | null;
   /**
@@ -1856,7 +1856,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
           };
-          const payload = onCopy ? onCopy(args) : serializeRangesAsTsv(args);
+          const payload = onCopy ? onCopy(args) : serializeRanges(args);
           if (payload) {
             const extent = computeSelectionExtent(
               snap.selection.ranges,

@@ -801,6 +801,9 @@ export interface RowSelectionColumnConfig {
 }
 
 // @public
+export function serializeRanges<TRow extends PretableRow>(args: SerializeRangesArgs<TRow>): CopyPayload | null;
+
+// @public
 export interface SerializeRangesArgs<TRow extends PretableRow> {
     // (undocumented)
     columns: readonly PretableColumn<TRow>[];
@@ -811,9 +814,6 @@ export interface SerializeRangesArgs<TRow extends PretableRow> {
     // (undocumented)
     visibleRows: readonly PretableVisibleRow<TRow>[];
 }
-
-// @public
-export function serializeRangesAsTsv<TRow extends PretableRow>(args: SerializeRangesArgs<TRow>): CopyPayload | null;
 
 // @public
 export function usePretable<TRow extends PretableRow = PretableRow>(input: UsePretableOptions<TRow>): PretableModel<TRow>;

@@ -54,7 +54,7 @@ const columns: PretableColumn<Event>[] = [
 For full control — a custom delimiter, a JSON payload, an HTML clipboard payload alongside the TSV — pass `onCopy` on the surface. It receives the same `SerializeRangesArgs` the default serializer gets and returns a `CopyPayload` (`{ text, html? }`) or `null` to cancel the copy:
 
 ```tsx
-import { serializeRangesAsTsv } from "@pretable/react";
+import { serializeRanges } from "@pretable/react";
 
 <PretableSurface
   ariaLabel="Inspection grid"
@@ -63,7 +63,7 @@ import { serializeRangesAsTsv } from "@pretable/react";
   getRowId={(row) => row.id}
   onCopy={(args) => {
     // args is SerializeRangesArgs: { ranges, visibleRows, columns, copyWithHeaders }
-    const tsv = serializeRangesAsTsv(args);
+    const tsv = serializeRanges(args);
     if (!tsv) return null; // empty selection → cancel the copy
     // Reuse the built-in TSV, but write CSV instead.
     return { text: tsv.text.replace(/\t/g, ",") };
@@ -76,13 +76,13 @@ import { serializeRangesAsTsv } from "@pretable/react";
 - `{ text, html? }` — `text` is written as `text/plain`; when `html` is present, the surface also writes `text/html` via the Clipboard API. Excel and Sheets prefer `text/html` when both are present.
 - `null` — skip the clipboard write entirely (suppress copy in this mode).
 
-`serializeRangesAsTsv` is the same helper the default path uses, so calling it inside `onCopy` (as above) keeps the built-in row/column/range handling — including filtering out the synthetic row-select column — and lets you post-process its output.
+`serializeRanges` is the same helper the default path uses, so calling it inside `onCopy` (as above) keeps the built-in row/column/range handling — including filtering out the synthetic row-select column — and lets you post-process its output.
 
 ## Building your own serializer
 
-`serializeRangesAsTsv`, `defaultCoerceForCopy`, and the `SerializeRangesArgs` / `CopyPayload` types are exported from `@pretable/react`, so you can build a serializer from the same primitives the default uses.
+`serializeRanges`, `defaultCoerceForCopy`, and the `SerializeRangesArgs` / `CopyPayload` types are exported from `@pretable/react`, so you can build a serializer from the same primitives the default uses.
 
-`SerializeRangesArgs<TRow>` is the argument both `onCopy` and `serializeRangesAsTsv` receive:
+`SerializeRangesArgs<TRow>` is the argument both `onCopy` and `serializeRanges` receive:
 
 | Field             | Type                               | Notes                                             |
 | ----------------- | ---------------------------------- | ------------------------------------------------- |

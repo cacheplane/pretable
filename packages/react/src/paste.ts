@@ -245,7 +245,7 @@ export interface PasteTargetMap {
  *
  * The synthetic row-select column is never a target; when it *is* the anchor (a row
  * selection) the block anchors on the first data column instead, mirroring how
- * `serializeRangesAsTsv` translates that bound on copy.
+ * `serializeRanges` translates that bound on copy.
  *
  * Group rows are never targets either — they hold aggregates, not editable cells.
  * They are **removed from the row space** rather than skipped in place, so the

@@ -8,7 +8,7 @@ import { ROW_SELECT_COLUMN_ID } from "./constants";
 import type { PretableColumn } from "./types";
 
 /**
- * Input for {@link serializeRangesAsTsv}.
+ * Input for {@link serializeRanges}.
  *
  * @public
  */
@@ -85,7 +85,7 @@ export function escapeTsvField(text: string): string {
  *
  * @public
  */
-export function serializeRangesAsTsv<TRow extends PretableRow>(
+export function serializeRanges<TRow extends PretableRow>(
   args: SerializeRangesArgs<TRow>,
 ): CopyPayload | null {
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
