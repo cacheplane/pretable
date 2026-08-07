@@ -140,7 +140,7 @@ Each block is its own TSV grid; range order matches the order the ranges were ad
 
 ## `aria-live` announcements
 
-The surface renders an off-screen `aria-live="polite"` region that announces copy and select-all events for assistive technology. Defaults are English; pass a `messages?: PretableSurfaceMessages` prop to override:
+The surface renders an off-screen `aria-live="polite"` region that announces copy, paste and select-all events for assistive technology. Defaults are English; pass a `messages?: PretableSurfaceMessages` prop to override:
 
 ```tsx
 <PretableSurface
@@ -152,6 +152,9 @@ The surface renders an off-screen `aria-live="polite"` region that announces cop
     copyAnnouncement: ({ rowCount, columnCount }) =>
       `Copiato ${rowCount} × ${columnCount}`,
     copyFailedAnnouncement: () => "Copia non riuscita",
+    pasteAnnouncement: ({ cellCount, rejectedCount }) =>
+      `Incollate ${cellCount} celle, ${rejectedCount} rifiutate`,
+    pasteFailedAnnouncement: () => "Incolla non riuscito",
   }}
 />
 ```
@@ -161,6 +164,10 @@ The surface renders an off-screen `aria-live="polite"` region that announces cop
 | Cmd/Ctrl+A (or header-checkbox select-all) | "All rows selected" (or `{n} rows × {m} columns selected` for partial coverage) |
 | Cmd/Ctrl+C success                         | `{n} rows × {m} columns copied`                                                 |
 | Cmd/Ctrl+C failure (clipboard rejects)     | "Copy failed"                                                                   |
+| Cmd/Ctrl+V, applied                        | `{n} cells pasted` (see [paste announcements](/docs/grid/paste#announcements))  |
+| Cmd/Ctrl+V, part refused                   | `{n} cells pasted, {m} rejected`                                                |
+| Cmd/Ctrl+V, all refused                    | `No cells pasted, {m} rejected`                                                 |
+| Cmd/Ctrl+V failure (`onPaste` threw)       | "Paste failed"                                                                  |
 
 Announcements are debounced (~500ms) to avoid screen-reader thrashing on held shift+arrow extends. Programmatic mutations via `state.selection` do **not** announce — only user-triggered events do.
 

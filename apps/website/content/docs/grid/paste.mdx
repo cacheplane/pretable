@@ -192,7 +192,7 @@ The [homepage hero](/) does exactly this: its Qty column's `validate` enforces a
 
 A throw is contained to the cell that caused it. If `editable`, `parseEditValue`, or `validate` **throws** (or rejects) for one cell, that cell lands in `rejected` with `reason: "invalid"` and the error's message, and every other cell in the block is gated and applied as normal — one flaky async predicate does not cost you the paste.
 
-A failure outside a single cell's gate — most commonly `onPaste` itself throwing — is caught and logged with `console.warn("[pretable] paste failed", err)`.
+A failure outside a single cell's gate — most commonly `onPaste` itself throwing — is caught, logged with `console.warn("[pretable] paste failed", err)`, and [announced](#announcements) as "Paste failed". It is not otherwise surfaced: the grid has no idea what your `onPaste` was trying to do, so showing the user a recovery path is yours.
 
 Prefer `validate`'s string return to a thrown error when refusing a cell: it is the documented channel, and it lets you supply a message the user can act on.
 
@@ -258,6 +258,50 @@ function Sheet() {
 ```
 
 Two things to know about that slice. It is scoped to an **anchored** paste — the common case, where the block wrote once from the top-left and `clipped.rows` is therefore at most the block's row count. When the block [tiled](#shape-mismatch) into a larger selection, source rows repeat, `clipped.rows` counts target rows (possibly more than the block has), and the last `clipped.rows` source rows are not what fell off the end; reconstruct the tiling yourself if you need that case. And appended rows land wherever your sort puts them, not necessarily at the bottom of the view.
+
+## Announcements
+
+A paste is the one clipboard operation that can be **partly** applied, which makes it the one that most needs a voice: a sighted user sees which cells changed, and a screen-reader user sees nothing. So the surface announces every paste into the same off-screen `aria-live="polite"` region [copy uses](/docs/grid/clipboard#aria-live-announcements), debounced the same ~500ms.
+
+| Outcome                     | Default announcement                |
+| --------------------------- | ----------------------------------- |
+| Applied cleanly             | `12 cells pasted` / `1 cell pasted` |
+| Partly refused              | `9 cells pasted, 3 rejected`        |
+| Wholly refused              | `No cells pasted, 3 rejected`       |
+| Clipped (any of the above)  | …`, clipped to fit`                 |
+| `onPaste` threw or rejected | `Paste failed`                      |
+
+The wholly-refused row is the reason this exists at all: without it, a paste where `editable` or `validate` said no to everything is indistinguishable from the keystroke never having been noticed.
+
+Two overrides cover all of it:
+
+```tsx
+<PretableSurface
+  messages={{
+    pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) => {
+      if (cellCount === 0) return `Nothing pasted — ${rejectedCount} refused`;
+      const tail = clipped.rows > 0 ? ` (${clipped.rows} rows didn't fit)` : "";
+      return `${cellCount} of ${cellCount + rejectedCount} applied${tail}`;
+    },
+    pasteFailedAnnouncement: () => "Couldn't paste — try again",
+  }}
+  onPaste={applyCells}
+/>
+```
+
+`pasteAnnouncement` is **one** function rather than one per outcome because the first three rows above are the same sentence at different counts, and clipping is orthogonal — it can co-occur with any of them. Splitting them would hand a localizer the cross-product and make them repeat pluralization in every branch. `pasteFailedAnnouncement` is separate for the reason `copyFailedAnnouncement` is: nothing was applied, so there are no counts to report.
+
+Per-cell `rejected[].message` text is deliberately **not** passed to `pasteAnnouncement`. A live region is read start to finish and cannot be re-read or skimmed, so a list of validation messages is the wrong payload for it. Render those from `onPaste` into something the user can navigate, as the [rejections](#rejections) example does.
+
+<Callout type="info">
+  **The announcement waits for `onPaste`.** It fires once your handler has
+  resolved, not when the gate finishes computing the payload. You own the write,
+  it may be async, and it may throw — so "12 cells pasted" announced before you
+  had applied anything would be a claim the app can still falsify, told to the
+  one user who cannot see that nothing changed. A paste superseded by a newer
+  one while its `onPaste` is still in flight stays silent rather than talking
+  over the newer one.
+</Callout>
 
 ## The TSV format
 

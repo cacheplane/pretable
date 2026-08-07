@@ -22,7 +22,6 @@ engine hardens:
 - `@pretable/core`: framework-agnostic grid state primitives.
 - `@pretable/ui`: CSS themes, grid skin, tokens, and Tailwind helpers.
 - `@pretable/stream-adapter`: streaming helpers for partial and element streams.
-- `@cacheplane/json-stream`: low-level JSON stream parsing utilities.
 
 Packages named `@pretable-internal/*` are repo-local implementation details.
 Do not build application code against them.
@@ -129,7 +128,6 @@ packages/core              Public framework-agnostic grid primitives
 packages/react             Public React adapter
 packages/ui                Public CSS themes and grid skin
 packages/stream-adapter    Public streaming adapter package
-packages/json-stream       Public JSON stream parser utilities
 packages/*-core            Internal text, layout, and grid engines
 packages/renderer-dom      Internal DOM renderer planning layer
 packages/scenario-data     Internal benchmark/demo datasets

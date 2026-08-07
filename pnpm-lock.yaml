@@ -281,8 +281,6 @@ importers:
         specifier: workspace:*
         version: link:../text-core
 
-  packages/json-stream: {}
-
   packages/layout-core: {}
 
   packages/react:
@@ -324,8 +322,8 @@ importers:
   packages/stream-adapter:
     dependencies:
       '@cacheplane/json-stream':
-        specifier: workspace:*
-        version: link:../json-stream
+        specifier: ~0.0.4
+        version: 0.0.4
 
   packages/text-core: {}
 
@@ -466,6 +464,10 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@cacheplane/json-stream@0.0.4':
+    resolution: {integrity: sha512-UKOgG5ocrCd6NOINWJ+tPHUvhcCE8UC4C5hDEVwuA5IuWJvVYlRBhDlxOajr7hwuyBk3XvxZMhJ24n3Pcp393A==}
+    engines: {node: '>=20'}
 
   '@changesets/apply-release-plan@7.1.1':
     resolution: {integrity: sha512-9qPCm/rLx/xoOFXIHGB229+4GOL76S4MC+7tyOuTsR6+1jYlfFDQORdvwR5hDA6y4FL2BPt3qpbcQIS+dW85LA==}
@@ -4412,6 +4414,8 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@cacheplane/json-stream@0.0.4': {}
 
   '@changesets/apply-release-plan@7.1.1':
     dependencies:
