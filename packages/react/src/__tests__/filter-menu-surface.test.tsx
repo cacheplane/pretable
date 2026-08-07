@@ -134,9 +134,12 @@ describe("PretableSurface — built-in filter funnel", () => {
 
     const slot = headerRow.querySelector("[data-pretable-filter-funnel-slot]")!;
     expect(slot).toBeTruthy();
-    // Slot is a direct child of the header row (a flat sibling of the header
-    // cells / resize handles), and the funnel button lives inside the slot.
-    expect(slot.parentElement).toBe(headerRow);
+    // The slot hangs off the column's overlay anchor, which is itself a direct
+    // child of the header row (a sibling of the header cells, never nested in
+    // one), and the funnel button lives inside the slot.
+    const anchor = slot.parentElement!;
+    expect(anchor).toHaveAttribute("data-pretable-header-overlays");
+    expect(anchor.parentElement).toBe(headerRow);
     const funnel = slot.querySelector("[data-pretable-filter-funnel]")!;
     expect(funnel).toBeTruthy();
     expect(headerRow.contains(funnel)).toBe(true);
@@ -223,10 +226,10 @@ describe("PretableSurface — built-in filter funnel", () => {
       .getAllByTestId("pretable-row")
       .map((r) => r.getAttribute("data-pretable-row-id"));
     expect(orderAfter).toEqual(orderBefore);
-    // The sort header still reads "Sort" (no direction applied).
+    // The sort header still shows no direction indicator.
     expect(
       view.getByRole("columnheader", { name: "Sort Title" }),
-    ).toHaveTextContent("Sort");
+    ).toHaveAttribute("aria-sort", "none");
   });
 
   it("typing into a text filter narrows the rows and fires onFiltersChange", async () => {

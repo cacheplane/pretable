@@ -35,6 +35,12 @@ test("landing renders grid + control bar + drawer handle; drawer opens", async (
     waitUntil: "domcontentloaded",
   });
   expect(filteringDocs?.status()).toBe(200);
+
+  // ...as does /docs/grid/paste
+  const pasteDocs = await page.goto("/docs/grid/paste", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(pasteDocs?.status()).toBe(200);
 });
 
 test("docs brand link returns to drawer when it was last open", async ({
@@ -226,6 +232,145 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
 });
 
+test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async ({
+  page,
+  context,
+  browserName,
+}) => {
+  // The tail of this test waits for the replay to tick XOM specifically, and
+  // the recording only patches that symbol six times per 27s loop.
+  test.setTimeout(60_000);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Filter to Energy first: the book is ranked by live weight, so an unfiltered
+  // "the row below XOM" is not stable under streaming. Energy is exactly
+  // {XOM, CVX} and their weights are far enough apart that the order holds.
+  await page.locator("[data-pretable-header-row]").first().hover();
+  await page.getByRole("button", { name: "Filter Sector" }).click();
+  const sectorDialog = page.getByRole("dialog", { name: "Filter Sector" });
+  await sectorDialog
+    .locator("[data-pretable-filter-set]")
+    .getByRole("checkbox", { name: "Energy" })
+    .check();
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(2); // XOM, CVX
+  // Close the menu: its value input would otherwise hold focus, and a paste
+  // into an input belongs to that input, not to the grid.
+  await page.keyboard.press("Escape");
+  await expect(sectorDialog).toBeHidden();
+
+  const qty = (rowId: string) =>
+    page.locator(
+      `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-column-id="qty"]`,
+    );
+
+  // CRITICAL: a paste event is delivered to document.activeElement, so focus
+  // has to be inside the grid before the keystroke. Clicking a cell moves the
+  // roving tabindex onto it.
+  await qty("XOM").click();
+  await expect(qty("XOM")).toBeFocused();
+
+  // 2 rows × 2 cols anchored on Qty: the first column lands on Qty (editable),
+  // the second on Last (not editable) and comes back rejected.
+  const tsv = "23000\t999\n12800\t888";
+
+  if (browserName === "chromium") {
+    // Real OS-clipboard path: write the text with the page's own Clipboard API,
+    // then press the paste shortcut. Playwright maps it to Chromium's editing
+    // command, so the browser produces a genuine `paste` event.
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.evaluate(
+      async (text) => await navigator.clipboard.writeText(text),
+      tsv,
+    );
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+v" : "Control+v",
+    );
+  } else {
+    // WebKit exposes no clipboard permission to Playwright and refuses
+    // programmatic clipboard writes outside a user gesture, so this engine
+    // dispatches a synthetic `paste` event carrying the same text. That still
+    // exercises the surface's real listener and the whole gate/apply pipeline —
+    // it is NOT coverage of the OS clipboard or of the ⌘V key path.
+    await page.evaluate((text) => {
+      const target = document.activeElement ?? document.body;
+      let event: Event;
+      try {
+        const data = new DataTransfer();
+        data.setData("text/plain", text);
+        event = new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        });
+      } catch {
+        event = new Event("paste", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "clipboardData", {
+          value: { getData: () => text },
+        });
+      }
+      target.dispatchEvent(event);
+    }, tsv);
+  }
+
+  // The pasted quantities actually land in the cells...
+  await expect(qty("XOM")).toContainText("23,000", { timeout: 10_000 });
+  await expect(qty("CVX")).toContainText("12,800");
+  // ...and the non-editable Last column's two cells come back rejected.
+  await expect(page.getByTestId("paste-summary")).toHaveText(
+    /Pasted 2 of 4 · 2 rejected/,
+  );
+
+  // Pasted values survive streaming ticks — checked on a DERIVED column, which
+  // is the only place the check has teeth. Every tick patch in the recording
+  // carries {id,last,mktValue,dayPnl,dayPnlPct} and never `qty`, so re-reading
+  // the Qty cell here would pass even with the edited-qty override map deleted.
+  // What the override map actually does is recompute Mkt Val from the NEW share
+  // count: a tick's own mktValue was computed from XOM's ORIGINAL 22,000 shares
+  // (~$2.46M), while the pasted 23,000 shares is ~$2.58M. So: wait for a real
+  // tick to land on XOM (its price changes), then check Mkt Val against the
+  // price the grid is actually showing rather than a hardcoded one.
+  const cellText = async (rowId: string, columnId: string): Promise<string> =>
+    (
+      await page
+        .locator(
+          `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-column-id="${columnId}"]`,
+        )
+        .innerText()
+    ).trim();
+
+  const priceBeforeTick = await cellText("XOM", "last");
+  await expect
+    .poll(() => cellText("XOM", "last"), { timeout: 20_000 })
+    .not.toBe(priceBeforeTick);
+
+  // One evaluate so price and value come from the same rendered commit.
+  const shown = await page.evaluate(() => {
+    const row = document.querySelector(
+      '[data-pretable-row][data-pretable-row-id="XOM"]',
+    );
+    const text = (id: string) =>
+      (
+        row?.querySelector(`[data-pretable-column-id="${id}"]`) as HTMLElement
+      )?.innerText.trim() ?? "";
+    return { last: text("last"), mktValue: text("mktValue") };
+  });
+  const price = Number.parseFloat(shown.last);
+  expect(Number.isFinite(price)).toBe(true);
+  const compactUsd = (shares: number) =>
+    `$${((shares * price) / 1_000_000).toFixed(1)}M`;
+  const live = compactUsd(23_000); // pasted share count
+  const stale = compactUsd(22_000); // the book's original share count
+  // Guard: if the two formatted the same the assertion below would prove
+  // nothing. Across the recording's XOM price range they never do.
+  expect(live).not.toBe(stale);
+  expect(shown.mktValue).toBe(live);
+  // And the qty itself is of course still there.
+  await expect(qty("XOM")).toContainText("23,000");
+});
+
 test("showcase: scale grid virtualizes; column layout resizes + resets", async ({
   page,
 }) => {
@@ -269,10 +414,11 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   });
   await expect(layoutGrid).toBeVisible({ timeout: 10_000 });
 
-  // The header cell and its resize handle are SIBLINGS in the header row, each
-  // tagged with the same data-pretable-column-id (verified against
+  // The header cell and its resize handle are separate subtrees of the header
+  // row, each tagged with the same data-pretable-column-id (verified against
   // packages/react/src/pretable-surface.tsx) — the handle is NOT nested inside
-  // the header cell, so both are scoped from the column-layout section root.
+  // the header cell but in a sibling `[data-pretable-header-overlays]` anchor,
+  // so both are scoped from the column-layout section root.
   const layout = page.locator("#column-layout");
   const symbolHeader = layout.locator(
     '[data-pretable-header-cell][data-pretable-column-id="symbol"]',
@@ -300,9 +446,10 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
     .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
     .toBeLessThan(widthBefore + 20);
 
-  // --- Right-pinned column stays glued to the viewport's right edge ---
-  // The showcase's "Analyst note" column is pinned right, and the column set is
-  // wider than the container, so there is real horizontal scroll to exercise.
+  // --- Pinned columns stay glued to the viewport's two edges ---
+  // The showcase pins "Symbol" left and "Analyst note" right, and the column
+  // set is wider than the container, so there is real horizontal scroll to
+  // exercise.
   const layoutViewport = layout.locator("[data-pretable-scroll-viewport]");
   const noteCell = layout.locator(
     '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="note"]',
@@ -326,16 +473,38 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   const noteHandle = layout.locator(
     '[data-pretable-resize-handle][data-pretable-column-id="note"]',
   );
-  const noteFunnel = layout
-    .locator('[data-pretable-filter-funnel][data-pretable-column-id="note"]')
-    .locator("xpath=..");
-  const rightEdge = (locator: typeof noteCell) =>
-    locator.evaluate((el) => el.getBoundingClientRect().right);
+  const noteFunnel = layout.locator(
+    '[data-pretable-header-overlays][data-pretable-column-id="note"] [data-pretable-filter-funnel-slot]',
+  );
+  // The left-pinned side of the same grid. Its overlays are the regression
+  // case: they are placed by counting back from the column's TRAILING edge,
+  // but a left-pinned column's trailing edge is only a few hundred px into the
+  // scrollport, so anything sticky there has to survive the one offset where a
+  // sticky `left` inset is inert — scrollLeft 0, where the flow position of an
+  // in-flow overlay sits PAST its target and a `left` inset can only push a box
+  // further right, never pull it back.
+  const symbolCell = layout.locator(
+    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="symbol"]',
+  );
+  // `symbolHeader` and `handle` are the same boxes the resize drag above used.
+  const symbolFunnel = layout.locator(
+    '[data-pretable-header-overlays][data-pretable-column-id="symbol"] [data-pretable-filter-funnel-slot]',
+  );
+  await expect(symbolCell).toHaveAttribute("data-pretable-pinned", "left");
+
+  const edges = (locator: typeof noteCell) =>
+    locator.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return { left: rect.left, right: rect.right };
+    });
+  const rightEdge = async (locator: typeof noteCell) =>
+    (await edges(locator)).right;
 
   const measure = async () => {
     const viewport = await layoutViewport.evaluate((el) => {
       const rect = el.getBoundingClientRect();
       return {
+        innerLeft: rect.left + el.clientLeft,
         innerRight: rect.left + el.clientLeft + el.clientWidth,
         scrollLeft: el.scrollLeft,
         maxScrollLeft: el.scrollWidth - el.clientWidth,
@@ -347,17 +516,33 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
       headerRight: await rightEdge(noteHeader),
       handleRight: await rightEdge(noteHandle),
       funnelRight: await rightEdge(noteFunnel),
+      symbolCell: await edges(symbolCell),
+      symbolHeader: await edges(symbolHeader),
+      symbolHandle: await edges(handle),
+      symbolFunnel: await edges(symbolFunnel),
       qtyLeft: await qtyCell.evaluate((el) => el.getBoundingClientRect().left),
     };
   };
 
-  // The body cell, the header button and the resize strip all end on the
-  // scrollport's inner right edge; the funnel ends 4px inside it.
+  // Right side: the body cell, the header button and the resize strip all end
+  // on the scrollport's inner right edge; the funnel ends 4px inside it.
+  // Left side: the body cell and the header button start on the scrollport's
+  // inner LEFT edge, and the same two overlays hang off that column's trailing
+  // edge with the same 0px/4px spacing.
   const expectPinned = (m: Awaited<ReturnType<typeof measure>>) => {
     expect(Math.abs(m.noteRight - m.innerRight)).toBeLessThan(2);
     expect(Math.abs(m.headerRight - m.innerRight)).toBeLessThan(2);
     expect(Math.abs(m.handleRight - m.innerRight)).toBeLessThan(2);
     expect(Math.abs(m.funnelRight - (m.innerRight - 4))).toBeLessThan(2);
+
+    expect(Math.abs(m.symbolCell.left - m.innerLeft)).toBeLessThan(2);
+    expect(Math.abs(m.symbolHeader.left - m.innerLeft)).toBeLessThan(2);
+    expect(Math.abs(m.symbolHandle.right - m.symbolHeader.right)).toBeLessThan(
+      2,
+    );
+    expect(
+      Math.abs(m.symbolFunnel.right - (m.symbolHeader.right - 4)),
+    ).toBeLessThan(2);
   };
 
   const before = await measure();
@@ -374,6 +559,39 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
     .toBeGreaterThan(30);
   expectPinned(await measure());
 
+  // --- Mid-scroll, a pinned header must fully OCCLUDE what slid under it ---
+  // Two separate ways a pinned header can leak. First paint: the header row
+  // paints --pretable-bg-header behind its cells, but each cell on top of it
+  // is its own box, so a transparent pinned header cell lets the scrolled-under
+  // header's label read straight through.
+  const headerFill = await noteHeader.evaluate((el) => {
+    const row = el.closest("[data-pretable-header-row]")!;
+    return {
+      cell: getComputedStyle(el).backgroundColor,
+      row: getComputedStyle(row).backgroundColor,
+    };
+  });
+  expect(headerFill.cell).not.toMatch(/transparent|rgba\([^)]*,\s*0\)/);
+  expect(headerFill.cell).toBe(headerFill.row);
+
+  // Second, hit-testing: the header row's boxes share one stacking context, so
+  // an unpinned column's funnel or resize strip that outranks the pinned header
+  // keeps taking clicks from on top of it, invisibly.
+  const foreignHits = await noteHeader.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    const y = rect.top + rect.height / 2;
+    const hits: string[] = [];
+    for (let x = Math.ceil(rect.left) + 1; x < rect.right - 1; x += 2) {
+      const owner = document
+        .elementFromPoint(x, y)
+        ?.closest("[data-pretable-column-id]");
+      const id = owner?.getAttribute("data-pretable-column-id") ?? "(none)";
+      if (id !== "note") hits.push(`${Math.round(x - rect.left)}:${id}`);
+    }
+    return hits;
+  });
+  expect(foreignHits).toEqual([]);
+
   await layoutViewport.evaluate((el) => {
     el.scrollLeft = el.scrollWidth - el.clientWidth;
   });
@@ -386,6 +604,363 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   expect(
     Math.abs(before.qtyLeft - after.qtyLeft - after.scrollLeft),
   ).toBeLessThan(2);
-  // ...while every right-pinned box stayed on the viewport's right edge.
+  // ...while every pinned box stayed on its edge of the viewport.
   expectPinned(after);
+
+  // Back to rest. scrollLeft 0 is the offset where a sticky `left` inset does
+  // no work, so it is the one that catches an overlay parked on its flow
+  // position instead of its intended inset — assert it coming back too, not
+  // just on the first paint.
+  await layoutViewport.evaluate((el) => {
+    el.scrollLeft = 0;
+  });
+  await expect
+    .poll(async () => await layoutViewport.evaluate((el) => el.scrollLeft))
+    .toBe(0);
+  expectPinned(await measure());
+});
+
+test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)", async ({
+  page,
+}) => {
+  // jsdom does no layout, so the unit/integration tests can only prove that the
+  // surface *wrote* an offset. This is the test that the browser actually moves
+  // and that the focused cell ends up somewhere a human can read it.
+  //
+  // Two heavy showcase grids plus ~30 discrete key presses; the default 30s is
+  // tight on a cold preview deploy.
+  test.slow();
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openDrawer(page);
+
+  const mod = process.platform === "darwin" ? "Meta" : "Control";
+
+  // One evaluate per sample so every rect comes from the same layout frame.
+  // `clientTop` / `clientLeft` + `clientWidth` / `clientHeight` give the
+  // scrollport's *inner* box, which excludes any classic scrollbar — that is the
+  // box the reveal math resolves against.
+  const readFrame = (sectionId: string) =>
+    page.evaluate((id) => {
+      const section = document.querySelector(`#${id}`);
+      const viewport = section?.querySelector(
+        "[data-pretable-scroll-viewport]",
+      );
+      const header = section?.querySelector("[data-pretable-header-row]");
+      const cell = section?.querySelector(
+        '[data-pretable-cell][data-pretable-focused="true"]',
+      );
+      if (!(viewport instanceof HTMLElement) || !header || !cell) {
+        return null;
+      }
+      const vr = viewport.getBoundingClientRect();
+      const cr = cell.getBoundingClientRect();
+      const row = cell.closest("[data-pretable-row]");
+      return {
+        scrollTop: viewport.scrollTop,
+        scrollLeft: viewport.scrollLeft,
+        maxScrollTop: viewport.scrollHeight - viewport.clientHeight,
+        maxScrollLeft: viewport.scrollWidth - viewport.clientWidth,
+        innerTop: vr.top + viewport.clientTop,
+        innerBottom: vr.top + viewport.clientTop + viewport.clientHeight,
+        innerLeft: vr.left + viewport.clientLeft,
+        innerRight: vr.left + viewport.clientLeft + viewport.clientWidth,
+        headerBottom: header.getBoundingClientRect().bottom,
+        cellTop: cr.top,
+        cellBottom: cr.bottom,
+        cellLeft: cr.left,
+        cellRight: cr.right,
+        columnId: cell.getAttribute("data-pretable-column-id"),
+        rowIndex: Number(row?.getAttribute("data-pretable-row-index") ?? -1),
+      };
+    }, sectionId);
+
+  type Frame = NonNullable<Awaited<ReturnType<typeof readFrame>>>;
+
+  // The focused cell is inside the scrollport AND below the sticky header — a
+  // cell hidden under the header is "in the viewport rect" but unreadable, which
+  // is exactly the case the reveal math exists to prevent.
+  const expectReadable = (f: Frame) => {
+    expect(f.cellTop).toBeGreaterThanOrEqual(f.headerBottom - 2);
+    expect(f.cellBottom).toBeLessThanOrEqual(f.innerBottom + 2);
+    expect(f.cellLeft).toBeGreaterThanOrEqual(f.innerLeft - 2);
+    expect(f.cellRight).toBeLessThanOrEqual(f.innerRight + 2);
+  };
+
+  // --- Vertical: ArrowDown past the rendered window ---
+  await page.locator("#scale").scrollIntoViewIfNeeded();
+  await expect(page.getByRole("grid", { name: /2,500 by 500/i })).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Start from a scrollable (non-pinned) cell in the first row. `row` is the
+  // grid's left-pinned column, so starting there would never exercise the
+  // horizontal side.
+  await page
+    .locator(
+      '#scale [data-pretable-row][data-pretable-row-index="0"] [data-pretable-column-id="c3"]',
+    )
+    .click();
+  const start = await readFrame("scale");
+  expect(start).not.toBeNull();
+  expect(start?.rowIndex).toBe(0);
+  expect(start?.scrollTop).toBe(0);
+
+  // The scale grid is a 420px viewport over 32px rows with overscan 6, so at
+  // most ~19 rows are ever in the DOM from the top. Row 30 is comfortably past
+  // that: before this behaviour existed the focused cell simply stopped
+  // existing in the DOM here.
+  const TARGET_ROW = 30;
+  for (let i = 0; i < TARGET_ROW; i += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+
+  // The focused cell existing at row 30 at all already proves the viewport
+  // scrolled — an unrendered row has no DOM node to carry the attribute.
+  await expect
+    .poll(async () => (await readFrame("scale"))?.rowIndex ?? -1, {
+      timeout: 10_000,
+    })
+    .toBe(TARGET_ROW);
+
+  const down = (await readFrame("scale")) as Frame;
+  expect(down.scrollTop).toBeGreaterThan(0);
+  expectReadable(down);
+  // Minimal scroll, not centring: walking down off the bottom edge aligns the
+  // target's bottom with the band's bottom.
+  expect(Math.abs(down.cellBottom - down.innerBottom)).toBeLessThan(8);
+  // Focus never left column c3, and c3 was already visible, so nothing should
+  // have moved horizontally.
+  expect(down.columnId).toBe("c3");
+  expect(down.scrollLeft).toBe(0);
+
+  // --- Cmd/Ctrl+End: last cell of the grid, both axes move ---
+  await page.keyboard.press(`${mod}+End`);
+  await expect
+    .poll(async () => (await readFrame("scale"))?.columnId ?? "", {
+      timeout: 10_000,
+    })
+    .toBe("c500");
+
+  const end = (await readFrame("scale")) as Frame;
+  expect(end.rowIndex).toBe(2499);
+  expect(end.scrollTop).toBeGreaterThan(down.scrollTop);
+  expect(end.scrollLeft).toBeGreaterThan(0);
+  expectReadable(end);
+  // `row` is left-pinned and overlays the scrollport's left edge, so the
+  // revealed cell has to clear it, not merely clear `innerLeft`.
+  const pinnedLeftRight = await page
+    .locator(
+      '#scale [data-pretable-row][data-pretable-row-index="2499"] [data-pretable-column-id="row"]',
+    )
+    .evaluate((el) => el.getBoundingClientRect().right);
+  expect(end.cellLeft).toBeGreaterThanOrEqual(pinnedLeftRight - 2);
+
+  // --- Right-pinned group: the revealed cell stops short of it ---
+  // The column-layout showcase pins "Analyst note" right and is wider than its
+  // container, so the last *scrollable* column ("weight") can only be revealed
+  // by scrolling it clear of that sticky group.
+  await page.locator("#column-layout").scrollIntoViewIfNeeded();
+  await expect(
+    page.getByRole("grid", { name: /resizable, reorderable/i }),
+  ).toBeVisible({ timeout: 10_000 });
+
+  await page
+    .locator(
+      '#column-layout [data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="symbol"]',
+    )
+    .click();
+  expect((await readFrame("column-layout"))?.scrollLeft).toBe(0);
+
+  // `End` → last column in the row, which is the right-pinned "note". A pinned
+  // column is on screen at every offset, so this must NOT scroll.
+  await page.keyboard.press("End");
+  await expect
+    .poll(async () => (await readFrame("column-layout"))?.columnId ?? "")
+    .toBe("note");
+  expect((await readFrame("column-layout"))?.scrollLeft).toBe(0);
+
+  // One column left is "weight", the last scrollable column — hidden behind the
+  // pinned group at scrollLeft 0, so revealing it requires real scrolling.
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(async () => (await readFrame("column-layout"))?.columnId ?? "")
+    .toBe("weight");
+
+  const weight = (await readFrame("column-layout")) as Frame;
+  expect(weight.scrollLeft).toBeGreaterThan(0);
+  expectReadable(weight);
+  // The pinned group's left edge is the real right boundary of the readable
+  // band; measure it from the pinned cell rather than assuming its width.
+  const pinnedRightLeft = await page
+    .locator(
+      '#column-layout [data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="note"]',
+    )
+    .evaluate((el) => el.getBoundingClientRect().left);
+  expect(weight.cellRight).toBeLessThanOrEqual(pinnedRightLeft + 2);
+});
+
+test("showcase: dropping into the right-pinned group pins the column", async ({
+  page,
+}) => {
+  // A drop's pin follows from where it lands, so a pinned column is a
+  // two-halves target: its leading half drops ahead of the group and stays
+  // scrollable, its trailing half drops inside and takes the pin. aria-colindex
+  // is read from the engine array, so it only stays in step with the rendered
+  // order while that array is grouped [left..., unpinned..., right...].
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openDrawer(page);
+  await page.locator("#column-layout").scrollIntoViewIfNeeded();
+
+  const layout = page.locator("#column-layout");
+  await expect(layout.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  const headers = async () =>
+    await layout.locator("[data-pretable-header-cell]").evaluateAll((els) =>
+      els.map((el) => ({
+        id: el.getAttribute("data-pretable-column-id") ?? "",
+        pinned: el.getAttribute("data-pretable-pinned"),
+        colIndex: Number(el.getAttribute("aria-colindex")),
+      })),
+    );
+
+  const before = await headers();
+  // Headers render in visual order, so aria-colindex must ascend 1..N.
+  expect(before.map((h) => h.colIndex)).toEqual(before.map((_, i) => i + 1));
+  expect(before.at(-1)).toMatchObject({ id: "note", pinned: "right" });
+
+  // Drag "sector" onto the trailing half of the right-pinned "note" — inside
+  // the group, so it lands there and takes the pin. WebKit only engages
+  // pointer capture once the pointer has traversed intermediate positions.
+  const note = (await layout
+    .locator('[data-pretable-header-cell][data-pretable-column-id="note"]')
+    .boundingBox())!;
+  const sector = (await layout
+    .locator('[data-pretable-header-cell][data-pretable-column-id="sector"]')
+    .boundingBox())!;
+  const y = sector.y + sector.height / 2;
+  await page.mouse.move(sector.x + sector.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(sector.x + sector.width / 2 + 12, y, { steps: 3 });
+  await page.mouse.move(note.x + note.width - 6, y, { steps: 10 });
+  await page.mouse.up();
+
+  await expect.poll(async () => (await headers()).at(-1)?.id).toBe("sector");
+  const after = await headers();
+  expect(after.map((h) => h.colIndex)).toEqual(after.map((_, i) => i + 1));
+  expect(after.at(-1)).toMatchObject({ id: "sector", pinned: "right" });
+  expect(after.at(-2)).toMatchObject({ id: "note", pinned: "right" });
+});
+
+test("showcase: column reorder drops where the indicator points, scrolled sideways", async ({
+  page,
+}) => {
+  // The column-layout grid is wider than its container, so the header the user
+  // grabs and the header they drop on are both offset from their content
+  // positions by scrollLeft. The drop index used to be computed from viewport
+  // coordinates but compared against content offsets, which put the indicator
+  // — and the drop — a scroll-distance away from the cursor.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openDrawer(page);
+  await page.locator("#column-layout").scrollIntoViewIfNeeded();
+
+  const layout = page.locator("#column-layout");
+  const viewport = layout.locator("[data-pretable-scroll-viewport]");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+
+  const headerBoxes = async () =>
+    await layout.locator("[data-pretable-header-cell]").evaluateAll((els) =>
+      els.map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          id: el.getAttribute("data-pretable-column-id") ?? "",
+          left: rect.left,
+          right: rect.right,
+        };
+      }),
+    );
+
+  // Scroll to the far right, where every scrollable column is displaced by the
+  // full scroll distance.
+  await viewport.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth - el.clientWidth;
+  });
+  await expect
+    .poll(async () => await viewport.evaluate((el) => el.scrollLeft))
+    .toBeGreaterThan(60);
+
+  // A drag is driven by raw coordinates, so the page has to stop moving before
+  // they are measured — the drawer animates open and the section is still
+  // settling, and a box measured mid-flight puts the pointerdown on empty space
+  // (or another row) and the gesture silently never starts. Note this cannot be
+  // hover(): Playwright would scroll the header into view and undo the very
+  // horizontal scroll under test.
+  const sectorHeader = layout.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="sector"]',
+  );
+  let lastTop: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const top = await sectorHeader.evaluate(
+          (el) => el.getBoundingClientRect().top,
+        );
+        const settled = lastTop !== null && Math.abs(top - lastTop) < 0.5;
+        lastTop = top;
+        return settled;
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+
+  // Grab "sector" and drag it onto the left half of "weight". Grabbing is the
+  // fragile half — a header is flanked by a 22px funnel slot and a 4px resize
+  // strip, so coordinates measured a frame too early press one of those and
+  // start a resize instead — so it is re-measured and retried until the ghost
+  // proves the reorder engaged. The assertions below stay single-shot.
+  const ghost = page.locator("[data-pretable-reorder-ghost]");
+  let grabbed = false;
+  let y = 0;
+  for (let attempt = 0; attempt < 3 && !grabbed; attempt += 1) {
+    const box = await sectorHeader.boundingBox();
+    if (!box) continue;
+    y = box.y + box.height / 2;
+    const grabX = box.x + box.width / 2;
+    await page.mouse.move(grabX, y);
+    await page.mouse.down();
+    // WebKit only engages pointer capture once the pointer has traversed
+    // intermediate positions, so the drag moves in steps, not a single jump.
+    await page.mouse.move(grabX + 10, y, { steps: 3 });
+    grabbed = (await ghost.count()) > 0;
+    if (!grabbed) await page.mouse.up();
+  }
+  expect(grabbed, "reorder drag did not engage on the sector header").toBe(
+    true,
+  );
+
+  // Positions hold still for the rest of the gesture, so measure the target now.
+  const before = await headerBoxes();
+  const targetCol = before.find((b) => b.id === "weight");
+  expect(targetCol).toBeTruthy();
+  if (!targetCol) return;
+
+  const cursorX = targetCol.left + 20;
+  await page.mouse.move(cursorX, y, { steps: 10 });
+
+  // The indicator marks the boundary the cursor is nearest — "weight"'s left
+  // edge — in screen coordinates, not a scroll-distance away from it.
+  const indicator = await layout
+    .locator("[data-pretable-reorder-drop-indicator]")
+    .boundingBox();
+  expect(indicator).not.toBeNull();
+  expect(Math.abs((indicator?.x ?? 0) - targetCol.left)).toBeLessThan(2);
+
+  await page.mouse.up();
+
+  // ...and the column lands on exactly that boundary.
+  const after = await headerBoxes();
+  const ids = after.map((b) => b.id);
+  expect(ids.indexOf("sector")).toBe(ids.indexOf("weight") - 1);
 });

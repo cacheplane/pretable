@@ -14,6 +14,7 @@ import type { PretableColumn } from "./types";
 import {
   createDomRenderSnapshot,
   type PlannedColumn,
+  type RowMetricsReader,
 } from "@pretable-internal/renderer-dom";
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
@@ -41,10 +42,32 @@ export interface PretableRenderSnapshot<
   TRow extends PretableRow = PretableRow,
 > {
   columns: PlannedColumn[];
+  /**
+   * Only the rows inside the current virtualization window. For the geometry
+   * of a row outside it, use {@link PretableRenderSnapshot.rowMetrics}.
+   */
   rows: PretableRenderRow<TRow>[];
+  /**
+   * Row offsets and heights for **every** visible row, not just the windowed
+   * ones in `rows`. Read it to position or scroll to a row that is not
+   * currently rendered. Read-only: the underlying index is owned by the
+   * renderer and rebuilt on every layout pass.
+   */
+  rowMetrics: RowMetricsReader;
   nodeCount: number;
   totalHeight: number;
   totalWidth: number;
+  /**
+   * Total width of the left-pinned column group. The group overlays content at
+   * `scrollLeft`, so the horizontally unoccluded band starts at
+   * `scrollLeft + pinnedLeftWidth`.
+   */
+  pinnedLeftWidth: number;
+  /**
+   * Total width of the right-pinned column group. The band ends at
+   * `scrollLeft + viewportWidth - pinnedRightWidth`.
+   */
+  pinnedRightWidth: number;
 }
 
 /**
@@ -157,14 +180,15 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   ).current;
   /* eslint-enable react-hooks/refs */
 
-  // Create the grid once per columns/getRowId/autosize identity. Row data is
-  // reconciled in place via grid.setRows (below) rather than by recreating the
-  // grid, so selection and focus survive high-frequency row updates (streaming).
-  // NOTE: keep `columns` a stable reference for this to hold across updates.
+  // Create the grid once. Both `rows` and `columns` are reconciled in place
+  // (grid.setRows / grid.mergeColumnsFromProps, below) rather than by recreating
+  // it, so sort, filters, selection, focus, column layout, and an in-flight edit
+  // survive high-frequency row updates (streaming) — and survive an inline
+  // `columns={[...]}`, which is a new identity on every render.
   const grid = useMemo(
     () => createGrid({ columns, rows, getRowId: stableGetRowId, autosize }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows; getRowId via the stable wrapper above
-    [autosize, columns, stableGetRowId],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above
+    [autosize, stableGetRowId],
   );
 
   // Reconcile streamed row updates into the existing grid (instead of recreating
@@ -179,19 +203,15 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     }
   }, [grid, rows]);
 
-  const lastColumnIdsRef = useRef<readonly string[] | null>(null);
+  // Merge on every identity change, not only when the set of ids changes: a
+  // column's header, width, or accessor can change while the ids stay put.
+  // mergeColumnsFromProps only wakes subscribers when something observable
+  // moved, so this stays quiet for an inline array that is merely re-created.
+  const lastColumnsRef = useRef(columns);
   useLayoutEffect(() => {
-    const currentIds = columns.map((c) => c.id);
-    const prevIds = lastColumnIdsRef.current;
-    if (
-      prevIds === null ||
-      prevIds.length !== currentIds.length ||
-      prevIds.some((id, i) => id !== currentIds[i])
-    ) {
-      if (prevIds !== null) {
-        grid.mergeColumnsFromProps(columns);
-      }
-      lastColumnIdsRef.current = currentIds;
+    if (lastColumnsRef.current !== columns) {
+      lastColumnsRef.current = columns;
+      grid.mergeColumnsFromProps(columns);
     }
   }, [columns, grid]);
 
@@ -246,19 +266,18 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     }
 
     if (state.columnOrder !== undefined) {
-      const targetOrder = state.columnOrder;
-      const currentIds = grid.options.columns.map((c) => c.id);
-      const targetIds = [
-        ...targetOrder.filter((id) => currentIds.includes(id)),
-        ...currentIds.filter((id) => !targetOrder.includes(id)),
-      ];
-      for (let i = 0; i < targetIds.length; i += 1) {
-        const id = targetIds[i]!;
-        const currentIdx = grid.options.columns.findIndex((c) => c.id === id);
-        if (currentIdx !== i && id !== "__pretable_row_select__") {
-          grid.moveColumn(id, i);
-        }
-      }
+      // One commit, not a replay of per-column moves. `moveColumn` derives a
+      // column's pin from the region it lands in, so replaying an order as N
+      // moves would flap pin state through the transient arrays in between —
+      // and against a controlled `columnOrder` that disagrees with the
+      // controlled `columnPinned` below, that flapping never settles: the
+      // order pass unpins, the pin pass re-pins and repositions, the snapshot
+      // changes, and this effect runs again.
+      //
+      // `setColumnOrder` never touches pin state, so the two passes converge:
+      // this one groups by the current pins, the pin pass corrects them, and
+      // the next run is a no-op.
+      grid.setColumnOrder(state.columnOrder);
     }
 
     if (state.columnPinned !== undefined) {

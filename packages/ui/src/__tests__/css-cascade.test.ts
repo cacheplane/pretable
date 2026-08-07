@@ -24,6 +24,16 @@ describe("grid.css cascade contract", () => {
     expect(css).toMatch(/var\(--pretable-text-error\)/);
   });
 
+  test("pinned header cells get an opaque background, both sides", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    // The header row's own background sits BEHIND its cells; a transparent
+    // pinned header cell lets a scrolled-under header's label read through it.
+    const rule = css.match(
+      /:where\(\s*\[data-pretable-header-cell\]\[data-pretable-pinned="left"\],\s*\[data-pretable-header-cell\]\[data-pretable-pinned="right"\]\s*\)\s*\{[^}]*\}/,
+    );
+    expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
+  });
+
   test("grid.css styles the enum combobox listbox", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]\)/);
@@ -57,6 +67,17 @@ describe("grid.css cascade contract", () => {
       const match = css.match(block);
       expect(match?.[0]).toMatch(/font-family:\s*var\(--pretable-font-sans\)/);
     }
+  });
+
+  test("body cells clip their own content instead of spilling into the next column", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const cellRule = css.match(
+      /:where\(\[data-pretable-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(cellRule, "no [data-pretable-cell] rule found").toBeDefined();
+    // Cells are absolutely positioned, so an unclipped long value renders on
+    // top of its neighbour rather than being cut off at the column edge.
+    expect(cellRule).toMatch(/overflow:\s*hidden/);
   });
 
   test("every grid.css rule selector is wrapped in :where()", () => {

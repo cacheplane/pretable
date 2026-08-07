@@ -300,6 +300,7 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   // column-layout actions (sub-project C):
   setColumnWidth(columnId: string, width: number): void;
   moveColumn(columnId: string, toIndex: number): void;
+  setColumnOrder(ids: readonly string[]): void;
   setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
   autosizeColumn(columnId: string, options?: AutosizeOptions): void;
   resetColumnLayout(): void;

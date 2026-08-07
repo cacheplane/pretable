@@ -64,10 +64,19 @@ export function makeLayoutColumns(): PretableColumn<LayoutRow>[] {
   const signedUsd = (n: number) =>
     `${n < 0 ? "-" : "+"}$${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
   // Total width (1390px) intentionally exceeds the showcase container so the
-  // grid scrolls horizontally — that is what makes the right-pinned "Analyst
-  // note" column visibly stick to the viewport's right edge.
+  // grid scrolls horizontally — that is what makes the pinned "Symbol" and
+  // "Analyst note" columns visibly stick to the viewport's two edges. Both
+  // edges are pinned on purpose: the left one carries header overlays (the
+  // resize strip and the filter funnel) whose sticky geometry differs from the
+  // right one's, and the smoke suite measures both.
   return [
-    { id: "symbol", header: "Symbol", widthPx: 120, value: (r) => r.symbol },
+    {
+      id: "symbol",
+      header: "Symbol",
+      widthPx: 120,
+      pinned: "left",
+      value: (r) => r.symbol,
+    },
     { id: "name", header: "Name", widthPx: 210, value: (r) => r.name },
     { id: "sector", header: "Sector", widthPx: 160, value: (r) => r.sector },
     {

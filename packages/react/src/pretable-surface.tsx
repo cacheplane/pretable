@@ -17,6 +17,7 @@ import type {
   ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
+  PretableEditInput,
   PretableFocusState,
   PretableGrid,
   PretableGridOptions,
@@ -24,6 +25,7 @@ import type {
   PretableRow,
   PretableSelectionState,
   PretableSortEntry,
+  PretableVisibleRow,
 } from "@pretable/core";
 import type {
   PretableCellRenderInput,
@@ -31,9 +33,15 @@ import type {
   PretableEditorInput,
   PretableHeaderRenderInput,
 } from "./types";
+import {
+  scrollLeftToReveal,
+  scrollTopToReveal,
+} from "@pretable-internal/renderer-dom";
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
 
+import { planColumnLayout } from "@pretable-internal/renderer-dom";
+import { computeColumnDropTarget } from "./column-drag-geometry";
 import { measureRenderedRowHeight } from "./row-height";
 import {
   type PretableSurfaceState,
@@ -50,6 +58,7 @@ import {
 import {
   getCellStyle,
   getHeaderCellStyle,
+  getHeaderOverlayAnchorStyle,
   getHeaderRowStyle,
   getPinnedCellStyle,
   getPinnedRightCellStyle,
@@ -78,6 +87,14 @@ import {
   type SerializeRangesArgs,
   serializeRangesAsTsv,
 } from "./copy";
+import {
+  mapPasteToTargets,
+  type PastedCell,
+  type PastePayload,
+  parseTsv,
+  type RejectedPasteCell,
+} from "./paste";
+import { parseDraftForType } from "./editors/type-parsing";
 
 async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -140,6 +157,23 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
 
+/**
+ * How many `scrollTop` writes scroll-into-view may make for a single focus
+ * address before it gives up and leaves the target slightly off.
+ *
+ * Scrolling to a distant row uses *estimated* heights for every row in
+ * between, because only rendered rows are ever measured. When the target
+ * finally renders it gets measured, every offset after it shifts, and the
+ * offset we just wrote is a little wrong — so the effect re-asserts on the
+ * next measurement pass. That normally converges in one or two passes:
+ * `scrollTopToReveal` returns `null` as soon as the target is fully revealed
+ * (including when it is clamped against the scroll extent), which is what ends
+ * the loop. This bound exists purely so a pathological case — heights that
+ * never settle, e.g. wrapped text re-measured under high-frequency streaming —
+ * degrades to "slightly off" instead of scrolling forever.
+ */
+const MAX_SCROLL_REVEAL_WRITES = 4;
+
 const REORDER_THRESHOLD_PX = 5;
 
 interface PretableSurfaceHeaderCellRenderInput<
@@ -158,6 +192,20 @@ interface PretableSurfaceHeaderCellRenderInput<
 type PretableSurfaceBodyCellRenderInput<
   TRow extends PretableRow = PretableRow,
 > = PretableCellRenderInput<TRow>;
+
+/**
+ * Input passed to {@link PretableSurfaceProps.onRowActivate}.
+ *
+ * @public
+ */
+export interface PretableRowActivateInput<
+  TRow extends PretableRow = PretableRow,
+> {
+  row: TRow;
+  rowId: string;
+  /** Index within the currently visible (sorted, filtered) rows. */
+  rowIndex: number;
+}
 
 interface PretableSurfaceRowClassNameInput<
   TRow extends PretableRow = PretableRow,
@@ -246,6 +294,13 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    */
   state?: PretableSurfaceState | null;
   overscan?: number;
+  /**
+   * Called when the user activates a row — a plain click on it, or Enter/Space
+   * on the focused cell. This is "open the record this row stands for", which
+   * is a different intent from selecting cells: a modifier-click and a
+   * drag-select are range selection and do not activate.
+   */
+  onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
   onFocusChange?: (next: PretableFocusState) => void;
@@ -318,6 +373,23 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     value: unknown;
     row: TRow;
   }) => void | Promise<void>;
+  /**
+   * Called once per clipboard paste, with every cell the block landed on that
+   * survived the gate (`parseEditValue`/type coercion → `editable` →
+   * `validate`), the ones that did not, and how much of the block fell off the
+   * grid's edges. The grid is controlled and never mutates rows: apply
+   * `cells` in a single state update.
+   *
+   * Paste is opt-in — without this prop the surface leaves paste events alone.
+   * Pastes that land while an `input`/`textarea` inside the grid has focus (a
+   * cell editor, or a filter menu's field) belong to that input.
+   *
+   * The payload is a **snapshot**: `PastedCell.row` is the row as it was when
+   * the paste started, and `editable`/`validate` ran against those pre-tick
+   * values. Apply the cells against your *current* state and no-op on row ids
+   * that have since vanished — the same contract as {@link onCellEdit}.
+   */
+  onPaste?: (payload: PastePayload<TRow>) => void | Promise<void>;
 }
 
 interface MemoizedCellContentProps {
@@ -420,15 +492,20 @@ function HeaderContentImpl({
       </>
     );
   }
+  // Direction glyph rather than words: this default read
+  // "Newest"/"Oldest"/"Sort", which is date vocabulary applied to every column
+  // — wrong on a name or a number. The button already carries `aria-label`
+  // ("Sort <label>") and `aria-sort`, so the glyph is decorative, and the data
+  // attribute gives themes something to target.
   return (
     <>
       <span>{label}</span>
       <strong>
-        {sortDirection === "desc"
-          ? "Newest"
-          : sortDirection === "asc"
-            ? "Oldest"
-            : "Sort"}
+        {sortDirection ? (
+          <span aria-hidden="true" data-pretable-sort-indicator={sortDirection}>
+            {sortDirection === "asc" ? "▲" : "▼"}
+          </span>
+        ) : null}
         {sortPriority !== null ? (
           <span data-pretable-sort-priority="">{sortPriority}</span>
         ) : null}
@@ -476,6 +553,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   state,
   overscan = 6,
   onGridReady,
+  onRowActivate,
   onSelectedRowIdChange,
   onSelectionChange,
   onFocusChange,
@@ -498,6 +576,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   copyToClipboard,
   messages,
   onCellEdit,
+  onPaste,
 }: PretableSurfaceProps<TRow>) {
   const [measuredHeights, setMeasuredHeights] = useState<
     Record<string, number>
@@ -535,6 +614,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     cursorX: number;
     cursorY: number;
     dropIndex: number;
+    // Content-space offset for the drop indicator, resolved from the same
+    // pointer event as `dropIndex` so the two can never disagree.
+    indicatorLeft: number;
     ghostWidth: number;
     ghostHeight: number;
     ghostHeader: string;
@@ -585,6 +667,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragAnchorRef = useRef<PretableCellAddress | null>(null);
+  // Set when a pointer-drag extended the selection past its origin cell. The
+  // click that ends such a drag is a range selection, not a row activation.
+  const dragExtendedRef = useRef(false);
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
   const lastCheckedRowAnchorRef = useRef<string | null>(null);
   const { headerHeight } = useResolvedHeights();
@@ -633,10 +718,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const editColumnsRef = useRef(effectiveColumns);
   const editVisibleRowsRef = useRef(snapshot.visibleRows);
   const onCellEditRef = useRef(onCellEdit);
+  const onPasteRef = useRef(onPaste);
   useLayoutEffect(() => {
     editColumnsRef.current = effectiveColumns;
     editVisibleRowsRef.current = snapshot.visibleRows;
     onCellEditRef.current = onCellEdit;
+    onPasteRef.current = onPaste;
   });
   // Which entry path opened the active edit. Type-to-replace seeds the draft
   // with the typed character, so the editor must not select it (the next
@@ -705,6 +792,219 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     await editController.commit();
   };
 
+  // ---------------------------------------------------------------------
+  // Clipboard paste
+  // ---------------------------------------------------------------------
+  // Monotonic token mirroring useCellEditController's: the async gate captures
+  // it before awaiting and re-checks after, so a paste that resolves once a
+  // newer paste has started (or after unmount) is discarded rather than firing
+  // a stale onPaste. Deliberately NOT bumped when rows/columns change identity:
+  // a streaming grid replaces `visibleRows` constantly, and the payload is
+  // addressed by row id — the consumer applies it against its own current
+  // state, exactly as it does for onCellEdit.
+  const pasteTokenRef = useRef(0);
+
+  const handlePaste = useCallback(
+    (event: ClipboardEvent) => {
+      const onPasteFn = onPasteRef.current;
+      if (!onPasteFn) return; // paste is opt-in, exactly like onCellEdit
+      // An input inside the grid owns its own paste. This is a blanket
+      // input/textarea check, not a cell-editor check: the built-in filter
+      // menu's fields live inside the surface too, and a paste aimed at one of
+      // them is not a grid paste. Mirrors the Cmd+C guard's target check, plus
+      // an activeElement check so an event that targets the grid root while an
+      // input holds focus is ignored too.
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      const active = viewportRef.current?.ownerDocument.activeElement;
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (text === "") return;
+      const matrix = parseTsv(text);
+      if (matrix.length === 0) return;
+
+      const snap = grid.getSnapshot();
+      // Paste geometry walks columns left to right, so it has to walk them in
+      // the order they are DRAWN. Drag-to-reorder moves columns in the engine
+      // while the `columns` prop keeps its declaration order, so the prop is
+      // the wrong list to count across: anchored on a column the user dragged
+      // rightward, the block would run off the end of the prop array (cells
+      // silently clipped) or land in columns to the left of where they aimed.
+      // Engine order is the drawn order — the same source `renderSnapshot`
+      // reads — with the definitions still coming from the props.
+      const columnDefsById = new Map(
+        editColumnsRef.current.map((column) => [column.id, column]),
+      );
+      const columns = grid.options.columns.flatMap((engineColumn) => {
+        const def = columnDefsById.get(engineColumn.id);
+        return def ? [def] : [];
+      });
+      const anchored = resolvePasteAnchor(
+        snap.selection.ranges,
+        snap.focus,
+        snap.visibleRows,
+        columns,
+      );
+      if (!anchored) return; // nothing selected or focused: not ours to handle
+
+      const targets = mapPasteToTargets<TRow>({
+        matrix,
+        anchor: anchored.anchor,
+        selectionSize: anchored.selectionSize,
+        visibleRows: snap.visibleRows,
+        columns,
+      });
+
+      // From here the grid owns this paste; the browser must not also insert it.
+      event.preventDefault();
+
+      let sourceColumns = 0;
+      for (const row of matrix) {
+        sourceColumns = Math.max(sourceColumns, row.length);
+      }
+
+      const myToken = (pasteTokenRef.current += 1);
+      const columnById = new Map(columns.map((c) => [c.id, c]));
+      const rowById = new Map(snap.visibleRows.map((r) => [r.id, r.row]));
+
+      // One slot per target, so outcomes keep the block's row-major order.
+      const outcomes = new Array<PastedCell<TRow> | RejectedPasteCell | null>(
+        targets.cells.length,
+      ).fill(null);
+      const candidates: {
+        index: number;
+        target: (typeof targets.cells)[number];
+        input: PretableEditInput<TRow>;
+      }[] = [];
+
+      targets.cells.forEach((target, index) => {
+        const column = columnById.get(target.columnId);
+        const row = rowById.get(target.rowId);
+        if (!column || !row) return;
+        const input: PretableEditInput<TRow> = {
+          rowId: target.rowId,
+          columnId: target.columnId,
+          row,
+          column,
+          value: resolveCellValue(row, column),
+        };
+        candidates.push({ index, target, input });
+      });
+
+      const gate = async (): Promise<void> => {
+        // Candidates are gated in parallel. Within one candidate the order is
+        // `editable` → coercion → `validate`:
+        //  - `editable` first, so a cell the user could never write reports
+        //    "not-editable" rather than a coercion complaint about a value that
+        //    was never going to land ("abc" into a read-only number column).
+        //  - `validate` last, so it sees the coerced, typed value.
+        // Each candidate is wrapped on its own: one flaky `editable`/`validate`
+        // rejects THAT cell as "invalid" instead of dropping the whole paste.
+        const resolved = await Promise.all(
+          candidates.map(
+            async ({
+              target,
+              input,
+            }): Promise<PastedCell<TRow> | RejectedPasteCell> => {
+              try {
+                const editable = input.column.editable ?? false;
+                const allowed =
+                  typeof editable === "function"
+                    ? await editable(input)
+                    : editable;
+                if (!allowed) return { ...target, reason: "not-editable" };
+
+                // Same coercion a committed edit gets: the column's
+                // parseEditValue wins, otherwise the built-in per-type parse —
+                // so number/date/enum columns yield typed values instead of
+                // clipboard strings.
+                let value: unknown;
+                if (input.column.parseEditValue) {
+                  value = input.column.parseEditValue(target.raw, input);
+                } else {
+                  const parsed = parseDraftForType(input.column, target.raw);
+                  if (!parsed.ok) {
+                    return {
+                      ...target,
+                      reason: "invalid",
+                      message: parsed.message,
+                    };
+                  }
+                  value = parsed.value;
+                }
+
+                if (input.column.validate) {
+                  const result = await input.column.validate(value, input);
+                  if (result !== true) {
+                    return { ...target, reason: "invalid", message: result };
+                  }
+                }
+                return {
+                  rowId: target.rowId,
+                  columnId: target.columnId,
+                  raw: target.raw,
+                  value,
+                  row: input.row,
+                };
+              } catch (err) {
+                return {
+                  ...target,
+                  reason: "invalid",
+                  message: err instanceof Error ? err.message : String(err),
+                };
+              }
+            },
+          ),
+        );
+        if (myToken !== pasteTokenRef.current) return; // stale
+        candidates.forEach((candidate, i) => {
+          outcomes[candidate.index] = resolved[i]!;
+        });
+
+        const cells: PastedCell<TRow>[] = [];
+        const rejected: RejectedPasteCell[] = [];
+        for (const outcome of outcomes) {
+          if (!outcome) continue;
+          if ("reason" in outcome) rejected.push(outcome);
+          else cells.push(outcome);
+        }
+        await onPasteFn({
+          cells,
+          rejected,
+          source: { rows: matrix.length, columns: sourceColumns },
+          clipped: targets.clipped,
+        });
+      };
+
+      void gate().catch((err) => {
+        console.warn("[pretable] paste failed", err);
+      });
+    },
+    [grid],
+  );
+
+  useEffect(() => {
+    // The listener lives on the surface root, not the document, so two grids
+    // on one page never handle each other's paste.
+    const node = viewportRef.current;
+    if (!node) return;
+    node.addEventListener("paste", handlePaste);
+    return () => {
+      node.removeEventListener("paste", handlePaste);
+      pasteTokenRef.current += 1; // unmount invalidates an in-flight gate
+    };
+  }, [handlePaste]);
+
   // Built-in column filter menu: one open-state for the whole surface.
   const {
     openState: filterOpenState,
@@ -734,32 +1034,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return map;
   }, [effectiveColumns]);
 
-  // Used by the reorder gesture to compute drop positions without DOM
-  // measurement (so it works in jsdom). Pulled from renderSnapshot.columns
-  // where available; columns outside the rendered window fall back to the
-  // accumulated width sum. Indexed by renderSnapshot column position
-  // (= engine order), NOT by effectiveColumns position.
-  const { columnLefts, columnWidths } = useMemo(() => {
-    const engineColumns = grid.options.columns;
-    const lefts = new Array<number>(engineColumns.length).fill(0);
-    const widths = new Array<number>(engineColumns.length).fill(0);
-    for (const planned of renderSnapshot.columns) {
-      lefts[planned.index] = planned.left;
-      widths[planned.index] = planned.width;
-    }
-    // Fill any gaps (off-screen columns) by accumulating widths in
-    // engine order.
-    let acc = 0;
-    for (let i = 0; i < engineColumns.length; i += 1) {
-      const col = engineColumns[i]!;
-      if (widths[i] === 0) {
-        widths[i] = col.widthPx ?? 0;
-        lefts[i] = acc;
-      }
-      acc = lefts[i]! + widths[i]!;
-    }
-    return { columnLefts: lefts, columnWidths: widths };
-  }, [renderSnapshot.columns, grid.options.columns]);
+  // One plan over the whole engine column set, shared by the two features that
+  // need to reason about columns `renderSnapshot.columns` does not carry:
+  // reorder hit-testing (a scrolled-out column is still a legitimate drop
+  // target) and scroll-into-view (an off-window column is the only reason it
+  // runs). Both want identical geometry, so they read the same object rather
+  // than each deriving one — see `planColumnLayout` for why that matters.
+  // Content order, and each entry's `index` is its engine index — what
+  // grid.moveColumn takes.
+  const columnLayout = useMemo(
+    () => planColumnLayout(grid.options.columns),
+    [grid.options.columns],
+  );
 
   const visibleRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -966,19 +1252,245 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // Programmatic focus follow: when the engine's focus address changes, move
   // browser focus to the corresponding cell DOM node so keyboard handlers
   // continue to fire and screen readers track the focused cell.
+  //
+  // The target is frequently NOT rendered on the commit that changed the
+  // address — rows and columns are both virtualized, and Cmd+End / PageDown /
+  // Cmd+Arrow all land far outside the window. The scroll effect below brings
+  // it in, but that is a later commit, so this effect has to be able to finish
+  // the job then. It therefore runs on the *rendered set* as well as on the
+  // address, which means it can fire at essentially any time — including on
+  // every streamed row patch. Two things keep that from turning into focus
+  // theft:
+  //
+  //   1. `pendingFocusFollowRef` is set only when the address CHANGES, and is
+  //      cleared the moment the move is applied or abandoned. A run with no
+  //      pending move returns immediately, so the steady state (focus already
+  //      on a rendered cell, rows streaming underneath it) can never grab
+  //      anything.
+  //   2. Even with a pending move, focus is only taken from somewhere it is
+  //      ours to take — see `isFocusOursToMove` — and never while an edit is
+  //      open.
+  const focusFollowAddressRef = useRef<string | null>(null);
+  const pendingFocusFollowRef = useRef<string | null>(null);
+
   useLayoutEffect(() => {
     if (!focusedRowId || !focusedColumnId) {
+      focusFollowAddressRef.current = null;
+      pendingFocusFollowRef.current = null;
       return;
     }
 
-    const cellNode = cellNodesRef.current.get(
-      `${focusedRowId}::${focusedColumnId}`,
-    );
+    const address = `${focusedRowId}::${focusedColumnId}`;
 
-    if (cellNode && document.activeElement !== cellNode) {
-      cellNode.focus({ preventScroll: true });
+    if (focusFollowAddressRef.current !== address) {
+      focusFollowAddressRef.current = address;
+      pendingFocusFollowRef.current = address;
     }
-  }, [focusedRowId, focusedColumnId]);
+
+    if (pendingFocusFollowRef.current === null) {
+      // Already applied (or deliberately abandoned) for this address. This is
+      // the hot path under streaming: one ref read and out.
+      return;
+    }
+
+    if (snapshot.editing) {
+      // An edit owns the keyboard for its whole lifecycle — the editor input
+      // lives *inside* the cell, so it would pass the containment check below.
+      // Blurring it would also blur-commit the draft (use-editor-field.ts).
+      // Keep the move pending: `snapshot.editing` is a dependency, so the
+      // effect re-runs when the edit ends and the address is honoured then.
+      return;
+    }
+
+    const cellNode = cellNodesRef.current.get(pendingFocusFollowRef.current);
+
+    if (!cellNode) {
+      // Outside the virtualization window. Stay pending; the rendered-set
+      // dependency re-runs this once the scroll effect has brought it in.
+      return;
+    }
+
+    // One attempt per address, applied or not: a move that is refused because
+    // the user is somewhere else is refused for good, not retried on the next
+    // patch.
+    pendingFocusFollowRef.current = null;
+
+    if (document.activeElement === cellNode) {
+      return;
+    }
+
+    if (!isFocusOursToMove(viewportRef.current, document.activeElement)) {
+      return;
+    }
+
+    // `preventScroll` is deliberate, and must stay. The surface owns
+    // scroll-into-view itself (the effect directly below), computed from
+    // layout-core against the *unoccluded* band. The browser's native
+    // focus-scroll knows nothing about the sticky header or the sticky
+    // pinned column groups, so it would happily park the cell underneath one
+    // — and, running after ours, it would overwrite the offset we just
+    // computed. It also cannot help in the case that motivated all of this:
+    // when the target cell is outside the virtualization window there is no
+    // node here to scroll to at all.
+    cellNode.focus({ preventScroll: true });
+  }, [
+    focusedColumnId,
+    focusedRowId,
+    // The rendered set. Both arrays are rebuilt whenever the virtualization
+    // window moves, and nothing else can tell this effect that the target's
+    // node has appeared — `cellNodesRef` is a ref, invisible to the scheduler.
+    renderSnapshot.columns,
+    renderSnapshot.rows,
+    snapshot.editing,
+  ]);
+
+  // Scroll-into-view for keyboard focus. The engine's focus address can move
+  // to a cell that is outside the virtualization window, or behind a sticky
+  // pinned column group; either way the browser will not move the viewport for
+  // us (see the `preventScroll` note above), so we compute the minimal offset
+  // and assign it ourselves.
+  //
+  // Deliberately does NOT call `grid.setViewport`: assigning scroll fires a
+  // native `scroll` event, and the existing `onScroll` handler already feeds
+  // the engine. Reporting it here as well would double-report.
+  const scrollRevealRef = useRef<{
+    rowId: string;
+    columnId: string;
+    /** `scrollTop` writes made for this address; see MAX_SCROLL_REVEAL_WRITES. */
+    writes: number;
+    /** Vertically resolved — nothing this effect can usefully do any more. */
+    settled: boolean;
+  } | null>(null);
+  const scrollRevealColumnIdRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+
+    if (!el || !focusedRowId || !focusedColumnId) {
+      scrollRevealRef.current = null;
+      scrollRevealColumnIdRef.current = null;
+      return;
+    }
+
+    // Runs on focus changes AND on every subsequent layout pass for the same
+    // address, which is what lets a distant target be re-asserted once its
+    // real height is measured. Everything below hinges on `pending` carrying
+    // over across those passes: once an address is satisfied it is marked
+    // settled and never scrolls again, so a user who scrolls the focused cell
+    // out of view is not yanked back on the next measurement or row update.
+    const previous = scrollRevealRef.current;
+    const pending =
+      previous !== null &&
+      previous.rowId === focusedRowId &&
+      previous.columnId === focusedColumnId
+        ? previous
+        : {
+            rowId: focusedRowId,
+            columnId: focusedColumnId,
+            writes: 0,
+            settled: false,
+          };
+    scrollRevealRef.current = pending;
+
+    // Horizontal, only when the focused COLUMN changed — or when no earlier
+    // pass managed to resolve it. Column geometry does not depend on row
+    // measurement, so the vertical re-assert passes have nothing new to say
+    // about it, and skipping keeps `scrollLeftToReveal`'s O(columns) scan off
+    // the ArrowDown hot path, where the column never moves. The
+    // trade-off is that a user who scrolls horizontally away from the focused
+    // column is not dragged back by a later vertical move, which matches the
+    // no-fighting rule the rest of this effect follows.
+    //
+    // "Resolved" is doing real work in that first sentence: the ref is the
+    // latch, so it may only be consumed by a pass that actually decided
+    // something. See the `undefined` branch below.
+    if (scrollRevealColumnIdRef.current !== focusedColumnId) {
+      const nextScrollLeft = scrollLeftToReveal({
+        plan: columnLayout,
+        targetColumnId: focusedColumnId,
+        scrollLeft: el.scrollLeft,
+        // 0 before the scrollport is measured (SSR, the first commit, a grid
+        // inside a `display: none` tab or a collapsed accordion). That is a
+        // real state, not a bug: `scrollLeftToReveal` reports it as undecidable
+        // rather than inventing an offset we would only have to undo.
+        viewportWidth,
+      });
+
+      // Consume the ref only on a pass that could actually decide. `undefined`
+      // means the band was empty — an unmeasured scrollport, or pinned groups
+      // wider than it — and advancing on that would disarm this column for
+      // good: `viewportWidth` is a dependency, so a later pass with a real
+      // width re-runs this effect, but it would find the ref already spent and
+      // skip. The bug that motivated this: focus moves to a far-right column
+      // while the grid is in a hidden tab, the user opens the tab, and the
+      // vertical reveal works while `scrollLeft` stays parked at 0.
+      if (nextScrollLeft !== undefined) {
+        scrollRevealColumnIdRef.current = focusedColumnId;
+
+        if (nextScrollLeft !== null) {
+          el.scrollLeft = nextScrollLeft;
+        }
+      }
+    }
+
+    if (pending.settled || pending.writes >= MAX_SCROLL_REVEAL_WRITES) {
+      return;
+    }
+
+    // O(1) per keypress: `visibleRowIndexById` is memoized on
+    // `snapshot.visibleRows` identity. A linear scan here would land on
+    // ArrowDown's p95 < 16ms budget.
+    const targetIndex = visibleRowIndexById.get(focusedRowId);
+
+    if (targetIndex === undefined) {
+      // The row model does not produce this row *yet*: an address set for a row
+      // that arrives on a later streaming patch, or one a filter is currently
+      // hiding. That is "nothing to reveal now", not "nothing to reveal ever",
+      // so do NOT settle — settling here would mean the viewport never scrolls
+      // to the row once it appears, even though focus and the DOM focus-follow
+      // both land on it correctly.
+      //
+      // Retrying is free: the miss is the same O(1) `Map.get` above, with no
+      // allocation, so a row id that never arrives costs one lookup per pass
+      // rather than unbounded work.
+      return;
+    }
+
+    const nextScrollTop = scrollTopToReveal({
+      // Covers *every* visible row, not just the windowed ones, so this is
+      // valid for a target that is nowhere in the DOM.
+      rowMetrics: renderSnapshot.rowMetrics,
+      targetIndex,
+      scrollTop: el.scrollTop,
+      // The band below the sticky header — the same height fed to the row
+      // planner, and the coordinate space row offsets live in.
+      viewportHeight: bodyViewportHeight,
+    });
+
+    if (nextScrollTop === undefined) {
+      // Band not resolvable yet (`viewportHeight <= headerHeight`). Same rule as
+      // the horizontal axis: a pass that measured nothing must not latch.
+      return;
+    }
+
+    if (nextScrollTop === null) {
+      pending.settled = true;
+      return;
+    }
+
+    pending.writes += 1;
+    el.scrollTop = nextScrollTop;
+  }, [
+    bodyViewportHeight,
+    columnLayout,
+    focusedColumnId,
+    focusedRowId,
+    // `renderSnapshot` is rebuilt whenever `measuredHeights` changes, which is
+    // the signal the convergence re-assert waits for.
+    renderSnapshot,
+    viewportWidth,
+    visibleRowIndexById,
+  ]);
 
   useLayoutEffect(() => {
     const injectedSelectedRowId =
@@ -1242,6 +1754,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           bodyViewportHeight,
           columns: effectiveColumns,
           grid,
+          onRowActivate,
           onSelectedRowIdChange,
           selectFocusedRowOnArrowKey,
           tabBehavior,
@@ -1462,27 +1975,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 : "none";
 
           const showResizeHandle = column.resizable !== false;
+          const showFilterFunnel = column.filterable !== false;
           const isDragging = dragLiveWidth?.columnId === column.id;
-          const handleLeft = plannedCol.left + effWidth - 4;
-          const handlePinnedStyle =
-            plannedCol.pinned === "left"
-              ? {
-                  // A left-pinned column's sticky inset IS `plannedCol.left`,
-                  // so the sticky handle lands exactly on `handleLeft`.
-                  position: "sticky" as const,
-                  zIndex: 3,
-                  left: handleLeft,
-                }
-              : pinnedRightEdge !== undefined
-                ? {
-                    // The 4px handle hugs the column's TRAILING edge — the same
-                    // `- 4` as the left form, just measured back from the
-                    // right-pinned anchor instead of `plannedCol.left + effWidth`.
-                    position: "sticky" as const,
-                    zIndex: 3,
-                    left: pinnedRightEdge - 4,
-                  }
-                : null;
+          // Both header overlays hang off one zero-width anchor parked on the
+          // column's trailing edge — `pinnedRightEdge` for a right-pinned
+          // column, `plannedCol.left + effWidth` for every other column (that
+          // is also a left-pinned overlay anchor's flow position, which is
+          // exactly why the anchor holds at scrollLeft 0; see
+          // getHeaderOverlayAnchorStyle).
+          const overlayAnchorStyle = getHeaderOverlayAnchorStyle(
+            pinnedRightEdge ?? plannedCol.left + effWidth,
+            plannedCol.pinned === "left" || pinnedRightEdge !== undefined,
+          );
 
           return [
             <button
@@ -1567,9 +2071,23 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       const dy = event.clientY - drag.startY;
                       const dist = Math.hypot(dx, dy);
 
-                      const surfaceRect =
-                        viewportRef.current?.getBoundingClientRect();
-                      const surfaceLeft = surfaceRect?.left ?? 0;
+                      // The scrollport is measured on every move rather than
+                      // read from state: scrollLeft changes without a React
+                      // render (wheel, trackpad, scrollbar), and a stale offset
+                      // would put the drop index a scroll-distance away from
+                      // the cursor.
+                      const scrollport = viewportRef.current;
+                      const target = computeColumnDropTarget({
+                        layout: columnLayout.columns,
+                        draggedIndex: grid.options.columns.findIndex(
+                          (c) => c.id === column.id,
+                        ),
+                        cursorX: event.clientX,
+                        viewportLeft:
+                          scrollport?.getBoundingClientRect().left ?? 0,
+                        viewportWidth: scrollport?.clientWidth ?? 0,
+                        scrollLeft: scrollport?.scrollLeft ?? 0,
+                      });
 
                       if (!drag.dragging) {
                         if (dist < REORDER_THRESHOLD_PX) return;
@@ -1587,13 +2105,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                           columnId: column.id,
                           cursorX: event.clientX,
                           cursorY: event.clientY,
-                          dropIndex: computeDropIndex(
-                            event.clientX,
-                            effectiveColumns.length,
-                            columnLefts,
-                            columnWidths,
-                            surfaceLeft,
-                          ),
+                          dropIndex: target.dropIndex,
+                          indicatorLeft: target.indicatorLeft,
                           ghostWidth: rect.width || effWidth,
                           ghostHeight: rect.height || headerHeight,
                           ghostHeader: String(column.header ?? column.id),
@@ -1607,13 +2120,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                               ...prev,
                               cursorX: event.clientX,
                               cursorY: event.clientY,
-                              dropIndex: computeDropIndex(
-                                event.clientX,
-                                effectiveColumns.length,
-                                columnLefts,
-                                columnWidths,
-                                surfaceLeft,
-                              ),
+                              dropIndex: target.dropIndex,
+                              indicatorLeft: target.indicatorLeft,
                             }
                           : null,
                       );
@@ -1656,12 +2164,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     },
                   }
                 : {})}
+              // Flex/center, matching `[data-pretable-header-cell]` in
+              // @pretable/ui. These are inline styles, so they beat the skin no
+              // matter how it is layered — a `grid` + `align-items: start`
+              // default here quietly overrode it, and stacked any multi-node
+              // `renderHeaderCell` into rows that overflow the header strip.
               style={{
-                alignItems: "start",
+                alignItems: "center",
                 border: 0,
                 borderRight: "1px solid rgba(255, 255, 255, 0.06)",
                 color: "inherit",
-                display: "grid",
+                display: "flex",
                 gap: 4,
                 textAlign: "left",
                 ...positionStyle,
@@ -1705,135 +2218,142 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 }
               />
             </button>,
-            showResizeHandle ? (
+            showResizeHandle || showFilterFunnel ? (
+              // Header overlays — the resize strip and the filter funnel — are
+              // NOT nested in the header <button> (interactive controls inside
+              // a button is invalid HTML). They live in a zero-width anchor
+              // parked on the column's trailing edge, so both are placed by
+              // counting back from that edge and both hold their place at every
+              // scroll offset, scrollLeft 0 included.
               <div
-                key={`${column.id}::resize-handle`}
-                data-pretable-resize-handle=""
+                key={`${column.id}::header-overlays`}
+                data-pretable-header-overlays=""
                 data-pretable-column-id={column.id}
-                data-pretable-dragging={isDragging ? "true" : "false"}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  height: "100%",
-                  width: 4,
-                  left: handleLeft,
-                  cursor: "col-resize",
-                  zIndex: 4,
-                  touchAction: "none",
-                  userSelect: "none",
-                  ...(handlePinnedStyle ?? {}),
-                }}
-                onPointerDown={(event) => {
-                  if (event.button !== 0) return;
-                  event.stopPropagation();
-                  const startWidth =
-                    column.widthPx ??
-                    plannedCol.width ??
-                    Math.max(column.minWidthPx ?? 40, 80);
-                  resizeStateRef.current = {
-                    columnId: column.id,
-                    startX: event.clientX,
-                    startWidth,
-                    pointerId: event.pointerId,
-                    widthSign: plannedCol.pinned === "right" ? -1 : 1,
-                  };
-                  wasResizingRef.current = false;
-                  try {
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                  } catch {
-                    // jsdom — no-op
-                  }
-                  setDragLiveWidth({ columnId: column.id, width: startWidth });
-                }}
-                onPointerMove={(event) => {
-                  const drag = resizeStateRef.current;
-                  if (!drag || drag.columnId !== column.id) return;
-                  const min = column.minWidthPx ?? 40;
-                  const max = column.maxWidthPx ?? Infinity;
-                  const next = Math.max(
-                    min,
-                    Math.min(
-                      max,
-                      drag.startWidth +
-                        drag.widthSign * (event.clientX - drag.startX),
-                    ),
-                  );
-                  if (Math.abs(next - drag.startWidth) > 0) {
-                    wasResizingRef.current = true;
-                  }
-                  setDragLiveWidth({ columnId: column.id, width: next });
-                }}
-                onPointerUp={(event) => {
-                  const drag = resizeStateRef.current;
-                  if (!drag || drag.columnId !== column.id) return;
-                  const finalWidth = dragLiveWidth?.width ?? drag.startWidth;
-                  try {
-                    event.currentTarget.releasePointerCapture(drag.pointerId);
-                  } catch {
-                    // jsdom — no-op
-                  }
-                  grid.setColumnWidth(column.id, finalWidth);
-                  onColumnWidthsChange?.(buildWidthsMap(grid));
-                  resizeStateRef.current = null;
-                  setDragLiveWidth(null);
-                }}
-                onPointerCancel={() => {
-                  resizeStateRef.current = null;
-                  setDragLiveWidth(null);
-                  wasResizingRef.current = false;
-                }}
-                onDoubleClick={(event) => {
-                  if (wasResizingRef.current) {
-                    event.preventDefault();
-                    wasResizingRef.current = false;
-                    return;
-                  }
-                  grid.autosizeColumn(column.id);
-                  onColumnWidthsChange?.(buildWidthsMap(grid));
-                }}
-              />
-            ) : null,
-            // Built-in filter funnel overlay — an absolutely-positioned sibling
-            // of the resize handle (NOT nested in the header <button>, which
-            // would be invalid HTML). Offset left of the 4px resize strip.
-            column.filterable !== false ? (
-              <div
-                key={`${column.id}::filter-funnel`}
-                data-pretable-filter-funnel-slot=""
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  height: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  left: plannedCol.left + effWidth - 22,
-                  zIndex: 4,
-                  ...(plannedCol.pinned === "left"
-                    ? {
-                        // Same inset as the non-pinned `left` above: a
-                        // left-pinned column's sticky offset is plannedCol.left.
-                        position: "sticky" as const,
-                        zIndex: 5,
-                      }
-                    : pinnedRightEdge !== undefined
-                      ? {
-                          // The 18px funnel sits immediately left of the 4px
-                          // resize strip: `- 22` back from the column's
-                          // trailing edge, exactly as on the left.
-                          position: "sticky" as const,
-                          zIndex: 5,
-                          left: pinnedRightEdge - 22,
-                        }
-                      : {}),
-                }}
+                style={overlayAnchorStyle}
               >
-                <FunnelButton
-                  columnId={column.id}
-                  label={label}
-                  active={Boolean(snapshot.filters[column.id])}
-                  open={filterOpenState?.columnId === column.id}
-                  onToggle={(id, anchor) => toggleFilter(id, anchor)}
-                />
+                {showResizeHandle ? (
+                  <div
+                    data-pretable-resize-handle=""
+                    data-pretable-column-id={column.id}
+                    data-pretable-dragging={isDragging ? "true" : "false"}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      height: "100%",
+                      width: 4,
+                      // The 4px strip hugs the trailing edge from the inside.
+                      left: -4,
+                      cursor: "col-resize",
+                      touchAction: "none",
+                      userSelect: "none",
+                    }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      event.stopPropagation();
+                      // Start from the PLANNED width — the engine's committed
+                      // width, which is what this column is currently rendering
+                      // (`effWidth`). The `columns` prop is not a source of
+                      // truth for width: the engine owns it after the first
+                      // resize / autosize / controlled `state.columnWidths`
+                      // apply, and `mergeColumnsFromProps` gives engine state
+                      // precedence, so `column.widthPx` still reads as the
+                      // ORIGINAL declared width forever. Anchoring to it made
+                      // every drag after the first recompute from that stale
+                      // origin instead of accumulating (drag +80 then +40
+                      // landed on 140, not 220).
+                      const startWidth = plannedCol.width;
+                      resizeStateRef.current = {
+                        columnId: column.id,
+                        startX: event.clientX,
+                        startWidth,
+                        pointerId: event.pointerId,
+                        widthSign: plannedCol.pinned === "right" ? -1 : 1,
+                      };
+                      wasResizingRef.current = false;
+                      try {
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                      } catch {
+                        // jsdom — no-op
+                      }
+                      setDragLiveWidth({
+                        columnId: column.id,
+                        width: startWidth,
+                      });
+                    }}
+                    onPointerMove={(event) => {
+                      const drag = resizeStateRef.current;
+                      if (!drag || drag.columnId !== column.id) return;
+                      const min = column.minWidthPx ?? 40;
+                      const max = column.maxWidthPx ?? Infinity;
+                      const next = Math.max(
+                        min,
+                        Math.min(
+                          max,
+                          drag.startWidth +
+                            drag.widthSign * (event.clientX - drag.startX),
+                        ),
+                      );
+                      if (Math.abs(next - drag.startWidth) > 0) {
+                        wasResizingRef.current = true;
+                      }
+                      setDragLiveWidth({ columnId: column.id, width: next });
+                    }}
+                    onPointerUp={(event) => {
+                      const drag = resizeStateRef.current;
+                      if (!drag || drag.columnId !== column.id) return;
+                      const finalWidth =
+                        dragLiveWidth?.width ?? drag.startWidth;
+                      try {
+                        event.currentTarget.releasePointerCapture(
+                          drag.pointerId,
+                        );
+                      } catch {
+                        // jsdom — no-op
+                      }
+                      grid.setColumnWidth(column.id, finalWidth);
+                      onColumnWidthsChange?.(buildWidthsMap(grid));
+                      resizeStateRef.current = null;
+                      setDragLiveWidth(null);
+                    }}
+                    onPointerCancel={() => {
+                      resizeStateRef.current = null;
+                      setDragLiveWidth(null);
+                      wasResizingRef.current = false;
+                    }}
+                    onDoubleClick={(event) => {
+                      if (wasResizingRef.current) {
+                        event.preventDefault();
+                        wasResizingRef.current = false;
+                        return;
+                      }
+                      grid.autosizeColumn(column.id);
+                      onColumnWidthsChange?.(buildWidthsMap(grid));
+                    }}
+                  />
+                ) : null}
+                {showFilterFunnel ? (
+                  <div
+                    data-pretable-filter-funnel-slot=""
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      // The 18px funnel sits immediately left of the 4px resize
+                      // strip: 22px back from the trailing edge.
+                      left: -22,
+                    }}
+                  >
+                    <FunnelButton
+                      columnId={column.id}
+                      label={label}
+                      active={Boolean(snapshot.filters[column.id])}
+                      open={filterOpenState?.columnId === column.id}
+                      onToggle={(id, anchor) => toggleFilter(id, anchor)}
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : null,
           ];
@@ -1863,6 +2383,34 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             <div
               {...rowProps}
               aria-rowindex={rowIndex + 2}
+              onClick={(event) => {
+                // rowProps is spread above, so this would shadow a consumer's
+                // onClick — call it explicitly rather than dropping it.
+                rowProps.onClick?.(event);
+                if (!onRowActivate) return;
+                // Modifier clicks build cell ranges; so does the click that
+                // ends a drag. Neither means "open this row".
+                if (
+                  event.shiftKey ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.altKey
+                ) {
+                  return;
+                }
+                if (dragExtendedRef.current) {
+                  dragExtendedRef.current = false;
+                  return;
+                }
+                // A click inside a cell being edited belongs to the editor.
+                if (
+                  event.target instanceof Element &&
+                  event.target.closest("[data-pretable-edit-status]")
+                ) {
+                  return;
+                }
+                onRowActivate({ row, rowId: id, rowIndex });
+              }}
               aria-selected={isSelected ? "true" : undefined}
               className={getRowClassName?.({
                 isFocused,
@@ -2008,6 +2556,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
                       dragStartSelectionRef.current =
                         grid.getSnapshot().selection;
+                      dragExtendedRef.current = false;
                       dragAnchorRef.current = {
                         rowId: id,
                         columnId: column.id,
@@ -2031,6 +2580,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     onPointerEnter={() => {
                       if (!dragAnchorRef.current) return;
+                      dragExtendedRef.current = true;
                       if (column.id === ROW_SELECT_COLUMN_ID) return;
                       const before = grid.getSnapshot();
                       const addr: PretableCellAddress = {
@@ -2258,11 +2808,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           <div
             data-pretable-reorder-drop-indicator=""
             style={{
-              left: computeDropIndicatorLeft(
-                reorderDrag.dropIndex,
-                columnLefts,
-                columnWidths,
-              ),
+              left: reorderDrag.indicatorLeft,
               height: reorderDrag.ghostHeight + bodyViewportHeight,
             }}
           />
@@ -2299,6 +2845,42 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         : null}
     </div>
   );
+}
+
+/**
+ * Whether the surface may move DOM focus away from `active`.
+ *
+ * Two things count as ours:
+ *
+ * - **Nothing is focused.** `null` and `<body>` both mean the document has no
+ *   focus owner. This is not an edge case — it is the *normal* state at the
+ *   moment a distant focus move completes, because scrolling to the target
+ *   unmounts the cell that had focus and the browser drops focus to `<body>`
+ *   when a focused element is removed. Refusing it would break exactly the
+ *   case this exists for. It is safe because a move is only ever pending
+ *   immediately after the engine's focus address changed; a user who parked
+ *   focus on `<body>` by clicking the page background is never disturbed,
+ *   since there is no pending move to apply.
+ * - **Focus is already inside the scroll viewport**, i.e. on another cell or
+ *   on the viewport itself.
+ *
+ * Everything else is someone else's: a filter popover or a typed-editor
+ * overlay (both portaled to `document.body` by `OverlayPortal`, so they are
+ * deliberately *not* inside the viewport subtree), or any part of the host
+ * page that has nothing to do with the grid.
+ *
+ * Note the cell editor's input is NOT covered here — it lives inside the cell,
+ * so it is inside the viewport. The `snapshot.editing` bail-out guards it.
+ */
+function isFocusOursToMove(
+  viewport: HTMLElement | null,
+  active: Element | null,
+): boolean {
+  if (active === null || active === document.body) {
+    return true;
+  }
+
+  return viewport !== null && viewport.contains(active);
 }
 
 function replaceSelectionWithFullRow<TRow extends PretableRow>(
@@ -2436,6 +3018,119 @@ function singleFullRowSelection<TRow extends PretableRow>(
   return coversAllColumns ? range.startRowId : null;
 }
 
+/**
+ * Where a clipboard block should land: the top-left of the active selection,
+ * or the focused cell when nothing is selected.
+ *
+ * Multi-range selections are not replayed (Excel refuses multi-area paste and
+ * ag-grid's replay is documented as lossy) — the range holding the focused
+ * cell wins, falling back to the first range. Row-select bounds resolve to the
+ * full data-column span, which is how a full-row selection encodes itself.
+ * Returns null when there is nothing to anchor on.
+ */
+function resolvePasteAnchor<TRow extends PretableRow>(
+  ranges: readonly PretableCellRange[],
+  focus: PretableFocusState,
+  visibleRows: readonly PretableVisibleRow<TRow>[],
+  effectiveColumns: readonly PretableColumn<TRow>[],
+): {
+  anchor: PretableCellAddress;
+  selectionSize: { rows: number; columns: number };
+} | null {
+  const dataColumns = effectiveColumns.filter(
+    (c) => c.id !== ROW_SELECT_COLUMN_ID,
+  );
+  if (dataColumns.length === 0 || visibleRows.length === 0) return null;
+
+  if (ranges.length === 0) {
+    return focus.rowId && focus.columnId
+      ? {
+          anchor: { rowId: focus.rowId, columnId: focus.columnId },
+          selectionSize: { rows: 1, columns: 1 },
+        }
+      : null;
+  }
+
+  const rowOrder = new Map<string, number>();
+  for (let i = 0; i < visibleRows.length; i += 1) {
+    const row = visibleRows[i];
+    if (row) rowOrder.set(row.id, i);
+  }
+  const colOrder = new Map<string, number>();
+  for (let i = 0; i < dataColumns.length; i += 1) {
+    colOrder.set(dataColumns[i]!.id, i);
+  }
+
+  const resolve = (
+    range: PretableCellRange,
+  ): {
+    rowLo: number;
+    rowHi: number;
+    colLo: number;
+    colHi: number;
+  } | null => {
+    const r1 = rowOrder.get(range.startRowId);
+    const r2 = rowOrder.get(range.endRowId);
+    if (r1 === undefined || r2 === undefined) return null;
+    const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+    const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+    let colLo: number;
+    let colHi: number;
+    if (startSynth && endSynth) {
+      colLo = 0;
+      colHi = dataColumns.length - 1;
+    } else if (startSynth || endSynth) {
+      const other = colOrder.get(
+        startSynth ? range.endColumnId : range.startColumnId,
+      );
+      if (other === undefined) return null;
+      colLo = 0;
+      colHi = other;
+    } else {
+      const c1 = colOrder.get(range.startColumnId);
+      const c2 = colOrder.get(range.endColumnId);
+      if (c1 === undefined || c2 === undefined) return null;
+      colLo = Math.min(c1, c2);
+      colHi = Math.max(c1, c2);
+    }
+    return { rowLo: Math.min(r1, r2), rowHi: Math.max(r1, r2), colLo, colHi };
+  };
+
+  const focusRow = focus.rowId === null ? undefined : rowOrder.get(focus.rowId);
+  const focusCol =
+    focus.columnId === null ? undefined : colOrder.get(focus.columnId);
+
+  let chosen: ReturnType<typeof resolve> = null;
+  for (const range of ranges) {
+    const box = resolve(range);
+    if (!box) continue;
+    if (!chosen) chosen = box;
+    if (
+      focusRow !== undefined &&
+      focusCol !== undefined &&
+      focusRow >= box.rowLo &&
+      focusRow <= box.rowHi &&
+      focusCol >= box.colLo &&
+      focusCol <= box.colHi
+    ) {
+      chosen = box;
+      break;
+    }
+  }
+  if (!chosen) return null;
+
+  return {
+    anchor: {
+      rowId: visibleRows[chosen.rowLo]!.id,
+      columnId: dataColumns[chosen.colLo]!.id,
+    },
+    selectionSize: {
+      rows: chosen.rowHi - chosen.rowLo + 1,
+      columns: chosen.colHi - chosen.colLo + 1,
+    },
+  };
+}
+
 function getRowMeasurementKey(rowNode: HTMLDivElement) {
   const rowParts = [
     rowNode.getAttribute("class") ?? "",
@@ -2570,6 +3265,7 @@ interface SurfaceKeyDownContext<TRow extends PretableRow> {
   bodyViewportHeight: number;
   columns: PretableColumn<TRow>[];
   grid: PretableGrid<TRow>;
+  onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   selectFocusedRowOnArrowKey: boolean;
   tabBehavior: "wrap-rows" | "exit";
@@ -2583,6 +3279,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     bodyViewportHeight,
     columns: allColumns,
     grid,
+    onRowActivate,
     onSelectedRowIdChange,
     selectFocusedRowOnArrowKey,
     tabBehavior,
@@ -2767,6 +3464,17 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     if (focusedRowId) {
       replaceSelectionWithFullRow(grid, focusedRowId, columns);
       onSelectedRowIdChange?.(focusedRowId);
+      if (onRowActivate) {
+        const index = visibleRows.findIndex((r) => r.id === focusedRowId);
+        const activated = visibleRows[index];
+        if (activated) {
+          onRowActivate({
+            row: activated.row,
+            rowId: focusedRowId,
+            rowIndex: index,
+          });
+        }
+      }
       return true;
     }
     return false;
@@ -2810,37 +3518,4 @@ function pinnedMapsEqual(
     if (a[k] !== b[k]) return false;
   }
   return true;
-}
-
-function computeDropIndex(
-  cursorX: number,
-  columnCount: number,
-  columnLefts: number[],
-  columnWidths: number[],
-  surfaceLeft: number,
-): number {
-  // Cursor X is in viewport coordinates. Convert to surface-relative.
-  const x = cursorX - surfaceLeft;
-  for (let i = 0; i < columnCount; i += 1) {
-    const left = columnLefts[i] ?? 0;
-    const width = columnWidths[i] ?? 0;
-    const mid = left + width / 2;
-    if (x < mid) {
-      return i;
-    }
-  }
-  return Math.max(0, columnCount - 1);
-}
-
-function computeDropIndicatorLeft(
-  dropIndex: number,
-  columnLefts: number[],
-  columnWidths: number[],
-): number {
-  if (dropIndex >= columnLefts.length) {
-    const lastIdx = columnLefts.length - 1;
-    if (lastIdx < 0) return 0;
-    return (columnLefts[lastIdx] ?? 0) + (columnWidths[lastIdx] ?? 0);
-  }
-  return columnLefts[dropIndex] ?? 0;
 }

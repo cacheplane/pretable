@@ -150,6 +150,35 @@ function funnelSlot(container: HTMLElement, columnId: string) {
   )?.parentElement;
 }
 
+/**
+ * The zero-width box both header overlays hang off. It is what carries the
+ * pinned position; the overlays inside it are placed with fixed negative
+ * offsets from the column's trailing edge (see getHeaderOverlayAnchorStyle).
+ */
+function overlayAnchor(container: HTMLElement, columnId: string) {
+  return container.querySelector<HTMLElement>(
+    `[data-pretable-header-overlays][data-pretable-column-id="${columnId}"]`,
+  );
+}
+
+/**
+ * The overlays never carry an inset of their own — they are always the same
+ * two constants back from the anchor, whatever the column's pin state. Only
+ * the anchor moves, which is what keeps the 4px strip on the trailing edge and
+ * the 18px funnel 4px inside it at every scroll offset.
+ */
+function expectOverlayOffsets(container: HTMLElement, columnId: string) {
+  expect(resizeHandle(container, columnId)).toHaveStyle({
+    position: "absolute",
+    left: "-4px",
+    width: "4px",
+  });
+  expect(funnelSlot(container, columnId)).toHaveStyle({
+    position: "absolute",
+    left: "-22px",
+  });
+}
+
 // Scrollport-relative x of each right-pinned column's trailing edge.
 const ACTIONS_EDGE = VIEWPORT_WIDTH; // last right-pinned column: right = 0
 const STATUS_EDGE = VIEWPORT_WIDTH - RIGHT_LAST_WIDTH;
@@ -164,6 +193,40 @@ function expectPositionedFromLeft(el: HTMLElement | null | undefined) {
   expect(el).not.toBeNull();
   expect(el!.style.right).toBe("");
 }
+
+describe("pinned header cells outrank unpinned header overlays", () => {
+  // Every box in the header row shares one stacking context, and the unpinned
+  // ones scroll UNDER the pinned ones. An unpinned overlay that outranks a
+  // pinned cell does not just paint over it — the funnel is opacity-0 until
+  // the header row is hovered, so it becomes an invisible live click target
+  // sitting on top of the pinned column. The overlay-anchor refactor put this
+  // ordering right as a side effect; pin it so it cannot drift back.
+  const z = (el: HTMLElement | null | undefined) => {
+    expect(el).not.toBeNull();
+    return Number(el!.style.zIndex || "0");
+  };
+
+  it("ranks the unpinned overlay anchor below pinned cells, and pinned anchors above them", () => {
+    const { container } = renderSurface();
+
+    const unpinnedAnchor = z(overlayAnchor(container, "c"));
+    const pinnedCell = Math.min(
+      z(headerCell(container, "first")),
+      z(headerCell(container, "status")),
+      z(headerCell(container, "actions")),
+    );
+    const pinnedAnchor = Math.min(
+      z(overlayAnchor(container, "first")),
+      z(overlayAnchor(container, "actions")),
+    );
+
+    // Strict: a tie is broken by DOM order, which favours whichever box comes
+    // later — and left-pinned columns are planned first, so that is the
+    // unpinned one.
+    expect(unpinnedAnchor).toBeLessThan(pinnedCell);
+    expect(pinnedCell).toBeLessThan(pinnedAnchor);
+  });
+});
 
 describe("right-pinned columns — surface sticky sites", () => {
   it("body cells of right-pinned columns are sticky at viewportWidth - right - width", () => {
@@ -209,41 +272,29 @@ describe("right-pinned columns — surface sticky sites", () => {
     expectPositionedFromLeft(prev);
   });
 
-  it("resize handles of right-pinned columns stick to the column's trailing edge", () => {
+  it("header overlays of right-pinned columns anchor on the column's trailing edge", () => {
     const { container } = renderSurface();
 
-    // The handle is a 4px strip whose RIGHT edge sits on the column's trailing
-    // edge — the same `- 4` as the left form, measured back from the pinned
-    // trailing edge instead of `pinnedOffset + width`.
-    expect(resizeHandle(container, "actions")).toHaveStyle({
+    // Both overlays hang off one zero-width anchor stuck on the column's
+    // trailing edge: the 4px strip ends ON that edge, the 18px funnel 4px
+    // inside it. Zero width is the load-bearing part — an anchor that took up
+    // room in the header row's flex flow would push the next pinned column off
+    // its own inset.
+    expect(overlayAnchor(container, "actions")).toHaveStyle({
       position: "sticky",
-      left: `${ACTIONS_EDGE - 4}px`,
+      left: `${ACTIONS_EDGE}px`,
+      width: "0px",
     });
-    expectPositionedFromLeft(resizeHandle(container, "actions"));
+    expectPositionedFromLeft(overlayAnchor(container, "actions"));
+    expectOverlayOffsets(container, "actions");
 
-    expect(resizeHandle(container, "status")).toHaveStyle({
+    expect(overlayAnchor(container, "status")).toHaveStyle({
       position: "sticky",
-      left: `${STATUS_EDGE - 4}px`,
+      left: `${STATUS_EDGE}px`,
+      width: "0px",
     });
-    expectPositionedFromLeft(resizeHandle(container, "status"));
-  });
-
-  it("filter-funnel slots of right-pinned columns sit just inside the resize strip", () => {
-    const { container } = renderSurface();
-
-    // The 18px funnel sits immediately left of the 4px resize strip, so its
-    // leading edge is 22px inside the column's trailing edge.
-    expect(funnelSlot(container, "actions")).toHaveStyle({
-      position: "sticky",
-      left: `${ACTIONS_EDGE - 22}px`,
-    });
-    expectPositionedFromLeft(funnelSlot(container, "actions"));
-
-    expect(funnelSlot(container, "status")).toHaveStyle({
-      position: "sticky",
-      left: `${STATUS_EDGE - 22}px`,
-    });
-    expectPositionedFromLeft(funnelSlot(container, "status"));
+    expectPositionedFromLeft(overlayAnchor(container, "status"));
+    expectOverlayOffsets(container, "status");
   });
 
   it("right-pinned insets follow the scrollport width on scroll and on resize", () => {
@@ -297,15 +348,14 @@ describe("right-pinned columns — surface sticky sites", () => {
     expect(leftBody).toHaveAttribute("data-pretable-pinned", "left");
     expect(leftBody).toHaveStyle({ position: "sticky", left: "0px" });
 
-    // Left-side overlay geometry is untouched: leading edge + width - N.
-    expect(resizeHandle(container, "first")).toHaveStyle({
+    // A left-pinned column anchors its overlays the same way, on the trailing
+    // edge of its own pinned box: pinned offset + width.
+    expect(overlayAnchor(container, "first")).toHaveStyle({
       position: "sticky",
-      left: `${LEFT_WIDTH - 4}px`,
+      left: `${LEFT_WIDTH}px`,
+      width: "0px",
     });
-    expect(funnelSlot(container, "first")).toHaveStyle({
-      position: "sticky",
-      left: `${LEFT_WIDTH - 22}px`,
-    });
+    expectOverlayOffsets(container, "first");
 
     expect(bodyCell(container, "actions")).toHaveStyle({
       position: "sticky",
@@ -324,8 +374,15 @@ describe("right-pinned columns — surface sticky sites", () => {
     expect(cell).not.toHaveAttribute("data-pretable-pinned");
     expect(cell).toHaveStyle({ position: "absolute" });
 
-    expect(resizeHandle(container, "c")).toHaveStyle({ position: "absolute" });
-    expect(funnelSlot(container, "c")).toHaveStyle({ position: "absolute" });
+    // An unpinned column's overlays ride the scrolling content: the anchor is
+    // a plain absolute box on the column's trailing edge, with the same two
+    // offsets inside it.
+    expect(overlayAnchor(container, "c")).toHaveStyle({
+      position: "absolute",
+      left: "320px", // 120 (first) + 100 (b) + 100 (c)
+      width: "0px",
+    });
+    expectOverlayOffsets(container, "c");
   });
 
   it("falls back to the plain cell style until the scrollport is measured", () => {
@@ -339,13 +396,16 @@ describe("right-pinned columns — surface sticky sites", () => {
     for (const el of [
       bodyCell(container, "actions"),
       headerCell(container, "actions"),
-      resizeHandle(container, "actions"),
-      funnelSlot(container, "actions"),
+      overlayAnchor(container, "actions"),
     ]) {
       expect(el).not.toBeNull();
       expect(el).toHaveStyle({ position: "absolute" });
       expect(el!.style.left.startsWith("-")).toBe(false);
     }
+    // The overlays inside the anchor keep their fixed offsets either way —
+    // they are relative to the anchor, so they never go off-screen on their
+    // own.
+    expectOverlayOffsets(container, "actions");
 
     // Once measured, the sticky inset appears.
     clientWidth = VIEWPORT_WIDTH;
@@ -380,6 +440,26 @@ describe("right-pinned columns — surface sticky sites", () => {
     expect(widthOf("actions")).toBe(RIGHT_LAST_WIDTH - 20);
 
     fireEvent.pointerUp(handle, { pointerId: 1 });
+  });
+
+  it("successive drags on a right-pinned column accumulate", () => {
+    const { container } = renderSurface();
+
+    const handle = resizeHandle(container, "actions")!;
+    const widthOf = (columnId: string) =>
+      Number.parseFloat(headerCell(container, columnId)!.style.width);
+
+    // Right-pinned drags are inverted (leftward grows), but the start width
+    // has to come from the committed width all the same.
+    fireEvent.pointerDown(handle, { button: 0, clientX: 500, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 470, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 470, pointerId: 1 });
+    expect(widthOf("actions")).toBe(RIGHT_LAST_WIDTH + 30);
+
+    fireEvent.pointerDown(handle, { button: 0, clientX: 470, pointerId: 2 });
+    fireEvent.pointerMove(handle, { clientX: 450, pointerId: 2 });
+    fireEvent.pointerUp(handle, { clientX: 450, pointerId: 2 });
+    expect(widthOf("actions")).toBe(RIGHT_LAST_WIDTH + 50);
   });
 
   it("resizing an unpinned column keeps the plain (non-inverted) direction", () => {
@@ -643,10 +723,100 @@ describe("left pins before the scrollport is measured", () => {
     expect(cell).toHaveAttribute("data-pretable-pinned", "left");
     expect(cell).toHaveStyle({ position: "sticky", left: "0px" });
 
-    // The overlay chrome rides on the same offset: leading edge + width - N.
-    expect(resizeHandle(container, "b")).toHaveStyle({
+    // The overlay chrome rides on the same offset: leading edge + width.
+    expect(overlayAnchor(container, "b")).toHaveStyle({
       position: "sticky",
-      left: "96px",
+      left: "100px",
+      width: "0px",
     });
+    expectOverlayOffsets(container, "b");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Left-pinned header overlays. The header row is a flex container whose
+// unpinned cells are absolutely positioned, so its in-flow items are exactly
+// the sticky ones — the left-pinned header cells, in order. An overlay placed
+// after its own pinned header cell therefore has a FLOW position of
+// `pinnedOffset + width`, past every inset it could want, and a sticky `left`
+// inset can only push a box further right, never pull it back: at scrollLeft 0
+// such an overlay is stranded on its flow position and overhangs the next
+// column (by 4px for the resize strip, 22px for the funnel), snapping into
+// place only once the row has scrolled.
+//
+// jsdom has no layout and can never reproduce that; these assertions pin the
+// shape that makes it impossible — the sticky inset lives on a zero-width
+// anchor whose target IS its flow position, and the overlays carry only fixed
+// offsets from it. The geometry itself is measured in a real browser at
+// scrollLeft 0, mid and max by apps/website/e2e/smoke.spec.ts.
+// ---------------------------------------------------------------------------
+
+describe("left-pinned header overlays", () => {
+  const LEAD_WIDTH = 120;
+
+  function renderLeftPinned() {
+    return render(
+      <PretableSurface
+        ariaLabel="left-pin-overlays"
+        columns={[
+          {
+            id: "first",
+            header: "First",
+            pinned: "left" as const,
+            widthPx: LEAD_WIDTH,
+          },
+          { id: "b", header: "B", widthPx: 100 },
+          { id: "c", header: "C", widthPx: 100 },
+        ]}
+        getRowId={(row: PinRow) => row.id}
+        overscan={0}
+        rows={rows}
+        viewportHeight={200}
+      />,
+    );
+  }
+
+  it("puts the sticky inset on a zero-width anchor at the column's trailing edge", () => {
+    const { container } = renderLeftPinned();
+
+    // The anchor's inset equals the summed width of the left-pinned group
+    // through this column — which is also where the header row's flex flow
+    // puts it, so the inset asks for no shift at scrollLeft 0 and clamps at
+    // every offset after that.
+    expect(overlayAnchor(container, "first")).toHaveStyle({
+      position: "sticky",
+      left: `${LEAD_WIDTH}px`,
+      width: "0px",
+    });
+    expectPositionedFromLeft(overlayAnchor(container, "first"));
+  });
+
+  it("gives the overlays no inset of their own — only offsets from the anchor", () => {
+    const { container } = renderLeftPinned();
+
+    // An inset on the overlays themselves is what the browser could not honor.
+    // They must be plain absolute boxes inside the anchor.
+    expectOverlayOffsets(container, "first");
+    expect(resizeHandle(container, "first")).not.toHaveStyle({
+      position: "sticky",
+    });
+    expect(funnelSlot(container, "first")).not.toHaveStyle({
+      position: "sticky",
+    });
+  });
+
+  it("tracks a resize: the anchor follows the drag, the offsets do not move", () => {
+    const { container } = renderLeftPinned();
+
+    const handle = resizeHandle(container, "first")!;
+    fireEvent.pointerDown(handle, { button: 0, clientX: 120, pointerId: 7 });
+    fireEvent.pointerMove(handle, { clientX: 180, pointerId: 7 });
+
+    expect(overlayAnchor(container, "first")).toHaveStyle({
+      left: `${LEAD_WIDTH + 60}px`,
+    });
+    expectOverlayOffsets(container, "first");
+
+    fireEvent.pointerUp(handle, { pointerId: 7 });
   });
 });

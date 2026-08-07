@@ -59,6 +59,18 @@
     border-right: none;
   }
 
+  /* Pinned header cells — the header row paints --pretable-bg-header behind
+     the whole strip, but each header cell on top of it is a transparent box,
+     so an unpinned header's label reads straight through a pinned one once it
+     scrolls underneath. Pinned header cells need their own opaque fill, the
+     same one their body counterparts get below. */
+  :where(
+    [data-pretable-header-cell][data-pretable-pinned="left"],
+    [data-pretable-header-cell][data-pretable-pinned="right"]
+  ) {
+    background: var(--pretable-bg-header);
+  }
+
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
   :where([data-pretable-sort-priority]) {
     margin-left: 2px;
@@ -79,6 +91,14 @@
     background: var(--pretable-bg-grid);
     border-right: 1px solid var(--pretable-rule);
     border-bottom: 1px solid var(--pretable-rule);
+    /* Cells are absolutely positioned, so a value wider than its column paints
+       straight over the next one. Clip at the column edge instead.
+       NOTE: the cell is a flex container, and `text-overflow: ellipsis` has no
+       effect on one — the text is an anonymous flex item. For an ellipsis,
+       render the value inside an element that can shrink:
+         <span style="min-width:0; overflow:hidden; text-overflow:ellipsis">
+       via a column's `render`. */
+    overflow: hidden;
   }
 
   :where([data-pretable-cell]:last-of-type) {

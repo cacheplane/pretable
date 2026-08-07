@@ -48,7 +48,7 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
       .filter((column) => column.pinned === "left")
       .map((column) => ({
         columnId: column.id,
-        width: getColumnWidth(column),
+        width: resolveColumnWidth(column),
       })),
   });
   const rows = viewportPlan.rows.flatMap((plannedRow) => {
@@ -71,7 +71,7 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
 
   const columnInputs = input.columns.map((col) => ({
     id: col.id,
-    width: getColumnWidth(col),
+    width: resolveColumnWidth(col),
     pinned: col.pinned,
   }));
 
@@ -100,10 +100,56 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
     },
     rows,
     columns: columnPlan.columns,
+    // Passed through, not rebuilt: this index was already constructed above over
+    // every visible row (not just the windowed ones), so exposing it is free and
+    // keeps unrendered-row geometry on the single layout-core source of truth.
+    rowMetrics,
     nodeCount: rows.length * columnPlan.columns.length,
     totalHeight: viewportPlan.totalHeight,
     totalWidth: columnPlan.totalWidth,
+    pinnedLeftWidth: columnPlan.pinnedLeftWidth,
+    pinnedRightWidth: columnPlan.pinnedRightWidth,
   };
+}
+
+/**
+ * Lay out every column, ignoring the virtualization window.
+ *
+ * The single place the unbounded-viewport plan is built. `planColumns`
+ * virtualizes the scrollable run, so a plan built at the real viewport width
+ * omits precisely the columns callers come here for; the render snapshot has
+ * the same gap, since it only carries the columns it draws. Expressing the
+ * request as an infinitely wide viewport at scrollLeft 0 makes planColumns'
+ * forward walk consume the whole run and its overscan clamp a no-op, so every
+ * column is present at its true content offset. Widths go through
+ * `resolveColumnWidth` — the renderer's own fallbacks — so an unsized column is
+ * not laid out at zero width.
+ *
+ * Two consumers share one plan, deliberately:
+ *
+ * - drag-to-reorder hit-testing, for which a scrolled-out column is still a
+ *   legitimate drop target;
+ * - `scrollLeftToReveal`, which exists to scroll to a column that is not
+ *   rendered, and therefore takes a `ColumnPlan` instead of re-planning.
+ *
+ * Both used to derive their own. PR #203 fixed a bug whose root cause was a
+ * second, drifted copy of column-bucketing math; keeping the trick in one
+ * function, and passing one `ColumnPlan` object to both callers, is what stops
+ * that from recurring.
+ */
+export function planColumnLayout<TRow extends PretableRow>(
+  columns: readonly PretableColumn<TRow>[],
+): ColumnPlan {
+  return planColumns({
+    columns: columns.map((col) => ({
+      id: col.id,
+      width: resolveColumnWidth(col),
+      pinned: col.pinned,
+    })),
+    scrollLeft: 0,
+    viewportWidth: Number.POSITIVE_INFINITY,
+    overscan: 0,
+  });
 }
 
 function estimateRowHeight<TRow extends PretableRow>(
@@ -135,7 +181,7 @@ function estimateRowHeight<TRow extends PretableRow>(
       fontKey: ESTIMATE_FONT_KEY,
       averageCharWidth: ESTIMATED_CHARACTER_WIDTH,
     });
-    const layout = layoutPreparedText(prepared, getColumnWidth(column), {
+    const layout = layoutPreparedText(prepared, resolveColumnWidth(column), {
       lineHeightPx: ROW_LINE_HEIGHT,
       wrapMode: "wrap",
     });
@@ -164,7 +210,7 @@ function getEstimatedRowHeightSignature<TRow extends PretableRow>(
     .map((column) => {
       const value = String(readCellValue(row, column) ?? "");
 
-      return `${column.id}:${getColumnWidth(column)}:${value}`;
+      return `${column.id}:${resolveColumnWidth(column)}:${value}`;
     })
     .join("|");
 }
@@ -176,7 +222,14 @@ function readCellValue<TRow extends PretableRow>(
   return column.value ? column.value(row) : row[column.id];
 }
 
-function getColumnWidth<TRow extends PretableRow>(
+/**
+ * The width `planColumns` is fed for a column, including the fallbacks applied
+ * when the column declares no `widthPx`. Module-private on purpose: every plan
+ * built from `PretableColumn`s goes through `createDomRenderSnapshot` or
+ * `planColumnLayout`, so no caller outside this file has to know the fallbacks
+ * — which is exactly how a second copy of them would get started.
+ */
+function resolveColumnWidth<TRow extends PretableRow>(
   column: PretableColumn<TRow>,
 ): number {
   return (

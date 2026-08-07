@@ -41,7 +41,7 @@ What you get back:
 
 - **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `replaceSort(entries)`, `setColumnFilter(columnId, filter)`, `clearFilters()`, `replaceFilters(map)`, `distinctColumnValues(columnId)`, `setSelection(state)`, `selectAll()`, `clearSelection()`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `toggleRowSelection(id)`, `setSelectAllVisible(checked)`, `setFocus({rowId, columnId} | null)`, `moveFocus(direction, options?)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
 - **`snapshot`** — current state. Shape: `{viewport, sort, filters, selection, focus, totalRowCount, visibleRows, visibleRange}`.
-- **`renderSnapshot`** — what to render right now. Shape: `{columns: PlannedColumn[], rows: PretableRenderRow[], nodeCount, totalHeight, totalWidth}`. Each `PretableRenderRow` has `{id, row, rowIndex, top, height}`.
+- **`renderSnapshot`** — what to render right now. Shape: `{columns: PlannedColumn[], rows: PretableRenderRow[], nodeCount, totalHeight, totalWidth, pinnedLeftWidth, pinnedRightWidth, rowMetrics}`. Each `PretableRenderRow` has `{id, row, rowIndex, top, height}`. `rowMetrics` reaches rows outside the rendered window (`rowCount`, `getHeight`, `getOffsetForIndex`, `getTotalHeight`), which is what scroll-into-view needs.
 - **`telemetry`** — `{focusedRowId, rowModelRowCount, renderedRowCount, selectedRowId, totalRowCount, ...}`.
 
 See [API reference](/docs/grid/api-reference) for the full type signatures.
@@ -221,6 +221,7 @@ This renders a working sortable grid with click-to-select. Wire `@pretable/ui/th
 The minimal example above is a starting point. For production grids, you'll likely also need:
 
 - **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus("up")` / `grid.moveFocus("down")`. The full keyboard contract (shift+arrow extend, Cmd/Ctrl+arrow jump, Tab wrap, Cmd+A, Esc) is wired by `<PretableSurface>` automatically.
+- **Scroll-into-view on focus** — `moveFocus` only moves the engine's focus address; it does not scroll. Jump keys routinely land on a row that isn't rendered, so without this the grid looks frozen. `<PretableSurface>` computes the minimal offset from `renderSnapshot.rowMetrics` and the pinned group widths and assigns `scrollTop` / `scrollLeft` itself; see [Keyboard → Scroll follows focus](/docs/grid/keyboard#scroll-follows-focus) for the rules and the coordinate spaces.
 - **Pinned columns sticky positioning** — `renderSnapshot.columns` carries `pinned` plus the resolved `left` / `right` offsets. Left-pinned cells are straightforward: `position: sticky; left: ${col.left}px`.
 
   Right-pinned cells need more care, and a `right` inset is **not** the answer for a row shaped like the example above. Each row is a flex container whose cells are `position: absolute` (out of flow), so a sticky cell is effectively the first in-flow item and its flow position is the row's leading edge. A sticky `right` inset can only hold a box _back_ from scrolling past that inset — it never pushes a box _forward_ past its flow position — so `right: 0` leaves the cell stranded at the row's left edge.
@@ -239,7 +240,7 @@ The minimal example above is a starting point. For production grids, you'll like
 - **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setColumnFilter(columnId, { operator: "contains", value })` per change (pass `null` to clear).
 - **Telemetry instrumentation** — use the `telemetry` return value to track visible row counts, frame budget overruns, etc.
 
-For the full reference implementation, see `packages/react-surface/src/pretable-surface.tsx` in the repository — that's what the bench's pretable adapter and the website's playground use internally. It's marked private (lives at `@pretable-internal/react-surface`), but reading its source is the canonical reference for the patterns above.
+For the full reference implementation, see `packages/react/src/pretable-surface.tsx` in the repository — that's what the bench's pretable adapter and the website's playground use internally. It ships as the public `PretableSurface` export of `@pretable/react`, and its source is the canonical reference for the patterns above.
 
 ## Where to go next
 

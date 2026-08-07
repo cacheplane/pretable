@@ -50,6 +50,7 @@ export function createGrid<TRow extends PretableRow = PretableRow>(
     autosizeColumns: engine.autosizeColumns,
     setColumnWidth: engine.setColumnWidth,
     moveColumn: engine.moveColumn,
+    setColumnOrder: engine.setColumnOrder,
     setColumnPinned: engine.setColumnPinned,
     autosizeColumn: engine.autosizeColumn,
     resetColumnLayout: engine.resetColumnLayout,

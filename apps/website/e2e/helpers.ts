@@ -1,48 +1,47 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
- * Opens the homepage drawer via the bottom handle.
+ * Open the hero drawer via its bottom handle, and wait for it to actually open.
  *
- * Under parallel load a first click is sometimes dropped outright: it reports
- * success and the drawer stays shut. Instrumenting this helper caught exactly
- * that, and a second click opened it — so the retry below, not the wait above,
- * is what fixes the flake. (It is not a pre-hydration click being swallowed:
- * React replays those, and `data-drawer` is typically set well before the
- * click lands.)
+ * The handle is server-rendered, so it paints — and Playwright considers it
+ * visible and clickable — before React has hydrated it. Its `onClick` does not
+ * exist yet at that point, so the click is accepted by the browser and silently
+ * dropped; the test then fails further down with an unrelated-looking symptom.
  *
- * `data-drawer` only exists once `useDrawer`'s effect has run
- * (app/components/useDrawer.ts), so waiting for it is a cheap precondition —
- * it keeps a genuine hydration stall failing legibly instead of as ten seconds
- * of pointless re-clicks.
+ * Neither obvious signal discriminates, because both are in the SSR markup:
+ * `<html data-drawer="closed">` is written by `layout.tsx` (the drawer CSS is
+ * gated on the attribute, so it has to be there pre-hydration to avoid a flash
+ * of the whole drawer), and `[data-pretable-scroll-viewport]` ships in the
+ * prerendered HTML too. Both are already present while the click is still dead.
+ *
+ * `data-hydrated` is written by `DrawerHandle` from `useDrawer`'s `isUpgraded`
+ * flag, which flips in a post-hydration effect — the same effect run that
+ * attaches `onClick`. It is therefore the one signal that means "this control
+ * is live", so wait on it rather than retrying the click until it happens to
+ * land.
  */
-export async function openDrawer(page: Page) {
-  const html = page.locator("html");
-  await expect(html).toHaveAttribute("data-drawer", /^(open|closed)$/, {
-    timeout: 15_000,
+export async function openDrawer(page: Page): Promise<void> {
+  const handle = page.getByTestId("drawer-handle");
+  // Generous: hydration is quick locally but slow on a cold preview deploy.
+  await expect(handle).toHaveAttribute("data-hydrated", "true", {
+    timeout: 20_000,
   });
-  // Opening is idempotent, so re-click until the state actually flips.
-  // Re-check the attribute first so a merely slow open is not mistaken for a
-  // dropped click (the handle is `display: none` once open, and clicking it
-  // again would then fail actionability).
-  await expect(async () => {
-    if ((await html.getAttribute("data-drawer")) !== "open") {
-      await page.getByTestId("drawer-handle").click({ timeout: 5_000 });
-    }
-    await expect(html).toHaveAttribute("data-drawer", "open", {
-      timeout: 2_000,
-    });
-  }).toPass({ timeout: 10_000 });
+  await handle.click();
+  await expect(page.locator("html")).toHaveAttribute("data-drawer", "open");
 }
 
 /**
  * Opens a column's filter menu from its header funnel, and returns the dialog.
  *
- * Same failure mode as the drawer handle: under load a first click is
- * occasionally dropped — it reports success, the menu never opens, and the
- * `fill` that follows burns the whole test timeout instead of failing on the
- * click. Unlike opening the drawer, the funnel *toggles*, so a blind re-click
- * would close a menu that did open; check the dialog first and only click when
- * it is genuinely absent.
+ * Same failure mode as the drawer handle above — a click accepted by the
+ * browser but dropped, most often because the control is not live yet. It is
+ * worse here: the menu never opens and the `fill` that follows burns the whole
+ * test timeout instead of failing on the click.
+ *
+ * The grid has no `data-hydrated` equivalent to wait on, so re-attempt instead.
+ * Unlike the drawer, the funnel *toggles*, so a blind re-click would close a
+ * menu that did open; check the dialog first and only click when it is
+ * genuinely absent.
  */
 export async function openFilterMenu(page: Page, column: string) {
   const dialog = page.getByRole("dialog", { name: `Filter ${column}` });
@@ -66,9 +65,9 @@ export async function openFilterMenu(page: Page, column: string) {
  *
  * DocsSearch registers its keydown listener in an effect and renders nothing
  * until that listener fires (app/components/docs/DocsSearch.tsx), so a press
- * before hydration is swallowed without a trace — unlike the drawer, there is
- * no attribute to wait on. Re-pressing an open palette is harmless (the
- * handler just sets `open` to true again), so retry the press instead.
+ * before hydration is swallowed without a trace — there is no `data-hydrated`
+ * to wait on as there is for the drawer handle. Re-pressing an open palette is
+ * harmless (the handler just sets `open` to true again), so retry the press.
  */
 export async function openDocsSearch(page: Page) {
   const dialog = page.getByRole("dialog");

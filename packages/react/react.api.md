@@ -187,6 +187,34 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
 }
 
 // @public
+export function parseTsv(text: string): string[][];
+
+// @public
+export interface PastedCell<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    columnId: string;
+    raw: string;
+    row: TRow;
+    // (undocumented)
+    rowId: string;
+    value: unknown;
+}
+
+// @public
+export interface PastePayload<TRow extends PretableRow = PretableRow> {
+    cells: PastedCell<TRow>[];
+    clipped: {
+        rows: number;
+        columns: number;
+    };
+    rejected: RejectedPasteCell[];
+    source: {
+        rows: number;
+        columns: number;
+    };
+}
+
+// @public
 export function Pretable<TRow extends PretableRow = PretableRow>(input: PretableProps<TRow>): react.JSX.Element;
 
 // @public
@@ -344,6 +372,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     selectAll(): void;
     // (undocumented)
     setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
+    setColumnOrder(ids: readonly string[]): void;
     // (undocumented)
     setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
     // (undocumented)
@@ -458,6 +487,8 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     onCopy?: PretableSurfaceProps<TRow>["onCopy"];
     // (undocumented)
+    onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
+    // (undocumented)
     rows: TRow[];
     // (undocumented)
     rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
@@ -487,7 +518,10 @@ export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> 
     columns: PlannedColumn[];
     // (undocumented)
     nodeCount: number;
-    // (undocumented)
+    pinnedLeftWidth: number;
+    pinnedRightWidth: number;
+    // Warning: (ae-forgotten-export) The symbol "RowMetricsReader" needs to be exported by the entry point index.d.ts
+    rowMetrics: RowMetricsReader;
     rows: PretableRenderRow<TRow>[];
     // (undocumented)
     totalHeight: number;
@@ -497,6 +531,15 @@ export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> 
 
 // @public
 export type PretableRow = Record<string, unknown>;
+
+// @public
+export interface PretableRowActivateInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    rowId: string;
+    rowIndex: number;
+}
 
 // @public
 export interface PretableSortEntry {
@@ -581,6 +624,8 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     onFocusChange?: (next: PretableFocusState) => void;
     // (undocumented)
     onGridReady?: (grid: PretableGrid<TRow>) => void;
+    onPaste?: (payload: PastePayload<TRow>) => void | Promise<void>;
+    onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
     // (undocumented)
     onSelectedRowIdChange?: (rowId: string | null) => void;
     // (undocumented)
@@ -651,6 +696,18 @@ export interface PretableTelemetry {
         end: number;
         start: number;
     };
+}
+
+// @public
+export interface RejectedPasteCell {
+    // (undocumented)
+    columnId: string;
+    message?: string;
+    // (undocumented)
+    raw: string;
+    reason: "not-editable" | "invalid";
+    // (undocumented)
+    rowId: string;
 }
 
 // @public
@@ -728,7 +785,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:528:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:703:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

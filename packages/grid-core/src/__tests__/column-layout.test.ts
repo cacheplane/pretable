@@ -30,6 +30,31 @@ function makeGrid(columnsOverride?: typeof baseColumns) {
   });
 }
 
+/**
+ * The engine invariant: array order is visual order. Every `pinned: "left"`
+ * column comes first, then every unpinned column, then every `pinned: "right"`
+ * column — the exact order `planColumns` renders the three regions in.
+ *
+ * The synthetic row-select column leads its own region, not the whole array:
+ * it is pinned left by default, but `rowSelectionColumn.pinned: false` makes it
+ * scrollable, and it must not then jump ahead of the left-pinned run.
+ */
+function expectGrouped(
+  columns: readonly { id: string; pinned?: "left" | "right" }[],
+): void {
+  const rank = (pinned?: "left" | "right"): number =>
+    pinned === "left" ? 0 : pinned === "right" ? 2 : 1;
+  const ranks = columns.map((c) => rank(c.pinned));
+
+  expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+
+  const synthIdx = columns.findIndex((c) => c.id === "__pretable_row_select__");
+  if (synthIdx !== -1) {
+    const synthRank = ranks[synthIdx]!;
+    expect(ranks.indexOf(synthRank)).toBe(synthIdx);
+  }
+}
+
 describe("setColumnWidth", () => {
   test("updates the column width", () => {
     const grid = makeGrid();
@@ -155,6 +180,217 @@ describe("moveColumn", () => {
       "c",
       "a",
       "b",
+    ]);
+  });
+
+  test("right-pinned column dragged to index 0 unpins and lands there", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.moveColumn("c", 0);
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["c", "a", "b"]);
+    expect(
+      grid.options.columns.find((col) => col.id === "c")?.pinned,
+    ).toBeUndefined();
+    expectGrouped(grid.options.columns);
+  });
+
+  test("right-pinned column dragged into the leading pinned run left-pins", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", pinned: "left", widthPx: 100 },
+        { id: "b", header: "B", pinned: "left", widthPx: 100 },
+        { id: "c", header: "C", widthPx: 100 },
+        { id: "d", header: "D", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.moveColumn("d", 1);
+    expect(grid.options.columns.find((col) => col.id === "d")?.pinned).toBe(
+      "left",
+    );
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "a",
+      "d",
+      "b",
+      "c",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("unpinned column dropped at the first right-pinned slot right-pins", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.moveColumn("a", 2);
+    expect(grid.options.columns.find((col) => col.id === "a")?.pinned).toBe(
+      "right",
+    );
+    // It joins the trailing group, so it is array-trailing.
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["b", "c", "a"]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("the same column dropped one slot earlier stays unpinned", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.moveColumn("a", 1);
+    expect(
+      grid.options.columns.find((col) => col.id === "a")?.pinned,
+    ).toBeUndefined();
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["b", "a", "c"]);
+    expectGrouped(grid.options.columns);
+  });
+});
+
+describe("setColumnOrder", () => {
+  test("reorders the columns", () => {
+    const grid = makeGrid();
+    grid.setColumnOrder(["d", "c", "b", "a"]);
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "d",
+      "c",
+      "b",
+      "a",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("preserves pin state and regroups by it", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", pinned: "left", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", widthPx: 100 },
+        { id: "d", header: "D", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnOrder(["d", "c", "b", "a"]);
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "a",
+      "c",
+      "b",
+      "d",
+    ]);
+    expect(grid.options.columns.find((col) => col.id === "a")?.pinned).toBe(
+      "left",
+    );
+    expect(grid.options.columns.find((col) => col.id === "d")?.pinned).toBe(
+      "right",
+    );
+    expect(
+      grid.options.columns.find((col) => col.id === "b")?.pinned,
+    ).toBeUndefined();
+    expectGrouped(grid.options.columns);
+  });
+
+  test("normalises an interleaved request into the invariant", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", pinned: "left", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", widthPx: 100 },
+        { id: "d", header: "D", pinned: "right", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnOrder(["b", "d", "a", "c"]);
+    // Relative order within each region is honoured; the regions are not.
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("ignores unknown ids", () => {
+    const grid = makeGrid();
+    grid.setColumnOrder(["nope", "d", "also-nope", "a"]);
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "d",
+      "a",
+      "b",
+      "c",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("appends omitted ids in their current relative order", () => {
+    const grid = makeGrid();
+    grid.setColumnOrder(["c"]);
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "c",
+      "a",
+      "b",
+      "d",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("keeps the synthetic column at index 0 even when listed elsewhere", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "__pretable_row_select__", header: "" },
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setColumnOrder(["b", "__pretable_row_select__", "a"]);
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "__pretable_row_select__",
+      "b",
+      "a",
+      "c",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("does not emit when the resulting order is unchanged", () => {
+    const grid = makeGrid();
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    grid.setColumnOrder(["a", "b", "c", "d"]);
+    expect(listener).not.toHaveBeenCalled();
+
+    grid.setColumnOrder(["nope"]);
+    expect(listener).not.toHaveBeenCalled();
+
+    grid.setColumnOrder(["b"]);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "b",
+      "a",
+      "c",
+      "d",
     ]);
   });
 });
@@ -434,5 +670,124 @@ describe("mergeColumnsFromProps", () => {
     expect(grid.options.columns.find((col) => col.id === "a")?.widthPx).toBe(
       100,
     );
+  });
+});
+
+describe("array-order-is-visual-order invariant on input", () => {
+  test("interleaved declared columns are regrouped at construction", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100, pinned: "right" },
+        { id: "c", header: "C", widthPx: 100 },
+        { id: "d", header: "D", widthPx: 100, pinned: "left" },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "d",
+      "a",
+      "c",
+      "b",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("grouping at construction is stable within each region", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100, pinned: "left" },
+        { id: "b", header: "B", widthPx: 100 },
+        { id: "c", header: "C", widthPx: 100, pinned: "left" },
+        { id: "d", header: "D", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "a",
+      "c",
+      "b",
+      "d",
+    ]);
+  });
+
+  test("mergeColumnsFromProps regroups prop order around runtime pins", () => {
+    const grid = makeGrid();
+    grid.setColumnPinned("c", "right");
+    // Props arrive in declared order (a, b, c, d) but `c` is pinned right at
+    // runtime — prop order alone would put it back in the middle.
+    grid.mergeColumnsFromProps([
+      { id: "a", header: "A", widthPx: 100 },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "c", header: "C", widthPx: 100 },
+      { id: "d", header: "D", widthPx: 100 },
+    ]);
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "a",
+      "b",
+      "d",
+      "c",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("resetColumnLayout restores a grouped array from interleaved config", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "b", header: "B", widthPx: 100, pinned: "right" },
+        { id: "c", header: "C", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    grid.moveColumn("c", 0);
+    grid.setColumnPinned("a", "left");
+    grid.resetColumnLayout();
+    expect(grid.options.columns.map((col) => col.id)).toEqual(["a", "c", "b"]);
+    expectGrouped(grid.options.columns);
+  });
+});
+
+describe("synthetic row-select column placement", () => {
+  test("a left-pinned synthetic column leads the whole array", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100, pinned: "left" },
+        { id: "__pretable_row_select__", header: "", pinned: "left" },
+        { id: "b", header: "B", widthPx: 100 },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "__pretable_row_select__",
+      "a",
+      "b",
+    ]);
+    expectGrouped(grid.options.columns);
+  });
+
+  test("an unpinned synthetic column leads the scrollable region, not the array", () => {
+    // `rowSelectionColumn.pinned: false` makes the synthetic column scrollable.
+    // planColumns renders left-pinned columns first, so seating it at index 0
+    // ahead of them would put array order out of step with visual order.
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "a", header: "A", widthPx: 100 },
+        { id: "__pretable_row_select__", header: "" },
+        { id: "b", header: "B", widthPx: 100, pinned: "left" },
+      ],
+      rows: baseRows,
+      getRowId: (row) => row.id,
+    });
+    expect(grid.options.columns.map((col) => col.id)).toEqual([
+      "b",
+      "__pretable_row_select__",
+      "a",
+    ]);
+    expectGrouped(grid.options.columns);
   });
 });

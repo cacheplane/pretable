@@ -65,25 +65,81 @@ function applyAutosize<TRow extends PretableRow>(
   return { ...options, columns: nextColumns };
 }
 
+/**
+ * Enforce the array-order-is-visual-order invariant:
+ * `[synthetic?] [pinned "left"…] [unpinned…] [pinned "right"…]`.
+ *
+ * `planColumns` renders the three regions in exactly that order, so a
+ * `PlannedColumn`'s `index` — which feeds `aria-colindex` and the reorder
+ * gesture's drop hit-test — is a true visual index only while the source array
+ * is already grouped. Every path that assigns `options.columns` from an
+ * external source (construction, prop merge, layout reset, `setColumnOrder`)
+ * runs through here; the mutating paths (`moveColumn`, `setColumnPinned`)
+ * preserve the grouping by construction instead.
+ *
+ * Grouping is stable: relative order within each region is preserved, so a
+ * consumer that declares columns interleaved gets them regrouped without
+ * otherwise being reshuffled.
+ *
+ * The synthetic row-select column leads its OWN region rather than the whole
+ * array. It is pinned left by default, in which case those are the same thing;
+ * but `rowSelectionColumn.pinned: false` makes it scrollable, and forcing it to
+ * index 0 ahead of the left-pinned run would be the very desync this helper
+ * exists to prevent.
+ */
+function groupColumnsByPin<TRow extends PretableRow>(
+  columns: readonly PretableColumn<TRow>[],
+): PretableColumn<TRow>[] {
+  const left: PretableColumn<TRow>[] = [];
+  const unpinned: PretableColumn<TRow>[] = [];
+  const right: PretableColumn<TRow>[] = [];
+
+  for (const column of columns) {
+    const region =
+      column.pinned === "left"
+        ? left
+        : column.pinned === "right"
+          ? right
+          : unpinned;
+    if (column.id === ROW_SELECT_COLUMN_ID) {
+      region.unshift(column);
+    } else {
+      region.push(column);
+    }
+  }
+
+  return [...left, ...unpinned, ...right];
+}
+
 export function createGridCore<TRow extends PretableRow>(
   inputOptions: PretableGridOptions<TRow>,
 ): PretableEngine<TRow> {
   const listeners = new Set<() => void>();
-  let options = inputOptions.autosize
+  const groupedInput: PretableGridOptions<TRow> = {
+    ...inputOptions,
+    columns: groupColumnsByPin(inputOptions.columns),
+  };
+  let options = groupedInput.autosize
     ? applyAutosize(
-        inputOptions,
-        typeof inputOptions.autosize === "object"
-          ? inputOptions.autosize
+        groupedInput,
+        typeof groupedInput.autosize === "object"
+          ? groupedInput.autosize
           : undefined,
       )
-    : inputOptions;
-  let originalColumns: PretableColumn<TRow>[] = inputOptions.columns.map(
-    (c) => ({ ...c }),
-  );
+    : groupedInput;
+  let originalColumns: PretableColumn<TRow>[] = groupColumnsByPin(
+    inputOptions.columns,
+  ).map((c) => ({ ...c }));
   let sourceRows = createSourceRows(options);
   const sourceRowIndex = new Map<string, SourceRow<TRow>>(
     sourceRows.map((entry) => [entry.id, entry]),
   );
+  /**
+   * Columns whose width was chosen explicitly — a consumer resize, or a
+   * controlled `columnWidths` slice. Autosize re-runs when rows are replaced,
+   * so it needs to know which widths are a deliberate choice to leave alone.
+   */
+  const pinnedWidthColumnIds = new Set<string>();
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
   let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
   let cachedDerivedSort: PretableSortEntry[] | null = null;
@@ -582,6 +638,7 @@ export function createGridCore<TRow extends PretableRow>(
       const nextColumns = options.columns.slice();
       nextColumns[idx] = { ...column, widthPx: clamped };
       options = { ...options, columns: nextColumns };
+      pinnedWidthColumnIds.add(columnId);
       emit();
     },
     moveColumn(columnId: string, toIndex: number) {
@@ -607,37 +664,108 @@ export function createGridCore<TRow extends PretableRow>(
       }
       nextColumns.splice(clampedTo, 0, moved);
 
-      // Compute pin boundary on the post-move array, EXCLUDING the moved
-      // column's own pin state. The boundary is the index (in the full
-      // nextColumns array) of the first non-pinned, non-synthetic column
-      // when the moved column is skipped.
-      let boundary = synthAtZero ? 1 : 0;
-      for (let i = synthAtZero ? 1 : 0; i < nextColumns.length; i += 1) {
+      // Array order IS visual order: options.columns is always grouped as
+      // [synthetic?] [pinned "left"…] [unpinned…] [pinned "right"…], and
+      // planColumns / aria-colindex rely on that. A move therefore cannot
+      // carry a pin across a region boundary; instead the moved column
+      // adopts the pin state of the region it lands in.
+      //
+      // Both boundaries are computed on the post-move array while SKIPPING
+      // `clampedTo`, so the moved column's own (stale) pin never influences
+      // where the regions are.
+      //
+      // leftBoundary: index just past the leading `pinned === "left"` run.
+      let leftBoundary = minIndex;
+      for (let i = minIndex; i < nextColumns.length; i += 1) {
         if (i === clampedTo) {
           continue;
         }
         if (nextColumns[i]?.pinned === "left") {
-          boundary = i + 1;
+          leftBoundary = i + 1;
         } else {
           break;
         }
       }
-      // boundary is now the index in nextColumns where the pinned region
-      // ends (excluding the moved column). The moved column lands in the
-      // pinned region iff clampedTo < boundary.
-      const landsInPinned = clampedTo < boundary;
 
-      // Right-pinned columns keep their pin through a reorder — the
-      // left-region auto-pin/unpin rule below only governs the leading region.
-      if (moved.pinned !== "right") {
-        const wasPinned = moved.pinned === "left";
-        const nextPinned: "left" | undefined = landsInPinned
-          ? "left"
-          : undefined;
-
-        if (nextPinned !== moved.pinned || wasPinned !== landsInPinned) {
-          nextColumns[clampedTo] = { ...moved, pinned: nextPinned };
+      // rightBoundary: index where the trailing `pinned === "right"` run
+      // starts; nextColumns.length when there is no trailing run. Exact
+      // mirror of the leftBoundary scan.
+      let rightBoundary = nextColumns.length;
+      for (let i = nextColumns.length - 1; i >= minIndex; i -= 1) {
+        if (i === clampedTo) {
+          continue;
         }
+        if (nextColumns[i]?.pinned === "right") {
+          rightBoundary = i;
+        } else {
+          break;
+        }
+      }
+
+      // The two predicates can never both hold — a column landing between the
+      // runs satisfies neither — so the rule is total and unambiguous.
+      const nextPinned: "left" | "right" | undefined =
+        clampedTo < leftBoundary
+          ? "left"
+          : clampedTo >= rightBoundary
+            ? "right"
+            : undefined;
+
+      if (nextPinned !== moved.pinned) {
+        nextColumns[clampedTo] = { ...moved, pinned: nextPinned };
+      }
+
+      options = { ...options, columns: nextColumns };
+      emit();
+    },
+    setColumnOrder(ids: readonly string[]) {
+      // `ids` is a *relative* order request, never a pin request: pin state is
+      // read from the current columns and never from the argument. The result
+      // is regrouped into the array-order-is-visual-order invariant
+      // ([synthetic?] [left…] [unpinned…] [right…]), so an argument that
+      // interleaves pinned and unpinned ids is normalised, not honoured
+      // literally.
+      const byId = new Map(options.columns.map((c) => [c.id, c]));
+      const taken = new Set<string>();
+      const ordered: PretableColumn<TRow>[] = [];
+
+      for (const id of ids) {
+        if (id === ROW_SELECT_COLUMN_ID || taken.has(id)) {
+          continue;
+        }
+        const column = byId.get(id);
+        if (!column) {
+          continue;
+        }
+        taken.add(id);
+        ordered.push(column);
+      }
+
+      // Columns the caller omitted keep their current relative order at the
+      // end. The synthetic column always falls into this pass — it is skipped
+      // above, so the caller can never position it — and `groupColumnsByPin`
+      // seats it back at index 0.
+      for (const column of options.columns) {
+        if (taken.has(column.id)) {
+          continue;
+        }
+        taken.add(column.id);
+        ordered.push(column);
+      }
+
+      const nextColumns = groupColumnsByPin(ordered);
+
+      let changed = nextColumns.length !== options.columns.length;
+      if (!changed) {
+        for (let i = 0; i < nextColumns.length; i += 1) {
+          if (nextColumns[i]!.id !== options.columns[i]!.id) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (!changed) {
+        return;
       }
 
       options = { ...options, columns: nextColumns };
@@ -777,9 +905,22 @@ export function createGridCore<TRow extends PretableRow>(
         }
         return { ...newCol };
       });
-      originalColumns = nextColumns.map((c) => ({ ...c }));
-      options = { ...options, columns: merged };
-      emit();
+      // Props arrive in the consumer's declared order but carry the *runtime*
+      // pin state merged back in, so the result has to be regrouped — prop
+      // order alone does not respect the pinned regions. Group before the
+      // comparison, or a prop update that only reorders within a pinned region
+      // would read as a change every time.
+      const grouped = groupColumnsByPin(merged);
+      const changed = !sameColumnLayout(options.columns, grouped);
+      originalColumns = groupColumnsByPin(nextColumns).map((c) => ({ ...c }));
+      options = { ...options, columns: grouped };
+      // Callers hand us a fresh array whenever `columns` is written inline, so
+      // only wake subscribers when something they can observe actually moved.
+      // The merged definitions are stored either way, which is what keeps a
+      // re-created `value`/`format` closure from going stale.
+      if (changed) {
+        emit();
+      }
     },
     applyTransaction(transaction: PretableTransaction<TRow>) {
       if (!options.getRowId) {
@@ -876,6 +1017,38 @@ export function createGridCore<TRow extends PretableRow>(
 
       if (editing && !hasRow(editing.rowId)) {
         editing = null;
+      }
+
+      // Autosize derives widths from content, so replacing the rows has to
+      // re-measure — otherwise a grid whose first render was empty (the usual
+      // fetch-then-render order) keeps the widths it took from no data.
+      // Measure from `originalColumns`: autosize skips any column that already
+      // carries a width, so measuring the live set would only re-confirm the
+      // previous pass. Widths the consumer chose outrank anything measured.
+      if (options.autosize) {
+        const measured = applyAutosize(
+          { ...options, columns: originalColumns },
+          typeof options.autosize === "object" ? options.autosize : undefined,
+        );
+        const measuredById = new Map(
+          measured.columns.map((column) => [column.id, column.widthPx]),
+        );
+        options = {
+          ...options,
+          // Keyed by id, not index — `moveColumn` can leave the live order out
+          // of step with `originalColumns`, and the live set may carry the
+          // synthetic row-select column that never appears in props.
+          columns: options.columns.map((column) => {
+            if (pinnedWidthColumnIds.has(column.id)) {
+              return column;
+            }
+            const width = measuredById.get(column.id);
+            if (width === undefined || width === column.widthPx) {
+              return column;
+            }
+            return { ...column, widthPx: width };
+          }),
+        };
       }
 
       cachedVisibleRows = null;
@@ -990,6 +1163,37 @@ export function createGridCore<TRow extends PretableRow>(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Compare the column fields a subscriber can observe. Deliberately ignores
+ * `value`/`format`/`render` — those are routinely re-created inline, and
+ * comparing them by identity would report a change on every render.
+ */
+function sameColumnLayout<TRow extends PretableRow>(
+  a: readonly PretableColumn<TRow>[],
+  b: readonly PretableColumn<TRow>[],
+): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((left, index) => {
+    const right = b[index]!;
+    return (
+      left.id === right.id &&
+      left.header === right.header &&
+      left.widthPx === right.widthPx &&
+      left.minWidthPx === right.minWidthPx &&
+      left.maxWidthPx === right.maxWidthPx &&
+      left.pinned === right.pinned &&
+      left.sortable === right.sortable &&
+      left.filterable === right.filterable &&
+      left.resizable === right.resizable &&
+      left.reorderable === right.reorderable &&
+      left.wrap === right.wrap
+    );
+  });
 }
 
 function computePageStep<TRow extends PretableRow>(

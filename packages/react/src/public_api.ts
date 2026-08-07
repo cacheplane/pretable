@@ -19,6 +19,7 @@ export { usePretable } from "./use-pretable";
 // Component prop / message / config types
 export type { PretableProps } from "./pretable";
 export type {
+  PretableRowActivateInput,
   PretableSurfaceMessages,
   PretableSurfaceProps,
   RowSelectionColumnConfig,
@@ -51,6 +52,10 @@ export type {
 // Copy / clipboard
 export { defaultCoerceForCopy, serializeRangesAsTsv } from "./copy";
 export type { CopyPayload, SerializeRangesArgs } from "./copy";
+
+// Paste (mapPasteToTargets stays internal)
+export { parseTsv } from "./paste";
+export type { PastedCell, PastePayload, RejectedPasteCell } from "./paste";
 
 // Density (canonical home is @pretable/ui)
 export type { DensityHeights } from "@pretable/ui";

@@ -5,7 +5,7 @@ nav: Grid
 order: 11
 ---
 
-Type signatures for the public API of `@pretable/react`. Hand-authored from the source at `packages/core/src/types.ts` and `packages/react-surface/src/use-pretable.ts`. Pre-1.0 — names may rename or remove in patch releases.
+Type signatures for the public API of `@pretable/react`. Hand-authored from the source at `packages/core/src/types.ts` and `packages/react/src/use-pretable.ts`. Pre-1.0 — names may rename or remove in patch releases.
 
 ## `PretableColumn<TRow>`
 
@@ -186,6 +186,36 @@ interface SerializeRangesArgs<TRow> {
 - `CopyPayload` — the return shape from `onCopy`. When `html` is present, the surface writes both `text/plain` and `text/html` to the clipboard.
 - `SerializeRangesArgs<TRow>` — argument shape for `serializeRangesAsTsv` and any custom serializer.
 
+## Paste types
+
+```ts
+interface PastedCell<TRow> {
+  rowId: string;
+  columnId: string;
+  value: unknown; // post-coercion (parseEditValue, or the built-in type parse)
+  raw: string; // the clipboard text this cell came from
+  row: TRow;
+}
+
+interface RejectedPasteCell {
+  rowId: string;
+  columnId: string;
+  raw: string;
+  reason: "not-editable" | "invalid";
+  message?: string;
+}
+
+interface PastePayload<TRow> {
+  cells: PastedCell<TRow>[];
+  rejected: RejectedPasteCell[];
+  source: { rows: number; columns: number };
+  clipped: { rows: number; columns: number };
+}
+```
+
+- `PastePayload<TRow>` — the single argument to the surface's `onPaste`, fired once per paste. See [Paste](/docs/grid/paste).
+- `parseTsv(text: string): string[][]` — the clipboard parser, the exact inverse of the copy escaping. Exported for pre-processing clipboard text yourself.
+
 ## `PretableGrid<TRow>` — model methods
 
 The `grid` returned by `usePretable`.
@@ -218,7 +248,8 @@ The `grid` returned by `usePretable`.
 | Method                                                                       | Description                                                                                     |
 | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `setColumnWidth(columnId: string, width: number): void`                      | Set a column's width. Clamps to per-column `minWidthPx` / `maxWidthPx` and engine-wide bounds.  |
-| `moveColumn(columnId: string, toIndex: number): void`                        | Reposition a column. Cross-boundary lands auto-pin/unpin to match the destination region.       |
+| `moveColumn(columnId: string, toIndex: number): void`                        | Reposition a column. The column adopts the pin state of the region it lands in.                 |
+| `setColumnOrder(ids: readonly string[]): void`                               | Reconcile a whole relative order in one commit. Regroups by current pin state; never pins.      |
 | `setColumnPinned(columnId: string, pinned: "left" \| "right" \| null): void` | Explicit pin/unpin against either edge. Repositions the column to the pin-region boundary.      |
 | `autosizeColumn(columnId: string, options?: AutosizeOptions): void`          | Autosize a single column to its measured content width.                                         |
 | `resetColumnLayout(): void`                                                  | Restore order, widths, and pinned state to the original `columns` prop snapshot taken at mount. |
@@ -315,6 +346,16 @@ interface PretableRenderSnapshot<TRow> {
   nodeCount: number;
   totalHeight: number;
   totalWidth: number;
+  // Widths of the two sticky pinned column groups.
+  pinnedLeftWidth: number;
+  pinnedRightWidth: number;
+  // Geometry for EVERY visible row, not just the rendered window.
+  rowMetrics: {
+    readonly rowCount: number;
+    getHeight(index: number): number;
+    getOffsetForIndex(index: number): number;
+    getTotalHeight(): number;
+  };
 }
 
 interface PretableRenderRow<TRow> {
@@ -339,6 +380,8 @@ interface PlannedColumn {
 `renderSnapshot.rows` is the slice of rows currently visible in the viewport (plus overscan). Each has `top` (the absolute Y position) and `height` (the row's height — measured if you provided `measuredHeights`, otherwise estimated). Use these to position your row JSX with `position: absolute; top: ${row.top}px; height: ${row.height}px`.
 
 `renderSnapshot.columns` is the column layout — left offset and width per column, accounting for pinned positioning. Left-pinned columns come first, then the visible scrollable window, then the right-pinned columns. A right-pinned entry additionally carries `right`, its offset from the viewport's right edge, which is what its sticky position is derived from; its `left` is still the column's true content offset (where it sits in the end-to-end layout), so mapping any entry back to a content coordinate works uniformly.
+
+`renderSnapshot.rowMetrics` covers **every** visible row, including rows outside the rendered window that `renderSnapshot.rows` omits — that is what makes it possible to compute a scroll offset for a row that has no DOM node yet. Together with `pinnedLeftWidth` / `pinnedRightWidth` it's the state `<PretableSurface>` uses for [scroll-into-view on keyboard focus](/docs/grid/keyboard#scroll-follows-focus); a custom renderer needs the same inputs to reproduce it. The `rowMetrics` interface is fully typed but isn't exported under a name — write it down as `PretableRenderSnapshot["rowMetrics"]` if you need to.
 
 ## `PretableTelemetry`
 

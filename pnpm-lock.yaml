@@ -74,6 +74,9 @@ importers:
       react-dom:
         specifier: ^19.2.7
         version: 19.2.7(react@19.2.7)
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
       source-map:
         specifier: 0.7.6
         version: 0.7.6
@@ -3643,6 +3646,11 @@ packages:
 
   semver@7.8.3:
     resolution: {integrity: sha512-wnilbGyMxzbY7dNOl7jpKbLSjcfeweJWU5j4+u5qW+6/wuGD9KzIGOyZnQVSBM9E7DtWaaH3CyHkppYrKYoxwg==}
+    engines: {node: '>=10'}
+    hasBin: true
+
+  semver@7.8.5:
+    resolution: {integrity: sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -7800,6 +7808,8 @@ snapshots:
   semver@7.8.2: {}
 
   semver@7.8.3: {}
+
+  semver@7.8.5: {}
 
   sharp@0.34.5:
     dependencies:
