@@ -591,13 +591,14 @@ function headerContentPropsEqual(
 
 const MemoizedHeaderContent = memo(HeaderContentImpl, headerContentPropsEqual);
 
+/** Stable empty result so an unselected grid never hands out a fresh array. */
+const EMPTY_ROW_IDS: string[] = [];
+
 /**
  * Controlled grid surface. The primary React component. Pass `state` to control any subset of sort/filter/selection/focus/column-layout from the outside; omit slices you want the grid to own.
  *
  * @public
  */
-/** Stable empty result so an unselected grid never hands out a fresh array. */
-const EMPTY_ROW_IDS: string[] = [];
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,

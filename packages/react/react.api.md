@@ -551,7 +551,7 @@ export interface PretableSortEntry {
     direction: "asc" | "desc";
 }
 
-// @public (undocumented)
+// @public
 export function PretableSurface<TRow extends PretableRow = PretableRow>(input: PretableSurfaceProps<TRow>): react.JSX.Element;
 
 // @public
@@ -797,7 +797,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:743:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:748:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
