@@ -1534,7 +1534,7 @@ describe("controlled-mode round-trips", () => {
 
     // Filtering still works: query "a1" matches only r1 (column a = "a1").
     fireEvent.change(input, { target: { value: "a1" } });
-    expect(view.getByTestId("count")).toHaveTextContent("1");
+    expect(view.getByTestId("count").textContent).toBe("1");
 
     errorSpy.mockRestore();
   });
@@ -3118,8 +3118,11 @@ describe("aria-live announcements", () => {
     const grid = view.getByRole("grid");
     fireEvent.keyDown(grid, { key: "a", metaKey: true });
 
-    // Live region is empty before the debounce expires.
-    expect(getLiveRegion(view)).toHaveTextContent("");
+    // Live region is empty before the debounce expires. Emptiness is asserted
+    // on textContent directly rather than with toHaveTextContent(""), which
+    // reads like a substring match (and would then be vacuous) and only fails
+    // by way of a special case inside jest-dom.
+    expect(getLiveRegion(view)?.textContent).toBe("");
 
     act(() => {
       vi.advanceTimersByTime(500);
@@ -3176,7 +3179,7 @@ describe("aria-live announcements", () => {
       vi.advanceTimersByTime(500);
     });
 
-    expect(getLiveRegion(view)).toHaveTextContent("");
+    expect(getLiveRegion(view)?.textContent).toBe("");
   });
 
   it("Cmd+C success announces '{n} rows × {m} columns copied'", async () => {
@@ -3337,7 +3340,7 @@ describe("aria-live announcements", () => {
       vi.advanceTimersByTime(500);
     });
 
-    expect(getLiveRegion(view)).toHaveTextContent("");
+    expect(getLiveRegion(view)?.textContent).toBe("");
   });
 
   it("Cmd+C with an empty selection does not announce", () => {
@@ -3357,7 +3360,7 @@ describe("aria-live announcements", () => {
     });
 
     expect(copyToClipboard).not.toHaveBeenCalled();
-    expect(getLiveRegion(view)).toHaveTextContent("");
+    expect(getLiveRegion(view)?.textContent).toBe("");
   });
 });
 
