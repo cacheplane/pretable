@@ -21,6 +21,7 @@ const TOKENS = [
   "pretable-accent",
   "pretable-row-height",
   "pretable-header-height",
+  "pretable-group-panel-height",
   "pretable-cell-padding-x",
   "pretable-cell-padding-y",
   "pretable-font-size-cell",
@@ -89,14 +90,20 @@ describe("token contract", () => {
       for (const density of ["compact", "standard", "spacious"]) {
         document.documentElement.setAttribute("data-density", density);
         const computed = getComputedStyle(document.documentElement);
-        expect(
-          computed.getPropertyValue("--pretable-row-height").trim(),
-          `${themeFile} @ ${density}: --pretable-row-height not <number>px`,
-        ).toMatch(/^\d+(\.\d+)?px$/);
-        expect(
-          computed.getPropertyValue("--pretable-header-height").trim(),
-          `${themeFile} @ ${density}: --pretable-header-height not <number>px`,
-        ).toMatch(/^\d+(\.\d+)?px$/);
+        // Every height token @pretable/react parses in JS belongs here.
+        // `useResolvedPx` matches `^<number>px$` and silently falls back on
+        // anything else, so a tier that misses one of these does not throw —
+        // it quietly renders at the hard-coded fallback in every theme.
+        for (const token of [
+          "--pretable-row-height",
+          "--pretable-header-height",
+          "--pretable-group-panel-height",
+        ]) {
+          expect(
+            computed.getPropertyValue(token).trim(),
+            `${themeFile} @ ${density}: ${token} not <number>px`,
+          ).toMatch(/^\d+(\.\d+)?px$/);
+        }
       }
       cleanup();
     });

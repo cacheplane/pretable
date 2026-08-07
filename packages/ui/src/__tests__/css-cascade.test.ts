@@ -78,6 +78,54 @@ describe("grid.css cascade contract", () => {
     );
   });
 
+  test("grid.css styles every element of the drag-to-group panel", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    // The panel's DOM is a fixed contract (@pretable/react emits exactly
+    // these); an unstyled one of them ships as a naked <span> or <button>.
+    for (const attr of [
+      "data-pretable-group-panel",
+      "data-pretable-group-panel-empty",
+      "data-pretable-group-chip",
+      "data-pretable-chip-handle",
+      "data-pretable-chip-label",
+      "data-pretable-chip-remove",
+      "data-pretable-chip-drop-indicator",
+    ]) {
+      expect(css, `no rule for [${attr}]`).toMatch(
+        new RegExp(`:where\\(\\[${attr}\\]`),
+      );
+    }
+    // Drag feedback and the keyboard's focus ring are the two states the panel
+    // is unusable without.
+    expect(css).toMatch(
+      /:where\(\[data-pretable-group-panel\]\[data-pretable-group-panel-active\]\)/,
+    );
+    expect(css).toMatch(
+      /:where\(\[data-pretable-group-chip\]\[data-pretable-chip-dragging\]\)/,
+    );
+    const chipFocus = css.match(
+      /:where\(\[data-pretable-group-chip\]:focus-visible\)\s*\{[^}]*\}/,
+    );
+    expect(chipFocus?.[0]).toMatch(/var\(--pretable-focus-ring\)/);
+    // The strip's height is a token, not a literal — @pretable/react reads the
+    // same one to subtract it from viewportHeight.
+    const panel = css.match(
+      /:where\(\[data-pretable-group-panel\]\)\s*\{[^}]*\}/,
+    );
+    expect(panel?.[0]).toMatch(/var\(--pretable-group-panel-height\)/);
+  });
+
+  test("grid.css styles the column menu and its ⋮ button", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).toMatch(/:where\(\[data-pretable-column-menu-button\]\)/);
+    expect(css).toMatch(/:where\(\[data-pretable-column-menu\]\)/);
+    expect(css).toMatch(/:where\(\[data-pretable-menu-item\]\)/);
+    // The ⋮ hides with the funnel, but an OPEN menu must keep its button lit.
+    expect(css).toMatch(
+      /:where\(\[data-pretable-column-menu-button\]\[aria-expanded="true"\]\)/,
+    );
+  });
+
   test("portaled popovers declare the sans font themselves", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     // These render into document.body, so they can't inherit the font-family
@@ -86,6 +134,7 @@ describe("grid.css cascade contract", () => {
       /:where\(\[data-pretable-filter-menu\]\)\s*\{[^}]*\}/,
       /:where\(\[data-pretable-enum-listbox\]\)\s*\{[^}]*\}/,
       /:where\(\[data-pretable-date-popover\]\)\s*\{[^}]*\}/,
+      /:where\(\[data-pretable-column-menu\]\)\s*\{[^}]*\}/,
     ]) {
       const match = css.match(block);
       expect(match?.[0]).toMatch(/font-family:\s*var\(--pretable-font-sans\)/);
