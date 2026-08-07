@@ -98,6 +98,60 @@ hand-rolled copy in the group-row path.
 
 ---
 
+## Status — Tasks 5 and 6 are DONE (`10f45b4`, this commit)
+
+grid-core 376, react 678, ui 24, website 62; 54 Playwright tests pass in
+Chromium **and** WebKit. `pnpm api` is a clean no-op and all five validation
+commands pass.
+
+**Measured, not asserted** (material theme, `--pretable-group-indent: 24px`):
+
+| Claim                                    | Chromium        | WebKit          |
+| ---------------------------------------- | --------------- | --------------- |
+| depth 1 − depth 0 label `left`           | 24px            | 24px            |
+| ditto, indent rule commented out         | **0px** (fails) | **0px** (fails) |
+| collapse at the very bottom: `scrollTop` | 10434           | 10434           |
+| …vs `scrollHeight - clientHeight` after  | 10434           | 10434           |
+| rows intersecting the viewport after     | 10              | 9–10            |
+
+**Assertion 2 did not reproduce the hazard, and that is the finding.** Collapsed
+from `scrollTop === max`, so the stored offset was necessarily past the new
+`totalHeight` (content shrank 218px). The browser's clamp had already
+propagated by the time the click's React commit painted, in both engines:
+`scrollTop` landed exactly on the new maximum and 9–10 rows were still on
+screen. **No scroll-correction machinery is needed** — the spec's "Expansion and
+scroll" reasoning holds in practice, not just on paper. The test is kept as the
+regression guard, and it asserts `scrollHeight` actually shrank so it can never
+pass vacuously.
+
+**Three corrections found while implementing them:**
+
+1. **Task 6 Step 2's command does not exist.** There is no `test:e2e` script and
+   no `website` package name — `apps/website/package.json:12` defines
+   `"smoke": "playwright test"` under the name `@pretable/app-website`. It also
+   needs a production build and a local server; the working invocation is
+   `pnpm --filter @pretable/app-website build`, `next start`, then
+   `BASE_URL=http://localhost:PORT pnpm exec playwright test grouping --workers=1`.
+2. **No grouped grid existed anywhere on the site**, so there was nothing to
+   measure. Added `apps/website/app/fixtures/grouping/page.tsx` (10 sectors × 4
+   industries × 5 rows, two grouping levels via `rowGroup: true`) plus a
+   `noindex` layout. Deliberately not the hero or a docs page — that is SP4.
+3. **`pnpm api` emits a new `ae-forgotten-export` for `PretableGroupColumnOptions`**
+   from `@pretable/react`: `PretableGridOptions` is re-exported from core
+   (`public_api.ts:68-88`) but the nested option type is not. Left as-is — 23
+   such warnings already exist there (`PretableFocusState`,
+   `PretableSelectionState`, `AutosizeOptions`, …), so exporting this one alone
+   would be the inconsistent choice. It is a warning, not an error, and
+   `api:check` passes.
+
+Also noted, not fixed: **`groupColumn` and `hideGroupedColumns` are reachable
+only from `createGridCore`, not from React.** `UsePretableOptions`
+(`use-pretable.ts:146-160`) and `PretableSurfaceProps` both omit them, so a
+React consumer cannot rename or widen the group column. SP2's definition of done
+does not require it; flagging it for SP4, which will want the header text.
+
+---
+
 ## Ground rules for every task
 
 - **Vanilla CSS in `packages/*`.** No Tailwind. Use `:where()` + existing
@@ -759,7 +813,7 @@ precisely the failure Task 6's first Playwright assertion exists to catch. Add
 a literal fallback so a third-party theme degrades to _indented_ rather than
 flat.
 
-- [ ] **Step 1: Add the token to both themes**
+- [x] **Step 1: Add the token to both themes**
 
 `packages/ui/src/themes/excel.css`, in the spacing block near `:58`:
 
@@ -773,7 +827,7 @@ flat.
 --pretable-group-indent: 20px;
 ```
 
-- [ ] **Step 2: Add the rules to `grid.css`**
+- [x] **Step 2: Add the rules to `grid.css`**
 
 ```css
 /* Group header rows read as structure, not data — they borrow the header's
@@ -836,13 +890,13 @@ Match the surrounding file's actual nesting and selector style — `grid.css`
 wraps its rules in a layer/scope block; put these inside it rather than at the
 top level.
 
-- [ ] **Step 3: Verify nothing regressed**
+- [x] **Step 3: Verify nothing regressed**
 
 ```bash
 pnpm --filter @pretable/ui test && pnpm --filter @pretable/react test
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 pnpm format:write && git add -A && git commit -m "feat(ui): style group rows, twisty, and depth indent"
@@ -860,7 +914,7 @@ pnpm format:write && git add -A && git commit -m "feat(ui): style group rows, tw
 jsdom cannot verify a single pixel. Everything below is only true if Playwright
 says so.
 
-- [ ] **Step 1: Write the browser spec**
+- [x] **Step 1: Write the browser spec**
 
 Follow the setup in `apps/website/e2e/smoke.spec.ts`. Assert, in both Chromium
 and WebKit:
@@ -878,18 +932,18 @@ and WebKit:
 3. **Keyboard round-trip.** Focus a group row, press `ArrowLeft` (collapses),
    `ArrowRight` (expands), and assert the child row count each way.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 ```bash
 pnpm --filter website test:e2e grouping
 ```
 
-- [ ] **Step 3: Negative control**
+- [x] **Step 3: Negative control**
 
 Comment out the `--pretable-group-depth` padding rule and confirm assertion 1
 fails with a measured delta of 0. Restore.
 
-- [ ] **Step 4: Refresh the API report**
+- [x] **Step 4: Refresh the API report**
 
 ```bash
 pnpm api
@@ -900,7 +954,7 @@ new `@public` surface. Re-run until it is a clean no-op — "API Extractor —
 report freshness" is a **required** gate on main and will block the PR
 otherwise.
 
-- [ ] **Step 5: Full validation**
+- [x] **Step 5: Full validation**
 
 ```bash
 pnpm build && pnpm typecheck && pnpm lint && pnpm format && pnpm test
@@ -909,7 +963,7 @@ pnpm build && pnpm typecheck && pnpm lint && pnpm format && pnpm test
 All five must pass. Note that test files are now under typechecking (#248), so
 a type error in a spec file fails the build.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A && git commit -m "test(grouping): real-browser verification; refresh API report"

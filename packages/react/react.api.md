@@ -368,6 +368,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     //
     // (undocumented)
     extendRangeFromAnchor(addr: PretableCellAddress): void;
+    getColumns(): readonly PretableColumn_2<TRow>[];
     getSnapshot(): PretableGridSnapshot<TRow>;
     readonly kind: "pretable-grid";
     // (undocumented)
@@ -437,8 +438,11 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     columns: PretableColumn_2<TRow>[];
     // (undocumented)
     getRowId?: (row: TRow, index: number) => string;
+    // Warning: (ae-forgotten-export) The symbol "PretableGroupColumnOptions" needs to be exported by the entry point index.d.ts
+    groupColumn?: PretableGroupColumnOptions;
     groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;
+    hideGroupedColumns?: boolean;
     // (undocumented)
     rows: TRow[];
 }
