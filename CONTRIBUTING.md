@@ -108,6 +108,10 @@ pnpm exec changeset
 No changeset is usually needed for internal-only tests, CI, benchmarks,
 repository docs, or non-published apps.
 
+All four public packages belong to one Changesets fixed group and release under
+the same version. While Pretable is on the `0.0.x` train, use patch changesets
+unless the project is intentionally moving to a new minor or major line.
+
 ## Benchmarks
 
 Pretable performance claims must stay tied to evidence. When changing rendering,

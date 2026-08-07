@@ -1,12 +1,30 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import test from "node:test";
 
+import { discoverWorkspacePackages } from "../publish-preflight.mjs";
 import {
   publishPublicPackages,
   runPublishCli,
   spawnChangesetsPublish,
 } from "../publish-public-packages.mjs";
+
+const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+
+test("keeps every publishable package in one fixed Changesets group", async () => {
+  const config = JSON.parse(
+    await readFile(join(REPO_ROOT, ".changeset", "config.json"), "utf8"),
+  );
+  const publishablePackageNames = (await discoverWorkspacePackages(REPO_ROOT))
+    .filter(({ manifest }) => manifest.private !== true)
+    .map(({ manifest }) => manifest.name)
+    .sort();
+
+  assert.deepEqual(config.fixed, [publishablePackageNames]);
+});
 
 test("runs the preflight before publishing", async () => {
   const events = [];

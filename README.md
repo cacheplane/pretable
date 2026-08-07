@@ -23,6 +23,8 @@ engine hardens:
 - `@pretable/ui`: CSS themes, grid skin, tokens, and Tailwind helpers.
 - `@pretable/stream-adapter`: streaming helpers for partial and element streams.
 
+These four packages release together under one aligned version.
+
 Packages named `@pretable-internal/*` are repo-local implementation details.
 Do not build application code against them.
 
