@@ -19,6 +19,7 @@ export { usePretable } from "./use-pretable";
 // Component prop / message / config types
 export type { PretableProps } from "./pretable";
 export type {
+  PretableRowActivateInput,
   PretableSurfaceMessages,
   PretableSurfaceProps,
   RowSelectionColumnConfig,

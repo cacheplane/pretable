@@ -59,6 +59,17 @@ describe("grid.css cascade contract", () => {
     }
   });
 
+  test("body cells clip their own content instead of spilling into the next column", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const cellRule = css.match(
+      /:where\(\[data-pretable-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(cellRule, "no [data-pretable-cell] rule found").toBeDefined();
+    // Cells are absolutely positioned, so an unclipped long value renders on
+    // top of its neighbour rather than being cut off at the column edge.
+    expect(cellRule).toMatch(/overflow:\s*hidden/);
+  });
+
   test("every grid.css rule selector is wrapped in :where()", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");

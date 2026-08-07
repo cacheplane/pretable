@@ -84,6 +84,12 @@ export function createGridCore<TRow extends PretableRow>(
   const sourceRowIndex = new Map<string, SourceRow<TRow>>(
     sourceRows.map((entry) => [entry.id, entry]),
   );
+  /**
+   * Columns whose width was chosen explicitly — a consumer resize, or a
+   * controlled `columnWidths` slice. Autosize re-runs when rows are replaced,
+   * so it needs to know which widths are a deliberate choice to leave alone.
+   */
+  const pinnedWidthColumnIds = new Set<string>();
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
   let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
   let cachedDerivedSort: PretableSortEntry[] | null = null;
@@ -582,6 +588,7 @@ export function createGridCore<TRow extends PretableRow>(
       const nextColumns = options.columns.slice();
       nextColumns[idx] = { ...column, widthPx: clamped };
       options = { ...options, columns: nextColumns };
+      pinnedWidthColumnIds.add(columnId);
       emit();
     },
     moveColumn(columnId: string, toIndex: number) {
@@ -777,9 +784,16 @@ export function createGridCore<TRow extends PretableRow>(
         }
         return { ...newCol };
       });
+      const changed = !sameColumnLayout(options.columns, merged);
       originalColumns = nextColumns.map((c) => ({ ...c }));
       options = { ...options, columns: merged };
-      emit();
+      // Callers hand us a fresh array whenever `columns` is written inline, so
+      // only wake subscribers when something they can observe actually moved.
+      // The merged definitions are stored either way, which is what keeps a
+      // re-created `value`/`format` closure from going stale.
+      if (changed) {
+        emit();
+      }
     },
     applyTransaction(transaction: PretableTransaction<TRow>) {
       if (!options.getRowId) {
@@ -876,6 +890,38 @@ export function createGridCore<TRow extends PretableRow>(
 
       if (editing && !hasRow(editing.rowId)) {
         editing = null;
+      }
+
+      // Autosize derives widths from content, so replacing the rows has to
+      // re-measure — otherwise a grid whose first render was empty (the usual
+      // fetch-then-render order) keeps the widths it took from no data.
+      // Measure from `originalColumns`: autosize skips any column that already
+      // carries a width, so measuring the live set would only re-confirm the
+      // previous pass. Widths the consumer chose outrank anything measured.
+      if (options.autosize) {
+        const measured = applyAutosize(
+          { ...options, columns: originalColumns },
+          typeof options.autosize === "object" ? options.autosize : undefined,
+        );
+        const measuredById = new Map(
+          measured.columns.map((column) => [column.id, column.widthPx]),
+        );
+        options = {
+          ...options,
+          // Keyed by id, not index — `moveColumn` can leave the live order out
+          // of step with `originalColumns`, and the live set may carry the
+          // synthetic row-select column that never appears in props.
+          columns: options.columns.map((column) => {
+            if (pinnedWidthColumnIds.has(column.id)) {
+              return column;
+            }
+            const width = measuredById.get(column.id);
+            if (width === undefined || width === column.widthPx) {
+              return column;
+            }
+            return { ...column, widthPx: width };
+          }),
+        };
       }
 
       cachedVisibleRows = null;
@@ -990,6 +1036,37 @@ export function createGridCore<TRow extends PretableRow>(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Compare the column fields a subscriber can observe. Deliberately ignores
+ * `value`/`format`/`render` — those are routinely re-created inline, and
+ * comparing them by identity would report a change on every render.
+ */
+function sameColumnLayout<TRow extends PretableRow>(
+  a: readonly PretableColumn<TRow>[],
+  b: readonly PretableColumn<TRow>[],
+): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((left, index) => {
+    const right = b[index]!;
+    return (
+      left.id === right.id &&
+      left.header === right.header &&
+      left.widthPx === right.widthPx &&
+      left.minWidthPx === right.minWidthPx &&
+      left.maxWidthPx === right.maxWidthPx &&
+      left.pinned === right.pinned &&
+      left.sortable === right.sortable &&
+      left.filterable === right.filterable &&
+      left.resizable === right.resizable &&
+      left.reorderable === right.reorderable &&
+      left.wrap === right.wrap
+    );
+  });
 }
 
 function computePageStep<TRow extends PretableRow>(
