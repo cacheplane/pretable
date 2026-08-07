@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-import { openDrawer } from "./helpers";
+import {
+  dragResizeHandle,
+  openDrawer,
+  openFilterMenu,
+  waitForStablePosition,
+} from "./helpers";
 
 test("landing renders grid + control bar + drawer handle; drawer opens", async ({
   page,
@@ -134,12 +139,8 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   // --- Filter via the built-in header funnels ---
   // ([data-pretable-row] counts only virtualized/visible rows, so assert
   //  deterministic filtered counts and ">5" for the unfiltered view.)
-  // Symbol funnel → contains NVDA → 1 row. The funnel is opacity-0 until the
-  // header row is hovered; opacity does not block Playwright actionability,
-  // but hover first to mirror real usage (and dodge engine flakiness).
-  await page.locator("[data-pretable-header-row]").first().hover();
-  await page.getByRole("button", { name: "Filter Symbol" }).click();
-  const symbolDialog = page.getByRole("dialog", { name: "Filter Symbol" });
+  // Symbol funnel → contains NVDA → 1 row.
+  const symbolDialog = await openFilterMenu(page, "Symbol");
   await symbolDialog.locator("[data-pretable-filter-value]").fill("NVDA");
   await expect(page.locator("[data-pretable-row]")).toHaveCount(1); // auto-waits past the ~200ms live-apply debounce
   // Clear restores the book.
@@ -151,8 +152,7 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   await expect(symbolDialog).toBeHidden();
 
   // Sector funnel → enum checklist (auto-derived) → Energy → 2 rows.
-  await page.getByRole("button", { name: "Filter Sector" }).click();
-  const sectorDialog = page.getByRole("dialog", { name: "Filter Sector" });
+  const sectorDialog = await openFilterMenu(page, "Sector");
   await sectorDialog
     .locator("[data-pretable-filter-set]")
     .getByRole("checkbox", { name: "Energy" })
@@ -222,7 +222,12 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   await page.keyboard.press(
     process.platform === "darwin" ? "Meta+c" : "Control+c",
   );
-  await expect(page.getByText(/Copied/i)).toBeVisible();
+  // Scope to the Selection panel: the toast renders as a nested span inside
+  // the "… selected · ⌘C to copy" span, so a bare getByText(/Copied/) matches
+  // both the child and its parent and trips strict mode.
+  await expect(page.getByRole("region", { name: "Selection" })).toContainText(
+    /Copied/i,
+  );
   await page.waitForTimeout(2000); // ticks
   await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
 });
@@ -419,25 +424,18 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
     '[data-pretable-header-cell][data-pretable-column-id="symbol"]',
   );
   await expect(symbolHeader).toBeVisible();
-  const widthBefore = (await symbolHeader.boundingBox())?.width ?? 0;
 
-  // Drag the symbol column's resize handle to the right by ~80px. The handle
-  // listens for pointer events and uses setPointerCapture; WebKit only engages
-  // capture once the pointer actually traverses intermediate positions, so the
-  // drag moves in steps (a short hop, then the full distance) rather than a
-  // single jump.
   const handle = layout.locator(
     '[data-pretable-resize-handle][data-pretable-column-id="symbol"]',
   );
-  const hb = await handle.boundingBox();
-  expect(hb).not.toBeNull();
-  if (hb) {
-    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(hb.x + 20, hb.y + hb.height / 2, { steps: 4 });
-    await page.mouse.move(hb.x + 80, hb.y + hb.height / 2, { steps: 8 });
-    await page.mouse.up();
-  }
+  // Measure only once the section has stopped moving, so `widthBefore` and the
+  // drag below describe the same layout.
+  await waitForStablePosition(handle);
+  const widthBefore = (await symbolHeader.boundingBox())?.width ?? 0;
+  expect(widthBefore).toBeGreaterThan(0);
+
+  // Drag the symbol column's resize handle to the right by 80px.
+  await dragResizeHandle(handle, 80);
   await expect
     .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
     .toBeGreaterThan(widthBefore + 20);
