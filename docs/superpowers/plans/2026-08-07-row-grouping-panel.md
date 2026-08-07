@@ -22,9 +22,13 @@ it before starting. It records _why_ several obvious implementations are wrong.
 
 ---
 
-## Status — Tasks 1, 2 and 3 are DONE (`e22fd88`, `d747d0c`, `8c5a573`, `9d8dfd1`)
+## Status — Tasks 1–5 are DONE
 
-React is at **716 passing (41 files)**, up from 682. Nine negative controls run.
+Tasks 1–3: `e22fd88`, `d747d0c`, `8c5a573`, `9d8dfd1`.
+Tasks 4–5: `5967401`, `d30698f`.
+
+React is at **739 passing (43 files)**, up from 682. Eighteen negative controls
+run; every one fired except where noted below.
 
 **What later tasks depend on:**
 
@@ -43,12 +47,36 @@ React is at **716 passing (41 files)**, up from 682. Nine negative controls run.
    was scoped out of `packages/ui/`, so the React side reads it reactively with a
    documented 36px fallback. **Task 7 must still add it** to both themes across
    all three density tiers; the values then flow through with no React change.
+5. **`group-panel-hit-test.ts` is the only geometry in SP3** (Task 4). Both drag
+   paths call `hitTestGroupPanel(panel, x, y)`, which returns an `insertIndex`
+   or `null`. It is a module of its own so the jsdom suite can mock it; Task 8's
+   Playwright spec is the only thing that exercises it against real rects.
+6. **New DOM Task 7 must style:** `data-pretable-group-panel-active` on the
+   panel while a drop is pending, `data-pretable-chip-drop-indicator` (the gap
+   indicator, a zero-content `<span>` between chips), and
+   `data-pretable-chip-dragging` on the chip being dragged.
+7. **`GroupPanel` gained two props:** `containerRef` (the surface hit-tests
+   against it) and `dropIndicatorIndex` (a drag arriving from OUTSIDE the
+   panel). A chip's own drag does not use `dropIndicatorIndex` — it owns its
+   insertion index internally and wins the indicator while it runs.
 
 **Two test-integrity findings:**
 
 - Task 2's empty-message snippet as I wrote it was **vacuous**: the rerender
   dropped `emptyMessage`, so the query would have returned null because the prop
   vanished, not because grouping appeared. Fixed in place.
+- **Task 5's "releasing outside the panel is a no-op" test was vacuous as first
+  written.** It dragged the FIRST chip out; a leaked "no hit" degrades to
+  insertion index 0, which puts the first chip back where it already was, so
+  `insertGroupLevel` returns the original array and nothing commits either way.
+  The control did not fire. Fixed by dragging the second chip out — measured
+  before and after.
+- **"The capture is on the panel container, not the chip" cannot fail
+  behaviourally in jsdom.** jsdom never retargets captured events, so a capture
+  moved onto a chip still passes every reorder test. The rule is therefore
+  pinned structurally (assert which element `setPointerCapture` was called on),
+  and that assertion is what its negative control fires on. The behavioural
+  proof is Task 8's.
 - **"Focus follows the moved chip" is not provable in jsdom** — jsdom does not
   drop focus when React re-inserts a keyed node to reorder it, but real browsers
   do. The refocus effect is therefore only half-covered: its negative control
