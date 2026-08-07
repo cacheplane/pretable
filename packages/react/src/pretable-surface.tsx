@@ -31,6 +31,12 @@ import type {
   PretableEditorInput,
   PretableHeaderRenderInput,
 } from "./types";
+import {
+  type PlanColumnsColumnInput,
+  resolveColumnWidth,
+  scrollLeftToReveal,
+  scrollTopToReveal,
+} from "@pretable-internal/renderer-dom";
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
 
@@ -142,6 +148,23 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
+
+/**
+ * How many `scrollTop` writes scroll-into-view may make for a single focus
+ * address before it gives up and leaves the target slightly off.
+ *
+ * Scrolling to a distant row uses *estimated* heights for every row in
+ * between, because only rendered rows are ever measured. When the target
+ * finally renders it gets measured, every offset after it shifts, and the
+ * offset we just wrote is a little wrong — so the effect re-asserts on the
+ * next measurement pass. That normally converges in one or two passes:
+ * `scrollTopToReveal` returns `null` as soon as the target is fully revealed
+ * (including when it is clamped against the scroll extent), which is what ends
+ * the loop. This bound exists purely so a pathological case — heights that
+ * never settle, e.g. wrapped text re-measured under high-frequency streaming —
+ * degrades to "slightly off" instead of scrolling forever.
+ */
+const MAX_SCROLL_REVEAL_WRITES = 4;
 
 const REORDER_THRESHOLD_PX = 5;
 
@@ -780,6 +803,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     [grid.options.columns],
   );
 
+  // Column-plan input for scroll-into-view, in engine order and with the same
+  // no-`widthPx` fallbacks the render pass applies (hence `resolveColumnWidth`
+  // rather than a second copy of them here). `renderSnapshot.columns` cannot
+  // answer this: it is the *virtualized* plan, so the off-window columns
+  // scroll-into-view exists to reach are exactly the ones missing from it.
+  const scrollRevealColumns = useMemo<PlanColumnsColumnInput[]>(
+    () =>
+      grid.options.columns.map((column) => ({
+        id: column.id,
+        width: resolveColumnWidth(column),
+        pinned: column.pinned,
+      })),
+    [grid.options.columns],
+  );
+
   const visibleRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
     for (let i = 0; i < snapshot.visibleRows.length; i += 1) {
@@ -985,19 +1023,245 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // Programmatic focus follow: when the engine's focus address changes, move
   // browser focus to the corresponding cell DOM node so keyboard handlers
   // continue to fire and screen readers track the focused cell.
+  //
+  // The target is frequently NOT rendered on the commit that changed the
+  // address — rows and columns are both virtualized, and Cmd+End / PageDown /
+  // Cmd+Arrow all land far outside the window. The scroll effect below brings
+  // it in, but that is a later commit, so this effect has to be able to finish
+  // the job then. It therefore runs on the *rendered set* as well as on the
+  // address, which means it can fire at essentially any time — including on
+  // every streamed row patch. Two things keep that from turning into focus
+  // theft:
+  //
+  //   1. `pendingFocusFollowRef` is set only when the address CHANGES, and is
+  //      cleared the moment the move is applied or abandoned. A run with no
+  //      pending move returns immediately, so the steady state (focus already
+  //      on a rendered cell, rows streaming underneath it) can never grab
+  //      anything.
+  //   2. Even with a pending move, focus is only taken from somewhere it is
+  //      ours to take — see `isFocusOursToMove` — and never while an edit is
+  //      open.
+  const focusFollowAddressRef = useRef<string | null>(null);
+  const pendingFocusFollowRef = useRef<string | null>(null);
+
   useLayoutEffect(() => {
     if (!focusedRowId || !focusedColumnId) {
+      focusFollowAddressRef.current = null;
+      pendingFocusFollowRef.current = null;
       return;
     }
 
-    const cellNode = cellNodesRef.current.get(
-      `${focusedRowId}::${focusedColumnId}`,
-    );
+    const address = `${focusedRowId}::${focusedColumnId}`;
 
-    if (cellNode && document.activeElement !== cellNode) {
-      cellNode.focus({ preventScroll: true });
+    if (focusFollowAddressRef.current !== address) {
+      focusFollowAddressRef.current = address;
+      pendingFocusFollowRef.current = address;
     }
-  }, [focusedRowId, focusedColumnId]);
+
+    if (pendingFocusFollowRef.current === null) {
+      // Already applied (or deliberately abandoned) for this address. This is
+      // the hot path under streaming: one ref read and out.
+      return;
+    }
+
+    if (snapshot.editing) {
+      // An edit owns the keyboard for its whole lifecycle — the editor input
+      // lives *inside* the cell, so it would pass the containment check below.
+      // Blurring it would also blur-commit the draft (use-editor-field.ts).
+      // Keep the move pending: `snapshot.editing` is a dependency, so the
+      // effect re-runs when the edit ends and the address is honoured then.
+      return;
+    }
+
+    const cellNode = cellNodesRef.current.get(pendingFocusFollowRef.current);
+
+    if (!cellNode) {
+      // Outside the virtualization window. Stay pending; the rendered-set
+      // dependency re-runs this once the scroll effect has brought it in.
+      return;
+    }
+
+    // One attempt per address, applied or not: a move that is refused because
+    // the user is somewhere else is refused for good, not retried on the next
+    // patch.
+    pendingFocusFollowRef.current = null;
+
+    if (document.activeElement === cellNode) {
+      return;
+    }
+
+    if (!isFocusOursToMove(viewportRef.current, document.activeElement)) {
+      return;
+    }
+
+    // `preventScroll` is deliberate, and must stay. The surface owns
+    // scroll-into-view itself (the effect directly below), computed from
+    // layout-core against the *unoccluded* band. The browser's native
+    // focus-scroll knows nothing about the sticky header or the sticky
+    // pinned column groups, so it would happily park the cell underneath one
+    // — and, running after ours, it would overwrite the offset we just
+    // computed. It also cannot help in the case that motivated all of this:
+    // when the target cell is outside the virtualization window there is no
+    // node here to scroll to at all.
+    cellNode.focus({ preventScroll: true });
+  }, [
+    focusedColumnId,
+    focusedRowId,
+    // The rendered set. Both arrays are rebuilt whenever the virtualization
+    // window moves, and nothing else can tell this effect that the target's
+    // node has appeared — `cellNodesRef` is a ref, invisible to the scheduler.
+    renderSnapshot.columns,
+    renderSnapshot.rows,
+    snapshot.editing,
+  ]);
+
+  // Scroll-into-view for keyboard focus. The engine's focus address can move
+  // to a cell that is outside the virtualization window, or behind a sticky
+  // pinned column group; either way the browser will not move the viewport for
+  // us (see the `preventScroll` note above), so we compute the minimal offset
+  // and assign it ourselves.
+  //
+  // Deliberately does NOT call `grid.setViewport`: assigning scroll fires a
+  // native `scroll` event, and the existing `onScroll` handler already feeds
+  // the engine. Reporting it here as well would double-report.
+  const scrollRevealRef = useRef<{
+    rowId: string;
+    columnId: string;
+    /** `scrollTop` writes made for this address; see MAX_SCROLL_REVEAL_WRITES. */
+    writes: number;
+    /** Vertically resolved — nothing this effect can usefully do any more. */
+    settled: boolean;
+  } | null>(null);
+  const scrollRevealColumnIdRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+
+    if (!el || !focusedRowId || !focusedColumnId) {
+      scrollRevealRef.current = null;
+      scrollRevealColumnIdRef.current = null;
+      return;
+    }
+
+    // Runs on focus changes AND on every subsequent layout pass for the same
+    // address, which is what lets a distant target be re-asserted once its
+    // real height is measured. Everything below hinges on `pending` carrying
+    // over across those passes: once an address is satisfied it is marked
+    // settled and never scrolls again, so a user who scrolls the focused cell
+    // out of view is not yanked back on the next measurement or row update.
+    const previous = scrollRevealRef.current;
+    const pending =
+      previous !== null &&
+      previous.rowId === focusedRowId &&
+      previous.columnId === focusedColumnId
+        ? previous
+        : {
+            rowId: focusedRowId,
+            columnId: focusedColumnId,
+            writes: 0,
+            settled: false,
+          };
+    scrollRevealRef.current = pending;
+
+    // Horizontal, only when the focused COLUMN changed — or when no earlier
+    // pass managed to resolve it. Column geometry does not depend on row
+    // measurement, so the vertical re-assert passes have nothing new to say
+    // about it, and skipping keeps `scrollLeftToReveal`'s O(columns) plan
+    // allocation off the ArrowDown hot path, where the column never moves. The
+    // trade-off is that a user who scrolls horizontally away from the focused
+    // column is not dragged back by a later vertical move, which matches the
+    // no-fighting rule the rest of this effect follows.
+    //
+    // "Resolved" is doing real work in that first sentence: the ref is the
+    // latch, so it may only be consumed by a pass that actually decided
+    // something. See the `undefined` branch below.
+    if (scrollRevealColumnIdRef.current !== focusedColumnId) {
+      const nextScrollLeft = scrollLeftToReveal({
+        columns: scrollRevealColumns,
+        targetColumnId: focusedColumnId,
+        scrollLeft: el.scrollLeft,
+        // 0 before the scrollport is measured (SSR, the first commit, a grid
+        // inside a `display: none` tab or a collapsed accordion). That is a
+        // real state, not a bug: `scrollLeftToReveal` reports it as undecidable
+        // rather than inventing an offset we would only have to undo.
+        viewportWidth,
+      });
+
+      // Consume the ref only on a pass that could actually decide. `undefined`
+      // means the band was empty — an unmeasured scrollport, or pinned groups
+      // wider than it — and advancing on that would disarm this column for
+      // good: `viewportWidth` is a dependency, so a later pass with a real
+      // width re-runs this effect, but it would find the ref already spent and
+      // skip. The bug that motivated this: focus moves to a far-right column
+      // while the grid is in a hidden tab, the user opens the tab, and the
+      // vertical reveal works while `scrollLeft` stays parked at 0.
+      if (nextScrollLeft !== undefined) {
+        scrollRevealColumnIdRef.current = focusedColumnId;
+
+        if (nextScrollLeft !== null) {
+          el.scrollLeft = nextScrollLeft;
+        }
+      }
+    }
+
+    if (pending.settled || pending.writes >= MAX_SCROLL_REVEAL_WRITES) {
+      return;
+    }
+
+    // O(1) per keypress: `visibleRowIndexById` is memoized on
+    // `snapshot.visibleRows` identity. A linear scan here would land on
+    // ArrowDown's p95 < 16ms budget.
+    const targetIndex = visibleRowIndexById.get(focusedRowId);
+
+    if (targetIndex === undefined) {
+      // The row model does not produce this row *yet*: an address set for a row
+      // that arrives on a later streaming patch, or one a filter is currently
+      // hiding. That is "nothing to reveal now", not "nothing to reveal ever",
+      // so do NOT settle — settling here would mean the viewport never scrolls
+      // to the row once it appears, even though focus and the DOM focus-follow
+      // both land on it correctly.
+      //
+      // Retrying is free: the miss is the same O(1) `Map.get` above, with no
+      // allocation, so a row id that never arrives costs one lookup per pass
+      // rather than unbounded work.
+      return;
+    }
+
+    const nextScrollTop = scrollTopToReveal({
+      // Covers *every* visible row, not just the windowed ones, so this is
+      // valid for a target that is nowhere in the DOM.
+      rowMetrics: renderSnapshot.rowMetrics,
+      targetIndex,
+      scrollTop: el.scrollTop,
+      // The band below the sticky header — the same height fed to the row
+      // planner, and the coordinate space row offsets live in.
+      viewportHeight: bodyViewportHeight,
+    });
+
+    if (nextScrollTop === undefined) {
+      // Band not resolvable yet (`viewportHeight <= headerHeight`). Same rule as
+      // the horizontal axis: a pass that measured nothing must not latch.
+      return;
+    }
+
+    if (nextScrollTop === null) {
+      pending.settled = true;
+      return;
+    }
+
+    pending.writes += 1;
+    el.scrollTop = nextScrollTop;
+  }, [
+    bodyViewportHeight,
+    focusedColumnId,
+    focusedRowId,
+    // `renderSnapshot` is rebuilt whenever `measuredHeights` changes, which is
+    // the signal the convergence re-assert waits for.
+    renderSnapshot,
+    scrollRevealColumns,
+    viewportWidth,
+    visibleRowIndexById,
+  ]);
 
   useLayoutEffect(() => {
     const injectedSelectedRowId =
@@ -2352,6 +2616,42 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         : null}
     </div>
   );
+}
+
+/**
+ * Whether the surface may move DOM focus away from `active`.
+ *
+ * Two things count as ours:
+ *
+ * - **Nothing is focused.** `null` and `<body>` both mean the document has no
+ *   focus owner. This is not an edge case — it is the *normal* state at the
+ *   moment a distant focus move completes, because scrolling to the target
+ *   unmounts the cell that had focus and the browser drops focus to `<body>`
+ *   when a focused element is removed. Refusing it would break exactly the
+ *   case this exists for. It is safe because a move is only ever pending
+ *   immediately after the engine's focus address changed; a user who parked
+ *   focus on `<body>` by clicking the page background is never disturbed,
+ *   since there is no pending move to apply.
+ * - **Focus is already inside the scroll viewport**, i.e. on another cell or
+ *   on the viewport itself.
+ *
+ * Everything else is someone else's: a filter popover or a typed-editor
+ * overlay (both portaled to `document.body` by `OverlayPortal`, so they are
+ * deliberately *not* inside the viewport subtree), or any part of the host
+ * page that has nothing to do with the grid.
+ *
+ * Note the cell editor's input is NOT covered here — it lives inside the cell,
+ * so it is inside the viewport. The `snapshot.editing` bail-out guards it.
+ */
+function isFocusOursToMove(
+  viewport: HTMLElement | null,
+  active: Element | null,
+): boolean {
+  if (active === null || active === document.body) {
+    return true;
+  }
+
+  return viewport !== null && viewport.contains(active);
 }
 
 function replaceSelectionWithFullRow<TRow extends PretableRow>(

@@ -9,13 +9,25 @@ export interface PretableRowRange {
   end: number;
 }
 
-/** @internal */
-export interface RowMetricsIndex {
+/**
+ * Read-only view of row geometry. Split out of {@link RowMetricsIndex} so that
+ * read-only consumers — a render snapshot handed to application code, or the
+ * pure scroll math — can accept row offsets without also advertising the
+ * mutators that maintain them. A full index is assignable wherever a reader is
+ * expected.
+ *
+ * @internal
+ */
+export interface RowMetricsReader {
   readonly rowCount: number;
   getHeight(index: number): number;
   getOffsetForIndex(index: number): number;
-  getIndexForOffset(offset: number): number;
   getTotalHeight(): number;
+}
+
+/** @internal */
+export interface RowMetricsIndex extends RowMetricsReader {
+  getIndexForOffset(offset: number): number;
   updateHeight(index: number, height: number): void;
 }
 
