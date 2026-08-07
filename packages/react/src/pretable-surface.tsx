@@ -175,6 +175,13 @@ const ANNOUNCE_DEBOUNCE_MS = 500;
 const MAX_SCROLL_REVEAL_WRITES = 4;
 
 const REORDER_THRESHOLD_PX = 5;
+/**
+ * How many pasted cells are gated (`editable`/`validate`) at a time. Both hooks
+ * may be async and may call a server, so a spreadsheet-sized block is worked
+ * through in batches instead of putting every cell in flight at once. Purely an
+ * execution detail — the payload is the same whatever the batch size.
+ */
+const PASTE_GATE_BATCH_SIZE = 256;
 
 interface PretableSurfaceHeaderCellRenderInput<
   TRow extends PretableRow = PretableRow,
@@ -825,23 +832,37 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     (event: ClipboardEvent) => {
       const onPasteFn = onPasteRef.current;
       if (!onPasteFn) return; // paste is opt-in, exactly like onCellEdit
-      // An input inside the grid owns its own paste. This is a blanket
-      // input/textarea check, not a cell-editor check: the built-in filter
-      // menu's fields live inside the surface too, and a paste aimed at one of
-      // them is not a grid paste. Mirrors the Cmd+C guard's target check, plus
-      // an activeElement check so an event that targets the grid root while an
-      // input holds focus is ignored too.
-      if (
-        event.target instanceof HTMLInputElement ||
-        event.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
-      const active = viewportRef.current?.ownerDocument.activeElement;
-      if (
-        active instanceof HTMLInputElement ||
-        active instanceof HTMLTextAreaElement
-      ) {
+      // A text-entry element inside the grid owns its own paste. This is a
+      // blanket check, not a cell-editor check: the built-in filter menu's
+      // fields live inside the surface too, and a paste aimed at one of them is
+      // not a grid paste. Mirrors the Cmd+C guard's target check, plus an
+      // activeElement check so an event that targets the grid root while such
+      // an element holds focus is ignored too.
+      //
+      // `contenteditable` counts: a column's `renderEditor` is free to return
+      // one (rich-text editors do), and it takes typed input like any other
+      // field. `isContentEditable` is inherited, so it also covers a paste
+      // landing on a node *inside* the editable region.
+      const ownsItsOwnPaste = (node: unknown): boolean => {
+        if (
+          node instanceof HTMLInputElement ||
+          node instanceof HTMLTextAreaElement
+        ) {
+          return true;
+        }
+        if (!(node instanceof HTMLElement)) return false;
+        // `isContentEditable` is the authoritative answer in a browser — it
+        // accounts for inheritance and designMode — but jsdom does not
+        // implement it, so the attribute is checked too, walking up for the
+        // inherited case. Either one saying yes is enough.
+        return (
+          node.isContentEditable ||
+          node.closest('[contenteditable]:not([contenteditable="false"])') !==
+            null
+        );
+      };
+      if (ownsItsOwnPaste(event.target)) return;
+      if (ownsItsOwnPaste(viewportRef.current?.ownerDocument.activeElement)) {
         return;
       }
 
@@ -909,74 +930,82 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       });
 
       const gate = async (): Promise<void> => {
-        // Candidates are gated in parallel. Within one candidate the order is
-        // `editable` → coercion → `validate`:
+        // Within one candidate the order is `editable` → coercion →
+        // `validate`:
         //  - `editable` first, so a cell the user could never write reports
         //    "not-editable" rather than a coercion complaint about a value that
         //    was never going to land ("abc" into a read-only number column).
         //  - `validate` last, so it sees the coerced, typed value.
         // Each candidate is wrapped on its own: one flaky `editable`/`validate`
         // rejects THAT cell as "invalid" instead of dropping the whole paste.
-        const resolved = await Promise.all(
-          candidates.map(
-            async ({
-              target,
-              input,
-            }): Promise<PastedCell<TRow> | RejectedPasteCell> => {
-              try {
-                const editable = input.column.editable ?? false;
-                const allowed =
-                  typeof editable === "function"
-                    ? await editable(input)
-                    : editable;
-                if (!allowed) return { ...target, reason: "not-editable" };
+        const gateOne = async ({
+          target,
+          input,
+        }: (typeof candidates)[number]): Promise<
+          PastedCell<TRow> | RejectedPasteCell
+        > => {
+          try {
+            const editable = input.column.editable ?? false;
+            const allowed =
+              typeof editable === "function" ? await editable(input) : editable;
+            if (!allowed) return { ...target, reason: "not-editable" };
 
-                // Same coercion a committed edit gets: the column's
-                // parseEditValue wins, otherwise the built-in per-type parse —
-                // so number/date/enum columns yield typed values instead of
-                // clipboard strings.
-                let value: unknown;
-                if (input.column.parseEditValue) {
-                  value = input.column.parseEditValue(target.raw, input);
-                } else {
-                  const parsed = parseDraftForType(input.column, target.raw);
-                  if (!parsed.ok) {
-                    return {
-                      ...target,
-                      reason: "invalid",
-                      message: parsed.message,
-                    };
-                  }
-                  value = parsed.value;
-                }
-
-                if (input.column.validate) {
-                  const result = await input.column.validate(value, input);
-                  if (result !== true) {
-                    return { ...target, reason: "invalid", message: result };
-                  }
-                }
-                return {
-                  rowId: target.rowId,
-                  columnId: target.columnId,
-                  raw: target.raw,
-                  value,
-                  row: input.row,
-                };
-              } catch (err) {
+            // Same coercion a committed edit gets: the column's
+            // parseEditValue wins, otherwise the built-in per-type parse — so
+            // number/date/enum columns yield typed values instead of clipboard
+            // strings.
+            let value: unknown;
+            if (input.column.parseEditValue) {
+              value = input.column.parseEditValue(target.raw, input);
+            } else {
+              const parsed = parseDraftForType(input.column, target.raw);
+              if (!parsed.ok) {
                 return {
                   ...target,
                   reason: "invalid",
-                  message: err instanceof Error ? err.message : String(err),
+                  message: parsed.message,
                 };
               }
-            },
-          ),
-        );
-        if (myToken !== pasteTokenRef.current) return; // stale
-        candidates.forEach((candidate, i) => {
-          outcomes[candidate.index] = resolved[i]!;
-        });
+              value = parsed.value;
+            }
+
+            if (input.column.validate) {
+              const result = await input.column.validate(value, input);
+              if (result !== true) {
+                return { ...target, reason: "invalid", message: result };
+              }
+            }
+            return {
+              rowId: target.rowId,
+              columnId: target.columnId,
+              raw: target.raw,
+              value,
+              row: input.row,
+            };
+          } catch (err) {
+            return {
+              ...target,
+              reason: "invalid",
+              message: err instanceof Error ? err.message : String(err),
+            };
+          }
+        };
+
+        // Gated in batches rather than all at once: `editable` and `validate`
+        // may be async and may call a server, and a spreadsheet-sized block
+        // would otherwise put every cell in flight simultaneously. Batches run
+        // in order and results are stored by the candidate's own index, so
+        // this is an execution detail — the payload is identical either way.
+        // The staleness check sits between batches too, so a superseded paste
+        // stops working instead of running to completion first.
+        for (let i = 0; i < candidates.length; i += PASTE_GATE_BATCH_SIZE) {
+          const batch = candidates.slice(i, i + PASTE_GATE_BATCH_SIZE);
+          const resolved = await Promise.all(batch.map(gateOne));
+          if (myToken !== pasteTokenRef.current) return; // stale
+          batch.forEach((candidate, j) => {
+            outcomes[candidate.index] = resolved[j]!;
+          });
+        }
 
         const cells: PastedCell<TRow>[] = [];
         const rejected: RejectedPasteCell[] = [];
