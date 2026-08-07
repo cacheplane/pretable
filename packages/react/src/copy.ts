@@ -7,6 +7,16 @@ import type {
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import type { PretableColumn } from "./types";
 
+// The Blob written by defaultCopyToClipboard carries `type: "text/html"` with
+// no charset parameter, so state it in the payload itself.
+const HTML_META = '<meta charset="utf-8">';
+
+// `white-space` is an inherited property, so one declaration on the table
+// covers every th/td. Without it HTML collapses runs of spaces and a cell
+// holding "a  b" would paste as "a b" — a silent regression against the TSV
+// flavor, since receiving apps prefer text/html when both are present.
+const HTML_TABLE_OPEN = '<table style="white-space:pre-wrap">';
+
 /**
  * Input for {@link serializeRanges}.
  *
@@ -165,11 +175,20 @@ function resolveRangeBounds(
 }
 
 /**
- * Serialize one or more `PretableCellRange`s to a tab-separated text + HTML payload suitable for clipboard write.
+ * Serialize one or more `PretableCellRange`s to a two-flavor clipboard payload.
  *
- * Cell and header text is escaped with {@link escapeTsvField}, so values
- * holding tabs, newlines (a wrapped/multi-line cell) or quotes survive a paste
- * into Excel or Sheets without breaking the row/column structure.
+ * `text` is TSV: tab-separated cells, newline-separated rows, blocks joined by
+ * a blank line, every field escaped with {@link escapeTsvField}.
+ *
+ * `html` is a real `<table>` per range, concatenated behind a single
+ * `<meta charset="utf-8">`. Excel and Google Sheets both prefer `text/html`
+ * when both flavors are on the clipboard, and the table form sidesteps
+ * delimiter ambiguity structurally: line breaks become `<br>` rather than a
+ * quoted newline, and separate ranges become separate tables rather than
+ * relying on a `\n\n` separator that a cell could legally contain.
+ *
+ * Cell text is escaped, never interpreted — a `column.format` returning
+ * `<b>x</b>` copies those literal characters. `column.render` is not consulted.
  *
  * @public
  */
@@ -184,7 +203,8 @@ export function serializeRanges<TRow extends PretableRow>(
   const rowIndex = new Map<string, number>();
   args.visibleRows.forEach((r, i) => rowIndex.set(r.id, i));
 
-  const blocks: string[] = [];
+  const textBlocks: string[] = [];
+  const htmlTables: string[] = [];
 
   for (const range of args.ranges) {
     const bounds = resolveRangeBounds(
@@ -197,16 +217,23 @@ export function serializeRanges<TRow extends PretableRow>(
     const { rowLo, rowHi, colLo, colHi } = bounds;
 
     const lines: string[] = [];
+    let headHtml = "";
+
     if (args.copyWithHeaders) {
       const headerCells: string[] = [];
+      let headerRowHtml = "";
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;
-        headerCells.push(escapeTsvField(col.header ?? col.id));
+        const header = col.header ?? col.id;
+        headerCells.push(escapeTsvField(header));
+        headerRowHtml += `<th>${escapeHtmlText(header)}</th>`;
       }
       lines.push(headerCells.join("\t"));
       lines.push("");
+      headHtml = `<thead><tr>${headerRowHtml}</tr></thead>`;
     }
 
+    let bodyHtml = "";
     for (let r = rowLo; r <= rowHi; r += 1) {
       const row = args.visibleRows[r]!;
 
@@ -219,6 +246,7 @@ export function serializeRanges<TRow extends PretableRow>(
       }
 
       const cells: string[] = [];
+      let rowHtml = "";
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;
         const raw = col.value
@@ -228,14 +256,22 @@ export function serializeRanges<TRow extends PretableRow>(
           ? col.format({ value: raw, row: row.row, column: col })
           : defaultCoerceForCopy(raw);
         cells.push(escapeTsvField(text));
+        rowHtml += `<td>${escapeHtmlText(text)}</td>`;
       }
       lines.push(cells.join("\t"));
+      bodyHtml += `<tr>${rowHtml}</tr>`;
     }
 
-    blocks.push(lines.join("\n"));
+    textBlocks.push(lines.join("\n"));
+    htmlTables.push(
+      `${HTML_TABLE_OPEN}${headHtml}<tbody>${bodyHtml}</tbody></table>`,
+    );
   }
 
-  if (blocks.length === 0) return null;
+  if (textBlocks.length === 0) return null;
 
-  return { text: blocks.join("\n\n") };
+  return {
+    text: textBlocks.join("\n\n"),
+    html: `${HTML_META}${htmlTables.join("")}`,
+  };
 }

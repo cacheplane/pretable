@@ -2807,7 +2807,9 @@ describe("PretableSurface copy", () => {
     // The range spans the whole row (leftmost "b" through rightmost "a"), so
     // the TSV must read left to right as drawn: b1, c1, a1.
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "b1\tc1\ta1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "b1\tc1\ta1" }),
+    );
   });
 
   it("Cmd+C with a single-cell selection writes a single-cell TSV", () => {
@@ -2819,7 +2821,9 @@ describe("PretableSurface copy", () => {
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
     expect(copyToClipboard).toHaveBeenCalledTimes(1);
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "a1" }),
+    );
   });
 
   it("Cmd+C with a multi-row range writes row-major TSV joined by newlines", () => {
@@ -2843,7 +2847,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\na2" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "a1\na2" }),
+    );
   });
 
   it("Cmd+C with a multi-column range writes columns joined by tabs", () => {
@@ -2867,7 +2873,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\tb1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "a1\tb1" }),
+    );
   });
 
   it("Cmd+C with multiple ranges joins blocks with a blank line", () => {
@@ -2897,7 +2905,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\n\nc3" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "a1\n\nc3" }),
+    );
   });
 
   it("copyWithHeaders=true prepends a header row + blank line before the body", () => {
@@ -2922,7 +2932,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "A\tB\n\na1\tb1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "A\tB\n\na1\tb1" }),
+    );
   });
 
   it("onCopy override receives args and its return value is what gets written", () => {
@@ -2980,7 +2992,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "FORMATTED:a1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "FORMATTED:a1" }),
+    );
   });
 
   it("Cmd+C with an empty selection does not call copyToClipboard", () => {

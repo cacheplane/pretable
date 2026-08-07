@@ -85,7 +85,7 @@ describe("serializeRanges", () => {
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
     });
-    expect(out).toEqual({ text: "a1" });
+    expect(out?.text).toBe("a1");
   });
 
   it("multi-row range joined with \\n", () => {
@@ -94,7 +94,7 @@ describe("serializeRanges", () => {
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
     });
-    expect(out).toEqual({ text: "a1\na2\na3" });
+    expect(out?.text).toBe("a1\na2\na3");
   });
 
   it("multi-column range joined with \\t", () => {
@@ -103,7 +103,7 @@ describe("serializeRanges", () => {
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
     });
-    expect(out).toEqual({ text: "a1\tb1\tc1" });
+    expect(out?.text).toBe("a1\tb1\tc1");
   });
 
   it("multi-range blocks joined with \\n\\n", () => {
@@ -112,7 +112,7 @@ describe("serializeRanges", () => {
       visibleRows: makeVisibleRows(rows),
       columns: baseColumns,
     });
-    expect(out).toEqual({ text: "a1\n\nc3" });
+    expect(out?.text).toBe("a1\n\nc3");
   });
 
   it("copyWithHeaders=true emits header row + blank line + body", () => {
@@ -122,7 +122,7 @@ describe("serializeRanges", () => {
       columns: baseColumns,
       copyWithHeaders: true,
     });
-    expect(out).toEqual({ text: "A\tB\n\na1\tb1\na2\tb2" });
+    expect(out?.text).toBe("A\tB\n\na1\tb1\na2\tb2");
   });
 
   it("format on a column overrides default coercion", () => {
@@ -139,7 +139,7 @@ describe("serializeRanges", () => {
       visibleRows: makeVisibleRows(rows),
       columns: cols,
     });
-    expect(out).toEqual({ text: "[a1]\tb1" });
+    expect(out?.text).toBe("[a1]\tb1");
   });
 
   it("range referencing only the synthetic row-select column returns null", () => {
@@ -169,7 +169,7 @@ describe("serializeRanges", () => {
       visibleRows: makeVisibleRows(rows),
       columns: cols,
     });
-    expect(out).toEqual({ text: "a1\tb1\tc1" });
+    expect(out?.text).toBe("a1\tb1\tc1");
   });
 
   it("synthetic-column end bound expands to start at the data endpoint", () => {
@@ -182,7 +182,7 @@ describe("serializeRanges", () => {
       visibleRows: makeVisibleRows(rows),
       columns: cols,
     });
-    expect(out).toEqual({ text: "a1\tb1" });
+    expect(out?.text).toBe("a1\tb1");
   });
 
   it("range with row id not in visibleRows returns null", () => {
@@ -248,39 +248,37 @@ describe("serializeRanges escaping", () => {
   }
 
   it("quotes a cell value containing a tab", () => {
-    expect(oneCell("left\tright")).toEqual({ text: '"left\tright"\tb1' });
+    expect(oneCell("left\tright")?.text).toBe('"left\tright"\tb1');
   });
 
   it("quotes a cell value containing a newline (multi-line editor case)", () => {
-    expect(oneCell("line one\nline two")).toEqual({
-      text: '"line one\nline two"\tb1',
-    });
+    expect(oneCell("line one\nline two")?.text).toBe(
+      '"line one\nline two"\tb1',
+    );
   });
 
   it("quotes a cell value containing a double quote and doubles it", () => {
-    expect(oneCell('he said "no"')).toEqual({ text: '"he said ""no"""\tb1' });
+    expect(oneCell('he said "no"')?.text).toBe('"he said ""no"""\tb1');
   });
 
   it("quotes a cell value containing both a quote and a newline", () => {
-    expect(oneCell('he said "no"\nthen left')).toEqual({
-      text: '"he said ""no""\nthen left"\tb1',
-    });
+    expect(oneCell('he said "no"\nthen left')?.text).toBe(
+      '"he said ""no""\nthen left"\tb1',
+    );
   });
 
   it("quotes a cell value containing CRLF", () => {
-    expect(oneCell("first\r\nsecond")).toEqual({
-      text: '"first\r\nsecond"\tb1',
-    });
+    expect(oneCell("first\r\nsecond")?.text).toBe('"first\r\nsecond"\tb1');
   });
 
   it("escapes values produced by a per-column format", () => {
-    expect(oneCell("x", { format: () => 'a\tb"c' })).toEqual({
-      text: '"a\tb""c"\tb1',
-    });
+    expect(oneCell("x", { format: () => 'a\tb"c' })?.text).toBe(
+      '"a\tb""c"\tb1',
+    );
   });
 
   it("leaves ordinary cell values bare", () => {
-    expect(oneCell("ordinary value")).toEqual({ text: "ordinary value\tb1" });
+    expect(oneCell("ordinary value")?.text).toBe("ordinary value\tb1");
   });
 
   it("quotes headers containing a tab or newline", () => {
@@ -295,9 +293,7 @@ describe("serializeRanges escaping", () => {
       columns: cols,
       copyWithHeaders: true,
     });
-    expect(out).toEqual({
-      text: '"Col\tA"\t"Col\nB"\t"Col ""C"""\n\na1\tb1\tc1',
-    });
+    expect(out?.text).toBe('"Col\tA"\t"Col\nB"\t"Col ""C"""\n\na1\tb1\tc1');
   });
 
   it("leaves ordinary headers bare", () => {
@@ -307,7 +303,7 @@ describe("serializeRanges escaping", () => {
       columns: baseColumns,
       copyWithHeaders: true,
     });
-    expect(out).toEqual({ text: "A\tB\n\na1\tb1" });
+    expect(out?.text).toBe("A\tB\n\na1\tb1");
   });
 
   // Sub-project 2 decides what a copied group header emits. Until then it is
@@ -372,5 +368,155 @@ describe("escapeHtmlText", () => {
   it("does not escape the <br> it just emitted", () => {
     // Regression guard: converting newlines before escaping produces "&lt;br&gt;".
     expect(escapeHtmlText("<i>\n</i>")).toBe("&lt;i&gt;<br>&lt;/i&gt;");
+  });
+});
+
+const META = '<meta charset="utf-8">';
+const TABLE_OPEN = '<table style="white-space:pre-wrap">';
+
+describe("serializeRanges HTML flavor", () => {
+  it("wraps a single cell in a table with the whitespace rule", () => {
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a")],
+      visibleRows: makeVisibleRows(rows),
+      columns: baseColumns,
+    });
+    expect(out?.html).toBe(
+      `${META}${TABLE_OPEN}<tbody><tr><td>a1</td></tr></tbody></table>`,
+    );
+  });
+
+  it("emits one tr per row and one td per column", () => {
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r2", "a", "b")],
+      visibleRows: makeVisibleRows(rows),
+      columns: baseColumns,
+    });
+    expect(out?.html).toBe(
+      `${META}${TABLE_OPEN}<tbody>` +
+        "<tr><td>a1</td><td>b1</td></tr>" +
+        "<tr><td>a2</td><td>b2</td></tr>" +
+        "</tbody></table>",
+    );
+  });
+
+  it("omits thead when copyWithHeaders is false", () => {
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "b")],
+      visibleRows: makeVisibleRows(rows),
+      columns: baseColumns,
+    });
+    expect(out?.html).not.toContain("<thead>");
+  });
+
+  it("emits thead when copyWithHeaders is true", () => {
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "b")],
+      visibleRows: makeVisibleRows(rows),
+      columns: baseColumns,
+      copyWithHeaders: true,
+    });
+    expect(out?.html).toBe(
+      `${META}${TABLE_OPEN}` +
+        "<thead><tr><th>A</th><th>B</th></tr></thead>" +
+        "<tbody><tr><td>a1</td><td>b1</td></tr></tbody></table>",
+    );
+  });
+
+  it("emits one table per range for a discontiguous selection", () => {
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a"), range("r3", "r3", "c", "c")],
+      visibleRows: makeVisibleRows(rows),
+      columns: baseColumns,
+    });
+    // The separate tables are what resolve the \n\n block-separator ambiguity:
+    // there is no separator token left to collide with cell content.
+    expect(out?.html).toBe(
+      `${META}` +
+        `${TABLE_OPEN}<tbody><tr><td>a1</td></tr></tbody></table>` +
+        `${TABLE_OPEN}<tbody><tr><td>c3</td></tr></tbody></table>`,
+    );
+    expect(out?.html?.match(/<table/g)).toHaveLength(2);
+  });
+
+  it("emits the meta charset exactly once", () => {
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a"), range("r3", "r3", "c", "c")],
+      visibleRows: makeVisibleRows(rows),
+      columns: baseColumns,
+    });
+    expect(out?.html?.match(/<meta/g)).toHaveLength(1);
+  });
+
+  it("escapes markup in cell values", () => {
+    const row: Row = { id: "r1", a: "<b>x</b> & y", b: "b1", c: "c1" };
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a")],
+      visibleRows: makeVisibleRows([row]),
+      columns: baseColumns,
+    });
+    expect(out?.html).toContain("<td>&lt;b&gt;x&lt;/b&gt; &amp; y</td>");
+  });
+
+  it("escapes markup in header values", () => {
+    const cols: PretableColumn<Row>[] = [{ id: "a", header: "<A>" }];
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a")],
+      visibleRows: makeVisibleRows(rows),
+      columns: cols,
+      copyWithHeaders: true,
+    });
+    expect(out?.html).toContain("<th>&lt;A&gt;</th>");
+  });
+
+  it("renders a multi-line cell as <br>, not a quoted newline", () => {
+    const row: Row = { id: "r1", a: "line one\nline two", b: "b1", c: "c1" };
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a")],
+      visibleRows: makeVisibleRows([row]),
+      columns: baseColumns,
+    });
+    expect(out?.html).toContain("<td>line one<br>line two</td>");
+    // The TSV flavor still quotes it — the two encodings are independent.
+    expect(out?.text).toBe('"line one\nline two"');
+  });
+
+  it("treats format output as text, not markup", () => {
+    const cols: PretableColumn<Row>[] = [
+      { id: "a", header: "A", format: () => "<b>bold</b>" },
+    ];
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a")],
+      visibleRows: makeVisibleRows(rows),
+      columns: cols,
+    });
+    expect(out?.html).toContain("<td>&lt;b&gt;bold&lt;/b&gt;</td>");
+  });
+
+  it("excludes the synthetic row-select column, as the TSV does", () => {
+    const cols: PretableColumn<Row>[] = [
+      { id: ROW_SELECT_COLUMN_ID, header: "" },
+      ...baseColumns,
+    ];
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, "c")],
+      visibleRows: makeVisibleRows(rows),
+      columns: cols,
+      copyWithHeaders: true,
+    });
+    expect(out?.html).toBe(
+      `${META}${TABLE_OPEN}` +
+        "<thead><tr><th>A</th><th>B</th><th>C</th></tr></thead>" +
+        "<tbody><tr><td>a1</td><td>b1</td><td>c1</td></tr></tbody></table>",
+    );
+  });
+
+  it("carries no html when the selection serializes to null", () => {
+    const out = serializeRanges<Row>({
+      ranges: [],
+      visibleRows: makeVisibleRows(rows),
+      columns: baseColumns,
+    });
+    expect(out).toBeNull();
   });
 });
