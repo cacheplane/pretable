@@ -100,6 +100,70 @@ export function escapeHtmlText(text: string): string {
     .replace(/\r\n|\r|\n/g, "<br>");
 }
 
+interface RangeBounds {
+  rowLo: number;
+  rowHi: number;
+  colLo: number;
+  colHi: number;
+}
+
+/**
+ * Resolve one range's id-based bounds to inclusive row/column indices, or
+ * `null` when the range addresses nothing emittable.
+ *
+ * The synthetic row-select column is positioned BEFORE all data columns in
+ * `effectiveColumns`. When it appears as a range bound it logically means
+ * "start of the visible row", so it translates to the first data column. A
+ * range whose *both* ends are the synthetic column has no data to emit.
+ */
+function resolveRangeBounds(
+  range: PretableCellRange,
+  rowIndex: ReadonlyMap<string, number>,
+  colIndex: ReadonlyMap<string, number>,
+  dataColumnCount: number,
+): RangeBounds | null {
+  const startRow = rowIndex.get(range.startRowId);
+  const endRow = rowIndex.get(range.endRowId);
+  if (startRow === undefined || endRow === undefined) return null;
+  const rowLo = Math.min(startRow, endRow);
+  const rowHi = Math.max(startRow, endRow);
+
+  const startIsSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+  const endIsSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+  const startCol = colIndex.get(range.startColumnId);
+  const endCol = colIndex.get(range.endColumnId);
+
+  let colLo: number;
+  let colHi: number;
+  if (startIsSynth && endIsSynth) {
+    return null;
+  } else if (startIsSynth && endCol !== undefined) {
+    colLo = 0;
+    colHi = endCol;
+  } else if (endIsSynth && startCol !== undefined) {
+    colLo = startCol;
+    colHi = 0;
+  } else if (startCol !== undefined && endCol !== undefined) {
+    colLo = Math.min(startCol, endCol);
+    colHi = Math.max(startCol, endCol);
+  } else if (startCol !== undefined) {
+    colLo = colHi = startCol;
+  } else if (endCol !== undefined) {
+    colLo = colHi = endCol;
+  } else {
+    return null;
+  }
+
+  if (colLo > colHi) {
+    [colLo, colHi] = [colHi, colLo];
+  }
+  colLo = Math.max(colLo, 0);
+  colHi = Math.min(colHi, dataColumnCount - 1);
+  if (colLo > colHi) return null;
+
+  return { rowLo, rowHi, colLo, colHi };
+}
+
 /**
  * Serialize one or more `PretableCellRange`s to a tab-separated text + HTML payload suitable for clipboard write.
  *
@@ -123,49 +187,14 @@ export function serializeRanges<TRow extends PretableRow>(
   const blocks: string[] = [];
 
   for (const range of args.ranges) {
-    const startRow = rowIndex.get(range.startRowId);
-    const endRow = rowIndex.get(range.endRowId);
-    const startIsSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
-    const endIsSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
-    const startCol = colIndex.get(range.startColumnId);
-    const endCol = colIndex.get(range.endColumnId);
-
-    const haveRows = startRow !== undefined && endRow !== undefined;
-    const rowLo = haveRows ? Math.min(startRow, endRow) : -1;
-    const rowHi = haveRows ? Math.max(startRow, endRow) : -1;
-
-    // The synthetic row-select column is positioned BEFORE all data columns
-    // in effectiveColumns. When it appears as a range bound it logically
-    // means "start of the visible row" — translate to the first data column.
-    // Ranges that span only the synthetic column have no data to emit.
-    let colLo: number;
-    let colHi: number;
-    if (startIsSynth && endIsSynth) {
-      continue;
-    } else if (startIsSynth && endCol !== undefined) {
-      colLo = 0;
-      colHi = endCol;
-    } else if (endIsSynth && startCol !== undefined) {
-      colLo = startCol;
-      colHi = 0;
-    } else if (startCol !== undefined && endCol !== undefined) {
-      colLo = Math.min(startCol, endCol);
-      colHi = Math.max(startCol, endCol);
-    } else if (startCol !== undefined) {
-      colLo = colHi = startCol;
-    } else if (endCol !== undefined) {
-      colLo = colHi = endCol;
-    } else {
-      continue;
-    }
-
-    if (colLo > colHi) {
-      [colLo, colHi] = [colHi, colLo];
-    }
-    colLo = Math.max(colLo, 0);
-    colHi = Math.min(colHi, dataColumns.length - 1);
-    if (colLo > colHi) continue;
-    if (!haveRows || rowLo > rowHi) continue;
+    const bounds = resolveRangeBounds(
+      range,
+      rowIndex,
+      colIndex,
+      dataColumns.length,
+    );
+    if (!bounds) continue;
+    const { rowLo, rowHi, colLo, colHi } = bounds;
 
     const lines: string[] = [];
     if (args.copyWithHeaders) {
