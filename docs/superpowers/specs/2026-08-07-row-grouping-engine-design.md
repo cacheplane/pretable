@@ -201,12 +201,17 @@ visible children agree.
 
 ## Streaming correctness (the part most likely to be got wrong)
 
-1. **Re-pathing on key change.** Under streaming the common mutation is not "a value
-   changed" but "a row's _grouping key_ changed" — a position gets reclassified into a
-   different sector. A naive in-place update leaves the row under its old group.
-   `applyTransaction`/`setRows` must detect a changed group path for updated rows and
-   move them. ag-grid has a dedicated `moveNodeInWrongPath` for exactly this; we need the
-   equivalent, and it needs a test that mutates a grouping key mid-stream.
+1. **Re-pathing on key change — free here, but pin it with a test.** Under streaming the
+   common mutation is not "a value changed" but "a row's _grouping key_ changed" (a
+   position reclassified into a different sector). ag-grid needs a dedicated
+   `moveNodeInWrongPath` because it maintains the group tree incrementally. **We do not:**
+   `setRows`/`applyTransaction` both null `cachedVisibleRows`, so the next derive rebuilds
+   the grouping from source rows and the row lands under its new key automatically — no
+   special handling required.
+   This is a genuine advantage of full recompute, and it is exactly what a future
+   incremental/changed-path optimization would put at risk. So the test still ships: mutate
+   a grouping key mid-stream and assert the row moves groups. It costs nothing now and it
+   is the guard rail that stops an optimization from silently regressing it later.
 2. **Identity preservation for unchanged aggregates.** If a recompute yields the same
    value, the `aggregates` object for that group must keep its previous identity so
    downstream memoization doesn't repaint every group row on every tick. ag-grid returns
