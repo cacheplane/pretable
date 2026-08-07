@@ -187,6 +187,34 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
 }
 
 // @public
+export function parseTsv(text: string): string[][];
+
+// @public
+export interface PastedCell<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    columnId: string;
+    raw: string;
+    row: TRow;
+    // (undocumented)
+    rowId: string;
+    value: unknown;
+}
+
+// @public
+export interface PastePayload<TRow extends PretableRow = PretableRow> {
+    cells: PastedCell<TRow>[];
+    clipped: {
+        rows: number;
+        columns: number;
+    };
+    rejected: RejectedPasteCell[];
+    source: {
+        rows: number;
+        columns: number;
+    };
+}
+
+// @public
 export function Pretable<TRow extends PretableRow = PretableRow>(input: PretableProps<TRow>): react.JSX.Element;
 
 // @public
@@ -596,6 +624,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     onFocusChange?: (next: PretableFocusState) => void;
     // (undocumented)
     onGridReady?: (grid: PretableGrid<TRow>) => void;
+    onPaste?: (payload: PastePayload<TRow>) => void | Promise<void>;
     onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
     // (undocumented)
     onSelectedRowIdChange?: (rowId: string | null) => void;
@@ -667,6 +696,18 @@ export interface PretableTelemetry {
         end: number;
         start: number;
     };
+}
+
+// @public
+export interface RejectedPasteCell {
+    // (undocumented)
+    columnId: string;
+    message?: string;
+    // (undocumented)
+    raw: string;
+    reason: "not-editable" | "invalid";
+    // (undocumented)
+    rowId: string;
 }
 
 // @public
@@ -744,7 +785,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:584:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:703:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
