@@ -309,6 +309,14 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * drag-select are range selection and do not activate.
    */
   onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
+  /**
+   * Called with the rows whose every cell is selected — the set the
+   * `rowSelectionColumn` checkboxes tick — in rendered order, whenever that set
+   * changes. This is what bulk actions ("approve the rows I ticked") need;
+   * {@link PretableSurfaceProps.onSelectionChange} reports raw cell ranges,
+   * which cannot be expanded without the grid's own row ordering.
+   */
+  onRowSelectionChange?: (rowIds: string[]) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
   onFocusChange?: (next: PretableFocusState) => void;
@@ -410,9 +418,11 @@ interface MemoizedCellContentProps {
   /** Mirrors `cellRenderInput.pinned` so the memo comparator can see it. */
   pinned: "left" | "right" | null;
   renderRef:
-    ((input: PretableCellRenderInput<PretableRow>) => ReactNode) | null;
+    | ((input: PretableCellRenderInput<PretableRow>) => ReactNode)
+    | null;
   fallbackRenderRef:
-    ((input: PretableCellRenderInput<PretableRow>) => ReactNode) | null;
+    | ((input: PretableCellRenderInput<PretableRow>) => ReactNode)
+    | null;
   cellRenderInput: PretableCellRenderInput<PretableRow>;
 }
 
@@ -462,7 +472,8 @@ interface MemoizedHeaderContentProps {
   /** Mirrors `headerRenderInput.pinned` so the memo comparator can see it. */
   pinned: "left" | "right" | null;
   renderHeaderRef:
-    ((input: PretableHeaderRenderInput<PretableRow>) => ReactNode) | null;
+    | ((input: PretableHeaderRenderInput<PretableRow>) => ReactNode)
+    | null;
   fallbackRenderHeaderRef:
     | ((input: {
         column: PretableColumn<PretableRow>;
@@ -544,6 +555,9 @@ const MemoizedHeaderContent = memo(HeaderContentImpl, headerContentPropsEqual);
  *
  * @public
  */
+/** Stable empty result so an unselected grid never hands out a fresh array. */
+const EMPTY_ROW_IDS: string[] = [];
+
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,
   autosize,
@@ -559,6 +573,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   overscan = 6,
   onGridReady,
   onRowActivate,
+  onRowSelectionChange,
   onSelectedRowIdChange,
   onSelectionChange,
   onFocusChange,
@@ -1225,6 +1240,32 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     dataColumnIndex,
     visibleRowIndexById,
   ]);
+
+  // The checked set, in rendered order, for consumers driving bulk actions.
+  // `fullySelectedRowIds` above is a Set keyed for lookup; a caller cannot
+  // recover the order from it, and cannot expand the underlying cell ranges
+  // either — those are (startRowId, endRowId) spans that only mean something
+  // against the visible order the grid owns once sorting is applied.
+  const selectedRowIds = useMemo(() => {
+    if (fullySelectedRowIds.size === 0) return EMPTY_ROW_IDS;
+    return snapshot.visibleRows
+      .filter((row) => fullySelectedRowIds.has(row.id))
+      .map((row) => row.id);
+  }, [fullySelectedRowIds, snapshot.visibleRows]);
+
+  // Fire only when the set actually changes. Selection is recomputed on every
+  // render (and on every poll that hands down new rows), so a plain effect
+  // dependency would call the consumer back constantly.
+  const lastSelectedKeyRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const key = selectedRowIds.join("\u0000");
+    const previous = lastSelectedKeyRef.current;
+    lastSelectedKeyRef.current = key;
+    // Skip the first pass: nothing has changed yet, and a consumer that
+    // injected a selection through `state` already knows what it set.
+    if (previous === null || previous === key) return;
+    onRowSelectionChange?.(selectedRowIds);
+  }, [selectedRowIds, onRowSelectionChange]);
 
   // Per-cell selection check. Materializing a 27k-key Set on Cmd+A was the
   // bottleneck — instead, scan the (typically ≤3) ranges per visible cell,

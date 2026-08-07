@@ -489,6 +489,8 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
     // (undocumented)
+    onRowSelectionChange?: PretableSurfaceProps<TRow>["onRowSelectionChange"];
+    // (undocumented)
     rows: TRow[];
     // (undocumented)
     rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
@@ -549,7 +551,7 @@ export interface PretableSortEntry {
     direction: "asc" | "desc";
 }
 
-// @public
+// @public (undocumented)
 export function PretableSurface<TRow extends PretableRow = PretableRow>(input: PretableSurfaceProps<TRow>): react.JSX.Element;
 
 // @public
@@ -626,6 +628,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     onGridReady?: (grid: PretableGrid<TRow>) => void;
     onPaste?: (payload: PastePayload<TRow>) => void | Promise<void>;
     onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
+    onRowSelectionChange?: (rowIds: string[]) => void;
     // (undocumented)
     onSelectedRowIdChange?: (rowId: string | null) => void;
     // (undocumented)
@@ -785,7 +788,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:703:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:707:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
