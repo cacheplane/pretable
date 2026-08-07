@@ -1,5 +1,5 @@
 ---
-"@pretable/react": minor
+"@pretable/react": patch
 ---
 
 Keep grid state alive when the `columns` prop gets a new identity.

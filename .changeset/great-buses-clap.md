@@ -1,5 +1,5 @@
 ---
-"@pretable/react": minor
+"@pretable/react": patch
 ---
 
 Add `onRowActivate` for "open the record this row stands for".
