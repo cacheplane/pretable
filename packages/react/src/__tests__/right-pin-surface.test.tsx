@@ -194,6 +194,40 @@ function expectPositionedFromLeft(el: HTMLElement | null | undefined) {
   expect(el!.style.right).toBe("");
 }
 
+describe("pinned header cells outrank unpinned header overlays", () => {
+  // Every box in the header row shares one stacking context, and the unpinned
+  // ones scroll UNDER the pinned ones. An unpinned overlay that outranks a
+  // pinned cell does not just paint over it — the funnel is opacity-0 until
+  // the header row is hovered, so it becomes an invisible live click target
+  // sitting on top of the pinned column. The overlay-anchor refactor put this
+  // ordering right as a side effect; pin it so it cannot drift back.
+  const z = (el: HTMLElement | null | undefined) => {
+    expect(el).not.toBeNull();
+    return Number(el!.style.zIndex || "0");
+  };
+
+  it("ranks the unpinned overlay anchor below pinned cells, and pinned anchors above them", () => {
+    const { container } = renderSurface();
+
+    const unpinnedAnchor = z(overlayAnchor(container, "c"));
+    const pinnedCell = Math.min(
+      z(headerCell(container, "first")),
+      z(headerCell(container, "status")),
+      z(headerCell(container, "actions")),
+    );
+    const pinnedAnchor = Math.min(
+      z(overlayAnchor(container, "first")),
+      z(overlayAnchor(container, "actions")),
+    );
+
+    // Strict: a tie is broken by DOM order, which favours whichever box comes
+    // later — and left-pinned columns are planned first, so that is the
+    // unpinned one.
+    expect(unpinnedAnchor).toBeLessThan(pinnedCell);
+    expect(pinnedCell).toBeLessThan(pinnedAnchor);
+  });
+});
+
 describe("right-pinned columns — surface sticky sites", () => {
   it("body cells of right-pinned columns are sticky at viewportWidth - right - width", () => {
     const { container } = renderSurface();

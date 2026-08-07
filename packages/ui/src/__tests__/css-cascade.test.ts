@@ -24,6 +24,16 @@ describe("grid.css cascade contract", () => {
     expect(css).toMatch(/var\(--pretable-text-error\)/);
   });
 
+  test("pinned header cells get an opaque background, both sides", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    // The header row's own background sits BEHIND its cells; a transparent
+    // pinned header cell lets a scrolled-under header's label read through it.
+    const rule = css.match(
+      /:where\(\s*\[data-pretable-header-cell\]\[data-pretable-pinned="left"\],\s*\[data-pretable-header-cell\]\[data-pretable-pinned="right"\]\s*\)\s*\{[^}]*\}/,
+    );
+    expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
+  });
+
   test("grid.css styles the enum combobox listbox", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]\)/);

@@ -417,6 +417,39 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
     .toBeGreaterThan(30);
   expectPinned(await measure());
 
+  // --- Mid-scroll, a pinned header must fully OCCLUDE what slid under it ---
+  // Two separate ways a pinned header can leak. First paint: the header row
+  // paints --pretable-bg-header behind its cells, but each cell on top of it
+  // is its own box, so a transparent pinned header cell lets the scrolled-under
+  // header's label read straight through.
+  const headerFill = await noteHeader.evaluate((el) => {
+    const row = el.closest("[data-pretable-header-row]")!;
+    return {
+      cell: getComputedStyle(el).backgroundColor,
+      row: getComputedStyle(row).backgroundColor,
+    };
+  });
+  expect(headerFill.cell).not.toMatch(/transparent|rgba\([^)]*,\s*0\)/);
+  expect(headerFill.cell).toBe(headerFill.row);
+
+  // Second, hit-testing: the header row's boxes share one stacking context, so
+  // an unpinned column's funnel or resize strip that outranks the pinned header
+  // keeps taking clicks from on top of it, invisibly.
+  const foreignHits = await noteHeader.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    const y = rect.top + rect.height / 2;
+    const hits: string[] = [];
+    for (let x = Math.ceil(rect.left) + 1; x < rect.right - 1; x += 2) {
+      const owner = document
+        .elementFromPoint(x, y)
+        ?.closest("[data-pretable-column-id]");
+      const id = owner?.getAttribute("data-pretable-column-id") ?? "(none)";
+      if (id !== "note") hits.push(`${Math.round(x - rect.left)}:${id}`);
+    }
+    return hits;
+  });
+  expect(foreignHits).toEqual([]);
+
   await layoutViewport.evaluate((el) => {
     el.scrollLeft = el.scrollWidth - el.clientWidth;
   });
