@@ -89,6 +89,7 @@ import {
 } from "./styles";
 import { findParentGroupRow, isGroupExpanded } from "./group-model";
 import { GroupRow } from "./group-row";
+import { GroupPanel } from "./group-panel/GroupPanel";
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { GROUP_PANEL_HEIGHT, ROW_SELECT_COLUMN_ID } from "./constants";
@@ -846,6 +847,27 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
   const isGrouped = snapshot.rowGroups.length > 0;
+  // Every UI-driven grouping change funnels through here: one `setRowGroups`,
+  // then report what the engine actually holds. Reading the list back rather
+  // than echoing the argument matters — `sanitizeRowGroups` drops unknown and
+  // duplicate ids, so the two can differ, and a consumer mirroring this into
+  // controlled `state.rowGroups` must be handed the sanitized truth.
+  //
+  // Programmatic `grid.setRowGroups` bypasses this and stays silent, matching
+  // `grid.moveColumn` and `onColumnOrderChange`.
+  const applyRowGroups = useCallback(
+    (next: readonly string[]) => {
+      grid.setRowGroups(next);
+      onRowGroupsChange?.([...grid.getSnapshot().rowGroups]);
+    },
+    [grid, onRowGroupsChange],
+  );
+  const labelForColumn = useCallback(
+    (columnId: string) =>
+      effectiveColumns.find((column) => column.id === columnId)?.header ??
+      columnId,
+    [effectiveColumns],
+  );
   // Shared by the data-row and group-row cell refs: the focus-follow effect
   // looks a cell up by `rowId::columnId`, and a group cell that never
   // registered would leave DOM focus stranded on an unmounted data cell.
@@ -3235,6 +3257,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       data-pretable-group-panel-wrapper=""
       style={getGroupPanelWrapperStyle(viewportHeight)}
     >
+      <GroupPanel
+        emptyMessage={groupPanel?.emptyMessage}
+        height={groupPanelHeight}
+        labelForColumn={labelForColumn}
+        onChange={applyRowGroups}
+        rowGroups={snapshot.rowGroups}
+      />
       {scrollViewport}
     </div>
   );
