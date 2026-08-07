@@ -45,6 +45,17 @@ export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals"
 export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
 // @public
+export type PretableAggregateSpec = "sum" | "avg" | "min" | "max" | "count" | PretableAggregator;
+
+// @public
+export interface PretableAggregator<TAcc = unknown, TOut = unknown> {
+    accumulate(acc: TAcc, value: unknown, row: PretableRow): TAcc;
+    finalize(acc: TAcc): TOut;
+    init(): TAcc;
+    merge(a: TAcc, b: TAcc): TAcc;
+}
+
+// @public
 export interface PretableCellAddress {
     // (undocumented)
     columnId: string;
@@ -66,6 +77,7 @@ export interface PretableCellRange {
 
 // @public
 export interface PretableColumn<TRow extends PretableRow = PretableRow> {
+    aggregate?: PretableAggregateSpec;
     // (undocumented)
     editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
     // (undocumented)
@@ -92,6 +104,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     reorderable?: boolean;
     // (undocumented)
     resizable?: boolean;
+    rowGroup?: boolean;
     // (undocumented)
     sortable?: boolean;
     step?: number;
@@ -105,6 +118,19 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     widthPx?: number;
     // (undocumented)
     wrap?: boolean;
+}
+
+// @public
+export interface PretableDataRow<TRow extends PretableRow = PretableRow> {
+    depth: number;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    kind: "data";
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    sourceIndex: number;
 }
 
 // @public
@@ -180,10 +206,12 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     clearFilters(): void;
     // (undocumented)
     clearSelection(): void;
+    collapseAll(): void;
     // (undocumented)
     commitEditSucceeded(): void;
     // (undocumented)
     distinctColumnValues(columnId: string): string[];
+    expandAll(): void;
     // (undocumented)
     extendRangeFromAnchor(addr: PretableCellAddress): void;
     getSnapshot(): PretableGridSnapshot<TRow>;
@@ -223,6 +251,8 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     setEditDraft(value: unknown): void;
     // (undocumented)
     setFocus(addr: PretableCellAddress | null): void;
+    setGroupExpanded(groupId: string, expanded: boolean): void;
+    setRowGroups(columnIds: readonly string[]): void;
     setRows(rows: TRow[]): void;
     // (undocumented)
     setSelectAllVisible(checked: boolean): void;
@@ -233,18 +263,21 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     setViewport(viewport: PretableViewportState): void;
     subscribe(listener: () => void): () => void;
+    toggleGroup(groupId: string): void;
     // (undocumented)
     toggleRowSelection(rowId: string): void;
 }
 
 // @public
 export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
+    aggregateFilteredRows?: boolean;
     // (undocumented)
     autosize?: boolean | AutosizeOptions;
     // (undocumented)
     columns: PretableColumn<TRow>[];
     // (undocumented)
     getRowId?: (row: TRow, index: number) => string;
+    groupsDefaultExpanded?: boolean;
     // (undocumented)
     rows: TRow[];
 }
@@ -257,6 +290,9 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     filters: Record<string, ColumnFilter>;
     // (undocumented)
     focus: PretableFocusState;
+    groupExpansionOverrides: ReadonlySet<string>;
+    groupsDefaultExpanded: boolean;
+    rowGroups: string[];
     // (undocumented)
     selection: PretableSelectionState;
     // (undocumented)
@@ -269,6 +305,18 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     visibleRange: PretableRowRange;
     // (undocumented)
     visibleRows: PretableVisibleRow<TRow>[];
+}
+
+// @public
+export interface PretableGroupRow {
+    aggregates: Record<string, unknown>;
+    childCount: number;
+    columnId: string;
+    depth: number;
+    id: string;
+    // (undocumented)
+    kind: "group";
+    value: unknown;
 }
 
 // @public
@@ -337,14 +385,7 @@ export interface PretableViewportState {
 }
 
 // @public
-export interface PretableVisibleRow<TRow extends PretableRow = PretableRow> {
-    // (undocumented)
-    id: string;
-    // (undocumented)
-    row: TRow;
-    // (undocumented)
-    sourceIndex: number;
-}
+export type PretableVisibleRow<TRow extends PretableRow = PretableRow> = PretableDataRow<TRow> | PretableGroupRow;
 
 // (No @packageDocumentation comment for this package)
 

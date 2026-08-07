@@ -70,6 +70,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
   setRowGroups(columnIds: readonly string[]): void;
   /** Flip one group's expanded state. Unknown ids are still recorded. */
   toggleGroup(groupId: string): void;
+  /** Set one group's expanded state explicitly. */
   setGroupExpanded(groupId: string, expanded: boolean): void;
   /** Expand every group, including ones that do not exist yet. */
   expandAll(): void;
