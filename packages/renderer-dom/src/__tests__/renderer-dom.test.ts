@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import { createGridCore } from "@pretable-internal/grid-core";
 import * as textCore from "@pretable-internal/text-core";
 
-import { createDomRenderSnapshot } from "../index";
+import { createDomRenderSnapshot, planColumnLayout } from "../index";
 
 describe("renderer-dom", () => {
   test("estimates wrapped row heights and returns a render snapshot", () => {
@@ -429,5 +429,53 @@ describe("renderer-dom", () => {
     });
 
     expect(prepareTextSpy.mock.calls.length).toBe(initialCallCount);
+  });
+
+  test("planColumnLayout lays out every column, window or not", () => {
+    // Consumers that hit-test against the column layout (drag-to-reorder)
+    // need an entry for columns outside the virtualization window too — and
+    // widths resolved the same way the renderer resolves them, so an
+    // unsized column is not laid out at zero width.
+    const layout = planColumnLayout([
+      { id: "pinned", header: "Pinned", widthPx: 120, pinned: "left" },
+      { id: "a", header: "A", widthPx: 200 },
+      { id: "unsized", header: "Unsized" },
+      { id: "wrapped", header: "Wrapped", wrap: true },
+      { id: "note", header: "Note", widthPx: 240, pinned: "right" },
+    ]);
+
+    expect(layout.columns.map((c) => c.id)).toEqual([
+      "pinned",
+      "a",
+      "unsized",
+      "wrapped",
+      "note",
+    ]);
+    expect(layout.columns.map((c) => c.left)).toEqual([0, 120, 320, 460, 680]);
+    expect(layout.columns.map((c) => c.width)).toEqual([
+      120, 200, 140, 220, 240,
+    ]);
+    expect(layout.columns[4]?.right).toBe(0);
+    expect(layout.totalWidth).toBe(920);
+  });
+
+  test("planColumnLayout groups pinned columns into content order", () => {
+    // A right-pinned column declared mid-array still lays out last: the
+    // content order is [left-pinned, scrollable, right-pinned].
+    const layout = planColumnLayout([
+      { id: "a", header: "A", widthPx: 100 },
+      { id: "note", header: "Note", widthPx: 100, pinned: "right" },
+      { id: "b", header: "B", widthPx: 100 },
+      { id: "pinned", header: "Pinned", widthPx: 100, pinned: "left" },
+    ]);
+
+    expect(layout.columns.map((c) => c.id)).toEqual([
+      "pinned",
+      "a",
+      "b",
+      "note",
+    ]);
+    expect(layout.columns.map((c) => c.index)).toEqual([3, 0, 2, 1]);
+    expect(layout.columns.map((c) => c.left)).toEqual([0, 100, 200, 300]);
   });
 });

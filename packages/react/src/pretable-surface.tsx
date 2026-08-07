@@ -34,6 +34,8 @@ import type {
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
 
+import { planColumnLayout } from "@pretable-internal/renderer-dom";
+import { computeColumnDropTarget } from "./column-drag-geometry";
 import { measureRenderedRowHeight } from "./row-height";
 import {
   type PretableSurfaceState,
@@ -562,6 +564,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     cursorX: number;
     cursorY: number;
     dropIndex: number;
+    // Content-space offset for the drop indicator, resolved from the same
+    // pointer event as `dropIndex` so the two can never disagree.
+    indicatorLeft: number;
     ghostWidth: number;
     ghostHeight: number;
     ghostHeader: string;
@@ -764,32 +769,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return map;
   }, [effectiveColumns]);
 
-  // Used by the reorder gesture to compute drop positions without DOM
-  // measurement (so it works in jsdom). Pulled from renderSnapshot.columns
-  // where available; columns outside the rendered window fall back to the
-  // accumulated width sum. Indexed by renderSnapshot column position
-  // (= engine order), NOT by effectiveColumns position.
-  const { columnLefts, columnWidths } = useMemo(() => {
-    const engineColumns = grid.options.columns;
-    const lefts = new Array<number>(engineColumns.length).fill(0);
-    const widths = new Array<number>(engineColumns.length).fill(0);
-    for (const planned of renderSnapshot.columns) {
-      lefts[planned.index] = planned.left;
-      widths[planned.index] = planned.width;
-    }
-    // Fill any gaps (off-screen columns) by accumulating widths in
-    // engine order.
-    let acc = 0;
-    for (let i = 0; i < engineColumns.length; i += 1) {
-      const col = engineColumns[i]!;
-      if (widths[i] === 0) {
-        widths[i] = col.widthPx ?? 0;
-        lefts[i] = acc;
-      }
-      acc = lefts[i]! + widths[i]!;
-    }
-    return { columnLefts: lefts, columnWidths: widths };
-  }, [renderSnapshot.columns, grid.options.columns]);
+  // Used by the reorder gesture to hit-test the cursor against the columns.
+  // renderSnapshot.columns only carries the virtualization window, and a
+  // scrolled-out column is still a legitimate drop target, so the layout is
+  // re-planned over the whole engine column set. Content order, and each
+  // entry's `index` is its engine index — what grid.moveColumn takes.
+  const dragColumnLayout = useMemo(
+    () => planColumnLayout(grid.options.columns).columns,
+    [grid.options.columns],
+  );
 
   const visibleRowIndexById = useMemo(() => {
     const map = new Map<string, number>();
@@ -1598,9 +1586,23 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       const dy = event.clientY - drag.startY;
                       const dist = Math.hypot(dx, dy);
 
-                      const surfaceRect =
-                        viewportRef.current?.getBoundingClientRect();
-                      const surfaceLeft = surfaceRect?.left ?? 0;
+                      // The scrollport is measured on every move rather than
+                      // read from state: scrollLeft changes without a React
+                      // render (wheel, trackpad, scrollbar), and a stale offset
+                      // would put the drop index a scroll-distance away from
+                      // the cursor.
+                      const scrollport = viewportRef.current;
+                      const target = computeColumnDropTarget({
+                        layout: dragColumnLayout,
+                        draggedIndex: grid.options.columns.findIndex(
+                          (c) => c.id === column.id,
+                        ),
+                        cursorX: event.clientX,
+                        viewportLeft:
+                          scrollport?.getBoundingClientRect().left ?? 0,
+                        viewportWidth: scrollport?.clientWidth ?? 0,
+                        scrollLeft: scrollport?.scrollLeft ?? 0,
+                      });
 
                       if (!drag.dragging) {
                         if (dist < REORDER_THRESHOLD_PX) return;
@@ -1618,13 +1620,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                           columnId: column.id,
                           cursorX: event.clientX,
                           cursorY: event.clientY,
-                          dropIndex: computeDropIndex(
-                            event.clientX,
-                            effectiveColumns.length,
-                            columnLefts,
-                            columnWidths,
-                            surfaceLeft,
-                          ),
+                          dropIndex: target.dropIndex,
+                          indicatorLeft: target.indicatorLeft,
                           ghostWidth: rect.width || effWidth,
                           ghostHeight: rect.height || headerHeight,
                           ghostHeader: String(column.header ?? column.id),
@@ -1638,13 +1635,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                               ...prev,
                               cursorX: event.clientX,
                               cursorY: event.clientY,
-                              dropIndex: computeDropIndex(
-                                event.clientX,
-                                effectiveColumns.length,
-                                columnLefts,
-                                columnWidths,
-                                surfaceLeft,
-                              ),
+                              dropIndex: target.dropIndex,
+                              indicatorLeft: target.indicatorLeft,
                             }
                           : null,
                       );
@@ -2331,11 +2323,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           <div
             data-pretable-reorder-drop-indicator=""
             style={{
-              left: computeDropIndicatorLeft(
-                reorderDrag.dropIndex,
-                columnLefts,
-                columnWidths,
-              ),
+              left: reorderDrag.indicatorLeft,
               height: reorderDrag.ghostHeight + bodyViewportHeight,
             }}
           />
@@ -2896,37 +2884,4 @@ function pinnedMapsEqual(
     if (a[k] !== b[k]) return false;
   }
   return true;
-}
-
-function computeDropIndex(
-  cursorX: number,
-  columnCount: number,
-  columnLefts: number[],
-  columnWidths: number[],
-  surfaceLeft: number,
-): number {
-  // Cursor X is in viewport coordinates. Convert to surface-relative.
-  const x = cursorX - surfaceLeft;
-  for (let i = 0; i < columnCount; i += 1) {
-    const left = columnLefts[i] ?? 0;
-    const width = columnWidths[i] ?? 0;
-    const mid = left + width / 2;
-    if (x < mid) {
-      return i;
-    }
-  }
-  return Math.max(0, columnCount - 1);
-}
-
-function computeDropIndicatorLeft(
-  dropIndex: number,
-  columnLefts: number[],
-  columnWidths: number[],
-): number {
-  if (dropIndex >= columnLefts.length) {
-    const lastIdx = columnLefts.length - 1;
-    if (lastIdx < 0) return 0;
-    return (columnLefts[lastIdx] ?? 0) + (columnWidths[lastIdx] ?? 0);
-  }
-  return columnLefts[dropIndex] ?? 0;
 }
