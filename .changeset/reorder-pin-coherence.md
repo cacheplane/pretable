@@ -1,6 +1,6 @@
 ---
-"@pretable/core": minor
-"@pretable/react": minor
+"@pretable/core": patch
+"@pretable/react": patch
 ---
 
 Column array order is now visual order, and reordering pins symmetrically.
