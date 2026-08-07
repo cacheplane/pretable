@@ -2812,7 +2812,7 @@ describe("PretableSurface copy", () => {
     );
   });
 
-  it("Cmd+C with a single-cell selection writes a single-cell TSV", () => {
+  it("Cmd+C with a single-cell selection writes both clipboard flavors", () => {
     const copyToClipboard = vi.fn();
     const view = renderCopyHarness({
       initialState: singleCellSelection("r1", "a"),
@@ -2821,8 +2821,15 @@ describe("PretableSurface copy", () => {
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
     expect(copyToClipboard).toHaveBeenCalledTimes(1);
+    // The only assertion pinning the SHAPE of the default payload: the other
+    // tests in this block use objectContaining({ text }) to talk about TSV
+    // content, so without this one the html flavor could vanish from the
+    // default copy path unnoticed. Content is asserted in copy.test.ts.
     expect(copyToClipboard).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "a1" }),
+      expect.objectContaining({
+        text: "a1",
+        html: expect.stringContaining("<table"),
+      }),
     );
   });
 

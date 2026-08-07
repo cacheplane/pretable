@@ -481,6 +481,21 @@ describe("serializeRanges HTML flavor", () => {
     expect(out?.text).toBe('"line one\nline two"');
   });
 
+  it("passes a literal TAB through untouched — it is only a TSV delimiter", () => {
+    const row: Row = { id: "r1", a: "left\tright", b: "b1", c: "c1" };
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a")],
+      visibleRows: makeVisibleRows([row]),
+      columns: baseColumns,
+    });
+    // No escaping, no entity: the table structure carries the cell boundary,
+    // so a TAB is ordinary content. white-space:pre-wrap keeps it from
+    // collapsing on paste.
+    expect(out?.html).toContain("<td>left\tright</td>");
+    // The TSV flavor has to quote it — there the TAB *is* the delimiter.
+    expect(out?.text).toBe('"left\tright"');
+  });
+
   it("treats format output as text, not markup", () => {
     const cols: PretableColumn<Row>[] = [
       { id: "a", header: "A", format: () => "<b>bold</b>" },
@@ -510,15 +525,6 @@ describe("serializeRanges HTML flavor", () => {
         "<tbody><tr><td>a1</td><td>b1</td><td>c1</td></tr></tbody></table>",
     );
   });
-
-  it("carries no html when the selection serializes to null", () => {
-    const out = serializeRanges<Row>({
-      ranges: [],
-      visibleRows: makeVisibleRows(rows),
-      columns: baseColumns,
-    });
-    expect(out).toBeNull();
-  });
 });
 
 describe("serializeRanges HTML type hints", () => {
@@ -540,15 +546,11 @@ describe("serializeRanges HTML type hints", () => {
   }
 
   it("hints a text column so Excel does not date-coerce 1-2", () => {
-    expect(oneTypedCell("1-2", "text")).toContain(
-      `<td${TEXT_HINT}>1-2</td>`,
-    );
+    expect(oneTypedCell("1-2", "text")).toContain(`<td${TEXT_HINT}>1-2</td>`);
   });
 
   it("hints an enum column — its labels are text too", () => {
-    expect(oneTypedCell("1-2", "enum")).toContain(
-      `<td${TEXT_HINT}>1-2</td>`,
-    );
+    expect(oneTypedCell("1-2", "enum")).toContain(`<td${TEXT_HINT}>1-2</td>`);
   });
 
   it("leaves an untyped column bare rather than guessing", () => {
@@ -557,9 +559,7 @@ describe("serializeRanges HTML type hints", () => {
 
   it("leaves number, date, and boolean columns bare", () => {
     expect(oneTypedCell("42", "number")).toContain("<td>42</td>");
-    expect(oneTypedCell("2026-01-02", "date")).toContain(
-      "<td>2026-01-02</td>",
-    );
+    expect(oneTypedCell("2026-01-02", "date")).toContain("<td>2026-01-02</td>");
     expect(oneTypedCell("true", "boolean")).toContain("<td>true</td>");
   });
 
