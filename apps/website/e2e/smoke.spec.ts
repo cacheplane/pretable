@@ -832,12 +832,21 @@ test("showcase: dropping into the right-pinned group pins the column", async ({
   // Drag "sector" onto the trailing half of the right-pinned "note" — inside
   // the group, so it lands there and takes the pin. WebKit only engages
   // pointer capture once the pointer has traversed intermediate positions.
+  //
+  // Settle before measuring: this section lazy-mounts and the drawer scrolls
+  // smoothly, so the header row is still easing into place when the grid first
+  // reports ready. `data-pretable-hydrated` says the handlers are attached, not
+  // that the layout has stopped moving — a different problem needing a
+  // different wait. The drop target below is only 6px deep, so a box measured
+  // mid-scroll puts the drop outside the pinned group and "note" stays last.
+  const sectorHeader = layout.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="sector"]',
+  );
+  await waitForStablePosition(sectorHeader);
   const note = (await layout
     .locator('[data-pretable-header-cell][data-pretable-column-id="note"]')
     .boundingBox())!;
-  const sector = (await layout
-    .locator('[data-pretable-header-cell][data-pretable-column-id="sector"]')
-    .boundingBox())!;
+  const sector = (await sectorHeader.boundingBox())!;
   const y = sector.y + sector.height / 2;
   await page.mouse.move(sector.x + sector.width / 2, y);
   await page.mouse.down();
