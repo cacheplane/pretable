@@ -324,7 +324,7 @@ The clipboard is treated as **one matrix**. A [multi-range copy](/docs/grid/clip
   `parseTsv` before applying, as below.
 </Callout>
 
-`parseTsv(text: string): string[][]` is exported from `@pretable/react` (alongside `serializeRangesAsTsv` and `defaultCoerceForCopy`), so pre-processing means reusing the same parser rather than writing a second one:
+`parseTsv(text: string): string[][]` is exported from `@pretable/react` (alongside `serializeRanges` and `defaultCoerceForCopy`), so pre-processing means reusing the same parser rather than writing a second one:
 
 ```tsx
 import { parseTsv } from "@pretable/react";
@@ -334,7 +334,7 @@ const matrix = parseTsv(text).filter((row) => row.some((f) => f !== ""));
 
 ## Out of scope
 
-Row creation on overflow (reported, not performed), multi-range reconstruction, cut (`Cmd/Ctrl+X`), the HTML clipboard flavor, and undo. `mapPasteToTargets` — the pure geometry function behind the anchor/tile/clip rules — is internal; open an issue if you want it public.
+Row creation on overflow (reported, not performed), multi-range reconstruction, cut (`Cmd/Ctrl+X`), reading the [HTML clipboard flavor](/docs/grid/clipboard#html-flavor) (copy writes it; paste only ever reads `text/plain`), and undo. `mapPasteToTargets` — the pure geometry function behind the anchor/tile/clip rules — is internal; open an issue if you want it public.
 
 ## See also
 

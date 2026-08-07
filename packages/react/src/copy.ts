@@ -1,4 +1,5 @@
 import type {
+  ColumnType,
   PretableCellRange,
   PretableRow,
   PretableVisibleRow,
@@ -7,8 +8,45 @@ import type {
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import type { PretableColumn } from "./types";
 
+// The Blob written by defaultCopyToClipboard carries `type: "text/html"` with
+// no charset parameter, so state it in the payload itself.
+const HTML_META = '<meta charset="utf-8">';
+
+// `white-space` is an inherited property, so one declaration on the table
+// covers every th/td. Without it HTML collapses runs of spaces and a cell
+// holding "a  b" would paste as "a b" — a silent regression against the TSV
+// flavor, since receiving apps prefer text/html when both are present.
+//
+// The constraint this imposes on the emitter: the markup must stay
+// whitespace-free between tags. Under `pre-wrap` any newline or indentation
+// between `<td>` and its text is content, so pretty-printing the table would
+// inject stray whitespace into every pasted cell.
+const HTML_TABLE_OPEN = '<table style="white-space:pre-wrap">';
+
+// Excel's force-as-text number format. The backslash is Excel's own syntax —
+// `\@` is the escaped text-format code — so dropping it silently disables the
+// hint. Google Sheets ignores this property; its equivalent is the proprietary
+// and version-fragile data-sheets-value, which we deliberately do not emit.
+const HTML_TEXT_FORMAT_ATTR = ` style="mso-number-format:'\\@'"`;
+
 /**
- * Input for {@link serializeRangesAsTsv}.
+ * Attribute string for one body cell.
+ *
+ * Returns a whole attribute *including its leading space*, ready to splice
+ * straight after the tag name (`<td${cellStyleAttr(type)}>`), or `""` for a
+ * column with no hint.
+ *
+ * Only columns explicitly typed `text` or `enum` are pinned to text format.
+ * Untyped columns are left bare on purpose: forcing text there would catch
+ * more date-coercion cases but would also left-align genuine numbers as
+ * strings. `column.type` is the documented lever.
+ */
+function cellStyleAttr(type: ColumnType | undefined): string {
+  return type === "text" || type === "enum" ? HTML_TEXT_FORMAT_ATTR : "";
+}
+
+/**
+ * Input for {@link serializeRanges}.
  *
  * @public
  */
@@ -77,15 +115,114 @@ export function escapeTsvField(text: string): string {
 }
 
 /**
- * Serialize one or more `PretableCellRange`s to a tab-separated text + HTML payload suitable for clipboard write.
+ * Escape one already-stringified field for the HTML clipboard flavor.
  *
- * Cell and header text is escaped with {@link escapeTsvField}, so values
- * holding tabs, newlines (a wrapped/multi-line cell) or quotes survive a paste
- * into Excel or Sheets without breaking the row/column structure.
+ * Two passes, in this order:
+ *
+ * 1. `&`, `<`, `>`, `"` become entities. `&` must go first or it
+ *    double-escapes the entities the later replacements produce.
+ * 2. Line breaks (CRLF, CR, LF) become a single `<br>` each. This runs after
+ *    escaping so the emitted tag survives instead of becoming `&lt;br&gt;`.
+ *
+ * `"` is escaped even though cell text is only ever emitted into a text node,
+ * so the helper stays safe if it is later reused for a *double-quoted*
+ * attribute value. `'` is left alone, so it is not safe for a single-quoted
+ * one.
+ *
+ * @internal
+ */
+export function escapeHtmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/\r\n|\r|\n/g, "<br>");
+}
+
+interface RangeBounds {
+  rowLo: number;
+  rowHi: number;
+  colLo: number;
+  colHi: number;
+}
+
+/**
+ * Resolve one range's id-based bounds to inclusive row/column indices, or
+ * `null` when the range addresses nothing emittable.
+ *
+ * The synthetic row-select column is positioned BEFORE all data columns in
+ * `effectiveColumns`. When it appears as a range bound it logically means
+ * "start of the visible row", so it translates to the first data column. A
+ * range whose *both* ends are the synthetic column has no data to emit.
+ */
+function resolveRangeBounds(
+  range: PretableCellRange,
+  rowIndex: ReadonlyMap<string, number>,
+  colIndex: ReadonlyMap<string, number>,
+  dataColumnCount: number,
+): RangeBounds | null {
+  const startRow = rowIndex.get(range.startRowId);
+  const endRow = rowIndex.get(range.endRowId);
+  if (startRow === undefined || endRow === undefined) return null;
+  const rowLo = Math.min(startRow, endRow);
+  const rowHi = Math.max(startRow, endRow);
+
+  const startIsSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+  const endIsSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+  const startCol = colIndex.get(range.startColumnId);
+  const endCol = colIndex.get(range.endColumnId);
+
+  let colLo: number;
+  let colHi: number;
+  if (startIsSynth && endIsSynth) {
+    return null;
+  } else if (startIsSynth && endCol !== undefined) {
+    colLo = 0;
+    colHi = endCol;
+  } else if (endIsSynth && startCol !== undefined) {
+    colLo = startCol;
+    colHi = 0;
+  } else if (startCol !== undefined && endCol !== undefined) {
+    colLo = Math.min(startCol, endCol);
+    colHi = Math.max(startCol, endCol);
+  } else if (startCol !== undefined) {
+    colLo = colHi = startCol;
+  } else if (endCol !== undefined) {
+    colLo = colHi = endCol;
+  } else {
+    return null;
+  }
+
+  if (colLo > colHi) {
+    [colLo, colHi] = [colHi, colLo];
+  }
+  colLo = Math.max(colLo, 0);
+  colHi = Math.min(colHi, dataColumnCount - 1);
+  if (colLo > colHi) return null;
+
+  return { rowLo, rowHi, colLo, colHi };
+}
+
+/**
+ * Serialize one or more `PretableCellRange`s to a two-flavor clipboard payload.
+ *
+ * `text` is TSV: tab-separated cells, newline-separated rows, blocks joined by
+ * a blank line, every field escaped with {@link escapeTsvField}.
+ *
+ * `html` is a real `<table>` per range, concatenated behind a single
+ * `<meta charset="utf-8">`. Excel and Google Sheets both prefer `text/html`
+ * when both flavors are on the clipboard, and the table form sidesteps
+ * delimiter ambiguity structurally: line breaks become `<br>` rather than a
+ * quoted newline, and separate ranges become separate tables rather than
+ * relying on a `\n\n` separator that a cell could legally contain.
+ *
+ * Cell text is escaped, never interpreted — a `column.format` returning
+ * `<b>x</b>` copies those literal characters. `column.render` is not consulted.
  *
  * @public
  */
-export function serializeRangesAsTsv<TRow extends PretableRow>(
+export function serializeRanges<TRow extends PretableRow>(
   args: SerializeRangesArgs<TRow>,
 ): CopyPayload | null {
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
@@ -96,64 +233,37 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
   const rowIndex = new Map<string, number>();
   args.visibleRows.forEach((r, i) => rowIndex.set(r.id, i));
 
-  const blocks: string[] = [];
+  const textBlocks: string[] = [];
+  const htmlTables: string[] = [];
 
   for (const range of args.ranges) {
-    const startRow = rowIndex.get(range.startRowId);
-    const endRow = rowIndex.get(range.endRowId);
-    const startIsSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
-    const endIsSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
-    const startCol = colIndex.get(range.startColumnId);
-    const endCol = colIndex.get(range.endColumnId);
-
-    const haveRows = startRow !== undefined && endRow !== undefined;
-    const rowLo = haveRows ? Math.min(startRow, endRow) : -1;
-    const rowHi = haveRows ? Math.max(startRow, endRow) : -1;
-
-    // The synthetic row-select column is positioned BEFORE all data columns
-    // in effectiveColumns. When it appears as a range bound it logically
-    // means "start of the visible row" — translate to the first data column.
-    // Ranges that span only the synthetic column have no data to emit.
-    let colLo: number;
-    let colHi: number;
-    if (startIsSynth && endIsSynth) {
-      continue;
-    } else if (startIsSynth && endCol !== undefined) {
-      colLo = 0;
-      colHi = endCol;
-    } else if (endIsSynth && startCol !== undefined) {
-      colLo = startCol;
-      colHi = 0;
-    } else if (startCol !== undefined && endCol !== undefined) {
-      colLo = Math.min(startCol, endCol);
-      colHi = Math.max(startCol, endCol);
-    } else if (startCol !== undefined) {
-      colLo = colHi = startCol;
-    } else if (endCol !== undefined) {
-      colLo = colHi = endCol;
-    } else {
-      continue;
-    }
-
-    if (colLo > colHi) {
-      [colLo, colHi] = [colHi, colLo];
-    }
-    colLo = Math.max(colLo, 0);
-    colHi = Math.min(colHi, dataColumns.length - 1);
-    if (colLo > colHi) continue;
-    if (!haveRows || rowLo > rowHi) continue;
+    const bounds = resolveRangeBounds(
+      range,
+      rowIndex,
+      colIndex,
+      dataColumns.length,
+    );
+    if (!bounds) continue;
+    const { rowLo, rowHi, colLo, colHi } = bounds;
 
     const lines: string[] = [];
+    let headHtml = "";
+
     if (args.copyWithHeaders) {
       const headerCells: string[] = [];
+      let headerRowHtml = "";
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;
-        headerCells.push(escapeTsvField(col.header ?? col.id));
+        const header = col.header ?? col.id;
+        headerCells.push(escapeTsvField(header));
+        headerRowHtml += `<th>${escapeHtmlText(header)}</th>`;
       }
       lines.push(headerCells.join("\t"));
       lines.push("");
+      headHtml = `<thead><tr>${headerRowHtml}</tr></thead>`;
     }
 
+    let bodyHtml = "";
     for (let r = rowLo; r <= rowHi; r += 1) {
       const row = args.visibleRows[r]!;
 
@@ -166,6 +276,7 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
       }
 
       const cells: string[] = [];
+      let rowHtml = "";
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;
         const raw = col.value
@@ -175,14 +286,22 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
           ? col.format({ value: raw, row: row.row, column: col })
           : defaultCoerceForCopy(raw);
         cells.push(escapeTsvField(text));
+        rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
       }
       lines.push(cells.join("\t"));
+      bodyHtml += `<tr>${rowHtml}</tr>`;
     }
 
-    blocks.push(lines.join("\n"));
+    textBlocks.push(lines.join("\n"));
+    htmlTables.push(
+      `${HTML_TABLE_OPEN}${headHtml}<tbody>${bodyHtml}</tbody></table>`,
+    );
   }
 
-  if (blocks.length === 0) return null;
+  if (textBlocks.length === 0) return null;
 
-  return { text: blocks.join("\n\n") };
+  return {
+    text: textBlocks.join("\n\n"),
+    html: `${HTML_META}${htmlTables.join("")}`,
+  };
 }

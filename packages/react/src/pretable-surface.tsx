@@ -104,7 +104,7 @@ import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
-  serializeRangesAsTsv,
+  serializeRanges,
 } from "./copy";
 import {
   mapPasteToTargets,
@@ -122,15 +122,24 @@ async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
     typeof globalThis.ClipboardItem !== "undefined" &&
     typeof navigator.clipboard.write === "function"
   ) {
-    await navigator.clipboard.write([
-      new globalThis.ClipboardItem({
-        "text/plain": new Blob([payload.text], { type: "text/plain" }),
-        "text/html": new Blob([payload.html], { type: "text/html" }),
-      }),
-    ]);
-  } else {
-    await navigator.clipboard.writeText(payload.text);
+    try {
+      await navigator.clipboard.write([
+        new globalThis.ClipboardItem({
+          "text/plain": new Blob([payload.text], { type: "text/plain" }),
+          "text/html": new Blob([payload.html], { type: "text/html" }),
+        }),
+      ]);
+      return;
+    } catch {
+      // Feature detection only proves ClipboardItem and write() exist, not
+      // that the write succeeds — a polyfilled ClipboardItem, a restricted
+      // embedding context, or an extension page can all reject here. Landing
+      // the TSV alone beats leaving the clipboard empty, so fall through
+      // rather than surfacing a failure the single-flavor path would not have
+      // had. If writeText rejects too, that rejection is the real one.
+    }
   }
+  await navigator.clipboard.writeText(payload.text);
 }
 
 /**
@@ -426,7 +435,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   copyWithHeaders?: boolean;
   /**
    * Override the TSV serialization step. Receives the args that would be
-   * passed to {@link serializeRangesAsTsv}; returning `null` cancels the copy.
+   * passed to {@link serializeRanges}; returning `null` cancels the copy.
    */
   onCopy?: (args: SerializeRangesArgs<TRow>) => CopyPayload | null;
   /**
@@ -1856,7 +1865,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
           };
-          const payload = onCopy ? onCopy(args) : serializeRangesAsTsv(args);
+          const payload = onCopy ? onCopy(args) : serializeRanges(args);
           if (payload) {
             const extent = computeSelectionExtent(
               snap.selection.ranges,

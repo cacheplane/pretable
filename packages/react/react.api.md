@@ -801,6 +801,9 @@ export interface RowSelectionColumnConfig {
 }
 
 // @public
+export function serializeRanges<TRow extends PretableRow>(args: SerializeRangesArgs<TRow>): CopyPayload | null;
+
+// @public
 export interface SerializeRangesArgs<TRow extends PretableRow> {
     // (undocumented)
     columns: readonly PretableColumn<TRow>[];
@@ -811,9 +814,6 @@ export interface SerializeRangesArgs<TRow extends PretableRow> {
     // (undocumented)
     visibleRows: readonly PretableVisibleRow<TRow>[];
 }
-
-// @public
-export function serializeRangesAsTsv<TRow extends PretableRow>(args: SerializeRangesArgs<TRow>): CopyPayload | null;
 
 // @public
 export function usePretable<TRow extends PretableRow = PretableRow>(input: UsePretableOptions<TRow>): PretableModel<TRow>;
@@ -861,7 +861,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:776:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:785:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -2807,10 +2807,12 @@ describe("PretableSurface copy", () => {
     // The range spans the whole row (leftmost "b" through rightmost "a"), so
     // the TSV must read left to right as drawn: b1, c1, a1.
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "b1\tc1\ta1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "b1\tc1\ta1" }),
+    );
   });
 
-  it("Cmd+C with a single-cell selection writes a single-cell TSV", () => {
+  it("Cmd+C with a single-cell selection writes both clipboard flavors", () => {
     const copyToClipboard = vi.fn();
     const view = renderCopyHarness({
       initialState: singleCellSelection("r1", "a"),
@@ -2819,7 +2821,16 @@ describe("PretableSurface copy", () => {
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
     expect(copyToClipboard).toHaveBeenCalledTimes(1);
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1" });
+    // The only assertion pinning the SHAPE of the default payload: the other
+    // tests in this block use objectContaining({ text }) to talk about TSV
+    // content, so without this one the html flavor could vanish from the
+    // default copy path unnoticed. Content is asserted in copy.test.ts.
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "a1",
+        html: expect.stringContaining("<table"),
+      }),
+    );
   });
 
   it("Cmd+C with a multi-row range writes row-major TSV joined by newlines", () => {
@@ -2843,7 +2854,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\na2" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "a1\na2" }),
+    );
   });
 
   it("Cmd+C with a multi-column range writes columns joined by tabs", () => {
@@ -2867,7 +2880,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\tb1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "a1\tb1" }),
+    );
   });
 
   it("Cmd+C with multiple ranges joins blocks with a blank line", () => {
@@ -2897,7 +2912,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "a1\n\nc3" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "a1\n\nc3" }),
+    );
   });
 
   it("copyWithHeaders=true prepends a header row + blank line before the body", () => {
@@ -2922,7 +2939,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "A\tB\n\na1\tb1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "A\tB\n\na1\tb1" }),
+    );
   });
 
   it("onCopy override receives args and its return value is what gets written", () => {
@@ -2980,7 +2999,9 @@ describe("PretableSurface copy", () => {
     });
     fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
 
-    expect(copyToClipboard).toHaveBeenCalledWith({ text: "FORMATTED:a1" });
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "FORMATTED:a1" }),
+    );
   });
 
   it("Cmd+C with an empty selection does not call copyToClipboard", () => {
@@ -3258,6 +3279,57 @@ describe("aria-live announcements", () => {
 
     expect(getLiveRegion(view)).toHaveTextContent("Copy failed");
     expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("a rejected two-flavor write falls back to writeText and still succeeds", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const write = vi.fn().mockRejectedValue(new Error("blocked"));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    // jsdom defines neither ClipboardItem nor navigator.clipboard, so every
+    // other test in this file never reaches the two-flavor branch at all.
+    // Define both here — and tear them down in the finally — so the next test
+    // sees jsdom's bare navigator again.
+    vi.stubGlobal(
+      "ClipboardItem",
+      class {
+        constructor(public items: Record<string, Blob>) {}
+      },
+    );
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write, writeText },
+    });
+
+    try {
+      // No copyToClipboard override: this exercises defaultCopyToClipboard.
+      const view = renderAnnounceHarness({
+        initialState: singleCellSelection("r1", "a"),
+      });
+      fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+      await act(async () => {
+        for (let i = 0; i < 6; i += 1) await Promise.resolve();
+      });
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      // Feature detection passed, the write was attempted, and the rejection
+      // degraded to the TSV rather than losing the copy entirely.
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(writeText).toHaveBeenCalledWith("a1");
+      expect(getLiveRegion(view)).toHaveTextContent(
+        "1 rows × 1 columns copied",
+      );
+      expect(getLiveRegion(view)).not.toHaveTextContent("Copy failed");
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        "[pretable] clipboard copy failed",
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      delete (navigator as { clipboard?: unknown }).clipboard;
+    }
   });
 
   it("custom messages.copyFailedAnnouncement overrides the failure text", async () => {

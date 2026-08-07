@@ -53,7 +53,7 @@ export type {
 } from "./types";
 
 // Copy / clipboard
-export { defaultCoerceForCopy, serializeRangesAsTsv } from "./copy";
+export { defaultCoerceForCopy, serializeRanges } from "./copy";
 export type { CopyPayload, SerializeRangesArgs } from "./copy";
 
 // Paste (mapPasteToTargets stays internal)
