@@ -998,7 +998,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       // `mapPasteToTargets` never emits one as a target.
       const rowById = new Map<string, TRow>();
       for (const visibleRow of snap.visibleRows) {
-        if (visibleRow.kind === "data") rowById.set(visibleRow.id, visibleRow.row);
+        if (visibleRow.kind === "data")
+          rowById.set(visibleRow.id, visibleRow.row);
       }
 
       // One slot per target, so outcomes keep the block's row-major order.
@@ -3346,13 +3347,23 @@ function resolvePasteAnchor<TRow extends PretableRow>(
   }
   if (!chosen) return null;
 
+  // Measure the selection in data rows: group rows are not paste targets, so a
+  // selection spanning one covers fewer writable rows than its span suggests,
+  // and `mapPasteToTargets` decides tiling against that count. A selection that
+  // covers only group rows has nothing to paste into.
+  let selectionRows = 0;
+  for (let i = chosen.rowLo; i <= chosen.rowHi; i += 1) {
+    if (visibleRows[i]?.kind === "data") selectionRows += 1;
+  }
+  if (selectionRows === 0) return null;
+
   return {
     anchor: {
       rowId: visibleRows[chosen.rowLo]!.id,
       columnId: dataColumns[chosen.colLo]!.id,
     },
     selectionSize: {
-      rows: chosen.rowHi - chosen.rowLo + 1,
+      rows: selectionRows,
       columns: chosen.colHi - chosen.colLo + 1,
     },
   };

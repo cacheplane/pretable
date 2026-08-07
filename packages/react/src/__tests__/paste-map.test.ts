@@ -16,9 +16,11 @@ const rows: Row[] = ["r0", "r1", "r2", "r3", "r4"].map((id) => ({
 }));
 
 const visibleRows: PretableVisibleRow<Row>[] = rows.map((row, i) => ({
+  kind: "data",
   id: row.id,
   row,
   sourceIndex: i,
+  depth: 0,
 }));
 
 // The synthetic row-select column is first in effectiveColumns, exactly as the
@@ -278,5 +280,117 @@ describe("mapPasteToTargets — value fidelity", () => {
   it("emits an empty raw for an empty clipboard field", () => {
     const result = map([["", "x"]], "r0", "a");
     expect(shape(result)).toEqual(["r0:a=", "r0:b=x"]);
+  });
+});
+
+describe("mapPasteToTargets — group rows", () => {
+  // Nothing in the repo groups rows yet (rendering is a later sub-project), so
+  // the grouped visible list is built here directly, in the shape the engine
+  // emits: a header followed by its data rows.
+  //
+  //   [g:x]  r0  r1  [g:y]  r2  r3  r4
+  const groupRow = (id: string, value: string): PretableVisibleRow<Row> => ({
+    kind: "group",
+    id,
+    depth: 0,
+    columnId: "a",
+    value,
+    childCount: 0,
+    aggregates: {},
+  });
+  const dataRow = (row: Row, sourceIndex: number): PretableVisibleRow<Row> => ({
+    kind: "data",
+    id: row.id,
+    row,
+    sourceIndex,
+    depth: 1,
+  });
+
+  const groupedRows: PretableVisibleRow<Row>[] = [
+    groupRow("g:x", "x"),
+    dataRow(rows[0]!, 0),
+    dataRow(rows[1]!, 1),
+    groupRow("g:y", "y"),
+    dataRow(rows[2]!, 2),
+    dataRow(rows[3]!, 3),
+    dataRow(rows[4]!, 4),
+  ];
+
+  function mapGrouped(
+    matrix: string[][],
+    rowId: string,
+    columnId: string,
+    selectionSize = { rows: 1, columns: 1 },
+  ) {
+    return mapPasteToTargets({
+      matrix,
+      anchor: { rowId, columnId },
+      selectionSize,
+      visibleRows: groupedRows,
+      columns,
+    });
+  }
+
+  it("steps over a group header instead of spending a block row on it", () => {
+    // Anchored on the last data row of group x, a 3-row block continues into
+    // group y's rows: the header occupies no slot, so all 3 rows land and
+    // nothing clips.
+    const result = mapGrouped([["1"], ["2"], ["3"]], "r1", "a");
+    expect(shape(result)).toEqual(["r1:a=1", "r2:a=2", "r3:a=3"]);
+    expect(result.clipped).toEqual({ rows: 0, columns: 0 });
+  });
+
+  it("never emits a group row as a target", () => {
+    // A block long enough to cover the whole list, anchored at the top.
+    const result = mapGrouped([["1"], ["2"], ["3"], ["4"], ["5"]], "r0", "a", {
+      rows: 5,
+      columns: 1,
+    });
+    const targetIds = new Set(result.cells.map((c) => c.rowId));
+    expect([...targetIds]).toEqual(["r0", "r1", "r2", "r3", "r4"]);
+    expect(targetIds.has("g:x")).toBe(false);
+    expect(targetIds.has("g:y")).toBe(false);
+  });
+
+  it("resolves an anchor that lands on a group header to the next data row", () => {
+    const result = mapGrouped([["1"], ["2"]], "g:y", "a");
+    expect(shape(result)).toEqual(["r2:a=1", "r3:a=2"]);
+    expect(result.clipped).toEqual({ rows: 0, columns: 0 });
+  });
+
+  it("counts clipped rows against the data rows, not the visible rows", () => {
+    // Two data rows remain below the anchor (r3, r4); the last two block rows
+    // fall off the end. The trailing group header must not be mistaken for a
+    // landing slot, nor inflate the row space it is clipped against.
+    const result = mapGrouped([["1"], ["2"], ["3"], ["4"]], "r3", "a");
+    expect(shape(result)).toEqual(["r3:a=1", "r4:a=2"]);
+    expect(result.clipped).toEqual({ rows: 2, columns: 0 });
+  });
+
+  it("tiles across a group boundary against the data-row selection count", () => {
+    // `selectionSize.rows` counts data rows (the surface measures it that way),
+    // so a 2-row block tiles twice over 4 data rows spanning the boundary.
+    const result = mapGrouped([["1"], ["2"]], "r1", "a", {
+      rows: 4,
+      columns: 1,
+    });
+    expect(shape(result)).toEqual(["r1:a=1", "r2:a=2", "r3:a=1", "r4:a=2"]);
+    expect(result.clipped).toEqual({ rows: 0, columns: 0 });
+  });
+
+  it("returns nothing when no data row sits at or after the anchor", () => {
+    const trailingHeader: PretableVisibleRow<Row>[] = [
+      dataRow(rows[0]!, 0),
+      groupRow("g:empty", "empty"),
+    ];
+    const result = mapPasteToTargets({
+      matrix: [["1"]],
+      anchor: { rowId: "g:empty", columnId: "a" },
+      selectionSize: { rows: 1, columns: 1 },
+      visibleRows: trailingHeader,
+      columns,
+    });
+    expect(result.cells).toEqual([]);
+    expect(result.clipped).toEqual({ rows: 0, columns: 0 });
   });
 });
