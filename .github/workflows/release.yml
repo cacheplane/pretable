@@ -24,22 +24,23 @@ jobs:
         with:
           fetch-depth: 0
       - uses: pnpm/action-setup@v6
-      # NOTE: intentionally NO `registry-url`. When set, actions/setup-node
-      # writes an .npmrc containing `_authToken=${NODE_AUTH_TOKEN}`. With a
-      # token configured — even an empty placeholder — npm uses token auth and
-      # never attempts the OIDC trusted-publishing exchange, so the registry
-      # rejects the publish with a 404. Omitting it leaves no token configured
-      # (npm defaults to registry.npmjs.org anyway) and OIDC engages.
+      # Node 24 bundles npm 11.13+, above the 11.5.1 floor where npm implements
+      # the OIDC trusted-publishing exchange. Node 22 ships npm 10.9, which has
+      # no OIDC support at all — the previous workaround installed npm 11.14.1
+      # into RUNNER_TEMP and prepended it to PATH, but changesets/action spawns
+      # the publish in a subprocess that could still resolve the bundled npm 10.
+      # With no OIDC, npm falls back to the .npmrc token and the publish PUT
+      # returns a bare 404. Matching dawn and angular-agent-framework, which
+      # both publish with provenance on this setup.
+      #
+      # `registry-url` is deliberate and matches those repos: it writes the
+      # publish .npmrc. It is safe precisely because NODE_AUTH_TOKEN is never
+      # set — see the guard below.
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
-
-      - name: Install npm 11.14.1 for trusted publishing OIDC
-        run: |
-          npm_config_prefix="$RUNNER_TEMP/npm" npm install --global npm@11.14.1
-          echo "$RUNNER_TEMP/npm/bin" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/npm/bin/npm" --version
+          registry-url: https://registry.npmjs.org
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
@@ -48,6 +49,33 @@ jobs:
       - run: pnpm build
       - run: pnpm lint:packaging
       - run: pnpm publish:preflight
+
+      - name: Assert OIDC-only publishing
+        run: |
+          # Two invariants, both of which have silently broken a release:
+          #   1. No npm token in the environment. Any token makes npm use token
+          #      auth and skip the trusted-publishing exchange, which also means
+          #      no provenance attestation — a silent downgrade, not a failure.
+          #   2. npm >= 11.5.1, the floor where the OIDC exchange exists. Below
+          #      it npm cannot do trusted publishing at all and falls back to
+          #      the .npmrc token, producing a bare `E404 Not Found - PUT`.
+          fail=0
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::NODE_AUTH_TOKEN is set. Publishing is OIDC-only; a token disables the OIDC exchange and drops provenance."
+            fail=1
+          fi
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN is set in the environment. Publishing is OIDC-only."
+            fail=1
+          fi
+          npm_version=$(npm --version)
+          echo "npm $npm_version (node $(node --version))"
+          if [ "$(printf '%s\n11.5.1\n' "$npm_version" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "::error::npm $npm_version is below the 11.5.1 OIDC trusted-publishing floor."
+            fail=1
+          fi
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "OIDC-only preconditions hold."
 
       - name: Version PR or publish
         id: changesets
@@ -59,14 +87,11 @@ jobs:
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-          # Trusted publishing (OIDC) stays the intended path — npm prefers it
-          # whenever a package has a trusted publisher configured. Without this,
-          # any package that does NOT have one falls back to the `_authToken`
-          # setup-node wrote into .npmrc, which is its literal placeholder when
-          # no token is in the environment, so the publish PUT returns a bare
-          # 404. Supplying the existing secret makes that fallback real rather
-          # than a placeholder; where OIDC works it goes unused.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # No NODE_AUTH_TOKEN. Publishing is OIDC-only: any token in the
+          # environment makes npm use token auth and skip the trusted-publishing
+          # exchange, which also means no provenance attestation. A package
+          # without a trusted publisher must fail loudly here rather than fall
+          # back to a token — see the preflight guard above.
 
       - name: Enable auto-merge on Version PR
         if: steps.changesets.outputs.pullRequestNumber != '' && env.RELEASE_GITHUB_TOKEN != ''

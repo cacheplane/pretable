@@ -20,3 +20,10 @@ status/traces/*.zip
 .vercel
 # api-extractor working directory
 **/temp/
+
+# Local environment files. These hold live credentials and must never be
+# committed — the repo had none of these entries, so a stray `git add -A`
+# would have swept `.env` straight in.
+.env
+.env.*
+!.env.example
