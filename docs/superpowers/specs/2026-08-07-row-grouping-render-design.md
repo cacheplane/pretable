@@ -70,6 +70,14 @@ first grouped column's `header`, **not pinned**. (ag-grid does not pin its auto
 column either; pinning it by default would silently consume the pinned-left
 region a consumer may already be using.)
 
+> **Shipped reachable only from `createGridCore`.** `groupColumn` and
+> `hideGroupedColumns` are absent from `UsePretableOptions` and
+> `PretableSurfaceProps`, so a React consumer gets the defaults and cannot
+> override them. This is not new to SP2 — SP1's `aggregateFilteredRows` and
+> `groupsDefaultExpanded` are unthreaded in exactly the same way. The defaults
+> are sufficient for everything SP2 ships, and SP4 needs the header override, so
+> all four get threaded together there rather than piecemeal here.
+
 **Grouped columns are hidden from the data area**, uniformly — whether the
 grouping came from initial options or a later `setRowGroups` call. Opt out with
 `hideGroupedColumns: false`.
