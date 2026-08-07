@@ -29,9 +29,6 @@
       "path": "./apps/bench"
     },
     {
-      "path": "./packages/json-stream"
-    },
-    {
       "path": "./packages/stream-adapter"
     }
   ]

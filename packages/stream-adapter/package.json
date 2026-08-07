@@ -32,15 +32,15 @@
     }
   },
   "dependencies": {
-    "@cacheplane/json-stream": "workspace:*"
+    "@cacheplane/json-stream": "~0.0.4"
   },
   "scripts": {
     "api": "api-extractor run --local --config api-extractor.json",
     "api:check": "api-extractor run --config api-extractor.json",
-    "build": "pnpm --filter @cacheplane/json-stream build && tsup",
+    "build": "tsup",
     "lint": "eslint src --ext .ts",
     "lint:packaging": "publint --strict && attw --pack",
-    "test": "pnpm --filter @cacheplane/json-stream build && vitest run --passWithNoTests",
-    "typecheck": "pnpm --filter @cacheplane/json-stream build && tsc -b --pretty false"
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -b --pretty false"
   }
 }

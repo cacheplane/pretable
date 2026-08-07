@@ -48,7 +48,6 @@ Public package work belongs in:
 - `packages/react`
 - `packages/ui`
 - `packages/stream-adapter`
-- `packages/json-stream`
 
 Packages named `@pretable-internal/*` are implementation details. They can
 change freely to support the public packages and benchmark proof surface.
