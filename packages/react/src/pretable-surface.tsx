@@ -1098,8 +1098,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return map;
   }, [snapshot.visibleRows]);
 
+  // Positions of the data columns as DRAWN. A selection range is a pair of
+  // column ids with everything between them implied, so resolving membership
+  // against the prop order after a reorder paints cells the user can see are
+  // outside their selection — and mis-reports which rows are fully covered.
   const dataColumnIndex = useMemo(() => {
-    const dataColumns = effectiveColumns.filter(
+    const dataColumns = columnsInVisualOrder.filter(
       (c) => c.id !== ROW_SELECT_COLUMN_ID,
     );
     const idxById = new Map<string, number>();
@@ -1107,7 +1111,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       idxById.set(dataColumns[i]!.id, i);
     }
     return { dataColumns, idxById };
-  }, [effectiveColumns]);
+  }, [columnsInVisualOrder]);
 
   const { fullySelectedRowIds, indeterminateRowIds } = useMemo(() => {
     const fullyRows = new Set<string>();
@@ -1707,7 +1711,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             const extent = computeSelectionExtent(
               snap.selection.ranges,
               snap,
-              effectiveColumns,
+              columnsInVisualOrder,
             );
             Promise.resolve(
               (copyToClipboard ?? defaultCopyToClipboard)(payload),
@@ -1797,7 +1801,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         const before = grid.getSnapshot();
         const handled = handleSurfaceKeyDown(event, {
           bodyViewportHeight,
-          columns: effectiveColumns,
+          // Drawn order: Home/End and the full-row range this builds are
+          // bounded by the first and last columns ON SCREEN.
+          columns: columnsInVisualOrder,
           grid,
           onRowActivate,
           onSelectedRowIdChange,
@@ -1812,7 +1818,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             const extent = computeSelectionExtent(
               after.selection.ranges,
               after,
-              effectiveColumns,
+              columnsInVisualOrder,
             );
             scheduleAnnouncement(
               effectiveMessages.selectAllAnnouncement({
@@ -1952,7 +1958,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         const extent = computeSelectionExtent(
                           after.selection.ranges,
                           after,
-                          effectiveColumns,
+                          columnsInVisualOrder,
                         );
                         scheduleAnnouncement(
                           effectiveMessages.selectAllAnnouncement({
@@ -2570,7 +2576,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       handleCellClick({
                         cmd: event.metaKey || event.ctrlKey,
                         columnId: column.id,
-                        columns: effectiveColumns,
+                        columns: columnsInVisualOrder,
                         grid,
                         onFocusChange,
                         onSelectedRowIdChange,
@@ -2609,7 +2615,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       handleCellClick({
                         cmd: false,
                         columnId: column.id,
-                        columns: effectiveColumns,
+                        columns: columnsInVisualOrder,
                         grid,
                         onFocusChange,
                         onSelectedRowIdChange,
@@ -2648,13 +2654,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         onSelectionChange?.(after.selection);
                         const beforeFullRow = singleFullRowSelection(
                           before.selection,
-                          effectiveColumns.filter(
+                          columnsInVisualOrder.filter(
                             (c) => c.id !== ROW_SELECT_COLUMN_ID,
                           ),
                         );
                         const afterFullRow = singleFullRowSelection(
                           after.selection,
-                          effectiveColumns.filter(
+                          columnsInVisualOrder.filter(
                             (c) => c.id !== ROW_SELECT_COLUMN_ID,
                           ),
                         );
@@ -3077,14 +3083,13 @@ function resolvePasteAnchor<TRow extends PretableRow>(
   ranges: readonly PretableCellRange[],
   focus: PretableFocusState,
   visibleRows: readonly PretableVisibleRow<TRow>[],
-  effectiveColumns: readonly PretableColumn<TRow>[],
+  /** Columns in DRAWN order — paste geometry counts across them. */
+  columns: readonly PretableColumn<TRow>[],
 ): {
   anchor: PretableCellAddress;
   selectionSize: { rows: number; columns: number };
 } | null {
-  const dataColumns = effectiveColumns.filter(
-    (c) => c.id !== ROW_SELECT_COLUMN_ID,
-  );
+  const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
   if (dataColumns.length === 0 || visibleRows.length === 0) return null;
 
   if (ranges.length === 0) {
@@ -3214,12 +3219,15 @@ function normalizeStyleSignature(styleValue: string) {
 function computeSelectionExtent<TRow extends PretableRow>(
   ranges: readonly PretableCellRange[],
   snapshot: PretableGridSnapshot<TRow>,
-  effectiveColumns: readonly PretableColumn<TRow>[],
+  /**
+   * Columns in DRAWN order. A range's bounds are column ids with everything
+   * between them implied, so the span — and therefore the count announced —
+   * only means what the user sees if this is the order on screen.
+   */
+  columns: readonly PretableColumn<TRow>[],
 ): { rowCount: number; columnCount: number; isAll: boolean } {
   const visibleRows = snapshot.visibleRows;
-  const dataColumns = effectiveColumns.filter(
-    (c) => c.id !== ROW_SELECT_COLUMN_ID,
-  );
+  const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
 
   if (
     ranges.length === 0 ||
@@ -3235,8 +3243,8 @@ function computeSelectionExtent<TRow extends PretableRow>(
     if (r) rowOrder.set(r.id, i);
   }
   const columnOrder = new Map<string, number>();
-  for (let i = 0; i < effectiveColumns.length; i += 1) {
-    const c = effectiveColumns[i];
+  for (let i = 0; i < columns.length; i += 1) {
+    const c = columns[i];
     if (c) columnOrder.set(c.id, i);
   }
 
@@ -3273,7 +3281,7 @@ function computeSelectionExtent<TRow extends PretableRow>(
       const colHi = Math.max(c1, c2);
       colsForRange = [];
       for (let i = colLo; i <= colHi; i += 1) {
-        const col = effectiveColumns[i];
+        const col = columns[i];
         if (col && col.id !== ROW_SELECT_COLUMN_ID) {
           colsForRange.push(col);
         }
