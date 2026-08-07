@@ -1,14 +1,12 @@
-import type { CSSProperties } from "react";
+import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
 
 import { getGroupPanelStyle } from "../styles";
 import {
+  DEFAULT_GROUP_PANEL_EMPTY_MESSAGE,
   composeChipAccessibleName,
+  moveGroupLevel,
   removeGroupLevel,
 } from "./group-panel-model";
-
-/** Default for `groupPanel.emptyMessage`. */
-export const DEFAULT_GROUP_PANEL_EMPTY_MESSAGE =
-  "Drag a column here to group by it";
 
 export interface GroupPanelProps {
   /**
@@ -50,8 +48,37 @@ export function GroupPanel({
   onChange,
   style,
 }: GroupPanelProps) {
+  // The roving tab stop. This is the panel's ONLY state, and it is about the
+  // keyboard rather than about the grouping — the levels themselves stay a
+  // pure projection of the prop.
+  const [activeIndex, setActiveIndex] = useState(0);
+  const chipNodes = useRef(new Map<string, HTMLDivElement>());
+  // Which chip to put DOM focus back on once the reordered list has committed.
+  // Keyed by column id, not by index: "focus follows the moved chip" is a
+  // statement about a chip's identity, and after a move its index is exactly
+  // the thing that changed.
+  const refocusRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const columnId = refocusRef.current;
+    if (columnId === null) return;
+    refocusRef.current = null;
+    // React reorders keyed children by re-inserting the DOM nodes, and
+    // detaching a focused element drops focus to the body. Without this the
+    // first Shift+Arrow would work and the second would go nowhere.
+    chipNodes.current.get(columnId)?.focus();
+  });
+
   const isEmpty = rowGroups.length === 0;
   const panelStyle = { ...getGroupPanelStyle(height), ...style };
+  // A removal can leave the stored index past the end.
+  const active = Math.min(activeIndex, Math.max(rowGroups.length - 1, 0));
+
+  const focusChip = (columnId: string | undefined, index: number) => {
+    if (columnId === undefined) return;
+    setActiveIndex(index);
+    chipNodes.current.get(columnId)?.focus();
+  };
 
   // `role="listbox"` with zero options fails axe (and tells a screen-reader
   // user there is a list to explore when there is not), so an empty panel is
@@ -85,15 +112,61 @@ export function GroupPanel({
               rowGroups.length,
             )}
             aria-posinset={index + 1}
-            aria-selected={index === 0}
+            aria-selected={index === active}
             aria-setsize={rowGroups.length}
             data-pretable-column-id={columnId}
             data-pretable-group-chip=""
             key={columnId}
+            onFocus={() => setActiveIndex(index)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                const delta = event.key === "ArrowLeft" ? -1 : 1;
+                const target = index + delta;
+
+                if (event.shiftKey) {
+                  // Reorder. `moveGroupLevel` returns the same array when the
+                  // target is off either end, so the first and last chips
+                  // simply stay put — no wrap, and nothing is committed.
+                  const next = moveGroupLevel(rowGroups, index, target);
+                  if (next === rowGroups) return;
+                  event.preventDefault();
+                  setActiveIndex(target);
+                  refocusRef.current = columnId;
+                  onChange(next);
+                  return;
+                }
+
+                if (target < 0 || target >= rowGroups.length) return;
+                event.preventDefault();
+                focusChip(rowGroups[target], target);
+                return;
+              }
+
+              if (event.key === "Delete" || event.key === "Backspace") {
+                // Backspace is a browser back-navigation shortcut in some
+                // configurations, so this must not fall through.
+                event.preventDefault();
+                const next = removeGroupLevel(rowGroups, index);
+                if (next === rowGroups) return;
+                // Keep the keyboard in the strip: focus the level that slides
+                // into this slot, or the one before it when the last chip went.
+                refocusRef.current =
+                  rowGroups[index + 1] ?? rowGroups[index - 1] ?? null;
+                setActiveIndex(Math.min(index, next.length - 1));
+                onChange(next);
+              }
+            }}
+            ref={(node) => {
+              if (node) {
+                chipNodes.current.set(columnId, node);
+              } else {
+                chipNodes.current.delete(columnId);
+              }
+            }}
             role="option"
-            // Roving tabindex: the strip is one tab stop and the arrow keys
-            // move within it. Task 3 makes the active index follow focus.
-            tabIndex={index === 0 ? 0 : -1}
+            // Roving tabindex: the strip is one tab stop, and the arrow keys
+            // move within it.
+            tabIndex={index === active ? 0 : -1}
           >
             <span aria-hidden="true" data-pretable-chip-handle="" />
             {/* Hidden from the accessibility tree because the option root's

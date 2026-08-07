@@ -14,6 +14,10 @@
  * @internal
  */
 
+/** Default for `groupPanel.emptyMessage`. */
+export const DEFAULT_GROUP_PANEL_EMPTY_MESSAGE =
+  "Drag a column here to group by it";
+
 /**
  * Move the level at `from` to `to`.
  *

@@ -232,3 +232,194 @@ describe("group panel — chips", () => {
     expect(onRowGroupsChange).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * A consumer mirroring `onRowGroupsChange` back into controlled
+ * `state.rowGroups` — the documented pattern, and the only harness in which a
+ * SECOND keystroke means anything: a statically controlled `state.rowGroups`
+ * is re-asserted after every change, so a repeated Shift+Arrow would keep
+ * moving the same level out of the same slot.
+ */
+function MirroredGrid({
+  initialRowGroups,
+  onRowGroupsChange,
+}: {
+  initialRowGroups: string[];
+  onRowGroupsChange?: (rowGroups: string[]) => void;
+}) {
+  const [rowGroups, setRowGroups] = React.useState(initialRowGroups);
+
+  return (
+    <Grid
+      groupPanel={{ enabled: true }}
+      onRowGroupsChange={(next) => {
+        setRowGroups(next);
+        onRowGroupsChange?.(next);
+      }}
+      state={{ rowGroups }}
+    />
+  );
+}
+
+const chipIds = (view: { container: HTMLElement }) =>
+  Array.from(view.container.querySelectorAll("[data-pretable-group-chip]")).map(
+    (chip) => chip.getAttribute("data-pretable-column-id"),
+  );
+
+const activeChipId = () =>
+  document.activeElement?.getAttribute("data-pretable-column-id") ?? null;
+
+describe("group panel — keyboard model", () => {
+  it("arrow keys move focus between chips without wrapping", () => {
+    const view = render(
+      <MirroredGrid initialRowGroups={["sector", "industry"]} />,
+    );
+    const chips = view.getAllByRole("option");
+    chips[0].focus();
+
+    fireEvent.keyDown(chips[0], { key: "ArrowRight" });
+    expect(activeChipId()).toBe("industry");
+
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(activeChipId()).toBe("sector");
+
+    // The ends are walls, not wraps.
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
+    expect(activeChipId()).toBe("sector");
+  });
+
+  it("gives the focused chip the tab stop and takes it from the others", () => {
+    const view = render(
+      <MirroredGrid initialRowGroups={["sector", "industry"]} />,
+    );
+    const chips = view.getAllByRole("option");
+
+    expect(chips[0]).toHaveAttribute("tabindex", "0");
+    expect(chips[1]).toHaveAttribute("tabindex", "-1");
+
+    chips[0].focus();
+    fireEvent.keyDown(chips[0], { key: "ArrowRight" });
+
+    expect(view.getAllByRole("option")[0]).toHaveAttribute("tabindex", "-1");
+    expect(view.getAllByRole("option")[1]).toHaveAttribute("tabindex", "0");
+  });
+
+  it("Shift+arrow moves the focused grouping level", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+    const chips = view.getAllByRole("option");
+    chips[0].focus();
+
+    fireEvent.keyDown(chips[0], { key: "ArrowRight", shiftKey: true });
+
+    expect(onRowGroupsChange).toHaveBeenCalledWith(["industry", "sector"]);
+    expect(chipIds(view)).toEqual(["industry", "sector"]);
+  });
+
+  it("Shift+ArrowLeft on the first chip is a no-op, not a wrap", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+    const chips = view.getAllByRole("option");
+    chips[0].focus();
+
+    fireEvent.keyDown(chips[0], { key: "ArrowLeft", shiftKey: true });
+
+    expect(onRowGroupsChange).not.toHaveBeenCalled();
+    expect(chipIds(view)).toEqual(["sector", "industry"]);
+  });
+
+  it("focus follows the moved chip, so a repeated Shift+ArrowRight walks it along", () => {
+    // CAVEAT: jsdom does NOT drop focus when React re-inserts a keyed node to
+    // reorder it, but browsers do — so the `refocusRef` layout effect in
+    // GroupPanel cannot be proven necessary here (its negative control does
+    // not fire on this test, only on the removal one below). What IS proven
+    // here is the rest of the chain: the move commits, the roving tab stop
+    // travels with the chip, and a second keystroke on the still-focused chip
+    // moves the SAME level again rather than whatever now sits at index 0.
+    // The real-browser proof belongs in the Playwright spec.
+    const view = render(
+      <MirroredGrid initialRowGroups={["sector", "industry", "name"]} />,
+    );
+    const chips = view.getAllByRole("option");
+    chips[0].focus();
+
+    fireEvent.keyDown(chips[0], { key: "ArrowRight", shiftKey: true });
+    expect(chipIds(view)).toEqual(["industry", "sector", "name"]);
+    expect(activeChipId()).toBe("sector");
+    expect(view.getAllByRole("option")[1]).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(document.activeElement!, {
+      key: "ArrowRight",
+      shiftKey: true,
+    });
+    expect(chipIds(view)).toEqual(["industry", "name", "sector"]);
+    expect(activeChipId()).toBe("sector");
+    expect(view.getAllByRole("option")[2]).toHaveAttribute("tabindex", "0");
+  });
+
+  it("Delete removes the focused level", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+    const chips = view.getAllByRole("option");
+    chips[0].focus();
+
+    fireEvent.keyDown(chips[0], { key: "Delete" });
+
+    expect(onRowGroupsChange).toHaveBeenCalledWith(["industry"]);
+    expect(chipIds(view)).toEqual(["industry"]);
+  });
+
+  it("Backspace removes the focused level too", () => {
+    const view = render(
+      <MirroredGrid initialRowGroups={["sector", "industry"]} />,
+    );
+    const chips = view.getAllByRole("option");
+    chips[1].focus();
+
+    fireEvent.keyDown(chips[1], { key: "Backspace" });
+
+    expect(chipIds(view)).toEqual(["sector"]);
+  });
+
+  it("Delete on the last remaining chip empties the panel and flips the role back", () => {
+    const view = render(<MirroredGrid initialRowGroups={["sector"]} />);
+    const chip = view.getAllByRole("option")[0];
+    chip.focus();
+
+    fireEvent.keyDown(chip, { key: "Delete" });
+
+    expect(view.queryAllByRole("option")).toHaveLength(0);
+    expect(panel(view)).toHaveAttribute("role", "presentation");
+    expect(
+      view.container.querySelector("[data-pretable-group-panel-empty]"),
+    ).not.toBeNull();
+  });
+
+  it("leaves focus on a chip after a removal, so the strip stays keyboard-usable", () => {
+    const view = render(
+      <MirroredGrid initialRowGroups={["sector", "industry", "name"]} />,
+    );
+    const chips = view.getAllByRole("option");
+    chips[1].focus();
+
+    fireEvent.keyDown(chips[1], { key: "Delete" });
+
+    expect(chipIds(view)).toEqual(["sector", "name"]);
+    expect(activeChipId()).toBe("name");
+  });
+});
