@@ -6,7 +6,7 @@
 dedicated group column, a working twisty, keyboard expand/collapse, aggregate
 cells, and `treegrid` semantics.
 
-**Architecture:** The engine gains a *derived* column list (`getColumns()`)
+**Architecture:** The engine gains a _derived_ column list (`getColumns()`)
 that prepends a synthetic `__pretable_group__` column and drops the grouped
 columns whenever `rowGroups` is non-empty; `options.columns` stays the
 consumer's truth so every existing column guard is untouched. `moveFocus`
@@ -27,7 +27,7 @@ Playwright (Chromium + WebKit), api-extractor, pnpm workspaces.
   `--pretable-*` tokens, matching `packages/ui/src/grid.css`.
 - **No backcompat shims.** Pre-1.0, no external consumers. Rename and replace
   outright; never add an alias.
-- **jsdom has no layout engine.** Any claim about a *pixel* — indentation
+- **jsdom has no layout engine.** Any claim about a _pixel_ — indentation
   width, sticky offsets, scroll position — is only verified by a Playwright
   assertion. Right-pin shipped measurably broken past 316 green jsdom tests.
 - **Negative control on every behavioural test.** Before you commit, delete the
@@ -41,6 +41,7 @@ Playwright (Chromium + WebKit), api-extractor, pnpm workspaces.
 ## File Structure
 
 **Create:**
+
 - `packages/grid-core/src/group-column.ts` — the synthetic column definition, its
   id constant, and the pure `resolveEffectiveColumns()` derivation.
 - `packages/grid-core/src/__tests__/group-column.test.ts`
@@ -50,6 +51,7 @@ Playwright (Chromium + WebKit), api-extractor, pnpm workspaces.
 - `apps/website/e2e/grouping.spec.ts` — the real-browser gate.
 
 **Modify:**
+
 - `packages/grid-core/src/create-grid-core.ts` — `getColumns()`, the
   `groupColumnsByPin` synthetic check, `moveFocus`, and the governing doc
   comment at `:37-59`.
@@ -69,6 +71,7 @@ Playwright (Chromium + WebKit), api-extractor, pnpm workspaces.
 ## Task 1: The derived column list
 
 **Files:**
+
 - Create: `packages/grid-core/src/group-column.ts`
 - Create: `packages/grid-core/src/__tests__/group-column.test.ts`
 - Modify: `packages/grid-core/src/types.ts`
@@ -76,7 +79,7 @@ Playwright (Chromium + WebKit), api-extractor, pnpm workspaces.
 
 **Why a derivation and not an injection.** Read the spec's Decision 1 before
 starting. In short: `mergeColumnsFromProps` (`create-grid-core.ts:1004-1016`)
-rebuilds the column list by mapping over the *consumer's* array, so anything
+rebuilds the column list by mapping over the _consumer's_ array, so anything
 pushed into `options.columns` is deleted on the next prop identity change. And
 the column list can't be built React-side either, because its contents depend on
 `rowGroups`, which is engine state. So it is derived on read and cached.
@@ -258,6 +261,7 @@ groupColumn?.header ?? <header of the column named by rowGroups[0]> ?? ""`, and
 default — see spec).
 
 In `create-grid-core.ts`:
+
 - Add `getColumns()` to the returned engine object, backed by a
   `cachedEffectiveColumns` field.
 - Null that cache everywhere `cachedVisibleRows` is nulled, **plus** in every
@@ -298,6 +302,7 @@ pnpm format:write && git add -A && git commit -m "feat(grid-core): derive the gr
 ## Task 2: Focus lands on group rows
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts:37-59` (doc comment),
   `:61-105` (`scanDataRows`, `dataRowAt`), `:566-710` (`moveFocus`)
 - Modify: `packages/grid-core/src/__tests__/move-focus.test.ts` (currently
@@ -447,6 +452,7 @@ pnpm format:write && git add -A && git commit -m "feat(grid-core): let keyboard 
 ## Task 3: Render the group row
 
 **Files:**
+
 - Create: `packages/react/src/group-row.tsx`
 - Create: `packages/react/src/__tests__/group-row-render.test.tsx`
 - Modify: `packages/react/src/pretable-surface.tsx:2601` (the early return),
@@ -518,12 +524,12 @@ it("carries the depth as a custom property, per level", () => {
 
 Also cover, in the same file: `role="row"` plus `aria-level="1"` at depth 0 and
 `"2"` at depth 1; `aria-expanded` reading `"true"` expanded and `"false"`
-collapsed on a group that *does* have children; a null or `""` group value
+collapsed on a group that _does_ have children; a null or `""` group value
 rendering `(Blanks)`; and `formatAggregate` being applied to an aggregate cell
 while a column without it falls back to default stringification.
 
 Note that jsdom does not resolve `calc()` or custom properties into computed
-layout, which is why the depth test asserts on the *declaration* and Task 6
+layout, which is why the depth test asserts on the _declaration_ and Task 6
 measures the actual pixels in a browser.
 
 - [ ] **Step 2: Run and watch it fail**
@@ -544,13 +550,13 @@ as the data-row loop does — so aggregates line up under their headers.
 **Emit exactly these attribute names** — Task 5's stylesheet and the tests above
 both key on them, so a rename in one place breaks the other silently:
 
-| Element | Attribute |
-|---|---|
-| the group row | `data-pretable-group-row` |
-| its cell in the group column | `data-pretable-group-cell` |
-| the twisty button | `data-pretable-group-twisty` |
-| the `(N)` child count | `data-pretable-group-count` |
-| a **data** row's cell in the group column | `data-pretable-group-leaf` |
+| Element                                   | Attribute                    |
+| ----------------------------------------- | ---------------------------- |
+| the group row                             | `data-pretable-group-row`    |
+| its cell in the group column              | `data-pretable-group-cell`   |
+| the twisty button                         | `data-pretable-group-twisty` |
+| the `(N)` child count                     | `data-pretable-group-count`  |
+| a **data** row's cell in the group column | `data-pretable-group-leaf`   |
 
 The group column's cell contains, in order: a `<button>` twisty, the label, and
 `(childCount)`. Rules that are easy to get wrong and are each covered above:
@@ -595,6 +601,7 @@ pnpm format:write && git add -A && git commit -m "feat(react): render group head
 ## Task 4: Keyboard expand/collapse
 
 **Files:**
+
 - Modify: `packages/react/src/pretable-surface.tsx:3513-3757` (`handleSurfaceKeyDown`)
 - Modify: `packages/react/src/__tests__/pretable-surface.test.tsx:5099-5255`
 
@@ -608,13 +615,13 @@ them.** They are the clearest record of the contract this sub-project changes.
 
 Invert the seven assertions. Then add, per the spec's branch table:
 
-| Key | Focus in the group column | Focus on an aggregate cell |
-|---|---|---|
-| `Right` | collapsed → expand; expanded → move to next cell | move right |
-| `Left` | expanded → collapse; collapsed → move to parent group row | move left |
-| `Enter` / `Space` | toggle | toggle |
+| Key               | Focus in the group column                                 | Focus on an aggregate cell |
+| ----------------- | --------------------------------------------------------- | -------------------------- |
+| `Right`           | collapsed → expand; expanded → move to next cell          | move right                 |
+| `Left`            | expanded → collapse; collapsed → move to parent group row | move left                  |
+| `Enter` / `Space` | toggle                                                    | toggle                     |
 
-Test each cell of that table, plus: `Left` on a collapsed *top-level* group
+Test each cell of that table, plus: `Left` on a collapsed _top-level_ group
 (no parent) is a no-op, and `Enter` on a data row still does whatever it did
 before (find out and preserve it — do not assume).
 
@@ -653,6 +660,7 @@ pnpm format:write && git add -A && git commit -m "feat(react): APG treegrid keyb
 ## Task 5: Styling
 
 **Files:**
+
 - Modify: `packages/ui/src/grid.css`
 - Modify: `packages/ui/src/themes/excel.css`
 - Modify: `packages/ui/src/themes/material.css`
@@ -660,14 +668,14 @@ pnpm format:write && git add -A && git commit -m "feat(react): APG treegrid keyb
 Vanilla CSS only, `:where([data-pretable-*])` convention as in the rest of
 `grid.css`.
 
-**Tokens are defined per theme, not centrally.** `grid.css` only *consumes*
+**Tokens are defined per theme, not centrally.** `grid.css` only _consumes_
 `--pretable-*`; the values live in `themes/excel.css` and
 `themes/material.css`. A new token added to one theme resolves to nothing in
 the other, and `calc(0 * <nothing>)` collapses the indent to zero — which is
 precisely the failure Task 6's first Playwright assertion exists to catch. Add
 `--pretable-group-indent` to **both** themes, next to `--pretable-cell-padding-x`
 (excel.css:58, material.css's corresponding block), and give the consuming rule
-a literal fallback so a third-party theme degrades to *indented* rather than
+a literal fallback so a third-party theme degrades to _indented_ rather than
 flat.
 
 - [ ] **Step 1: Add the token to both themes**
@@ -675,70 +683,72 @@ flat.
 `packages/ui/src/themes/excel.css`, in the spacing block near `:58`:
 
 ```css
-  --pretable-group-indent: 16px;
+--pretable-group-indent: 16px;
 ```
 
 `packages/ui/src/themes/material.css`, in its matching spacing block:
 
 ```css
-  --pretable-group-indent: 20px;
+--pretable-group-indent: 20px;
 ```
 
 - [ ] **Step 2: Add the rules to `grid.css`**
 
 ```css
-  /* Group header rows read as structure, not data — they borrow the header's
+/* Group header rows read as structure, not data — they borrow the header's
      fill so the eye groups them with the chrome rather than the records. */
-  :where([data-pretable-group-row]) {
-    background: var(--pretable-bg-header);
-    font-weight: 600;
-    color: var(--pretable-text-header);
-  }
+:where([data-pretable-group-row]) {
+  background: var(--pretable-bg-header);
+  font-weight: 600;
+  color: var(--pretable-text-header);
+}
 
-  /* Indent is padding INSIDE the cell box. Indenting the row instead would
+/* Indent is padding INSIDE the cell box. Indenting the row instead would
      scroll the indent away from a pinned group column, compute ellipsis
      truncation against the wrong width, and misplace the focus outline. */
-  :where([data-pretable-group-cell]) {
-    display: flex;
-    align-items: center;
-    gap: var(--pretable-cell-padding-x);
-    padding-left: calc(
-      var(--pretable-cell-padding-x) + var(--pretable-group-depth, 0) *
-        var(--pretable-group-indent, 16px)
-    );
-  }
+:where([data-pretable-group-cell]) {
+  display: flex;
+  align-items: center;
+  gap: var(--pretable-cell-padding-x);
+  padding-left: calc(
+    var(--pretable-cell-padding-x) + var(--pretable-group-depth, 0) *
+      var(--pretable-group-indent, 16px)
+  );
+}
 
-  :where([data-pretable-group-twisty]) {
-    flex: none;
-    width: 1em;
-    height: 1em;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    cursor: pointer;
-    transition: rotate 120ms ease;
-  }
+:where([data-pretable-group-twisty]) {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  transition: rotate 120ms ease;
+}
 
-  :where([data-pretable-group-twisty][aria-expanded="false"]) {
-    rotate: -90deg;
-  }
+:where([data-pretable-group-twisty][aria-expanded="false"]) {
+  rotate: -90deg;
+}
 
-  :where([data-pretable-group-twisty]:focus-visible) {
-    outline: 2px solid var(--pretable-focus-ring);
-    outline-offset: 1px;
-  }
+:where([data-pretable-group-twisty]:focus-visible) {
+  outline: 2px solid var(--pretable-focus-ring);
+  outline-offset: 1px;
+}
 
-  :where([data-pretable-group-count]) {
-    color: var(--pretable-text-dim);
-    font-weight: 400;
-  }
+:where([data-pretable-group-count]) {
+  color: var(--pretable-text-dim);
+  font-weight: 400;
+}
 
-  /* Data rows sit one twisty-width in so their content lines up with sibling
+/* Data rows sit one twisty-width in so their content lines up with sibling
      group labels instead of hanging a chevron to the left. */
-  :where([data-pretable-group-leaf]) {
-    padding-left: calc(var(--pretable-cell-padding-x) + 1em + var(--pretable-cell-padding-x));
-  }
+:where([data-pretable-group-leaf]) {
+  padding-left: calc(
+    var(--pretable-cell-padding-x) + 1em + var(--pretable-cell-padding-x)
+  );
+}
 ```
 
 Match the surrounding file's actual nesting and selector style — `grid.css`
@@ -762,6 +772,7 @@ pnpm format:write && git add -A && git commit -m "feat(ui): style group rows, tw
 ## Task 6: Real-browser verification, API report, full validation
 
 **Files:**
+
 - Create: `apps/website/e2e/grouping.spec.ts`
 - Modify: the api-extractor reports (regenerated, not hand-edited)
 

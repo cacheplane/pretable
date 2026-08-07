@@ -29,20 +29,20 @@ out under "Deliberately not doing" with the reason.
 ### 1. A dedicated group column
 
 When `rowGroups` is non-empty a synthetic column with id `__pretable_group__`
-leads the column list. It carries the label and twisty for *every* level,
+leads the column list. It carries the label and twisty for _every_ level,
 indented by depth — not one column per level.
 
 **It is derived, not injected.** The existing `__pretable_row_select__` column
 is built React-side (`pretable-surface.tsx:777-795`) and prepended to the
 `columns` prop before it ever reaches the engine. The group column cannot work
-that way, because its presence is a function of `rowGroups` — *engine* state
+that way, because its presence is a function of `rowGroups` — _engine_ state
 that `setRowGroups` mutates, and that SP3's drag panel will mutate constantly.
 React would have to read `snapshot.rowGroups` to build the column list that
 produces the snapshot. That is a cycle.
 
 Nor can the engine simply push it into `options.columns`:
 `mergeColumnsFromProps` (`create-grid-core.ts:1004-1016`) rebuilds the list by
-mapping over the *consumer's* array, so any column not in props is dropped on
+mapping over the _consumer's_ array, so any column not in props is dropped on
 the next prop identity change — which `HeroGrid` triggers on every render.
 
 So the engine gains a derived accessor, `grid.getColumns()`, cached and
@@ -81,7 +81,7 @@ grouping came from initial options or a later `setRowGroups` call. Opt out with
 
 ### 2. Focusable group rows, APG treegrid keyboard model
 
-SP1 made `moveFocus` step *over* group rows, and left an explicit hook for this
+SP1 made `moveFocus` step _over_ group rows, and left an explicit hook for this
 sub-project (`create-grid-core.ts:47`). SP2 cashes it in: group rows become
 focusable and arrow navigation lands on them.
 
@@ -90,23 +90,23 @@ of a data row onto a group row lands on that group's `price` aggregate, not on
 the group column — column stability is what every grid and spreadsheet does,
 and snapping to column 0 would silently lose the user's place. So a group-row
 focus address is `{ rowId: groupId, columnId: <whatever column focus was in> }`,
-and the `Left`/`Right` behaviour below keys on *whether the focused column is
-the group column*, not on the row's kind alone.
+and the `Left`/`Right` behaviour below keys on _whether the focused column is
+the group column_, not on the row's kind alone.
 
 This means `moveFocus` (`create-grid-core.ts:566-710`) stops working in
-data-row *ordinals* and walks flat-list positions instead. `scanDataRows` and
+data-row _ordinals_ and walks flat-list positions instead. `scanDataRows` and
 `dataRowAt` each have exactly one call site, both inside `moveFocus`, so the
 blast radius is contained — but the governing doc comment at
 `create-grid-core.ts:37-59` must be rewritten, not just amended.
 
 Arrow keys follow the ARIA APG treegrid rules, which compose exactly:
 
-| Key | Focus in the group column | Focus on a group's aggregate cell |
-|---|---|---|
-| `Right` | collapsed → expand; expanded → move to the next cell | move right |
-| `Left` | expanded → collapse; collapsed → move to the parent group row | move left |
-| `Enter` / `Space` | toggle | toggle |
-| `Up` / `Down` | move between rows of either kind | same |
+| Key               | Focus in the group column                                     | Focus on a group's aggregate cell |
+| ----------------- | ------------------------------------------------------------- | --------------------------------- |
+| `Right`           | collapsed → expand; expanded → move to the next cell          | move right                        |
+| `Left`            | expanded → collapse; collapsed → move to the parent group row | move left                         |
+| `Enter` / `Space` | toggle                                                        | toggle                            |
+| `Up` / `Down`     | move between rows of either kind                              | same                              |
 
 This keeps aggregate cells reachable by keyboard — a rule that consumed
 `Left`/`Right` outright would strand them — while putting collapse and expand
@@ -169,7 +169,7 @@ Columns without it render the aggregate through the same
 default-stringify path a plain cell uses. `format` is untouched and can never be
 invoked without a row. This also matches reality: an aggregate is frequently a
 different kind of value than the cell beneath it (a count under a currency
-column), so one formatter often *shouldn't* serve both.
+column), so one formatter often _shouldn't_ serve both.
 
 ## Rendering
 
@@ -208,7 +208,7 @@ Columns with no aggregate for that group render empty.
 **No scroll correction is needed, and we should not build any.** pretable
 virtualizes against a real scrolling element with a real spacer
 (`getScrollContentStyle` sets `height: totalHeight`; rows are `position:
-absolute; top`). Collapsing a group removes height strictly *below* the
+absolute; top`). Collapsing a group removes height strictly _below_ the
 anchor, so everything above keeps its exact pixel position — viewport
 stability is a property of the layout, not of compensating code. ag-grid's
 only scroll write in the entire expansion path is gated on
@@ -246,7 +246,7 @@ item to verify in a real browser, not machinery to pre-build.**
   accessibility docs recommend turning it off, because sticky rows put rows in
   an order that contradicts `aria-rowindex`. Ship rendering without it.
 - **Group footers / totals rows.** Their existence forces a real decision about
-  whether an expanded group's header *hides* its own aggregates to avoid
+  whether an expanded group's header _hides_ its own aggregates to avoid
   showing "Sum: 500" twice (`valueService.displayIgnoresAggData`). We show
   aggregates on the header unconditionally, which is only correct while there
   is no footer.

@@ -6,6 +6,7 @@ import {
   type SourceRow,
 } from "./derived-rows";
 import { isFilterActive } from "./evaluate-filter";
+import { GROUP_COLUMN_ID, resolveEffectiveColumns } from "./group-column";
 import {
   addGroupExpansionOverride,
   resolveGroupExpansionOverrideLimit,
@@ -156,11 +157,16 @@ function applyAutosize<TRow extends PretableRow>(
  * consumer that declares columns interleaved gets them regrouped without
  * otherwise being reshuffled.
  *
- * The synthetic row-select column leads its OWN region rather than the whole
- * array. It is pinned left by default, in which case those are the same thing;
- * but `rowSelectionColumn.pinned: false` makes it scrollable, and forcing it to
- * index 0 ahead of the left-pinned run would be the very desync this helper
- * exists to prevent.
+ * A synthetic column leads its OWN region rather than the whole array. The
+ * row-select column is pinned left by default, in which case those are the same
+ * thing; but `rowSelectionColumn.pinned: false` makes it scrollable, and
+ * forcing it to index 0 ahead of the left-pinned run would be the very desync
+ * this helper exists to prevent. The derived group column
+ * ({@link GROUP_COLUMN_ID}) is unpinned by default and follows the same rule.
+ *
+ * When both synthetics land in the same region, row-select comes first: it is
+ * unshifted last, and `resolveEffectiveColumns` hands the group column in
+ * ahead of it.
  */
 function groupColumnsByPin<TRow extends PretableRow>(
   columns: readonly PretableColumn<TRow>[],
@@ -176,7 +182,7 @@ function groupColumnsByPin<TRow extends PretableRow>(
         : column.pinned === "right"
           ? right
           : unpinned;
-    if (column.id === ROW_SELECT_COLUMN_ID) {
+    if (column.id === ROW_SELECT_COLUMN_ID || column.id === GROUP_COLUMN_ID) {
       region.unshift(column);
     } else {
       region.push(column);
@@ -225,6 +231,21 @@ export function createGridCore<TRow extends PretableRow>(
   let cachedDerivedOverrides: ReadonlySet<string> | null = null;
   let cachedDerivedDefaultExpanded: boolean | null = null;
   let cachedDerivedAggregateFiltered: boolean | null = null;
+  /**
+   * The derived render column list, plus the two inputs it is a function of.
+   *
+   * Keyed on identity rather than nulled by hand in every mutator: every path
+   * that changes the columns replaces `options.columns` wholesale (there is no
+   * in-place column edit anywhere in this file), and `setRowGroups` replaces
+   * `rowGroups` wholesale for the same reason the row cache keys on it. Keying
+   * therefore covers `resetColumnLayout`, `autosizeColumns` and the autosize
+   * re-measure inside `setRows` for free — three column writers that a
+   * hand-maintained invalidation list would have had to remember.
+   */
+  let cachedEffectiveColumns: readonly PretableColumn<TRow>[] | null = null;
+  let cachedEffectiveColumnsSource: readonly PretableColumn<TRow>[] | null =
+    null;
+  let cachedEffectiveColumnsRowGroups: readonly string[] | null = null;
   let sort: PretableSortEntry[] = [];
   let filters: Record<string, ColumnFilter> = {};
   // Grouping levels, outermost first. Seeded from `rowGroup: true` columns in
@@ -280,6 +301,7 @@ export function createGridCore<TRow extends PretableRow>(
       };
     },
     getSnapshot,
+    getColumns,
     setSort(columnId: string | null, direction: PretableSortDirection) {
       const candidate: PretableSortEntry[] =
         columnId && direction ? [{ columnId, direction }] : [];
@@ -1319,6 +1341,40 @@ export function createGridCore<TRow extends PretableRow>(
 
     previousAggregates = next;
     return result;
+  }
+
+  /**
+   * The render column list — see `PretableEngine.getColumns`. Derived on read
+   * and cached, never stored in `options.columns`: `mergeColumnsFromProps`
+   * rebuilds that array from the consumer's own, so a synthetic column pushed
+   * into it would be dropped on the next prop identity change.
+   */
+  function getColumns(): readonly PretableColumn<TRow>[] {
+    if (
+      cachedEffectiveColumns !== null &&
+      cachedEffectiveColumnsSource === options.columns &&
+      cachedEffectiveColumnsRowGroups === rowGroups
+    ) {
+      return cachedEffectiveColumns;
+    }
+
+    const resolved = resolveEffectiveColumns({
+      columns: options.columns,
+      rowGroups,
+      groupColumn: options.groupColumn,
+      hideGroupedColumns: options.hideGroupedColumns,
+    });
+    // Ungrouped, `resolved` IS `options.columns`, which is already grouped by
+    // pin — regrouping would only churn identity. Grouped, the freshly
+    // prepended synthetic column has to be seated in its own region.
+    const effective =
+      resolved === options.columns ? resolved : groupColumnsByPin(resolved);
+
+    cachedEffectiveColumns = effective;
+    cachedEffectiveColumnsSource = options.columns;
+    cachedEffectiveColumnsRowGroups = rowGroups;
+
+    return effective;
   }
 
   function getSnapshot(): PretableGridSnapshot<TRow> {

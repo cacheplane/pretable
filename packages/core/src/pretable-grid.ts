@@ -36,6 +36,14 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
   /** Read the current snapshot. Stable reference until the next mutation. */
   getSnapshot(): PretableGridSnapshot<TRow>;
 
+  /**
+   * The columns to draw: `options.columns` plus the derived group column, minus
+   * the grouped columns, while grouping is active. Identical to
+   * `options.columns` — by identity — when ungrouped. Stable reference until
+   * the columns or the grouping levels change.
+   */
+  getColumns(): readonly PretableColumn<TRow>[];
+
   // sort / filter
   setSort(columnId: string | null, direction: PretableSortDirection): void;
   /** Atomically replace the ordered sort list. Unknown and `sortable: false` columns are dropped. */

@@ -2,6 +2,7 @@ import type {
   AutosizeOptions,
   PretableRowRange,
 } from "@pretable-internal/layout-core";
+import type { PretableGroupColumnOptions } from "./group-column";
 
 /**
  * Base row constraint — every row is at minimum a string-keyed record.
@@ -119,6 +120,15 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   options?: ColumnOption[];
   value?: (row: TRow) => unknown;
   format?: (input: PretableFormatInput<TRow>) => string;
+  /**
+   * Render this column's aggregate on a group row.
+   *
+   * Deliberately not `format`: `PretableFormatInput.row` is non-optional, so
+   * every consumer formatter is entitled to dereference it, and a group row has
+   * no row. Columns without `formatAggregate` fall back to the same default
+   * stringification a plain cell uses.
+   */
+  formatAggregate?: (input: PretableAggregateFormatInput<TRow>) => string;
   // new in sub-project C:
   minWidthPx?: number;
   maxWidthPx?: number;
@@ -158,6 +168,20 @@ export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
   value: unknown;
   row: TRow;
   column: PretableColumn<TRow>;
+}
+
+/**
+ * Input passed to a column's `formatAggregate` function. Carries the group row
+ * in place of a data row — an aggregate has no row behind it.
+ *
+ * @public
+ */
+export interface PretableAggregateFormatInput<
+  TRow extends PretableRow = PretableRow,
+> {
+  value: unknown;
+  column: PretableColumn<TRow>;
+  group: PretableGroupRow;
 }
 
 /**
@@ -201,6 +225,18 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
    * matter how many groups exist.
    */
   groupExpansionOverrideLimit?: number;
+  /**
+   * Configure the derived group column — the synthetic column that carries the
+   * label, twisty and child count for every grouping level. Present in
+   * `getColumns()` exactly while `rowGroups` is non-empty.
+   */
+  groupColumn?: PretableGroupColumnOptions;
+  /**
+   * Drop the grouped columns from the data area while grouping is active.
+   * Default `true`, uniformly — whether the grouping came from `rowGroup: true`
+   * on a column or from a later `setRowGroups` call.
+   */
+  hideGroupedColumns?: boolean;
 }
 
 /**
@@ -386,6 +422,16 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   options: PretableGridOptions<TRow>;
   subscribe(listener: () => void): () => void;
   getSnapshot(): PretableGridSnapshot<TRow>;
+  /**
+   * The columns a renderer should draw: `options.columns` plus the derived
+   * group column, minus the grouped columns, while `rowGroups` is non-empty.
+   * Identical to `options.columns` — by identity — when ungrouped.
+   *
+   * Every React-side column read goes through here. `options.columns` stays
+   * the consumer's truth, so the column mutators keep operating on real
+   * columns and need no synthetic-column special case.
+   */
+  getColumns(): readonly PretableColumn<TRow>[];
   setSort(columnId: string | null, direction: PretableSortDirection): void;
   replaceSort(entries: PretableSortEntry[]): void;
   setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
