@@ -14,6 +14,7 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
   rows: TRow[];
   rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
   onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
+  onRowSelectionChange?: PretableSurfaceProps<TRow>["onRowSelectionChange"];
   tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
   copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
   onCopy?: PretableSurfaceProps<TRow>["onCopy"];
@@ -45,6 +46,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   rows,
   rowSelectionColumn,
   onRowActivate,
+  onRowSelectionChange,
   tabBehavior,
   copyWithHeaders,
   onCopy,
@@ -137,6 +139,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
         )}
         rows={rows}
         onRowActivate={onRowActivate}
+        onRowSelectionChange={onRowSelectionChange}
         rowSelectionColumn={rowSelectionColumn}
         tabBehavior={tabBehavior}
         copyWithHeaders={copyWithHeaders}
