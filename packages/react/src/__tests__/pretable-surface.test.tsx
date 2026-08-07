@@ -4855,3 +4855,161 @@ describe("cell renderers", () => {
     expect(view.queryByTestId("hdr-desc")).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Column order after a drag-reorder
+//
+// A reorder moves columns in the engine and leaves the `columns` prop in
+// declaration order. Everything that resolves a selection RANGE — whose bounds
+// are column ids, with everything "between" them implied — has to resolve it
+// against the order on screen, or it covers cells the user can see are outside
+// their selection.
+// ---------------------------------------------------------------------------
+
+interface ReorderRow extends Record<string, unknown> {
+  id: string;
+  a: string;
+  b: string;
+  c: string;
+}
+
+const REORDER_ROWS: ReorderRow[] = [
+  { id: "r1", a: "a1", b: "b1", c: "c1" },
+  { id: "r2", a: "a2", b: "b2", c: "c2" },
+];
+
+const REORDER_COLUMNS = [
+  { id: "a", header: "A" },
+  { id: "b", header: "B" },
+  { id: "c", header: "C" },
+];
+
+/** Renders, then drags "a" to the end so the drawn order is b, c, a. */
+function renderReordered(
+  props: Partial<React.ComponentProps<typeof PretableSurface<ReorderRow>>> = {},
+) {
+  let captured: PretableGrid<ReorderRow> | null = null;
+  const view = render(
+    <PretableSurface<ReorderRow>
+      ariaLabel="reordered-grid"
+      columns={REORDER_COLUMNS}
+      getRowId={(row) => row.id}
+      onGridReady={(g) => {
+        captured = g;
+      }}
+      rows={REORDER_ROWS}
+      viewportHeight={300}
+      {...props}
+    />,
+  );
+  act(() => {
+    captured!.moveColumn("a", 2);
+  });
+  const drawn = Array.from(
+    view.container.querySelectorAll("[data-pretable-header-cell]"),
+  ).map((el) => el.getAttribute("data-pretable-column-id"));
+  expect(drawn).toEqual(["b", "c", "a"]);
+  return { view, grid: captured as unknown as PretableGrid<ReorderRow> };
+}
+
+describe("selection resolves against the drawn column order", () => {
+  it("highlights only the cells inside the range as drawn", () => {
+    const { view, grid } = renderReordered();
+    // The two rightmost columns on screen are c and a.
+    act(() => {
+      grid.setSelection({
+        ranges: [
+          {
+            startRowId: "r1",
+            endRowId: "r1",
+            startColumnId: "c",
+            endColumnId: "a",
+          },
+        ],
+        anchor: { rowId: "r1", columnId: "c" },
+      });
+    });
+
+    const highlighted = Array.from(
+      view.container.querySelectorAll(
+        '[data-pretable-row][data-pretable-row-id="r1"] [data-pretable-selected="true"]',
+      ),
+    ).map((el) => el.getAttribute("data-pretable-column-id"));
+    // "b" is drawn to the LEFT of both bounds — it is not in the range.
+    expect(highlighted).toEqual(["c", "a"]);
+  });
+
+  it("reports a full-row selection to onSelectedRowIdChange", () => {
+    const onSelectedRowIdChange = vi.fn();
+    const { view } = renderReordered({ onSelectedRowIdChange });
+    const cellOf = (columnId: string) =>
+      view.container.querySelector(
+        `[data-pretable-row][data-pretable-row-id="r1"] [data-pretable-column-id="${columnId}"]`,
+      )!;
+
+    // Click the leftmost drawn column, shift-click the rightmost: a full row
+    // as the user sees it. Resolved against the prop order those bounds are
+    // neither first nor last, so the row reads as a partial selection.
+    fireEvent.click(cellOf("b"));
+    fireEvent.click(cellOf("a"), { shiftKey: true });
+
+    expect(onSelectedRowIdChange).toHaveBeenCalledWith("r1");
+  });
+
+  it("selects the whole row as drawn when arrowing with row-select", () => {
+    const { view, grid } = renderReordered({
+      selectFocusedRowOnArrowKey: true,
+    });
+    act(() => {
+      grid.setFocus({ rowId: "r1", columnId: "b" });
+    });
+    fireEvent.keyDown(view.getByRole("grid"), { key: "ArrowDown" });
+
+    // The full-row range is built from the first and last columns; taking
+    // those from the prop order spans a..c, which leaves the drawn-leftmost
+    // column outside the selection.
+    const highlighted = Array.from(
+      view.container.querySelectorAll(
+        '[data-pretable-row][data-pretable-row-id="r2"] [data-pretable-selected="true"]',
+      ),
+    ).map((el) => el.getAttribute("data-pretable-column-id"));
+    expect(highlighted).toEqual(["b", "c", "a"]);
+  });
+});
+
+describe("announcements count the drawn column order", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("announces the number of columns the user actually highlighted", async () => {
+    const { view, grid } = renderReordered({ copyToClipboard: () => {} });
+    act(() => {
+      grid.setSelection({
+        ranges: [
+          {
+            startRowId: "r1",
+            endRowId: "r1",
+            startColumnId: "c",
+            endColumnId: "a",
+          },
+        ],
+        anchor: { rowId: "r1", columnId: "c" },
+      });
+    });
+
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+
+    // Two columns are highlighted on screen, and #226 already makes the copied
+    // TSV two columns wide — the announcement has to agree with both.
+    expect(
+      view.container.querySelector("[data-pretable-live-region]"),
+    ).toHaveTextContent("1 rows × 2 columns copied");
+  });
+});
