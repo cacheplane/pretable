@@ -24,11 +24,16 @@ jobs:
         with:
           fetch-depth: 0
       - uses: pnpm/action-setup@v6
+      # NOTE: intentionally NO `registry-url`. When set, actions/setup-node
+      # writes an .npmrc containing `_authToken=${NODE_AUTH_TOKEN}`. With a
+      # token configured — even an empty placeholder — npm uses token auth and
+      # never attempts the OIDC trusted-publishing exchange, so the registry
+      # rejects the publish with a 404. Omitting it leaves no token configured
+      # (npm defaults to registry.npmjs.org anyway) and OIDC engages.
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
 
       - name: Install npm 11.14.1 for trusted publishing OIDC
         run: |
