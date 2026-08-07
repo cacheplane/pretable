@@ -30,7 +30,7 @@ and those 7 are exactly the suite Task 4 inverts — verified, nothing else brok
 
 1. **`moveFocus` already reads `getColumns()`**, not `options.columns`. This was
    not in the original plan and is load-bearing for Task 4: without it, focus
-   could reach the *hidden* grouped column and could never reach
+   could reach the _hidden_ grouped column and could never reach
    `GROUP_COLUMN_ID`, making Task 4's branch table unimplementable. Ungrouped it
    is an identity change, so non-grouping grids are unaffected.
 2. **`getColumns()` is already on the `@pretable/core` `PretableGrid` facade** —

@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
   AutosizeOptions,
   ColumnFilter,
@@ -74,17 +75,18 @@ import {
   resolveCellValue,
 } from "./rendering";
 import {
-  getCellStyle,
   getHeaderCellStyle,
   getHeaderOverlayAnchorStyle,
   getHeaderRowStyle,
   getPinnedCellStyle,
   getPinnedRightCellStyle,
   getPinnedRightEdge,
+  getPositionedCellStyle,
   getRowStyle,
   getScrollContentStyle,
   getViewportStyle,
 } from "./styles";
+import { findParentGroupRow, GroupRow, isGroupExpanded } from "./group-row";
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { ROW_SELECT_COLUMN_ID } from "./constants";
@@ -808,6 +810,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   });
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
+  const isGrouped = snapshot.rowGroups.length > 0;
+  // Shared by the data-row and group-row cell refs: the focus-follow effect
+  // looks a cell up by `rowId::columnId`, and a group cell that never
+  // registered would leave DOM focus stranded on an unmounted data cell.
+  const registerCell = useCallback(
+    (key: string, node: HTMLDivElement | null) => {
+      if (node) {
+        cellNodesRef.current.set(key, node);
+      } else {
+        cellNodesRef.current.delete(key);
+      }
+    },
+    [],
+  );
 
   // The columns in the order they are DRAWN, which is the engine's order —
   // drag-to-reorder moves columns there and leaves the `columns` prop in
@@ -816,13 +832,22 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // prop, or a reordered grid serializes and lands cells in an order the user
   // never sees. Definitions still come from the props, looked up by id — the
   // same split the header row uses for pin state.
+  //
+  // Read from `getColumns()`, not `options.columns`: while grouped the DRAWN
+  // list leads with the derived group column and drops the grouped ones, and a
+  // keyboard model or a copy range bounded by columns that are not on screen is
+  // bounded by the wrong thing. Ungrouped the two are the same array.
+  const drawnColumns = grid.getColumns();
   const columnsInVisualOrder = useMemo(() => {
     const byId = new Map(effectiveColumns.map((column) => [column.id, column]));
-    return grid.options.columns.flatMap((engineColumn) => {
+    return drawnColumns.flatMap<PretableColumn<TRow>>((engineColumn) => {
+      // The group column exists only in the derived list, so it is its own
+      // definition; every other column's definition comes from the props.
+      if (engineColumn.id === GROUP_COLUMN_ID) return [engineColumn];
       const definition = byId.get(engineColumn.id);
       return definition ? [definition] : [];
     });
-  }, [effectiveColumns, grid.options.columns]);
+  }, [drawnColumns, effectiveColumns]);
 
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the
   // closures it captures would otherwise go stale across renders. Keep refs to
@@ -1200,8 +1225,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     for (const col of effectiveColumns) {
       map.set(col.id, col);
     }
+    // The derived group column has no prop definition to look up — it is
+    // engine state — and both the header and every body row resolve their
+    // columns through this map, so without it a grouped grid draws no group
+    // column at all.
+    const groupColumn = drawnColumns.find((col) => col.id === GROUP_COLUMN_ID);
+    if (groupColumn) {
+      map.set(groupColumn.id, groupColumn);
+    }
     return map;
-  }, [effectiveColumns]);
+  }, [drawnColumns, effectiveColumns]);
 
   // One plan over the whole engine column set, shared by the two features that
   // need to reason about columns `renderSnapshot.columns` does not carry:
@@ -1211,9 +1244,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // than each deriving one — see `planColumnLayout` for why that matters.
   // Content order, and each entry's `index` is its engine index — what
   // grid.moveColumn takes.
+  // Planned from the DRAWN columns, because both consumers compare it against
+  // rendered pixels: a plan built from `options.columns` while grouped would
+  // miss the group column entirely and put every other column's `left` a
+  // group-column width away from where it is painted.
   const columnLayout = useMemo(
-    () => planColumnLayout(grid.options.columns),
-    [grid.options.columns],
+    () => planColumnLayout([...drawnColumns]),
+    [drawnColumns],
   );
 
   const visibleRowIndexById = useMemo(() => {
@@ -1780,14 +1817,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
   return (
     <div
-      aria-colcount={effectiveColumns.length}
+      aria-colcount={drawnColumns.length}
       aria-label={ariaLabel}
       aria-multiselectable="true"
       aria-rowcount={snapshot.totalRowCount + 1}
       data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
-      role="grid"
+      // A grouped grid IS a tree, and the role is what makes Left/Right
+      // expand/collapse discoverable to a screen-reader user rather than an
+      // undocumented convention. It reverts the moment grouping clears.
+      role={isGrouped ? "treegrid" : "grid"}
       tabIndex={-1}
       onKeyDown={(event) => {
         // Esc during reorder drag cancels without engine mutation.
@@ -2304,7 +2344,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       const scrollport = viewportRef.current;
                       const target = computeColumnDropTarget({
                         layout: columnLayout.columns,
-                        draggedIndex: grid.options.columns.findIndex(
+                        // Indices in DRAWN space, matching `columnLayout`.
+                        // `onPointerUp` translates the drop index back to an
+                        // `options.columns` index for `moveColumn`.
+                        draggedIndex: drawnColumns.findIndex(
                           (c) => c.id === column.id,
                         ),
                         cursorX: event.clientX,
@@ -2362,7 +2405,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       if (drag.dragging && current) {
                         wasReorderingRef.current = true;
                         const beforePinned = buildPinnedMap(grid);
-                        grid.moveColumn(column.id, current.dropIndex);
+                        grid.moveColumn(
+                          column.id,
+                          toEngineDropIndex(
+                            drawnColumns,
+                            grid.options.columns,
+                            column.id,
+                            current.dropIndex,
+                          ),
+                        );
                         const afterOrder = grid.options.columns
                           .map((c) => c.id)
                           .filter((id) => id !== ROW_SELECT_COLUMN_ID);
@@ -2591,13 +2642,47 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         )}
       >
         {renderSnapshot.rows.map((renderRow) => {
-          // Group headers are planned and windowed like any other row, but the
-          // surface does not draw them yet — that is sub-project 2. Skipping
-          // them here leaves their reserved band blank rather than shifting the
-          // data rows below, because every row is absolutely positioned at the
-          // `top` the planner computed.
-          if (renderRow.kind !== "data") {
-            return null;
+          if (renderRow.kind === "group") {
+            const group = renderRow.group;
+
+            return (
+              <GroupRow
+                columns={renderSnapshot.columns}
+                columnsById={columnsById}
+                expanded={isGroupExpanded(snapshot, group.id)}
+                focusedColumnId={snapshot.focus.columnId}
+                group={group}
+                height={renderRow.height}
+                isFocused={snapshot.focus.rowId === renderRow.id}
+                key={renderRow.id}
+                liveWidth={dragLiveWidth}
+                onCellClick={(columnId, event) => {
+                  // The same click model as a data cell: focus moves and the
+                  // cell becomes the selection. The engine keeps group rows out
+                  // of `deriveSelectedRows`, so no ROW becomes selected — but
+                  // `onSelectionChange` does fire, which is exactly why the
+                  // twisty stops propagation.
+                  handleCellClick({
+                    cmd: event.metaKey || event.ctrlKey,
+                    columnId,
+                    columns: columnsInVisualOrder,
+                    grid,
+                    onFocusChange,
+                    onSelectedRowIdChange,
+                    onSelectionChange,
+                    rowId: renderRow.id,
+                    shift: event.shiftKey,
+                  });
+                }}
+                onToggle={() => {
+                  grid.toggleGroup(group.id);
+                }}
+                registerCell={registerCell}
+                rowIndex={renderRow.rowIndex}
+                top={renderRow.top}
+                viewportWidth={viewportWidth}
+              />
+            );
           }
 
           const { height, id, row, rowIndex, top } = renderRow;
@@ -2707,26 +2792,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   dragLiveWidth?.columnId === column.id
                     ? dragLiveWidth.width
                     : plannedCol.width;
-                const pinnedRightEdge =
-                  plannedCol.pinned === "right" &&
-                  plannedCol.right !== undefined
-                    ? getPinnedRightEdge(viewportWidth, plannedCol.right)
-                    : undefined;
-                const positionStyle =
-                  plannedCol.pinned === "left"
-                    ? {
-                        ...getCellStyle(plannedCol.left, cellEffWidth),
-                        ...getPinnedCellStyle(plannedCol.left),
-                      }
-                    : pinnedRightEdge !== undefined
-                      ? {
-                          ...getCellStyle(plannedCol.left, cellEffWidth),
-                          ...getPinnedRightCellStyle(
-                            pinnedRightEdge,
-                            cellEffWidth,
-                          ),
-                        }
-                      : getCellStyle(plannedCol.left, cellEffWidth);
+                const positionStyle = getPositionedCellStyle(
+                  plannedCol,
+                  cellEffWidth,
+                  viewportWidth,
+                );
 
                 const isRowSelectCell = column.id === ROW_SELECT_COLUMN_ID;
                 const rowCheckState: "true" | "false" | "mixed" =
@@ -2747,6 +2817,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     data-pretable-pinned={plannedCol.pinned}
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
+                    // A data row's cell in the group column. It carries no
+                    // value — it is the hook the stylesheet indents leaf
+                    // content by one twisty-width so it lines up with sibling
+                    // group labels instead of hanging a chevron to the left.
+                    data-pretable-group-leaf={
+                      column.id === GROUP_COLUMN_ID ? "" : undefined
+                    }
                     data-pretable-row-select-cell={
                       isRowSelectCell ? "true" : undefined
                     }
@@ -2858,11 +2935,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       dragAnchorRef.current = null;
                     }}
                     ref={(node) => {
-                      if (node) {
-                        cellNodesRef.current.set(cellKey, node);
-                      } else {
-                        cellNodesRef.current.delete(cellKey);
-                      }
+                      registerCell(cellKey, node);
                     }}
                     role="gridcell"
                     style={{
@@ -3752,6 +3825,28 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   }
 
   return false;
+}
+
+/**
+ * Translate a drop index from DRAWN column space into an `options.columns`
+ * index, which is what `grid.moveColumn` takes.
+ *
+ * The two spaces are the same array while ungrouped, and this returns
+ * `dropIndex` unchanged. Grouped they differ by the derived group column at the
+ * head and the grouped columns that dropped out, so a raw drawn-space index
+ * would land the column that many slots off.
+ */
+function toEngineDropIndex<TRow extends PretableRow>(
+  drawn: readonly PretableColumn<TRow>[],
+  engineColumns: readonly PretableColumn<TRow>[],
+  columnId: string,
+  dropIndex: number,
+): number {
+  const engineIds = new Set(engineColumns.map((c) => c.id));
+  const ids = drawn.map((c) => c.id).filter((id) => id !== columnId);
+  ids.splice(dropIndex, 0, columnId);
+
+  return ids.filter((id) => engineIds.has(id)).indexOf(columnId);
 }
 
 function buildWidthsMap<TRow extends PretableRow>(
