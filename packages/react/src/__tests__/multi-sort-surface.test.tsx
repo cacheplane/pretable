@@ -172,21 +172,21 @@ describe("PretableSurface multi-column sort", () => {
     expect(badge(view, "Group")).toBeNull(); // single entry → no badge
 
     fireEvent.click(header(view, "Score"), { shiftKey: true });
-    expect(badge(view, "Group")).toHaveTextContent("1");
-    expect(badge(view, "Score")).toHaveTextContent("2");
+    expect(badge(view, "Group")?.textContent).toBe("1");
+    expect(badge(view, "Score")?.textContent).toBe("2");
     expect(badge(view, "Name")).toBeNull();
 
     fireEvent.click(header(view, "Name"), { shiftKey: true });
-    expect(badge(view, "Group")).toHaveTextContent("1");
-    expect(badge(view, "Score")).toHaveTextContent("2");
-    expect(badge(view, "Name")).toHaveTextContent("3");
+    expect(badge(view, "Group")?.textContent).toBe("1");
+    expect(badge(view, "Score")?.textContent).toBe("2");
+    expect(badge(view, "Name")?.textContent).toBe("3");
 
     // Remove the first entry (desc → asc → removed); badge numbers shift.
     fireEvent.click(header(view, "Group"), { shiftKey: true });
     fireEvent.click(header(view, "Group"), { shiftKey: true });
     expect(badge(view, "Group")).toBeNull();
-    expect(badge(view, "Score")).toHaveTextContent("1");
-    expect(badge(view, "Name")).toHaveTextContent("2");
+    expect(badge(view, "Score")?.textContent).toBe("1");
+    expect(badge(view, "Name")?.textContent).toBe("2");
 
     // Down to a single entry → badge disappears.
     fireEvent.click(header(view, "Score"), { shiftKey: true });
@@ -204,8 +204,8 @@ describe("PretableSurface multi-column sort", () => {
 
     expect(header(view, "Group")).toHaveAttribute("aria-sort", "descending");
     expect(header(view, "Score")).toHaveAttribute("aria-sort", "ascending");
-    expect(badge(view, "Group")).toHaveTextContent("1");
-    expect(badge(view, "Score")).toHaveTextContent("2");
+    expect(badge(view, "Group")?.textContent).toBe("1");
+    expect(badge(view, "Score")?.textContent).toBe("2");
     // group desc, then score asc within groups.
     expect(rowIds(view)).toEqual(["r4", "r1", "r2", "r3"]);
 
