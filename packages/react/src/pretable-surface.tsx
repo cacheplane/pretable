@@ -90,6 +90,8 @@ import {
 import { findParentGroupRow, isGroupExpanded } from "./group-model";
 import { GroupRow } from "./group-row";
 import { GroupPanel } from "./group-panel/GroupPanel";
+import { hitTestGroupPanel } from "./group-panel/group-panel-hit-test";
+import { insertGroupLevel } from "./group-panel/group-panel-model";
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { GROUP_PANEL_HEIGHT, ROW_SELECT_COLUMN_ID } from "./constants";
@@ -729,11 +731,22 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     startY: number;
     dragging: boolean;
   } | null>(null);
+  const groupPanelRef = useRef<HTMLDivElement>(null);
   const [reorderDrag, setReorderDrag] = useState<{
     columnId: string;
     cursorX: number;
     cursorY: number;
     dropIndex: number;
+    /**
+     * The grouping level this drag would drop into, or `null` when the pointer
+     * is not over the panel. This is the whole of the two-drop-zone model: the
+     * pointer is over the panel's rectangle or it is not, and there is no
+     * modifier key or intent heuristic anywhere.
+     *
+     * It is recomputed on every move but **committed by nobody until
+     * pointerup** — see the drop handler.
+     */
+    groupInsertIndex: number | null;
     // Content-space offset for the drop indicator, resolved from the same
     // pointer event as `dropIndex` so the two can never disagree.
     indicatorLeft: number;
@@ -2431,6 +2444,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         scrollLeft: scrollport?.scrollLeft ?? 0,
                       });
 
+                      // The second drop zone. `groupPanelRef` is null unless a
+                      // panel is rendered, and the hit test rejects a hidden or
+                      // zero-size one, so a collapsed panel cannot swallow a
+                      // drop meant for the header underneath it.
+                      const panelHit =
+                        column.id === GROUP_COLUMN_ID
+                          ? null
+                          : hitTestGroupPanel(
+                              groupPanelRef.current,
+                              event.clientX,
+                              event.clientY,
+                            );
+                      const groupInsertIndex = panelHit?.insertIndex ?? null;
+
                       if (!drag.dragging) {
                         if (dist < REORDER_THRESHOLD_PX) return;
                         drag.dragging = true;
@@ -2448,6 +2475,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                           cursorX: event.clientX,
                           cursorY: event.clientY,
                           dropIndex: target.dropIndex,
+                          groupInsertIndex,
                           indicatorLeft: target.indicatorLeft,
                           ghostWidth: rect.width || effWidth,
                           ghostHeight: rect.height || headerHeight,
@@ -2463,6 +2491,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                               cursorX: event.clientX,
                               cursorY: event.clientY,
                               dropIndex: target.dropIndex,
+                              groupInsertIndex,
                               indicatorLeft: target.indicatorLeft,
                             }
                           : null,
@@ -2477,7 +2506,28 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
                       const current = reorderDrag;
                       if (drag.dragging && current) {
+                        // The trailing click must not sort either way — this
+                        // gesture was a drag, whichever zone it ended in.
                         wasReorderingRef.current = true;
+                      }
+                      if (
+                        drag.dragging &&
+                        current &&
+                        current.groupInsertIndex !== null
+                      ) {
+                        // Dropped on the panel: group, and do NOT also move the
+                        // column. This is the only place in the drag that
+                        // mutates grouping — nothing ran on drag-enter or
+                        // drag-leave, so Escape had something to cancel right
+                        // up to this instant.
+                        applyRowGroups(
+                          insertGroupLevel(
+                            snapshot.rowGroups,
+                            column.id,
+                            current.groupInsertIndex,
+                          ),
+                        );
+                      } else if (drag.dragging && current) {
                         const beforePinned = buildPinnedMap(grid);
                         grid.moveColumn(
                           column.id,
@@ -3201,13 +3251,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               {reorderDrag.ghostHeader}
             </div>
           </OverlayPortal>
-          <div
-            data-pretable-reorder-drop-indicator=""
-            style={{
-              left: reorderDrag.indicatorLeft,
-              height: reorderDrag.ghostHeight + bodyViewportHeight,
-            }}
-          />
+          {/* Over the panel the drop would group, not reorder, so the column
+              insertion line would be promising something that will not happen.
+              The panel shows its own gap indicator instead. */}
+          {reorderDrag.groupInsertIndex === null ? (
+            <div
+              data-pretable-reorder-drop-indicator=""
+              style={{
+                left: reorderDrag.indicatorLeft,
+                height: reorderDrag.ghostHeight + bodyViewportHeight,
+              }}
+            />
+          ) : null}
         </>
       ) : null}
       {filterOpenState
@@ -3259,6 +3314,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       style={getGroupPanelWrapperStyle(viewportHeight)}
     >
       <GroupPanel
+        containerRef={groupPanelRef}
+        // Only a header drag reports in from out here; the panel's own chip
+        // drag tracks its insertion index internally.
+        dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
         emptyMessage={groupPanel?.emptyMessage}
         height={groupPanelHeight}
         labelForColumn={labelForColumn}

@@ -1,4 +1,10 @@
-import { type CSSProperties, useLayoutEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type RefObject,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { getGroupPanelStyle } from "../styles";
 import {
@@ -9,6 +15,18 @@ import {
 } from "./group-panel-model";
 
 export interface GroupPanelProps {
+  /**
+   * The panel's own container element, published so the surface's header drag
+   * can hit-test against it. It is also the element a chip drag captures the
+   * pointer on — see the drag notes below.
+   */
+  containerRef?: RefObject<HTMLDivElement | null>;
+  /**
+   * Where an in-flight drag STARTED FROM OUTSIDE the panel would insert, or
+   * `null` for no external drag. The panel's own chip drag does not go through
+   * this — it owns its insertion index directly.
+   */
+  dropIndicatorIndex?: number | null;
   /**
    * The engine's grouping levels, in order. The panel keeps NO copy of this:
    * it is re-read every render, so a level can never be shown that the engine
@@ -41,6 +59,8 @@ export interface GroupPanelProps {
  * is exactly when its empty message has a job to do.
  */
 export function GroupPanel({
+  containerRef,
+  dropIndicatorIndex = null,
   rowGroups,
   labelForColumn,
   emptyMessage,
@@ -83,9 +103,21 @@ export function GroupPanel({
   // `role="listbox"` with zero options fails axe (and tells a screen-reader
   // user there is a list to explore when there is not), so an empty panel is
   // presentational — it is a drop target and a sentence, nothing more.
+  const indicatorAt = dropIndicatorIndex;
+  // Present only while a drop is pending, so it can be selected on rather than
+  // needing a value: `[data-pretable-group-panel-active]`.
+  const activeProps =
+    indicatorAt === null ? {} : { "data-pretable-group-panel-active": "" };
+
   if (isEmpty) {
     return (
-      <div data-pretable-group-panel="" role="presentation" style={panelStyle}>
+      <div
+        {...activeProps}
+        data-pretable-group-panel=""
+        ref={containerRef}
+        role="presentation"
+        style={panelStyle}
+      >
         <span data-pretable-group-panel-empty="">
           {emptyMessage ?? DEFAULT_GROUP_PANEL_EMPTY_MESSAGE}
         </span>
@@ -93,18 +125,30 @@ export function GroupPanel({
     );
   }
 
+  const gapIndicator = (index: number) =>
+    indicatorAt === index ? (
+      <span
+        aria-hidden="true"
+        data-pretable-chip-drop-indicator=""
+        key={`drop-${index}`}
+      />
+    ) : null;
+
   return (
     <div
+      {...activeProps}
       aria-label="Grouping levels"
       aria-orientation="horizontal"
       data-pretable-group-panel=""
+      ref={containerRef}
       role="listbox"
       style={panelStyle}
     >
-      {rowGroups.map((columnId, index) => {
+      {rowGroups.flatMap((columnId, index) => {
         const label = labelForColumn(columnId);
 
-        return (
+        return [
+          gapIndicator(index),
           <div
             aria-label={composeChipAccessibleName(
               label,
@@ -192,9 +236,10 @@ export function GroupPanel({
             >
               <span aria-hidden="true">✕</span>
             </button>
-          </div>
-        );
+          </div>,
+        ];
       })}
+      {gapIndicator(rowGroups.length)}
     </div>
   );
 }
