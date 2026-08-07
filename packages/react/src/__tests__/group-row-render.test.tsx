@@ -3,7 +3,11 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GROUP_COLUMN_ID, type PretableGroupRow } from "@pretable/core";
+import {
+  GROUP_COLUMN_ID,
+  type PretableGroupRow,
+  type PretableSelectionState,
+} from "@pretable/core";
 
 import { GroupRow } from "../group-row";
 import { PretableSurface } from "../pretable-surface";
@@ -38,7 +42,7 @@ interface GridProps {
   columns?: PretableColumn<GroupedRow>[];
   rows?: GroupedRow[];
   state: PretableSurfaceState;
-  onSelectionChange?: (next: unknown) => void;
+  onSelectionChange?: (next: PretableSelectionState) => void;
 }
 
 function Grid({ columns, rows, state, onSelectionChange }: GridProps) {
@@ -47,9 +51,7 @@ function Grid({ columns, rows, state, onSelectionChange }: GridProps) {
       ariaLabel="grouped-grid"
       columns={columns ?? groupedColumns}
       getRowId={(row: GroupedRow) => row.id}
-      onSelectionChange={
-        onSelectionChange as ((next: never) => void) | undefined
-      }
+      onSelectionChange={onSelectionChange}
       overscan={0}
       rows={rows ?? groupedRows}
       state={state}
@@ -291,7 +293,7 @@ describe("a group with no children left", () => {
         group={childless}
         height={32}
         isFocused={false}
-        onFocusCell={() => {}}
+        onCellClick={() => {}}
         onToggle={() => {}}
         registerCell={() => {}}
         rowIndex={0}

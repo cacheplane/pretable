@@ -51,6 +51,53 @@ surviving ancestor group row, preserving the column.
 
 ---
 
+## Status — Tasks 3 and 4 are DONE (`82fade2`, this commit)
+
+React is at 678 pass / 0 fail (38 files); grid-core is untouched at 376.
+
+**Five corrections found while implementing them:**
+
+1. **A childless group is UNREACHABLE through the engine.** `buildGroupedRows`
+   builds the tree from POST-filter rows (`group-rows.ts:157-191`), so a group
+   whose children a filter removed is never materialized —
+   `childCount === 0` cannot occur in a snapshot. Task 3's fixture for it (a
+   filter matching nothing) renders zero group rows, not one collapsed one, and
+   the spec's "Guards" claim that a group _becomes_ non-expandable under a filter
+   is wrong for this engine. The rule itself still ships and is still tested:
+   `<GroupRow>` is exercised directly with a `childCount: 0` group, which is
+   where that state is reachable.
+2. **`columnLayout` (`pretable-surface.tsx:1215`) also had to move to
+   `getColumns()`** — the plan lists only `:819-825`, `:3763`, `:3776`. It feeds
+   scroll-into-view and the reorder drop indicator, both of which compare against
+   _rendered_ pixels; planned from `options.columns` while grouped it misses the
+   group column entirely and puts every other column's `left` one group-column
+   width away from where it is painted.
+3. **`buildWidthsMap` / `buildPinnedMap` (`:3763`, `:3776`) must NOT move to
+   `getColumns()`.** They describe the CONSUMER's column state back to the
+   consumer, who feeds it in again as controlled `state.columnWidths` — which
+   `use-pretable.ts:301` applies over `options.columns`. Reading the drawn list
+   would drop every grouped column from the emitted map and lose its width for
+   good. Left on `options.columns`; `GROUP_COLUMN_ID` is never in that array, so
+   nothing changed.
+4. **Only six of the seven inverted assertions actually invert.** Cmd+End lands
+   on the LAST flat row, and in that fixture every group precedes its own child,
+   so the last entry is still a data row. Rewritten to assert the flat-list
+   contract rather than flipped to `true`.
+5. **`Left` on a collapsed top-level group cannot be negative-controlled at flat
+   index 0** — with nothing before the row, the "no-op" holds however the parent
+   lookup is written. The test uses the SECOND root instead (three group rows
+   precede it), which does fail when `findParentGroupRow`'s `depth <` is relaxed
+   to `depth <=`.
+
+Also done en route, all no-ops while ungrouped: the reorder drop index is
+translated from drawn space back to an `options.columns` index
+(`toEngineDropIndex`); `selectFocusedRowOnArrowKey` skips group rows; the
+begin-edit path is gated on the focused row being a data row; and the pinned-cell
+position ternary is now one shared `getPositionedCellStyle` rather than a second
+hand-rolled copy in the group-row path.
+
+---
+
 ## Ground rules for every task
 
 - **Vanilla CSS in `packages/*`.** No Tailwind. Use `:where()` + existing
@@ -75,8 +122,12 @@ surviving ancestor group row, preserving the column.
 - `packages/grid-core/src/group-column.ts` — the synthetic column definition, its
   id constant, and the pure `resolveEffectiveColumns()` derivation.
 - `packages/grid-core/src/__tests__/group-column.test.ts`
-- `packages/react/src/group-row.tsx` — the `<GroupRow>` component and its
-  `<GroupCell>` (twisty + indent + label + count).
+- `packages/react/src/group-row.tsx` — the `<GroupRow>` component (twisty +
+  indent + label + count in the group column, aggregates in the rest).
+- `packages/react/src/group-model.ts` — the pure helpers `<GroupRow>` and the
+  keyboard handler share: `isGroupExpanded`, `findParentGroupRow`, `groupLabel`.
+  Split out of `group-row.tsx` because `react-refresh/only-export-components`
+  warns on a component file that also exports functions.
 - `packages/react/src/__tests__/group-row-render.test.tsx`
 - `apps/website/e2e/grouping.spec.ts` — the real-browser gate.
 
@@ -114,7 +165,7 @@ pushed into `options.columns` is deleted on the next prop identity change. And
 the column list can't be built React-side either, because its contents depend on
 `rowGroups`, which is engine state. So it is derived on read and cached.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `packages/grid-core/src/__tests__/group-column.test.ts`:
 
@@ -264,7 +315,7 @@ describe("derived group column", () => {
 });
 ```
 
-- [ ] **Step 2: Run it and watch it fail**
+- [x] **Step 2: Run it and watch it fail**
 
 ```bash
 pnpm --filter @pretable-internal/grid-core test group-column
@@ -272,7 +323,7 @@ pnpm --filter @pretable-internal/grid-core test group-column
 
 Expected: FAIL — `group-column.ts` does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `packages/grid-core/src/group-column.ts` exporting:
 
@@ -308,7 +359,7 @@ and `hideGroupedColumns?: boolean` to `PretableGridOptions`, and
 to `PretableColumn` — Task 3 consumes it, but the type belongs with the rest of
 the column contract.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 ```bash
 pnpm --filter @pretable-internal/grid-core test
@@ -316,12 +367,12 @@ pnpm --filter @pretable-internal/grid-core test
 
 Expected: PASS, including all pre-existing grouping suites.
 
-- [ ] **Step 5: Negative control**
+- [x] **Step 5: Negative control**
 
 Delete the `.filter(...)` that drops grouped columns; confirm the "hides the
 grouped column" and multi-level tests fail. Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 pnpm format:write && git add -A && git commit -m "feat(grid-core): derive the group column from rowGroups"
@@ -345,7 +396,7 @@ changes. **Rewrite that comment; do not amend it.** A comment that still says
 "focus never lands on a group row by keyboard" next to code that does is worse
 than no comment.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `packages/grid-core/src/__tests__/move-focus.test.ts`:
 
@@ -436,7 +487,7 @@ describe("moveFocus over grouped rows", () => {
 });
 ```
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 ```bash
 pnpm --filter @pretable-internal/grid-core test move-focus
@@ -446,7 +497,7 @@ Expected: FAIL on the group-landing tests. The last test ("collapsing the group
 holding focus") may reveal a pre-existing dangling-focus bug — if it does, fix
 it here and say so in the commit message.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Rewrite `moveFocus` to index `snapshot.visibleRows` directly rather than by
 data-row ordinal. Delete `scanDataRows` and `dataRowAt` if nothing else uses
@@ -457,7 +508,7 @@ need it, and their behaviour is unchanged: **selection remains data-rows-only**.
 Rewrite the `:37-59` doc comment to state the new contract: group rows are
 focus targets but never selection or edit targets.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 ```bash
 pnpm --filter @pretable-internal/grid-core test
@@ -466,12 +517,12 @@ pnpm --filter @pretable-internal/grid-core test
 Pre-existing suites in `grouping-engine.test.ts` (notably "selection and focus
 survive a grouped tick update" at `:425`) must still pass.
 
-- [ ] **Step 5: Negative control**
+- [x] **Step 5: Negative control**
 
 Revert `moveFocus` to skipping group rows; confirm the four new group-landing
 tests fail. Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 pnpm format:write && git add -A && git commit -m "feat(grid-core): let keyboard focus land on group rows"
@@ -494,7 +545,7 @@ Switch every React-side read of `grid.options.columns` to `grid.getColumns()`.
 from, so the group column will not appear in `renderSnapshot.columns` until it
 changes.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `packages/react/src/__tests__/group-row-render.test.tsx`. Build the
 fixture following the pattern at `pretable-surface.test.tsx:5113-5172`
@@ -562,7 +613,7 @@ Note that jsdom does not resolve `calc()` or custom properties into computed
 layout, which is why the depth test asserts on the _declaration_ and Task 6
 measures the actual pixels in a browser.
 
-- [ ] **Step 2: Run and watch it fail**
+- [x] **Step 2: Run and watch it fail**
 
 ```bash
 pnpm --filter @pretable/react test group-row-render
@@ -570,7 +621,7 @@ pnpm --filter @pretable/react test group-row-render
 
 Expected: FAIL — nothing renders for group rows.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `<GroupRow>` in `packages/react/src/group-row.tsx`. It renders one
 absolutely-positioned row (reuse `getRowStyle(top, height)` from `styles.ts`)
@@ -609,18 +660,18 @@ their content aligns with sibling group labels. That is Task 5's CSS, but the
 data-row cell for `GROUP_COLUMN_ID` must render a marker element for it to hang
 off.
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 ```bash
 pnpm --filter @pretable/react test
 ```
 
-- [ ] **Step 5: Negative control**
+- [x] **Step 5: Negative control**
 
 Remove `stopPropagation()` from the twisty handler and confirm the
 "does not select the row" test fails. Restore.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 pnpm format:write && git add -A && git commit -m "feat(react): render group header rows"
@@ -641,7 +692,7 @@ Cmd+Home, End, Cmd+End, PageDown, PageUp, Tab and Shift+Tab. Every one of those
 assertions is now wrong. **Rewrite them to assert the opposite — do not delete
 them.** They are the clearest record of the contract this sub-project changes.
 
-- [ ] **Step 1: Rewrite the existing suite and add the new bindings**
+- [x] **Step 1: Rewrite the existing suite and add the new bindings**
 
 Invert the seven assertions. Then add, per the spec's branch table:
 
@@ -655,31 +706,31 @@ Test each cell of that table, plus: `Left` on a collapsed _top-level_ group
 (no parent) is a no-op, and `Enter` on a data row still does whatever it did
 before (find out and preserve it — do not assume).
 
-- [ ] **Step 2: Run and watch them fail**
+- [x] **Step 2: Run and watch them fail**
 
 ```bash
 pnpm --filter @pretable/react test pretable-surface -t "grouped"
 ```
 
-- [ ] **Step 3: Implement in `handleSurfaceKeyDown`**
+- [x] **Step 3: Implement in `handleSurfaceKeyDown`**
 
 Branch on the focused row's kind and whether the focused column is
 `GROUP_COLUMN_ID`, then fall through to the existing navigation for every case
 the table marks "move".
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 ```bash
 pnpm --filter @pretable/react test
 ```
 
-- [ ] **Step 5: Negative control — one per binding**
+- [x] **Step 5: Negative control — one per binding**
 
 For each of `Left`, `Right`, `Enter`, `Space`: remove that single branch,
 confirm its tests fail, restore. A binding whose test still passes without it
 is testing something else.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 pnpm format:write && git add -A && git commit -m "feat(react): APG treegrid keyboard expand/collapse"

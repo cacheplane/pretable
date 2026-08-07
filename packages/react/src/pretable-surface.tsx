@@ -86,7 +86,8 @@ import {
   getScrollContentStyle,
   getViewportStyle,
 } from "./styles";
-import { findParentGroupRow, GroupRow, isGroupExpanded } from "./group-row";
+import { findParentGroupRow, isGroupExpanded } from "./group-model";
+import { GroupRow } from "./group-row";
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { ROW_SELECT_COLUMN_ID } from "./constants";
@@ -1939,8 +1940,24 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         // IS active the editor input owns keystrokes (Enter/Tab/Escape are
         // stop-propagated inside CellEditor), so this handler is not reached.
         if (!snapshot.editing) {
+          // Group rows are focus targets but never edit targets. Without this
+          // guard Enter on a group row in an editable column would be consumed
+          // by a begin() that silently no-ops (the controller finds no row), and
+          // the expand/collapse binding below would never run. O(1): the index
+          // map is memoized on `snapshot.visibleRows`, and this sits on the
+          // every-keystroke path.
+          const focusedEntryIndex = snapshot.focus.rowId
+            ? visibleRowIndexById.get(snapshot.focus.rowId)
+            : undefined;
+          const focusedEntry =
+            focusedEntryIndex === undefined
+              ? undefined
+              : snapshot.visibleRows[focusedEntryIndex];
           const focusAddr =
-            snapshot.focus.rowId && snapshot.focus.columnId
+            snapshot.focus.rowId &&
+            snapshot.focus.columnId &&
+            focusedEntry &&
+            isDataRow(focusedEntry)
               ? {
                   rowId: snapshot.focus.rowId,
                   columnId: snapshot.focus.columnId,
@@ -3620,15 +3637,64 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   const shift = event.shiftKey;
   const snapshot = grid.getSnapshot();
   const focus = snapshot.focus;
-  // Row targets are DATA rows only, mirroring the engine's `moveFocus`. Landing
-  // focus on a group row breaks two ways at once: the surface renders nothing
-  // for it, so the focus ring vanishes; and `moveFocus` looks the focused id up
-  // among the data rows, misses, and treats the next arrow key as "arriving at
-  // the grid" — teleporting focus to row 0. Home/End/Page/Tab index into this
-  // list, never into the full flat one.
-  const dataRows = snapshot.visibleRows.filter(isDataRow);
+  // Row targets are every visible row, group headers included — the same flat
+  // list the engine's `moveFocus` walks. Home/End/Page/Tab index into this list,
+  // so a group row is a landing spot for them exactly as it is for an arrow key.
+  // (Selection and editing remain data-rows-only; only focus changed.)
+  const rows = snapshot.visibleRows;
   const firstColumn = columns[0];
   const lastColumn = columns[columns.length - 1];
+
+  // Expand/collapse, per the ARIA APG treegrid model. It comes first because
+  // Left/Right/Enter/Space mean something different on a group row than they do
+  // anywhere else — and only in the group column for the arrows, so a group's
+  // aggregate cells stay reachable by keyboard instead of being stranded behind
+  // a rule that consumed Left/Right outright.
+  const focusedRowIndex =
+    focus.rowId === null ? -1 : rows.findIndex((r) => r.id === focus.rowId);
+  const focusedRow = focusedRowIndex === -1 ? undefined : rows[focusedRowIndex];
+
+  if (focusedRow && focusedRow.kind === "group") {
+    const expandable = focusedRow.childCount > 0;
+    const expanded = isGroupExpanded(snapshot, focusedRow.id);
+    const inGroupColumn = focus.columnId === GROUP_COLUMN_ID;
+
+    // Toggle from anywhere on the row, aggregate cells included. Consumed even
+    // when there is nothing to toggle, so Enter/Space never fall through to the
+    // data-row path and select a group header.
+    if (key === "Enter" || key === " " || key === "Space") {
+      if (expandable) {
+        grid.setGroupExpanded(focusedRow.id, !expanded);
+      }
+      return true;
+    }
+
+    if (inGroupColumn && key === "ArrowRight" && expandable && !expanded) {
+      grid.setGroupExpanded(focusedRow.id, true);
+      return true;
+    }
+
+    if (inGroupColumn && key === "ArrowLeft") {
+      if (expandable && expanded) {
+        grid.setGroupExpanded(focusedRow.id, false);
+        return true;
+      }
+
+      // Already collapsed: Left walks OUT one level. At the top level there is
+      // nowhere to go, and the key is still consumed — moving left out of the
+      // first column is not a fallback anyone asked for.
+      const parent = findParentGroupRow(rows, focusedRowIndex);
+
+      if (parent && focus.columnId) {
+        grid.setFocus({ rowId: parent.id, columnId: focus.columnId });
+      }
+
+      return true;
+    }
+
+    // Everything else — including Left/Right on an aggregate cell, and Right on
+    // an already-expanded group — falls through to ordinary navigation below.
+  }
 
   // Arrow keys
   const direction = ARROW_DIRECTIONS[key];
@@ -3649,7 +3715,13 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
 
     if (selectFocusedRowOnArrowKey) {
       const nextFocus = grid.getSnapshot().focus;
-      if (nextFocus.rowId) {
+      const landed = nextFocus.rowId
+        ? rows.find((r) => r.id === nextFocus.rowId)
+        : undefined;
+      // Focus can now land on a group header, and a group header is not a
+      // selectable row — arrowing onto one leaves the previous row selected
+      // rather than emitting a selection the engine would refuse to derive.
+      if (nextFocus.rowId && landed && isDataRow(landed)) {
         replaceSelectionWithFullRow(grid, nextFocus.rowId, columns);
         onSelectedRowIdChange?.(nextFocus.rowId);
       }
@@ -3661,13 +3733,13 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   if (key === "Home") {
     if (!firstColumn) return false;
     if (cmd) {
-      const firstRow = dataRows[0];
+      const firstRow = rows[0];
       if (!firstRow) return false;
       grid.setFocus({ rowId: firstRow.id, columnId: firstColumn.id });
     } else if (focus.rowId) {
       grid.setFocus({ rowId: focus.rowId, columnId: firstColumn.id });
     } else {
-      const firstRow = dataRows[0];
+      const firstRow = rows[0];
       if (!firstRow) return false;
       grid.setFocus({ rowId: firstRow.id, columnId: firstColumn.id });
     }
@@ -3677,13 +3749,13 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   if (key === "End") {
     if (!lastColumn) return false;
     if (cmd) {
-      const lastRow = dataRows[dataRows.length - 1];
+      const lastRow = rows[rows.length - 1];
       if (!lastRow) return false;
       grid.setFocus({ rowId: lastRow.id, columnId: lastColumn.id });
     } else if (focus.rowId) {
       grid.setFocus({ rowId: focus.rowId, columnId: lastColumn.id });
     } else {
-      const firstRow = dataRows[0];
+      const firstRow = rows[0];
       if (!firstRow) return false;
       grid.setFocus({ rowId: firstRow.id, columnId: lastColumn.id });
     }
@@ -3692,21 +3764,20 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
 
   // Page Up / Page Down
   if (key === "PageUp" || key === "PageDown") {
-    if (dataRows.length === 0 || !firstColumn) return false;
-    // Steps N *data* rows. With group headers interleaved that is more than one
-    // screen of scroll — the same trade-off `computePageStep` makes in the
-    // engine. Paging by rendered rows while still landing on a data row is a
-    // sub-project 2 decision, once group rows actually occupy visual space.
+    if (rows.length === 0 || !firstColumn) return false;
+    // Steps N *rendered* rows — group headers occupy visual space, so counting
+    // them is what makes a page step one screen, matching `computePageStep` in
+    // the engine.
     const pageRowCount = Math.max(1, Math.floor(bodyViewportHeight / 32));
     const currentRowIdx = focus.rowId
-      ? dataRows.findIndex((r) => r.id === focus.rowId)
+      ? rows.findIndex((r) => r.id === focus.rowId)
       : -1;
     const baseRowIdx = currentRowIdx === -1 ? 0 : currentRowIdx;
     const nextRowIdx =
       key === "PageUp"
         ? Math.max(0, baseRowIdx - pageRowCount)
-        : Math.min(dataRows.length - 1, baseRowIdx + pageRowCount);
-    const nextRow = dataRows[nextRowIdx];
+        : Math.min(rows.length - 1, baseRowIdx + pageRowCount);
+    const nextRow = rows[nextRowIdx];
     if (!nextRow) return false;
     const columnId = focus.columnId ?? firstColumn.id;
     const addr: PretableCellAddress = { rowId: nextRow.id, columnId };
@@ -3739,9 +3810,9 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     if (tabBehavior === "exit") {
       return false;
     }
-    if (dataRows.length === 0 || columns.length === 0) return false;
+    if (rows.length === 0 || columns.length === 0) return false;
     const currentRowIdx = focus.rowId
-      ? dataRows.findIndex((r) => r.id === focus.rowId)
+      ? rows.findIndex((r) => r.id === focus.rowId)
       : -1;
     const currentColIdx = focus.columnId
       ? columns.findIndex((c) => c.id === focus.columnId)
@@ -3766,17 +3837,17 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     } else {
       if (baseColIdx === columns.length - 1) {
         nextColIdx = 0;
-        nextRowIdx = Math.min(dataRows.length - 1, baseRowIdx + 1);
-        if (baseRowIdx === dataRows.length - 1) {
+        nextRowIdx = Math.min(rows.length - 1, baseRowIdx + 1);
+        if (baseRowIdx === rows.length - 1) {
           // already at bottom-right; clamp
           nextColIdx = columns.length - 1;
-          nextRowIdx = dataRows.length - 1;
+          nextRowIdx = rows.length - 1;
         }
       } else {
         nextColIdx = baseColIdx + 1;
       }
     }
-    const nextRow = dataRows[nextRowIdx];
+    const nextRow = rows[nextRowIdx];
     const nextCol = columns[nextColIdx];
     if (!nextRow || !nextCol) return false;
     grid.setFocus({ rowId: nextRow.id, columnId: nextCol.id });
@@ -3795,7 +3866,9 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     return true;
   }
 
-  // Enter / Space — preserve Phase 1 row-selection behavior
+  // Enter / Space on a DATA row — preserve Phase 1 row-selection behavior. A
+  // group row never reaches here; the expand/collapse branch at the top of this
+  // function consumes both keys.
   if (key === "Enter" || key === " " || key === "Space") {
     const focusedRowId = focus.rowId;
     if (focusedRowId) {
@@ -3807,10 +3880,6 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
         const visibleRows = snapshot.visibleRows;
         const index = visibleRows.findIndex((r) => r.id === focusedRowId);
         const activated = visibleRows[index];
-        // Focus never lands on a group header by keyboard (`moveFocus` and the
-        // Home/End/Page/Tab paths above all walk data rows only), so this
-        // narrowing is belt-and-braces — `setFocus` is an unguarded imperative
-        // escape hatch until SP2.
         if (activated && isDataRow(activated)) {
           onRowActivate({
             row: activated.row,
