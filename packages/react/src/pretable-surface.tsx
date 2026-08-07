@@ -144,6 +144,39 @@ export interface PretableSurfaceMessages {
     columnCount: number;
   }) => string;
   copyFailedAnnouncement?: () => string;
+  /**
+   * Announced once a paste has been applied — i.e. after `onPaste` resolves,
+   * never before it, because the consumer owns the write.
+   *
+   * One function rather than one per outcome: a clean paste, a partial paste
+   * and a wholly rejected paste are the same sentence at different counts, and
+   * clipping is orthogonal to all three (any of them can also have been
+   * trimmed). Splitting them would force an overriding localizer to repeat the
+   * same pluralization across the cross-product of cases.
+   *
+   * `cellCount` is cells actually written, `rejectedCount` cells refused by
+   * `editable`/`validate`. `cellCount === 0` with a non-zero `rejectedCount` is
+   * the case worth wording distinctly: to a screen-reader user it is otherwise
+   * indistinguishable from nothing having happened. `clipped` is
+   * `PastePayload.clipped` verbatim — rows/columns of the target area that fell
+   * off the end of the grid.
+   *
+   * Per-cell `rejected[].message` text is deliberately not passed: a live
+   * region is the wrong place for a list. Render those from `onPaste`.
+   */
+  pasteAnnouncement?: (args: {
+    cellCount: number;
+    rejectedCount: number;
+    clipped: { rows: number; columns: number };
+  }) => string;
+  /**
+   * Announced when the paste never completed — the gate threw, or `onPaste`
+   * itself threw or rejected. Separate from {@link
+   * PretableSurfaceMessages.pasteAnnouncement} for the same reason
+   * `copyFailedAnnouncement` is separate from `copyAnnouncement`: nothing was
+   * applied, so there are no counts to report.
+   */
+  pasteFailedAnnouncement?: () => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -154,6 +187,17 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
   copyAnnouncement: ({ rowCount, columnCount }) =>
     `${rowCount} rows × ${columnCount} columns copied`,
   copyFailedAnnouncement: () => "Copy failed",
+  pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) => {
+    const base =
+      cellCount === 0
+        ? `No cells pasted, ${rejectedCount} rejected`
+        : `${cellCount} cell${cellCount === 1 ? "" : "s"} pasted` +
+          (rejectedCount > 0 ? `, ${rejectedCount} rejected` : "");
+    return clipped.rows > 0 || clipped.columns > 0
+      ? `${base}, clipped to fit`
+      : base;
+  },
+  pasteFailedAnnouncement: () => "Paste failed",
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -669,6 +713,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       copyFailedAnnouncement:
         messages?.copyFailedAnnouncement ??
         defaultMessages.copyFailedAnnouncement,
+      pasteAnnouncement:
+        messages?.pasteAnnouncement ?? defaultMessages.pasteAnnouncement,
+      pasteFailedAnnouncement:
+        messages?.pasteFailedAnnouncement ??
+        defaultMessages.pasteFailedAnnouncement,
     }),
     [messages],
   );
@@ -746,12 +795,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const editVisibleRowsRef = useRef(snapshot.visibleRows);
   const onCellEditRef = useRef(onCellEdit);
   const onPasteRef = useRef(onPaste);
+  // Read through a ref for the same reason `onPaste` is: the paste listener is
+  // memoized on `grid` alone, and `messages` is typically passed inline
+  // (`messages={{ … }}`), so depending on it directly would rebuild the
+  // handler — and detach/reattach the listener — on every render.
+  const effectiveMessagesRef = useRef(effectiveMessages);
   useLayoutEffect(() => {
     editColumnsRef.current = effectiveColumns;
     visualOrderColumnsRef.current = columnsInVisualOrder;
     editVisibleRowsRef.current = snapshot.visibleRows;
     onCellEditRef.current = onCellEdit;
     onPasteRef.current = onPaste;
+    effectiveMessagesRef.current = effectiveMessages;
   });
   // Which entry path opened the active edit. Type-to-replace seeds the draft
   // with the typed character, so the editor must not select it (the next
@@ -1024,13 +1079,40 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           source: { rows: matrix.length, columns: sourceColumns },
           clipped: targets.clipped,
         });
+
+        // Announced only once `onPaste` has RESOLVED. The consumer owns the
+        // write, and it may be async and may reject, so anything said before
+        // then is a claim about state the app has not reached — "12 cells
+        // pasted" followed by a throw would be a lie told to the one user who
+        // cannot see that nothing changed. The cost is a delay the length of
+        // the consumer's own update; the live region is polite and debounced
+        // anyway, so it is not a perceptible one.
+        if (myToken !== pasteTokenRef.current) return; // superseded: stay quiet
+        // Nothing landed and nothing was refused: an inert paste, with the same
+        // nothing to say that an empty-selection Cmd+C has.
+        if (cells.length === 0 && rejected.length === 0) return;
+        scheduleAnnouncement(
+          effectiveMessagesRef.current.pasteAnnouncement({
+            cellCount: cells.length,
+            rejectedCount: rejected.length,
+            clipped: targets.clipped,
+          }),
+        );
       };
 
       void gate().catch((err) => {
         console.warn("[pretable] paste failed", err);
+        // The hole `copyFailedAnnouncement` fills for copy: without this a
+        // failed paste is indistinguishable from an ignored keystroke to
+        // anyone not watching the grid. Suppressed when superseded, so a stale
+        // failure cannot talk over a newer paste (or fire after unmount).
+        if (myToken !== pasteTokenRef.current) return;
+        scheduleAnnouncement(
+          effectiveMessagesRef.current.pasteFailedAnnouncement(),
+        );
       });
     },
-    [grid],
+    [grid, scheduleAnnouncement],
   );
 
   useEffect(() => {

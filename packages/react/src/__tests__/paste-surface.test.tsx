@@ -7,12 +7,13 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PretableGrid } from "@pretable/core";
 
 import type { PastePayload } from "../paste";
 import { PretableSurface } from "../pretable-surface";
+import type { PretableSurfaceMessages } from "../pretable-surface";
 import type { PretableSurfaceState } from "../use-pretable";
 import type { PretableColumn } from "../types";
 
@@ -81,6 +82,7 @@ interface HarnessOpts {
   state?: PretableSurfaceState;
   onPaste?: (payload: PastePayload<Row>) => void | Promise<void>;
   onGridReady?: (grid: PretableGrid<Row>) => void;
+  messages?: PretableSurfaceMessages;
 }
 
 function renderPasteGrid(opts: HarnessOpts = {}) {
@@ -89,6 +91,7 @@ function renderPasteGrid(opts: HarnessOpts = {}) {
       ariaLabel="paste-grid"
       columns={opts.columns ?? COLUMNS}
       getRowId={(row) => row.id}
+      messages={opts.messages}
       onGridReady={opts.onGridReady}
       onPaste={opts.onPaste}
       overscan={0}
@@ -727,5 +730,263 @@ describe("PretableSurface paste", () => {
     expect(
       (onPaste.mock.calls[0]![0] as PastePayload<Row>).cells[0]!.value,
     ).toBe("second");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Paste aria-live announcements
+//
+// The copy/select-all half of this live region is covered in
+// pretable-surface.test.tsx's "aria-live announcements" block; these live here
+// because they need the paste harness above (clipboard-event stub, editable /
+// validate columns, rejection scenarios) rather than that file's.
+// ---------------------------------------------------------------------------
+
+const ANNOUNCE_DEBOUNCE_MS = 500;
+
+function liveRegion(view: ReturnType<typeof render>): HTMLElement | null {
+  return view.container.querySelector("[data-pretable-live-region]");
+}
+
+/**
+ * Drain the gate's microtask chain, then run out the announcement debounce.
+ *
+ * The chain (editable → coerce → validate → onPaste) is all microtasks, so one
+ * event-loop break resolves it; `advanceTimersByTimeAsync(0)` is that break
+ * under fake timers. Only after it has run does the debounce timer exist, so
+ * the two advances cannot be collapsed into one.
+ */
+async function flushPasteAndAnnounce(): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  act(() => {
+    vi.advanceTimersByTime(ANNOUNCE_DEBOUNCE_MS);
+  });
+}
+
+describe("PretableSurface paste announcements", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("announces the cell count for a clean paste", async () => {
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste: vi.fn(),
+    });
+
+    firePaste(grid(), "x\ty\nz\tw");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("4 cells pasted");
+  });
+
+  it("says 'cell', not 'cells', for a single-cell paste", async () => {
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste: vi.fn(),
+    });
+
+    firePaste(grid(), "solo");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("1 cell pasted");
+  });
+
+  it("announces written and rejected counts for a partial paste", async () => {
+    // Anchored on `note`: `note` is editable, the next column `locked` is not.
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "note"),
+      onPaste: vi.fn(),
+    });
+
+    firePaste(grid(), "x\ty");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("1 cell pasted, 1 rejected");
+  });
+
+  it("announces a wholly rejected paste distinctly from silence", async () => {
+    const onPaste = vi.fn();
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "locked"),
+      onPaste,
+    });
+
+    firePaste(grid(), "nope");
+    await flushPasteAndAnnounce();
+
+    // The payload really is empty — this is the case that would otherwise be
+    // indistinguishable from the paste never having been noticed.
+    expect((onPaste.mock.calls[0]![0] as PastePayload<Row>).cells).toEqual([]);
+    expect(liveRegion(view)).toHaveTextContent("No cells pasted, 1 rejected");
+  });
+
+  it("reports that an overflowing paste was clipped", async () => {
+    // Anchored at the last row and last column: 1 cell lands, 2 rows and 1
+    // column fall off the edges.
+    const view = renderPasteGrid({
+      state: cellSelection("r3", "qty"),
+      onPaste: vi.fn(),
+    });
+
+    firePaste(grid(), "1\t2\n3\t4\n5\t6");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("1 cell pasted, clipped to fit");
+  });
+
+  it("announces 'Paste failed' when onPaste throws", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste: () => {
+        throw new Error("boom");
+      },
+    });
+
+    firePaste(grid(), "x");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("Paste failed");
+    expect(warnSpy).toHaveBeenCalled();
+  });
+
+  it("announces 'Paste failed' when onPaste rejects asynchronously", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste: () => Promise.reject(new Error("boom")),
+    });
+
+    firePaste(grid(), "x");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("Paste failed");
+  });
+
+  it("stays silent until onPaste resolves", async () => {
+    let release: (() => void) | null = null;
+    const applied = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste: () => applied,
+    });
+
+    firePaste(grid(), "x");
+    await flushPasteAndAnnounce();
+
+    // The consumer has not written anything yet, so there is nothing true to
+    // say — announcing here would be a claim the app could still falsify.
+    // Asserted on textContent, not toHaveTextContent: the latter is a substring
+    // check, and every string contains "".
+    expect(liveRegion(view)?.textContent).toBe("");
+
+    release!();
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("1 cell pasted");
+  });
+
+  // The staleness guard these two exercise is the one AFTER `onPaste` is
+  // awaited, which is reachable only when the supersession happens while
+  // `onPaste` itself is in flight — the gate's own between-batches check
+  // already catches a paste superseded before that point.
+  it("does not announce a paste superseded while its onPaste was in flight", async () => {
+    let release: (() => void) | null = null;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let call = 0;
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste: () => (++call === 1 ? held : undefined),
+    });
+
+    // Two cells in the paste that gets superseded, one in the paste that wins,
+    // so the two announcements are distinguishable by text.
+    firePaste(grid(), "first\nalso");
+    await flushPasteAndAnnounce();
+    firePaste(grid(), "second");
+    await flushPasteAndAnnounce();
+    expect(call).toBe(2);
+    expect(liveRegion(view)).toHaveTextContent("1 cell pasted");
+
+    // The superseded onPaste finally resolves; it must not talk over the newer
+    // paste with its own "2 cells pasted".
+    release!();
+    await flushPasteAndAnnounce();
+    expect(liveRegion(view)?.textContent).toBe("1 cell pasted");
+  });
+
+  it("does not announce a failure for a paste superseded while its onPaste was in flight", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    let reject: ((err: Error) => void) | null = null;
+    const held = new Promise<void>((_resolve, rej) => {
+      reject = rej;
+    });
+    let call = 0;
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste: () => (++call === 1 ? held : undefined),
+    });
+
+    firePaste(grid(), "first");
+    await flushPasteAndAnnounce();
+    firePaste(grid(), "second");
+    await flushPasteAndAnnounce();
+    expect(liveRegion(view)).toHaveTextContent("1 cell pasted");
+
+    reject!(new Error("boom"));
+    await flushPasteAndAnnounce();
+    expect(liveRegion(view)?.textContent).toBe("1 cell pasted");
+  });
+
+  it("does not announce when no onPaste is wired up", async () => {
+    const view = renderPasteGrid({ state: cellSelection("r1", "name") });
+
+    firePaste(grid(), "x");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)?.textContent).toBe("");
+  });
+
+  it("custom messages.pasteAnnouncement overrides the default text", async () => {
+    const view = renderPasteGrid({
+      state: cellSelection("r3", "qty"),
+      onPaste: vi.fn(),
+      messages: {
+        pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) =>
+          `OVR ${cellCount}/${rejectedCount}/${clipped.rows}/${clipped.columns}`,
+      },
+    });
+
+    firePaste(grid(), "1\t2\n3\t4\n5\t6");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("OVR 1/0/2/1");
+  });
+
+  it("custom messages.pasteFailedAnnouncement overrides the failure text", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste: () => {
+        throw new Error("boom");
+      },
+      messages: { pasteFailedAnnouncement: () => "NOPE" },
+    });
+
+    firePaste(grid(), "x");
+    await flushPasteAndAnnounce();
+
+    expect(liveRegion(view)).toHaveTextContent("NOPE");
   });
 });
