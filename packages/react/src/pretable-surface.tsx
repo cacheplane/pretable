@@ -2653,10 +2653,19 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
       <div
         data-pretable-scroll-content=""
-        style={getScrollContentStyle(
-          renderSnapshot.totalHeight,
-          renderSnapshot.totalWidth,
-        )}
+        style={
+          {
+            ...getScrollContentStyle(
+              renderSnapshot.totalHeight,
+              renderSnapshot.totalWidth,
+            ),
+            // Every data row sits at the full grouping depth, so the leaf
+            // indent is one value for the whole body — set it once here and let
+            // it inherit. Group cells write their own `--pretable-group-depth`
+            // inline, which shadows this for that cell only.
+            "--pretable-group-depth": snapshot.rowGroups.length,
+          } as CSSProperties
+        }
       >
         {renderSnapshot.rows.map((renderRow) => {
           if (renderRow.kind === "group") {

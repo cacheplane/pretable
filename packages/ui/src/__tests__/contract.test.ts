@@ -44,6 +44,17 @@ const TOKENS = [
 const THEMES_DIR = path.resolve(__dirname, "../themes");
 const GRID_CSS = path.resolve(__dirname, "../grid.css");
 
+/**
+ * `--pretable-*` custom properties that are NOT theme tokens: @pretable/react
+ * writes them per element as render state, so they resolve on the element and
+ * are absent from `:root` by design. A theme must not define them — doing so
+ * would imply they are themeable.
+ *
+ * - `--pretable-group-depth`: a row's grouping depth, set inline on group cells
+ *   and once on the scroll content for leaf rows.
+ */
+const RUNTIME_VARS = new Set(["--pretable-group-depth"]);
+
 function loadCSS(absolutePath: string): () => void {
   const css = fs.readFileSync(absolutePath, "utf8");
   const style = document.createElement("style");
@@ -130,6 +141,11 @@ describe("token contract", () => {
       ).toBeGreaterThan(0);
       const computed = getComputedStyle(document.documentElement);
       for (const ref of refs) {
+        // Runtime vars are per-element state written by @pretable/react, not
+        // theme tokens, so they resolve on the element and never at :root.
+        // Keep this list exact rather than pattern-matching a prefix — the
+        // point of the check is that a typo'd or unthemed token still fails.
+        if (RUNTIME_VARS.has(ref)) continue;
         expect(
           computed.getPropertyValue(ref).trim(),
           `grid.css references unresolved ${ref} under ${themeFile}`,

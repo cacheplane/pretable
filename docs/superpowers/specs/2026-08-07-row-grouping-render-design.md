@@ -225,11 +225,21 @@ item to verify in a real browser, not machinery to pre-build.**
 
 ## Guards
 
-- **A group can stop being expandable** when a filter removes all its children.
-  The twisty must disappear and `aria-expanded` must be dropped. ag-grid
-  subscribes to five separate node events for this
-  (`groupCellRendererCtrl.ts:258-267`); our full-recompute model gets it from
-  the snapshot, but it needs a test.
+- **A childless group must render without a twisty and without
+  `aria-expanded`** — `aria-expanded="false"` on a row that cannot be opened
+  announces it as a collapsed group, which is the ag-grid bug at
+  `baseExpansionService.ts:90`.
+
+  Corrected during implementation: this state is **not reachable through the
+  engine**. `buildGroupedRows` (`group-rows.ts:157-191`) builds the tree from
+  _post-filter_ rows, so a group whose children a filter removed is never
+  materialized at all — it does not become childless, it ceases to exist.
+  `childCount === 0` cannot appear in a snapshot. My original claim that a
+  group "stops being expandable" under a filter was wrong for this engine; it
+  describes ag-grid's incremental model, not our full recompute. The rule still
+  ships and is still tested, by rendering `<GroupRow>` directly with a
+  `childCount: 0` group, which is where the state is reachable.
+
 - **`childCount` is post-filter**, as SP1 specified.
 - **Row heights stay uniform across kinds.** A taller group row would force the
   height model off estimated heights — ag-grid has no `groupRowHeight` option

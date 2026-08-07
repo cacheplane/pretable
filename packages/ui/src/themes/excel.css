@@ -56,6 +56,7 @@
   --pretable-row-height: 20px; /* 15pt at 96 DPI */
   --pretable-header-height: 24px;
   --pretable-cell-padding-x: 6px;
+  --pretable-group-indent: 12px;
   --pretable-cell-padding-y: 2px;
   --pretable-font-size-cell: 15px; /* Aptos Narrow 11pt */
   --pretable-font-size-header: 13px;
@@ -74,6 +75,7 @@
   --pretable-row-height: 24px;
   --pretable-header-height: 32px;
   --pretable-cell-padding-x: 8px;
+  --pretable-group-indent: 16px;
   --pretable-cell-padding-y: 4px;
   --pretable-font-size-cell: 15px;
   --pretable-font-size-header: 14px;
@@ -83,6 +85,7 @@
   --pretable-row-height: 32px;
   --pretable-header-height: 40px;
   --pretable-cell-padding-x: 12px;
+  --pretable-group-indent: 20px;
   --pretable-cell-padding-y: 8px;
   --pretable-font-size-cell: 15px;
   --pretable-font-size-header: 14px;

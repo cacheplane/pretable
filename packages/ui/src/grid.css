@@ -111,6 +111,77 @@
     background: var(--pretable-bg-grid-alt);
   }
 
+  /* ---- Row grouping ---------------------------------------------------- */
+
+  /* Group headers borrow the header fill so the eye reads them as structure
+     rather than as another record. */
+  :where([data-pretable-group-row] [data-pretable-cell]) {
+    background: var(--pretable-bg-header);
+    color: var(--pretable-text-header);
+    font-weight: 600;
+  }
+
+  /* Depth indent is padding INSIDE the cell box. Indenting the row instead
+     would scroll the indent away from a pinned group column, compute ellipsis
+     truncation against the wrong width, and misplace the focus outline.
+     The literal fallback matters: a third-party theme that predates
+     --pretable-group-indent degrades to a visible indent, not a flat list. */
+  :where([data-pretable-group-cell]) {
+    gap: var(--pretable-cell-padding-x);
+    padding-left: calc(
+      var(--pretable-cell-padding-x) + var(--pretable-group-depth, 0) *
+        var(--pretable-group-indent, 16px)
+    );
+  }
+
+  :where([data-pretable-group-twisty]) {
+    flex: none;
+    width: 1em;
+    height: 1em;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+    transition: rotate 120ms ease;
+  }
+
+  /* The glyph points down when open; rotate it closed. */
+  :where([data-pretable-group-twisty][aria-expanded="false"]) {
+    rotate: -90deg;
+  }
+
+  :where([data-pretable-group-twisty]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: 1px;
+  }
+
+  :where([data-pretable-group-label]) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :where([data-pretable-group-count]) {
+    flex: none;
+    color: var(--pretable-text-dim);
+    font-weight: 400;
+  }
+
+  /* Data rows sit one twisty-width in, so their content lines up with sibling
+     group labels instead of hanging a chevron to the left. Only visible once
+     leaf and group rows share a depth — invisible in a screenshot, ragged in
+     every real grid. */
+  :where([data-pretable-group-leaf]) {
+    padding-left: calc(
+      var(--pretable-cell-padding-x) * 2 + 1em +
+        var(--pretable-group-depth, 0) * var(--pretable-group-indent, 16px)
+    );
+  }
+
   /* Hover */
   :where([data-pretable-row]:hover [data-pretable-cell]) {
     background: var(--pretable-bg-hover);
