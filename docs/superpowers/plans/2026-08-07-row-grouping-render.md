@@ -21,6 +21,36 @@ Playwright (Chromium + WebKit), api-extractor, pnpm workspaces.
 
 ---
 
+## Status — Tasks 1 and 2 are DONE (`cef3638`, `1e94cfd`)
+
+grid-core is complete: 376 tests pass (19 files). React is at 646 pass / 7 fail,
+and those 7 are exactly the suite Task 4 inverts — verified, nothing else broke.
+
+**Four corrections the implementer found, which later tasks depend on:**
+
+1. **`moveFocus` already reads `getColumns()`**, not `options.columns`. This was
+   not in the original plan and is load-bearing for Task 4: without it, focus
+   could reach the *hidden* grouped column and could never reach
+   `GROUP_COLUMN_ID`, making Task 4's branch table unimplementable. Ungrouped it
+   is an identity change, so non-grouping grids are unaffected.
+2. **`getColumns()` is already on the `@pretable/core` `PretableGrid` facade** —
+   which is the type `use-pretable.ts:170` holds. Task 3 can call it.
+3. **A grid-core suite also had to invert:** `grouping-engine.test.ts:602-655`,
+   `describe("group rows are neither focusable nor selectable (v1)")`. Already
+   inverted in place and renamed. Task 2's "pre-existing suites must still pass"
+   was not achievable as written.
+4. **The derived-column cache keys on `options.columns` and `rowGroups`
+   identity**, not on an enumerated list of mutators — the plan's list of six
+   omitted `resetColumnLayout`, `autosizeColumns`, and the autosize re-measure
+   inside `setRows`. Identity keying covers all nine paths structurally and
+   matches the file's existing `cachedDerivedSort === sort` idiom.
+
+Also fixed en route: collapsing the group that held focus used to leave focus
+dangling. `setGroupExpanded` and `collapseAll` now re-anchor onto the nearest
+surviving ancestor group row, preserving the column.
+
+---
+
 ## Ground rules for every task
 
 - **Vanilla CSS in `packages/*`.** No Tailwind. Use `:where()` + existing
