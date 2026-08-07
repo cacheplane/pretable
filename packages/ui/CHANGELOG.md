@@ -1,5 +1,17 @@
 # @pretable/ui
 
+## 0.0.7
+
+### Patch Changes
+
+- Render grouped rows with a derived group column, aggregate formatting, and the ([#255](https://github.com/cacheplane/pretable/pull/255))
+  ARIA treegrid keyboard model. Grouped grids now expose expandable hierarchy
+  rows with themed indentation and keep focus anchored when groups collapse.
+
+- Let header dividers inherit `--pretable-rule` from the grid skin instead of a ([#252](https://github.com/cacheplane/pretable/pull/252))
+  fixed inline color, so they match body gridlines in light and dark themes and
+  respond to consumer token overrides.
+
 ## 0.0.3
 
 ### Patch Changes

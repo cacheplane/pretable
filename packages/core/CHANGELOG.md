@@ -1,5 +1,13 @@
 # @pretable/core
 
+## 0.0.7
+
+### Patch Changes
+
+- Render grouped rows with a derived group column, aggregate formatting, and the ([#255](https://github.com/cacheplane/pretable/pull/255))
+  ARIA treegrid keyboard model. Grouped grids now expose expandable hierarchy
+  rows with themed indentation and keep focus anchored when groups collapse.
+
 ## 0.0.6
 
 ### Patch Changes
