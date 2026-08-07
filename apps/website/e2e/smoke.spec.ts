@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openDrawer } from "./helpers";
+
 test("landing renders grid + control bar + drawer handle; drawer opens", async ({
   page,
 }) => {
@@ -14,8 +16,7 @@ test("landing renders grid + control bar + drawer handle; drawer opens", async (
   await expect(page.locator("[data-testid='drawer-handle']")).toBeVisible();
 
   // Click handle → drawer opens
-  await page.locator("[data-testid='drawer-handle']").click();
-  await expect(page.locator("html")).toHaveAttribute("data-drawer", "open");
+  await openDrawer(page);
   await expect(page.getByText(/built in bend, or\./i)).toBeVisible();
 
   // /docs still resolves
@@ -36,8 +37,7 @@ test("docs brand link returns to drawer when it was last open", async ({
 }) => {
   await page.goto("/");
   // Open the drawer via the bottom handle.
-  await page.getByTestId("drawer-handle").click();
-  await expect(page.locator("html")).toHaveAttribute("data-drawer", "open");
+  await openDrawer(page);
 
   // Navigate to /docs via the in-drawer /docs link.
   await page
@@ -225,8 +225,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("drawer-handle").click();
-  await expect(page.locator("html")).toHaveAttribute("data-drawer", "open");
+  await openDrawer(page);
 
   // --- Scale section: scroll into view, grid mounts, counter proves virtualization ---
   await page.locator("#scale").scrollIntoViewIfNeeded();
@@ -490,14 +489,7 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
   test.slow();
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  // The handle is server-rendered but its onClick only exists after hydration,
-  // so a click that lands early is silently dropped. Retry until it takes.
-  await expect(async () => {
-    await page.getByTestId("drawer-handle").click();
-    await expect(page.locator("html")).toHaveAttribute("data-drawer", "open", {
-      timeout: 2000,
-    });
-  }).toPass({ timeout: 20_000 });
+  await openDrawer(page);
 
   const mod = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -674,7 +666,7 @@ test("showcase: column reorder drops where the indicator points, scrolled sidewa
   // coordinates but compared against content offsets, which put the indicator
   // — and the drop — a scroll-distance away from the cursor.
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("drawer-handle").click();
+  await openDrawer(page);
   await page.locator("#column-layout").scrollIntoViewIfNeeded();
 
   const layout = page.locator("#column-layout");

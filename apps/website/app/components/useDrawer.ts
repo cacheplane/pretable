@@ -17,6 +17,13 @@ const LAST_DRAWER_KEY = "pretable:lastDrawer";
 
 export interface UseDrawerResult {
   isOpen: boolean;
+  /**
+   * False during SSR and until this component's post-hydration effect runs.
+   * While it is false the drawer controls are painted but inert: their click
+   * handlers are not attached yet, so a click is accepted and dropped. Surface
+   * it on any control that can be pressed before the page is live.
+   */
+  isUpgraded: boolean;
   open: () => void;
   close: () => void;
   toggle: () => void;
@@ -95,5 +102,5 @@ export function useDrawer(): UseDrawerResult {
     return () => window.removeEventListener("keydown", handler);
   }, [isUpgraded, isOpen, close]);
 
-  return { isOpen, open, close, toggle };
+  return { isOpen, isUpgraded, open, close, toggle };
 }

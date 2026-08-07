@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { DrawerHandle } from "../DrawerHandle";
@@ -48,6 +49,22 @@ describe("DrawerHandle", () => {
     renderHandle();
     expect(handle()).toHaveAttribute("aria-controls", "drawer-content");
     expect(document.getElementById("drawer-content")).not.toBeNull();
+  });
+
+  it("reports data-hydrated='false' in the server-rendered markup", () => {
+    // The SSR contract the e2e `openDrawer` helper waits on: the handle paints
+    // from this markup with no click handler attached, and says so.
+    const html = renderToStaticMarkup(
+      <ControlStateProvider>
+        <DrawerHandle />
+      </ControlStateProvider>,
+    );
+    expect(html).toContain('data-hydrated="false"');
+  });
+
+  it("reports data-hydrated='true' once mounted on the client", () => {
+    renderHandle();
+    expect(handle()).toHaveAttribute("data-hydrated", "true");
   });
 
   it("is open-only: clicking again while open leaves it open", () => {
