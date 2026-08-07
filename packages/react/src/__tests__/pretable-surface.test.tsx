@@ -5016,3 +5016,161 @@ describe("announcements count the drawn column order", () => {
     ).toHaveTextContent("1 rows × 2 columns copied");
   });
 });
+
+/**
+ * Keyboard navigation with row grouping active.
+ *
+ * Rendering group rows is sub-project 2, so nothing here is visible yet — the
+ * assertions read the focused row id off `onFocusChange`. That is the point:
+ * a group row draws nothing, so focus landing on one vanishes on screen, and
+ * the engine's `moveFocus` then fails to find the focused id among the data
+ * rows and treats the next arrow key as "arriving at the grid" — teleporting
+ * focus to the first row.
+ *
+ * Every row here is its own group, so the flat list alternates
+ * `[group, data, group, data, …]` and every group row sits at an even index.
+ * Any off-by-one into the flat list therefore lands on a group row.
+ */
+describe("keyboard navigation over grouped rows", () => {
+  type GroupedRow = { id: string; sector: string; a: string; b: string };
+
+  const groupedColumns = [
+    { id: "sector", header: "Sector", widthPx: 100 },
+    { id: "a", header: "A", widthPx: 100 },
+    { id: "b", header: "B", widthPx: 100 },
+  ];
+
+  const groupedRows: GroupedRow[] = [
+    { id: "d1", sector: "s1", a: "a1", b: "b1" },
+    { id: "d2", sector: "s2", a: "a2", b: "b2" },
+    { id: "d3", sector: "s3", a: "a3", b: "b3" },
+    { id: "d4", sector: "s4", a: "a4", b: "b4" },
+  ];
+
+  const isGroupRowId = (id: string | null) =>
+    id !== null && id.startsWith("__group__:");
+
+  /**
+   * `viewportHeight` is deliberately tiny by default: the surface's page step
+   * is `max(1, floor(bodyViewportHeight / 32))`, so anything under 64px pins it
+   * at exactly one row and makes the PageUp/PageDown landing spot deterministic
+   * rather than a function of the test environment's layout.
+   */
+  function renderGrouped(opts: { viewportHeight?: number } = {}) {
+    let focus: PretableFocusState = { rowId: null, columnId: null };
+    const view = render(
+      <PretableSurface
+        ariaLabel="grouped-grid"
+        columns={groupedColumns}
+        getRowId={(row: GroupedRow) => row.id}
+        onFocusChange={(next) => {
+          focus = next;
+        }}
+        overscan={0}
+        rows={groupedRows}
+        state={{ rowGroups: ["sector"] }}
+        viewportHeight={opts.viewportHeight ?? 40}
+      />,
+    );
+
+    const grid = view.getByRole("grid");
+
+    /** Walk arrow keys to a data row — `moveFocus` is already data-row-only. */
+    const seed = (rowId: string, columnId: string) => {
+      const rowIndex = groupedRows.findIndex((r) => r.id === rowId);
+      const colIndex = groupedColumns.findIndex((c) => c.id === columnId);
+      for (let i = 0; i <= rowIndex; i += 1) {
+        fireEvent.keyDown(grid, { key: "ArrowDown" });
+      }
+      for (let i = 0; i < colIndex; i += 1) {
+        fireEvent.keyDown(grid, { key: "ArrowRight" });
+      }
+      expect(focus.rowId).toBe(rowId);
+      expect(focus.columnId).toBe(columnId);
+    };
+
+    return { grid, seed, focus: () => focus };
+  }
+
+  it("Cmd+Home lands on the first data row, and ArrowDown then advances", () => {
+    const { grid, focus } = renderGrouped();
+
+    fireEvent.keyDown(grid, { key: "Home", metaKey: true });
+    expect(isGroupRowId(focus().rowId)).toBe(false);
+    expect(focus().rowId).toBe("d1");
+    expect(focus().columnId).toBe("sector");
+
+    // The teleport check. With focus parked on a group row, `moveFocus` cannot
+    // find it among the data rows and restarts at index 0 — so this would come
+    // back "d1" instead of advancing to the second data row.
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    expect(focus().rowId).toBe("d2");
+  });
+
+  it("End with no prior focus lands on the first data row", () => {
+    const { grid, focus } = renderGrouped();
+
+    fireEvent.keyDown(grid, { key: "End" });
+    expect(isGroupRowId(focus().rowId)).toBe(false);
+    expect(focus().rowId).toBe("d1");
+    expect(focus().columnId).toBe("b");
+  });
+
+  it("Cmd+End lands on the last data row", () => {
+    const { grid, seed, focus } = renderGrouped();
+    seed("d1", "a");
+
+    fireEvent.keyDown(grid, { key: "End", metaKey: true });
+    expect(isGroupRowId(focus().rowId)).toBe(false);
+    expect(focus().rowId).toBe("d4");
+    expect(focus().columnId).toBe("b");
+  });
+
+  it("PageDown steps over the group row between two data rows", () => {
+    const { grid, seed, focus } = renderGrouped();
+    seed("d1", "a");
+
+    // One-row page step: the next flat entry is d1's sibling group header.
+    fireEvent.keyDown(grid, { key: "PageDown" });
+    expect(isGroupRowId(focus().rowId)).toBe(false);
+    expect(focus().rowId).toBe("d2");
+  });
+
+  it("PageUp steps over the group row between two data rows", () => {
+    const { grid, seed, focus } = renderGrouped();
+    seed("d3", "a");
+
+    fireEvent.keyDown(grid, { key: "PageUp" });
+    expect(isGroupRowId(focus().rowId)).toBe(false);
+    expect(focus().rowId).toBe("d2");
+  });
+
+  it("PageUp at the top clamps to the first data row, not the first group row", () => {
+    const { grid, seed, focus } = renderGrouped({ viewportHeight: 600 });
+    seed("d4", "a");
+
+    fireEvent.keyDown(grid, { key: "PageUp" });
+    expect(isGroupRowId(focus().rowId)).toBe(false);
+    expect(focus().rowId).toBe("d1");
+  });
+
+  it("Tab wrapping past the last column skips the next group row", () => {
+    const { grid, seed, focus } = renderGrouped();
+    seed("d1", "b");
+
+    fireEvent.keyDown(grid, { key: "Tab" });
+    expect(isGroupRowId(focus().rowId)).toBe(false);
+    expect(focus().rowId).toBe("d2");
+    expect(focus().columnId).toBe("sector");
+  });
+
+  it("Shift+Tab wrapping past the first column skips the previous group row", () => {
+    const { grid, seed, focus } = renderGrouped();
+    seed("d2", "sector");
+
+    fireEvent.keyDown(grid, { key: "Tab", shiftKey: true });
+    expect(isGroupRowId(focus().rowId)).toBe(false);
+    expect(focus().rowId).toBe("d1");
+    expect(focus().columnId).toBe("b");
+  });
+});

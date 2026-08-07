@@ -66,10 +66,16 @@ export function deriveSelectedRows<TRow extends PretableRow>(args: {
     return result;
   }
 
+  // Positions come from the FULL flat list — a range's endpoints are data rows,
+  // but group rows occupy slots between them and shift the indices.
   const rowOrder = new Map(visibleRows.map((r, i) => [r.id, i]));
   const columnOrder = new Map(columns.map((c, i) => [c.id, i]));
 
   for (const row of visibleRows) {
+    // Selection spans data rows only in v1, so a group row swept over by a
+    // range is never reported as selected or indeterminate.
+    if (row.kind !== "data") continue;
+
     let coveredCount = 0;
 
     for (const column of columns) {

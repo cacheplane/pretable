@@ -17,6 +17,7 @@ import type {
   ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
+  PretableDataRow,
   PretableEditInput,
   PretableFocusState,
   PretableGrid,
@@ -39,6 +40,23 @@ import {
 } from "@pretable-internal/renderer-dom";
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
+
+/**
+ * Narrow a visible-row entry to a data row.
+ *
+ * The surface renders and interacts with data rows only. Group headers reach it
+ * through `snapshot.visibleRows` and the render snapshot (the engine and the
+ * renderer both pass them through), and every consumer here steps over them —
+ * matching the engine, whose focus, `selectAll` and `deriveSelectedRows` are
+ * likewise data-row-only. Drawing and interacting with group rows is
+ * sub-project 2; until then this guard is the single place that decision is
+ * expressed.
+ */
+function isDataRow<TRow extends PretableRow>(
+  entry: PretableVisibleRow<TRow>,
+): entry is PretableDataRow<TRow> {
+  return entry.kind === "data";
+}
 
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { computeColumnDropTarget } from "./column-drag-geometry";
@@ -839,11 +857,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const editController = useCellEditController<TRow>({
     grid,
     getColumns: useCallback(() => editColumnsRef.current, []),
-    getRowById: useCallback(
-      (id: string) =>
-        editVisibleRowsRef.current.find((r) => r.id === id)?.row ?? null,
-      [],
-    ),
+    getRowById: useCallback((id: string) => {
+      const entry = editVisibleRowsRef.current.find((r) => r.id === id);
+
+      return entry && isDataRow(entry) ? entry.row : null;
+    }, []),
     onCellEdit: useCallback(
       (payload: {
         rowId: string;
@@ -879,8 +897,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       if (!failedHere) return;
       editController.cancel();
     }
-    const row = editVisibleRowsRef.current.find((r) => r.id === rowId)?.row;
-    if (!row) return;
+    const entry = editVisibleRowsRef.current.find((r) => r.id === rowId);
+    if (!entry || !isDataRow(entry)) return;
+    const row = entry.row;
     // Negate the value the checkbox is *showing*, not raw truthiness: a cell
     // holding `"false"` renders unchecked, so its toggle must commit `true`.
     const current = toBooleanCell(resolveCellValue(row, column));
@@ -975,7 +994,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
       const myToken = (pasteTokenRef.current += 1);
       const columnById = new Map(columns.map((c) => [c.id, c]));
-      const rowById = new Map(snap.visibleRows.map((r) => [r.id, r.row]));
+      // Data rows only: a group row carries no `row` to edit, and
+      // `mapPasteToTargets` never emits one as a target.
+      const rowById = new Map<string, TRow>();
+      for (const visibleRow of snap.visibleRows) {
+        if (visibleRow.kind === "data")
+          rowById.set(visibleRow.id, visibleRow.row);
+      }
 
       // One slot per target, so outcomes keep the block's row-major order.
       const outcomes = new Array<PastedCell<TRow> | RejectedPasteCell | null>(
@@ -1267,7 +1292,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       for (const [rowIdx, mask] of rowMask) {
         if (mask === 0) continue;
         const row = visibleRows[rowIdx];
-        if (!row) continue;
+        // A group header positionally inside a range is never *selected* — the
+        // engine's `deriveSelectedRows` skips it too, so the row-select
+        // checkbox state stays consistent with what the engine reports.
+        if (!row || !isDataRow(row)) continue;
         if (mask === fullMask) fullyRows.add(row.id);
         else indeterminateRows.add(row.id);
       }
@@ -1307,7 +1335,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       }
       for (const [rowIdx, cov] of rowCoverage) {
         const row = visibleRows[rowIdx];
-        if (!row) continue;
+        // Group headers are never selected — see the fast path above.
+        if (!row || !isDataRow(row)) continue;
         if (cov.size === 0) continue;
         if (cov.size === colCount) fullyRows.add(row.id);
         else indeterminateRows.add(row.id);
@@ -2026,14 +2055,29 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       ),
                     }
                   : getHeaderCellStyle(plannedCol.left, plannedCol.width);
-            const visibleRows = snapshot.visibleRows;
+            // "All visible" means all visible DATA rows, matching the engine's
+            // `setSelectAllVisible`. Counting group headers here would pin the
+            // header checkbox to "mixed" forever, since they are never selected.
+            //
+            // One allocation-free pass, deliberately: this runs on every render
+            // of the header, and `visibleRows` is the whole row model (30k rows
+            // on the scale grid). A `.filter(isDataRow)` here would churn an
+            // N-element array per render for a result that is three booleans.
+            let dataRowCount = 0;
+            let fullyCount = 0;
+            let anySelected = false;
+            for (const r of snapshot.visibleRows) {
+              if (!isDataRow(r)) continue;
+              dataRowCount += 1;
+              if (fullySelectedRowIds.has(r.id)) {
+                fullyCount += 1;
+                anySelected = true;
+              } else if (indeterminateRowIds.has(r.id)) {
+                anySelected = true;
+              }
+            }
             const allFullySelected =
-              visibleRows.length > 0 &&
-              visibleRows.every((r) => fullySelectedRowIds.has(r.id));
-            const anySelected = visibleRows.some(
-              (r) =>
-                fullySelectedRowIds.has(r.id) || indeterminateRowIds.has(r.id),
-            );
+              dataRowCount > 0 && fullyCount === dataRowCount;
             const headerCheckState: "true" | "false" | "mixed" =
               allFullySelected ? "true" : anySelected ? "mixed" : "false";
             const showHeaderCheckbox =
@@ -2539,7 +2583,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           renderSnapshot.totalWidth,
         )}
       >
-        {renderSnapshot.rows.map(({ height, id, row, rowIndex, top }) => {
+        {renderSnapshot.rows.map((renderRow) => {
+          // Group headers are planned and windowed like any other row, but the
+          // surface does not draw them yet — that is sub-project 2. Skipping
+          // them here leaves their reserved band blank rather than shifting the
+          // data rows below, because every row is absolutely positioned at the
+          // `top` the planner computed.
+          if (renderRow.kind !== "data") {
+            return null;
+          }
+
+          const { height, id, row, rowIndex, top } = renderRow;
           const isFocused = snapshot.focus.rowId === id;
           const isSelected = fullySelectedRowIds.has(id);
           const rowProps =
@@ -2891,7 +2945,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                                   : [clickedIdx, anchorIdx];
                               for (let i = lo; i <= hi; i += 1) {
                                 const r = visible[i];
-                                if (r && !fullySelectedRowIds.has(r.id)) {
+                                // Group headers inside the shift-span are not
+                                // selectable targets — step over them.
+                                if (!r || !isDataRow(r)) continue;
+                                if (!fullySelectedRowIds.has(r.id)) {
                                   grid.toggleRowSelection(r.id);
                                 }
                               }
@@ -3290,13 +3347,23 @@ function resolvePasteAnchor<TRow extends PretableRow>(
   }
   if (!chosen) return null;
 
+  // Measure the selection in data rows: group rows are not paste targets, so a
+  // selection spanning one covers fewer writable rows than its span suggests,
+  // and `mapPasteToTargets` decides tiling against that count. A selection that
+  // covers only group rows has nothing to paste into.
+  let selectionRows = 0;
+  for (let i = chosen.rowLo; i <= chosen.rowHi; i += 1) {
+    if (visibleRows[i]?.kind === "data") selectionRows += 1;
+  }
+  if (selectionRows === 0) return null;
+
   return {
     anchor: {
       rowId: visibleRows[chosen.rowLo]!.id,
       columnId: dataColumns[chosen.colLo]!.id,
     },
     selectionSize: {
-      rows: chosen.rowHi - chosen.rowLo + 1,
+      rows: selectionRows,
       columns: chosen.colHi - chosen.colLo + 1,
     },
   };
@@ -3347,29 +3414,37 @@ function computeSelectionExtent<TRow extends PretableRow>(
    */
   columns: readonly PretableColumn<TRow>[],
 ): { rowCount: number; columnCount: number; isAll: boolean } {
-  const visibleRows = snapshot.visibleRows;
+  // The extent is announced as "N rows × M columns", so it counts data cells:
+  // group headers carry none, and leaving them in would both inflate `rowCount`
+  // and make `isAll` unreachable after a select-all.
+  //
+  // This runs on every render, so the data rows are indexed in a single pass
+  // rather than materialized with `.filter(isDataRow)` — `rowOrder` is the only
+  // allocation and it was needed anyway. Positions below are therefore
+  // data-row ordinals, and `coveredRows` collects those ordinals directly
+  // (a bijection with row ids, so the count is the same either way).
   const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
 
-  if (
-    ranges.length === 0 ||
-    visibleRows.length === 0 ||
-    dataColumns.length === 0
-  ) {
+  const rowOrder = new Map<string, number>();
+  let dataRowCount = 0;
+  for (const entry of snapshot.visibleRows) {
+    if (isDataRow(entry)) {
+      rowOrder.set(entry.id, dataRowCount);
+      dataRowCount += 1;
+    }
+  }
+
+  if (ranges.length === 0 || dataRowCount === 0 || dataColumns.length === 0) {
     return { rowCount: 0, columnCount: 0, isAll: false };
   }
 
-  const rowOrder = new Map<string, number>();
-  for (let i = 0; i < visibleRows.length; i += 1) {
-    const r = visibleRows[i];
-    if (r) rowOrder.set(r.id, i);
-  }
   const columnOrder = new Map<string, number>();
   for (let i = 0; i < columns.length; i += 1) {
     const c = columns[i];
     if (c) columnOrder.set(c.id, i);
   }
 
-  const coveredRows = new Set<string>();
+  const coveredRows = new Set<number>();
   const coveredCols = new Set<string>();
 
   for (const range of ranges) {
@@ -3412,8 +3487,7 @@ function computeSelectionExtent<TRow extends PretableRow>(
     if (colsForRange.length === 0) continue;
 
     for (let i = rowLo; i <= rowHi; i += 1) {
-      const row = visibleRows[i];
-      if (row) coveredRows.add(row.id);
+      coveredRows.add(i);
     }
     for (const col of colsForRange) {
       coveredCols.add(col.id);
@@ -3422,8 +3496,7 @@ function computeSelectionExtent<TRow extends PretableRow>(
 
   const rowCount = coveredRows.size;
   const columnCount = coveredCols.size;
-  const isAll =
-    rowCount === visibleRows.length && columnCount === dataColumns.length;
+  const isAll = rowCount === dataRowCount && columnCount === dataColumns.length;
 
   return { rowCount, columnCount, isAll };
 }
@@ -3467,7 +3540,13 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   const shift = event.shiftKey;
   const snapshot = grid.getSnapshot();
   const focus = snapshot.focus;
-  const visibleRows = snapshot.visibleRows;
+  // Row targets are DATA rows only, mirroring the engine's `moveFocus`. Landing
+  // focus on a group row breaks two ways at once: the surface renders nothing
+  // for it, so the focus ring vanishes; and `moveFocus` looks the focused id up
+  // among the data rows, misses, and treats the next arrow key as "arriving at
+  // the grid" — teleporting focus to row 0. Home/End/Page/Tab index into this
+  // list, never into the full flat one.
+  const dataRows = snapshot.visibleRows.filter(isDataRow);
   const firstColumn = columns[0];
   const lastColumn = columns[columns.length - 1];
 
@@ -3502,13 +3581,13 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   if (key === "Home") {
     if (!firstColumn) return false;
     if (cmd) {
-      const firstRow = visibleRows[0];
+      const firstRow = dataRows[0];
       if (!firstRow) return false;
       grid.setFocus({ rowId: firstRow.id, columnId: firstColumn.id });
     } else if (focus.rowId) {
       grid.setFocus({ rowId: focus.rowId, columnId: firstColumn.id });
     } else {
-      const firstRow = visibleRows[0];
+      const firstRow = dataRows[0];
       if (!firstRow) return false;
       grid.setFocus({ rowId: firstRow.id, columnId: firstColumn.id });
     }
@@ -3518,13 +3597,13 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   if (key === "End") {
     if (!lastColumn) return false;
     if (cmd) {
-      const lastRow = visibleRows[visibleRows.length - 1];
+      const lastRow = dataRows[dataRows.length - 1];
       if (!lastRow) return false;
       grid.setFocus({ rowId: lastRow.id, columnId: lastColumn.id });
     } else if (focus.rowId) {
       grid.setFocus({ rowId: focus.rowId, columnId: lastColumn.id });
     } else {
-      const firstRow = visibleRows[0];
+      const firstRow = dataRows[0];
       if (!firstRow) return false;
       grid.setFocus({ rowId: firstRow.id, columnId: lastColumn.id });
     }
@@ -3533,17 +3612,21 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
 
   // Page Up / Page Down
   if (key === "PageUp" || key === "PageDown") {
-    if (visibleRows.length === 0 || !firstColumn) return false;
+    if (dataRows.length === 0 || !firstColumn) return false;
+    // Steps N *data* rows. With group headers interleaved that is more than one
+    // screen of scroll — the same trade-off `computePageStep` makes in the
+    // engine. Paging by rendered rows while still landing on a data row is a
+    // sub-project 2 decision, once group rows actually occupy visual space.
     const pageRowCount = Math.max(1, Math.floor(bodyViewportHeight / 32));
     const currentRowIdx = focus.rowId
-      ? visibleRows.findIndex((r) => r.id === focus.rowId)
+      ? dataRows.findIndex((r) => r.id === focus.rowId)
       : -1;
     const baseRowIdx = currentRowIdx === -1 ? 0 : currentRowIdx;
     const nextRowIdx =
       key === "PageUp"
         ? Math.max(0, baseRowIdx - pageRowCount)
-        : Math.min(visibleRows.length - 1, baseRowIdx + pageRowCount);
-    const nextRow = visibleRows[nextRowIdx];
+        : Math.min(dataRows.length - 1, baseRowIdx + pageRowCount);
+    const nextRow = dataRows[nextRowIdx];
     if (!nextRow) return false;
     const columnId = focus.columnId ?? firstColumn.id;
     const addr: PretableCellAddress = { rowId: nextRow.id, columnId };
@@ -3576,9 +3659,9 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     if (tabBehavior === "exit") {
       return false;
     }
-    if (visibleRows.length === 0 || columns.length === 0) return false;
+    if (dataRows.length === 0 || columns.length === 0) return false;
     const currentRowIdx = focus.rowId
-      ? visibleRows.findIndex((r) => r.id === focus.rowId)
+      ? dataRows.findIndex((r) => r.id === focus.rowId)
       : -1;
     const currentColIdx = focus.columnId
       ? columns.findIndex((c) => c.id === focus.columnId)
@@ -3603,17 +3686,17 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     } else {
       if (baseColIdx === columns.length - 1) {
         nextColIdx = 0;
-        nextRowIdx = Math.min(visibleRows.length - 1, baseRowIdx + 1);
-        if (baseRowIdx === visibleRows.length - 1) {
+        nextRowIdx = Math.min(dataRows.length - 1, baseRowIdx + 1);
+        if (baseRowIdx === dataRows.length - 1) {
           // already at bottom-right; clamp
           nextColIdx = columns.length - 1;
-          nextRowIdx = visibleRows.length - 1;
+          nextRowIdx = dataRows.length - 1;
         }
       } else {
         nextColIdx = baseColIdx + 1;
       }
     }
-    const nextRow = visibleRows[nextRowIdx];
+    const nextRow = dataRows[nextRowIdx];
     const nextCol = columns[nextColIdx];
     if (!nextRow || !nextCol) return false;
     grid.setFocus({ rowId: nextRow.id, columnId: nextCol.id });
@@ -3639,9 +3722,16 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       replaceSelectionWithFullRow(grid, focusedRowId, columns);
       onSelectedRowIdChange?.(focusedRowId);
       if (onRowActivate) {
+        // `rowIndex` stays an index into the full flat list, because that is
+        // the position the row is rendered at.
+        const visibleRows = snapshot.visibleRows;
         const index = visibleRows.findIndex((r) => r.id === focusedRowId);
         const activated = visibleRows[index];
-        if (activated) {
+        // Focus never lands on a group header by keyboard (`moveFocus` and the
+        // Home/End/Page/Tab paths above all walk data rows only), so this
+        // narrowing is belt-and-braces — `setFocus` is an unguarded imperative
+        // escape hatch until SP2.
+        if (activated && isDataRow(activated)) {
           onRowActivate({
             row: activated.row,
             rowId: focusedRowId,

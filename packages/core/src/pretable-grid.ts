@@ -61,6 +61,22 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     options?: PretableMoveFocusOptions,
   ): void;
 
+  // row grouping
+  /**
+   * Replace the grouping levels, outermost first; `[]` ungroups. Ids that do
+   * not match a column are dropped, and expansion state for groups that no
+   * longer exist is pruned.
+   */
+  setRowGroups(columnIds: readonly string[]): void;
+  /** Flip one group's expanded state. Unknown ids are still recorded. */
+  toggleGroup(groupId: string): void;
+  /** Set one group's expanded state explicitly. */
+  setGroupExpanded(groupId: string, expanded: boolean): void;
+  /** Expand every group, including ones that do not exist yet. */
+  expandAll(): void;
+  /** Collapse every group, including ones that do not exist yet. */
+  collapseAll(): void;
+
   // viewport
   setViewport(viewport: PretableViewportState): void;
 

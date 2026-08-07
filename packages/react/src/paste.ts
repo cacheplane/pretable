@@ -191,8 +191,14 @@ export interface MapPasteArgs<TRow extends PretableRow> {
   matrix: string[][];
   /** Top-left of the selection, or the focused cell when nothing is selected. */
   anchor: PretableCellAddress;
-  /** Selection extent; `1 x 1` when a single cell is selected. */
+  /**
+   * Selection extent; `1 x 1` when a single cell is selected. `rows` counts
+   * **data** rows, matching the target space below — a selection that spans a
+   * group header is no wider for it, or tiling would multiply against a row
+   * that can never be written.
+   */
   selectionSize: { rows: number; columns: number };
+  /** Group rows are excluded from the target space; see {@link mapPasteToTargets}. */
   visibleRows: readonly PretableVisibleRow<TRow>[];
   /** Effective columns; the synthetic row-select column may be present and is ignored. */
   columns: readonly PretableColumn<TRow>[];
@@ -241,6 +247,15 @@ export interface PasteTargetMap {
  * selection) the block anchors on the first data column instead, mirroring how
  * `serializeRangesAsTsv` translates that bound on copy.
  *
+ * Group rows are never targets either — they hold aggregates, not editable cells.
+ * They are **removed from the row space** rather than skipped in place, so the
+ * block stays rectangular over the data rows it covers: a 3-row block anchored two
+ * data rows above a group header writes 3 data rows, stepping over the header,
+ * instead of losing a row to it. Clipping therefore counts against the number of
+ * *data* rows below the anchor. When the anchor is itself a group row it resolves
+ * to the next data row — the header occupies no slot in the target space — and a
+ * paste anchored below the last data row is a no-op.
+ *
  * Pure geometry: every target is emitted, including ones the surface will later
  * reject as non-editable or invalid. A rejected cell still **consumes** its position
  * so the block keeps its rectangular shape and neighbours never shift.
@@ -264,10 +279,19 @@ export function mapPasteToTargets<TRow extends PretableRow>(
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
   if (dataColumns.length === 0) return empty;
 
-  const anchorRow = args.visibleRows.findIndex(
-    (r) => r.id === args.anchor.rowId,
-  );
-  if (anchorRow < 0) return empty;
+  // The target row space is the data rows alone. Collect them, and locate the
+  // anchor within that compacted space in the same pass: at the moment the
+  // anchor row is seen, `dataRowIds.length` is the index the next data row will
+  // take — which is the anchor's own index when it is a data row, and the index
+  // of the following data row when it is a group header. An anchor with no data
+  // row at or after it lands past the end and pastes nothing.
+  const dataRowIds: string[] = [];
+  let anchorRow = -1;
+  for (const row of args.visibleRows) {
+    if (row.id === args.anchor.rowId) anchorRow = dataRowIds.length;
+    if (row.kind === "data") dataRowIds.push(row.id);
+  }
+  if (anchorRow < 0 || anchorRow >= dataRowIds.length) return empty;
   // A row-select anchor means "start of the row" — translate to the first data column.
   const anchorCol =
     args.anchor.columnId === ROW_SELECT_COLUMN_ID
@@ -290,11 +314,11 @@ export function mapPasteToTargets<TRow extends PretableRow>(
 
   for (let r = 0; r < targetRows; r += 1) {
     const rowIdx = anchorRow + r;
-    if (rowIdx >= args.visibleRows.length) {
+    if (rowIdx >= dataRowIds.length) {
       clippedRows += 1;
       continue;
     }
-    const rowId = args.visibleRows[rowIdx]!.id;
+    const rowId = dataRowIds[rowIdx]!;
     const sourceRow = args.matrix[r % blockRows]!;
     for (let c = 0; c < targetCols; c += 1) {
       const colIdx = anchorCol + c;

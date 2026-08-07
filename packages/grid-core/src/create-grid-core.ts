@@ -11,6 +11,7 @@ import type {
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,
+  PretableDataRow,
   PretableEditState,
   PretableFocusDirection,
   PretableFocusState,
@@ -28,6 +29,76 @@ import type {
 } from "./types";
 
 const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
+
+/**
+ * Group rows in v1: structure, not targets.
+ *
+ * A group row occupies a slot in the flat `visibleRows` list, but it is not a
+ * cell-addressable row — it has no `row`, and its aggregate cells are derived,
+ * not editable. So the engine treats the *data* rows as the only navigable and
+ * selectable population:
+ *
+ * - `moveFocus` (and its page/edge variants) walks data rows only, stepping
+ *   over any group row that sits between them. Focus therefore never lands on
+ *   a group row by keyboard. Keyboard expand/collapse of a focused group row is
+ *   sub-project 2, which is also where `setFocus` gains a deliberate group-row
+ *   path — until then `setFocus` stays the unguarded imperative escape hatch.
+ * - `selectAll` spans the first through last *data* row, and
+ *   `setSelectAllVisible` emits one full-row range per visible *data* row.
+ *   Group rows sitting inside a range are covered positionally but are never
+ *   reported as selected (`deriveSelectedRows` skips them).
+ */
+function isDataRow<TRow extends PretableRow>(
+  entry: PretableVisibleRow<TRow>,
+): entry is PretableDataRow<TRow> {
+  return entry.kind === "data";
+}
+
+/**
+ * Total data rows, plus the ordinal of `rowId` among them (-1 if absent) — in
+ * one pass with no allocation.
+ *
+ * `moveFocus` needs both on every arrow keypress. Doing it as
+ * `visibleRows.filter(isDataRow)` churned an N-element array per keystroke for
+ * a lookup that already walked the list anyway.
+ */
+function scanDataRows<TRow extends PretableRow>(
+  rows: readonly PretableVisibleRow<TRow>[],
+  rowId: string | null,
+): { count: number; index: number } {
+  let count = 0;
+  let index = -1;
+
+  for (const entry of rows) {
+    if (!isDataRow(entry)) continue;
+    if (rowId !== null && entry.id === rowId) index = count;
+    count += 1;
+  }
+
+  return { count, index };
+}
+
+/**
+ * The `ordinal`-th data row (0-based), skipping group rows. Counterpart to
+ * {@link scanDataRows} — same reason it is a scan and not an index into a
+ * filtered array.
+ */
+function dataRowAt<TRow extends PretableRow>(
+  rows: readonly PretableVisibleRow<TRow>[],
+  ordinal: number,
+): PretableDataRow<TRow> | undefined {
+  if (ordinal < 0) return undefined;
+
+  let seen = 0;
+
+  for (const entry of rows) {
+    if (!isDataRow(entry)) continue;
+    if (seen === ordinal) return entry;
+    seen += 1;
+  }
+
+  return undefined;
+}
 
 function clampColumnWidth<TRow extends PretableRow>(
   width: number,
@@ -144,8 +215,37 @@ export function createGridCore<TRow extends PretableRow>(
   let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
   let cachedDerivedSort: PretableSortEntry[] | null = null;
   let cachedDerivedFilters: Record<string, ColumnFilter> | null = null;
+  // Grouping inputs are cache keys too — without them a collapse or a level
+  // change would keep serving the previous flattening.
+  let cachedDerivedRowGroups: string[] | null = null;
+  let cachedDerivedOverrides: ReadonlySet<string> | null = null;
+  let cachedDerivedDefaultExpanded: boolean | null = null;
+  let cachedDerivedAggregateFiltered: boolean | null = null;
   let sort: PretableSortEntry[] = [];
   let filters: Record<string, ColumnFilter> = {};
+  // Grouping levels, outermost first. Seeded from `rowGroup: true` columns in
+  // column order; `setRowGroups` replaces the array wholesale so the cache can
+  // key on its identity.
+  let rowGroups: string[] = sanitizeRowGroups(
+    options.columns
+      .filter((column) => column.rowGroup === true)
+      .map((c) => c.id),
+    options.columns,
+  );
+  /**
+   * Group ids whose expanded state differs from `groupsDefaultExpanded` — NOT
+   * "the collapsed ids". Under the default (`true`) the two coincide; once
+   * `collapseAll` flips the default, the very same set holds the EXPANDED ids.
+   * Always replaced, never mutated, so identity works as a cache key.
+   */
+  let groupExpansionOverrides: ReadonlySet<string> = new Set<string>();
+  let groupsDefaultExpanded = options.groupsDefaultExpanded ?? true;
+  /**
+   * Previous `aggregates` object per group id. When a recompute produces an
+   * equal object we hand back the previous reference, so downstream memoization
+   * does not repaint every group row on every streaming tick.
+   */
+  let previousAggregates = new Map<string, Record<string, unknown>>();
   let selection: PretableSelectionState = { ranges: [], anchor: null };
   let focus: PretableFocusState = { rowId: null, columnId: null };
   let editing: PretableEditState | null = null;
@@ -280,9 +380,11 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     selectAll() {
-      const snapshot = getSnapshot();
-      const firstRow = snapshot.visibleRows[0];
-      const lastRow = snapshot.visibleRows[snapshot.visibleRows.length - 1];
+      // Data rows only — see `isDataRow`. A grid showing nothing but collapsed
+      // group rows has nothing to select.
+      const dataRows = getSnapshot().visibleRows.filter(isDataRow);
+      const firstRow = dataRows[0];
+      const lastRow = dataRows[dataRows.length - 1];
       const firstColumn = options.columns[0];
       const lastColumn = options.columns[options.columns.length - 1];
 
@@ -395,7 +497,8 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     setSelectAllVisible(checked: boolean) {
-      const snapshot = getSnapshot();
+      // "All visible" means all visible DATA rows — see `isDataRow`.
+      const dataRows = getSnapshot().visibleRows.filter(isDataRow);
       const firstColumn = options.columns[0];
       const lastColumn = options.columns[options.columns.length - 1];
 
@@ -403,7 +506,7 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
-      const visibleIds = new Set(snapshot.visibleRows.map((r) => r.id));
+      const visibleIds = new Set(dataRows.map((r) => r.id));
       const nonRowRanges = selection.ranges.filter(
         (r) =>
           !isFullRowRange(r, r.startRowId, firstColumn.id, lastColumn.id) ||
@@ -413,19 +516,17 @@ export function createGridCore<TRow extends PretableRow>(
       let next: PretableSelectionState;
 
       if (checked) {
-        const newRanges = snapshot.visibleRows.map<PretableCellRange>(
-          (row) => ({
-            startRowId: row.id,
-            endRowId: row.id,
-            startColumnId: firstColumn.id,
-            endColumnId: lastColumn.id,
-          }),
-        );
+        const newRanges = dataRows.map<PretableCellRange>((row) => ({
+          startRowId: row.id,
+          endRowId: row.id,
+          startColumnId: firstColumn.id,
+          endColumnId: lastColumn.id,
+        }));
 
         next = {
           ranges: [...nonRowRanges, ...newRanges],
-          anchor: snapshot.visibleRows[0]
-            ? { rowId: snapshot.visibleRows[0].id, columnId: firstColumn.id }
+          anchor: dataRows[0]
+            ? { rowId: dataRows[0].id, columnId: firstColumn.id }
             : selection.anchor,
         };
       } else {
@@ -455,18 +556,22 @@ export function createGridCore<TRow extends PretableRow>(
       moveOptions: PretableMoveFocusOptions = {},
     ) {
       const snapshot = getSnapshot();
-      const visibleRows = snapshot.visibleRows;
+      // Keyboard navigation walks the DATA rows only, so a group row sitting
+      // between two of them is stepped over rather than landed on — see
+      // `isDataRow`. Every row index below is a data-row *ordinal*, never a
+      // position in the flat list.
+      const { count: dataRowCount, index: currentRowIndex } = scanDataRows(
+        snapshot.visibleRows,
+        focus.rowId,
+      );
       const columnList = options.columns;
 
-      if (visibleRows.length === 0 || columnList.length === 0) {
+      if (dataRowCount === 0 || columnList.length === 0) {
         focus = { rowId: null, columnId: null };
         emit();
         return;
       }
 
-      const currentRowIndex = focus.rowId
-        ? visibleRows.findIndex((r) => r.id === focus.rowId)
-        : -1;
       const currentColumnIndex = focus.columnId
         ? columnList.findIndex((c) => c.id === focus.columnId)
         : -1;
@@ -479,7 +584,7 @@ export function createGridCore<TRow extends PretableRow>(
       let nextRowIndex = baseRowIndex;
       let nextColumnIndex = baseColumnIndex;
 
-      const pageStep = computePageStep(viewport, visibleRows);
+      const pageStep = computePageStep(viewport, dataRowCount);
 
       // When focus is null on the relevant axis, the move lands on the edge
       // implied by the direction (down/right → 0; up/left → length-1) without
@@ -489,30 +594,22 @@ export function createGridCore<TRow extends PretableRow>(
           if (moveOptions.jumpToEdge) {
             nextRowIndex = 0;
           } else if (!hasRowFocus) {
-            nextRowIndex = visibleRows.length - 1;
+            nextRowIndex = dataRowCount - 1;
           } else if (moveOptions.byPage) {
-            nextRowIndex = clamp(
-              baseRowIndex - pageStep,
-              0,
-              visibleRows.length - 1,
-            );
+            nextRowIndex = clamp(baseRowIndex - pageStep, 0, dataRowCount - 1);
           } else {
-            nextRowIndex = clamp(baseRowIndex - 1, 0, visibleRows.length - 1);
+            nextRowIndex = clamp(baseRowIndex - 1, 0, dataRowCount - 1);
           }
           break;
         case "down":
           if (moveOptions.jumpToEdge) {
-            nextRowIndex = visibleRows.length - 1;
+            nextRowIndex = dataRowCount - 1;
           } else if (!hasRowFocus) {
             nextRowIndex = 0;
           } else if (moveOptions.byPage) {
-            nextRowIndex = clamp(
-              baseRowIndex + pageStep,
-              0,
-              visibleRows.length - 1,
-            );
+            nextRowIndex = clamp(baseRowIndex + pageStep, 0, dataRowCount - 1);
           } else {
-            nextRowIndex = clamp(baseRowIndex + 1, 0, visibleRows.length - 1);
+            nextRowIndex = clamp(baseRowIndex + 1, 0, dataRowCount - 1);
           }
           break;
         case "left":
@@ -543,7 +640,7 @@ export function createGridCore<TRow extends PretableRow>(
           break;
       }
 
-      const nextRow = visibleRows[nextRowIndex];
+      const nextRow = dataRowAt(snapshot.visibleRows, nextRowIndex);
       const nextColumn = columnList[nextColumnIndex];
 
       if (!nextRow || !nextColumn) {
@@ -1054,6 +1151,44 @@ export function createGridCore<TRow extends PretableRow>(
       cachedVisibleRows = null;
       emit();
     },
+    setRowGroups(columnIds: readonly string[]) {
+      const next = sanitizeRowGroups(columnIds, options.columns);
+
+      if (stringListsEqual(rowGroups, next)) {
+        return;
+      }
+
+      rowGroups = next;
+      // Expansion ids are path-derived, so changing the levels invalidates
+      // them. v1 drops the whole set rather than trying to salvage prefixes.
+      groupExpansionOverrides = new Set<string>();
+      emit();
+    },
+    toggleGroup(groupId: string) {
+      store.setGroupExpanded(groupId, !isGroupExpanded(groupId));
+    },
+    setGroupExpanded(groupId: string, expanded: boolean) {
+      if (isGroupExpanded(groupId) === expanded) {
+        return;
+      }
+
+      const next = new Set(groupExpansionOverrides);
+
+      if (expanded === groupsDefaultExpanded) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+
+      groupExpansionOverrides = next;
+      emit();
+    },
+    expandAll() {
+      setExpansionDefault(true);
+    },
+    collapseAll() {
+      setExpansionDefault(false);
+    },
     beginEdit(
       addr: PretableCellAddress,
       opts?: { draft?: unknown; status?: "checking" | "editing" },
@@ -1110,26 +1245,104 @@ export function createGridCore<TRow extends PretableRow>(
 
   return store;
 
+  /** Expanded state of one group id under the current default + overrides. */
+  function isGroupExpanded(groupId: string): boolean {
+    return groupExpansionOverrides.has(groupId)
+      ? !groupsDefaultExpanded
+      : groupsDefaultExpanded;
+  }
+
+  /**
+   * `expandAll`/`collapseAll` flip the default and clear the overrides rather
+   * than enumerate ids — which is what makes them apply to groups that do not
+   * exist yet, including ones that arrive mid-stream.
+   */
+  function setExpansionDefault(expanded: boolean): void {
+    if (
+      groupsDefaultExpanded === expanded &&
+      groupExpansionOverrides.size === 0
+    ) {
+      return;
+    }
+
+    groupsDefaultExpanded = expanded;
+    groupExpansionOverrides = new Set<string>();
+    emit();
+  }
+
+  /**
+   * Hand back the previous `aggregates` object whenever a recompute produced an
+   * equal one. Aggregates finalize to plain scalars, so an own-key walk with
+   * `Object.is` is a full comparison, not a shallow approximation.
+   *
+   * The map is rebuilt from the current flattening each pass, so ids for groups
+   * that have gone away do not accumulate.
+   */
+  function preserveAggregateIdentity(
+    rows: PretableVisibleRow<TRow>[],
+  ): PretableVisibleRow<TRow>[] {
+    const next = new Map<string, Record<string, unknown>>();
+    let result = rows;
+
+    for (let i = 0; i < rows.length; i += 1) {
+      const entry = rows[i]!;
+      if (entry.kind !== "group") continue;
+
+      const previous = previousAggregates.get(entry.id);
+
+      if (previous && recordsEqual(previous, entry.aggregates)) {
+        // Copy-on-write: `rows` came straight from `buildGroupedRows`, but the
+        // ungrouped short-circuit path has no group rows at all, so this only
+        // ever clones a list that actually carries them.
+        if (result === rows) result = rows.slice();
+        result[i] = { ...entry, aggregates: previous };
+        next.set(entry.id, previous);
+      } else {
+        next.set(entry.id, entry.aggregates);
+      }
+    }
+
+    previousAggregates = next;
+    return result;
+  }
+
   function getSnapshot(): PretableGridSnapshot<TRow> {
     if (cachedSnapshot) {
       return cachedSnapshot;
     }
 
-    const visibleRows =
+    const aggregateFilteredRows = options.aggregateFilteredRows ?? false;
+    const derivedIsFresh =
       cachedVisibleRows !== null &&
       cachedDerivedSort === sort &&
-      cachedDerivedFilters === filters
-        ? cachedVisibleRows
-        : deriveVisibleRows({
+      cachedDerivedFilters === filters &&
+      cachedDerivedRowGroups === rowGroups &&
+      cachedDerivedOverrides === groupExpansionOverrides &&
+      cachedDerivedDefaultExpanded === groupsDefaultExpanded &&
+      cachedDerivedAggregateFiltered === aggregateFilteredRows;
+
+    const visibleRows = derivedIsFresh
+      ? cachedVisibleRows!
+      : preserveAggregateIdentity(
+          deriveVisibleRows({
             columns: options.columns,
             filters,
             rows: sourceRows,
             sort,
-          });
+            rowGroups,
+            groupExpansionOverrides,
+            groupsDefaultExpanded,
+            aggregateFilteredRows,
+          }),
+        );
 
     cachedVisibleRows = visibleRows;
     cachedDerivedSort = sort;
     cachedDerivedFilters = filters;
+    cachedDerivedRowGroups = rowGroups;
+    cachedDerivedOverrides = groupExpansionOverrides;
+    cachedDerivedDefaultExpanded = groupsDefaultExpanded;
+    cachedDerivedAggregateFiltered = aggregateFilteredRows;
 
     cachedSnapshot = {
       viewport,
@@ -1147,6 +1360,9 @@ export function createGridCore<TRow extends PretableRow>(
         end: visibleRows.length,
       },
       editing: editing ? { ...editing } : null,
+      rowGroups: [...rowGroups],
+      groupExpansionOverrides: new Set(groupExpansionOverrides),
+      groupsDefaultExpanded,
     };
 
     return cachedSnapshot;
@@ -1196,11 +1412,11 @@ function sameColumnLayout<TRow extends PretableRow>(
   });
 }
 
-function computePageStep<TRow extends PretableRow>(
+function computePageStep(
   viewport: { height: number },
-  visibleRows: PretableVisibleRow<TRow>[],
+  dataRowCount: number,
 ): number {
-  if (viewport.height <= 0 || visibleRows.length === 0) {
+  if (viewport.height <= 0 || dataRowCount === 0) {
     return 1;
   }
 
@@ -1211,7 +1427,12 @@ function computePageStep<TRow extends PretableRow>(
     Math.floor((viewport.height * 0.8) / 32),
   );
 
-  return Math.min(estimatedRowsPerPage, visibleRows.length);
+  // The step is in *data* rows, because that is the population `moveFocus`
+  // walks. Under grouping a page therefore covers more than one screen's worth
+  // of rendered rows, since the interleaved group headers do not count against
+  // it. Paging by rendered height while still landing on a data row is a
+  // sub-project 2 decision, once group rows actually occupy visual space.
+  return Math.min(estimatedRowsPerPage, dataRowCount);
 }
 
 function isFullRowRange(
@@ -1272,6 +1493,49 @@ function sanitizeSortEntries<TRow extends PretableRow>(
     const column = columns.find((c) => c.id === entry.columnId);
     return column !== undefined && column.sortable !== false;
   });
+}
+
+/**
+ * Drop grouping levels that name an unknown column, and collapse repeats — a
+ * column listed twice would otherwise build a second level whose every group
+ * has exactly one child.
+ */
+function sanitizeRowGroups<TRow extends PretableRow>(
+  columnIds: readonly string[],
+  columns: PretableColumn<TRow>[],
+): string[] {
+  const known = new Set(columns.map((column) => column.id));
+  const seen = new Set<string>();
+  const next: string[] = [];
+
+  for (const columnId of columnIds) {
+    if (!known.has(columnId) || seen.has(columnId)) continue;
+    seen.add(columnId);
+    next.push(columnId);
+  }
+
+  return next;
+}
+
+function stringListsEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
+}
+
+/** Own-key equality over finalized aggregate values (all plain scalars). */
+function recordsEqual(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const aKeys = Object.keys(a);
+
+  if (aKeys.length !== Object.keys(b).length) {
+    return false;
+  }
+
+  return aKeys.every(
+    (key) =>
+      Object.prototype.hasOwnProperty.call(b, key) && Object.is(a[key], b[key]),
+  );
 }
 
 function sortsEqual(a: PretableSortEntry[], b: PretableSortEntry[]): boolean {

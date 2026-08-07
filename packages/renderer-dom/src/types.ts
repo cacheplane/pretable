@@ -1,6 +1,7 @@
 import type {
   PretableColumn,
   PretableFrame,
+  PretableGroupRow,
   PretableRow,
   PretableGridSnapshot,
 } from "@pretable-internal/grid-core";
@@ -20,13 +21,39 @@ export interface DomRenderInput<TRow extends PretableRow = PretableRow> {
   measuredHeights?: Record<string, number>;
 }
 
-export interface DomRenderRow<TRow extends PretableRow = PretableRow> {
+/** Geometry every windowed row carries, whatever its kind. */
+export interface DomRenderRowGeometry {
   id: string;
-  row: TRow;
+  /** Index into `snapshot.visibleRows` — group rows included. */
   rowIndex: number;
   top: number;
   height: number;
 }
+
+/** A windowed data row: the source row plus its placement. */
+export interface DomRenderDataRow<
+  TRow extends PretableRow = PretableRow,
+> extends DomRenderRowGeometry {
+  kind: "data";
+  row: TRow;
+}
+
+/**
+ * A windowed group header row. The renderer plans and passes these through so a
+ * surface can draw them; drawing them is sub-project 2, and until then every
+ * consumer narrows to `kind === "data"` and skips these.
+ */
+export interface DomRenderGroupRow extends DomRenderRowGeometry {
+  kind: "group";
+  group: PretableGroupRow;
+}
+
+/**
+ * One windowed row, mirroring `PretableVisibleRow`'s discriminant so a consumer
+ * narrows the render row exactly as it narrows the visible row.
+ */
+export type DomRenderRow<TRow extends PretableRow = PretableRow> =
+  DomRenderDataRow<TRow> | DomRenderGroupRow;
 
 export interface DomRenderSnapshot<TRow extends PretableRow = PretableRow> {
   frame: PretableFrame<TRow>;
