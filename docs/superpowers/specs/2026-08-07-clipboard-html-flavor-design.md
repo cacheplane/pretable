@@ -46,7 +46,21 @@ The HTML is **one `<table>` per range**, concatenated, with a single leading
 `<meta charset="utf-8">`:
 
 ```html
-<meta charset="utf-8"><table style="white-space:pre-wrap"><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>a1</td><td>b1</td></tr></tbody></table>
+<meta charset="utf-8" />
+<table style="white-space:pre-wrap">
+  <thead>
+    <tr>
+      <th>A</th>
+      <th>B</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>a1</td>
+      <td>b1</td>
+    </tr>
+  </tbody>
+</table>
 ```
 
 The `<meta>` is belt-and-braces: the `Blob` written by `defaultCopyToClipboard`
@@ -64,7 +78,7 @@ reproduced. `<tbody>` is always present.
 ### `white-space:pre-wrap` on `<table>`
 
 This is load-bearing, not decoration. HTML collapses runs of whitespace, so a
-cell holding `"a  b"` would paste as `"a b"`. Because the receiving app *prefers*
+cell holding `"a  b"` would paste as `"a b"`. Because the receiving app _prefers_
 `text/html`, that would be a silent fidelity regression against today's
 TSV-only behavior.
 
@@ -78,7 +92,7 @@ for tests — the same treatment `escapeTsvField` gets.
 
 1. Escape `&`, `<`, `>`, `"` to `&amp;`, `&lt;`, `&gt;`, `&quot;`.
    `&` must be replaced first or it double-escapes the other entities.
-2. Then replace line breaks — `\r\n`, `\r`, `\n` — with `<br>`. This runs *after*
+2. Then replace line breaks — `\r\n`, `\r`, `\n` — with `<br>`. This runs _after_
    escaping so the emitted tag is not itself escaped. A CRLF produces a single
    `<br>`, not two.
 
@@ -129,19 +143,19 @@ pretable is pre-1.0 with no external consumers.
 
 Live call sites to update:
 
-| Location | Change |
-| --- | --- |
-| `packages/react/src/copy.ts` | the definition, plus the `{@link}` in `SerializeRangesArgs`' TSDoc |
-| `packages/react/src/pretable-surface.tsx:89` | import |
-| `packages/react/src/pretable-surface.tsx:359` | `{@link}` in the `onCopy` TSDoc |
-| `packages/react/src/pretable-surface.tsx:1705` | call site |
-| `packages/react/src/public_api.ts:53` | re-export |
-| `packages/react/src/paste.ts:242` | prose comment |
-| `packages/react/src/__tests__/copy.test.ts` | import + all call sites |
-| `packages/react/react.api.md` | regenerated via `pnpm api` |
-| `apps/website/content/docs/grid/clipboard.mdx` | several |
-| `apps/website/content/docs/grid/api-reference.mdx:187` | one mention |
-| `apps/website/content/docs/grid/paste.mdx:283` | one mention |
+| Location                                               | Change                                                             |
+| ------------------------------------------------------ | ------------------------------------------------------------------ |
+| `packages/react/src/copy.ts`                           | the definition, plus the `{@link}` in `SerializeRangesArgs`' TSDoc |
+| `packages/react/src/pretable-surface.tsx:89`           | import                                                             |
+| `packages/react/src/pretable-surface.tsx:359`          | `{@link}` in the `onCopy` TSDoc                                    |
+| `packages/react/src/pretable-surface.tsx:1705`         | call site                                                          |
+| `packages/react/src/public_api.ts:53`                  | re-export                                                          |
+| `packages/react/src/paste.ts:242`                      | prose comment                                                      |
+| `packages/react/src/__tests__/copy.test.ts`            | import + all call sites                                            |
+| `packages/react/react.api.md`                          | regenerated via `pnpm api`                                         |
+| `apps/website/content/docs/grid/clipboard.mdx`         | several                                                            |
+| `apps/website/content/docs/grid/api-reference.mdx:187` | one mention                                                        |
+| `apps/website/content/docs/grid/paste.mdx:283`         | one mention                                                        |
 
 Dated records under `docs/superpowers/plans/` and `docs/superpowers/specs/` are
 **not** updated — they describe what was true when written.

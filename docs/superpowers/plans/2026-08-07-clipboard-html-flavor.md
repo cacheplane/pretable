@@ -52,17 +52,17 @@ pnpm --filter @pretable/react api
 
 ## File Structure
 
-| File | Responsibility | Action |
-| --- | --- | --- |
-| `packages/react/src/copy.ts` | Clipboard serialization: value coercion, TSV escaping, HTML escaping, range-bounds resolution, dual-flavor emit | Modify |
-| `packages/react/src/__tests__/copy.test.ts` | Unit coverage for all of the above | Modify |
-| `packages/react/src/pretable-surface.tsx` | Calls the serializer; writes both flavors to the clipboard (already implemented) | Modify (rename only) |
-| `packages/react/src/public_api.ts` | Re-exports the public surface | Modify (rename only) |
-| `packages/react/src/paste.ts` | Paste parsing; one prose comment references the old name | Modify (comment only) |
-| `packages/react/react.api.md` | Generated API report | Regenerate |
-| `apps/website/content/docs/grid/clipboard.mdx` | Copy documentation | Modify (substantial) |
-| `apps/website/content/docs/grid/api-reference.mdx` | Type index | Modify (rename only) |
-| `apps/website/content/docs/grid/paste.mdx` | Paste documentation | Modify (rename only) |
+| File                                               | Responsibility                                                                                                  | Action                |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `packages/react/src/copy.ts`                       | Clipboard serialization: value coercion, TSV escaping, HTML escaping, range-bounds resolution, dual-flavor emit | Modify                |
+| `packages/react/src/__tests__/copy.test.ts`        | Unit coverage for all of the above                                                                              | Modify                |
+| `packages/react/src/pretable-surface.tsx`          | Calls the serializer; writes both flavors to the clipboard (already implemented)                                | Modify (rename only)  |
+| `packages/react/src/public_api.ts`                 | Re-exports the public surface                                                                                   | Modify (rename only)  |
+| `packages/react/src/paste.ts`                      | Paste parsing; one prose comment references the old name                                                        | Modify (comment only) |
+| `packages/react/react.api.md`                      | Generated API report                                                                                            | Regenerate            |
+| `apps/website/content/docs/grid/clipboard.mdx`     | Copy documentation                                                                                              | Modify (substantial)  |
+| `apps/website/content/docs/grid/api-reference.mdx` | Type index                                                                                                      | Modify (rename only)  |
+| `apps/website/content/docs/grid/paste.mdx`         | Paste documentation                                                                                             | Modify (rename only)  |
 
 `copy.ts` grows from ~180 to ~260 lines. That stays within the file's single responsibility — clipboard serialization — so it is not split.
 
@@ -75,6 +75,7 @@ Dated records under `docs/superpowers/plans/` and `docs/superpowers/specs/` desc
 This goes first so every test written in later tasks uses the final name.
 
 **Files:**
+
 - Modify: `packages/react/src/copy.ts:11`, `packages/react/src/copy.ts:88`
 - Modify: `packages/react/src/pretable-surface.tsx:89`, `:359`, `:1705`
 - Modify: `packages/react/src/public_api.ts:53`
@@ -134,7 +135,7 @@ Then confirm the report moved:
 git diff --stat packages/react/react.api.md
 ```
 
-Expected: the file shows a change. `sed` already rewrote the name in it, so this run should be a no-op confirming agreement — if `api` produces *additional* changes, that is fine and expected to be committed.
+Expected: the file shows a change. `sed` already rewrote the name in it, so this run should be a no-op confirming agreement — if `api` produces _additional_ changes, that is fine and expected to be committed.
 
 - [ ] **Step 7: Commit**
 
@@ -148,6 +149,7 @@ git commit -m "refactor(react)!: rename serializeRangesAsTsv to serializeRanges"
 ## Task 2: `escapeHtmlText` helper
 
 **Files:**
+
 - Modify: `packages/react/src/copy.ts` (add after `escapeTsvField`)
 - Test: `packages/react/src/__tests__/copy.test.ts`
 
@@ -262,6 +264,7 @@ git commit -m "feat(react): add escapeHtmlText for the clipboard HTML flavor"
 Pure refactor. No test changes — the existing suite is the safety net, and it must stay green from start to finish.
 
 **Files:**
+
 - Modify: `packages/react/src/copy.ts:101-144` (the branch ladder inside the range loop)
 
 - [ ] **Step 1: Confirm the suite is green before touching anything**
@@ -345,14 +348,14 @@ function resolveRangeBounds(
 In `serializeRanges`, delete everything from `const startRow = rowIndex.get(range.startRowId);` through `if (!haveRows || rowLo > rowHi) continue;` — the whole block currently spanning lines 102-144 — and replace it with:
 
 ```ts
-    const bounds = resolveRangeBounds(
-      range,
-      rowIndex,
-      colIndex,
-      dataColumns.length,
-    );
-    if (!bounds) continue;
-    const { rowLo, rowHi, colLo, colHi } = bounds;
+const bounds = resolveRangeBounds(
+  range,
+  rowIndex,
+  colIndex,
+  dataColumns.length,
+);
+if (!bounds) continue;
+const { rowLo, rowHi, colLo, colHi } = bounds;
 ```
 
 Everything below (the `const lines: string[] = []` header/body emit) is unchanged and still references `rowLo`, `rowHi`, `colLo`, `colHi`.
@@ -381,6 +384,7 @@ git commit -m "refactor(react): extract resolveRangeBounds from the copy range l
 ## Task 4: Emit the HTML flavor
 
 **Files:**
+
 - Modify: `packages/react/src/copy.ts` (the emit loop and the return)
 - Test: `packages/react/src/__tests__/copy.test.ts`
 
@@ -695,6 +699,7 @@ git commit -m "feat(react): emit a text/html table flavor from serializeRanges"
 ## Task 5: Per-cell type hints
 
 **Files:**
+
 - Modify: `packages/react/src/copy.ts` (import `ColumnType`, add `cellStyleAttr`, use it in the body loop)
 - Test: `packages/react/src/__tests__/copy.test.ts`
 
@@ -722,15 +727,11 @@ describe("serializeRanges HTML type hints", () => {
   }
 
   it("hints a text column so Excel does not date-coerce 1-2", () => {
-    expect(oneTypedCell("1-2", "text")).toContain(
-      `<td${TEXT_HINT}>1-2</td>`,
-    );
+    expect(oneTypedCell("1-2", "text")).toContain(`<td${TEXT_HINT}>1-2</td>`);
   });
 
   it("hints an enum column — its labels are text too", () => {
-    expect(oneTypedCell("1-2", "enum")).toContain(
-      `<td${TEXT_HINT}>1-2</td>`,
-    );
+    expect(oneTypedCell("1-2", "enum")).toContain(`<td${TEXT_HINT}>1-2</td>`);
   });
 
   it("leaves an untyped column bare rather than guessing", () => {
@@ -739,9 +740,7 @@ describe("serializeRanges HTML type hints", () => {
 
   it("leaves number, date, and boolean columns bare", () => {
     expect(oneTypedCell("42", "number")).toContain("<td>42</td>");
-    expect(oneTypedCell("2026-01-02", "date")).toContain(
-      "<td>2026-01-02</td>",
-    );
+    expect(oneTypedCell("2026-01-02", "date")).toContain("<td>2026-01-02</td>");
     expect(oneTypedCell("true", "boolean")).toContain("<td>true</td>");
   });
 
@@ -808,13 +807,13 @@ function cellStyleAttr(type: ColumnType | undefined): string {
 Then in the body loop, change the `<td>` emit line from:
 
 ```ts
-        rowHtml += `<td>${escapeHtmlText(text)}</td>`;
+rowHtml += `<td>${escapeHtmlText(text)}</td>`;
 ```
 
 to:
 
 ```ts
-        rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
+rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
 ```
 
 - [ ] **Step 4: Run to verify it passes**
@@ -851,6 +850,7 @@ git commit -m "feat(react): pin text and enum columns to text format in the HTML
 ## Task 6: Documentation
 
 **Files:**
+
 - Modify: `apps/website/content/docs/grid/clipboard.mdx`
 - Verify: `apps/website/content/docs/grid/api-reference.mdx`, `apps/website/content/docs/grid/paste.mdx` (Task 1's `sed` already renamed these; confirm the surrounding prose still reads correctly)
 
@@ -878,7 +878,21 @@ Insert this immediately after the `### Escaping` section (after the current line
 Alongside the TSV, every copy writes a `text/html` flavor: one `<table>` per selected range, concatenated behind a single `<meta charset="utf-8">`.
 
 ```html
-<meta charset="utf-8"><table style="white-space:pre-wrap"><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>a1</td><td>b1</td></tr></tbody></table>
+<meta charset="utf-8" />
+<table style="white-space:pre-wrap">
+  <thead>
+    <tr>
+      <th>A</th>
+      <th>B</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>a1</td>
+      <td>b1</td>
+    </tr>
+  </tbody>
+</table>
 ```
 
 Excel and Sheets both prefer `text/html` when both flavors are present, so in practice this is what lands when someone pastes into a spreadsheet. It buys three things the TSV cannot:
@@ -907,7 +921,7 @@ A cell from a column declared `type: "text"` or `type: "enum"` carries Excel's f
 <td style="mso-number-format:'\@'">1-2</td>
 ```
 
-This is what stops Excel from silently reading `1-2` as a date, or `007` as the number `7`. Declare `type` on columns whose values are text that merely *looks* numeric — SKUs, part numbers, version strings, zero-padded ids:
+This is what stops Excel from silently reading `1-2` as a date, or `007` as the number `7`. Declare `type` on columns whose values are text that merely _looks_ numeric — SKUs, part numbers, version strings, zero-padded ids:
 
 ```tsx
 { id: "sku", header: "SKU", type: "text" }
@@ -949,9 +963,9 @@ Replace with:
 And in the `onCopy` code example, the comment `// Reuse the built-in TSV, but write CSV instead.` now produces a payload with no HTML flavor. Extend it:
 
 ```tsx
-    // Reuse the built-in TSV, but write CSV instead. Returning only `text`
-    // drops the HTML flavor — see "Opting out" above.
-    return { text: tsv.text.replace(/\t/g, ",") };
+// Reuse the built-in TSV, but write CSV instead. Returning only `text`
+// drops the HTML flavor — see "Opting out" above.
+return { text: tsv.text.replace(/\t/g, ",") };
 ```
 
 - [ ] **Step 4: Update the "Building your own serializer" opener**
