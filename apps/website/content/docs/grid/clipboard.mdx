@@ -108,7 +108,7 @@ const columns: PretableColumn<Event>[] = [
 ];
 ```
 
-`format({ value, row, column })` is called per cell before the default coercion runs. Return a string. The same `format` function drives display rendering (in a follow-up phase) and copy serialization, so a single definition keeps the on-screen text and the clipboard text in sync. If you don't supply one, the default coercion above applies.
+`format({ value, row, column })` is called per cell before the default coercion runs. Return a string. The same `format` function drives [display rendering](/docs/grid/cell-renderers) and copy serialization, so a single definition keeps the on-screen text and the clipboard text in sync. If you don't supply one, the default coercion above applies.
 
 ## Grid-level `onCopy` override
 
