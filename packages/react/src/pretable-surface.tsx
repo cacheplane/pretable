@@ -418,11 +418,9 @@ interface MemoizedCellContentProps {
   /** Mirrors `cellRenderInput.pinned` so the memo comparator can see it. */
   pinned: "left" | "right" | null;
   renderRef:
-    | ((input: PretableCellRenderInput<PretableRow>) => ReactNode)
-    | null;
+    ((input: PretableCellRenderInput<PretableRow>) => ReactNode) | null;
   fallbackRenderRef:
-    | ((input: PretableCellRenderInput<PretableRow>) => ReactNode)
-    | null;
+    ((input: PretableCellRenderInput<PretableRow>) => ReactNode) | null;
   cellRenderInput: PretableCellRenderInput<PretableRow>;
 }
 
@@ -472,8 +470,7 @@ interface MemoizedHeaderContentProps {
   /** Mirrors `headerRenderInput.pinned` so the memo comparator can see it. */
   pinned: "left" | "right" | null;
   renderHeaderRef:
-    | ((input: PretableHeaderRenderInput<PretableRow>) => ReactNode)
-    | null;
+    ((input: PretableHeaderRenderInput<PretableRow>) => ReactNode) | null;
   fallbackRenderHeaderRef:
     | ((input: {
         column: PretableColumn<PretableRow>;
