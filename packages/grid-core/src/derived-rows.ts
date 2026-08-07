@@ -88,7 +88,8 @@ function matchesFilters<TRow extends PretableRow>(
   return true;
 }
 
-const collator = new Intl.Collator(undefined, {
+/** @internal */
+export const collator = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
 });
@@ -97,7 +98,13 @@ type SortKey =
   | { kind: "num"; keys: number[]; multiplier: number }
   | { kind: "str"; keys: string[]; multiplier: number };
 
-function sortRows<TRow extends PretableRow>(
+/**
+ * Multi-key sort cascade with a `sourceIndex` tie-break. Grouping reuses this
+ * so data rows inside a group are ordered exactly as they would be flat.
+ *
+ * @internal
+ */
+export function sortRows<TRow extends PretableRow>(
   rows: SourceRow<TRow>[],
   columns: PretableColumn<TRow>[],
   sort: PretableSortEntry[],
