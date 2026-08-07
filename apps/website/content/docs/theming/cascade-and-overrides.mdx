@@ -70,11 +70,12 @@ Each of these is a plain selector with no `!important` — they win because the 
 
 Pretable emits a stable set of `data-pretable-*` attributes you can target with CSS:
 
-| Element                                   | Attributes                                                                                                                                         |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Row `[data-pretable-row]`                 | `data-pretable-row-id`, `data-pretable-row-index`, `data-pretable-selected`, `data-pretable-focused`                                               |
-| Body cell `[data-pretable-cell]`          | `data-pretable-column-id`, `data-pretable-selected`, `data-pretable-focused`, `data-pretable-pinned` (`"left"` \| `"right"`), `data-pretable-wrap` |
-| Header cell `[data-pretable-header-cell]` | `data-pretable-column-id` (user-defined columns; the row-select column's header omits this), `data-pretable-pinned` (`"left"` \| `"right"`)        |
+| Element                                   | Attributes                                                                                                                                                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Root `[data-pretable-scroll-viewport]`    | `data-pretable-hydrated` (`"false"` in server-rendered HTML, `"true"` once React has hydrated — see [Knowing when a server-rendered grid is interactive](/docs/grid#knowing-when-a-server-rendered-grid-is-interactive)) |
+| Row `[data-pretable-row]`                 | `data-pretable-row-id`, `data-pretable-row-index`, `data-pretable-selected`, `data-pretable-focused`                                                                                                                     |
+| Body cell `[data-pretable-cell]`          | `data-pretable-column-id`, `data-pretable-selected`, `data-pretable-focused`, `data-pretable-pinned` (`"left"` \| `"right"`), `data-pretable-wrap`                                                                       |
+| Header cell `[data-pretable-header-cell]` | `data-pretable-column-id` (user-defined columns; the row-select column's header omits this), `data-pretable-pinned` (`"left"` \| `"right"`)                                                                              |
 
 For example, style one column (header and body) and the selected cells in another:
 

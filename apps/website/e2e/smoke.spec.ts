@@ -4,6 +4,7 @@ import {
   dragResizeHandle,
   openDrawer,
   openFilterMenu,
+  waitForGridReady,
   waitForStablePosition,
 } from "./helpers";
 
@@ -103,9 +104,7 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
-    timeout: 10_000,
-  });
+  await waitForGridReady(page);
 
   // Header checkbox is rendered.
   const headerCheckbox = page.locator("[data-pretable-row-select-all]").first();
@@ -132,9 +131,9 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
-    timeout: 10_000,
-  });
+  // No separate "grid is up" wait: `openFilterMenu` gates on
+  // `data-pretable-hydrated` itself, and this test's first grid interaction is
+  // the Symbol funnel.
 
   // --- Filter via the built-in header funnels ---
   // ([data-pretable-row] counts only virtualized/visible rows, so assert
@@ -241,16 +240,13 @@ test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async (
   // the recording only patches that symbol six times per 27s loop.
   test.setTimeout(60_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
-    timeout: 10_000,
-  });
 
   // Filter to Energy first: the book is ranked by live weight, so an unfiltered
   // "the row below XOM" is not stable under streaming. Energy is exactly
   // {XOM, CVX} and their weights are far enough apart that the order holds.
-  await page.locator("[data-pretable-header-row]").first().hover();
-  await page.getByRole("button", { name: "Filter Sector" }).click();
-  const sectorDialog = page.getByRole("dialog", { name: "Filter Sector" });
+  // (`openFilterMenu` also gates on `data-pretable-hydrated`, which this test
+  // needs anyway before it clicks a cell to move focus into the grid.)
+  const sectorDialog = await openFilterMenu(page, "Sector");
   await sectorDialog
     .locator("[data-pretable-filter-set]")
     .getByRole("checkbox", { name: "Energy" })
@@ -381,6 +377,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   await page.locator("#scale").scrollIntoViewIfNeeded();
   const scaleGrid = page.getByRole("grid", { name: /2,500 by 500/i });
   await expect(scaleGrid).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#scale");
   // Model total is shown.
   await expect(page.getByTestId("scale-counter")).toContainText("1,250,000");
   // DOM-rendered cell count is tiny relative to 1.25M (virtualization on).
@@ -413,6 +410,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
     name: /resizable, reorderable/i,
   });
   await expect(layoutGrid).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#column-layout");
 
   // The header cell and its resize handle are separate subtrees of the header
   // row, each tagged with the same data-pretable-column-id (verified against
@@ -692,6 +690,7 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
   await expect(page.getByRole("grid", { name: /2,500 by 500/i })).toBeVisible({
     timeout: 10_000,
   });
+  await waitForGridReady(page, "#scale");
 
   // Start from a scrollable (non-pinned) cell in the first row. `row` is the
   // grid's left-pinned column, so starting there would never exercise the
@@ -764,6 +763,7 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
   await expect(
     page.getByRole("grid", { name: /resizable, reorderable/i }),
   ).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#column-layout");
 
   await page
     .locator(
@@ -813,9 +813,7 @@ test("showcase: dropping into the right-pinned group pins the column", async ({
   await page.locator("#column-layout").scrollIntoViewIfNeeded();
 
   const layout = page.locator("#column-layout");
-  await expect(layout.locator("[data-pretable-scroll-viewport]")).toBeVisible({
-    timeout: 10_000,
-  });
+  await waitForGridReady(page, "#column-layout");
 
   const headers = async () =>
     await layout.locator("[data-pretable-header-cell]").evaluateAll((els) =>
@@ -834,12 +832,21 @@ test("showcase: dropping into the right-pinned group pins the column", async ({
   // Drag "sector" onto the trailing half of the right-pinned "note" — inside
   // the group, so it lands there and takes the pin. WebKit only engages
   // pointer capture once the pointer has traversed intermediate positions.
+  //
+  // Settle before measuring: this section lazy-mounts and the drawer scrolls
+  // smoothly, so the header row is still easing into place when the grid first
+  // reports ready. `data-pretable-hydrated` says the handlers are attached, not
+  // that the layout has stopped moving — a different problem needing a
+  // different wait. The drop target below is only 6px deep, so a box measured
+  // mid-scroll puts the drop outside the pinned group and "note" stays last.
+  const sectorHeader = layout.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="sector"]',
+  );
+  await waitForStablePosition(sectorHeader);
   const note = (await layout
     .locator('[data-pretable-header-cell][data-pretable-column-id="note"]')
     .boundingBox())!;
-  const sector = (await layout
-    .locator('[data-pretable-header-cell][data-pretable-column-id="sector"]')
-    .boundingBox())!;
+  const sector = (await sectorHeader.boundingBox())!;
   const y = sector.y + sector.height / 2;
   await page.mouse.move(sector.x + sector.width / 2, y);
   await page.mouse.down();
@@ -868,7 +875,7 @@ test("showcase: column reorder drops where the indicator points, scrolled sidewa
 
   const layout = page.locator("#column-layout");
   const viewport = layout.locator("[data-pretable-scroll-viewport]");
-  await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#column-layout");
 
   const headerBoxes = async () =>
     await layout.locator("[data-pretable-header-cell]").evaluateAll((els) =>

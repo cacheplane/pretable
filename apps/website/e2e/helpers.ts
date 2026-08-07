@@ -31,32 +31,73 @@ export async function openDrawer(page: Page): Promise<void> {
 }
 
 /**
+ * Wait until a grid is not just painted but actually interactive.
+ *
+ * Same failure mode as `openDrawer`, one layer down. The hero grid is
+ * server-rendered, so its header buttons, filter funnels, row-select checkboxes
+ * and resize handles are all in the initial HTML — painted, hit-testable, and
+ * considered actionable by Playwright — while React has yet to attach a single
+ * listener. A click that lands in that window is accepted by the browser and
+ * dropped on the floor, and the test then fails somewhere downstream with a
+ * symptom that looks unrelated (a dialog locator timing out, a checkbox that
+ * never flips).
+ *
+ * `[data-pretable-scroll-viewport]` cannot discriminate here either: it ships in
+ * the prerendered markup alongside the dead controls, so `toBeVisible()` on it
+ * is satisfied long before anything works.
+ *
+ * `data-pretable-hydrated` is emitted by `PretableSurface` from a
+ * `useSyncExternalStore` gate that resolves to `"false"` on the server and
+ * during hydration, then `"true"` on the first client-only render — the same
+ * render that attaches the handlers. It is a documented part of the package's
+ * data-attribute contract, not a test hook, so waiting on it is waiting on the
+ * library's own statement that the grid is live.
+ *
+ * `scope` is an optional CSS selector for a section containing exactly one grid
+ * (e.g. `"#column-layout"`); omit it for the hero grid. Grids that mount
+ * client-side on scroll (the showcase sections) report `"true"` on their very
+ * first render, so this is cheap there — but it keeps every grid interaction in
+ * both specs on one idiom rather than two.
+ */
+export async function waitForGridReady(
+  page: Page,
+  scope?: string,
+): Promise<void> {
+  const grid = page
+    .locator(`${scope ? `${scope} ` : ""}[data-pretable-scroll-viewport]`)
+    .first();
+  // Generous: hydration is quick locally but slow on a cold preview deploy.
+  await expect(grid).toBeVisible({ timeout: 20_000 });
+  await expect(grid).toHaveAttribute("data-pretable-hydrated", "true", {
+    timeout: 20_000,
+  });
+}
+
+/**
  * Opens a column's filter menu from its header funnel, and returns the dialog.
  *
  * Same failure mode as the drawer handle above — a click accepted by the
- * browser but dropped, most often because the control is not live yet. It is
- * worse here: the menu never opens and the `fill` that follows burns the whole
- * test timeout instead of failing on the click.
+ * browser but dropped because the control is not live yet. It is worse here:
+ * the menu never opens and the `fill` that follows burns the whole test timeout
+ * instead of failing on the click.
  *
- * The grid has no `data-hydrated` equivalent to wait on, so re-attempt instead.
- * Unlike the drawer, the funnel *toggles*, so a blind re-click would close a
- * menu that did open; check the dialog first and only click when it is
- * genuinely absent.
+ * This used to re-attempt the click, because when it was written the grid had
+ * no `data-hydrated` equivalent to wait on. It has one now, so wait on the
+ * signal rather than retrying until a click happens to land: the funnel lives
+ * inside the server-rendered hero grid, and `waitForGridReady` resolves exactly
+ * when that grid's handlers are attached. The retry's awkward companion
+ * problem — the funnel *toggles*, so a blind re-click would close a menu that
+ * did open — goes away with it.
  */
 export async function openFilterMenu(page: Page, column: string) {
+  await waitForGridReady(page);
+  // The funnel is opacity-0 until the header row is hovered. Opacity does not
+  // block Playwright actionability, but hover first to mirror real usage (and
+  // dodge engine flakiness).
+  await page.locator("[data-pretable-header-row]").first().hover();
+  await page.getByRole("button", { name: `Filter ${column}` }).click();
   const dialog = page.getByRole("dialog", { name: `Filter ${column}` });
-  await expect(async () => {
-    if (!(await dialog.isVisible())) {
-      // The funnel is opacity-0 until the header row is hovered. Opacity does
-      // not block Playwright actionability, but hover first to mirror real
-      // usage (and dodge engine flakiness).
-      await page.locator("[data-pretable-header-row]").first().hover();
-      await page
-        .getByRole("button", { name: `Filter ${column}` })
-        .click({ timeout: 5_000 });
-    }
-    await expect(dialog).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 10_000 });
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
   return dialog;
 }
 
@@ -65,9 +106,14 @@ export async function openFilterMenu(page: Page, column: string) {
  *
  * DocsSearch registers its keydown listener in an effect and renders nothing
  * until that listener fires (app/components/docs/DocsSearch.tsx), so a press
- * before hydration is swallowed without a trace — there is no `data-hydrated`
- * to wait on as there is for the drawer handle. Re-pressing an open palette is
- * harmless (the handler just sets `open` to true again), so retry the press.
+ * before hydration is swallowed without a trace.
+ *
+ * `waitForGridReady` is no help here, unlike in `openFilterMenu`: the docs
+ * routes render no `PretableSurface` at all, so there is no
+ * `data-pretable-hydrated` on the page to wait on, and inventing one for a
+ * component that has no `data-hydrated` of its own would be a test hook rather
+ * than a product signal. Re-pressing an open palette is harmless (the handler
+ * just sets `open` to true again), so retry the press.
  */
 export async function openDocsSearch(page: Page) {
   const dialog = page.getByRole("dialog");
