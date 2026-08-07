@@ -4,8 +4,7 @@ import { isValidIsoDate, toIsoDate } from "./date-utils";
 import { matchOption } from "./enum-options";
 
 export type DraftParseResult =
-  | { ok: true; value: unknown }
-  | { ok: false; message: string };
+  { ok: true; value: unknown } | { ok: false; message: string };
 
 /**
  * Built-in per-type draft parsing, run at commit before the column's

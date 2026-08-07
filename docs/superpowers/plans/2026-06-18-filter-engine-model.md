@@ -620,9 +620,7 @@ it("replaceFilters drops inactive filters and is change-guarded", () => {
 
 it("distinctColumnValues returns sorted de-duped non-empty values", () => {
   const grid = makeGrid();
-  expect(grid.distinctColumnValues("status")).toEqual([
-    /* sorted distinct */
-  ]);
+  expect(grid.distinctColumnValues("status")).toEqual([/* sorted distinct */]);
 });
 ```
 

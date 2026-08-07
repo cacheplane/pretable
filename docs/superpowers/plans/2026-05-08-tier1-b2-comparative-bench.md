@@ -112,10 +112,7 @@ Find (around line 10):
 
 ```ts
 export type BenchAdapterId =
-  | "pretable"
-  | "gridalpha"
-  | "gridbeta"
-  | "gridgamma";
+  "pretable" | "gridalpha" | "gridbeta" | "gridgamma";
 ```
 
 Replace with:

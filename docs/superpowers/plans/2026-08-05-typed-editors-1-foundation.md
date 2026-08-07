@@ -288,8 +288,7 @@ Run: `pnpm --filter @pretable/react test -- type-parsing`
 import type { ColumnType } from "@pretable/core";
 
 export type DraftParseResult =
-  | { ok: true; value: unknown }
-  | { ok: false; message: string };
+  { ok: true; value: unknown } | { ok: false; message: string };
 
 /**
  * Built-in per-type draft parsing, run at commit before the column's

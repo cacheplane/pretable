@@ -11,19 +11,10 @@ export interface InspectionRow extends Record<string, unknown> {
 }
 
 export type InspectionFilterableColumnId =
-  | "timestamp"
-  | "severity"
-  | "source"
-  | "message";
+  "timestamp" | "severity" | "source" | "message";
 
 export type InspectionColumnId =
-  | "id"
-  | "timestamp"
-  | "severity"
-  | "source"
-  | "owner"
-  | "tags"
-  | "message";
+  "id" | "timestamp" | "severity" | "source" | "owner" | "tags" | "message";
 
 export type InspectionDatasetScale = "tiny" | "dev" | "stress";
 

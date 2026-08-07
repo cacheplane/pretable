@@ -203,12 +203,8 @@ interface Callout {
   body: React.ReactNode;
 }
 
-const LAYERS: readonly Layer[] = [
-  /* 5 entries per §4.2 */
-];
-const CALLOUTS: readonly Callout[] = [
-  /* 4 entries per §4.3 */
-];
+const LAYERS: readonly Layer[] = [/* 5 entries per §4.2 */];
+const CALLOUTS: readonly Callout[] = [/* 4 entries per §4.3 */];
 ```
 
 Bullets that contain inline `<code>` (Layer 02 signature, Layer 03 `getBoundingClientRect`, Layer 04 `RenderPlan`) use `React.ReactNode` so JSX literals can be embedded. The simplest path: each `bullets` entry is `string | React.ReactNode`, mapped to `<li>` elements in render.

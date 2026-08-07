@@ -10,10 +10,7 @@ import {
 export type BenchAdapterId = "pretable" | "ag-grid" | "tanstack" | "mui";
 
 export type BenchAdapterFamily =
-  | "candidate"
-  | "full-grid"
-  | "virtualization-primitive"
-  | "unknown";
+  "candidate" | "full-grid" | "virtualization-primitive" | "unknown";
 
 export type BenchAdapterProfile = "default" | "tuned";
 

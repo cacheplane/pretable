@@ -239,12 +239,12 @@ Frontmatter: `title: API reference` / `description: Type signatures and the crea
 Sections:
 
 - Types table:
-  | Type | Shape |
-  | --- | --- |
-  | `GridLike<TRow>` | `{ applyTransaction({ add?, update?, remove? }): void }` |
-  | `StreamConnection` | `{ done: Promise<void>; dispose(): void }` |
-  | `TransactionBatcher<TRow>` | `{ add, update, remove, flush, dispose }` |
-  | `PartialStreamOptions` | `{ rowId: string }` |
+  | Type                       | Shape                                                    |
+  | -------------------------- | -------------------------------------------------------- |
+  | `GridLike<TRow>`           | `{ applyTransaction({ add?, update?, remove? }): void }` |
+  | `StreamConnection`         | `{ done: Promise<void>; dispose(): void }`               |
+  | `TransactionBatcher<TRow>` | `{ add, update, remove, flush, dispose }`                |
+  | `PartialStreamOptions`     | `{ rowId: string }`                                      |
 - `createBatcher(grid): TransactionBatcher<TRow>` — lower-level escape hatch when the connect helpers don't fit. Same batching semantics; you drive the lifecycle.
 
 ### Content tone

@@ -334,7 +334,7 @@ function MyGrid({ rows, columns }) {
   });
 
   // Render your own JSX, applying [data-pretable-*] attributes for styling
-  return /* ... */;
+  return; /* ... */
 }
 ```
 

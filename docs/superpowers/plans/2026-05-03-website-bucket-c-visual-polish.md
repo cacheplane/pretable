@@ -219,68 +219,66 @@ export function HowItWorks() {
         <LayerStack
           testId="howitworks-layers"
           className="mt-10 flex flex-col gap-2"
-          items={LAYERS.map(
-            (layer): LayerStackItem => ({
-              key: layer.num,
-              className: [
-                "grid grid-cols-[44px_1fr] gap-4 rounded-[6px] border p-5 md:grid-cols-[56px_1fr_auto] md:gap-5 md:p-6",
-                layer.core
-                  ? "border-accent/40 bg-bg-card/50"
-                  : "border-rule bg-bg-card/65",
-              ].join(" "),
-              children: (
-                <>
-                  <div className="flex flex-col items-center gap-2 pt-1">
-                    <span className="font-mono text-[11px] font-bold tracking-[0.1em] text-text-dim">
-                      {layer.num}
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className={[
-                        "block h-2 w-2 rounded-full",
-                        layer.core
-                          ? "bg-accent shadow-[0_0_0_4px_color-mix(in_srgb,var(--pt-accent)_12%,transparent)]"
-                          : "bg-text-dim",
-                      ].join(" ")}
-                    />
-                  </div>
-                  <div>
-                    <h3 className="font-display text-[18px] leading-[1.2] text-text-primary">
-                      {layer.name}
-                    </h3>
-                    <p className="mt-1 font-display text-[13px] leading-[1.5] text-text-secondary">
-                      {layer.responsibility}
-                    </p>
-                    <ul role="list" className="mt-3 flex flex-col gap-1">
-                      {layer.bullets.map((bullet, i) => (
-                        <li
-                          key={i}
-                          className="relative pl-4 text-[12.5px] leading-[1.55] text-text-muted"
+          items={LAYERS.map((layer): LayerStackItem => ({
+            key: layer.num,
+            className: [
+              "grid grid-cols-[44px_1fr] gap-4 rounded-[6px] border p-5 md:grid-cols-[56px_1fr_auto] md:gap-5 md:p-6",
+              layer.core
+                ? "border-accent/40 bg-bg-card/50"
+                : "border-rule bg-bg-card/65",
+            ].join(" "),
+            children: (
+              <>
+                <div className="flex flex-col items-center gap-2 pt-1">
+                  <span className="font-mono text-[11px] font-bold tracking-[0.1em] text-text-dim">
+                    {layer.num}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={[
+                      "block h-2 w-2 rounded-full",
+                      layer.core
+                        ? "bg-accent shadow-[0_0_0_4px_color-mix(in_srgb,var(--pt-accent)_12%,transparent)]"
+                        : "bg-text-dim",
+                    ].join(" ")}
+                  />
+                </div>
+                <div>
+                  <h3 className="font-display text-[18px] leading-[1.2] text-text-primary">
+                    {layer.name}
+                  </h3>
+                  <p className="mt-1 font-display text-[13px] leading-[1.5] text-text-secondary">
+                    {layer.responsibility}
+                  </p>
+                  <ul role="list" className="mt-3 flex flex-col gap-1">
+                    {layer.bullets.map((bullet, i) => (
+                      <li
+                        key={i}
+                        className="relative pl-4 text-[12.5px] leading-[1.55] text-text-muted"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-0 text-accent opacity-70"
                         >
-                          <span
-                            aria-hidden="true"
-                            className="absolute left-0 text-accent opacity-70"
-                          >
-                            ▸
-                          </span>
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="col-span-full flex flex-row items-center gap-2 pl-12 pt-2 md:col-auto md:flex-col md:items-end md:gap-2 md:pl-0 md:pt-0">
-                    <span className="rounded-[3px] border border-rule bg-bg-raised/50 px-2 py-0.5 font-mono text-[10px] text-text-secondary">
-                      <span className="text-text-dim">→ </span>
-                      {layer.output}
-                    </span>
-                    <span className="rounded-[3px] border border-accent/20 bg-accent/8 px-2.5 py-1 font-mono text-[11px] text-accent">
-                      {layer.pkg}
-                    </span>
-                  </div>
-                </>
-              ),
-            }),
-          )}
+                          ▸
+                        </span>
+                        {bullet}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="col-span-full flex flex-row items-center gap-2 pl-12 pt-2 md:col-auto md:flex-col md:items-end md:gap-2 md:pl-0 md:pt-0">
+                  <span className="rounded-[3px] border border-rule bg-bg-raised/50 px-2 py-0.5 font-mono text-[10px] text-text-secondary">
+                    <span className="text-text-dim">→ </span>
+                    {layer.output}
+                  </span>
+                  <span className="rounded-[3px] border border-accent/20 bg-accent/8 px-2.5 py-1 font-mono text-[11px] text-accent">
+                    {layer.pkg}
+                  </span>
+                </div>
+              </>
+            ),
+          }))}
         />
 
         <ul
@@ -661,66 +659,64 @@ export function HowItWorks() {
         <LayerStack
           testId="howitworks-layers"
           className="mt-6 flex flex-col gap-2"
-          items={LAYERS.map(
-            (layer): LayerStackItem => ({
-              key: layer.num,
-              // All cards use the same neutral border. The core-stage hint is
-              // carried by the dot+glow on the number column, not the border.
-              className:
-                "grid grid-cols-[44px_1fr] gap-4 rounded-[6px] border border-rule bg-bg-card/65 p-5 md:grid-cols-[56px_1fr_auto] md:gap-5 md:p-6",
-              children: (
-                <>
-                  <div className="flex flex-col items-center gap-2 pt-1">
-                    <span className="font-mono text-[11px] font-bold tracking-[0.1em] text-text-dim">
-                      {layer.num}
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className={[
-                        "block h-2 w-2 rounded-full",
-                        layer.core
-                          ? "bg-accent shadow-[0_0_0_4px_color-mix(in_srgb,var(--pt-accent)_12%,transparent)]"
-                          : "bg-text-dim",
-                      ].join(" ")}
-                    />
-                  </div>
-                  <div>
-                    <h3 className="font-display text-[18px] leading-[1.2] text-text-primary">
-                      {layer.name}
-                    </h3>
-                    <p className="mt-1 font-display text-[13px] leading-[1.5] text-text-secondary">
-                      {layer.responsibility}
-                    </p>
-                    <ul role="list" className="mt-3 flex flex-col gap-1">
-                      {layer.bullets.map((bullet, i) => (
-                        <li
-                          key={i}
-                          className="relative pl-4 text-[12.5px] leading-[1.55] text-text-muted"
+          items={LAYERS.map((layer): LayerStackItem => ({
+            key: layer.num,
+            // All cards use the same neutral border. The core-stage hint is
+            // carried by the dot+glow on the number column, not the border.
+            className:
+              "grid grid-cols-[44px_1fr] gap-4 rounded-[6px] border border-rule bg-bg-card/65 p-5 md:grid-cols-[56px_1fr_auto] md:gap-5 md:p-6",
+            children: (
+              <>
+                <div className="flex flex-col items-center gap-2 pt-1">
+                  <span className="font-mono text-[11px] font-bold tracking-[0.1em] text-text-dim">
+                    {layer.num}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={[
+                      "block h-2 w-2 rounded-full",
+                      layer.core
+                        ? "bg-accent shadow-[0_0_0_4px_color-mix(in_srgb,var(--pt-accent)_12%,transparent)]"
+                        : "bg-text-dim",
+                    ].join(" ")}
+                  />
+                </div>
+                <div>
+                  <h3 className="font-display text-[18px] leading-[1.2] text-text-primary">
+                    {layer.name}
+                  </h3>
+                  <p className="mt-1 font-display text-[13px] leading-[1.5] text-text-secondary">
+                    {layer.responsibility}
+                  </p>
+                  <ul role="list" className="mt-3 flex flex-col gap-1">
+                    {layer.bullets.map((bullet, i) => (
+                      <li
+                        key={i}
+                        className="relative pl-4 text-[12.5px] leading-[1.55] text-text-muted"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="absolute left-0 text-accent opacity-70"
                         >
-                          <span
-                            aria-hidden="true"
-                            className="absolute left-0 text-accent opacity-70"
-                          >
-                            ▸
-                          </span>
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="col-span-full flex flex-row items-center gap-2 pl-12 pt-2 md:col-auto md:flex-col md:items-end md:gap-2 md:pl-0 md:pt-0">
-                    <span className="rounded-[3px] border border-rule bg-bg-raised/50 px-2 py-0.5 font-mono text-[10px] text-text-secondary">
-                      <span className="text-text-dim">→ </span>
-                      {layer.output}
-                    </span>
-                    <span className="rounded-[3px] border border-accent/20 bg-accent/8 px-2.5 py-1 font-mono text-[11px] text-accent">
-                      {layer.pkg}
-                    </span>
-                  </div>
-                </>
-              ),
-            }),
-          )}
+                          ▸
+                        </span>
+                        {bullet}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="col-span-full flex flex-row items-center gap-2 pl-12 pt-2 md:col-auto md:flex-col md:items-end md:gap-2 md:pl-0 md:pt-0">
+                  <span className="rounded-[3px] border border-rule bg-bg-raised/50 px-2 py-0.5 font-mono text-[10px] text-text-secondary">
+                    <span className="text-text-dim">→ </span>
+                    {layer.output}
+                  </span>
+                  <span className="rounded-[3px] border border-accent/20 bg-accent/8 px-2.5 py-1 font-mono text-[11px] text-accent">
+                    {layer.pkg}
+                  </span>
+                </div>
+              </>
+            ),
+          }))}
         />
 
         <ul

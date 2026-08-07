@@ -46,9 +46,7 @@ grid.replaceSort([
   { columnId: "group", direction: "asc" },
   { columnId: "score", direction: "desc" },
 ]);
-expect(ids()).toEqual([
-  /* … */
-]);
+expect(ids()).toEqual([/* … */]);
 // stability: equal (group, score) pairs keep source order
 // setSort replaces the whole list with one entry
 grid.setSort("name", "asc");
