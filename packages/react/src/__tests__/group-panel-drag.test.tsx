@@ -301,3 +301,233 @@ describe("header → panel drag", () => {
     ).toHaveAttribute("data-pretable-group-panel-active");
   });
 });
+
+const chipFor = (view: { container: HTMLElement }, columnId: string) =>
+  view.container.querySelector(
+    `[data-pretable-group-chip][data-pretable-column-id="${columnId}"]`,
+  )!;
+
+const panelOf = (view: { container: HTMLElement }) =>
+  view.container.querySelector("[data-pretable-group-panel]")!;
+
+/**
+ * Chip drags bind pointerdown to the chip and everything after it to the
+ * document, so these fire the tail of the gesture at `document` — which is
+ * also what a real browser does once the pointer leaves the chip's box.
+ */
+function dragChip(chip: Element, to: { x: number; y: number }) {
+  fireEvent.pointerDown(chip, {
+    button: 0,
+    pointerId: 7,
+    clientX: 10,
+    clientY: 10,
+  });
+  fireEvent.pointerMove(document, { pointerId: 7, clientX: 40, clientY: 12 });
+  fireEvent.pointerMove(document, {
+    pointerId: 7,
+    clientX: to.x,
+    clientY: to.y,
+  });
+}
+
+function dropChip(to: { x: number; y: number }) {
+  fireEvent.pointerUp(document, {
+    pointerId: 7,
+    clientX: to.x,
+    clientY: to.y,
+  });
+}
+
+describe("chip reorder by drag", () => {
+  it("dragging a chip past the next one reorders and reports the new list", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+
+    hit.result = { insertIndex: 2 };
+    dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+    dropChip({ x: 180, y: 18 });
+
+    expect(onRowGroupsChange).toHaveBeenCalledWith(["industry", "sector"]);
+    expect(chipIds(view)).toEqual(["industry", "sector"]);
+  });
+
+  it("captures the pointer on the panel container, never on the chip", () => {
+    // Chips are re-keyed and re-inserted as the insertion index moves, and a
+    // capture on a node React replaces is lost mid-gesture. The container is
+    // the only stable element in the strip. jsdom cannot reproduce that
+    // failure — it never retargets captured events — so the rule is pinned
+    // structurally here and exercised for real in Task 8's Playwright spec.
+    const view = render(
+      <MirroredGrid initialRowGroups={["sector", "industry"]} />,
+    );
+
+    dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+
+    expect(captures).toHaveLength(1);
+    expect(captures[0].element).toBe(panelOf(view));
+    expect(captures[0].pointerId).toBe(7);
+  });
+
+  it("releasing outside the panel is a no-op, not a removal", () => {
+    // ag-grid ungroups the moment the pointer leaves the panel, before release
+    // and with no undo. We deliberately do not.
+    //
+    // The SECOND chip is the one dragged out on purpose. Dragging the first out
+    // makes this test vacuous: a "no hit" that leaked through as index 0 would
+    // put the first chip back where it already was, so the assertion would hold
+    // whether or not the miss was honoured. Its negative control does not fire
+    // that way round — measured.
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+
+    hit.result = null;
+    dragChip(chipFor(view, "industry"), { x: 180, y: 400 });
+    dropChip({ x: 180, y: 400 });
+
+    expect(onRowGroupsChange).not.toHaveBeenCalled();
+    expect(chipIds(view)).toEqual(["sector", "industry"]);
+  });
+
+  it("leaving the panel mid-drag commits nothing on its own", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+
+    hit.result = { insertIndex: 2 };
+    dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+    hit.result = null;
+    fireEvent.pointerMove(document, {
+      pointerId: 7,
+      clientX: 180,
+      clientY: 400,
+    });
+
+    expect(onRowGroupsChange).not.toHaveBeenCalled();
+    expect(chipIds(view)).toEqual(["sector", "industry"]);
+  });
+
+  it("Escape mid-drag restores the original order", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+
+    hit.result = { insertIndex: 2 };
+    dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+    fireEvent.keyDown(document, { key: "Escape" });
+    dropChip({ x: 180, y: 18 });
+
+    expect(onRowGroupsChange).not.toHaveBeenCalled();
+    expect(chipIds(view)).toEqual(["sector", "industry"]);
+  });
+
+  it("pointercancel mid-drag restores the original order", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+
+    hit.result = { insertIndex: 2 };
+    dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+    fireEvent.pointerCancel(document, { pointerId: 7 });
+    dropChip({ x: 180, y: 18 });
+
+    expect(onRowGroupsChange).not.toHaveBeenCalled();
+    expect(chipIds(view)).toEqual(["sector", "industry"]);
+  });
+
+  it("a press that never passes the threshold is not a drag", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+
+    hit.result = { insertIndex: 2 };
+    const chip = chipFor(view, "sector");
+    fireEvent.pointerDown(chip, {
+      button: 0,
+      pointerId: 7,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(document, { pointerId: 7, clientX: 12, clientY: 11 });
+    dropChip({ x: 12, y: 11 });
+
+    expect(onRowGroupsChange).not.toHaveBeenCalled();
+  });
+
+  it("the ✕ still removes rather than starting a drag", () => {
+    const onRowGroupsChange = vi.fn();
+    const view = render(
+      <MirroredGrid
+        initialRowGroups={["sector", "industry"]}
+        onRowGroupsChange={onRowGroupsChange}
+      />,
+    );
+    const remove = chipFor(view, "sector").querySelector(
+      "[data-pretable-chip-remove]",
+    )!;
+
+    fireEvent.pointerDown(remove, { button: 0, pointerId: 7 });
+    fireEvent.click(remove);
+
+    expect(captures).toHaveLength(0);
+    expect(onRowGroupsChange).toHaveBeenCalledWith(["industry"]);
+  });
+
+  it("shows a gap indicator at the pending insertion point", () => {
+    const view = render(
+      <MirroredGrid initialRowGroups={["sector", "industry"]} />,
+    );
+
+    hit.result = { insertIndex: 2 };
+    dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+
+    const nodes = Array.from(panelOf(view).children);
+    const indicator = panelOf(view).querySelector(
+      "[data-pretable-chip-drop-indicator]",
+    )!;
+    expect(indicator).not.toBeNull();
+    // After both chips — index 2 of two chips means "append".
+    expect(nodes.indexOf(indicator)).toBe(nodes.length - 1);
+  });
+
+  it("marks the chip being dragged", () => {
+    const view = render(
+      <MirroredGrid initialRowGroups={["sector", "industry"]} />,
+    );
+
+    hit.result = { insertIndex: 2 };
+    dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+
+    expect(chipFor(view, "sector")).toHaveAttribute(
+      "data-pretable-chip-dragging",
+    );
+    expect(chipFor(view, "industry")).not.toHaveAttribute(
+      "data-pretable-chip-dragging",
+    );
+  });
+});
