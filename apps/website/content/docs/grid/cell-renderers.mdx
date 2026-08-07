@@ -194,6 +194,33 @@ Same for headers (`column.renderHeader` → `renderHeaderCell` → default label
 
 The built-in row-selection checkbox column (id `__pretable_row_select__`, enabled via `rowSelectionColumn={{ enabled: true }}`) is non-overridable in v1. `format`, `render`, and `renderHeader` set on a column with that id are ignored — the synthetic column always renders the built-in three-state checkbox.
 
+### Telling it apart in the DOM
+
+It renders as an ordinary cell and header — `[data-pretable-cell]` and `[data-pretable-header-cell]` both match it — but it is not one of your columns, and it is **left-pinned by default, so it is the first match for either selector**. A rule or a `querySelector` that means "a data column" and does not say so lands on the checkbox column instead.
+
+What identifies it is not symmetric between the header and the body, which is the part that catches people:
+
+|            | `data-pretable-column-id`            | Modifier                               |
+| ---------- | ------------------------------------ | -------------------------------------- |
+| Header     | **absent**                           | `data-pretable-row-select-header`      |
+| Body cells | present, `"__pretable_row_select__"` | `data-pretable-row-select-cell="true"` |
+
+So `[data-pretable-column-id]` narrows headers to real columns but does **nothing** for cells — every cell has an id, the checkbox column's included. Use the modifiers, which work on both sides:
+
+```css
+/* Every data column, checkbox column excluded */
+[data-pretable-cell]:not([data-pretable-row-select-cell]) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Just the checkbox column */
+[data-pretable-cell][data-pretable-row-select-cell="true"] {
+  background: var(--pretable-bg-header);
+}
+```
+
+The same applies when you are reading the DOM rather than styling it — in an end-to-end test, say. `document.querySelector("[data-pretable-header-cell]")` returns the checkbox header, whose inline layout differs from a data column's, so a test sampling "a header cell" is not sampling one of yours.
+
 ## Cell editing
 
 Read-only display only in v1. Cell editing — type-to-edit, parse/format round-trips, validation, commit/cancel callbacks — is its own design problem and is deferred to a future sub-project.
