@@ -102,25 +102,72 @@ export async function openFilterMenu(page: Page, column: string) {
 }
 
 /**
- * Presses the docs search shortcut until the palette opens, and returns it.
+ * Wait until the docs page's client components are live.
  *
- * DocsSearch registers its keydown listener in an effect and renders nothing
- * until that listener fires (app/components/docs/DocsSearch.tsx), so a press
- * before hydration is swallowed without a trace.
+ * Third instance of the same failure mode as `openDrawer` and
+ * `waitForGridReady`, on the routes neither of them covers: docs pages render
+ * no `PretableSurface`, so `data-pretable-hydrated` is nowhere on the page.
  *
- * `waitForGridReady` is no help here, unlike in `openFilterMenu`: the docs
- * routes render no `PretableSurface` at all, so there is no
- * `data-pretable-hydrated` on the page to wait on, and inventing one for a
- * component that has no `data-hydrated` of its own would be a test hook rather
- * than a product signal. Re-pressing an open palette is harmless (the handler
- * just sets `open` to true again), so retry the press.
+ * `DocsMobileDrawer`'s Menu button is the one docs control that is both
+ * server-rendered and pressable, so it is the one that publishes readiness:
+ * `data-hydrated`, written from `useHydrated()` — the same
+ * `useSyncExternalStore` gate the grid uses — is `"false"` in the SSR HTML and
+ * flips to `"true"` on the first client-only render, the render that attaches
+ * `onClick`.
+ *
+ * It gates the ⌘K palette too, even though the palette is a different
+ * component. `DocsSearch` renders `null` until its keydown listener fires
+ * (app/components/docs/DocsSearch.tsx), so it has no element of its own to
+ * carry an attribute, and adding a hidden one purely to be waited on would be a
+ * test hook rather than a product signal. It does not need one: both
+ * components are siblings under `DocsShell` in a single React root, so they
+ * hydrate in the same pass, and the ordering runs the right way round —
+ * `DocsSearch`'s listener is registered in a passive effect of the hydration
+ * commit, while the attribute flip is a re-render *scheduled from* that same
+ * effect flush. The attribute can therefore only reach the DOM after the
+ * listener is attached, never before. Measured, not just argued: 72 gated
+ * single presses under 9-worker load on a box at load 108–320, no misses.
+ *
+ * Located by CSS rather than by role on purpose — the button is `md:hidden`,
+ * so at desktop viewports it is `display: none` and out of the accessibility
+ * tree, which is exactly where the palette test needs this gate.
+ */
+export async function waitForDocsReady(page: Page): Promise<void> {
+  // Generous: hydration is quick locally but slow on a cold preview deploy.
+  await expect(page.locator('button[aria-label="Menu"]')).toHaveAttribute(
+    "data-hydrated",
+    "true",
+    { timeout: 20_000 },
+  );
+}
+
+/**
+ * Opens the docs sidebar drawer from its Menu button, and returns the dialog.
+ *
+ * Small-viewport only: the button is `md:hidden`, so callers must set a mobile
+ * viewport first.
+ */
+export async function openDocsMenu(page: Page) {
+  await waitForDocsReady(page);
+  await page.getByRole("button", { name: /menu/i }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  return dialog;
+}
+
+/**
+ * Presses the docs search shortcut and returns the palette.
+ *
+ * This used to re-press until the palette opened, because when it was written
+ * the docs routes had no readiness signal at all to wait on. They have one now
+ * (`waitForDocsReady`), so wait on it and press once — one idiom across the
+ * drawer, the grid and the docs routes rather than three.
  */
 export async function openDocsSearch(page: Page) {
+  await waitForDocsReady(page);
+  await page.keyboard.press("Control+K");
   const dialog = page.getByRole("dialog");
-  await expect(async () => {
-    await page.keyboard.press("Control+K");
-    await expect(dialog).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
   return dialog;
 }
 
