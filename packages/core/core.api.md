@@ -82,6 +82,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
     // (undocumented)
     filterable?: boolean;
+    flex?: number;
     // (undocumented)
     format?: (input: PretableFormatInput<TRow>) => string;
     // (undocumented)

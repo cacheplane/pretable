@@ -1,5 +1,6 @@
 import {
   createRowMetricsIndex,
+  distributeFlexWidths,
   planColumns,
   planViewport,
 } from "@pretable-internal/layout-core";
@@ -84,9 +85,26 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
     ];
   });
 
+  // `flex` columns take a share of whatever the fixed ones leave over, so the
+  // row ends at the viewport edge. Only meaningful once the viewport has been
+  // measured, and only for columns without an explicit `widthPx` — a width the
+  // consumer set, or that a resize drag produced, outranks a computed one.
+  const flexWidths = distributeFlexWidths({
+    columns: input.columns.map((col) => ({
+      id: col.id,
+      width: resolveColumnWidth(col),
+      ...(col.widthPx === undefined && col.flex !== undefined
+        ? { flex: col.flex }
+        : {}),
+      ...(col.minWidthPx === undefined ? {} : { minWidthPx: col.minWidthPx }),
+      ...(col.maxWidthPx === undefined ? {} : { maxWidthPx: col.maxWidthPx }),
+    })),
+    viewportWidth: input.viewportWidth ?? Number.POSITIVE_INFINITY,
+  });
+
   const columnInputs = input.columns.map((col) => ({
     id: col.id,
-    width: resolveColumnWidth(col),
+    width: flexWidths[col.id] ?? resolveColumnWidth(col),
     pinned: col.pinned,
   }));
 

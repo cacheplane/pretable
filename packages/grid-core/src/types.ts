@@ -122,6 +122,15 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   // new in sub-project C:
   minWidthPx?: number;
   maxWidthPx?: number;
+  /**
+   * Share of the width the fixed columns leave over, so the row ends exactly at
+   * the viewport edge instead of underfilling or overflowing it. Weights are
+   * relative: two columns at `flex: 1` split the remainder evenly, `1` and `3`
+   * split it a quarter to three quarters. `minWidthPx`/`maxWidthPx` still
+   * apply, and a column that has been resized (which sets `widthPx`) stops
+   * flexing — an explicit width outranks a computed one.
+   */
+  flex?: number;
   resizable?: boolean;
   reorderable?: boolean;
   // row grouping (v1):
