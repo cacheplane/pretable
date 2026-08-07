@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -7,6 +8,8 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { PretableGrid } from "@pretable/core";
 
 import type { PastePayload } from "../paste";
 import { PretableSurface } from "../pretable-surface";
@@ -77,6 +80,7 @@ interface HarnessOpts {
   rows?: Row[];
   state?: PretableSurfaceState;
   onPaste?: (payload: PastePayload<Row>) => void | Promise<void>;
+  onGridReady?: (grid: PretableGrid<Row>) => void;
 }
 
 function renderPasteGrid(opts: HarnessOpts = {}) {
@@ -85,12 +89,20 @@ function renderPasteGrid(opts: HarnessOpts = {}) {
       ariaLabel="paste-grid"
       columns={opts.columns ?? COLUMNS}
       getRowId={(row) => row.id}
+      onGridReady={opts.onGridReady}
       onPaste={opts.onPaste}
       overscan={0}
       rows={opts.rows ?? ROWS}
       state={opts.state}
       viewportHeight={300}
     />,
+  );
+}
+
+/** Column ids in the order the header row actually renders them. */
+function visualColumnOrder(): (string | null)[] {
+  return Array.from(grid().querySelectorAll("[data-pretable-header-cell]")).map(
+    (el) => el.getAttribute("data-pretable-column-id"),
   );
 }
 
@@ -448,6 +460,67 @@ describe("PretableSurface paste", () => {
     ]);
     expect(payload.clipped).toEqual({ rows: 2, columns: 1 });
     expect(payload.source).toEqual({ rows: 3, columns: 2 });
+  });
+
+  // A drag-to-reorder moves columns in the engine; the `columns` prop keeps its
+  // declaration order. The block has to follow what the user sees, or it lands
+  // in columns they never aimed at.
+  it("maps the block onto the columns' visual order after a reorder", async () => {
+    const onPaste = vi.fn();
+    let captured: PretableGrid<Row> | null = null;
+    renderPasteGrid({
+      state: cellSelection("r1", "note"),
+      onPaste,
+      onGridReady: (g) => {
+        captured = g;
+      },
+    });
+    // name → last. Rendered order is now note, locked, qty, name.
+    act(() => {
+      captured!.moveColumn("name", 3);
+    });
+    expect(visualColumnOrder()).toEqual(["note", "locked", "qty", "name"]);
+
+    // Anchored on the leftmost column, four fields fill the four columns.
+    firePaste(grid(), "N\tL\t7\tAda2");
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<Row>;
+    expect(payload.cells.map((c) => [c.columnId, c.value])).toEqual([
+      ["note", "N"],
+      ["qty", 7],
+      ["name", "Ada2"],
+    ]);
+    expect(payload.rejected.map((c) => c.columnId)).toEqual(["locked"]);
+    expect(payload.clipped).toEqual({ rows: 0, columns: 0 });
+  });
+
+  it("clips past the last visual column rather than wrapping to the prop order", async () => {
+    const onPaste = vi.fn();
+    let captured: PretableGrid<Row> | null = null;
+    renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste,
+      onGridReady: (g) => {
+        captured = g;
+      },
+    });
+    act(() => {
+      captured!.moveColumn("name", 3);
+    });
+    expect(visualColumnOrder()).toEqual(["note", "locked", "qty", "name"]);
+
+    // "name" is now the RIGHTMOST column, so only the first field has anywhere
+    // to land. Following the prop order instead would write the second field
+    // into "note" — the far-left column, nowhere near where the user aimed.
+    firePaste(grid(), "Ada2\tstray");
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<Row>;
+    expect(payload.cells.map((c) => [c.columnId, c.value])).toEqual([
+      ["name", "Ada2"],
+    ]);
+    expect(payload.clipped).toEqual({ rows: 0, columns: 1 });
   });
 
   it("is inert without an onPaste prop", async () => {

@@ -834,7 +834,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       if (matrix.length === 0) return;
 
       const snap = grid.getSnapshot();
-      const columns = editColumnsRef.current;
+      // Paste geometry walks columns left to right, so it has to walk them in
+      // the order they are DRAWN. Drag-to-reorder moves columns in the engine
+      // while the `columns` prop keeps its declaration order, so the prop is
+      // the wrong list to count across: anchored on a column the user dragged
+      // rightward, the block would run off the end of the prop array (cells
+      // silently clipped) or land in columns to the left of where they aimed.
+      // Engine order is the drawn order — the same source `renderSnapshot`
+      // reads — with the definitions still coming from the props.
+      const columnDefsById = new Map(
+        editColumnsRef.current.map((column) => [column.id, column]),
+      );
+      const columns = grid.options.columns.flatMap((engineColumn) => {
+        const def = columnDefsById.get(engineColumn.id);
+        return def ? [def] : [];
+      });
       const anchored = resolvePasteAnchor(
         snap.selection.ranges,
         snap.focus,
