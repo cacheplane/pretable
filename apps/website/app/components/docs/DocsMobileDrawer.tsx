@@ -2,8 +2,11 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
+import { useHydrated } from "../useHydrated";
+
 export function DocsMobileDrawer({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const isHydrated = useHydrated();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -18,6 +21,12 @@ export function DocsMobileDrawer({ children }: { children: ReactNode }) {
         type="button"
         aria-label="Menu"
         onClick={() => setOpen(true)}
+        // The button paints from the SSR markup, but `setOpen` is only attached
+        // once this component hydrates; until then a press is accepted by the
+        // browser and dropped. Publish that readiness so it is observable
+        // instead of guessed at — same contract as the hero drawer handle's
+        // `data-hydrated` and the grid's `data-pretable-hydrated`.
+        data-hydrated={isHydrated ? "true" : "false"}
         className="fixed bottom-4 left-4 z-40 rounded-md border border-rule bg-bg-card px-3 py-2 font-mono text-[12px] shadow md:hidden"
       >
         Menu

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { openDocsSearch } from "./helpers";
+import { openDocsMenu, openDocsSearch } from "./helpers";
 
 test("docs page renders sidebar with active state", async ({ page }) => {
   await page.goto("/docs/grid/pretable-component", {
@@ -60,6 +60,5 @@ test("HTTP Link rel=llms-txt header on /docs/*", async ({ request }) => {
 test("mobile menu drawer opens on small viewport", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/docs", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /menu/i }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await openDocsMenu(page);
 });
