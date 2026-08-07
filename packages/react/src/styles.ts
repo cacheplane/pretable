@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 
 import { HEADER_HEIGHT } from "./rendering";
 
@@ -128,6 +129,39 @@ export function getPinnedRightEdge(
   }
 
   return viewportWidth - right;
+}
+
+/**
+ * Full positioning for one body cell: the plain absolute box, plus the sticky
+ * inset its pin side needs.
+ *
+ * Data rows and group rows both go through here so a group's aggregate lands in
+ * the same pixel column as the cells beneath it, pinned or not — the one thing
+ * a second hand-rolled copy of this ternary would be guaranteed to drift on.
+ * `viewportWidth` is the scrollport's `clientWidth`; before it is measured a
+ * right-pinned cell falls back to its plain box (see {@link getPinnedRightEdge}).
+ */
+export function getPositionedCellStyle(
+  column: PlannedColumn,
+  width: number,
+  viewportWidth: number,
+): CSSProperties {
+  const base = getCellStyle(column.left, width);
+
+  if (column.pinned === "left") {
+    return { ...base, ...getPinnedCellStyle(column.left) };
+  }
+
+  const trailingEdge =
+    column.pinned === "right" && column.right !== undefined
+      ? getPinnedRightEdge(viewportWidth, column.right)
+      : undefined;
+
+  if (trailingEdge !== undefined) {
+    return { ...base, ...getPinnedRightCellStyle(trailingEdge, width) };
+  }
+
+  return base;
 }
 
 /**

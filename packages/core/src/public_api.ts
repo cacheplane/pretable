@@ -8,6 +8,7 @@
 
 export { createGrid } from "./create-grid";
 export type { PretableGrid } from "./pretable-grid";
+export { GROUP_COLUMN_ID } from "@pretable-internal/grid-core";
 
 export type {
   AutosizeOptions,
@@ -16,8 +17,10 @@ export type {
   ColumnOption,
   ColumnType,
   FilterValue,
+  PretableAggregateFormatInput,
   PretableAggregateSpec,
   PretableAggregator,
+  PretableGroupColumnOptions,
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,

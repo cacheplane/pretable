@@ -161,3 +161,120 @@ describe("moveFocus", () => {
     });
   });
 });
+
+describe("moveFocus over grouped rows", () => {
+  type Row = { id: string; sector: string; qty: number };
+  const make = () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "sector", header: "Sector" },
+        { id: "qty", header: "Qty" },
+      ],
+      rows: [
+        { id: "r1", sector: "Tech", qty: 1 },
+        { id: "r2", sector: "Tech", qty: 2 },
+        { id: "r3", sector: "Energy", qty: 3 },
+      ],
+      getRowId: (row) => row.id,
+    });
+    grid.setRowGroups(["sector"]);
+    return grid;
+  };
+
+  const isGroup = (id: string | null) =>
+    id !== null && id.startsWith("__group__:");
+
+  test("down from the first data row lands ON the next group row", () => {
+    const grid = make();
+    const visible = grid.getSnapshot().visibleRows;
+    // [group Energy, r3, group Tech, r1, r2] — order is sector-ascending.
+    const firstData = visible.find((r) => r.kind === "data")!;
+    grid.setFocus({ rowId: firstData.id, columnId: "qty" });
+
+    grid.moveFocus("down");
+    expect(isGroup(grid.getSnapshot().focus.rowId)).toBe(true);
+  });
+
+  test("vertical movement preserves the focused column", () => {
+    const grid = make();
+    const firstData = grid
+      .getSnapshot()
+      .visibleRows.find((r) => r.kind === "data")!;
+    grid.setFocus({ rowId: firstData.id, columnId: "qty" });
+
+    grid.moveFocus("down");
+    expect(grid.getSnapshot().focus.columnId).toBe("qty");
+  });
+
+  test("down from the last row is a no-op, not a wrap", () => {
+    const grid = make();
+    const visible = grid.getSnapshot().visibleRows;
+    const last = visible[visible.length - 1]!;
+    grid.setFocus({ rowId: last.id, columnId: "qty" });
+
+    grid.moveFocus("down");
+    expect(grid.getSnapshot().focus.rowId).toBe(last.id);
+  });
+
+  test("focus can reach every visible row, group rows included", () => {
+    const grid = make();
+    const visible = grid.getSnapshot().visibleRows;
+    grid.setFocus({ rowId: visible[0]!.id, columnId: "qty" });
+
+    const seen = [grid.getSnapshot().focus.rowId];
+    for (let i = 1; i < visible.length; i += 1) {
+      grid.moveFocus("down");
+      seen.push(grid.getSnapshot().focus.rowId);
+    }
+    expect(seen).toEqual(visible.map((r) => r.id));
+  });
+
+  test("collapsing the group holding focus moves focus to that group row", () => {
+    const grid = make();
+    const dataRow = grid
+      .getSnapshot()
+      .visibleRows.find((r) => r.kind === "data")!;
+    const groupRow = grid
+      .getSnapshot()
+      .visibleRows.find((r) => r.kind === "group")!;
+    grid.setFocus({ rowId: dataRow.id, columnId: "qty" });
+
+    grid.setGroupExpanded(groupRow.id, false);
+
+    // The focused row no longer exists in the flat list; focus must not dangle.
+    const ids = grid.getSnapshot().visibleRows.map((r) => r.id);
+    expect(ids).toContain(grid.getSnapshot().focus.rowId);
+    expect(grid.getSnapshot().focus.rowId).toBe(groupRow.id);
+    // Column stability holds through a collapse too.
+    expect(grid.getSnapshot().focus.columnId).toBe("qty");
+  });
+
+  test("collapseAll re-anchors focus onto the surviving ancestor group row", () => {
+    const grid = make();
+    const dataRow = grid
+      .getSnapshot()
+      .visibleRows.find((r) => r.kind === "data")!;
+    const groupRow = grid
+      .getSnapshot()
+      .visibleRows.find((r) => r.kind === "group")!;
+    grid.setFocus({ rowId: dataRow.id, columnId: "qty" });
+
+    grid.collapseAll();
+
+    expect(grid.getSnapshot().focus.rowId).toBe(groupRow.id);
+  });
+
+  test("a collapse that hides nothing leaves focus alone", () => {
+    const grid = make();
+    const visible = grid.getSnapshot().visibleRows;
+    const energy = visible.find((r) => r.kind === "group")!;
+    const tech = visible.filter((r) => r.kind === "group")[1]!;
+    // Focus sits under Energy; collapsing Tech cannot disturb it.
+    const energyChild = visible[visible.indexOf(energy) + 1]!;
+    grid.setFocus({ rowId: energyChild.id, columnId: "qty" });
+
+    grid.setGroupExpanded(tech.id, false);
+
+    expect(grid.getSnapshot().focus.rowId).toBe(energyChild.id);
+  });
+});

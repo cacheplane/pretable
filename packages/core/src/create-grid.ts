@@ -31,6 +31,7 @@ export function createGrid<TRow extends PretableRow = PretableRow>(
     },
     subscribe: engine.subscribe,
     getSnapshot: engine.getSnapshot,
+    getColumns: engine.getColumns,
     setSort: engine.setSort,
     replaceSort: engine.replaceSort,
     setColumnFilter: engine.setColumnFilter,

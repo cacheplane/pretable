@@ -59,6 +59,7 @@
   --pretable-row-height: 48px;
   --pretable-header-height: 52px;
   --pretable-cell-padding-x: 16px;
+  --pretable-group-indent: 24px;
   --pretable-cell-padding-y: 12px;
   --pretable-font-size-cell: 14px; /* body-medium */
   --pretable-font-size-header: 14px; /* label-large (px equal; weight differs in grid.css) */
@@ -76,6 +77,7 @@
   --pretable-row-height: 40px;
   --pretable-header-height: 44px;
   --pretable-cell-padding-x: 12px;
+  --pretable-group-indent: 20px;
   --pretable-cell-padding-y: 6px;
   --pretable-font-size-cell: 12px; /* body-small */
   --pretable-font-size-header: 12px;
@@ -85,6 +87,7 @@
   --pretable-row-height: 56px;
   --pretable-header-height: 64px;
   --pretable-cell-padding-x: 24px;
+  --pretable-group-indent: 32px;
   --pretable-cell-padding-y: 16px;
   --pretable-font-size-cell: 14px;
   --pretable-font-size-header: 14px;

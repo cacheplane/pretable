@@ -7,6 +7,11 @@ export {
 export { evaluateFilter, isFilterActive } from "./evaluate-filter";
 export { builtinAggregators, resolveAggregator } from "./aggregators";
 export {
+  GROUP_COLUMN_ID,
+  resolveEffectiveColumns,
+  type PretableGroupColumnOptions,
+} from "./group-column";
+export {
   DEFAULT_GROUP_EXPANSION_OVERRIDE_LIMIT,
   addGroupExpansionOverride,
   resolveGroupExpansionOverrideLimit,
@@ -26,6 +31,7 @@ export type {
   ColumnOption,
   ColumnType,
   FilterValue,
+  PretableAggregateFormatInput,
   PretableAggregateSpec,
   PretableAggregator,
   PretableCellAddress,

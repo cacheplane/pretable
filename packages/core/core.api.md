@@ -45,6 +45,19 @@ export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals"
 export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
 // @public
+export const GROUP_COLUMN_ID = "__pretable_group__";
+
+// @public
+export interface PretableAggregateFormatInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    column: PretableColumn<TRow>;
+    // (undocumented)
+    group: PretableGroupRow;
+    // (undocumented)
+    value: unknown;
+}
+
+// @public
 export type PretableAggregateSpec = "sum" | "avg" | "min" | "max" | "count" | PretableAggregator;
 
 // @public
@@ -85,6 +98,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     flex?: number;
     // (undocumented)
     format?: (input: PretableFormatInput<TRow>) => string;
+    formatAggregate?: (input: PretableAggregateFormatInput<TRow>) => string;
     // (undocumented)
     formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
     // (undocumented)
@@ -215,6 +229,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     expandAll(): void;
     // (undocumented)
     extendRangeFromAnchor(addr: PretableCellAddress): void;
+    getColumns(): readonly PretableColumn<TRow>[];
     getSnapshot(): PretableGridSnapshot<TRow>;
     readonly kind: "pretable-grid";
     // (undocumented)
@@ -278,8 +293,10 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     columns: PretableColumn<TRow>[];
     // (undocumented)
     getRowId?: (row: TRow, index: number) => string;
+    groupColumn?: PretableGroupColumnOptions;
     groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;
+    hideGroupedColumns?: boolean;
     // (undocumented)
     rows: TRow[];
 }
@@ -307,6 +324,13 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     visibleRange: PretableRowRange;
     // (undocumented)
     visibleRows: PretableVisibleRow<TRow>[];
+}
+
+// @public
+export interface PretableGroupColumnOptions {
+    header?: string;
+    pinned?: "left";
+    widthPx?: number;
 }
 
 // @public

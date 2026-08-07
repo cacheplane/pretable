@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { createGridCore, deriveSelectedRows, makeGroupId } from "../index";
+import {
+  GROUP_COLUMN_ID,
+  createGridCore,
+  deriveSelectedRows,
+  makeGroupId,
+} from "../index";
 import type {
   PretableColumn,
   PretableDataRow,
@@ -599,20 +604,31 @@ describe("override retention (bounded LRU over decisions)", () => {
   });
 });
 
-describe("group rows are neither focusable nor selectable (v1)", () => {
-  test("moveFocus from null focus lands on the first DATA row", () => {
+/**
+ * The contract this suite records inverted in sub-project 2: group rows became
+ * keyboard-reachable so their twisty is operable, while staying outside every
+ * selection primitive. The focus assertions below are the old ones, flipped —
+ * they are the clearest record of what changed.
+ *
+ * Grouped by sector the flat list is
+ * `[ENERGY, h5, h6, h7, h8, TECH, h1, h2, h3, h4]`, and `getColumns()` is
+ * `[__pretable_group__, analyst, qty]` — "sector" is hidden while it is the
+ * grouping level.
+ */
+describe("group rows are focusable but never selectable", () => {
+  test("moveFocus from null focus lands on the first row, a GROUP row", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
 
     grid.moveFocus("down");
 
     expect(grid.getSnapshot().focus).toEqual({
-      rowId: "h5",
-      columnId: "sector",
+      rowId: SECTOR_ENERGY,
+      columnId: GROUP_COLUMN_ID,
     });
   });
 
-  test("moveFocus 'up' from null focus lands on the last DATA row", () => {
+  test("moveFocus 'up' from null focus lands on the last row", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
 
@@ -621,33 +637,53 @@ describe("group rows are neither focusable nor selectable (v1)", () => {
     expect(grid.getSnapshot().focus.rowId).toBe("h4");
   });
 
-  test("moveFocus steps over the group row between two groups", () => {
+  test("moveFocus lands ON the group row between two groups", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
-    grid.setFocus({ rowId: "h8", columnId: "sector" });
+    grid.setFocus({ rowId: "h8", columnId: "qty" });
 
     grid.moveFocus("down");
 
-    expect(grid.getSnapshot().focus.rowId).toBe("h1");
+    expect(grid.getSnapshot().focus.rowId).toBe(SECTOR_TECH);
+    // Vertical movement keeps the column, so focus lands on Tech's qty
+    // aggregate rather than snapping to the group column.
+    expect(grid.getSnapshot().focus.columnId).toBe("qty");
   });
 
-  test("jumpToEdge lands on data rows, not on the outermost group row", () => {
+  test("jumpToEdge 'up' lands on the outermost group row", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
-    grid.setFocus({ rowId: "h1", columnId: "sector" });
+    grid.setFocus({ rowId: "h1", columnId: "qty" });
 
     grid.moveFocus("up", { jumpToEdge: true });
-    expect(grid.getSnapshot().focus.rowId).toBe("h5");
+    expect(grid.getSnapshot().focus.rowId).toBe(SECTOR_ENERGY);
 
     grid.moveFocus("down", { jumpToEdge: true });
     expect(grid.getSnapshot().focus.rowId).toBe("h4");
   });
 
-  test("moveFocus clears focus when every group is collapsed", () => {
+  test("focus survives collapsing every group by moving to a group row", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
-    grid.setFocus({ rowId: "h1", columnId: "sector" });
+    grid.setFocus({ rowId: "h1", columnId: "qty" });
     grid.collapseAll();
+
+    // h1 is gone; focus re-anchored to its surviving ancestor rather than
+    // dangling, so this is a clamp at the last row, not a teleport to row 0.
+    expect(grid.getSnapshot().focus.rowId).toBe(SECTOR_TECH);
+
+    grid.moveFocus("down");
+
+    expect(grid.getSnapshot().focus.rowId).toBe(SECTOR_TECH);
+  });
+
+  test("moveFocus clears focus when there are no visible rows at all", () => {
+    const grid = createGridCore<Holding>({
+      columns: COLUMNS.map((column) => ({ ...column })),
+      rows: [],
+      getRowId: (row) => row.id,
+    });
+    grid.setRowGroups(["sector"]);
 
     grid.moveFocus("down");
 

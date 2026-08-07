@@ -375,10 +375,16 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     viewportWidth,
   ]);
 
+  // The DRAWN column list, not `options.columns`: while grouped it leads with
+  // the derived group column and drops the grouped ones, and this is what the
+  // renderer plans from — so nothing else in React can see the group column
+  // until this read changes. Ungrouped the two are the same array by identity,
+  // so no non-grouping grid re-plans.
+  const drawnColumns = grid.getColumns();
   const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
     () =>
       createDomRenderSnapshot({
-        columns: grid.options.columns,
+        columns: [...drawnColumns],
         snapshot,
         scrollTop: snapshot.viewport.scrollTop,
         scrollLeft: snapshot.viewport.scrollLeft,
@@ -388,7 +394,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
         measuredHeights,
       }),
     [
-      grid.options.columns,
+      drawnColumns,
       measuredHeights,
       overscan,
       snapshot,
