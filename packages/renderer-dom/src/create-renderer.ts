@@ -36,7 +36,15 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
   const rowHeights = input.snapshot.visibleRows.map((entry) => {
     const measuredHeight = input.measuredHeights?.[entry.id];
 
-    return measuredHeight ?? estimateRowHeight(entry.row, input.columns);
+    if (measuredHeight !== undefined) {
+      return measuredHeight;
+    }
+
+    // Group headers have no source row to measure wrapped text against, so they
+    // estimate at the unwrapped default. Sub-project 2 owns their real chrome.
+    return entry.kind === "group"
+      ? DEFAULT_ROW_HEIGHT
+      : estimateRowHeight(entry.row, input.columns);
   });
   const rowMetrics = createRowMetricsIndex(rowHeights);
   const viewportPlan = planViewport({
@@ -58,14 +66,21 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
       return [];
     }
 
+    const geometry = {
+      id: entry.id,
+      rowIndex: plannedRow.index,
+      top: plannedRow.top,
+      height: plannedRow.height,
+    };
+
+    // Group rows pass THROUGH the render snapshot rather than being filtered
+    // out: the renderer's job is placement, and a surface that skips drawing
+    // them still needs their geometry to keep `rowIndex` aligned with
+    // `snapshot.visibleRows`.
     return [
-      {
-        id: entry.id,
-        row: entry.row,
-        rowIndex: plannedRow.index,
-        top: plannedRow.top,
-        height: plannedRow.height,
-      },
+      entry.kind === "group"
+        ? { ...geometry, kind: "group" as const, group: entry }
+        : { ...geometry, kind: "data" as const, row: entry.row },
     ];
   });
 
