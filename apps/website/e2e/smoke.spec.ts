@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { openDrawer } from "./helpers";
+import { openDrawer, waitForGridReady } from "./helpers";
 
 test("landing renders grid + control bar + drawer handle; drawer opens", async ({
   page,
@@ -92,9 +92,7 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
-    timeout: 10_000,
-  });
+  await waitForGridReady(page);
 
   // Header checkbox is rendered.
   const headerCheckbox = page.locator("[data-pretable-row-select-all]").first();
@@ -121,9 +119,7 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("[data-pretable-scroll-viewport]")).toBeVisible({
-    timeout: 10_000,
-  });
+  await waitForGridReady(page);
 
   // --- Filter via the built-in header funnels ---
   // ([data-pretable-row] counts only virtualized/visible rows, so assert
@@ -231,6 +227,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   await page.locator("#scale").scrollIntoViewIfNeeded();
   const scaleGrid = page.getByRole("grid", { name: /2,500 by 500/i });
   await expect(scaleGrid).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#scale");
   // Model total is shown.
   await expect(page.getByTestId("scale-counter")).toContainText("1,250,000");
   // DOM-rendered cell count is tiny relative to 1.25M (virtualization on).
@@ -263,6 +260,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
     name: /resizable, reorderable/i,
   });
   await expect(layoutGrid).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#column-layout");
 
   // The header cell and its resize handle are separate subtrees of the header
   // row, each tagged with the same data-pretable-column-id (verified against
@@ -549,6 +547,7 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
   await expect(page.getByRole("grid", { name: /2,500 by 500/i })).toBeVisible({
     timeout: 10_000,
   });
+  await waitForGridReady(page, "#scale");
 
   // Start from a scrollable (non-pinned) cell in the first row. `row` is the
   // grid's left-pinned column, so starting there would never exercise the
@@ -621,6 +620,7 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
   await expect(
     page.getByRole("grid", { name: /resizable, reorderable/i }),
   ).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#column-layout");
 
   await page
     .locator(
@@ -670,9 +670,7 @@ test("showcase: dropping into the right-pinned group pins the column", async ({
   await page.locator("#column-layout").scrollIntoViewIfNeeded();
 
   const layout = page.locator("#column-layout");
-  await expect(layout.locator("[data-pretable-scroll-viewport]")).toBeVisible({
-    timeout: 10_000,
-  });
+  await waitForGridReady(page, "#column-layout");
 
   const headers = async () =>
     await layout.locator("[data-pretable-header-cell]").evaluateAll((els) =>
@@ -725,7 +723,7 @@ test("showcase: column reorder drops where the indicator points, scrolled sidewa
 
   const layout = page.locator("#column-layout");
   const viewport = layout.locator("[data-pretable-scroll-viewport]");
-  await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#column-layout");
 
   const headerBoxes = async () =>
     await layout.locator("[data-pretable-header-cell]").evaluateAll((els) =>

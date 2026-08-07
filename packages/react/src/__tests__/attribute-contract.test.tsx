@@ -1,4 +1,5 @@
 import { render } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 
 import { PretableSurface } from "../public_api";
@@ -70,5 +71,34 @@ describe("attribute contract", () => {
       '[data-pretable-header-cell][data-pretable-column-id="name"]',
     );
     expect(nameHeader?.getAttribute("data-pretable-pinned")).toBe("left");
+  });
+
+  test("the grid root reports data-pretable-hydrated=true once mounted on the client", () => {
+    const { container } = renderGrid("Hydrated grid");
+    const viewport = container.querySelector("[data-pretable-scroll-viewport]");
+    expect(viewport?.getAttribute("data-pretable-hydrated")).toBe("true");
+  });
+
+  test("server-rendered markup reports data-pretable-hydrated=false", () => {
+    // The grid's header buttons, funnels and checkboxes are all in the SSR
+    // output, so they paint (and accept clicks that go nowhere) before React
+    // attaches any handler. This attribute is the one signal in the markup that
+    // discriminates "painted" from "live", so it must be false in the string
+    // React sends — otherwise a consumer gating on it would still click dead
+    // controls, and flipping it client-side would be a hydration mismatch.
+    const html = renderToString(
+      <PretableSurface
+        ariaLabel="SSR grid"
+        columns={columns}
+        rows={rows}
+        getRowId={(r: Row) => r.id}
+        rowSelectionColumn={rowSelectionColumn}
+      />,
+    );
+    expect(html).toContain('data-pretable-hydrated="false"');
+    expect(html).not.toContain('data-pretable-hydrated="true"');
+    // Guard against the assertion going vacuous: the controls this gate exists
+    // for really are in the server output.
+    expect(html).toContain("data-pretable-filter-funnel");
   });
 });

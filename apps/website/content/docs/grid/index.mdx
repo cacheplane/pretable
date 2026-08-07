@@ -72,8 +72,43 @@ Both paths emit the same `[data-pretable-*]` data attributes on grid elements. `
 | `[data-pretable-pinned]`          | pinned cells (header + body)          | `"left"` or `"right"` — sticky positioning against that edge, distinct background |
 | `[data-pretable-selected]="true"` | selected cells                        | Selection background and text color                                               |
 | `[data-pretable-focused]="true"`  | focused row + cell                    | Focus outline; mirrored on row and cell so CSS can target either                  |
+| `[data-pretable-hydrated]`        | the scrollable container              | `"false"` in server-rendered HTML, `"true"` once React has hydrated the grid      |
 
 Path 1 (`<Pretable>`) emits these automatically. Path 2 (custom rendering) requires you to apply them yourself — `@pretable/ui/grid.css` only styles elements that match these selectors. See [Custom rendering](/docs/grid/custom-rendering) for examples.
+
+## Knowing when a server-rendered grid is interactive
+
+`<Pretable>` and `<PretableSurface>` render on the server. Everything that makes the grid feel interactive — sort buttons in the header, filter funnels, row-select checkboxes, column resize handles — is in that server HTML, so it paints, sits under the cursor, and takes clicks well before React has attached a single event handler. A click in that window is accepted by the browser and goes nowhere: no sort, no menu, no feedback. On a fast connection the window is invisible; on a slow one it is long enough for a user to click twice and conclude the page is broken.
+
+The grid publishes that state on its root:
+
+```html
+<!-- server HTML: painted, but every control is inert -->
+<div data-pretable-scroll-viewport role="grid" data-pretable-hydrated="false">
+  ...
+</div>
+
+<!-- after hydration: handlers attached -->
+<div data-pretable-scroll-viewport role="grid" data-pretable-hydrated="true">
+  ...
+</div>
+```
+
+The flag comes from a `useSyncExternalStore` gate that reports `false` on the server _and_ throughout the hydration render, then `true` on the first client-only render — the same render that attaches the handlers. That is why it is safe: the server string and React's hydration pass agree, so there is no hydration mismatch, and the attribute only flips once the controls really are live.
+
+Use it to make the pre-interactive state honest rather than silent. For example, dim the controls until they work:
+
+```css
+[data-pretable-hydrated="false"] [data-pretable-filter-funnel],
+[data-pretable-hydrated="false"] [data-pretable-header-cell] {
+  opacity: 0.6;
+  cursor: progress;
+}
+```
+
+It is equally the right thing for an end-to-end test to wait on. `[data-pretable-scroll-viewport]` being visible does not discriminate — it is in the prerendered markup alongside the dead controls — so a test that gates on visibility and then clicks a funnel is racing hydration. Gate on `data-pretable-hydrated="true"` instead.
+
+Grids that only ever mount on the client (lazily, on scroll into view) report `"true"` on their first render, so the same check is correct there too.
 
 ## Engine reads two CSS variables in JS
 

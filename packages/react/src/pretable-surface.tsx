@@ -80,6 +80,7 @@ import {
 } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import { OverlayPortal } from "./overlay/OverlayPortal";
+import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
@@ -550,6 +551,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   messages,
   onCellEdit,
 }: PretableSurfaceProps<TRow>) {
+  // Server-rendered grids paint their full chrome — header buttons, funnels,
+  // checkboxes, resize handles — before React has attached a single listener,
+  // so every one of those controls is visible and clickable while still inert.
+  // Publishing that state as `data-pretable-hydrated` on the root lets a
+  // consumer (or a test) gate on "live", not merely "painted".
+  const hydrated = useHydrated();
   const [measuredHeights, setMeasuredHeights] = useState<
     Record<string, number>
   >({});
@@ -1338,6 +1345,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       aria-label={ariaLabel}
       aria-multiselectable="true"
       aria-rowcount={snapshot.totalRowCount + 1}
+      data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
       role="grid"
