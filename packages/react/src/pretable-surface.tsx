@@ -2396,8 +2396,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               // `renderHeaderCell` into rows that overflow the header strip.
               style={{
                 alignItems: "center",
-                border: 0,
-                borderRight: "1px solid rgba(255, 255, 255, 0.06)",
                 color: "inherit",
                 display: "flex",
                 gap: 4,

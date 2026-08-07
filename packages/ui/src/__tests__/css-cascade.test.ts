@@ -34,6 +34,17 @@ describe("grid.css cascade contract", () => {
     expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
   });
 
+  test("header cells reset the button border before drawing the tokenized divider", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\[data-pretable-header-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
+    expect(rule).toMatch(
+      /border:\s*0;[\s\S]*border-right:\s*1px solid var\(--pretable-rule\)/,
+    );
+  });
+
   test("grid.css styles the enum combobox listbox", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]\)/);
