@@ -1,5 +1,12 @@
 # @pretable/app-bench
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies [[`c2581fb`](https://github.com/cacheplane/pretable/commit/c2581fb5f630740aedc890670fedc532647cf21e)]:
+  - @pretable/react@0.0.6
+
 ## 0.0.6
 
 ### Patch Changes
