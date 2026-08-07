@@ -1,5 +1,4 @@
-import { planColumns } from "./column-plan";
-import type { PlanColumnsColumnInput, RowMetricsReader } from "./types";
+import type { ColumnPlan, RowMetricsReader } from "./types";
 
 /**
  * Minimal scroll offsets that reveal a target row or column.
@@ -110,8 +109,15 @@ export interface ScrollTopToRevealInput {
 
 /** @internal */
 export interface ScrollLeftToRevealInput {
-  /** Engine-order columns, the same shape `planColumns` consumes. */
-  columns: readonly PlanColumnsColumnInput[];
+  /**
+   * A plan covering *every* column, not the virtualization window — reaching a
+   * column that is not rendered is the whole point of this function.
+   * `planColumnLayout` (`@pretable-internal/renderer-dom`) is the one place
+   * that builds such a plan, and it is the same one drag-to-reorder hit-tests
+   * against. Handing in a windowed plan does not error: the off-window target
+   * simply reads as an unknown column id and reveals nothing.
+   */
+  plan: ColumnPlan;
   targetColumnId: string;
   scrollLeft: number;
   viewportWidth: number;
@@ -176,31 +182,24 @@ export function scrollTopToReveal(
  * groups, `null` if it already is (or if no offset would help), `undefined` if the
  * band cannot be resolved yet.
  *
- * Delegates all bucketing to `planColumns` rather than re-deriving it — PR #203
- * fixed a bug whose root cause was a second, drifted copy of that math. That is
- * also why the undecidable band is reported from in here rather than re-tested by
- * the caller: `pinnedLeftWidth` / `pinnedRightWidth` come off the same plan the
- * offset does, so there is no second copy to drift.
+ * Reads a plan the caller already built rather than building one — PR #203 fixed a
+ * bug whose root cause was a second, drifted copy of column-bucketing math, and a
+ * plan constructed in here would be exactly that copy again. The surface hands the
+ * same `planColumnLayout` result to this and to drag-to-reorder hit-testing, so the
+ * two cannot disagree about where a column sits. That is also why the undecidable
+ * band is reported from in here rather than re-tested by the caller:
+ * `pinnedLeftWidth` / `pinnedRightWidth` come off the same plan the offset does.
+ *
+ * Consuming the plan also makes this allocation-free. It used to rebuild the whole
+ * plan per call — O(columns), several arrays plus an object each — which a held
+ * ArrowRight across a 500-column grid paid on every keypress.
  *
  * @internal
  */
 export function scrollLeftToReveal(
   input: ScrollLeftToRevealInput,
 ): number | null | undefined {
-  const { columns, targetColumnId, scrollLeft, viewportWidth } = input;
-
-  // `planColumns` virtualizes the scrollable run, so a plan built at the real
-  // viewport width would omit the very columns this function exists to scroll to.
-  // An infinitely wide viewport at scrollLeft 0 makes its forward walk consume the
-  // whole run and its overscan clamp a no-op, so every column is present with its
-  // true content offset — the same trick `create-renderer.ts:78-95` uses for its
-  // no-viewport path.
-  const plan = planColumns({
-    columns,
-    scrollLeft: 0,
-    viewportWidth: Number.POSITIVE_INFINITY,
-    overscan: 0,
-  });
+  const { plan, targetColumnId, scrollLeft, viewportWidth } = input;
 
   let target: (typeof plan.columns)[number] | undefined;
 
@@ -211,9 +210,10 @@ export function scrollLeftToReveal(
     }
   }
 
-  // Decided, not undecidable: a column id the engine does not have is a caller
-  // bug, not a transient measurement gap. Reporting it as retryable would put
-  // this function's O(columns) plan allocation on every subsequent effect pass —
+  // Decided, not undecidable: a column id the plan does not have is a caller bug
+  // — either an id the engine never had, or a windowed plan handed in where an
+  // unbounded one belongs. Neither is a transient measurement gap, and reporting
+  // it as retryable would put the scan above on every subsequent effect pass —
   // including every ArrowDown — forever.
   if (!target) {
     return null;

@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   createRowMetricsIndex,
+  planColumns,
   scrollLeftToReveal,
   scrollTopToReveal,
 } from "../index";
@@ -274,12 +275,32 @@ const columns: PlanColumnsColumnInput[] = [
   { id: "act", width: 60, pinned: "right" },
 ];
 
+/**
+ * The unbounded plan `scrollLeftToReveal` contracts for — every column present
+ * at its true content offset, nothing virtualized away.
+ *
+ * `planColumnLayout` (`@pretable-internal/renderer-dom`) is the production
+ * builder and the only one callers should use; layout-core cannot import it
+ * because the dependency runs the other way, so the parameters are restated
+ * here. What stops that restatement from silently drifting is that
+ * `planColumnLayout` is covered by its own value assertions in
+ * `renderer-dom.test.ts`, and that the last test below fails if this helper
+ * ever starts producing a windowed plan.
+ */
+const fullPlan = (input: readonly PlanColumnsColumnInput[]) =>
+  planColumns({
+    columns: input,
+    scrollLeft: 0,
+    viewportWidth: Number.POSITIVE_INFINITY,
+    overscan: 0,
+  });
+
 describe("scrollLeftToReveal", () => {
   test("returns null for a target already inside the unoccluded band", () => {
     // Band at scrollLeft 0 is [40, 240): column "a" spans [40, 140).
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "a",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -291,7 +312,7 @@ describe("scrollLeftToReveal", () => {
     // "c" spans [240, 340); band [40, 240) → 240 + 100 - 300 + 60 = 100.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "c",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -303,7 +324,7 @@ describe("scrollLeftToReveal", () => {
     // Band at scrollLeft 200 is [240, 440); "a" spans [40, 140) → 40 - 40 = 0.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "a",
         scrollLeft: 200,
         viewportWidth: 300,
@@ -313,7 +334,7 @@ describe("scrollLeftToReveal", () => {
     // "b" spans [140, 240) → 140 - 40 = 100.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "b",
         scrollLeft: 200,
         viewportWidth: 300,
@@ -325,7 +346,7 @@ describe("scrollLeftToReveal", () => {
     // "b" ends at 240 === scrollLeft + viewportWidth - pinnedRightWidth.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "b",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -335,7 +356,7 @@ describe("scrollLeftToReveal", () => {
     // "c" starts at 240 === scrollLeft + pinnedLeftWidth.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "c",
         scrollLeft: 200,
         viewportWidth: 300,
@@ -346,7 +367,7 @@ describe("scrollLeftToReveal", () => {
   test("a left-pinned target never scrolls — it is always on screen", () => {
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "sel",
         scrollLeft: 250,
         viewportWidth: 300,
@@ -357,7 +378,7 @@ describe("scrollLeftToReveal", () => {
   test("a right-pinned target never scrolls — it is always on screen", () => {
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "act",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -376,7 +397,7 @@ describe("scrollLeftToReveal", () => {
     // [200, 300) → 300 + 100 - 300 + 0 = 100.
     expect(
       scrollLeftToReveal({
-        columns: leftOnly,
+        plan: fullPlan(leftOnly),
         targetColumnId: "b",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -395,7 +416,7 @@ describe("scrollLeftToReveal", () => {
     // "c" spans [200, 300); band at scrollLeft 0 is [0, 240) → 200 + 100 - 300 + 60 = 60.
     expect(
       scrollLeftToReveal({
-        columns: rightOnly,
+        plan: fullPlan(rightOnly),
         targetColumnId: "c",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -407,7 +428,7 @@ describe("scrollLeftToReveal", () => {
     // "e" spans [440, 540); 440 + 100 - 300 + 60 = 300 = totalWidth - viewportWidth.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "e",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -426,7 +447,7 @@ describe("scrollLeftToReveal", () => {
     // Band is 300 - 40 - 60 = 200 wide; "wide" spans [40, 340).
     expect(
       scrollLeftToReveal({
-        columns: wide,
+        plan: fullPlan(wide),
         targetColumnId: "wide",
         scrollLeft: 100,
         viewportWidth: 300,
@@ -436,7 +457,7 @@ describe("scrollLeftToReveal", () => {
     // Already aligned at its left edge: nothing more can be revealed.
     expect(
       scrollLeftToReveal({
-        columns: wide,
+        plan: fullPlan(wide),
         targetColumnId: "wide",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -450,7 +471,7 @@ describe("scrollLeftToReveal", () => {
     // and the caller must retry rather than latch.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "c",
         scrollLeft: 0,
         viewportWidth: 90,
@@ -460,7 +481,7 @@ describe("scrollLeftToReveal", () => {
     // Exactly equal: the band is empty.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "c",
         scrollLeft: 0,
         viewportWidth: 100,
@@ -470,7 +491,7 @@ describe("scrollLeftToReveal", () => {
     // …and the very same call at a width that leaves a real band resolves.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "c",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -479,12 +500,12 @@ describe("scrollLeftToReveal", () => {
   });
 
   test("an unknown column id is RESOLVED, not undecidable", () => {
-    // Deliberately `null`: a column the engine does not have is a caller bug,
+    // Deliberately `null`: a column the plan does not have is a caller bug,
     // not a measurement gap. Reporting it retryable would put this function's
-    // O(columns) plan allocation on every later effect pass, forever.
+    // O(columns) scan on every later effect pass, forever.
     expect(
       scrollLeftToReveal({
-        columns,
+        plan: fullPlan(columns),
         targetColumnId: "nope",
         scrollLeft: 0,
         viewportWidth: 300,
@@ -498,10 +519,10 @@ describe("scrollLeftToReveal", () => {
     // column once the tab is opened.
     expect(
       scrollLeftToReveal({
-        columns: [
+        plan: fullPlan([
           { id: "a", width: 100 },
           { id: "b", width: 100 },
-        ],
+        ]),
         targetColumnId: "b",
         scrollLeft: 0,
         viewportWidth: 0,
@@ -510,8 +531,7 @@ describe("scrollLeftToReveal", () => {
   });
 
   test("reveals a target far outside planColumns' virtualization window", () => {
-    // 200 scrollable columns: the target is ~15000px past the viewport, so a
-    // windowed plan would not contain it at all.
+    // 200 scrollable columns: the target is ~15000px past the viewport.
     const many: PlanColumnsColumnInput[] = [
       { id: "sel", width: 40, pinned: "left" },
       ...Array.from({ length: 200 }, (_unused, index) => ({
@@ -521,10 +541,34 @@ describe("scrollLeftToReveal", () => {
       { id: "act", width: 60, pinned: "right" },
     ];
 
+    // The premise, asserted rather than assumed — and asserted here because the
+    // plan is now the caller's to supply, which is the only way to get this
+    // wrong. A plan built at the real 300px viewport genuinely does not contain
+    // "col150", so feeding one in reveals nothing at all.
+    const windowed = planColumns({
+      columns: many,
+      scrollLeft: 0,
+      viewportWidth: 300,
+      overscan: 0,
+    });
+
+    expect(windowed.columns.some((column) => column.id === "col150")).toBe(
+      false,
+    );
+    expect(
+      scrollLeftToReveal({
+        plan: windowed,
+        targetColumnId: "col150",
+        scrollLeft: 0,
+        viewportWidth: 300,
+      }),
+    ).toBeNull();
+
+    // The unbounded plan — what `planColumnLayout` hands in — does contain it.
     // "col150" spans [15040, 15140) → 15040 + 100 - 300 + 60 = 14900.
     expect(
       scrollLeftToReveal({
-        columns: many,
+        plan: fullPlan(many),
         targetColumnId: "col150",
         scrollLeft: 0,
         viewportWidth: 300,

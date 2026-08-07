@@ -115,12 +115,27 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
 /**
  * Lay out every column, ignoring the virtualization window.
  *
- * The render snapshot only carries the columns it draws, so it cannot answer
- * "where does column N sit?" for a column scrolled out of the window. Callers
- * that hit-test against the layout — drag-to-reorder — need the whole run, and
- * need it resolved by the same rules the renderer uses, so an unsized column is
- * not laid out at zero width. Expressed as an infinitely wide viewport at
- * scrollLeft 0, which makes planColumns' window walk consume every column.
+ * The single place the unbounded-viewport plan is built. `planColumns`
+ * virtualizes the scrollable run, so a plan built at the real viewport width
+ * omits precisely the columns callers come here for; the render snapshot has
+ * the same gap, since it only carries the columns it draws. Expressing the
+ * request as an infinitely wide viewport at scrollLeft 0 makes planColumns'
+ * forward walk consume the whole run and its overscan clamp a no-op, so every
+ * column is present at its true content offset. Widths go through
+ * `resolveColumnWidth` — the renderer's own fallbacks — so an unsized column is
+ * not laid out at zero width.
+ *
+ * Two consumers share one plan, deliberately:
+ *
+ * - drag-to-reorder hit-testing, for which a scrolled-out column is still a
+ *   legitimate drop target;
+ * - `scrollLeftToReveal`, which exists to scroll to a column that is not
+ *   rendered, and therefore takes a `ColumnPlan` instead of re-planning.
+ *
+ * Both used to derive their own. PR #203 fixed a bug whose root cause was a
+ * second, drifted copy of column-bucketing math; keeping the trick in one
+ * function, and passing one `ColumnPlan` object to both callers, is what stops
+ * that from recurring.
  */
 export function planColumnLayout<TRow extends PretableRow>(
   columns: readonly PretableColumn<TRow>[],
@@ -209,12 +224,12 @@ function readCellValue<TRow extends PretableRow>(
 
 /**
  * The width `planColumns` is fed for a column, including the fallbacks applied
- * when the column declares no `widthPx`. Exported so callers that build a
- * column-plan input outside this module — scroll-into-view, which re-plans at
- * an unbounded width so it can reach unrendered columns — resolve widths the
- * same way the render pass does instead of re-deriving the fallbacks.
+ * when the column declares no `widthPx`. Module-private on purpose: every plan
+ * built from `PretableColumn`s goes through `createDomRenderSnapshot` or
+ * `planColumnLayout`, so no caller outside this file has to know the fallbacks
+ * — which is exactly how a second copy of them would get started.
  */
-export function resolveColumnWidth<TRow extends PretableRow>(
+function resolveColumnWidth<TRow extends PretableRow>(
   column: PretableColumn<TRow>,
 ): number {
   return (
