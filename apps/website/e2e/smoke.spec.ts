@@ -666,7 +666,7 @@ test("showcase: dropping into the right-pinned group pins the column", async ({
   // is read from the engine array, so it only stays in step with the rendered
   // order while that array is grouped [left..., unpinned..., right...].
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.getByTestId("drawer-handle").click();
+  await openDrawer(page);
   await page.locator("#column-layout").scrollIntoViewIfNeeded();
 
   const layout = page.locator("#column-layout");
