@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { parseElementStream } from "../parse-element-stream";
 
-interface TestRow {
+type TestRow = {
   id: string;
   name: string;
-}
+};
 
 async function* asyncChunks(chunks: string[]): AsyncIterable<string> {
   for (const chunk of chunks) {

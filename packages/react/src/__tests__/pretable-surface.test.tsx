@@ -18,6 +18,7 @@ import {
 } from "../pretable-surface";
 import type { CopyPayload, SerializeRangesArgs } from "../copy";
 import * as rowHeight from "../row-height";
+import type { PretableCellRenderInput } from "../types";
 import { type PretableSurfaceState, usePretable } from "../use-pretable";
 import type {
   PretableFocusState,
@@ -466,7 +467,7 @@ describe("PretableSurface", () => {
         }) as CSSStyleDeclaration,
     );
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
-      function () {
+      function (this: HTMLElement) {
         if (this.getAttribute("data-pretable-cell") === null) {
           return 0;
         }
@@ -509,7 +510,7 @@ describe("PretableSurface", () => {
         }) as CSSStyleDeclaration,
     );
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
-      function () {
+      function (this: HTMLElement) {
         if (this.getAttribute("data-pretable-cell") === null) {
           return 0;
         }
@@ -593,7 +594,7 @@ describe("PretableSurface", () => {
         }) as CSSStyleDeclaration,
     );
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
-      function () {
+      function (this: HTMLElement) {
         if (this.getAttribute("data-pretable-cell") === null) {
           return 0;
         }
@@ -674,7 +675,7 @@ describe("PretableSurface", () => {
         }) as CSSStyleDeclaration,
     );
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
-      function () {
+      function (this: HTMLElement) {
         if (this.getAttribute("data-pretable-cell") === null) {
           return 0;
         }
@@ -901,7 +902,7 @@ describe("PretableSurface", () => {
         }) as CSSStyleDeclaration,
     );
     vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
-      function () {
+      function (this: HTMLElement) {
         if (this.textContent?.includes("Tall row")) {
           return 120;
         }
@@ -4614,7 +4615,9 @@ describe("cell renderers", () => {
   });
 
   it("format result reaches grid-level renderBodyCell via formattedValue", () => {
-    const renderBodyCell = vi.fn(() => null);
+    const renderBodyCell = vi.fn<
+      (input: PretableCellRenderInput<GridRow>) => null
+    >(() => null);
     const cols = [
       {
         id: "a",
@@ -4637,11 +4640,11 @@ describe("cell renderers", () => {
       />,
     );
     const aCalls = renderBodyCell.mock.calls.filter(
-      ([input]) => (input as { column: { id: string } }).column.id === "a",
+      ([input]) => input.column.id === "a",
     );
     expect(aCalls.length).toBe(gridRows.length);
-    const firstA = aCalls[0]?.[0] as { formattedValue: string };
-    expect(firstA.formattedValue).toBe("F:a1");
+    const firstA = aCalls[0]?.[0];
+    expect(firstA?.formattedValue).toBe("F:a1");
   });
 
   it("synthetic row-select column ignores per-column hooks and renders the built-in checkbox", () => {
@@ -4659,9 +4662,11 @@ describe("cell renderers", () => {
   });
 
   it("memo bailout: column.render is not called again on irrelevant parent re-render", () => {
-    const renderFn = vi.fn(({ formattedValue }: { formattedValue: string }) => (
-      <span>{formattedValue}</span>
-    ));
+    const renderFn = vi.fn(
+      ({ formattedValue }: PretableCellRenderInput<GridRow>) => (
+        <span>{formattedValue}</span>
+      ),
+    );
     const cols = [
       { id: "a", header: "A", widthPx: 100, render: renderFn },
       { id: "b", header: "B", widthPx: 100 },
@@ -4773,9 +4778,11 @@ describe("cell renderers", () => {
   });
 
   it("memo busts when isFocused changes: render fn called again for newly focused cell", () => {
-    const renderFn = vi.fn(({ formattedValue }: { formattedValue: string }) => (
-      <span>{formattedValue}</span>
-    ));
+    const renderFn = vi.fn(
+      ({ formattedValue }: PretableCellRenderInput<GridRow>) => (
+        <span>{formattedValue}</span>
+      ),
+    );
     const cols = [
       { id: "a", header: "A", widthPx: 100, render: renderFn },
       { id: "b", header: "B", widthPx: 100 },
@@ -4812,10 +4819,10 @@ describe("cell renderers", () => {
     // r2 gains focus, both isFocused props change -> both should re-render.
     view.rerender(<Harness focusRowId="r2" />);
     const r1Calls = renderFn.mock.calls.filter(
-      ([input]) => (input as { rowId: string }).rowId === "r1",
+      ([input]) => input.rowId === "r1",
     );
     const r2Calls = renderFn.mock.calls.filter(
-      ([input]) => (input as { rowId: string }).rowId === "r2",
+      ([input]) => input.rowId === "r2",
     );
     expect(r1Calls.length).toBeGreaterThanOrEqual(2);
     expect(r2Calls.length).toBeGreaterThanOrEqual(2);

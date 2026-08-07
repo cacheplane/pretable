@@ -13,10 +13,10 @@ import { PretableSurface } from "../pretable-surface";
  * need the set itself.
  */
 
-interface DemoRow {
+type DemoRow = {
   id: string;
   name: string;
-}
+};
 
 const columns = [
   { id: "name", header: "Name", value: (row: DemoRow) => row.name },

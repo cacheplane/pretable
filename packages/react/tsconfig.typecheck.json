@@ -1,4 +1,7 @@
 {
+  // Typecheck-only project: resolves workspace deps through their built `.d.ts`
+  // (the shape published consumers see) and, unlike `tsconfig.json`, includes
+  // test files so fixtures cannot silently drift from the types they exercise.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
@@ -9,5 +12,6 @@
     },
     "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": []
 }

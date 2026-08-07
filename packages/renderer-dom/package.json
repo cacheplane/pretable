@@ -26,6 +26,6 @@
     "build": "pnpm --filter @pretable-internal/text-core build && pnpm --filter @pretable-internal/layout-core build && pnpm --filter @pretable-internal/grid-core build && tsc -b",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "pnpm --filter @pretable-internal/text-core build && pnpm --filter @pretable-internal/layout-core build && pnpm --filter @pretable-internal/grid-core build && vitest run --passWithNoTests",
-    "typecheck": "pnpm --filter @pretable-internal/text-core build && pnpm --filter @pretable-internal/layout-core build && pnpm --filter @pretable-internal/grid-core build && tsc -b --pretty false"
+    "typecheck": "pnpm --filter @pretable-internal/text-core build && pnpm --filter @pretable-internal/layout-core build && pnpm --filter @pretable-internal/grid-core build && tsc -b --pretty false && tsc -p tsconfig.typecheck.json --noEmit --pretty false"
   }
 }

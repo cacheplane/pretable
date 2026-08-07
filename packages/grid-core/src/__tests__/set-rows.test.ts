@@ -1,17 +1,32 @@
 import { describe, expect, test } from "vitest";
 
 import { createGridCore } from "../index";
+import type { PretableDataRow, PretableVisibleRow } from "../types";
 
-interface Row {
+type Row = {
   id: string;
   name: string;
-}
+};
 
 const columns = [{ id: "name", header: "Name" }];
 const getRowId = (row: Row) => row.id;
 
 function makeGrid(rows: Row[]) {
   return createGridCore<Row>({ columns: [...columns], rows, getRowId });
+}
+
+/**
+ * These fixtures are never grouped, so every visible row is a data row. Narrow
+ * the union rather than side-stepping it: a group row really has no `.row`.
+ */
+function findDataRow(
+  visibleRows: readonly PretableVisibleRow<Row>[],
+  id: string,
+): PretableDataRow<Row> | undefined {
+  return visibleRows.find(
+    (entry): entry is PretableDataRow<Row> =>
+      entry.kind === "data" && entry.id === id,
+  );
 }
 
 describe("setRows", () => {
@@ -34,7 +49,7 @@ describe("setRows", () => {
     const snap = grid.getSnapshot();
     expect(snap.selection).toEqual(selectionBefore);
     expect(snap.focus).toEqual({ rowId: "a", columnId: "name" });
-    expect(snap.visibleRows.find((r) => r.id === "a")?.row.name).toBe("A2");
+    expect(findDataRow(snap.visibleRows, "a")?.row.name).toBe("A2");
     expect(snap.totalRowCount).toBe(2);
   });
 

@@ -128,7 +128,7 @@ describe("merge associativity (the license for a future rollup optimization)", (
    * instead of from its descendant leaves.
    */
   test.each(builtinNames)("%s: split-and-merge equals fold-all", (name) => {
-    const agg = builtinAggregators[name];
+    const agg: PretableAggregator = builtinAggregators[name];
     const random = makeRandom(0xc0ffee);
 
     for (let trial = 0; trial < 200; trial += 1) {
@@ -154,7 +154,7 @@ describe("merge associativity (the license for a future rollup optimization)", (
   test.each(builtinNames)(
     "%s: merge is associative across three folds",
     (name) => {
-      const agg = builtinAggregators[name];
+      const agg: PretableAggregator = builtinAggregators[name];
       const random = makeRandom(0x5eed);
 
       for (let trial = 0; trial < 200; trial += 1) {
@@ -173,7 +173,7 @@ describe("merge associativity (the license for a future rollup optimization)", (
   );
 
   test.each(builtinNames)("%s: init() is the identity element", (name) => {
-    const agg = builtinAggregators[name];
+    const agg: PretableAggregator = builtinAggregators[name];
     const acc = fold(agg, [1, 2, 3, null, "x"]);
     const expected = agg.finalize(acc);
 
@@ -183,7 +183,7 @@ describe("merge associativity (the license for a future rollup optimization)", (
   });
 
   test.each(builtinNames)("%s: merge does not mutate its arguments", (name) => {
-    const agg = builtinAggregators[name];
+    const agg: PretableAggregator = builtinAggregators[name];
     const left = fold(agg, [1, 2, 3]);
     const right = fold(agg, [10, 20]);
     const leftBefore = JSON.stringify(left);

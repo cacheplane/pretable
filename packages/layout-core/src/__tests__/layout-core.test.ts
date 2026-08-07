@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { createRowMetricsIndex, planColumns, planViewport } from "../index";
+import {
+  createRowMetricsIndex,
+  type PlanColumnsColumnInput,
+  planColumns,
+  planViewport,
+} from "../index";
 
 describe("layout-core", () => {
   test("row-height prefix sums map row index to offset and offset to row index", () => {
@@ -293,13 +298,13 @@ describe("planColumns — right-pinned columns", () => {
     // Scrollable c1..c6 sit at content offsets 100..600. The right-pinned
     // group covers content [400, 500), so c4 (at 400) is hidden behind it —
     // it *would* be visible if the right-pinned width weren't subtracted.
-    const wideColumns = [
-      { id: "c0", width: 100, pinned: "left" as const },
+    const wideColumns: PlanColumnsColumnInput[] = [
+      { id: "c0", width: 100, pinned: "left" },
       ...Array.from({ length: 6 }, (_, i) => ({
         id: `c${i + 1}`,
         width: 100,
       })),
-      { id: "c7", width: 100, pinned: "right" as const },
+      { id: "c7", width: 100, pinned: "right" },
     ];
 
     const withRightPin = planColumns({

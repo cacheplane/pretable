@@ -1,13 +1,14 @@
 import { describe, expect, test } from "vitest";
 
 import { createGridCore } from "../index";
+import type { PretableDataRow, PretableVisibleRow } from "../types";
 
-interface DemoRow {
+type DemoRow = {
   id: string;
   name: string;
   status: string;
   message: string;
-}
+};
 
 const columns = [
   { id: "name", header: "Name" },
@@ -20,6 +21,27 @@ const rows: DemoRow[] = [
   { id: "b", name: "Alpha", status: "open", message: "beta error" },
   { id: "c", name: "Bravo", status: "closed", message: "gamma archived" },
 ];
+
+/**
+ * None of the fixtures below group, so every visible row is a data row. These
+ * two helpers narrow `PretableVisibleRow` to `PretableDataRow` so `.row` is
+ * reachable — a group row genuinely has no `.row`, so the union must be
+ * narrowed rather than side-stepped.
+ */
+function dataRows(
+  visibleRows: readonly PretableVisibleRow<DemoRow>[],
+): PretableDataRow<DemoRow>[] {
+  return visibleRows.filter(
+    (entry): entry is PretableDataRow<DemoRow> => entry.kind === "data",
+  );
+}
+
+function findDataRow(
+  visibleRows: readonly PretableVisibleRow<DemoRow>[],
+  id: string,
+): PretableDataRow<DemoRow> | undefined {
+  return dataRows(visibleRows).find((entry) => entry.id === id);
+}
 
 describe("grid-core", () => {
   test("stable row identity survives sorting and filtering", () => {
@@ -285,7 +307,7 @@ describe("grid-core", () => {
     });
 
     const snapshot = grid.getSnapshot();
-    const updatedRow = snapshot.visibleRows.find((r) => r.id === "a");
+    const updatedRow = findDataRow(snapshot.visibleRows, "a");
 
     expect(updatedRow?.row).toMatchObject({
       id: "a",
@@ -330,7 +352,7 @@ describe("grid-core", () => {
       expect.arrayContaining(["a", "b", "d"]),
     );
     expect(snapshot.visibleRows.map((r) => r.id)).not.toContain("c");
-    expect(snapshot.visibleRows.find((r) => r.id === "a")?.row).toMatchObject({
+    expect(findDataRow(snapshot.visibleRows, "a")?.row).toMatchObject({
       name: "Updated",
     });
   });
@@ -412,7 +434,7 @@ describe("grid-core", () => {
     });
 
     const snapshot = grid.getSnapshot();
-    const names = snapshot.visibleRows.map((r) => (r.row as DemoRow).name);
+    const names = dataRows(snapshot.visibleRows).map((r) => r.row.name);
 
     expect(names).toEqual(["Alpha", "Bravo", "Charlie", "Zulu"]);
   });
@@ -433,17 +455,17 @@ describe("grid-core", () => {
     const after = grid.getSnapshot();
 
     expect(after).not.toBe(before);
-    expect(after.visibleRows.find((r) => r.id === "a")?.row).toMatchObject({
+    expect(findDataRow(after.visibleRows, "a")?.row).toMatchObject({
       name: "Changed",
     });
   });
 });
 
-interface OpRow {
+type OpRow = {
   id: string;
   status: string;
   priority: number;
-}
+};
 
 const opColumns = [
   { id: "status", header: "Status", type: "enum" as const },

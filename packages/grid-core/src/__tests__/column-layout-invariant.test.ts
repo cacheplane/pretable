@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { createGridCore } from "../index";
 
-interface R {
+type R = {
   id: string;
-}
+};
 const ids = ["a", "b", "c", "d", "e"];
 
 function mulberry(seed: number) {

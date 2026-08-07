@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
+import type { PretableSurfaceProps } from "../pretable-surface";
 import type { PretableColumn } from "../types";
 
 afterEach(() => {
@@ -29,8 +30,8 @@ const COLUMNS: PretableColumn<Row>[] = [
 function renderGrid(
   colOver: Partial<PretableColumn<Row>> = {},
   opts: {
-    onCellEdit?: ReturnType<typeof vi.fn>;
-    onSelectedRowIdChange?: ReturnType<typeof vi.fn>;
+    onCellEdit?: PretableSurfaceProps<Row>["onCellEdit"];
+    onSelectedRowIdChange?: PretableSurfaceProps<Row>["onSelectedRowIdChange"];
   } = {},
 ) {
   const onCellEdit = opts.onCellEdit ?? vi.fn().mockResolvedValue(undefined);

@@ -25,6 +25,7 @@ function renderGrid(ariaLabel: string) {
       rows={rows}
       getRowId={(r: Row) => r.id}
       rowSelectionColumn={rowSelectionColumn}
+      viewportHeight={300}
     />,
   );
 }
@@ -93,6 +94,7 @@ describe("attribute contract", () => {
         rows={rows}
         getRowId={(r: Row) => r.id}
         rowSelectionColumn={rowSelectionColumn}
+        viewportHeight={300}
       />,
     );
     expect(html).toContain('data-pretable-hydrated="false"');

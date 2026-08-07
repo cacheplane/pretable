@@ -11,10 +11,10 @@ import { PretableSurface } from "../pretable-surface";
  * range and opening a record are different intents.
  */
 
-interface DemoRow {
+type DemoRow = {
   id: string;
   name: string;
-}
+};
 
 const columns = [
   { id: "name", header: "Name", value: (row: DemoRow) => row.name },

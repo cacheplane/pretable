@@ -58,14 +58,14 @@ describe("InspectionGrid", () => {
     expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-001");
   }, 15_000);
 
-  it("threads interactionState and onSortChange to the underlying surface", () => {
+  it("threads controlled state and onSortChange to the underlying surface", () => {
     const dataset = createInspectionDataset("tiny");
     const onSortChange = vi.fn();
     const view = render(
       <InspectionGrid
         ariaLabel="Inspection grid"
         filterableColumnIds={inspectionFilterableColumnIds}
-        interactionState={{
+        state={{
           sort: [],
           filters: {},
         }}
