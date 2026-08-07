@@ -1,9 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  columnParts,
+  columnSelectors,
   dragResizeHandle,
   openDrawer,
   openFilterMenu,
+  scrollViewportTo,
   waitForGridReady,
   waitForStablePosition,
 } from "./helpers";
@@ -412,36 +415,28 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   await expect(layoutGrid).toBeVisible({ timeout: 10_000 });
   await waitForGridReady(page, "#column-layout");
 
-  // The header cell and its resize handle are separate subtrees of the header
-  // row, each tagged with the same data-pretable-column-id (verified against
-  // packages/react/src/pretable-surface.tsx) — the handle is NOT nested inside
-  // the header cell but in a sibling `[data-pretable-header-overlays]` anchor,
-  // so both are scoped from the column-layout section root.
+  // A column's header cell, resize strip and filter funnel are separate
+  // subtrees of the header row — see `columnSelectors` for the shape.
   const layout = page.locator("#column-layout");
-  const symbolHeader = layout.locator(
-    '[data-pretable-header-cell][data-pretable-column-id="symbol"]',
-  );
-  await expect(symbolHeader).toBeVisible();
+  const symbol = columnParts(layout, "symbol", "NVDA");
+  await expect(symbol.header).toBeVisible();
 
-  const handle = layout.locator(
-    '[data-pretable-resize-handle][data-pretable-column-id="symbol"]',
-  );
   // Measure only once the section has stopped moving, so `widthBefore` and the
   // drag below describe the same layout.
-  await waitForStablePosition(handle);
-  const widthBefore = (await symbolHeader.boundingBox())?.width ?? 0;
+  await waitForStablePosition(symbol.handle);
+  const widthBefore = (await symbol.header.boundingBox())?.width ?? 0;
   expect(widthBefore).toBeGreaterThan(0);
 
   // Drag the symbol column's resize handle to the right by 80px.
-  await dragResizeHandle(handle, 80);
+  await dragResizeHandle(symbol.handle, 80);
   await expect
-    .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
+    .poll(async () => (await symbol.header.boundingBox())?.width ?? 0)
     .toBeGreaterThan(widthBefore + 20);
 
   // Reset restores the original width.
   await page.getByTestId("reset-layout").click();
   await expect
-    .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
+    .poll(async () => (await symbol.header.boundingBox())?.width ?? 0)
     .toBeLessThan(widthBefore + 20);
 
   // --- Pinned columns stay glued to the viewport's two edges ---
@@ -449,78 +444,61 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // set is wider than the container, so there is real horizontal scroll to
   // exercise.
   const layoutViewport = layout.locator("[data-pretable-scroll-viewport]");
-  const noteCell = layout.locator(
-    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="note"]',
-  );
+  const note = columnParts(layout, "note", "NVDA");
   // `qty` is a plain scrollable column that stays rendered at both scroll
   // extremes — it is the control that proves the scroll actually moved content.
-  const qtyCell = layout.locator(
-    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="qty"]',
-  );
-  await expect(noteCell).toHaveAttribute("data-pretable-pinned", "right");
-
-  // Measure in one reference frame: the scrollport's inner right edge (client
-  // box, so a classic scrollbar is excluded — that is the edge a right-pinned
-  // column resolves against) versus each pinned box's right edge. All four
-  // sticky sites of a right-pinned column are checked, not just the body cell:
-  // the header button, the 4px resize strip on the trailing edge, and the 18px
-  // filter funnel that sits 4px inside it.
-  const noteHeader = layout.locator(
-    '[data-pretable-header-cell][data-pretable-column-id="note"]',
-  );
-  const noteHandle = layout.locator(
-    '[data-pretable-resize-handle][data-pretable-column-id="note"]',
-  );
-  const noteFunnel = layout.locator(
-    '[data-pretable-header-overlays][data-pretable-column-id="note"] [data-pretable-filter-funnel-slot]',
-  );
-  // The left-pinned side of the same grid. Its overlays are the regression
-  // case: they are placed by counting back from the column's TRAILING edge,
-  // but a left-pinned column's trailing edge is only a few hundred px into the
+  const qty = columnParts(layout, "qty", "NVDA");
+  await expect(note.cell).toHaveAttribute("data-pretable-pinned", "right");
+  // The left-pinned side of the same grid is the regression case: its overlays
+  // are placed by counting back from the column's TRAILING edge, and a
+  // left-pinned column's trailing edge is only a few hundred px into the
   // scrollport, so anything sticky there has to survive the one offset where a
   // sticky `left` inset is inert — scrollLeft 0, where the flow position of an
   // in-flow overlay sits PAST its target and a `left` inset can only push a box
   // further right, never pull it back.
-  const symbolCell = layout.locator(
-    '[data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="symbol"]',
-  );
-  // `symbolHeader` and `handle` are the same boxes the resize drag above used.
-  const symbolFunnel = layout.locator(
-    '[data-pretable-header-overlays][data-pretable-column-id="symbol"] [data-pretable-filter-funnel-slot]',
-  );
-  await expect(symbolCell).toHaveAttribute("data-pretable-pinned", "left");
+  await expect(symbol.cell).toHaveAttribute("data-pretable-pinned", "left");
 
-  const edges = (locator: typeof noteCell) =>
-    locator.evaluate((el) => {
-      const rect = el.getBoundingClientRect();
-      return { left: rect.left, right: rect.right };
-    });
-  const rightEdge = async (locator: typeof noteCell) =>
-    (await edges(locator)).right;
-
-  const measure = async () => {
-    const viewport = await layoutViewport.evaluate((el) => {
-      const rect = el.getBoundingClientRect();
-      return {
-        innerLeft: rect.left + el.clientLeft,
-        innerRight: rect.left + el.clientLeft + el.clientWidth,
-        scrollLeft: el.scrollLeft,
-        maxScrollLeft: el.scrollWidth - el.clientWidth,
-      };
-    });
-    return {
-      ...viewport,
-      noteRight: await rightEdge(noteCell),
-      headerRight: await rightEdge(noteHeader),
-      handleRight: await rightEdge(noteHandle),
-      funnelRight: await rightEdge(noteFunnel),
-      symbolCell: await edges(symbolCell),
-      symbolHeader: await edges(symbolHeader),
-      symbolHandle: await edges(handle),
-      symbolFunnel: await edges(symbolFunnel),
-      qtyLeft: await qtyCell.evaluate((el) => el.getBoundingClientRect().left),
-    };
-  };
+  // Every box in ONE evaluate, so the whole comparison describes a single
+  // layout frame. Read box-by-box it did not: this section lazy-mounts and the
+  // drawer scrolls smoothly, so a relayout landing between two round-trips
+  // would be compared against a scrollport edge measured before it, and the 2px
+  // tolerances below are far tighter than the ~31px relayout that section does.
+  const measure = async () =>
+    await layoutViewport.evaluate(
+      (vp, sel) => {
+        const rect = vp.getBoundingClientRect();
+        const edges = (selector: string) => {
+          const el = vp.querySelector(selector);
+          if (!el) throw new Error(`no element for ${selector}`);
+          const box = el.getBoundingClientRect();
+          return { left: box.left, right: box.right };
+        };
+        return {
+          innerLeft: rect.left + vp.clientLeft,
+          innerRight: rect.left + vp.clientLeft + vp.clientWidth,
+          scrollLeft: vp.scrollLeft,
+          maxScrollLeft: vp.scrollWidth - vp.clientWidth,
+          note: {
+            cell: edges(sel.note.cell),
+            header: edges(sel.note.header),
+            handle: edges(sel.note.handle),
+            funnel: edges(sel.note.funnel),
+          },
+          symbol: {
+            cell: edges(sel.symbol.cell),
+            header: edges(sel.symbol.header),
+            handle: edges(sel.symbol.handle),
+            funnel: edges(sel.symbol.funnel),
+          },
+          qtyLeft: edges(sel.qty.cell).left,
+        };
+      },
+      {
+        note: columnSelectors("note", "NVDA"),
+        symbol: columnSelectors("symbol", "NVDA"),
+        qty: columnSelectors("qty", "NVDA"),
+      },
+    );
 
   // Right side: the body cell, the header button and the resize strip all end
   // on the scrollport's inner right edge; the funnel ends 4px inside it.
@@ -528,33 +506,31 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // inner LEFT edge, and the same two overlays hang off that column's trailing
   // edge with the same 0px/4px spacing.
   const expectPinned = (m: Awaited<ReturnType<typeof measure>>) => {
-    expect(Math.abs(m.noteRight - m.innerRight)).toBeLessThan(2);
-    expect(Math.abs(m.headerRight - m.innerRight)).toBeLessThan(2);
-    expect(Math.abs(m.handleRight - m.innerRight)).toBeLessThan(2);
-    expect(Math.abs(m.funnelRight - (m.innerRight - 4))).toBeLessThan(2);
+    expect(Math.abs(m.note.cell.right - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.note.header.right - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.note.handle.right - m.innerRight)).toBeLessThan(2);
+    expect(Math.abs(m.note.funnel.right - (m.innerRight - 4))).toBeLessThan(2);
 
-    expect(Math.abs(m.symbolCell.left - m.innerLeft)).toBeLessThan(2);
-    expect(Math.abs(m.symbolHeader.left - m.innerLeft)).toBeLessThan(2);
-    expect(Math.abs(m.symbolHandle.right - m.symbolHeader.right)).toBeLessThan(
-      2,
-    );
+    expect(Math.abs(m.symbol.cell.left - m.innerLeft)).toBeLessThan(2);
+    expect(Math.abs(m.symbol.header.left - m.innerLeft)).toBeLessThan(2);
     expect(
-      Math.abs(m.symbolFunnel.right - (m.symbolHeader.right - 4)),
+      Math.abs(m.symbol.handle.right - m.symbol.header.right),
+    ).toBeLessThan(2);
+    expect(
+      Math.abs(m.symbol.funnel.right - (m.symbol.header.right - 4)),
     ).toBeLessThan(2);
   };
 
+  // Settle before the first read: `data-pretable-hydrated` says the handlers
+  // are attached, not that the layout has stopped moving.
+  await waitForStablePosition(symbol.handle);
   const before = await measure();
   expect(before.scrollLeft).toBe(0);
   expect(before.maxScrollLeft).toBeGreaterThan(60);
   expectPinned(before);
 
   // Mid-scroll: the pin must hold at every offset, not just the extremes.
-  await layoutViewport.evaluate((el) => {
-    el.scrollLeft = Math.round((el.scrollWidth - el.clientWidth) / 2);
-  });
-  await expect
-    .poll(async () => await layoutViewport.evaluate((el) => el.scrollLeft))
-    .toBeGreaterThan(30);
+  expect(await scrollViewportTo(layoutViewport, "middle")).toBeGreaterThan(30);
   expectPinned(await measure());
 
   // --- Mid-scroll, a pinned header must fully OCCLUDE what slid under it ---
@@ -562,7 +538,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // paints --pretable-bg-header behind its cells, but each cell on top of it
   // is its own box, so a transparent pinned header cell lets the scrolled-under
   // header's label read straight through.
-  const headerFill = await noteHeader.evaluate((el) => {
+  const headerFill = await note.header.evaluate((el) => {
     const row = el.closest("[data-pretable-header-row]")!;
     return {
       cell: getComputedStyle(el).backgroundColor,
@@ -575,7 +551,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // Second, hit-testing: the header row's boxes share one stacking context, so
   // an unpinned column's funnel or resize strip that outranks the pinned header
   // keeps taking clicks from on top of it, invisibly.
-  const foreignHits = await noteHeader.evaluate((el) => {
+  const foreignHits = await note.header.evaluate((el) => {
     const rect = el.getBoundingClientRect();
     const y = rect.top + rect.height / 2;
     const hits: string[] = [];
@@ -590,12 +566,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   });
   expect(foreignHits).toEqual([]);
 
-  await layoutViewport.evaluate((el) => {
-    el.scrollLeft = el.scrollWidth - el.clientWidth;
-  });
-  await expect
-    .poll(async () => await layoutViewport.evaluate((el) => el.scrollLeft))
-    .toBeGreaterThan(60);
+  expect(await scrollViewportTo(layoutViewport, "end")).toBeGreaterThan(60);
 
   const after = await measure();
   // The unpinned control column moved left by exactly the scroll distance...
@@ -609,12 +580,7 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // no work, so it is the one that catches an overlay parked on its flow
   // position instead of its intended inset — assert it coming back too, not
   // just on the first paint.
-  await layoutViewport.evaluate((el) => {
-    el.scrollLeft = 0;
-  });
-  await expect
-    .poll(async () => await layoutViewport.evaluate((el) => el.scrollLeft))
-    .toBe(0);
+  expect(await scrollViewportTo(layoutViewport, "start")).toBe(0);
   expectPinned(await measure());
 });
 
@@ -891,12 +857,7 @@ test("showcase: column reorder drops where the indicator points, scrolled sidewa
 
   // Scroll to the far right, where every scrollable column is displaced by the
   // full scroll distance.
-  await viewport.evaluate((el) => {
-    el.scrollLeft = el.scrollWidth - el.clientWidth;
-  });
-  await expect
-    .poll(async () => await viewport.evaluate((el) => el.scrollLeft))
-    .toBeGreaterThan(60);
+  expect(await scrollViewportTo(viewport, "end")).toBeGreaterThan(60);
 
   // A drag is driven by raw coordinates, so the page has to stop moving before
   // they are measured — the drawer animates open and the section is still
