@@ -805,13 +805,9 @@ test("showcase: dropping into the right-pinned group pins the column", async ({
   // that the layout has stopped moving — a different problem needing a
   // different wait. The drop target below is only 6px deep, so a box measured
   // mid-scroll puts the drop outside the pinned group and "note" stays last.
-  const sectorHeader = layout.locator(
-    '[data-pretable-header-cell][data-pretable-column-id="sector"]',
-  );
+  const sectorHeader = columnParts(layout, "sector").header;
   await waitForStablePosition(sectorHeader);
-  const note = (await layout
-    .locator('[data-pretable-header-cell][data-pretable-column-id="note"]')
-    .boundingBox())!;
+  const note = (await columnParts(layout, "note").header.boundingBox())!;
   const sector = (await sectorHeader.boundingBox())!;
   const y = sector.y + sector.height / 2;
   await page.mouse.move(sector.x + sector.width / 2, y);
@@ -857,31 +853,27 @@ test("showcase: column reorder drops where the indicator points, scrolled sidewa
 
   // Scroll to the far right, where every scrollable column is displaced by the
   // full scroll distance.
-  expect(await scrollViewportTo(viewport, "end")).toBeGreaterThan(60);
+  const scrolledTo = await scrollViewportTo(viewport, "end");
+  expect(scrolledTo).toBeGreaterThan(60);
 
   // A drag is driven by raw coordinates, so the page has to stop moving before
   // they are measured — the drawer animates open and the section is still
   // settling, and a box measured mid-flight puts the pointerdown on empty space
-  // (or another row) and the gesture silently never starts. Note this cannot be
-  // hover(): Playwright would scroll the header into view and undo the very
-  // horizontal scroll under test.
-  const sectorHeader = layout.locator(
-    '[data-pretable-header-cell][data-pretable-column-id="sector"]',
-  );
-  let lastTop: number | null = null;
-  await expect
-    .poll(
-      async () => {
-        const top = await sectorHeader.evaluate(
-          (el) => el.getBoundingClientRect().top,
-        );
-        const settled = lastTop !== null && Math.abs(top - lastTop) < 0.5;
-        lastTop = top;
-        return settled;
-      },
-      { timeout: 10_000 },
-    )
-    .toBe(true);
+  // (or another row) and the gesture silently never starts.
+  //
+  // Settling has to stay a *query*: `hover()` would scroll the header into view
+  // and undo the very horizontal scroll under test. `waitForStablePosition`
+  // polls `boundingBox()`, which does not scroll — the grab loop below already
+  // depends on that being true in this same scrolled state.
+  const sectorHeader = columnParts(layout, "sector").header;
+  await waitForStablePosition(sectorHeader, { timeout: 10_000 });
+
+  // Settling is best-effort, so prove the premise survived it rather than
+  // assuming: if the scroll were undone, every assertion below would still pass
+  // — against an unscrolled grid, testing nothing this test claims to test.
+  expect(
+    Math.abs((await viewport.evaluate((el) => el.scrollLeft)) - scrolledTo),
+  ).toBeLessThanOrEqual(1);
 
   // Grab "sector" and drag it onto the left half of "weight". Grabbing is the
   // fragile half — a header is flanked by a 22px funnel slot and a 4px resize
