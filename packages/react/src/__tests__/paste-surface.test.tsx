@@ -574,6 +574,90 @@ describe("PretableSurface paste", () => {
     expect(onPaste).not.toHaveBeenCalled();
   });
 
+  it("ignores a paste while a contenteditable editor is focused", async () => {
+    const onPaste = vi.fn();
+    renderPasteGrid({
+      columns: [
+        {
+          id: "name",
+          header: "Name",
+          editable: true,
+          // A custom editor is free to be a contenteditable rather than an
+          // input — rich-text editors are, and it still owns its own paste.
+          renderEditor: () => (
+            <div contentEditable data-testid="rich-editor" role="textbox" />
+          ),
+        },
+        ...COLUMNS.slice(1),
+      ],
+      state: cellSelection("r1", "name"),
+      onPaste,
+    });
+
+    const cell = within(screen.getAllByRole("row")[1]!).getAllByRole(
+      "gridcell",
+    )[0]!;
+    fireEvent.keyDown(cell, { key: "Enter" });
+    const editor = screen.getByTestId("rich-editor");
+    editor.focus();
+    expect(document.activeElement).toBe(editor);
+
+    firePaste(editor, "hijack");
+    firePaste(grid(), "hijack");
+    await flush();
+
+    expect(onPaste).not.toHaveBeenCalled();
+  });
+
+  // `editable`/`validate` can be async and can call out to a server. A
+  // spreadsheet-sized block must not put every cell in flight at once.
+  it("gates a large block in bounded batches", async () => {
+    const onPaste = vi.fn();
+    let inFlight = 0;
+    let peak = 0;
+    const validate = async (): Promise<true> => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
+      return true;
+    };
+    const rows: Row[] = Array.from({ length: 300 }, (_, i) => ({
+      id: `r${i}`,
+      name: `n${i}`,
+      note: `x${i}`,
+      locked: "L",
+      qty: i,
+    }));
+
+    renderPasteGrid({
+      columns: [
+        { id: "name", header: "Name", editable: true, validate },
+        { id: "note", header: "Note", editable: true, validate },
+        ...COLUMNS.slice(2),
+      ],
+      rows,
+      state: cellSelection("r0", "name"),
+      onPaste,
+    });
+
+    // 300 rows x 2 columns = 600 cells, comfortably past the batch size.
+    const block = Array.from({ length: 300 }, (_, i) => `a${i}\tb${i}`).join(
+      "\n",
+    );
+    firePaste(grid(), block);
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<Row>;
+    // Every cell still lands, in row-major order: batching is an execution
+    // detail, not a semantic one.
+    expect(payload.cells).toHaveLength(600);
+    expect(payload.cells[0]!.value).toBe("a0");
+    expect(payload.cells[599]!.value).toBe("b299");
+    expect(peak).toBeGreaterThan(0);
+    expect(peak).toBeLessThanOrEqual(256);
+  });
+
   it("does not cross-fire between two grids on the page", async () => {
     const onPasteA = vi.fn();
     const onPasteB = vi.fn();
