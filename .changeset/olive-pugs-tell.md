@@ -1,6 +1,6 @@
 ---
 "@pretable/core": patch
-"@pretable/react": minor
+"@pretable/react": patch
 "@pretable/ui": patch
 ---
 
