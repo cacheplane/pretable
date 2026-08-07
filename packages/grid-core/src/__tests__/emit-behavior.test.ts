@@ -2,11 +2,11 @@ import { describe, expect, test } from "vitest";
 
 import { createGridCore } from "../index";
 
-interface DemoRow {
+type DemoRow = {
   id: string;
   name: string;
   status: string;
-}
+};
 
 const columns = [
   { id: "name", header: "Name" },
@@ -52,7 +52,7 @@ describe("grid-core derivation caching", () => {
     grid.setSort("name", "asc");
     const before = grid.getSnapshot().visibleRows;
 
-    grid.setFocus("b", "name");
+    grid.setFocus({ rowId: "b", columnId: "name" });
 
     expect(grid.getSnapshot().visibleRows).toBe(before);
   });
@@ -81,7 +81,12 @@ describe("grid-core derivation caching", () => {
 
     const before = grid.getSnapshot().visibleRows;
 
-    grid.setViewport({ scrollTop: 250, height: 400 });
+    grid.setViewport({
+      scrollTop: 250,
+      scrollLeft: 0,
+      height: 400,
+      width: 800,
+    });
 
     expect(grid.getSnapshot().visibleRows).toBe(before);
   });
@@ -192,10 +197,20 @@ describe("grid-core emit behavior", () => {
   test("setViewport with identical state does not emit", () => {
     const instrumented = createInstrumentedGrid();
 
-    instrumented.grid.setViewport({ scrollTop: 200, height: 400 });
+    instrumented.grid.setViewport({
+      scrollTop: 200,
+      scrollLeft: 0,
+      height: 400,
+      width: 800,
+    });
     instrumented.reset();
 
-    instrumented.grid.setViewport({ scrollTop: 200, height: 400 });
+    instrumented.grid.setViewport({
+      scrollTop: 200,
+      scrollLeft: 0,
+      height: 400,
+      width: 800,
+    });
 
     expect(instrumented.emits).toBe(0);
   });

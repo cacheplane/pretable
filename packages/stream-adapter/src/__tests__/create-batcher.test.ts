@@ -2,11 +2,11 @@ import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { createBatcher } from "../create-batcher";
 import type { GridLike } from "../types";
 
-interface TestRow {
+type TestRow = {
   id: string;
   name: string;
   score: number;
-}
+};
 
 function createMockGrid(): GridLike<TestRow> & {
   calls: Array<{

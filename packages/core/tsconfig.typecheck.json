@@ -1,0 +1,12 @@
+{
+  // Typecheck-only project: same settings as the build project, but tests are
+  // included so fixtures cannot silently drift from the types they exercise.
+  // Emit stays off here; `tsconfig.json` remains the source of truth for dist.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "exclude": []
+}

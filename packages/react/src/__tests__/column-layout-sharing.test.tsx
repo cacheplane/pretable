@@ -25,7 +25,7 @@ import type { PretableGrid } from "@pretable/core";
 
 const captured = vi.hoisted(() => ({
   scrollPlans: [] as { columns: readonly { id: string }[] }[],
-  dragLayouts: [] as readonly { id: string }[][],
+  dragLayouts: [] as (readonly { id: string }[])[],
 }));
 
 vi.mock("@pretable-internal/renderer-dom", async (importOriginal) => {
@@ -52,7 +52,7 @@ vi.mock("../column-drag-geometry", async (importOriginal) => {
     computeColumnDropTarget: (
       input: Parameters<typeof actual.computeColumnDropTarget>[0],
     ) => {
-      captured.dragLayouts.push(input.layout as { id: string }[]);
+      captured.dragLayouts.push(input.layout);
       return actual.computeColumnDropTarget(input);
     },
   };

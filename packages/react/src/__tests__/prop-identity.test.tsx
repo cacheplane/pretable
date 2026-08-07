@@ -13,11 +13,11 @@ import { PretableSurface } from "../pretable-surface";
  * optimisation — forget it and sorting silently stops working.
  */
 
-interface DemoRow {
+type DemoRow = {
   id: string;
   name: string;
   status: string;
-}
+};
 
 function seed(): DemoRow[] {
   return [

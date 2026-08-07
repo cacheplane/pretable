@@ -21,6 +21,6 @@
     "build": "tsc -b",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false && tsc -p tsconfig.typecheck.json --noEmit --pretty false"
   }
 }

@@ -2,10 +2,10 @@ import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { connectElementStream } from "../connect-element-stream";
 import type { GridLike } from "../types";
 
-interface TestRow {
+type TestRow = {
   id: string;
   name: string;
-}
+};
 
 function createMockGrid(): GridLike<TestRow> & {
   calls: Array<{

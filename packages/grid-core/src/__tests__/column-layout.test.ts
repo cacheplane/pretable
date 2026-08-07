@@ -2,13 +2,13 @@ import { describe, expect, test, vi } from "vitest";
 
 import { createGridCore } from "../index";
 
-interface Row {
+type Row = {
   id: string;
   a: string;
   b: string;
   c: string;
   d: string;
-}
+};
 
 const baseColumns = [
   { id: "a", header: "A", widthPx: 100 },

@@ -1,8 +1,19 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import type { HTMLAttributes } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LabeledGridSurface } from "../labeled-grid-surface";
+
+// `data-*` keys have no counterpart in `HTMLAttributes`, so an object literal
+// carrying one has no overlap with it. `InspectionGrid` widens the same way for
+// the same reason — see the `filterable*Props` constants in `inspection-grid.tsx`.
+const filterableBodyProps = {
+  "data-filterable": "true",
+} as HTMLAttributes<HTMLDivElement>;
+const filterableHeaderProps = {
+  "data-filterable": "true",
+} as HTMLAttributes<HTMLButtonElement>;
 
 afterEach(() => {
   cleanup();
@@ -58,19 +69,11 @@ describe("LabeledGridSurface", () => {
         bodyCellClassName="inspection-cell"
         columns={columns}
         getBodyCellProps={({ column }) =>
-          column.id === "severity"
-            ? {
-                "data-filterable": "true",
-              }
-            : undefined
+          column.id === "severity" ? filterableBodyProps : undefined
         }
         getRowId={(row) => row.id}
         getHeaderCellProps={({ column }) =>
-          column.id === "severity"
-            ? {
-                "data-filterable": "true",
-              }
-            : undefined
+          column.id === "severity" ? filterableHeaderProps : undefined
         }
         headerCellClassName="inspection-header-cell"
         labelClassName="inspection-cell-label"

@@ -2,10 +2,10 @@ import { describe, expect, test } from "vitest";
 
 import { createGridCore } from "../index";
 
-interface DemoRow {
+type DemoRow = {
   id: string;
   name: string;
-}
+};
 
 const columns = [{ id: "name", header: "Name" }] as const;
 

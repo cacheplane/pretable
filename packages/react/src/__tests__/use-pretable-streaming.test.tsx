@@ -4,15 +4,30 @@ import { describe, expect, it } from "vitest";
 
 import { usePretable } from "../use-pretable";
 import type { PretableColumn } from "../types";
+import type { PretableDataRow, PretableVisibleRow } from "@pretable/core";
 
-interface Row {
+type Row = {
   id: string;
   name: string;
-}
+};
 
 const columns: PretableColumn<Row>[] = [
   { id: "name", header: "Name", value: (row) => row.name },
 ];
+
+/**
+ * This fixture is never grouped, so every visible row is a data row. Narrow the
+ * union rather than side-stepping it: a group row genuinely has no `.row`.
+ */
+function findDataRow(
+  visibleRows: readonly PretableVisibleRow<Row>[],
+  id: string,
+): PretableDataRow<Row> | undefined {
+  return visibleRows.find(
+    (entry): entry is PretableDataRow<Row> =>
+      entry.kind === "data" && entry.id === id,
+  );
+}
 
 describe("usePretable streaming lifecycle", () => {
   it("keeps the grid instance and selection across rows updates", () => {
@@ -46,7 +61,7 @@ describe("usePretable streaming lifecycle", () => {
     const snap = result.current.snapshot;
     expect(snap.selection.ranges.length).toBe(1);
     expect(snap.selection.ranges[0]!.startRowId).toBe("a");
-    expect(snap.visibleRows.find((r) => r.id === "a")?.row.name).toBe("A2");
+    expect(findDataRow(snap.visibleRows, "a")?.row.name).toBe("A2");
   });
 
   it("does not recreate the grid when getRowId is an inline closure", () => {

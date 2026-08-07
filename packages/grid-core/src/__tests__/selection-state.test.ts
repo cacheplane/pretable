@@ -6,12 +6,12 @@ import {
   type PretableCellRange,
 } from "../index";
 
-interface DemoRow {
+type DemoRow = {
   id: string;
   name: string;
   status: string;
   message: string;
-}
+};
 
 const columns = [
   { id: "name", header: "Name" },

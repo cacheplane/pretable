@@ -114,7 +114,7 @@ it("measures wrapped rows and applies the measured height back to data-pretable-
     paddingTop: "10px",
   } as CSSStyleDeclaration);
   vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
-    function scrollHeight() {
+    function scrollHeight(this: HTMLElement) {
       if (
         this instanceof HTMLElement &&
         this.dataset.pretableCell !== undefined &&
@@ -353,7 +353,12 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
     });
 
     useEffect(() => {
-      model.grid.setViewport({ scrollTop: 44 * 6, height: 88 });
+      model.grid.setViewport({
+        scrollTop: 44 * 6,
+        scrollLeft: 0,
+        height: 88,
+        width: 0,
+      });
     }, [model.grid]);
 
     return (

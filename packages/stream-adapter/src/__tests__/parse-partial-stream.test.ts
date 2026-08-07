@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { parsePartialStream } from "../parse-partial-stream";
 
-interface TestRow {
+type TestRow = {
   id: string;
   name: string;
   score: number;
-}
+};
 
 async function* asyncChunks(chunks: string[]): AsyncIterable<string> {
   for (const chunk of chunks) {
