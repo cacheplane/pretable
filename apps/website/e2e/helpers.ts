@@ -168,6 +168,84 @@ export async function waitForStablePosition(
 }
 
 /**
+ * The four addressable boxes of one column, as CSS selectors.
+ *
+ * A column is not one element. Its header cell, its 4px resize strip and its
+ * 18px filter funnel are separate subtrees of the header row — the two overlays
+ * live in a zero-width `[data-pretable-header-overlays]` anchor parked on the
+ * column's trailing edge, NOT inside the header cell (interactive controls
+ * nested in the header `<button>` would be invalid HTML). Only the header cell
+ * and the overlay anchor carry `data-pretable-column-id`, so the funnel slot has
+ * to be reached through its anchor rather than matched directly.
+ *
+ * Selectors rather than locators so that a test measuring several boxes in ONE
+ * `evaluate` — one layout frame, no shifting between round-trips — spells them
+ * the same way a test that clicks them does. {@link columnParts} wraps these as
+ * locators for the clicking case.
+ */
+export function columnSelectors(columnId: string, rowId?: string) {
+  const row = rowId
+    ? `[data-pretable-row][data-pretable-row-id="${rowId}"] `
+    : "";
+  return {
+    cell: `${row}[data-pretable-cell][data-pretable-column-id="${columnId}"]`,
+    header: `[data-pretable-header-cell][data-pretable-column-id="${columnId}"]`,
+    handle: `[data-pretable-resize-handle][data-pretable-column-id="${columnId}"]`,
+    funnel: `[data-pretable-header-overlays][data-pretable-column-id="${columnId}"] [data-pretable-filter-funnel-slot]`,
+  };
+}
+
+/** {@link columnSelectors} as locators scoped to `scope`. */
+export function columnParts(scope: Locator, columnId: string, rowId?: string) {
+  const selectors = columnSelectors(columnId, rowId);
+  return {
+    cell: scope.locator(selectors.cell),
+    header: scope.locator(selectors.header),
+    handle: scope.locator(selectors.handle),
+    funnel: scope.locator(selectors.funnel),
+  };
+}
+
+/**
+ * Scrolls a grid's scrollport horizontally and resolves once the scroll has
+ * actually taken, returning the offset it landed on.
+ *
+ * Assigning `scrollLeft` does not settle synchronously for the caller's next
+ * measurement, and the extremes are only knowable in-page (`scrollWidth -
+ * clientWidth`), so every caller was writing the same assign-then-poll pair.
+ * The achieved offset is returned rather than asserted here because "did it
+ * move far enough to be a real test" differs per call site.
+ */
+export async function scrollViewportTo(
+  viewport: Locator,
+  to: number | "start" | "middle" | "end",
+): Promise<number> {
+  const target = await viewport.evaluate((el, t) => {
+    const max = el.scrollWidth - el.clientWidth;
+    const value =
+      t === "start"
+        ? 0
+        : t === "middle"
+          ? Math.round(max / 2)
+          : t === "end"
+            ? max
+            : t;
+    el.scrollLeft = value;
+    return value;
+  }, to);
+  // Within a pixel, not exact: a fractional device pixel ratio makes the
+  // browser report back a rounded scrollLeft that never equals the assignment.
+  await expect
+    .poll(
+      async () =>
+        Math.abs((await viewport.evaluate((el) => el.scrollLeft)) - target),
+      { timeout: 5_000 },
+    )
+    .toBeLessThanOrEqual(1);
+  return target;
+}
+
+/**
  * Drags a column's resize handle right by `deltaX`, proving the press engaged
  * the drag before moving the pointer.
  *
