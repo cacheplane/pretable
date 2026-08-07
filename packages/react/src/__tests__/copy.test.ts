@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultCoerceForCopy,
+  escapeHtmlText,
   escapeTsvField,
   serializeRanges,
   type SerializeRangesArgs,
@@ -334,5 +335,42 @@ describe("serializeRanges escaping", () => {
       copyWithHeaders: false,
     });
     expect(out).toEqual({ text: "a1\tb1\na2\tb2\na3\tb3" });
+  });
+});
+
+describe("escapeHtmlText", () => {
+  it("passes ordinary text through unchanged", () => {
+    expect(escapeHtmlText("")).toBe("");
+    expect(escapeHtmlText("plain")).toBe("plain");
+    expect(escapeHtmlText("has spaces")).toBe("has spaces");
+    expect(escapeHtmlText("a,b;c'd\te")).toBe("a,b;c'd\te");
+  });
+
+  it("escapes the four markup-significant characters", () => {
+    expect(escapeHtmlText("&")).toBe("&amp;");
+    expect(escapeHtmlText("<")).toBe("&lt;");
+    expect(escapeHtmlText(">")).toBe("&gt;");
+    expect(escapeHtmlText('"')).toBe("&quot;");
+  });
+
+  it("escapes a full tag", () => {
+    expect(escapeHtmlText("<b>bold</b>")).toBe("&lt;b&gt;bold&lt;/b&gt;");
+  });
+
+  it("escapes & first so following entities are not double-escaped", () => {
+    // Regression guard: replacing < before & yields "&amp;lt;" here.
+    expect(escapeHtmlText("&<")).toBe("&amp;&lt;");
+    expect(escapeHtmlText("&amp;")).toBe("&amp;amp;");
+  });
+
+  it("converts each line-break form to exactly one <br>", () => {
+    expect(escapeHtmlText("a\nb")).toBe("a<br>b");
+    expect(escapeHtmlText("a\rb")).toBe("a<br>b");
+    expect(escapeHtmlText("a\r\nb")).toBe("a<br>b");
+  });
+
+  it("does not escape the <br> it just emitted", () => {
+    // Regression guard: converting newlines before escaping produces "&lt;br&gt;".
+    expect(escapeHtmlText("<i>\n</i>")).toBe("&lt;i&gt;<br>&lt;/i&gt;");
   });
 });

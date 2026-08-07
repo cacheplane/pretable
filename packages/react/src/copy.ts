@@ -77,6 +77,30 @@ export function escapeTsvField(text: string): string {
 }
 
 /**
+ * Escape one already-stringified field for the HTML clipboard flavor.
+ *
+ * Two passes, in this order:
+ *
+ * 1. `&`, `<`, `>`, `"` become entities. `&` must go first or it
+ *    double-escapes the entities the later replacements produce.
+ * 2. Line breaks (CRLF, CR, LF) become a single `<br>` each. This runs after
+ *    escaping so the emitted tag survives instead of becoming `&lt;br&gt;`.
+ *
+ * `"` is escaped even though cell text is only ever emitted into a text node,
+ * so the helper stays safe if it is later reused for an attribute value.
+ *
+ * @internal
+ */
+export function escapeHtmlText(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/\r\n|\r|\n/g, "<br>");
+}
+
+/**
  * Serialize one or more `PretableCellRange`s to a tab-separated text + HTML payload suitable for clipboard write.
  *
  * Cell and header text is escaped with {@link escapeTsvField}, so values
