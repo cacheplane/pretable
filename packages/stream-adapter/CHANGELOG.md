@@ -1,13 +1,25 @@
-# @pretable-internal/stream-adapter
+# @pretable/stream-adapter
 
-## 0.1.1
+> **Versioning note.** `0.1.0` was published to npm on 2026-08-06 from a
+> changeset cut as a minor. Every other package in the org is on the `0.0.x`
+> line, so this package rejoins it at `0.0.3`. Entries below are newest-first by
+> release date, which is why `0.0.3` sits above `0.1.0`. npm never reuses a
+> published version, so `0.1.0` stays on the registry as a deprecated release
+> rather than being renumbered here.
+
+## 0.0.3
 
 ### Patch Changes
 
+- Realign to the `0.0.x` line shared by `@pretable/core`, `@pretable/react`,
+  `@pretable/ui`, and `@cacheplane/json-stream`. No source changes — this
+  release exists to bring the version numbers back into step.
 - Updated dependencies []:
   - @cacheplane/json-stream@0.0.3
 
 ## 0.1.0
+
+Published to npm in error; superseded by `0.0.3`, which carries the same code.
 
 ### Minor Changes
 
