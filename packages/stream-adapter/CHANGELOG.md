@@ -1,5 +1,12 @@
 # @pretable/stream-adapter
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @cacheplane/json-stream@0.0.4
+
 > **Versioning note.** `0.1.0` was published to npm on 2026-08-06 from a
 > changeset cut as a minor. Every other package in the org is on the `0.0.x`
 > line, so this package rejoins it at `0.0.3`. Entries below are newest-first by
