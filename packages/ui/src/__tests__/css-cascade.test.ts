@@ -45,6 +45,18 @@ describe("grid.css cascade contract", () => {
     );
   });
 
+  test("header cells take their text color from the header token", () => {
+    // The surface renders header cells as <button>, which carries a UA color.
+    // The skin owns the reset, so this rule is the only thing standing between
+    // `--pretable-text-header` and a header that renders in buttontext.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\[data-pretable-header-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
+    expect(rule).toMatch(/color:\s*var\(--pretable-text-header\)/);
+  });
+
   test("grid.css styles the enum combobox listbox", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]\)/);

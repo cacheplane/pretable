@@ -987,10 +987,15 @@ describe("PretableSurface", () => {
     expect(headerCells[0]?.getAttribute("data-pretable-pinned")).toBe("left");
     expect(headerCells[1]?.getAttribute("data-pretable-pinned")).toBe("left");
     expect(headerCells[2]?.getAttribute("data-pretable-pinned")).toBeNull();
+    // Skin, not layout: an inline value here would beat the cascade layer no
+    // matter how it is ordered, stranding the token that styles it.
     expect((headerCells[0] as HTMLElement | undefined)?.style.border).toBe("");
     expect((headerCells[0] as HTMLElement | undefined)?.style.borderRight).toBe(
       "",
     );
+    // Same for text color: inline `inherit` used to defeat
+    // `--pretable-text-header`, so header text silently took the cell color.
+    expect((headerCells[0] as HTMLElement | undefined)?.style.color).toBe("");
 
     const bodyCells = container.querySelectorAll("[data-pretable-cell]");
     expect(bodyCells.length).toBeGreaterThan(0);

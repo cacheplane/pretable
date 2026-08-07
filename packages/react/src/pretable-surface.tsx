@@ -2462,9 +2462,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               // matter how it is layered — a `grid` + `align-items: start`
               // default here quietly overrode it, and stacked any multi-node
               // `renderHeaderCell` into rows that overflow the header strip.
+              //
+              // Color is deliberately NOT here. It is skin, and inline would
+              // beat `--pretable-text-header`; the skin resets the button's UA
+              // color along with setting the token, the same way it does the
+              // button border.
               style={{
                 alignItems: "center",
-                color: "inherit",
                 display: "flex",
                 gap: 4,
                 textAlign: "left",

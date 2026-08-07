@@ -94,13 +94,16 @@ The rule of thumb: **anything that positions or sizes a box is inline and
 off-limits; type and color are yours.** Fonts, `background`, `padding`,
 `opacity` and `transition` are all left to CSS.
 
-Three things sit outside that rule and are inline today, so plan around them:
+Two things sit outside that rule and are inline today, so plan around them:
 
-| Inline, despite not being layout | On           | Why                                                                         |
-| -------------------------------- | ------------ | --------------------------------------------------------------------------- |
-| `outline-*`                      | body cells   | The focus ring is driven by focus state the surface already tracks per cell |
-| `overflow-wrap`, `white-space`   | body cells   | Follows `column.wrap`, which is a data-model setting rather than a theme    |
-| `color`, `text-align`, `gap`     | header cells | Inherited text color plus the header's flex layout                          |
+| Inline, despite not being layout | On         | Why                                                                         |
+| -------------------------------- | ---------- | --------------------------------------------------------------------------- |
+| `outline-*`                      | body cells | The focus ring is driven by focus state the surface already tracks per cell |
+| `overflow-wrap`, `white-space`   | body cells | Follows `column.wrap`, which is a data-model setting rather than a theme    |
+
+Header cells also carry inline `text-align` and `gap`, but those are the header's
+flex layout rather than skin. Their color and divider are **not** inline — both
+follow `--pretable-text-header` and `--pretable-rule`.
 
 ## Targeting attributes
 
