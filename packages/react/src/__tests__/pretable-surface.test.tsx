@@ -986,6 +986,10 @@ describe("PretableSurface", () => {
     expect(headerCells[0]?.getAttribute("data-pretable-pinned")).toBe("left");
     expect(headerCells[1]?.getAttribute("data-pretable-pinned")).toBe("left");
     expect(headerCells[2]?.getAttribute("data-pretable-pinned")).toBeNull();
+    expect((headerCells[0] as HTMLElement | undefined)?.style.border).toBe("");
+    expect((headerCells[0] as HTMLElement | undefined)?.style.borderRight).toBe(
+      "",
+    );
 
     const bodyCells = container.querySelectorAll("[data-pretable-cell]");
     expect(bodyCells.length).toBeGreaterThan(0);

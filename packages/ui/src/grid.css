@@ -51,6 +51,7 @@
     font-size: var(--pretable-font-size-header);
     font-weight: 500;
     color: var(--pretable-text-header);
+    border: 0;
     border-right: 1px solid var(--pretable-rule);
     box-sizing: border-box;
   }
