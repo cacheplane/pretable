@@ -124,6 +124,11 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   maxWidthPx?: number;
   resizable?: boolean;
   reorderable?: boolean;
+  // row grouping (v1):
+  /** Group rows by this column by default; levels follow column order. */
+  rowGroup?: boolean;
+  /** Aggregate shown for this column on group rows. */
+  aggregate?: PretableAggregateSpec;
   // cell editing (v1):
   editable?:
     boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
@@ -234,15 +239,90 @@ export interface PretableTransaction<TRow extends PretableRow = PretableRow> {
 }
 
 /**
- * A row currently in the visible window — includes its source-array index for stable identity.
+ * A data row in the flat visible list — includes its source-array index for stable identity.
  *
  * @public
  */
-export interface PretableVisibleRow<TRow extends PretableRow = PretableRow> {
+export interface PretableDataRow<TRow extends PretableRow = PretableRow> {
+  kind: "data";
   id: string;
   row: TRow;
   sourceIndex: number;
+  /** Nesting depth beneath its group ancestors; `0` when ungrouped. */
+  depth: number;
 }
+
+/**
+ * A group header row in the flat visible list.
+ *
+ * @public
+ */
+export interface PretableGroupRow {
+  kind: "group";
+  /** Stable, path-derived id (see `makeGroupId`). */
+  id: string;
+  /** Nesting depth; the outermost group level is `0`. */
+  depth: number;
+  /** The column this level groups by. */
+  columnId: string;
+  /** The group key value, as read from the grouping column. */
+  value: unknown;
+  /** Data rows beneath this group, post-filter. */
+  childCount: number;
+  /** Finalized aggregate values, keyed by column id. */
+  aggregates: Record<string, unknown>;
+}
+
+/**
+ * One entry in the flat visible-row list. The list stays flat — virtualization,
+ * selection ranges, focus and copy all depend on that — and the union is
+ * deliberately open: total/footer rows will join it later.
+ *
+ * @public
+ */
+export type PretableVisibleRow<TRow extends PretableRow = PretableRow> =
+  | PretableDataRow<TRow>
+  | PretableGroupRow;
+
+/**
+ * An aggregate function, defined as a monoid rather than as `(values) => result`.
+ *
+ * The engine folds over a group's descendant leaf rows (`init`, then
+ * `accumulate` per leaf, then `finalize`), so order-sensitive statistics such as
+ * median remain expressible. `merge` must nevertheless be associative with
+ * `init()` as its identity: that contract is what allows a future switch to
+ * child-aggregate rollup to be a pure internal optimization instead of a
+ * breaking change to every consumer's aggregate function.
+ *
+ * `accumulate` may mutate and return `acc` — the engine hands each fold a fresh
+ * `init()` and never retains an earlier accumulator. `merge` must NOT mutate
+ * either argument.
+ *
+ * @public
+ */
+export interface PretableAggregator<TAcc = unknown, TOut = unknown> {
+  /** Empty accumulator. */
+  init(): TAcc;
+  /** Fold one leaf cell value into the accumulator. */
+  accumulate(acc: TAcc, value: unknown, row: PretableRow): TAcc;
+  /** Combine two accumulators (must be associative; `init()` is the identity). */
+  merge(a: TAcc, b: TAcc): TAcc;
+  /** Produce the display value — always a plain scalar, never a wrapper object. */
+  finalize(acc: TAcc): TOut;
+}
+
+/**
+ * A column's aggregate: a built-in name or a custom {@link PretableAggregator}.
+ *
+ * @public
+ */
+export type PretableAggregateSpec =
+  | "sum"
+  | "avg"
+  | "min"
+  | "max"
+  | "count"
+  | PretableAggregator;
 
 /**
  * Read-only state observed via `PretableGrid.getSnapshot`.

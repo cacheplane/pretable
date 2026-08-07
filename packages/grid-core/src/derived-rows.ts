@@ -37,9 +37,11 @@ export function deriveVisibleRows<TRow extends PretableRow>(input: {
   const sorted = sortRows(filtered, input.columns, input.sort);
 
   return sorted.map(({ id, row, sourceIndex }) => ({
+    kind: "data" as const,
     id,
     row,
     sourceIndex,
+    depth: 0,
   }));
 }
 
@@ -139,7 +141,13 @@ function sortRows<TRow extends PretableRow>(
   return indexed.map((i) => rows[i]);
 }
 
-function readCellValue<TRow extends PretableRow>(
+/**
+ * Read a column's value from a row — the single definition used by filtering,
+ * sorting, grouping keys and aggregate inputs alike.
+ *
+ * @internal
+ */
+export function readCellValue<TRow extends PretableRow>(
   row: TRow,
   column: PretableColumn<TRow>,
 ): unknown {
