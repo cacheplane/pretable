@@ -266,19 +266,18 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     }
 
     if (state.columnOrder !== undefined) {
-      const targetOrder = state.columnOrder;
-      const currentIds = grid.options.columns.map((c) => c.id);
-      const targetIds = [
-        ...targetOrder.filter((id) => currentIds.includes(id)),
-        ...currentIds.filter((id) => !targetOrder.includes(id)),
-      ];
-      for (let i = 0; i < targetIds.length; i += 1) {
-        const id = targetIds[i]!;
-        const currentIdx = grid.options.columns.findIndex((c) => c.id === id);
-        if (currentIdx !== i && id !== "__pretable_row_select__") {
-          grid.moveColumn(id, i);
-        }
-      }
+      // One commit, not a replay of per-column moves. `moveColumn` derives a
+      // column's pin from the region it lands in, so replaying an order as N
+      // moves would flap pin state through the transient arrays in between —
+      // and against a controlled `columnOrder` that disagrees with the
+      // controlled `columnPinned` below, that flapping never settles: the
+      // order pass unpins, the pin pass re-pins and repositions, the snapshot
+      // changes, and this effect runs again.
+      //
+      // `setColumnOrder` never touches pin state, so the two passes converge:
+      // this one groups by the current pins, the pin pass corrects them, and
+      // the next run is a no-op.
+      grid.setColumnOrder(state.columnOrder);
     }
 
     if (state.columnPinned !== undefined) {

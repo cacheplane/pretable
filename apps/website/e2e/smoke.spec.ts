@@ -657,6 +657,60 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
   expect(weight.cellRight).toBeLessThanOrEqual(pinnedRightLeft + 2);
 });
 
+test("showcase: dropping into the right-pinned group pins the column", async ({
+  page,
+}) => {
+  // A drop's pin follows from where it lands, so a pinned column is a
+  // two-halves target: its leading half drops ahead of the group and stays
+  // scrollable, its trailing half drops inside and takes the pin. aria-colindex
+  // is read from the engine array, so it only stays in step with the rendered
+  // order while that array is grouped [left..., unpinned..., right...].
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("drawer-handle").click();
+  await page.locator("#column-layout").scrollIntoViewIfNeeded();
+
+  const layout = page.locator("#column-layout");
+  await expect(layout.locator("[data-pretable-scroll-viewport]")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  const headers = async () =>
+    await layout.locator("[data-pretable-header-cell]").evaluateAll((els) =>
+      els.map((el) => ({
+        id: el.getAttribute("data-pretable-column-id") ?? "",
+        pinned: el.getAttribute("data-pretable-pinned"),
+        colIndex: Number(el.getAttribute("aria-colindex")),
+      })),
+    );
+
+  const before = await headers();
+  // Headers render in visual order, so aria-colindex must ascend 1..N.
+  expect(before.map((h) => h.colIndex)).toEqual(before.map((_, i) => i + 1));
+  expect(before.at(-1)).toMatchObject({ id: "note", pinned: "right" });
+
+  // Drag "sector" onto the trailing half of the right-pinned "note" — inside
+  // the group, so it lands there and takes the pin. WebKit only engages
+  // pointer capture once the pointer has traversed intermediate positions.
+  const note = (await layout
+    .locator('[data-pretable-header-cell][data-pretable-column-id="note"]')
+    .boundingBox())!;
+  const sector = (await layout
+    .locator('[data-pretable-header-cell][data-pretable-column-id="sector"]')
+    .boundingBox())!;
+  const y = sector.y + sector.height / 2;
+  await page.mouse.move(sector.x + sector.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(sector.x + sector.width / 2 + 12, y, { steps: 3 });
+  await page.mouse.move(note.x + note.width - 6, y, { steps: 10 });
+  await page.mouse.up();
+
+  await expect.poll(async () => (await headers()).at(-1)?.id).toBe("sector");
+  const after = await headers();
+  expect(after.map((h) => h.colIndex)).toEqual(after.map((_, i) => i + 1));
+  expect(after.at(-1)).toMatchObject({ id: "sector", pinned: "right" });
+  expect(after.at(-2)).toMatchObject({ id: "note", pinned: "right" });
+});
+
 test("showcase: column reorder drops where the indicator points, scrolled sideways", async ({
   page,
 }) => {

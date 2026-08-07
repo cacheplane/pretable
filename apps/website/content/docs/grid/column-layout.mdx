@@ -23,9 +23,11 @@ Pointer-down on the header itself (anywhere except the resize handle) starts a r
 
 While dragging, a ghost element follows the cursor and a 2px drop indicator snaps to the nearest column boundary. `onColumnOrderChange` fires once on drag-end with the new id order.
 
-**Cross-boundary auto-pin.** Dragging a column into the leftmost pinned region pins it there; dragging a pinned column out unpins it. When pin state changes alongside the reorder, `onColumnPinnedChange` fires alongside `onColumnOrderChange` in the same commit.
+**Region-derived pin.** A moved column adopts the pin state of the region it lands in: the leading pinned region gives it `pinned: "left"`, the trailing pinned region gives it `pinned: "right"`, and anywhere between the two leaves it unpinned. Dragging a column into either pinned group pins it there, and dragging a pinned column out of its group unpins it — a right pin can be lost to a drag exactly the way a left pin already could. When pin state changes alongside the reorder, `onColumnPinnedChange` fires alongside `onColumnOrderChange` in the same commit.
 
-Right pinning has no drag affordance — a right-pinned column keeps its pin through a reorder, and pinning to the right edge is a config or `setColumnPinned` call.
+The drop indicator is the contract: the column lands on the boundary it marks, and that landing position is what decides the pin. A boundary _inside_ a pinned group — between two of its columns, or past the group's outer edge — pins. The boundary at a group's inner edge belongs to the scrollable region and does not.
+
+In practice that makes each pinned column a two-halves target, symmetrically on both sides. Dragging onto the leading half of the first right-pinned column drops the column just ahead of the group, still scrollable; carrying it onto the trailing half drops it inside, right-pinned. The left group mirrors this.
 
 Per-column `reorderable: false` opts out. The synthetic row-select column is never reorderable.
 
@@ -46,6 +48,10 @@ grid.setColumnPinned("actions", null); // unpin
 ```
 
 Left-pinned columns render first, in a sticky group flush against the viewport's left edge; right-pinned columns render last, stacked from the right edge inward in column order. Everything else scrolls between the two groups. Cells in a pinned group carry `data-pretable-pinned="left"` or `data-pretable-pinned="right"`, and the sticky treatment covers the whole column — body cell, header, sort control, resize handle, and filter funnel.
+
+**Array order is visual order.** The engine's column array is always grouped — leading pinned columns, then the unpinned ones, then trailing pinned columns — so a column's index in that array is the position it renders at. `aria-colindex` is derived from the same index, which means assistive technology reports the position the column is actually drawn at rather than a stale array slot. Both `setColumnPinned` and reorder maintain the grouping: pinning moves the column into its region, and a move that lands in a region takes that region's pin.
+
+You do not have to declare columns in that order. A `columns` array that interleaves pinned and unpinned entries is regrouped on the way in — at mount, on every prop update, and on `resetColumnLayout` — with relative order preserved inside each region. So `[symbol, note (right), name]` becomes `[symbol, name, note]`, and the column you declared second still renders last where its pin puts it.
 
 **Pinned columns are never virtualized away.** Horizontal virtualization only windows the scrollable group, and that window runs from `scrollLeft` to `scrollLeft + viewportWidth - pinnedRightWidth`: it ends before the right-pinned group, which overlays the viewport's trailing edge, but it deliberately does _not_ subtract the left-pinned width. That over-includes the columns currently hidden behind the left-pinned group, which is the conservative direction — a column is rendered when in doubt, never dropped. A pinned column is in the render snapshot at every scroll position, so a pinned "actions" or identity column can't scroll out from under the user.
 
@@ -80,6 +86,10 @@ Three matching callbacks:
 - `onColumnPinnedChange`
 
 **Drag-end-only emission.** Programmatic mutations from controlled-prop reapply do not fire callbacks; only user-initiated commits do. This matches the established pattern from sub-project B (selection, focus, sort) — controlled props are a one-way push from consumer to engine, callbacks are a one-way push from user gesture to consumer.
+
+**`columnOrder` is a relative order, not a literal layout.** The engine regroups it by each column's current pin state before applying it, so an order that interleaves pinned and unpinned ids is normalised into the leading/unpinned/trailing grouping rather than honoured position-for-position. The order slice never changes pin state; `columnPinned` and the column config own that.
+
+`grid.setColumnOrder(ids)` is the imperative form of the same rule, reconciling a whole order in one commit: ids that match no column are ignored, any current columns the caller omitted keep their relative order at the end, the synthetic row-select column stays at position 0, and no column's pin changes.
 
 Each slice is independent: pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices.
 

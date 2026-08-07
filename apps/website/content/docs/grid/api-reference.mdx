@@ -218,7 +218,8 @@ The `grid` returned by `usePretable`.
 | Method                                                                       | Description                                                                                     |
 | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `setColumnWidth(columnId: string, width: number): void`                      | Set a column's width. Clamps to per-column `minWidthPx` / `maxWidthPx` and engine-wide bounds.  |
-| `moveColumn(columnId: string, toIndex: number): void`                        | Reposition a column. Cross-boundary lands auto-pin/unpin to match the destination region.       |
+| `moveColumn(columnId: string, toIndex: number): void`                        | Reposition a column. The column adopts the pin state of the region it lands in.                 |
+| `setColumnOrder(ids: readonly string[]): void`                               | Reconcile a whole relative order in one commit. Regroups by current pin state; never pins.      |
 | `setColumnPinned(columnId: string, pinned: "left" \| "right" \| null): void` | Explicit pin/unpin against either edge. Repositions the column to the pin-region boundary.      |
 | `autosizeColumn(columnId: string, options?: AutosizeOptions): void`          | Autosize a single column to its measured content width.                                         |
 | `resetColumnLayout(): void`                                                  | Restore order, widths, and pinned state to the original `columns` prop snapshot taken at mount. |

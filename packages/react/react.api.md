@@ -344,6 +344,7 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     selectAll(): void;
     // (undocumented)
     setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
+    setColumnOrder(ids: readonly string[]): void;
     // (undocumented)
     setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
     // (undocumented)
