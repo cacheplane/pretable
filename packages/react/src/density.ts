@@ -80,6 +80,10 @@ function readPx(name: string, fallback: number): number {
   return match ? parseFloat(match[1]) : fallback;
 }
 
+function noopSubscribe(): () => void {
+  return () => {};
+}
+
 /**
  * Reactive resolved pixel value of one `--pretable-*` CSS variable on
  * `document.documentElement`, falling back when it is unset or is not a
@@ -88,13 +92,26 @@ function readPx(name: string, fallback: number): number {
  * The same store as {@link useResolvedHeights}, so a theme or density swap
  * re-renders through it. Returns a primitive, so no snapshot cache is needed.
  *
+ * `enabled: false` short-circuits to the fallback and drops the subscription.
+ * `useSyncExternalStore` calls `getSnapshot` on every render, so a feature
+ * that is switched off must not leave a `getComputedStyle` — a potential style
+ * recalc — on the render path of every grid that never asked for it.
+ *
  * @internal
  */
-export function useResolvedPx(name: string, fallback: number): number {
+export function useResolvedPx(
+  name: string,
+  fallback: number,
+  enabled = true,
+): number {
   const getSnapshot = useCallback(
-    () => readPx(name, fallback),
-    [name, fallback],
+    () => (enabled ? readPx(name, fallback) : fallback),
+    [enabled, name, fallback],
   );
 
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useSyncExternalStore(
+    enabled ? subscribe : noopSubscribe,
+    getSnapshot,
+    getSnapshot,
+  );
 }

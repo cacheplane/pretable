@@ -805,6 +805,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const resolvedGroupPanelHeight = useResolvedPx(
     "--pretable-group-panel-height",
     GROUP_PANEL_HEIGHT,
+    groupPanelEnabled,
   );
   const groupPanelHeight = groupPanelEnabled ? resolvedGroupPanelHeight : 0;
   const scrollViewportHeight = Math.max(viewportHeight - groupPanelHeight, 0);
