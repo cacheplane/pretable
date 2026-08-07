@@ -56,26 +56,71 @@ If you don't use layers at all, you need none of this — plain unlayered CSS be
 }
 ```
 
-**Thicker resize handle**
+**Recolor the resize handle**
 
 ```css
 [data-pretable-resize-handle] {
-  width: 8px;
+  background: rebeccapurple;
 }
 ```
 
 Each of these is a plain selector with no `!important` — they win because the grid's defaults are layered and specificity-`(0,0,0)`.
 
+## What layering does not get you: inline layout
+
+Layering settles skin-versus-skin. It does not help against the grid's own
+**inline** styles, which beat every stylesheet regardless of layer.
+
+The surface writes geometry inline — `position`, `top`, `left`, `width`,
+`height`, `z-index` — because those values are computed per render from the
+column plan and the scroll offset. A virtualized cell's `left` is not a design
+decision you can restyle; it is where that column currently is.
+
+So `width` on the resize strip is not overridable:
+
+```css
+/* Does nothing: the surface writes width: 4px inline. */
+[data-pretable-resize-handle] {
+  width: 8px;
+}
+```
+
+`!important` does win, but the strip is anchored to its column's trailing edge
+and grows outward from it, so a thicker one overhangs the next column by the
+extra width. Prefer restyling what is not inline — `background`, `cursor` on
+hover, the `--pretable-resize-handle*` tokens.
+
+The rule of thumb: **anything that positions or sizes a box is inline and
+off-limits; type and color are yours.** Fonts, `background`, `padding`,
+`opacity` and `transition` are all left to CSS.
+
+Three things sit outside that rule and are inline today, so plan around them:
+
+| Inline, despite not being layout       | On           | Why                                                                         |
+| -------------------------------------- | ------------ | --------------------------------------------------------------------------- |
+| `outline-*`                            | body cells   | The focus ring is driven by focus state the surface already tracks per cell |
+| `overflow-wrap`, `white-space`         | body cells   | Follows `column.wrap`, which is a data-model setting rather than a theme    |
+| `border`, `color`, `text-align`, `gap` | header cells | A reset for the underlying `<button>`, plus the header's flex layout        |
+
+The header-cell `border-right` in that last row is worth knowing about: it is
+written inline with a **fixed** color, so it wins over
+`[data-pretable-header-cell] { border-right: … }` and over the
+`--pretable-rule` token that the rest of the gridlines follow. Restyling it
+needs `!important` until that moves into the skin.
+
 ## Targeting attributes
 
 Pretable emits a stable set of `data-pretable-*` attributes you can target with CSS:
 
-| Element                                   | Attributes                                                                                                                                                                                                               |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Root `[data-pretable-scroll-viewport]`    | `data-pretable-hydrated` (`"false"` in server-rendered HTML, `"true"` once React has hydrated — see [Knowing when a server-rendered grid is interactive](/docs/grid#knowing-when-a-server-rendered-grid-is-interactive)) |
-| Row `[data-pretable-row]`                 | `data-pretable-row-id`, `data-pretable-row-index`, `data-pretable-selected`, `data-pretable-focused`                                                                                                                     |
-| Body cell `[data-pretable-cell]`          | `data-pretable-column-id`, `data-pretable-selected`, `data-pretable-focused`, `data-pretable-pinned` (`"left"` \| `"right"`), `data-pretable-wrap`                                                                       |
-| Header cell `[data-pretable-header-cell]` | `data-pretable-column-id` (user-defined columns; the row-select column's header omits this), `data-pretable-pinned` (`"left"` \| `"right"`)                                                                              |
+| Element                                           | Attributes                                                                                                                                                                                                               |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Root `[data-pretable-scroll-viewport]`            | `data-pretable-hydrated` (`"false"` in server-rendered HTML, `"true"` once React has hydrated — see [Knowing when a server-rendered grid is interactive](/docs/grid#knowing-when-a-server-rendered-grid-is-interactive)) |
+| Row `[data-pretable-row]`                         | `data-pretable-row-id`, `data-pretable-row-index`, `data-pretable-selected`, `data-pretable-focused`                                                                                                                     |
+| Body cell `[data-pretable-cell]`                  | `data-pretable-column-id`, `data-pretable-selected`, `data-pretable-focused`, `data-pretable-pinned` (`"left"` \| `"right"`), `data-pretable-wrap`                                                                       |
+| Header cell `[data-pretable-header-cell]`         | `data-pretable-column-id` (user-defined columns; the row-select column's header omits this), `data-pretable-pinned` (`"left"` \| `"right"`)                                                                              |
+| Header overlays `[data-pretable-header-overlays]` | `data-pretable-column-id`. A zero-width box anchored on the column's trailing edge; the resize strip and filter funnel hang off it, so it is the element to target to move both together                                 |
+| Resize strip `[data-pretable-resize-handle]`      | `data-pretable-column-id`, `data-pretable-dragging` (always present; `"true"` while a resize is in progress, else `"false"`)                                                                                             |
+| Filter funnel `[data-pretable-filter-funnel]`     | `data-pretable-column-id`, `data-pretable-filter-active` (always present; `"true"` when that column has a filter, else `"false"`). Its wrapper is `[data-pretable-filter-funnel-slot]`                                   |
 
 For example, style one column (header and body) and the selected cells in another:
 
