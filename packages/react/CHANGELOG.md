@@ -1,5 +1,18 @@
 # @pretable/react
 
+## 0.0.8
+
+### Patch Changes
+
+- Let header text follow `--pretable-text-header` instead of an inline ([#256](https://github.com/cacheplane/pretable/pull/256))
+  `color: inherit`, which beat the skin and silently rendered header labels in the
+  body-cell color. Completes the pair with the header divider fix: header text is
+  now dimmer than cell text again, in both light and dark themes, and consumer
+  token overrides reach it.
+- Updated dependencies []:
+  - @pretable/core@0.0.8
+  - @pretable/ui@0.0.8
+
 ## 0.0.7
 
 ### Patch Changes
