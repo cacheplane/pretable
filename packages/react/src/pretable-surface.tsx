@@ -17,6 +17,7 @@ import type {
   ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
+  PretableDataRow,
   PretableEditInput,
   PretableFocusState,
   PretableGrid,
@@ -39,6 +40,23 @@ import {
 } from "@pretable-internal/renderer-dom";
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
+
+/**
+ * Narrow a visible-row entry to a data row.
+ *
+ * The surface renders and interacts with data rows only. Group headers reach it
+ * through `snapshot.visibleRows` and the render snapshot (the engine and the
+ * renderer both pass them through), and every consumer here steps over them —
+ * matching the engine, whose focus, `selectAll` and `deriveSelectedRows` are
+ * likewise data-row-only. Drawing and interacting with group rows is
+ * sub-project 2; until then this guard is the single place that decision is
+ * expressed.
+ */
+function isDataRow<TRow extends PretableRow>(
+  entry: PretableVisibleRow<TRow>,
+): entry is PretableDataRow<TRow> {
+  return entry.kind === "data";
+}
 
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { computeColumnDropTarget } from "./column-drag-geometry";
@@ -839,11 +857,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const editController = useCellEditController<TRow>({
     grid,
     getColumns: useCallback(() => editColumnsRef.current, []),
-    getRowById: useCallback(
-      (id: string) =>
-        editVisibleRowsRef.current.find((r) => r.id === id)?.row ?? null,
-      [],
-    ),
+    getRowById: useCallback((id: string) => {
+      const entry = editVisibleRowsRef.current.find((r) => r.id === id);
+
+      return entry && isDataRow(entry) ? entry.row : null;
+    }, []),
     onCellEdit: useCallback(
       (payload: {
         rowId: string;
@@ -879,8 +897,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       if (!failedHere) return;
       editController.cancel();
     }
-    const row = editVisibleRowsRef.current.find((r) => r.id === rowId)?.row;
-    if (!row) return;
+    const entry = editVisibleRowsRef.current.find((r) => r.id === rowId);
+    if (!entry || !isDataRow(entry)) return;
+    const row = entry.row;
     // Negate the value the checkbox is *showing*, not raw truthiness: a cell
     // holding `"false"` renders unchecked, so its toggle must commit `true`.
     const current = toBooleanCell(resolveCellValue(row, column));
@@ -975,7 +994,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
       const myToken = (pasteTokenRef.current += 1);
       const columnById = new Map(columns.map((c) => [c.id, c]));
-      const rowById = new Map(snap.visibleRows.map((r) => [r.id, r.row]));
+      // Data rows only: a group row carries no `row` to edit, and
+      // `mapPasteToTargets` never emits one as a target.
+      const rowById = new Map<string, TRow>();
+      for (const visibleRow of snap.visibleRows) {
+        if (visibleRow.kind === "data") rowById.set(visibleRow.id, visibleRow.row);
+      }
 
       // One slot per target, so outcomes keep the block's row-major order.
       const outcomes = new Array<PastedCell<TRow> | RejectedPasteCell | null>(
@@ -1267,7 +1291,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       for (const [rowIdx, mask] of rowMask) {
         if (mask === 0) continue;
         const row = visibleRows[rowIdx];
-        if (!row) continue;
+        // A group header positionally inside a range is never *selected* — the
+        // engine's `deriveSelectedRows` skips it too, so the row-select
+        // checkbox state stays consistent with what the engine reports.
+        if (!row || !isDataRow(row)) continue;
         if (mask === fullMask) fullyRows.add(row.id);
         else indeterminateRows.add(row.id);
       }
@@ -1307,7 +1334,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       }
       for (const [rowIdx, cov] of rowCoverage) {
         const row = visibleRows[rowIdx];
-        if (!row) continue;
+        // Group headers are never selected — see the fast path above.
+        if (!row || !isDataRow(row)) continue;
         if (cov.size === 0) continue;
         if (cov.size === colCount) fullyRows.add(row.id);
         else indeterminateRows.add(row.id);
@@ -2026,7 +2054,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       ),
                     }
                   : getHeaderCellStyle(plannedCol.left, plannedCol.width);
-            const visibleRows = snapshot.visibleRows;
+            // "All visible" means all visible DATA rows, matching the engine's
+            // `setSelectAllVisible`. Counting group headers here would pin the
+            // header checkbox to "mixed" forever, since they are never selected.
+            const visibleRows = snapshot.visibleRows.filter(isDataRow);
             const allFullySelected =
               visibleRows.length > 0 &&
               visibleRows.every((r) => fullySelectedRowIds.has(r.id));
@@ -2539,7 +2570,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           renderSnapshot.totalWidth,
         )}
       >
-        {renderSnapshot.rows.map(({ height, id, row, rowIndex, top }) => {
+        {renderSnapshot.rows.map((renderRow) => {
+          // Group headers are planned and windowed like any other row, but the
+          // surface does not draw them yet — that is sub-project 2. Skipping
+          // them here leaves their reserved band blank rather than shifting the
+          // data rows below, because every row is absolutely positioned at the
+          // `top` the planner computed.
+          if (renderRow.kind !== "data") {
+            return null;
+          }
+
+          const { height, id, row, rowIndex, top } = renderRow;
           const isFocused = snapshot.focus.rowId === id;
           const isSelected = fullySelectedRowIds.has(id);
           const rowProps =
@@ -2891,7 +2932,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                                   : [clickedIdx, anchorIdx];
                               for (let i = lo; i <= hi; i += 1) {
                                 const r = visible[i];
-                                if (r && !fullySelectedRowIds.has(r.id)) {
+                                // Group headers inside the shift-span are not
+                                // selectable targets — step over them.
+                                if (!r || !isDataRow(r)) continue;
+                                if (!fullySelectedRowIds.has(r.id)) {
                                   grid.toggleRowSelection(r.id);
                                 }
                               }
@@ -3347,7 +3391,10 @@ function computeSelectionExtent<TRow extends PretableRow>(
    */
   columns: readonly PretableColumn<TRow>[],
 ): { rowCount: number; columnCount: number; isAll: boolean } {
-  const visibleRows = snapshot.visibleRows;
+  // The extent is announced as "N rows × M columns", so it counts data cells:
+  // group headers carry none, and leaving them in would both inflate `rowCount`
+  // and make `isAll` unreachable after a select-all.
+  const visibleRows = snapshot.visibleRows.filter(isDataRow);
   const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
 
   if (
@@ -3641,7 +3688,10 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       if (onRowActivate) {
         const index = visibleRows.findIndex((r) => r.id === focusedRowId);
         const activated = visibleRows[index];
-        if (activated) {
+        // Focus never lands on a group header by keyboard (the engine's
+        // `moveFocus` steps over them), so this narrowing is belt-and-braces —
+        // `setFocus` is an unguarded imperative escape hatch until SP2.
+        if (activated && isDataRow(activated)) {
           onRowActivate({
             row: activated.row,
             rowId: focusedRowId,

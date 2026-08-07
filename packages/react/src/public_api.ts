@@ -33,7 +33,10 @@ export type {
 // Hook input + output shapes
 export type {
   PretableModel,
+  PretableRenderDataRow,
+  PretableRenderGroupRow,
   PretableRenderRow,
+  PretableRenderRowGeometry,
   PretableRenderSnapshot,
   PretableSurfaceState,
   PretableTelemetry,
@@ -68,6 +71,9 @@ export type {
   ColumnOption,
   ColumnType,
   FilterValue,
+  PretableAggregateSpec,
+  PretableAggregator,
+  PretableDataRow,
   PretableEditInput,
   PretableEditState,
   PretableEditStatus,
@@ -75,8 +81,10 @@ export type {
   PretableGrid,
   PretableGridOptions,
   PretableGridSnapshot,
+  PretableGroupRow,
   PretableRow,
   PretableSortEntry,
+  PretableVisibleRow,
 } from "@pretable/core";
 
 // Internal-but-exported (ɵ-prefix marks these as not API-stable)

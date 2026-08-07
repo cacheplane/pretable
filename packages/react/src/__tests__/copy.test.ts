@@ -13,7 +13,13 @@ import type { PretableColumn } from "../types";
 type Row = { id: string; a: string; b: string; c: string };
 
 function makeVisibleRows(rows: Row[]): PretableVisibleRow<Row>[] {
-  return rows.map((row, i) => ({ id: row.id, row, sourceIndex: i }));
+  return rows.map((row, i) => ({
+    kind: "data" as const,
+    id: row.id,
+    row,
+    sourceIndex: i,
+    depth: 0,
+  }));
 }
 
 const baseColumns: PretableColumn<Row>[] = [
@@ -301,5 +307,32 @@ describe("serializeRangesAsTsv escaping", () => {
       copyWithHeaders: true,
     });
     expect(out).toEqual({ text: "A\tB\n\na1\tb1" });
+  });
+
+  // Sub-project 2 decides what a copied group header emits. Until then it is
+  // omitted, which keeps the block rectangular over the data rows it spans.
+  it("omits group header rows spanned by a range", () => {
+    const [r1, r2, r3] = makeVisibleRows(rows);
+    const visibleRows: PretableVisibleRow<Row>[] = [
+      r1!,
+      {
+        kind: "group",
+        id: "__group__:a=a2",
+        depth: 0,
+        columnId: "a",
+        value: "a2",
+        childCount: 1,
+        aggregates: {},
+      },
+      r2!,
+      r3!,
+    ];
+    const out = serializeRangesAsTsv<Row>({
+      ranges: [range("r1", "r3", "a", "b")],
+      visibleRows,
+      columns: baseColumns,
+      copyWithHeaders: false,
+    });
+    expect(out).toEqual({ text: "a1\tb1\na2\tb2\na3\tb3" });
   });
 });

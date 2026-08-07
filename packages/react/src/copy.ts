@@ -156,6 +156,15 @@ export function serializeRangesAsTsv<TRow extends PretableRow>(
 
     for (let r = rowLo; r <= rowHi; r += 1) {
       const row = args.visibleRows[r]!;
+
+      // TODO(sub-project 2): decide what a copied group header emits — its
+      // label, its aggregates, or nothing. Until that shape is defined a group
+      // row inside the range is simply omitted, which keeps the emitted block
+      // rectangular over the data rows it spans.
+      if (row.kind !== "data") {
+        continue;
+      }
+
       const cells: string[] = [];
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;

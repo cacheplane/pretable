@@ -6,6 +6,7 @@ import {
   type PretableGrid,
   type PretableGridOptions,
   type PretableGridSnapshot,
+  type PretableGroupRow,
   type PretableRow,
   type PretableSelectionState,
   type PretableSortEntry,
@@ -19,17 +20,50 @@ import {
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 /**
- * One row of layout-derived render state for use during custom rendering.
+ * Placement shared by every row of layout-derived render state.
  *
  * @public
  */
-export interface PretableRenderRow<TRow extends PretableRow = PretableRow> {
+export interface PretableRenderRowGeometry {
   id: string;
-  row: TRow;
+  /** Index into `snapshot.visibleRows`, which includes group header rows. */
   rowIndex: number;
   top: number;
   height: number;
 }
+
+/**
+ * One data row of layout-derived render state for use during custom rendering.
+ *
+ * @public
+ */
+export interface PretableRenderDataRow<
+  TRow extends PretableRow = PretableRow,
+> extends PretableRenderRowGeometry {
+  kind: "data";
+  row: TRow;
+}
+
+/**
+ * One group header row of layout-derived render state.
+ *
+ * @public
+ */
+export interface PretableRenderGroupRow extends PretableRenderRowGeometry {
+  kind: "group";
+  group: PretableGroupRow;
+}
+
+/**
+ * One row of layout-derived render state for use during custom rendering.
+ * Narrow on `kind` before reading `row`: when the grid is grouped, the windowed
+ * rows include group headers alongside data rows.
+ *
+ * @public
+ */
+export type PretableRenderRow<TRow extends PretableRow = PretableRow> =
+  | PretableRenderDataRow<TRow>
+  | PretableRenderGroupRow;
 
 /**
  * Layout-derived render snapshot returned by {@link usePretable}. Drives
@@ -101,6 +135,8 @@ export interface PretableSurfaceState {
   focus?: PretableFocusState;
   selection?: PretableSelectionState;
   sort?: PretableSortEntry[];
+  /** Grouping columns, outermost first; `[]` ungroups. */
+  rowGroups?: string[];
   columnWidths?: Record<string, number>;
   columnOrder?: readonly string[];
   columnPinned?: Record<string, "left" | "right" | null>;
@@ -253,6 +289,12 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
 
     if (state.filters !== undefined) {
       grid.replaceFilters(state.filters);
+    }
+
+    // Mirrors the `sort` slice above: `setRowGroups` is change-guarded, so
+    // re-asserting an unchanged array is a silent no-op and the effect converges.
+    if (state.rowGroups !== undefined) {
+      grid.setRowGroups(state.rowGroups);
     }
 
     if (state.columnWidths !== undefined) {
