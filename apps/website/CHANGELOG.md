@@ -1,5 +1,12 @@
 # @pretable/app-website
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [[`c3a49da`](https://github.com/cacheplane/pretable/commit/c3a49dab25f4aa9c36fdbfb3000d4220fa71d049)]:
+  - @pretable/stream-adapter@0.0.5
+
 ## 0.0.4
 
 ### Patch Changes
