@@ -324,13 +324,17 @@ describe("serializeRanges escaping", () => {
       r2!,
       r3!,
     ];
-    const out = serializeRangesAsTsv<Row>({
+    const out = serializeRanges<Row>({
       ranges: [range("r1", "r3", "a", "b")],
       visibleRows,
       columns: baseColumns,
       copyWithHeaders: false,
     });
-    expect(out).toEqual({ text: "a1\tb1\na2\tb2\na3\tb3" });
+    expect(out?.text).toBe("a1\tb1\na2\tb2\na3\tb3");
+    // The HTML flavor walks the same loop, so the group row is skipped there
+    // too — three <tr>, not four.
+    expect(out?.html?.match(/<tr>/g)).toHaveLength(3);
+    expect(out?.html).not.toContain("a2</td><td>b2</td></tr><tr><td>a2");
   });
 });
 
