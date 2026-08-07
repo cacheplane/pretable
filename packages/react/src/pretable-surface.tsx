@@ -2057,14 +2057,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             // "All visible" means all visible DATA rows, matching the engine's
             // `setSelectAllVisible`. Counting group headers here would pin the
             // header checkbox to "mixed" forever, since they are never selected.
-            const visibleRows = snapshot.visibleRows.filter(isDataRow);
+            //
+            // One allocation-free pass, deliberately: this runs on every render
+            // of the header, and `visibleRows` is the whole row model (30k rows
+            // on the scale grid). A `.filter(isDataRow)` here would churn an
+            // N-element array per render for a result that is three booleans.
+            let dataRowCount = 0;
+            let fullyCount = 0;
+            let anySelected = false;
+            for (const r of snapshot.visibleRows) {
+              if (!isDataRow(r)) continue;
+              dataRowCount += 1;
+              if (fullySelectedRowIds.has(r.id)) {
+                fullyCount += 1;
+                anySelected = true;
+              } else if (indeterminateRowIds.has(r.id)) {
+                anySelected = true;
+              }
+            }
             const allFullySelected =
-              visibleRows.length > 0 &&
-              visibleRows.every((r) => fullySelectedRowIds.has(r.id));
-            const anySelected = visibleRows.some(
-              (r) =>
-                fullySelectedRowIds.has(r.id) || indeterminateRowIds.has(r.id),
-            );
+              dataRowCount > 0 && fullyCount === dataRowCount;
             const headerCheckState: "true" | "false" | "mixed" =
               allFullySelected ? "true" : anySelected ? "mixed" : "false";
             const showHeaderCheckbox =
