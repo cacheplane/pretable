@@ -62,7 +62,7 @@
     columns: PretableColumn<TRow>[];
     rowGroups: string[];
     sort: PretableSortEntry[];
-    collapsedGroupIds: ReadonlySet<string>;
+    groupExpansionOverrides: ReadonlySet<string>;
     defaultExpanded: boolean;
   }): PretableVisibleRow<TRow>[];
   ```
@@ -79,9 +79,9 @@
 - Modify: `packages/grid-core/src/derived-rows.ts`, `create-grid-core.ts`, `types.ts` (engine methods + snapshot), `index.ts`
 - Test: extend `packages/grid-core/src/__tests__/grid-core.test.ts`, new `__tests__/grouping-engine.test.ts`
 
-- [ ] **Step 1: Failing tests.** `setRowGroups` sets/clears and is change-guarded (equal input ⇒ same snapshot reference); unknown column ids dropped; `snapshot.rowGroups` reflects it; `toggleGroup`/`setGroupExpanded`/`expandAll`/`collapseAll` and `snapshot.collapsedGroupIds`; collapsed ids pruned on `setRowGroups`; **a streamed update that changes a row's grouping key moves the row to the new group** (the guard-rail test — it passes for free under full recompute, and must keep passing if anyone optimizes later); unchanged aggregates keep object identity across a no-op recompute; selection/focus survive a grouped tick update.
-- [ ] **Step 2: Wire `deriveVisibleRows`** to accept `rowGroups`, `collapsedGroupIds`, `defaultExpanded`, `aggregateFilteredRows` and delegate to `buildGroupedRows` after filtering. Keep the pre-filter row set available for `aggregateFilteredRows: true`.
-- [ ] **Step 3: Engine state + API** in `create-grid-core.ts`: `rowGroups: string[]`, `collapsedGroupIds: Set<string>`; methods `setRowGroups`, `toggleGroup`, `setGroupExpanded`, `expandAll`, `collapseAll`; snapshot gains `rowGroups` + `collapsedGroupIds` (copied defensively, as `sort` does). **Extend the derived cache keys** — add `rowGroups` and the collapsed set to the `cachedDerived*` comparison, else grouping changes won't re-derive. Initialize `rowGroups` from columns' `rowGroup: true` in column order.
+- [ ] **Step 1: Failing tests.** `setRowGroups` sets/clears and is change-guarded (equal input ⇒ same snapshot reference); unknown column ids dropped; `snapshot.rowGroups` reflects it; `toggleGroup`/`setGroupExpanded`/`expandAll`/`collapseAll` and `snapshot.groupExpansionOverrides`; expansion overrides pruned on `setRowGroups`; **a streamed update that changes a row's grouping key moves the row to the new group** (the guard-rail test — it passes for free under full recompute, and must keep passing if anyone optimizes later); unchanged aggregates keep object identity across a no-op recompute; selection/focus survive a grouped tick update.
+- [ ] **Step 2: Wire `deriveVisibleRows`** to accept `rowGroups`, `groupExpansionOverrides`, `groupsDefaultExpanded`, `aggregateFilteredRows` and delegate to `buildGroupedRows` after filtering. Keep the pre-filter row set available for `aggregateFilteredRows: true`.
+- [ ] **Step 3: Engine state + API** in `create-grid-core.ts`: `rowGroups: string[]`, `groupExpansionOverrides: Set<string>`; methods `setRowGroups`, `toggleGroup`, `setGroupExpanded`, `expandAll`, `collapseAll`; snapshot gains `rowGroups` + `groupExpansionOverrides` + `groupsDefaultExpanded` (copied defensively, as `sort` does). **Extend the derived cache keys** — add `rowGroups`, the override set, the expansion default and the aggregate-filtering flag to the `cachedDerived*` comparison, else grouping changes won't re-derive. Initialize `rowGroups` from columns' `rowGroup: true` in column order.
 - [ ] **Step 4: Fix grid-core's own `visibleRows` consumers** — `selectAll`, `clearSelection`, `moveFocus`, page-step, and anything else in this file that assumes `.row`/`.id` on every entry. Decide and apply consistent semantics, and write them down in the code: **focus and keyboard navigation skip group rows in v1** (group-row focus/expansion by keyboard is sub-project 2); `selectAll` spans data rows only.
 - [ ] **Step 5: Verify** `pnpm --filter @pretable-internal/grid-core test` + `typecheck` (this package must be fully green; downstream still breaks — that's Task 4).
 - [ ] **Step 6: Commit** — `feat(grid-core): grouping engine state, expand/collapse, snapshot`
@@ -117,4 +117,4 @@
 - **Nothing user-visible changes here.** If the website smoke or an existing test needs its expectations changed, that's a signal the migration wasn't behavior-preserving — investigate rather than update the expectation.
 - **Don't render group rows** anywhere; that's SP2. This sub-project ends with the engine able to produce them and every consumer safely ignoring them.
 - Empty aggregate ⇒ `null`, not `0`.
-- Type consistency: `PretableDataRow`, `PretableGroupRow`, `PretableAggregator`, `buildGroupedRows`, `makeGroupId`, `resolveAggregator`, `setRowGroups`, `collapsedGroupIds`, `aggregateFilteredRows`, `defaultExpanded` used identically across tasks.
+- Type consistency: `PretableDataRow`, `PretableGroupRow`, `PretableAggregator`, `buildGroupedRows`, `makeGroupId`, `resolveAggregator`, `setRowGroups`, `groupExpansionOverrides`, `aggregateFilteredRows`, `groupsDefaultExpanded` used identically across tasks.

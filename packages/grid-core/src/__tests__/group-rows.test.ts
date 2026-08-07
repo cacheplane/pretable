@@ -64,7 +64,7 @@ function build(
     columns,
     rowGroups: [],
     sort: [],
-    collapsedGroupIds: new Set<string>(),
+    groupExpansionOverrides: new Set<string>(),
     defaultExpanded: true,
     ...overrides,
   });
@@ -321,7 +321,7 @@ describe("aggregateFilteredRows (allRows)", () => {
       columns,
       rowGroups: ["sector"],
       sort: [],
-      collapsedGroupIds: new Set(),
+      groupExpansionOverrides: new Set(),
       defaultExpanded: true,
     });
 
@@ -336,7 +336,7 @@ describe("aggregateFilteredRows (allRows)", () => {
       columns,
       rowGroups: ["sector"],
       sort: [],
-      collapsedGroupIds: new Set(),
+      groupExpansionOverrides: new Set(),
       defaultExpanded: true,
     });
 
@@ -355,7 +355,7 @@ describe("aggregateFilteredRows (allRows)", () => {
       columns,
       rowGroups: ["sector", "analyst"],
       sort: [],
-      collapsedGroupIds: new Set(),
+      groupExpansionOverrides: new Set(),
       defaultExpanded: true,
     });
 
@@ -368,7 +368,7 @@ describe("expand and collapse", () => {
   test("a collapsed group keeps its row but drops its descendants", () => {
     const entries = build({
       rowGroups: ["sector", "analyst"],
-      collapsedGroupIds: new Set([SECTOR_TECH]),
+      groupExpansionOverrides: new Set([SECTOR_TECH]),
     });
 
     expect(shape(entries)).toEqual([
@@ -387,7 +387,7 @@ describe("expand and collapse", () => {
   test("collapsing an inner level only hides that level's rows", () => {
     const entries = build({
       rowGroups: ["sector", "analyst"],
-      collapsedGroupIds: new Set([TECH_ADA]),
+      groupExpansionOverrides: new Set([TECH_ADA]),
     });
 
     // The Energy branch (group + 2 subgroups + 4 rows) is untouched.
@@ -402,7 +402,7 @@ describe("expand and collapse", () => {
   test("a collapsed id that matches no group is ignored", () => {
     const entries = build({
       rowGroups: ["sector"],
-      collapsedGroupIds: new Set([
+      groupExpansionOverrides: new Set([
         makeGroupId([{ columnId: "sector", value: "Ghost" }]),
       ]),
     });
@@ -423,7 +423,7 @@ describe("expand and collapse", () => {
     const entries = build({
       rowGroups: ["sector", "analyst"],
       defaultExpanded: false,
-      collapsedGroupIds: new Set([SECTOR_TECH]),
+      groupExpansionOverrides: new Set([SECTOR_TECH]),
     });
 
     expect(shape(entries)).toEqual([
@@ -494,7 +494,7 @@ describe("sorting", () => {
       columns,
       rowGroups: ["qty"],
       sort: [],
-      collapsedGroupIds: new Set(),
+      groupExpansionOverrides: new Set(),
       defaultExpanded: true,
     });
 
@@ -519,7 +519,7 @@ describe("missing grouping values", () => {
       columns,
       rowGroups: ["sector"],
       sort: [],
-      collapsedGroupIds: new Set(),
+      groupExpansionOverrides: new Set(),
       defaultExpanded: true,
     });
 
@@ -546,7 +546,7 @@ describe("missing grouping values", () => {
       columns,
       rowGroups: ["sector"],
       sort: [],
-      collapsedGroupIds: new Set(),
+      groupExpansionOverrides: new Set(),
       defaultExpanded: true,
     });
 

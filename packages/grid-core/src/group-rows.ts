@@ -1,10 +1,5 @@
 import { resolveAggregator } from "./aggregators";
-import {
-  collator,
-  readCellValue,
-  sortRows,
-  type SourceRow,
-} from "./derived-rows";
+import { collator, readCellValue, sortRows, type SourceRow } from "./row-utils";
 import { makeGroupId, stringifyGroupValue } from "./group-id";
 import type {
   PretableAggregator,
@@ -65,13 +60,16 @@ export interface BuildGroupedRowsArgs<TRow extends PretableRow> {
   rowGroups: string[];
   sort: PretableSortEntry[];
   /**
-   * Ids whose expansion differs from `defaultExpanded`. With the default
-   * (`defaultExpanded: true`) this is literally the set of collapsed groups;
-   * with `defaultExpanded: false` it is the set of expanded ones. Treating it
-   * as an override lets `expandAll`/`collapseAll` flip the default and clear
-   * the set rather than enumerate ids that may not exist yet.
+   * Group ids whose expanded state differs from `defaultExpanded` (the engine
+   * calls the same thing `groupsDefaultExpanded`).
+   *
+   * With the default (`defaultExpanded: true`) this is literally the set of
+   * collapsed groups; with `defaultExpanded: false` it is the set of expanded
+   * ones — which is why it is named for the override, not for either state.
+   * Treating it as an override lets `expandAll`/`collapseAll` flip the default
+   * and clear the set rather than enumerate ids that may not exist yet.
    */
-  collapsedGroupIds: ReadonlySet<string>;
+  groupExpansionOverrides: ReadonlySet<string>;
   defaultExpanded: boolean;
 }
 
@@ -281,7 +279,7 @@ function isExpanded<TRow extends PretableRow>(
   id: string,
   args: BuildGroupedRowsArgs<TRow>,
 ): boolean {
-  return args.collapsedGroupIds.has(id)
+  return args.groupExpansionOverrides.has(id)
     ? !args.defaultExpanded
     : args.defaultExpanded;
 }

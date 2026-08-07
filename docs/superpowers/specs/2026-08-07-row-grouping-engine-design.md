@@ -162,8 +162,16 @@ changes — and document it.
 
 ## Expand/collapse
 
-State is a **set of collapsed group ids**, plus `groupsDefaultExpanded?: boolean`
-(default `true`).
+State is `groupsDefaultExpanded?: boolean` (default `true`) plus
+**`groupExpansionOverrides`: the set of group ids whose expanded state differs from that
+default**.
+
+> **Naming correction (applied during Task 3).** An earlier draft of this section called
+> the set "collapsed group ids" while also requiring `groupsDefaultExpanded: false` to
+> collapse everything absent explicit ids. Both are only true if the set means _override_,
+> not _collapsed_ — under a collapsed default it holds the EXPANDED ids. The name now says
+> so. Semantics are unchanged from `buildGroupedRows`, which always implemented the
+> override reading.
 
 - Groups appearing mid-stream inherit the default with no bookkeeping — the streaming
   case ag-grid handles with a tri-state `_expanded` field.
@@ -174,7 +182,11 @@ State is a **set of collapsed group ids**, plus `groupsDefaultExpanded?: boolean
   it on `setRowGroups` (ids are invalid anyway) and leaves streaming-accumulated ids in
   place — bounded by distinct group keys, which is bounded by the data. Documented.
 - API: `toggleGroup(id)`, `setGroupExpanded(id, expanded)`, `expandAll()`,
-  `collapseAll()`; `snapshot.collapsedGroupIds: ReadonlySet<string>`.
+  `collapseAll()`; `snapshot.groupExpansionOverrides: ReadonlySet<string>` and
+  `snapshot.groupsDefaultExpanded: boolean` (both are needed to read off whether a given
+  group is expanded).
+- `expandAll`/`collapseAll` set `groupsDefaultExpanded` and clear the override set, rather
+  than enumerating ids — which is what makes them apply to groups that do not exist yet.
 
 ## Pipeline
 

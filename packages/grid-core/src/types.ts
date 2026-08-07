@@ -161,6 +161,18 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
   rows: TRow[];
   getRowId?: (row: TRow, index: number) => string;
   autosize?: boolean | AutosizeOptions;
+  // row grouping (v1):
+  /**
+   * Fold group aggregates over rows the active filter hides. Default `false`,
+   * so a group total always equals the sum of the rows visible beneath it.
+   * `childCount` is post-filter either way.
+   */
+  aggregateFilteredRows?: boolean;
+  /**
+   * Expanded state for groups with no entry in `groupExpansionOverrides`.
+   * Default `true`. Groups appearing mid-stream inherit it with no bookkeeping.
+   */
+  groupsDefaultExpanded?: boolean;
 }
 
 /**
@@ -339,6 +351,12 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
   editing: PretableEditState | null;
+  /** Grouping columns, outermost first; `[]` when ungrouped. */
+  rowGroups: string[];
+  /** Group ids whose expanded state differs from {@link groupsDefaultExpanded}. */
+  groupExpansionOverrides: ReadonlySet<string>;
+  /** Expanded state for every group with no entry in the override set. */
+  groupsDefaultExpanded: boolean;
 }
 
 /** @internal */
@@ -371,6 +389,17 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
   applyTransaction(transaction: PretableTransaction<TRow>): void;
   setRows(rows: TRow[]): void;
+
+  // row grouping (v1):
+  /** Replace the grouping levels, outermost first. `[]` ungroups. */
+  setRowGroups(columnIds: readonly string[]): void;
+  /** Flip one group's expanded state. */
+  toggleGroup(groupId: string): void;
+  setGroupExpanded(groupId: string, expanded: boolean): void;
+  /** Expand every group — including ones that do not exist yet. */
+  expandAll(): void;
+  /** Collapse every group — including ones that do not exist yet. */
+  collapseAll(): void;
 
   // column-layout actions (sub-project C):
   setColumnWidth(columnId: string, width: number): void;
