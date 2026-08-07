@@ -16,6 +16,11 @@ const HTML_META = '<meta charset="utf-8">';
 // covers every th/td. Without it HTML collapses runs of spaces and a cell
 // holding "a  b" would paste as "a b" — a silent regression against the TSV
 // flavor, since receiving apps prefer text/html when both are present.
+//
+// The constraint this imposes on the emitter: the markup must stay
+// whitespace-free between tags. Under `pre-wrap` any newline or indentation
+// between `<td>` and its text is content, so pretty-printing the table would
+// inject stray whitespace into every pasted cell.
 const HTML_TABLE_OPEN = '<table style="white-space:pre-wrap">';
 
 // Excel's force-as-text number format. The backslash is Excel's own syntax —
@@ -26,6 +31,10 @@ const HTML_TEXT_FORMAT_ATTR = ` style="mso-number-format:'\\@'"`;
 
 /**
  * Attribute string for one body cell.
+ *
+ * Returns a whole attribute *including its leading space*, ready to splice
+ * straight after the tag name (`<td${cellStyleAttr(type)}>`), or `""` for a
+ * column with no hint.
  *
  * Only columns explicitly typed `text` or `enum` are pinned to text format.
  * Untyped columns are left bare on purpose: forcing text there would catch
@@ -116,7 +125,9 @@ export function escapeTsvField(text: string): string {
  *    escaping so the emitted tag survives instead of becoming `&lt;br&gt;`.
  *
  * `"` is escaped even though cell text is only ever emitted into a text node,
- * so the helper stays safe if it is later reused for an attribute value.
+ * so the helper stays safe if it is later reused for a *double-quoted*
+ * attribute value. `'` is left alone, so it is not safe for a single-quoted
+ * one.
  *
  * @internal
  */
