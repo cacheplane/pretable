@@ -67,7 +67,7 @@ import {
   type PretableTelemetry,
   usePretable,
 } from "./use-pretable";
-import { useResolvedHeights } from "./density";
+import { useResolvedHeights, useResolvedPx } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
   formatCellValue,
@@ -75,6 +75,7 @@ import {
   resolveCellValue,
 } from "./rendering";
 import {
+  getGroupPanelWrapperStyle,
   getHeaderCellStyle,
   getHeaderOverlayAnchorStyle,
   getHeaderRowStyle,
@@ -90,7 +91,7 @@ import { findParentGroupRow, isGroupExpanded } from "./group-model";
 import { GroupRow } from "./group-row";
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
-import { ROW_SELECT_COLUMN_ID } from "./constants";
+import { GROUP_PANEL_HEIGHT, ROW_SELECT_COLUMN_ID } from "./constants";
 import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
@@ -407,6 +408,24 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   /**
+   * Show the drag-to-group panel above the header — a strip listing the active
+   * grouping levels as chips, which columns are dropped onto to group by them.
+   *
+   * An enabled panel is always visible, including when nothing is grouped:
+   * that is exactly when its `emptyMessage` matters. It consumes from
+   * {@link PretableSurfaceProps.viewportHeight} rather than adding to it, so
+   * enabling it never reflows the surrounding layout.
+   */
+  groupPanel?: { enabled: boolean; emptyMessage?: string };
+  /**
+   * Called after the panel or the column menu mutates the grouping. Receives
+   * the engine's full ordered list (index = grouping level; `[]` = ungrouped).
+   * Use to mirror grouping state externally (e.g. controlled
+   * `state.rowGroups`). Programmatic `grid.setRowGroups` does not fire it,
+   * matching how `grid.moveColumn` stays silent.
+   */
+  onRowGroupsChange?: (rowGroups: string[]) => void;
+  /**
    * Called when the built-in column filter menu mutates the active filter set.
    * Receives the engine's full `filters` map after the change. Use to mirror
    * filter state externally (e.g. controlled `state.filters`).
@@ -655,6 +674,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   onColumnPinnedChange,
   onTelemetryChange,
   onFiltersChange,
+  groupPanel,
+  onRowGroupsChange,
   renderBodyCell,
   renderHeaderCell,
   rows,
@@ -776,7 +797,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
   const lastCheckedRowAnchorRef = useRef<string | null>(null);
   const { headerHeight } = useResolvedHeights();
-  const bodyViewportHeight = Math.max(viewportHeight - headerHeight, 0);
+  // The panel eats into `viewportHeight` instead of extending past it, so the
+  // surface occupies the same box whether or not it is enabled. Zero when
+  // disabled, which keeps every height below bit-for-bit what it was.
+  const groupPanelEnabled = groupPanel?.enabled ?? false;
+  const resolvedGroupPanelHeight = useResolvedPx(
+    "--pretable-group-panel-height",
+    GROUP_PANEL_HEIGHT,
+  );
+  const groupPanelHeight = groupPanelEnabled ? resolvedGroupPanelHeight : 0;
+  const scrollViewportHeight = Math.max(viewportHeight - groupPanelHeight, 0);
+  const bodyViewportHeight = Math.max(
+    viewportHeight - headerHeight - groupPanelHeight,
+    0,
+  );
   // Depend on the primitive fields, not the rowSelectionColumn object: callers
   // typically pass it inline (`rowSelectionColumn={{ enabled: true }}`), so a new
   // object every render would churn effectiveColumns — and recreate the grid,
@@ -1816,7 +1850,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // of looping — even under high-churn streaming with wrap:true rows.
   });
 
-  return (
+  const scrollViewport = (
     <div
       aria-colcount={drawnColumns.length}
       aria-label={ariaLabel}
@@ -2070,7 +2104,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         }
       }}
       style={{
-        ...getViewportStyle(viewportHeight),
+        ...getViewportStyle(scrollViewportHeight),
         ...viewportStyle,
       }}
     >
@@ -3182,6 +3216,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             );
           })()
         : null}
+    </div>
+  );
+
+  // Without the panel the surface IS the scroll viewport — no wrapper, so a
+  // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
+  if (!groupPanelEnabled) {
+    return scrollViewport;
+  }
+
+  // With it, the viewport keeps every attribute it had and gains a parent. The
+  // panel cannot live inside the viewport: that element carries
+  // `role="grid"`/`"treegrid"` (whose children must be rows and rowgroups, so a
+  // listbox of chips there is invalid ARIA) and `minWidth: totalWidth` on its
+  // content, which would scroll the panel sideways with the data.
+  return (
+    <div
+      data-pretable-group-panel-wrapper=""
+      style={getGroupPanelWrapperStyle(viewportHeight)}
+    >
+      {scrollViewport}
     </div>
   );
 }

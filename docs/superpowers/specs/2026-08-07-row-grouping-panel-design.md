@@ -7,7 +7,7 @@ Predecessors: `2026-08-07-row-grouping-engine-design.md` (SP1, #237),
 
 ## Problem
 
-SP1 and SP2 made grouping work. Nothing in the UI can *change* it. `rowGroups`
+SP1 and SP2 made grouping work. Nothing in the UI can _change_ it. `rowGroups`
 is reachable only through the `@experimental` `state` escape hatch or a
 column-level `rowGroup: true` flag — there is no user-facing way to group,
 ungroup, or reorder levels.
@@ -32,9 +32,9 @@ overflow. Each is under "Deliberately not doing".
 Enabled with `groupPanel={{ enabled: true }}`, matching `rowSelectionColumn`.
 The package exports only grid surfaces — the funnel, the filter dialog, and
 every editor are internal — so a separately-mounted component would be the
-first of its kind *and* would put a pointer drag across two component trees.
+first of its kind _and_ would put a pointer drag across two component trees.
 
-**This forces a structural change.** The surface's root element *is* the scroll
+**This forces a structural change.** The surface's root element _is_ the scroll
 viewport (`pretable-surface.tsx:1819-1832`): it carries
 `data-pretable-scroll-viewport`, `overflow: auto`, `contain: content`, and
 `role="grid"`/`"treegrid"`. A panel cannot go inside it — content inside a
@@ -76,19 +76,19 @@ predict. Two notes carried from that source:
 
 ### 3. Commit on drop; cancel restores. This is where we beat ag-grid.
 
-ag-grid mutates state on drag *leave*, not on drop
+ag-grid mutates state on drag _leave_, not on drop
 (`pillDropZonePanel.ts:386-403`): drag a chip out of the panel and the column
 is ungrouped the instant the pointer crosses the boundary, before you release.
 Escape afterwards does not restore it (`onDragCancel` only unwinds additions).
 An accidental flick outside the panel destroys the grouping with no undo. They
-also hide the dragged column from the grid on drag *enter*, before any drop.
+also hide the dragged column from the grid on drag _enter_, before any drop.
 
 We do neither. Nothing calls `setRowGroups` until pointerup over a valid zone;
 Escape and pointercancel restore the pre-drag state exactly.
 
 This is not only safer, it deletes a whole class of bug. ag-grid needs a
 `nudge()` mechanism — replaying the last pointer event synthetically
-(`baseDragAndDropService.ts:135-140`) — precisely *because* their mid-drag
+(`baseDragAndDropService.ts:135-140`) — precisely _because_ their mid-drag
 mutations reflow the header under a stationary pointer, invalidating every
 cached rect. Committing on drop means the layout never moves mid-drag, so we
 need no nudge, and no `fromNudge` flag to stop visibility toggles from looping.
@@ -114,11 +114,11 @@ Container is `role="listbox"` when it has chips and `role="presentation"` when
 empty — a listbox with zero options fails axe (`pillDropZonePanel.ts:611`).
 Chips are `role="option"` with `aria-posinset` and `aria-setsize`.
 
-| Key | Effect |
-|---|---|
-| `ArrowLeft` / `ArrowRight` | move focus between chips |
-| `Shift` + arrow | move the focused grouping level |
-| `Delete` / `Backspace` | remove the focused level |
+| Key                        | Effect                          |
+| -------------------------- | ------------------------------- |
+| `ArrowLeft` / `ArrowRight` | move focus between chips        |
+| `Shift` + arrow            | move the focused grouping level |
+| `Delete` / `Backspace`     | remove the focused level        |
 
 All three reduce to one `setRowGroups` call with a rearranged array. This is a
 list-widget model, not drag-and-drop, and is much cheaper than it sounds.
@@ -146,12 +146,12 @@ Which item shows depends on state, and the default makes one of them rare:
 with `hideGroupedColumns` at its default, grouping a column removes its header
 entirely, so there is normally nothing to show **Ungroup** on. The rules:
 
-| Column | Menu item |
-|---|---|
-| ungrouped | **Group by this column** |
-| grouped, `hideGroupedColumns: false` | **Ungroup this column** |
+| Column                                | Menu item                       |
+| ------------------------------------- | ------------------------------- |
+| ungrouped                             | **Group by this column**        |
+| grouped, `hideGroupedColumns: false`  | **Ungroup this column**         |
 | grouped, default (no header rendered) | n/a — ungroup from the chip's ✕ |
-| the derived group column | no menu at all |
+| the derived group column              | no menu at all                  |
 
 So the chip's ✕ is the primary ungroup affordance and the menu item is the
 `hideGroupedColumns: false` case. Both must exist; only the first is common.
@@ -184,7 +184,7 @@ is correct, not a bug, but it is surprising enough to belong in SP4's docs.
 
 ## Deliberately not doing
 
-- **Per-chip aggregation pickers.** Aggregation is configured per *column*
+- **Per-chip aggregation pickers.** Aggregation is configured per _column_
   today, not per grouping level; this needs an engine model change and is its
   own sub-project. ag-grid only offers it in the value zone anyway
   (`dropZoneColumnComp.ts:229-231`).
@@ -205,7 +205,7 @@ is correct, not a bug, but it is surprising enough to belong in SP4's docs.
   binding; `onRowGroupsChange` payloads; menu items appear, act, and are absent
   when they should be; the panel consumes from `viewportHeight`.
 - **Real browser (Playwright)**: header dragged onto the panel groups;
-  header dragged to the header row still *reorders* and does not group — the
+  header dragged to the header row still _reorders_ and does not group — the
   disambiguation is a rect test and jsdom has no rects; chip dragged to a new
   index reorders; Escape mid-drag restores the pre-drag grouping; a drag
   released over neither zone changes nothing.

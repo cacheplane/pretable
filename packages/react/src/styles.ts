@@ -25,6 +25,46 @@ export function getViewportStyle(height: number): CSSProperties {
   };
 }
 
+/**
+ * The box that holds the group panel and the scroll viewport, used only when
+ * the panel is enabled.
+ *
+ * It is pinned to exactly `viewportHeight` — the height the surface occupied
+ * before the panel existed — because the panel *consumes* from that budget
+ * rather than adding to it. Enabling the panel must not reflow a consumer's
+ * layout.
+ */
+export function getGroupPanelWrapperStyle(
+  viewportHeight: number,
+): CSSProperties {
+  return {
+    display: "flex",
+    flexDirection: "column",
+    height: viewportHeight,
+    position: "relative",
+  };
+}
+
+/**
+ * The group panel strip itself. Layout only — its skin (background, chip
+ * spacing, the empty message's styling) lives in @pretable/ui's grid.css.
+ *
+ * `flexShrink: 0` matters: the wrapper is a fixed-height flex column and the
+ * viewport below carries `contain: content`, so without it a panel whose chips
+ * wrap would be squeezed instead of holding the height the viewport already
+ * subtracted for it.
+ */
+export function getGroupPanelStyle(height: number): CSSProperties {
+  return {
+    alignItems: "center",
+    boxSizing: "border-box",
+    display: "flex",
+    flexShrink: 0,
+    height,
+    overflow: "hidden",
+  };
+}
+
 export function getHeaderRowStyle(
   totalWidth: number,
   headerHeight: number = HEADER_HEIGHT,

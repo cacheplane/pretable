@@ -18,7 +18,7 @@ All mutations commit on drop, never on drag-leave.
 Playwright (Chromium + WebKit), api-extractor, pnpm workspaces.
 
 **Spec:** `docs/superpowers/specs/2026-08-07-row-grouping-panel-design.md` — read
-it before starting. It records *why* several obvious implementations are wrong.
+it before starting. It records _why_ several obvious implementations are wrong.
 
 ---
 
@@ -29,7 +29,7 @@ it before starting. It records *why* several obvious implementations are wrong.
   `themes/material.css`, in **all three density tiers** each — a token in one
   theme silently resolves to nothing in the other.
 - **No backcompat shims.** Pre-1.0. Rename and replace; never alias.
-- **jsdom has no layout engine.** Every claim about a *rectangle* — which drop
+- **jsdom has no layout engine.** Every claim about a _rectangle_ — which drop
   zone the pointer is in, where a chip sits — is a Playwright assertion or it is
   not verified. Right-pin shipped measurably broken past 316 green jsdom tests.
 - **Negative control on every behavioural test.** Delete the one line the test
@@ -43,6 +43,7 @@ it before starting. It records *why* several obvious implementations are wrong.
 ## File Structure
 
 **Create:**
+
 - `packages/react/src/group-panel/GroupPanel.tsx` — the panel and its chips.
 - `packages/react/src/group-panel/group-panel-model.ts` — pure helpers:
   `moveGroupLevel(rowGroups, from, to)`, `removeGroupLevel`, `insertGroupLevel`,
@@ -55,6 +56,7 @@ it before starting. It records *why* several obvious implementations are wrong.
 - `packages/react/src/__tests__/column-menu.test.tsx`
 
 **Modify:**
+
 - `packages/react/src/pretable-surface.tsx` — outer wrapper, height accounting,
   the panel render, the second drop zone on the existing reorder drag
   (`:2329-2453`), and the menu button in the overlay strip (`:2621-2650`).
@@ -71,16 +73,17 @@ it before starting. It records *why* several obvious implementations are wrong.
 No panel UI yet — this task only makes room for it and proves nothing regressed.
 
 **Files:**
+
 - Modify: `packages/react/src/pretable-surface.tsx:1819-1832` (root),
   `:779` (`bodyViewportHeight`), `PretableSurfaceProps` (`:341-476`)
 - Modify: `packages/react/src/styles.ts`
 - Test: `packages/react/src/__tests__/group-panel.test.tsx`
 
-**The structural fact that drives this.** The surface's root element *is* the
+**The structural fact that drives this.** The surface's root element _is_ the
 scroll viewport: it carries `data-pretable-scroll-viewport`, `overflow: auto`,
 `contain: content`, and `role="grid"`/`"treegrid"`. The panel cannot go inside it
 (invalid ARIA inside a `grid` role, and `minWidth: totalWidth` would scroll it
-sideways with the data). So add a wrapper *around* it and change nothing about
+sideways with the data). So add a wrapper _around_ it and change nothing about
 the existing root.
 
 - [ ] **Step 1: Write the failing tests**
@@ -174,6 +177,7 @@ pnpm format:write && git add -A && git commit -m "feat(react): outer wrapper and
 ## Task 2: The panel and its chips
 
 **Files:**
+
 - Create: `packages/react/src/group-panel/GroupPanel.tsx`,
   `packages/react/src/group-panel/group-panel-model.ts`
 - Test: `packages/react/src/__tests__/group-panel.test.tsx`,
@@ -197,7 +201,9 @@ it("is role=presentation when empty and role=listbox when it has chips", () => {
   const view = renderGrid({ groupPanel: { enabled: true } });
   expect(panel(view)).toHaveAttribute("role", "presentation");
 
-  view.rerender(<Grid groupPanel={{ enabled: true }} state={{ rowGroups: ["sector"] }} />);
+  view.rerender(
+    <Grid groupPanel={{ enabled: true }} state={{ rowGroups: ["sector"] }} />,
+  );
   expect(panel(view)).toHaveAttribute("role", "listbox");
 });
 
@@ -207,7 +213,9 @@ it("shows the empty message only when ungrouped", () => {
   });
   expect(view.getByText("Drop here")).toBeInTheDocument();
 
-  view.rerender(<Grid groupPanel={{ enabled: true }} state={{ rowGroups: ["sector"] }} />);
+  view.rerender(
+    <Grid groupPanel={{ enabled: true }} state={{ rowGroups: ["sector"] }} />,
+  );
   expect(view.queryByText("Drop here")).toBeNull();
 });
 
@@ -231,7 +239,9 @@ it("the ✕ removes that level and reports the new list", () => {
     onRowGroupsChange,
   });
   fireEvent.click(
-    view.getAllByRole("option")[0].querySelector("[data-pretable-chip-remove]")!,
+    view
+      .getAllByRole("option")[0]
+      .querySelector("[data-pretable-chip-remove]")!,
   );
   expect(onRowGroupsChange).toHaveBeenCalledWith(["industry"]);
 });
@@ -248,13 +258,13 @@ pnpm --filter @pretable/react test group-panel
 Chip anatomy: a drag handle, the label, and a `✕` button. Emit these exactly —
 Task 7's stylesheet and the tests both key on them:
 
-| Element | Attribute |
-|---|---|
-| the panel | `data-pretable-group-panel` |
-| a chip | `data-pretable-group-chip` |
-| its drag handle | `data-pretable-chip-handle` |
-| its remove button | `data-pretable-chip-remove` |
-| the empty message | `data-pretable-group-panel-empty` |
+| Element                         | Attribute                           |
+| ------------------------------- | ----------------------------------- |
+| the panel                       | `data-pretable-group-panel`         |
+| a chip                          | `data-pretable-group-chip`          |
+| its drag handle                 | `data-pretable-chip-handle`         |
+| its remove button               | `data-pretable-chip-remove`         |
+| the empty message               | `data-pretable-group-panel-empty`   |
 | the drag gap indicator (Task 5) | `data-pretable-chip-drop-indicator` |
 
 The chip's **visible label must be `aria-hidden`**, with the accessible name
@@ -285,11 +295,11 @@ pnpm format:write && git add -A && git commit -m "feat(react): group panel with 
 Matching ag-grid's model, which is real and working — this is not a place where
 shipping less is acceptable.
 
-| Key | Effect |
-|---|---|
-| `ArrowLeft` / `ArrowRight` | move focus between chips |
-| `Shift` + arrow | move the focused grouping level |
-| `Delete` / `Backspace` | remove the focused level |
+| Key                        | Effect                          |
+| -------------------------- | ------------------------------- |
+| `ArrowLeft` / `ArrowRight` | move focus between chips        |
+| `Shift` + arrow            | move the focused grouping level |
+| `Delete` / `Backspace`     | remove the focused level        |
 
 Each reduces to one `setRowGroups` with a rearranged array, via the Task 2
 helpers.
@@ -303,12 +313,12 @@ helpers.
 - [ ] **Step 2: Run and watch them fail**
 
 - [ ] **Step 3: Implement.** Roving tabindex: the focused chip is `tabIndex={0}`,
-  the rest `-1`.
+      the rest `-1`.
 
 - [ ] **Step 4: Verify green**
 
 - [ ] **Step 5: Negative controls — one per binding.** Remove each branch
-  individually and confirm only its own tests fail.
+      individually and confirm only its own tests fail.
 
 - [ ] **Step 6: Commit**
 
@@ -333,7 +343,7 @@ rect ⇒ group, header/body rect ⇒ reorder, neither ⇒ nothing. No modifier k
 
 - [ ] **Step 1: Write the failing tests**
 
-jsdom can assert the *plumbing* (that a pointerup while the panel reports a hit
+jsdom can assert the _plumbing_ (that a pointerup while the panel reports a hit
 calls `setRowGroups`) but **not** the rect test itself — jsdom has no layout, so
 `getBoundingClientRect` returns zeros. Write the jsdom tests against an injected
 hit-test result, and put the real geometry in Task 8's Playwright spec. Say so
@@ -356,10 +366,10 @@ and pointercancel restore the pre-drag state. Do not copy ag-grid's
 mutate-on-drag-leave model (`pillDropZonePanel.ts:386-403`) — see the spec.
 
 - [ ] **Step 4: Verify green** — all existing reorder tests must still pass
-  (`pretable-surface.test.tsx:3854+`, ~12 cases).
+      (`pretable-surface.test.tsx:3854+`, ~12 cases).
 
 - [ ] **Step 5: Negative control** — make the panel hit-test always return false;
-  confirm the grouping tests fail and every reorder test still passes. Restore.
+      confirm the grouping tests fail and every reorder test still passes. Restore.
 
 - [ ] **Step 6: Commit**
 
@@ -384,9 +394,9 @@ Capture the dragged column **id** at drag start rather than reading it from the
 chip during the drag, for the same reason.
 
 - [ ] **Step 1: Write the failing tests** — drag chip 0 past chip 1 reorders and
-  reports; releasing outside the panel is a no-op (**not** a removal — that is
-  ag-grid's behaviour and we are deliberately not copying it); Escape mid-drag
-  restores the original order.
+      reports; releasing outside the panel is a no-op (**not** a removal — that is
+      ag-grid's behaviour and we are deliberately not copying it); Escape mid-drag
+      restores the original order.
 
 - [ ] **Step 2: Run and watch them fail**
 
@@ -395,8 +405,8 @@ chip during the drag, for the same reason.
 - [ ] **Step 4: Verify green**
 
 - [ ] **Step 5: Negative controls** — move the capture onto the chip and confirm
-  a reorder test fails or the gesture breaks; remove the Escape branch and
-  confirm its test fails. Restore both.
+      a reorder test fails or the gesture breaks; remove the Escape branch and
+      confirm its test fails. Restore both.
 
 - [ ] **Step 6: Commit**
 
@@ -409,6 +419,7 @@ pnpm format:write && git add -A && git commit -m "feat(react): reorder grouping 
 ## Task 6: The column menu
 
 **Files:**
+
 - Create: `packages/react/src/column-menu/ColumnMenu.tsx`, `MenuButton.tsx`
 - Modify: `packages/react/src/filter-menu/useFilterPopover.ts` (generalize),
   `pretable-surface.tsx:2621-2650` (the overlay strip)
@@ -428,27 +439,27 @@ the funnel to copy.
 
 Which item shows, per the spec:
 
-| Column | Item |
-|---|---|
-| ungrouped | **Group by this column** |
-| grouped, `hideGroupedColumns: false` | **Ungroup this column** |
-| grouped, default (no header rendered) | n/a |
-| the derived group column | no menu at all |
+| Column                                | Item                     |
+| ------------------------------------- | ------------------------ |
+| ungrouped                             | **Group by this column** |
+| grouped, `hideGroupedColumns: false`  | **Ungroup this column**  |
+| grouped, default (no header rendered) | n/a                      |
+| the derived group column              | no menu at all           |
 
 - [ ] **Step 1: Write the failing tests** — each row of that table; the menu is
-  `role="menu"` with `role="menuitem"` children; Escape closes and returns focus
-  to the button; clicking Group by fires `onRowGroupsChange` with the column
-  appended.
+      `role="menu"` with `role="menuitem"` children; Escape closes and returns focus
+      to the button; clicking Group by fires `onRowGroupsChange` with the column
+      appended.
 
 - [ ] **Step 2: Run and watch them fail**
 
 - [ ] **Step 3: Implement**
 
 - [ ] **Step 4: Verify green** — the existing filter-menu tests must all still
-  pass; generalizing the hook must not change its behaviour.
+      pass; generalizing the hook must not change its behaviour.
 
 - [ ] **Step 5: Negative control** — remove the `pointerdown` stop-propagation
-  and confirm the "closes on a click on its own button" test fails. Restore.
+      and confirm the "closes on a click on its own button" test fails. Restore.
 
 - [ ] **Step 6: Commit**
 
@@ -463,24 +474,24 @@ pnpm format:write && git add -A && git commit -m "feat(react): column menu with 
 **Files:** `packages/ui/src/grid.css`, `themes/excel.css`, `themes/material.css`.
 
 - [ ] **Step 1: Add tokens to BOTH themes, ALL THREE density tiers each.**
-  `--pretable-group-panel-height` and any chip spacing token. Consult
-  `excel.css` (`:root` compact, `[data-density="standard"]`,
-  `[data-density="spacious"]`) and `material.css` (`:root` standard,
-  `[data-density="compact"]`, `[data-density="spacious"]`).
+      `--pretable-group-panel-height` and any chip spacing token. Consult
+      `excel.css` (`:root` compact, `[data-density="standard"]`,
+      `[data-density="spacious"]`) and `material.css` (`:root` standard,
+      `[data-density="compact"]`, `[data-density="spacious"]`).
 
 - [ ] **Step 2: Add the rules to `grid.css`**, inside `@layer pretable`, using
-  `:where()`. Panel strip, chip, drag handle, remove button, empty message, the
-  drag gap indicator, and a `:focus-visible` ring on chips consistent with the
-  rest of the grid.
+      `:where()`. Panel strip, chip, drag handle, remove button, empty message, the
+      drag gap indicator, and a `:focus-visible` ring on chips consistent with the
+      rest of the grid.
 
 - [ ] **Step 3: Verify** — `pnpm --filter @pretable/ui test` (the token contract
-  test asserts every `var(--pretable-*)` in `grid.css` resolves at `:root` under
-  each theme; if you add a *runtime* var like the drag index, add it to
-  `RUNTIME_VARS` in `packages/ui/src/__tests__/contract.test.ts` with a comment,
-  as `--pretable-group-depth` did).
+      test asserts every `var(--pretable-*)` in `grid.css` resolves at `:root` under
+      each theme; if you add a _runtime_ var like the drag index, add it to
+      `RUNTIME_VARS` in `packages/ui/src/__tests__/contract.test.ts` with a comment,
+      as `--pretable-group-depth` did).
 
 - [ ] **Step 4: Negative control** — delete one new token from one theme and
-  confirm the contract test fails. Restore.
+      confirm the contract test fails. Restore.
 
 - [ ] **Step 5: Commit**
 
@@ -500,7 +511,7 @@ and 5 passed in jsdom, and jsdom returns zeros from `getBoundingClientRect` — 
 drop-zone rect test cannot be verified there at all.
 
 - [ ] **Step 1: Extend the fixture** with `groupPanel={{ enabled: true }}` and at
-  least one ungrouped column to drag in.
+      least one ungrouped column to drag in.
 
 - [ ] **Step 2: Write the browser spec.** In Chromium and WebKit:
 
@@ -529,8 +540,8 @@ script is `smoke`. Needs a production build and `next start`; see the fixture
 notes from SP2.)
 
 - [ ] **Step 4: Negative control** — make the panel hit-test always return true
-  and confirm assertion 2 fails (a header-row drop would then also group).
-  Restore.
+      and confirm assertion 2 fails (a header-row drop would then also group).
+      Restore.
 
 - [ ] **Step 5: Refresh the API report**
 

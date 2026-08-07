@@ -65,3 +65,36 @@ export function useResolvedHeights(
 
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
+
+function readPx(name: string, fallback: number): number {
+  if (typeof document === "undefined") return fallback;
+  const styles = getComputedStyle(document.documentElement);
+  // Defensive, matching `getDensityHeights`: some test environments mock
+  // getComputedStyle with plain objects that don't implement
+  // getPropertyValue. Treat that as "unset" rather than throwing.
+  if (typeof styles?.getPropertyValue !== "function") return fallback;
+  const match = styles
+    .getPropertyValue(name)
+    .trim()
+    .match(/^([\d.]+)px$/);
+  return match ? parseFloat(match[1]) : fallback;
+}
+
+/**
+ * Reactive resolved pixel value of one `--pretable-*` CSS variable on
+ * `document.documentElement`, falling back when it is unset or is not a
+ * `<number>px` value.
+ *
+ * The same store as {@link useResolvedHeights}, so a theme or density swap
+ * re-renders through it. Returns a primitive, so no snapshot cache is needed.
+ *
+ * @internal
+ */
+export function useResolvedPx(name: string, fallback: number): number {
+  const getSnapshot = useCallback(
+    () => readPx(name, fallback),
+    [name, fallback],
+  );
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
