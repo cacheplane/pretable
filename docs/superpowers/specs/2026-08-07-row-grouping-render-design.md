@@ -28,14 +28,41 @@ out under "Deliberately not doing" with the reason.
 
 ### 1. A dedicated group column
 
-When `rowGroups` is non-empty the engine injects one synthetic column at index
-0, id `__pretable_group__`. It carries the label and twisty for *every* level,
+When `rowGroups` is non-empty a synthetic column with id `__pretable_group__`
+leads the column list. It carries the label and twisty for *every* level,
 indented by depth — not one column per level.
 
-This follows the existing `__pretable_row_select__` precedent in
-`create-grid-core.ts:35`: synthetic columns are the engine's business, not the
-surface's. That keeps `snapshot.columns` truthful for a headless consumer, who
-renders their own DOM and needs to know a label column exists at index 0.
+**It is derived, not injected.** The existing `__pretable_row_select__` column
+is built React-side (`pretable-surface.tsx:777-795`) and prepended to the
+`columns` prop before it ever reaches the engine. The group column cannot work
+that way, because its presence is a function of `rowGroups` — *engine* state
+that `setRowGroups` mutates, and that SP3's drag panel will mutate constantly.
+React would have to read `snapshot.rowGroups` to build the column list that
+produces the snapshot. That is a cycle.
+
+Nor can the engine simply push it into `options.columns`:
+`mergeColumnsFromProps` (`create-grid-core.ts:1004-1016`) rebuilds the list by
+mapping over the *consumer's* array, so any column not in props is dropped on
+the next prop identity change — which `HeroGrid` triggers on every render.
+
+So the engine gains a derived accessor, `grid.getColumns()`, cached and
+invalidated alongside the existing derived-rows cache:
+
+```
+getColumns() = [groupColumn?, ...options.columns.filter(not grouped)]
+```
+
+`options.columns` stays the consumer's truth, so every existing guard
+(`setColumnWidth`, `moveColumn`, `setColumnOrder`, `setColumnPinned`,
+`autosizeColumn`) keeps operating on real columns and needs no new special
+case. The React layer switches its column reads to `getColumns()`:
+`use-pretable.ts:381` (what the renderer plans from) and `391`, plus
+`pretable-surface.tsx:819-825` (`columnsInVisualOrder`) and `3763`/`3776`
+(width and pin maps).
+
+`groupColumnsByPin` (`create-grid-core.ts:143-187`) already seats a synthetic
+column at the head of its own pin region; `__pretable_group__` joins
+`ROW_SELECT_COLUMN_ID` in that check, ordered after row-select.
 
 Configurable via a new `groupColumn?: { header?: string; widthPx?: number;
 pinned?: "left" }` option. Defaults: `widthPx: 200`, header taken from the
@@ -58,7 +85,20 @@ SP1 made `moveFocus` step *over* group rows, and left an explicit hook for this
 sub-project (`create-grid-core.ts:47`). SP2 cashes it in: group rows become
 focusable and arrow navigation lands on them.
 
-Group-row focus is the address `{ rowId: groupId, columnId: "__pretable_group__" }`.
+**Vertical movement preserves the column.** Arrowing up from the `price` cell
+of a data row onto a group row lands on that group's `price` aggregate, not on
+the group column — column stability is what every grid and spreadsheet does,
+and snapping to column 0 would silently lose the user's place. So a group-row
+focus address is `{ rowId: groupId, columnId: <whatever column focus was in> }`,
+and the `Left`/`Right` behaviour below keys on *whether the focused column is
+the group column*, not on the row's kind alone.
+
+This means `moveFocus` (`create-grid-core.ts:566-710`) stops working in
+data-row *ordinals* and walks flat-list positions instead. `scanDataRows` and
+`dataRowAt` each have exactly one call site, both inside `moveFocus`, so the
+blast radius is contained — but the governing doc comment at
+`create-grid-core.ts:37-59` must be rewritten, not just amended.
+
 Arrow keys follow the ARIA APG treegrid rules, which compose exactly:
 
 | Key | Focus in the group column | Focus on a group's aggregate cell |
@@ -231,3 +271,13 @@ jsdom has no layout engine, so every positional claim above is a real-browser
 assertion or it is not verified — right-pin shipped measurably broken past 316
 green jsdom tests. Each keyboard test needs a negative control: it must fail
 when the binding alone is removed.
+
+### The existing suite that must invert
+
+`pretable-surface.test.tsx:5099-5255` (`describe("keyboard navigation over
+grouped rows")`) asserts `isGroupRowId(focus().rowId) === false` after Cmd+Home,
+End, Cmd+End, PageDown, PageUp, Tab and Shift+Tab. **Every one of those
+assertions is now wrong**, and rewriting them to assert the opposite is a
+required, deliberate part of this work — not incidental churn, and not
+something to delete. It is the clearest single record of the contract SP2
+changes.
