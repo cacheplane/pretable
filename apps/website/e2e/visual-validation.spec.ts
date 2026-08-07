@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { openDrawer } from "./helpers";
+
 const VIEWPORTS = [
   { name: "iphone-se", width: 320, height: 568 },
   { name: "iphone-14", width: 390, height: 844 },
@@ -45,10 +47,7 @@ for (const vp of VIEWPORTS) {
     });
 
     // Open drawer
-    await page.locator("[data-testid='drawer-handle']").click();
-    await expect(page.locator("html")).toHaveAttribute("data-drawer", "open", {
-      timeout: 2_000,
-    });
+    await openDrawer(page);
 
     // Wait for slide animation
     await page.waitForTimeout(500);
