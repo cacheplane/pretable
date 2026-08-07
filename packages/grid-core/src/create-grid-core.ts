@@ -36,73 +36,32 @@ import type {
 const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 
 /**
- * Group rows in v1: structure, not targets.
+ * Group rows: focus targets, never selection or edit targets.
  *
- * A group row occupies a slot in the flat `visibleRows` list, but it is not a
- * cell-addressable row — it has no `row`, and its aggregate cells are derived,
- * not editable. So the engine treats the *data* rows as the only navigable and
- * selectable population:
+ * A group row occupies a slot in the flat `visibleRows` list. It has no `row`
+ * and its aggregate cells are derived, so it can never be selected, edited, or
+ * pasted into — but it *is* reachable by keyboard, because a treegrid whose
+ * expand/collapse controls cannot be focused is not operable. The two
+ * populations therefore diverge:
  *
- * - `moveFocus` (and its page/edge variants) walks data rows only, stepping
- *   over any group row that sits between them. Focus therefore never lands on
- *   a group row by keyboard. Keyboard expand/collapse of a focused group row is
- *   sub-project 2, which is also where `setFocus` gains a deliberate group-row
- *   path — until then `setFocus` stays the unguarded imperative escape hatch.
+ * - `moveFocus` (and its page/edge variants) walks the FLAT list, so arrowing
+ *   down from the last row of one group lands on the next group's header
+ *   rather than stepping over it. Vertical movement preserves the focused
+ *   column, so focus lands on that group's aggregate cell for the column the
+ *   user was already in — see `PretableEngine.moveFocus`.
  * - `selectAll` spans the first through last *data* row, and
  *   `setSelectAllVisible` emits one full-row range per visible *data* row.
  *   Group rows sitting inside a range are covered positionally but are never
- *   reported as selected (`deriveSelectedRows` skips them).
+ *   reported as selected (`deriveSelectedRows` skips them). That is what
+ *   {@link isDataRow} still guards.
+ *
+ * Because focus can now sit on a row that a collapse removes, the expansion
+ * mutators re-anchor it — see {@link reanchorFocusAfterCollapse}.
  */
 function isDataRow<TRow extends PretableRow>(
   entry: PretableVisibleRow<TRow>,
 ): entry is PretableDataRow<TRow> {
   return entry.kind === "data";
-}
-
-/**
- * Total data rows, plus the ordinal of `rowId` among them (-1 if absent) — in
- * one pass with no allocation.
- *
- * `moveFocus` needs both on every arrow keypress. Doing it as
- * `visibleRows.filter(isDataRow)` churned an N-element array per keystroke for
- * a lookup that already walked the list anyway.
- */
-function scanDataRows<TRow extends PretableRow>(
-  rows: readonly PretableVisibleRow<TRow>[],
-  rowId: string | null,
-): { count: number; index: number } {
-  let count = 0;
-  let index = -1;
-
-  for (const entry of rows) {
-    if (!isDataRow(entry)) continue;
-    if (rowId !== null && entry.id === rowId) index = count;
-    count += 1;
-  }
-
-  return { count, index };
-}
-
-/**
- * The `ordinal`-th data row (0-based), skipping group rows. Counterpart to
- * {@link scanDataRows} — same reason it is a scan and not an index into a
- * filtered array.
- */
-function dataRowAt<TRow extends PretableRow>(
-  rows: readonly PretableVisibleRow<TRow>[],
-  ordinal: number,
-): PretableDataRow<TRow> | undefined {
-  if (ordinal < 0) return undefined;
-
-  let seen = 0;
-
-  for (const entry of rows) {
-    if (!isDataRow(entry)) continue;
-    if (seen === ordinal) return entry;
-    seen += 1;
-  }
-
-  return undefined;
 }
 
 function clampColumnWidth<TRow extends PretableRow>(
@@ -590,21 +549,26 @@ export function createGridCore<TRow extends PretableRow>(
       moveOptions: PretableMoveFocusOptions = {},
     ) {
       const snapshot = getSnapshot();
-      // Keyboard navigation walks the DATA rows only, so a group row sitting
-      // between two of them is stepped over rather than landed on — see
-      // `isDataRow`. Every row index below is a data-row *ordinal*, never a
-      // position in the flat list.
-      const { count: dataRowCount, index: currentRowIndex } = scanDataRows(
-        snapshot.visibleRows,
-        focus.rowId,
-      );
-      const columnList = options.columns;
+      // Keyboard navigation walks the FLAT visible list — group rows are
+      // landed on, not stepped over (see `isDataRow`). Every row index below
+      // is a position in `visibleRows`, never a data-row ordinal.
+      const rowList = snapshot.visibleRows;
+      const rowCount = rowList.length;
+      // The DERIVED column list, so that focus can reach the group column and
+      // cannot reach a column that grouping has hidden. Identical to
+      // `options.columns` — by identity — while ungrouped.
+      const columnList = getColumns();
 
-      if (dataRowCount === 0 || columnList.length === 0) {
+      if (rowCount === 0 || columnList.length === 0) {
         focus = { rowId: null, columnId: null };
         emit();
         return;
       }
+
+      const currentRowIndex =
+        focus.rowId === null
+          ? -1
+          : rowList.findIndex((entry) => entry.id === focus.rowId);
 
       const currentColumnIndex = focus.columnId
         ? columnList.findIndex((c) => c.id === focus.columnId)
@@ -618,7 +582,7 @@ export function createGridCore<TRow extends PretableRow>(
       let nextRowIndex = baseRowIndex;
       let nextColumnIndex = baseColumnIndex;
 
-      const pageStep = computePageStep(viewport, dataRowCount);
+      const pageStep = computePageStep(viewport, rowCount);
 
       // When focus is null on the relevant axis, the move lands on the edge
       // implied by the direction (down/right → 0; up/left → length-1) without
@@ -628,22 +592,22 @@ export function createGridCore<TRow extends PretableRow>(
           if (moveOptions.jumpToEdge) {
             nextRowIndex = 0;
           } else if (!hasRowFocus) {
-            nextRowIndex = dataRowCount - 1;
+            nextRowIndex = rowCount - 1;
           } else if (moveOptions.byPage) {
-            nextRowIndex = clamp(baseRowIndex - pageStep, 0, dataRowCount - 1);
+            nextRowIndex = clamp(baseRowIndex - pageStep, 0, rowCount - 1);
           } else {
-            nextRowIndex = clamp(baseRowIndex - 1, 0, dataRowCount - 1);
+            nextRowIndex = clamp(baseRowIndex - 1, 0, rowCount - 1);
           }
           break;
         case "down":
           if (moveOptions.jumpToEdge) {
-            nextRowIndex = dataRowCount - 1;
+            nextRowIndex = rowCount - 1;
           } else if (!hasRowFocus) {
             nextRowIndex = 0;
           } else if (moveOptions.byPage) {
-            nextRowIndex = clamp(baseRowIndex + pageStep, 0, dataRowCount - 1);
+            nextRowIndex = clamp(baseRowIndex + pageStep, 0, rowCount - 1);
           } else {
-            nextRowIndex = clamp(baseRowIndex + 1, 0, dataRowCount - 1);
+            nextRowIndex = clamp(baseRowIndex + 1, 0, rowCount - 1);
           }
           break;
         case "left":
@@ -674,7 +638,7 @@ export function createGridCore<TRow extends PretableRow>(
           break;
       }
 
-      const nextRow = dataRowAt(snapshot.visibleRows, nextRowIndex);
+      const nextRow = rowList[nextRowIndex];
       const nextColumn = columnList[nextColumnIndex];
 
       if (!nextRow || !nextColumn) {
@@ -1206,6 +1170,8 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
+      const before = getSnapshot().visibleRows;
+
       if (expanded === groupsDefaultExpanded) {
         const next = new Set(groupExpansionOverrides);
         next.delete(groupId);
@@ -1218,6 +1184,7 @@ export function createGridCore<TRow extends PretableRow>(
         );
       }
 
+      reanchorFocusAfterCollapse(before);
       emit();
     },
     expandAll() {
@@ -1302,9 +1269,60 @@ export function createGridCore<TRow extends PretableRow>(
       return;
     }
 
+    const before = getSnapshot().visibleRows;
+
     groupsDefaultExpanded = expanded;
     groupExpansionOverrides = new Set<string>();
+    reanchorFocusAfterCollapse(before);
     emit();
+  }
+
+  /**
+   * Keep focus on a row that still exists after an expansion change.
+   *
+   * Focus can sit on a data row that a collapse removes. Left dangling, the
+   * next arrow key finds no current position and reads as "arriving at the
+   * grid" — teleporting focus to row 0. So focus falls back to the nearest
+   * *preceding* group row that survived, which for a single collapse is
+   * exactly the group that was collapsed, and for `collapseAll` is that row's
+   * outermost visible ancestor. The column is preserved, so focus lands on
+   * that group's aggregate for the column the user was already in.
+   *
+   * Call AFTER mutating the expansion state and BEFORE `emit()`, passing the
+   * pre-mutation flat list. A focus id that was already absent from that list
+   * is left alone — this repairs collapses, not pre-existing dangles.
+   */
+  function reanchorFocusAfterCollapse(
+    before: readonly PretableVisibleRow<TRow>[],
+  ): void {
+    if (focus.rowId === null) return;
+
+    const fromIndex = before.findIndex((entry) => entry.id === focus.rowId);
+    if (fromIndex === -1) return;
+
+    // `cachedSnapshot` still holds the pre-mutation focus; the derived row
+    // cache keys on the expansion inputs and so re-derives on its own.
+    cachedSnapshot = null;
+    const after = getSnapshot().visibleRows;
+
+    if (after.some((entry) => entry.id === focus.rowId)) return;
+
+    const surviving = new Set(after.map((entry) => entry.id));
+    let nextRowId: string | null = null;
+
+    for (let i = fromIndex - 1; i >= 0; i -= 1) {
+      const candidate = before[i]!;
+      if (candidate.kind === "group" && surviving.has(candidate.id)) {
+        nextRowId = candidate.id;
+        break;
+      }
+    }
+
+    focus =
+      nextRowId === null
+        ? { rowId: null, columnId: null }
+        : { rowId: nextRowId, columnId: focus.columnId };
+    cachedSnapshot = null;
   }
 
   /**
@@ -1485,9 +1503,9 @@ function sameColumnLayout<TRow extends PretableRow>(
 
 function computePageStep(
   viewport: { height: number },
-  dataRowCount: number,
+  rowCount: number,
 ): number {
-  if (viewport.height <= 0 || dataRowCount === 0) {
+  if (viewport.height <= 0 || rowCount === 0) {
     return 1;
   }
 
@@ -1498,12 +1516,11 @@ function computePageStep(
     Math.floor((viewport.height * 0.8) / 32),
   );
 
-  // The step is in *data* rows, because that is the population `moveFocus`
-  // walks. Under grouping a page therefore covers more than one screen's worth
-  // of rendered rows, since the interleaved group headers do not count against
-  // it. Paging by rendered height while still landing on a data row is a
-  // sub-project 2 decision, once group rows actually occupy visual space.
-  return Math.min(estimatedRowsPerPage, dataRowCount);
+  // The step counts entries in the flat visible list — the same population
+  // `moveFocus` walks — so an interleaved group header costs a page step
+  // exactly as much as it costs a row of rendered height. Row heights are
+  // uniform across kinds, so the two stay in step.
+  return Math.min(estimatedRowsPerPage, rowCount);
 }
 
 function isFullRowRange(
