@@ -79,6 +79,7 @@ readonly options: PretableGridOptions<TRow>;
 | `setColumnWidth`        | `(columnId: string, width: number) => void`                     |
 | `setColumnPinned`       | `(columnId: string, pinned: "left" \| "right" \| null) => void` |
 | `moveColumn`            | `(columnId: string, toIndex: number) => void`                   |
+| `setColumnOrder`        | `(ids: readonly string[]) => void`                              |
 | `autosizeColumn`        | `(columnId: string, options?: AutosizeOptions) => void`         |
 | `autosizeColumns`       | `(options?: AutosizeOptions) => void`                           |
 | `resetColumnLayout`     | `() => void`                                                    |

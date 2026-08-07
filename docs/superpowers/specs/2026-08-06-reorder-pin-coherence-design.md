@@ -124,7 +124,24 @@ effect runs, whether or not the controlled slices agree with each other.
 
 `setColumnOrder` is public API; the api-extractor reports need regenerating.
 
-### 3. Region-aware drop index
+### 3. Region-aware drop index — SUPERSEDED by #208
+
+**Descoped 2026-08-07.** PR #208 ("reorder drops where the indicator points, at
+any scroll offset") landed the same fix independently and more thoroughly: a
+pure `column-drag-geometry.ts` with its own unit tests, plus a `planColumnLayout`
+in renderer-dom that re-plans over the whole engine column set rather than
+reconstructing from the render window. It also caught a defect this section
+missed — `moveColumn` removes before re-inserting, so a rightward drag landed one
+column past the indicator; its `dropIndex` now compensates for that shift.
+
+What shipped from this spec is sections 1 and 2 only; the geometry belongs to
+#208. The original reasoning is kept below for the record.
+
+One consequence for section 1: because `dropIndex` is now removal-adjusted, the
+cursor position that triggers a right pin is the trailing half of a right-pinned
+column, not its leading half. Verified in-browser and documented accordingly.
+
+### 3. Region-aware drop index (original, superseded)
 
 `computeDropIndex` becomes a hit test in visual space. Inputs gain `scrollLeft`,
 `viewportWidth`, `pinnedLeftWidth`, `pinnedRightWidth`:

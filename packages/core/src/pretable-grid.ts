@@ -68,6 +68,15 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
   autosizeColumns(options?: AutosizeOptions): void;
   setColumnWidth(columnId: string, width: number): void;
   moveColumn(columnId: string, toIndex: number): void;
+  /**
+   * Set the relative order of the columns. Ids that do not match a column are
+   * ignored, and columns absent from `ids` keep their current relative order at
+   * the end. Pin state is never read from `ids` nor changed: the result is
+   * regrouped into `[pinned "left"…, unpinned…, pinned "right"…]`, so an order
+   * that interleaves pinned and unpinned columns is normalised rather than
+   * honoured literally.
+   */
+  setColumnOrder(ids: readonly string[]): void;
   setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
   autosizeColumn(columnId: string, options?: AutosizeOptions): void;
   resetColumnLayout(): void;
