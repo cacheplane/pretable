@@ -458,6 +458,8 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     onCopy?: PretableSurfaceProps<TRow>["onCopy"];
     // (undocumented)
+    onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
+    // (undocumented)
     rows: TRow[];
     // (undocumented)
     rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
@@ -500,6 +502,15 @@ export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> 
 
 // @public
 export type PretableRow = Record<string, unknown>;
+
+// @public
+export interface PretableRowActivateInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    rowId: string;
+    rowIndex: number;
+}
 
 // @public
 export interface PretableSortEntry {
@@ -584,6 +595,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     onFocusChange?: (next: PretableFocusState) => void;
     // (undocumented)
     onGridReady?: (grid: PretableGrid<TRow>) => void;
+    onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
     // (undocumented)
     onSelectedRowIdChange?: (rowId: string | null) => void;
     // (undocumented)
@@ -731,7 +743,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:565:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:584:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

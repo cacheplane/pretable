@@ -128,7 +128,7 @@ export function planColumnLayout<TRow extends PretableRow>(
   return planColumns({
     columns: columns.map((col) => ({
       id: col.id,
-      width: getColumnWidth(col),
+      width: resolveColumnWidth(col),
       pinned: col.pinned,
     })),
     scrollLeft: 0,

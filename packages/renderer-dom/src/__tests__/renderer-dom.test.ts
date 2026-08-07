@@ -597,7 +597,10 @@ describe("renderer-dom", () => {
       render.rowMetrics.getOffsetForIndex(199) +
         render.rowMetrics.getHeight(199),
     ).toBe(render.rowMetrics.getTotalHeight());
-    expect(render.rowMetrics.getTotalHeight()).toBe(render.totalHeight);  test("planColumnLayout lays out every column, window or not", () => {
+    expect(render.rowMetrics.getTotalHeight()).toBe(render.totalHeight);
+  });
+
+  test("planColumnLayout lays out every column, window or not", () => {
     // Consumers that hit-test against the column layout (drag-to-reorder)
     // need an entry for columns outside the virtualization window too — and
     // widths resolved the same way the renderer resolves them, so an
@@ -642,5 +645,6 @@ describe("renderer-dom", () => {
       "note",
     ]);
     expect(layout.columns.map((c) => c.index)).toEqual([3, 0, 2, 1]);
-    expect(layout.columns.map((c) => c.left)).toEqual([0, 100, 200, 300]);  });
+    expect(layout.columns.map((c) => c.left)).toEqual([0, 100, 200, 300]);
+  });
 });

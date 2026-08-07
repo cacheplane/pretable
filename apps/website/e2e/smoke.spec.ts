@@ -577,7 +577,10 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
       '#column-layout [data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="note"]',
     )
     .evaluate((el) => el.getBoundingClientRect().left);
-  expect(weight.cellRight).toBeLessThanOrEqual(pinnedRightLeft + 2);test("showcase: column reorder drops where the indicator points, scrolled sideways", async ({
+  expect(weight.cellRight).toBeLessThanOrEqual(pinnedRightLeft + 2);
+});
+
+test("showcase: column reorder drops where the indicator points, scrolled sideways", async ({
   page,
 }) => {
   // The column-layout grid is wider than its container, so the header the user
@@ -649,4 +652,5 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
   // ...and the column lands on exactly that boundary.
   const after = await headerBoxes();
   const ids = after.map((b) => b.id);
-  expect(ids.indexOf("sector")).toBe(ids.indexOf("weight") - 1);});
+  expect(ids.indexOf("sector")).toBe(ids.indexOf("weight") - 1);
+});
