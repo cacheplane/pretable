@@ -5014,6 +5014,8 @@ describe("announcements count the drawn column order", () => {
     expect(
       view.container.querySelector("[data-pretable-live-region]"),
     ).toHaveTextContent("1 rows × 2 columns copied");
+  });
+});
 
 /**
  * Keyboard navigation with row grouping active.
