@@ -180,14 +180,15 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   ).current;
   /* eslint-enable react-hooks/refs */
 
-  // Create the grid once per columns/getRowId/autosize identity. Row data is
-  // reconciled in place via grid.setRows (below) rather than by recreating the
-  // grid, so selection and focus survive high-frequency row updates (streaming).
-  // NOTE: keep `columns` a stable reference for this to hold across updates.
+  // Create the grid once. Both `rows` and `columns` are reconciled in place
+  // (grid.setRows / grid.mergeColumnsFromProps, below) rather than by recreating
+  // it, so sort, filters, selection, focus, column layout, and an in-flight edit
+  // survive high-frequency row updates (streaming) — and survive an inline
+  // `columns={[...]}`, which is a new identity on every render.
   const grid = useMemo(
     () => createGrid({ columns, rows, getRowId: stableGetRowId, autosize }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows; getRowId via the stable wrapper above
-    [autosize, columns, stableGetRowId],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above
+    [autosize, stableGetRowId],
   );
 
   // Reconcile streamed row updates into the existing grid (instead of recreating
@@ -202,19 +203,15 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     }
   }, [grid, rows]);
 
-  const lastColumnIdsRef = useRef<readonly string[] | null>(null);
+  // Merge on every identity change, not only when the set of ids changes: a
+  // column's header, width, or accessor can change while the ids stay put.
+  // mergeColumnsFromProps only wakes subscribers when something observable
+  // moved, so this stays quiet for an inline array that is merely re-created.
+  const lastColumnsRef = useRef(columns);
   useLayoutEffect(() => {
-    const currentIds = columns.map((c) => c.id);
-    const prevIds = lastColumnIdsRef.current;
-    if (
-      prevIds === null ||
-      prevIds.length !== currentIds.length ||
-      prevIds.some((id, i) => id !== currentIds[i])
-    ) {
-      if (prevIds !== null) {
-        grid.mergeColumnsFromProps(columns);
-      }
-      lastColumnIdsRef.current = currentIds;
+    if (lastColumnsRef.current !== columns) {
+      lastColumnsRef.current = columns;
+      grid.mergeColumnsFromProps(columns);
     }
   }, [columns, grid]);
 

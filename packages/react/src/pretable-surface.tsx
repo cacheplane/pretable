@@ -40,6 +40,8 @@ import {
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
 
+import { planColumnLayout } from "@pretable-internal/renderer-dom";
+import { computeColumnDropTarget } from "./column-drag-geometry";
 import { measureRenderedRowHeight } from "./row-height";
 import {
   type PretableSurfaceState,
@@ -182,6 +184,20 @@ type PretableSurfaceBodyCellRenderInput<
   TRow extends PretableRow = PretableRow,
 > = PretableCellRenderInput<TRow>;
 
+/**
+ * Input passed to {@link PretableSurfaceProps.onRowActivate}.
+ *
+ * @public
+ */
+export interface PretableRowActivateInput<
+  TRow extends PretableRow = PretableRow,
+> {
+  row: TRow;
+  rowId: string;
+  /** Index within the currently visible (sorted, filtered) rows. */
+  rowIndex: number;
+}
+
 interface PretableSurfaceRowClassNameInput<
   TRow extends PretableRow = PretableRow,
 > {
@@ -269,6 +285,13 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    */
   state?: PretableSurfaceState | null;
   overscan?: number;
+  /**
+   * Called when the user activates a row — a plain click on it, or Enter/Space
+   * on the focused cell. This is "open the record this row stands for", which
+   * is a different intent from selecting cells: a modifier-click and a
+   * drag-select are range selection and do not activate.
+   */
+  onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
   onFocusChange?: (next: PretableFocusState) => void;
@@ -443,15 +466,20 @@ function HeaderContentImpl({
       </>
     );
   }
+  // Direction glyph rather than words: this default read
+  // "Newest"/"Oldest"/"Sort", which is date vocabulary applied to every column
+  // — wrong on a name or a number. The button already carries `aria-label`
+  // ("Sort <label>") and `aria-sort`, so the glyph is decorative, and the data
+  // attribute gives themes something to target.
   return (
     <>
       <span>{label}</span>
       <strong>
-        {sortDirection === "desc"
-          ? "Newest"
-          : sortDirection === "asc"
-            ? "Oldest"
-            : "Sort"}
+        {sortDirection ? (
+          <span aria-hidden="true" data-pretable-sort-indicator={sortDirection}>
+            {sortDirection === "asc" ? "▲" : "▼"}
+          </span>
+        ) : null}
         {sortPriority !== null ? (
           <span data-pretable-sort-priority="">{sortPriority}</span>
         ) : null}
@@ -499,6 +527,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   state,
   overscan = 6,
   onGridReady,
+  onRowActivate,
   onSelectedRowIdChange,
   onSelectionChange,
   onFocusChange,
@@ -558,6 +587,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     cursorX: number;
     cursorY: number;
     dropIndex: number;
+    // Content-space offset for the drop indicator, resolved from the same
+    // pointer event as `dropIndex` so the two can never disagree.
+    indicatorLeft: number;
     ghostWidth: number;
     ghostHeight: number;
     ghostHeader: string;
@@ -608,6 +640,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragAnchorRef = useRef<PretableCellAddress | null>(null);
+  // Set when a pointer-drag extended the selection past its origin cell. The
+  // click that ends such a drag is a range selection, not a row activation.
+  const dragExtendedRef = useRef(false);
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
   const lastCheckedRowAnchorRef = useRef<string | null>(null);
   const { headerHeight } = useResolvedHeights();
@@ -757,32 +792,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return map;
   }, [effectiveColumns]);
 
-  // Used by the reorder gesture to compute drop positions without DOM
-  // measurement (so it works in jsdom). Pulled from renderSnapshot.columns
-  // where available; columns outside the rendered window fall back to the
-  // accumulated width sum. Indexed by renderSnapshot column position
-  // (= engine order), NOT by effectiveColumns position.
-  const { columnLefts, columnWidths } = useMemo(() => {
-    const engineColumns = grid.options.columns;
-    const lefts = new Array<number>(engineColumns.length).fill(0);
-    const widths = new Array<number>(engineColumns.length).fill(0);
-    for (const planned of renderSnapshot.columns) {
-      lefts[planned.index] = planned.left;
-      widths[planned.index] = planned.width;
-    }
-    // Fill any gaps (off-screen columns) by accumulating widths in
-    // engine order.
-    let acc = 0;
-    for (let i = 0; i < engineColumns.length; i += 1) {
-      const col = engineColumns[i]!;
-      if (widths[i] === 0) {
-        widths[i] = col.widthPx ?? 0;
-        lefts[i] = acc;
-      }
-      acc = lefts[i]! + widths[i]!;
-    }
-    return { columnLefts: lefts, columnWidths: widths };
-  }, [renderSnapshot.columns, grid.options.columns]);
+  // Used by the reorder gesture to hit-test the cursor against the columns.
+  // renderSnapshot.columns only carries the virtualization window, and a
+  // scrolled-out column is still a legitimate drop target, so the layout is
+  // re-planned over the whole engine column set. Content order, and each
+  // entry's `index` is its engine index — what grid.moveColumn takes.
+  const dragColumnLayout = useMemo(
+    () => planColumnLayout(grid.options.columns).columns,
+    [grid.options.columns],
+  );
 
   // Column-plan input for scroll-into-view, in engine order and with the same
   // no-`widthPx` fallbacks the render pass applies (hence `resolveColumnWidth`
@@ -1506,6 +1524,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           bodyViewportHeight,
           columns: effectiveColumns,
           grid,
+          onRowActivate,
           onSelectedRowIdChange,
           selectFocusedRowOnArrowKey,
           tabBehavior,
@@ -1831,9 +1850,23 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       const dy = event.clientY - drag.startY;
                       const dist = Math.hypot(dx, dy);
 
-                      const surfaceRect =
-                        viewportRef.current?.getBoundingClientRect();
-                      const surfaceLeft = surfaceRect?.left ?? 0;
+                      // The scrollport is measured on every move rather than
+                      // read from state: scrollLeft changes without a React
+                      // render (wheel, trackpad, scrollbar), and a stale offset
+                      // would put the drop index a scroll-distance away from
+                      // the cursor.
+                      const scrollport = viewportRef.current;
+                      const target = computeColumnDropTarget({
+                        layout: dragColumnLayout,
+                        draggedIndex: grid.options.columns.findIndex(
+                          (c) => c.id === column.id,
+                        ),
+                        cursorX: event.clientX,
+                        viewportLeft:
+                          scrollport?.getBoundingClientRect().left ?? 0,
+                        viewportWidth: scrollport?.clientWidth ?? 0,
+                        scrollLeft: scrollport?.scrollLeft ?? 0,
+                      });
 
                       if (!drag.dragging) {
                         if (dist < REORDER_THRESHOLD_PX) return;
@@ -1851,13 +1884,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                           columnId: column.id,
                           cursorX: event.clientX,
                           cursorY: event.clientY,
-                          dropIndex: computeDropIndex(
-                            event.clientX,
-                            effectiveColumns.length,
-                            columnLefts,
-                            columnWidths,
-                            surfaceLeft,
-                          ),
+                          dropIndex: target.dropIndex,
+                          indicatorLeft: target.indicatorLeft,
                           ghostWidth: rect.width || effWidth,
                           ghostHeight: rect.height || headerHeight,
                           ghostHeader: String(column.header ?? column.id),
@@ -1871,13 +1899,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                               ...prev,
                               cursorX: event.clientX,
                               cursorY: event.clientY,
-                              dropIndex: computeDropIndex(
-                                event.clientX,
-                                effectiveColumns.length,
-                                columnLefts,
-                                columnWidths,
-                                surfaceLeft,
-                              ),
+                              dropIndex: target.dropIndex,
+                              indicatorLeft: target.indicatorLeft,
                             }
                           : null,
                       );
@@ -1920,12 +1943,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     },
                   }
                 : {})}
+              // Flex/center, matching `[data-pretable-header-cell]` in
+              // @pretable/ui. These are inline styles, so they beat the skin no
+              // matter how it is layered — a `grid` + `align-items: start`
+              // default here quietly overrode it, and stacked any multi-node
+              // `renderHeaderCell` into rows that overflow the header strip.
               style={{
-                alignItems: "start",
+                alignItems: "center",
                 border: 0,
                 borderRight: "1px solid rgba(255, 255, 255, 0.06)",
                 color: "inherit",
-                display: "grid",
+                display: "flex",
                 gap: 4,
                 textAlign: "left",
                 ...positionStyle,
@@ -2134,6 +2162,34 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             <div
               {...rowProps}
               aria-rowindex={rowIndex + 2}
+              onClick={(event) => {
+                // rowProps is spread above, so this would shadow a consumer's
+                // onClick — call it explicitly rather than dropping it.
+                rowProps.onClick?.(event);
+                if (!onRowActivate) return;
+                // Modifier clicks build cell ranges; so does the click that
+                // ends a drag. Neither means "open this row".
+                if (
+                  event.shiftKey ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.altKey
+                ) {
+                  return;
+                }
+                if (dragExtendedRef.current) {
+                  dragExtendedRef.current = false;
+                  return;
+                }
+                // A click inside a cell being edited belongs to the editor.
+                if (
+                  event.target instanceof Element &&
+                  event.target.closest("[data-pretable-edit-status]")
+                ) {
+                  return;
+                }
+                onRowActivate({ row, rowId: id, rowIndex });
+              }}
               aria-selected={isSelected ? "true" : undefined}
               className={getRowClassName?.({
                 isFocused,
@@ -2279,6 +2335,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
                       dragStartSelectionRef.current =
                         grid.getSnapshot().selection;
+                      dragExtendedRef.current = false;
                       dragAnchorRef.current = {
                         rowId: id,
                         columnId: column.id,
@@ -2302,6 +2359,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     }}
                     onPointerEnter={() => {
                       if (!dragAnchorRef.current) return;
+                      dragExtendedRef.current = true;
                       if (column.id === ROW_SELECT_COLUMN_ID) return;
                       const before = grid.getSnapshot();
                       const addr: PretableCellAddress = {
@@ -2529,11 +2587,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           <div
             data-pretable-reorder-drop-indicator=""
             style={{
-              left: computeDropIndicatorLeft(
-                reorderDrag.dropIndex,
-                columnLefts,
-                columnWidths,
-              ),
+              left: reorderDrag.indicatorLeft,
               height: reorderDrag.ghostHeight + bodyViewportHeight,
             }}
           />
@@ -2877,6 +2931,7 @@ interface SurfaceKeyDownContext<TRow extends PretableRow> {
   bodyViewportHeight: number;
   columns: PretableColumn<TRow>[];
   grid: PretableGrid<TRow>;
+  onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   selectFocusedRowOnArrowKey: boolean;
   tabBehavior: "wrap-rows" | "exit";
@@ -2890,6 +2945,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     bodyViewportHeight,
     columns: allColumns,
     grid,
+    onRowActivate,
     onSelectedRowIdChange,
     selectFocusedRowOnArrowKey,
     tabBehavior,
@@ -3074,6 +3130,17 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     if (focusedRowId) {
       replaceSelectionWithFullRow(grid, focusedRowId, columns);
       onSelectedRowIdChange?.(focusedRowId);
+      if (onRowActivate) {
+        const index = visibleRows.findIndex((r) => r.id === focusedRowId);
+        const activated = visibleRows[index];
+        if (activated) {
+          onRowActivate({
+            row: activated.row,
+            rowId: focusedRowId,
+            rowIndex: index,
+          });
+        }
+      }
       return true;
     }
     return false;
@@ -3117,37 +3184,4 @@ function pinnedMapsEqual(
     if (a[k] !== b[k]) return false;
   }
   return true;
-}
-
-function computeDropIndex(
-  cursorX: number,
-  columnCount: number,
-  columnLefts: number[],
-  columnWidths: number[],
-  surfaceLeft: number,
-): number {
-  // Cursor X is in viewport coordinates. Convert to surface-relative.
-  const x = cursorX - surfaceLeft;
-  for (let i = 0; i < columnCount; i += 1) {
-    const left = columnLefts[i] ?? 0;
-    const width = columnWidths[i] ?? 0;
-    const mid = left + width / 2;
-    if (x < mid) {
-      return i;
-    }
-  }
-  return Math.max(0, columnCount - 1);
-}
-
-function computeDropIndicatorLeft(
-  dropIndex: number,
-  columnLefts: number[],
-  columnWidths: number[],
-): number {
-  if (dropIndex >= columnLefts.length) {
-    const lastIdx = columnLefts.length - 1;
-    if (lastIdx < 0) return 0;
-    return (columnLefts[lastIdx] ?? 0) + (columnWidths[lastIdx] ?? 0);
-  }
-  return columnLefts[dropIndex] ?? 0;
 }

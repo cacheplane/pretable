@@ -112,6 +112,31 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
   };
 }
 
+/**
+ * Lay out every column, ignoring the virtualization window.
+ *
+ * The render snapshot only carries the columns it draws, so it cannot answer
+ * "where does column N sit?" for a column scrolled out of the window. Callers
+ * that hit-test against the layout — drag-to-reorder — need the whole run, and
+ * need it resolved by the same rules the renderer uses, so an unsized column is
+ * not laid out at zero width. Expressed as an infinitely wide viewport at
+ * scrollLeft 0, which makes planColumns' window walk consume every column.
+ */
+export function planColumnLayout<TRow extends PretableRow>(
+  columns: readonly PretableColumn<TRow>[],
+): ColumnPlan {
+  return planColumns({
+    columns: columns.map((col) => ({
+      id: col.id,
+      width: getColumnWidth(col),
+      pinned: col.pinned,
+    })),
+    scrollLeft: 0,
+    viewportWidth: Number.POSITIVE_INFINITY,
+    overscan: 0,
+  });
+}
+
 function estimateRowHeight<TRow extends PretableRow>(
   row: TRow,
   columns: PretableColumn<TRow>[],

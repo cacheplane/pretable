@@ -577,5 +577,76 @@ test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)"
       '#column-layout [data-pretable-row][data-pretable-row-id="NVDA"] [data-pretable-column-id="note"]',
     )
     .evaluate((el) => el.getBoundingClientRect().left);
-  expect(weight.cellRight).toBeLessThanOrEqual(pinnedRightLeft + 2);
-});
+  expect(weight.cellRight).toBeLessThanOrEqual(pinnedRightLeft + 2);test("showcase: column reorder drops where the indicator points, scrolled sideways", async ({
+  page,
+}) => {
+  // The column-layout grid is wider than its container, so the header the user
+  // grabs and the header they drop on are both offset from their content
+  // positions by scrollLeft. The drop index used to be computed from viewport
+  // coordinates but compared against content offsets, which put the indicator
+  // — and the drop — a scroll-distance away from the cursor.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.getByTestId("drawer-handle").click();
+  await page.locator("#column-layout").scrollIntoViewIfNeeded();
+
+  const layout = page.locator("#column-layout");
+  const viewport = layout.locator("[data-pretable-scroll-viewport]");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+
+  const headerBoxes = async () =>
+    await layout.locator("[data-pretable-header-cell]").evaluateAll((els) =>
+      els.map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          id: el.getAttribute("data-pretable-column-id") ?? "",
+          left: rect.left,
+          right: rect.right,
+        };
+      }),
+    );
+
+  // Scroll to the far right, where every scrollable column is displaced by the
+  // full scroll distance.
+  await viewport.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth - el.clientWidth;
+  });
+  await expect
+    .poll(async () => await viewport.evaluate((el) => el.scrollLeft))
+    .toBeGreaterThan(60);
+
+  const before = await headerBoxes();
+  const source = before.find((b) => b.id === "sector");
+  const targetCol = before.find((b) => b.id === "weight");
+  expect(source).toBeTruthy();
+  expect(targetCol).toBeTruthy();
+  if (!source || !targetCol) return;
+
+  // Drag "sector" onto the left half of "weight". WebKit only engages pointer
+  // capture once the pointer has traversed intermediate positions, so the drag
+  // moves in steps rather than a single jump.
+  const y = await layout
+    .locator('[data-pretable-header-cell][data-pretable-column-id="sector"]')
+    .evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    });
+  const cursorX = targetCol.left + 20;
+  await page.mouse.move((source.left + source.right) / 2, y);
+  await page.mouse.down();
+  await page.mouse.move((source.left + source.right) / 2 + 10, y, { steps: 3 });
+  await page.mouse.move(cursorX, y, { steps: 10 });
+
+  // The indicator marks the boundary the cursor is nearest — "weight"'s left
+  // edge — in screen coordinates, not a scroll-distance away from it.
+  const indicator = await layout
+    .locator("[data-pretable-reorder-drop-indicator]")
+    .boundingBox();
+  expect(indicator).not.toBeNull();
+  expect(Math.abs((indicator?.x ?? 0) - targetCol.left)).toBeLessThan(2);
+
+  await page.mouse.up();
+
+  // ...and the column lands on exactly that boundary.
+  const after = await headerBoxes();
+  const ids = after.map((b) => b.id);
+  expect(ids.indexOf("sector")).toBe(ids.indexOf("weight") - 1);});
