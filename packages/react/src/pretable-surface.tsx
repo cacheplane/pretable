@@ -91,7 +91,10 @@ import { findParentGroupRow, isGroupExpanded } from "./group-model";
 import { GroupRow } from "./group-row";
 import { GroupPanel } from "./group-panel/GroupPanel";
 import { hitTestGroupPanel } from "./group-panel/group-panel-hit-test";
-import { insertGroupLevel } from "./group-panel/group-panel-model";
+import {
+  insertGroupLevel,
+  removeGroupLevel,
+} from "./group-panel/group-panel-model";
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
 import { GROUP_PANEL_HEIGHT, ROW_SELECT_COLUMN_ID } from "./constants";
@@ -99,14 +102,13 @@ import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
 import { toBooleanCell } from "./editors/boolean-utils";
-import {
-  FilterMenu,
-  FunnelButton,
-  popoverStyle,
-  useFilterPopover,
-} from "./filter-menu";
+import { ColumnMenu } from "./column-menu/ColumnMenu";
+import { MenuButton } from "./column-menu/MenuButton";
+import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import { OverlayPortal } from "./overlay/OverlayPortal";
+import { popoverStyle } from "./overlay/popover-position";
+import { useHeaderPopover } from "./overlay/useHeaderPopover";
 import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
@@ -1270,12 +1272,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     };
   }, [handlePaste]);
 
-  // Built-in column filter menu: one open-state for the whole surface.
+  // Header popovers: one open-state for the whole surface, shared by the
+  // funnel's filter dialog and the ⋮ column menu, so opening either closes the
+  // other. See useHeaderPopover for why they cannot be independent.
   const {
-    openState: filterOpenState,
-    toggle: toggleFilter,
-    close: closeFilter,
-  } = useFilterPopover();
+    openState: headerPopover,
+    toggle: togglePopover,
+    close: closePopover,
+  } = useHeaderPopover();
+  const filterOpenState =
+    headerPopover?.kind === "filter" ? headerPopover : null;
+  const menuOpenState = headerPopover?.kind === "menu" ? headerPopover : null;
 
   // Pin state and pinned offsets are read from the PLANNED column
   // (`renderSnapshot.columns`), never from the prop column. The engine is the
@@ -2328,6 +2335,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
           const showResizeHandle = column.resizable !== false;
           const showFilterFunnel = column.filterable !== false;
+          // The menu's only items are grouping ones, so it is offered exactly
+          // where grouping is: with the panel enabled, on a real data column.
+          // The derived group column is excluded (grouping the tree column by
+          // itself is meaningless) and so is the row-select checkbox column.
+          const showColumnMenu =
+            groupPanelEnabled &&
+            column.id !== GROUP_COLUMN_ID &&
+            column.id !== ROW_SELECT_COLUMN_ID;
           const isDragging = dragLiveWidth?.columnId === column.id;
           // Both header overlays hang off one zero-width anchor parked on the
           // column's trailing edge — `pinnedRightEdge` for a right-pinned
@@ -2620,7 +2635,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 }
               />
             </button>,
-            showResizeHandle || showFilterFunnel ? (
+            showResizeHandle || showFilterFunnel || showColumnMenu ? (
               // Header overlays — the resize strip and the filter funnel — are
               // NOT nested in the header <button> (interactive controls inside
               // a button is invalid HTML). They live in a zero-width anchor
@@ -2752,7 +2767,34 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       label={label}
                       active={Boolean(snapshot.filters[column.id])}
                       open={filterOpenState?.columnId === column.id}
-                      onToggle={(id, anchor) => toggleFilter(id, anchor)}
+                      onToggle={(id, anchor) =>
+                        togglePopover("filter", id, anchor)
+                      }
+                    />
+                  </div>
+                ) : null}
+                {showColumnMenu ? (
+                  <div
+                    data-pretable-column-menu-slot=""
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      // Counted back from the trailing edge like the funnel:
+                      // 4px resize strip, then the 18px funnel when there is
+                      // one, then this.
+                      left: showFilterFunnel ? -40 : -22,
+                    }}
+                  >
+                    <MenuButton
+                      columnId={column.id}
+                      label={label}
+                      open={menuOpenState?.columnId === column.id}
+                      onToggle={(id, anchor) =>
+                        togglePopover("menu", id, anchor)
+                      }
                     />
                   </div>
                 ) : null}
@@ -3289,7 +3331,43 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   grid.setColumnFilter(id, filter);
                   onFiltersChange?.(grid.getSnapshot().filters);
                 }}
-                onClose={closeFilter}
+                onClose={closePopover}
+              />
+            );
+          })()
+        : null}
+      {menuOpenState
+        ? (() => {
+            const col = effectiveColumns.find(
+              (c) => c.id === menuOpenState.columnId,
+            );
+            if (!col) return null;
+            const level = snapshot.rowGroups.indexOf(menuOpenState.columnId);
+            return (
+              <ColumnMenu
+                key={menuOpenState.columnId}
+                anchor={menuOpenState.anchor}
+                columnId={menuOpenState.columnId}
+                grouped={level !== -1}
+                label={col.header ?? menuOpenState.columnId}
+                style={popoverStyle(menuOpenState.rect)}
+                onClose={closePopover}
+                onSelect={(action) => {
+                  // Through `applyRowGroups` like every other UI mutation —
+                  // one `setRowGroups`, then report the engine's sanitized
+                  // list. Both branches reuse the panel's list helpers so the
+                  // menu and the chips can never disagree about what
+                  // "append a level" or "drop a level" means.
+                  applyRowGroups(
+                    action === "group"
+                      ? insertGroupLevel(
+                          snapshot.rowGroups,
+                          menuOpenState.columnId,
+                          snapshot.rowGroups.length,
+                        )
+                      : removeGroupLevel(snapshot.rowGroups, level),
+                  );
+                }}
               />
             );
           })()
