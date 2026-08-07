@@ -2724,6 +2724,7 @@ interface RenderCopyHarnessOpts {
   onCopy?: (args: SerializeRangesArgs<GridRow>) => CopyPayload | null;
   copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
   rowSelectionColumn?: RowSelectionColumnConfig;
+  onGridReady?: (grid: PretableGrid<GridRow>) => void;
 }
 
 function renderCopyHarness(opts: RenderCopyHarnessOpts = {}) {
@@ -2735,6 +2736,7 @@ function renderCopyHarness(opts: RenderCopyHarnessOpts = {}) {
       copyWithHeaders={opts.copyWithHeaders}
       getRowId={(row: GridRow) => row.id}
       onCopy={opts.onCopy}
+      onGridReady={opts.onGridReady}
       overscan={0}
       rows={gridRows}
       rowSelectionColumn={opts.rowSelectionColumn}
@@ -2765,6 +2767,49 @@ function singleCellSelection(
 }
 
 describe("PretableSurface copy", () => {
+  // Drag-to-reorder moves columns in the engine; the `columns` prop keeps its
+  // declaration order. A copy has to serialize left to right as DRAWN, or the
+  // TSV's columns do not match the ones the user highlighted — and pasting it
+  // back lands the values in the wrong places.
+  it("serializes in the columns' visual order after a reorder", () => {
+    const copyToClipboard = vi.fn();
+    let captured: PretableGrid<GridRow> | null = null;
+    const view = renderCopyHarness({
+      initialState: {
+        focus: { rowId: "r1", columnId: "b" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r1",
+              endRowId: "r1",
+              startColumnId: "b",
+              endColumnId: "a",
+            },
+          ],
+          anchor: { rowId: "r1", columnId: "b" },
+        },
+      },
+      copyToClipboard,
+      onGridReady: (g) => {
+        captured = g;
+      },
+    });
+    // "a" to the end: the header row now reads b, c, a.
+    act(() => {
+      captured!.moveColumn("a", 2);
+    });
+    expect(
+      Array.from(
+        view.container.querySelectorAll("[data-pretable-header-cell]"),
+      ).map((el) => el.getAttribute("data-pretable-column-id")),
+    ).toEqual(["b", "c", "a"]);
+
+    // The range spans the whole row (leftmost "b" through rightmost "a"), so
+    // the TSV must read left to right as drawn: b1, c1, a1.
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+    expect(copyToClipboard).toHaveBeenCalledWith({ text: "b1\tc1\ta1" });
+  });
+
   it("Cmd+C with a single-cell selection writes a single-cell TSV", () => {
     const copyToClipboard = vi.fn();
     const view = renderCopyHarness({
