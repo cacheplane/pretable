@@ -3,11 +3,13 @@
   "baseBranch": "main",
   "changelog": [
     "@svitejs/changesets-changelog-github-compact",
-    { "repo": "cacheplane/pretable" }
+    {
+      "repo": "cacheplane/pretable"
+    }
   ],
   "access": "public",
   "commit": false,
-  "fixed": [["@pretable/core", "@pretable/react", "@cacheplane/json-stream"]],
+  "fixed": [["@pretable/core", "@pretable/react"]],
   "linked": [],
   "ignore": [],
   "updateInternalDependencies": "patch"

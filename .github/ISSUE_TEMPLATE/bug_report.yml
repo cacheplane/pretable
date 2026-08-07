@@ -17,7 +17,6 @@ body:
         - "@pretable/core"
         - "@pretable/ui"
         - "@pretable/stream-adapter"
-        - "@cacheplane/json-stream"
         - apps/website
         - apps/bench
         - CI or release
