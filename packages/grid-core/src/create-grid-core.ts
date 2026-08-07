@@ -6,6 +6,10 @@ import {
   type SourceRow,
 } from "./derived-rows";
 import { isFilterActive } from "./evaluate-filter";
+import {
+  addGroupExpansionOverride,
+  resolveGroupExpansionOverrideLimit,
+} from "./group-expansion";
 import type {
   ColumnFilter,
   PretableCellAddress,
@@ -237,8 +241,16 @@ export function createGridCore<TRow extends PretableRow>(
    * "the collapsed ids". Under the default (`true`) the two coincide; once
    * `collapseAll` flips the default, the very same set holds the EXPANDED ids.
    * Always replaced, never mutated, so identity works as a cache key.
+   *
+   * Bounded: it holds the `groupExpansionOverrideLimit` most recently *decided*
+   * ids, oldest decision evicted first. Not pruned against the current
+   * flattening — see `group-expansion.ts` for why that distinction is the whole
+   * point.
    */
   let groupExpansionOverrides: ReadonlySet<string> = new Set<string>();
+  const groupExpansionOverrideLimit = resolveGroupExpansionOverrideLimit(
+    options.groupExpansionOverrideLimit,
+  );
   let groupsDefaultExpanded = options.groupsDefaultExpanded ?? true;
   /**
    * Previous `aggregates` object per group id. When a recompute produces an
@@ -1172,15 +1184,18 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
-      const next = new Set(groupExpansionOverrides);
-
       if (expanded === groupsDefaultExpanded) {
+        const next = new Set(groupExpansionOverrides);
         next.delete(groupId);
+        groupExpansionOverrides = next;
       } else {
-        next.add(groupId);
+        groupExpansionOverrides = addGroupExpansionOverride(
+          groupExpansionOverrides,
+          groupId,
+          groupExpansionOverrideLimit,
+        );
       }
 
-      groupExpansionOverrides = next;
       emit();
     },
     expandAll() {

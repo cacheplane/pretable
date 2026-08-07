@@ -7,6 +7,11 @@ export {
 export { evaluateFilter, isFilterActive } from "./evaluate-filter";
 export { builtinAggregators, resolveAggregator } from "./aggregators";
 export {
+  DEFAULT_GROUP_EXPANSION_OVERRIDE_LIMIT,
+  addGroupExpansionOverride,
+  resolveGroupExpansionOverrideLimit,
+} from "./group-expansion";
+export {
   GROUP_ID_PREFIX,
   escapeGroupKey,
   isGroupId,

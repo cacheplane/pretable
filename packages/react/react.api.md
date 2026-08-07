@@ -437,6 +437,7 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     columns: PretableColumn_2<TRow>[];
     // (undocumented)
     getRowId?: (row: TRow, index: number) => string;
+    groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;
     // (undocumented)
     rows: TRow[];
