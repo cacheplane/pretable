@@ -101,8 +101,7 @@ grew to four kinds; ours will too when total/footer rows arrive in a later sub-p
 ```ts
 /** @public */
 export type PretableVisibleRow<TRow extends PretableRow = PretableRow> =
-  | PretableDataRow<TRow>
-  | PretableGroupRow;
+  PretableDataRow<TRow> | PretableGroupRow;
 
 export interface PretableDataRow<TRow> {
   kind: "data";

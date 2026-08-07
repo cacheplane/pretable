@@ -53,8 +53,7 @@ export interface DomRenderGroupRow extends DomRenderRowGeometry {
  * narrows the render row exactly as it narrows the visible row.
  */
 export type DomRenderRow<TRow extends PretableRow = PretableRow> =
-  | DomRenderDataRow<TRow>
-  | DomRenderGroupRow;
+  DomRenderDataRow<TRow> | DomRenderGroupRow;
 
 export interface DomRenderSnapshot<TRow extends PretableRow = PretableRow> {
   frame: PretableFrame<TRow>;

@@ -46,6 +46,10 @@ export function deriveVisibleRows<TRow extends PretableRow>(
   return buildGroupedRows<TRow>({
     rows: filtered,
     // Only worth carrying the pre-filter set when it can actually differ.
+    // Equal lengths mean the filter removed nothing, so `filtered` is a copy of
+    // `input.rows` in the same order and the two sort identically —
+    // `buildGroupedRows` sorts whichever it folds over, so skipping here does
+    // not change the fold order.
     allRows:
       input.aggregateFilteredRows && filtered.length !== input.rows.length
         ? input.rows

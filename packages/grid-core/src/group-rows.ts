@@ -50,9 +50,11 @@ export interface BuildGroupedRowsArgs<TRow extends PretableRow> {
   /** Post-filter rows, in source order. */
   rows: SourceRow<TRow>[];
   /**
-   * Pre-filter rows. Supplied when `aggregateFilteredRows` is on, so aggregates
-   * fold over rows the active filter hides. Group structure and `childCount`
-   * always come from `rows`.
+   * Pre-filter rows, in source order. Supplied when `aggregateFilteredRows` is
+   * on, so aggregates fold over rows the active filter hides. Sorted here
+   * before folding, so an order-sensitive aggregator sees the same order it
+   * would on the post-filter path. Group structure and `childCount` always come
+   * from `rows`.
    */
   allRows?: SourceRow<TRow>[];
   columns: PretableColumn<TRow>[];
@@ -96,7 +98,17 @@ export function buildGroupedRows<TRow extends PretableRow>(
   const aggregateColumns = resolveAggregateColumns(columns);
 
   if (aggregateColumns.length > 0) {
-    accumulate(allRows ?? sorted, levels, roots, aggregateColumns);
+    // `PretableAggregator` advertises order-sensitivity (it is what keeps
+    // `median` expressible), so the fold order has to be one thing, not two.
+    // It is always SORT order: the pre-filter set gets the same `sortRows`
+    // treatment as the post-filter one, rather than being folded in source
+    // order just because `aggregateFilteredRows` happens to be on.
+    accumulate(
+      allRows ? sortRows(allRows, columns, sort) : sorted,
+      levels,
+      roots,
+      aggregateColumns,
+    );
   }
 
   const out: PretableVisibleRow<TRow>[] = [];

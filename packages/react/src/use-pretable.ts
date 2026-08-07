@@ -62,8 +62,7 @@ export interface PretableRenderGroupRow extends PretableRenderRowGeometry {
  * @public
  */
 export type PretableRenderRow<TRow extends PretableRow = PretableRow> =
-  | PretableRenderDataRow<TRow>
-  | PretableRenderGroupRow;
+  PretableRenderDataRow<TRow> | PretableRenderGroupRow;
 
 /**
  * Layout-derived render snapshot returned by {@link usePretable}. Drives

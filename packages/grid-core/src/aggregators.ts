@@ -97,6 +97,10 @@ const count: PretableAggregator<CountAcc, number | null> = {
     return acc;
   },
   merge: (a, b) => ({ count: a.count + b.count }),
+  // `0` is arguably count's identity, unlike sum/min/max where "no numeric
+  // values seen" has no honest number. We still return `null`, for consistency
+  // with the other built-ins and because it is unreachable for a real group —
+  // a group only exists because at least one row landed in it.
   finalize: (acc) => (acc.count === 0 ? null : acc.count),
 };
 

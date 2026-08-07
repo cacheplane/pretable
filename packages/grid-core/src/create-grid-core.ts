@@ -54,6 +54,52 @@ function isDataRow<TRow extends PretableRow>(
   return entry.kind === "data";
 }
 
+/**
+ * Total data rows, plus the ordinal of `rowId` among them (-1 if absent) — in
+ * one pass with no allocation.
+ *
+ * `moveFocus` needs both on every arrow keypress. Doing it as
+ * `visibleRows.filter(isDataRow)` churned an N-element array per keystroke for
+ * a lookup that already walked the list anyway.
+ */
+function scanDataRows<TRow extends PretableRow>(
+  rows: readonly PretableVisibleRow<TRow>[],
+  rowId: string | null,
+): { count: number; index: number } {
+  let count = 0;
+  let index = -1;
+
+  for (const entry of rows) {
+    if (!isDataRow(entry)) continue;
+    if (rowId !== null && entry.id === rowId) index = count;
+    count += 1;
+  }
+
+  return { count, index };
+}
+
+/**
+ * The `ordinal`-th data row (0-based), skipping group rows. Counterpart to
+ * {@link scanDataRows} — same reason it is a scan and not an index into a
+ * filtered array.
+ */
+function dataRowAt<TRow extends PretableRow>(
+  rows: readonly PretableVisibleRow<TRow>[],
+  ordinal: number,
+): PretableDataRow<TRow> | undefined {
+  if (ordinal < 0) return undefined;
+
+  let seen = 0;
+
+  for (const entry of rows) {
+    if (!isDataRow(entry)) continue;
+    if (seen === ordinal) return entry;
+    seen += 1;
+  }
+
+  return undefined;
+}
+
 function clampColumnWidth<TRow extends PretableRow>(
   width: number,
   column: PretableColumn<TRow>,
@@ -512,20 +558,20 @@ export function createGridCore<TRow extends PretableRow>(
       const snapshot = getSnapshot();
       // Keyboard navigation walks the DATA rows only, so a group row sitting
       // between two of them is stepped over rather than landed on — see
-      // `isDataRow`. Everything below indexes into this array, never into the
-      // full flat list.
-      const visibleRows = snapshot.visibleRows.filter(isDataRow);
+      // `isDataRow`. Every row index below is a data-row *ordinal*, never a
+      // position in the flat list.
+      const { count: dataRowCount, index: currentRowIndex } = scanDataRows(
+        snapshot.visibleRows,
+        focus.rowId,
+      );
       const columnList = options.columns;
 
-      if (visibleRows.length === 0 || columnList.length === 0) {
+      if (dataRowCount === 0 || columnList.length === 0) {
         focus = { rowId: null, columnId: null };
         emit();
         return;
       }
 
-      const currentRowIndex = focus.rowId
-        ? visibleRows.findIndex((r) => r.id === focus.rowId)
-        : -1;
       const currentColumnIndex = focus.columnId
         ? columnList.findIndex((c) => c.id === focus.columnId)
         : -1;
@@ -538,7 +584,7 @@ export function createGridCore<TRow extends PretableRow>(
       let nextRowIndex = baseRowIndex;
       let nextColumnIndex = baseColumnIndex;
 
-      const pageStep = computePageStep(viewport, visibleRows);
+      const pageStep = computePageStep(viewport, dataRowCount);
 
       // When focus is null on the relevant axis, the move lands on the edge
       // implied by the direction (down/right → 0; up/left → length-1) without
@@ -548,30 +594,22 @@ export function createGridCore<TRow extends PretableRow>(
           if (moveOptions.jumpToEdge) {
             nextRowIndex = 0;
           } else if (!hasRowFocus) {
-            nextRowIndex = visibleRows.length - 1;
+            nextRowIndex = dataRowCount - 1;
           } else if (moveOptions.byPage) {
-            nextRowIndex = clamp(
-              baseRowIndex - pageStep,
-              0,
-              visibleRows.length - 1,
-            );
+            nextRowIndex = clamp(baseRowIndex - pageStep, 0, dataRowCount - 1);
           } else {
-            nextRowIndex = clamp(baseRowIndex - 1, 0, visibleRows.length - 1);
+            nextRowIndex = clamp(baseRowIndex - 1, 0, dataRowCount - 1);
           }
           break;
         case "down":
           if (moveOptions.jumpToEdge) {
-            nextRowIndex = visibleRows.length - 1;
+            nextRowIndex = dataRowCount - 1;
           } else if (!hasRowFocus) {
             nextRowIndex = 0;
           } else if (moveOptions.byPage) {
-            nextRowIndex = clamp(
-              baseRowIndex + pageStep,
-              0,
-              visibleRows.length - 1,
-            );
+            nextRowIndex = clamp(baseRowIndex + pageStep, 0, dataRowCount - 1);
           } else {
-            nextRowIndex = clamp(baseRowIndex + 1, 0, visibleRows.length - 1);
+            nextRowIndex = clamp(baseRowIndex + 1, 0, dataRowCount - 1);
           }
           break;
         case "left":
@@ -602,7 +640,7 @@ export function createGridCore<TRow extends PretableRow>(
           break;
       }
 
-      const nextRow = visibleRows[nextRowIndex];
+      const nextRow = dataRowAt(snapshot.visibleRows, nextRowIndex);
       const nextColumn = columnList[nextColumnIndex];
 
       if (!nextRow || !nextColumn) {
@@ -1374,11 +1412,11 @@ function sameColumnLayout<TRow extends PretableRow>(
   });
 }
 
-function computePageStep<TRow extends PretableRow>(
+function computePageStep(
   viewport: { height: number },
-  visibleRows: PretableVisibleRow<TRow>[],
+  dataRowCount: number,
 ): number {
-  if (viewport.height <= 0 || visibleRows.length === 0) {
+  if (viewport.height <= 0 || dataRowCount === 0) {
     return 1;
   }
 
@@ -1389,7 +1427,12 @@ function computePageStep<TRow extends PretableRow>(
     Math.floor((viewport.height * 0.8) / 32),
   );
 
-  return Math.min(estimatedRowsPerPage, visibleRows.length);
+  // The step is in *data* rows, because that is the population `moveFocus`
+  // walks. Under grouping a page therefore covers more than one screen's worth
+  // of rendered rows, since the interleaved group headers do not count against
+  // it. Paging by rendered height while still landing on a data row is a
+  // sub-project 2 decision, once group rows actually occupy visual space.
+  return Math.min(estimatedRowsPerPage, dataRowCount);
 }
 
 function isFullRowRange(

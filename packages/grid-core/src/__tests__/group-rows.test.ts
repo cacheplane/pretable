@@ -362,6 +362,48 @@ describe("aggregateFilteredRows (allRows)", () => {
     expect(entries.some((entry) => entry.id === SECTOR_ENERGY)).toBe(false);
     expect(groupById(entries, SECTOR_TECH).aggregates.qty).toBe(160);
   });
+
+  test("folds the pre-filter set in the same order as the post-filter one", () => {
+    // `PretableAggregator` advertises order-sensitivity, so the fold order has
+    // to be one thing. It used to be sort order without an active filter and
+    // *source* order with one, because `allRows` was handed over unsorted.
+    const trace: PretableColumn<Holding>[] = columns.map((column) =>
+      column.id === "qty"
+        ? {
+            ...column,
+            aggregate: {
+              init: () => [] as string[],
+              accumulate: (acc: string[], _value: unknown, row: Holding) => {
+                acc.push(row.id);
+                return acc;
+              },
+              merge: (a: string[], b: string[]) => [...a, ...b],
+              finalize: (acc: string[]) => acc.join(","),
+            },
+          }
+        : column,
+    );
+    const sort: PretableSortEntry[] = [{ columnId: "qty", direction: "desc" }];
+    const args = {
+      columns: trace,
+      rowGroups: ["sector"],
+      sort,
+      groupExpansionOverrides: new Set<string>(),
+      defaultExpanded: true,
+    };
+
+    const noFilter = buildGroupedRows<Holding>({ rows: SOURCE, ...args });
+    const withFilter = buildGroupedRows<Holding>({
+      rows: filtered,
+      allRows: SOURCE,
+      ...args,
+    });
+
+    expect(groupById(noFilter, SECTOR_TECH).aggregates.qty).toBe("h4,h3,h2,h1");
+    expect(groupById(withFilter, SECTOR_TECH).aggregates.qty).toBe(
+      "h4,h3,h2,h1",
+    );
+  });
 });
 
 describe("expand and collapse", () => {

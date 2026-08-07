@@ -293,8 +293,7 @@ export interface PretableGroupRow {
  * @public
  */
 export type PretableVisibleRow<TRow extends PretableRow = PretableRow> =
-  | PretableDataRow<TRow>
-  | PretableGroupRow;
+  PretableDataRow<TRow> | PretableGroupRow;
 
 /**
  * An aggregate function, defined as a monoid rather than as `(values) => result`.
@@ -329,12 +328,7 @@ export interface PretableAggregator<TAcc = unknown, TOut = unknown> {
  * @public
  */
 export type PretableAggregateSpec =
-  | "sum"
-  | "avg"
-  | "min"
-  | "max"
-  | "count"
-  | PretableAggregator;
+  "sum" | "avg" | "min" | "max" | "count" | PretableAggregator;
 
 /**
  * Read-only state observed via `PretableGrid.getSnapshot`.

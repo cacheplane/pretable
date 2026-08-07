@@ -11,8 +11,8 @@
 **Key facts (verified against `main`):**
 
 - `deriveVisibleRows({ columns, filters, rows: SourceRow<TRow>[], sort: PretableSortEntry[] })` in `packages/grid-core/src/derived-rows.ts` — filters, then `sortRows` (multi-key cascade with `sourceIndex` tie-break), then maps to `{id,row,sourceIndex}`.
-- `create-grid-core.ts`: `cachedVisibleRows` + `cachedDerivedSort` + `cachedDerivedFilters` (~:144-146); the cache hit is `cachedDerivedSort === sort && cachedDerivedFilters === filters` (~:1119-1122); **`setRows` and `applyTransaction` both null `cachedVisibleRows`**, so row changes always re-derive from source rows.
-- **67 references to `.visibleRows` across `packages/` + `apps/`** (excluding dist). Known hot spots: `renderer-dom/create-renderer.ts:55`, `create-grid-core.ts` (selectAll ~:284, clearSelection ~:427, moveFocus ~:546), `react/pretable-surface.tsx` (~:810, ~:887), `react/copy.ts`, `labeled-grid-surface.tsx`, bench adapters, website.
+- `create-grid-core.ts`: `cachedVisibleRows` + `cachedDerivedSort` + `cachedDerivedFilters` (~~:144-146); the cache hit is `cachedDerivedSort === sort && cachedDerivedFilters === filters` (~~:1119-1122); **`setRows` and `applyTransaction` both null `cachedVisibleRows`**, so row changes always re-derive from source rows.
+- **67 references to `.visibleRows` across `packages/` + `apps/`** (excluding dist). Known hot spots: `renderer-dom/create-renderer.ts:55`, `create-grid-core.ts` (selectAll ~:284, clearSelection ~:427, moveFocus ~~:546), `react/pretable-surface.tsx` (~~:810, ~:887), `react/copy.ts`, `labeled-grid-surface.tsx`, bench adapters, website.
 - Prior gotchas: run prettier on touched files; build react sequentially before `pnpm api` if a report looks stale; `pnpm -r test` occasionally flakes under parallel load in `apps/bench` and `pretable-surface.test.tsx` — re-run in isolation to confirm it isn't you.
 
 ---
