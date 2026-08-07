@@ -308,9 +308,7 @@ export type Phase1Entry =
   | {
       t: number;
       type:
-        | "response.created"
-        | "response.output_text.done"
-        | "response.completed";
+        "response.created" | "response.output_text.done" | "response.completed";
     };
 
 /**

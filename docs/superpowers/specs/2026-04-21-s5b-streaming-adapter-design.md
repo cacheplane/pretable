@@ -129,12 +129,7 @@ interface ObjectNode {
 }
 
 type AstNode =
-  | NullNode
-  | BoolNode
-  | NumberNode
-  | StringNode
-  | ArrayNode
-  | ObjectNode;
+  NullNode | BoolNode | NumberNode | StringNode | ArrayNode | ObjectNode;
 
 // --- Core Functions ---
 

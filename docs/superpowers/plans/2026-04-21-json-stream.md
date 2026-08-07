@@ -309,12 +309,7 @@ Expected: FAIL — cannot import types from `../index`.
 
 ```ts
 export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 export type NodeStatus = "complete" | "incomplete";
 
@@ -379,12 +374,7 @@ export interface ObjectNode {
 }
 
 export type AstNode =
-  | NullNode
-  | BoolNode
-  | NumberNode
-  | StringNode
-  | ArrayNode
-  | ObjectNode;
+  NullNode | BoolNode | NumberNode | StringNode | ArrayNode | ObjectNode;
 
 export type ParseMode =
   | "Value"

@@ -289,12 +289,12 @@ Demo components live in `apps/website/app/docs/examples/_components/` (private �
 
 ### MDX components (v0.0.x)
 
-| Component                | Source                                                                                 | Used by                                        |
+| Component | Source | Used by |
 | ------------------------ | -------------------------------------------------------------------------------------- | ---------------------------------------------- | ------ | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `<Callout type="note     | warn                                                                                   | deprecated                                     | new">` | reuse `apps/website/app/components/Callout.tsx` (already moved out of `@pretable/ui` in PR 1) | scattered across all pages — type signals (`warn` for "API in flux"), tip blocks, version notes |
-| `<CodeBlock>`            | reuse `apps/website/app/components/CodeBlock.tsx` (shiki-based async server component) | every recipe and example                       |
-| Plain markdown tables    | MDX native                                                                             | Token reference, prop tables in API Reference  |
-| Inline SVG (single file) | hand-rolled                                                                            | the architecture diagram on Theming → Overview |
+| `<CodeBlock>` | reuse `apps/website/app/components/CodeBlock.tsx` (shiki-based async server component) | every recipe and example |
+| Plain markdown tables | MDX native | Token reference, prop tables in API Reference |
+| Inline SVG (single file) | hand-rolled | the architecture diagram on Theming → Overview |
 
 **Deferred:** `<Tabs>`, `<LiveGrid>`, `<TokenTable>` filterable component, Mermaid diagram-as-code. Add if specific pages need them.
 

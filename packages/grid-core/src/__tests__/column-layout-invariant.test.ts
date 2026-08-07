@@ -39,9 +39,7 @@ describe("column array grouping invariant", () => {
           grid.moveColumn(id, to);
         } else if (op === 1) {
           const pin = [null, "left", "right"][Math.floor(rnd() * 3)] as
-            | null
-            | "left"
-            | "right";
+            null | "left" | "right";
           trace.push(`setColumnPinned(${id}, ${pin})`);
           grid.setColumnPinned(id, pin);
         } else {

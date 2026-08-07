@@ -19,9 +19,7 @@ import type { ApplyBenchUpdates } from "./bench-runtime";
 import type { BenchInteractionPlan } from "./interaction-plan";
 
 type CellRendererFlavor =
-  | "scroll-with-format"
-  | "scroll-with-render"
-  | "scroll-with-heavy-render";
+  "scroll-with-format" | "scroll-with-render" | "scroll-with-heavy-render";
 
 function isCellRendererScript(s: string): s is CellRendererFlavor {
   return (

@@ -509,9 +509,7 @@ Helper to detect cell-renderer scripts:
 function isCellRendererScript(
   s: string,
 ): s is
-  | "scroll-with-format"
-  | "scroll-with-render"
-  | "scroll-with-heavy-render" {
+  "scroll-with-format" | "scroll-with-render" | "scroll-with-heavy-render" {
   return (
     s === "scroll-with-format" ||
     s === "scroll-with-render" ||

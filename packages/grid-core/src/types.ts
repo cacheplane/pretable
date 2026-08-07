@@ -23,11 +23,7 @@ export type PretableSortDirection = "asc" | "desc" | null;
  * @public
  */
 export type PretableEditStatus =
-  | "checking"
-  | "editing"
-  | "validating"
-  | "saving"
-  | "error";
+  "checking" | "editing" | "validating" | "saving" | "error";
 
 /**
  * Input passed to a column's edit hooks (`editable`, `validate`, `parseEditValue`,
@@ -130,8 +126,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   reorderable?: boolean;
   // cell editing (v1):
   editable?:
-    | boolean
-    | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
+    boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
   validate?: (
     value: unknown,
     input: PretableEditInput<TRow>,

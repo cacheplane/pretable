@@ -54,11 +54,7 @@ Regenerate (required gate): `packages/core/core.api.md`, `packages/react/react.a
  * @public
  */
 export type PretableEditStatus =
-  | "checking"
-  | "editing"
-  | "validating"
-  | "saving"
-  | "error";
+  "checking" | "editing" | "validating" | "saving" | "error";
 
 /**
  * Input passed to a column's edit hooks (`editable`, `validate`, `parseEditValue`,

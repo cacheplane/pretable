@@ -23,9 +23,7 @@ const TICK_HZ = 8; // price updates per second across the book
 
 interface Phase1Event {
   type:
-    | "response.created"
-    | "response.output_text.delta"
-    | "response.completed";
+    "response.created" | "response.output_text.delta" | "response.completed";
   t: number;
   delta?: string;
 }
