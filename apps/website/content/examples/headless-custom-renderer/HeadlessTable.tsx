@@ -87,17 +87,22 @@ export function HeadlessTable() {
           </tr>
         </thead>
         <tbody>
-          {snapshot.visibleRows.map(({ id, row }) => (
-            <tr
-              key={id}
-              aria-selected={selectedIds.has(id)}
-              onClick={() => grid.toggleRowSelection(id)}
-            >
-              {columns.map((c) => (
-                <td key={c.id}>{String(row[c.id as keyof typeof row])}</td>
-              ))}
-            </tr>
-          ))}
+          {/* `visibleRows` is a union: a grouped grid interleaves group
+              headers among the data rows. This grid never groups, so narrow
+              to `kind === "data"` and render the source row. */}
+          {snapshot.visibleRows
+            .filter((entry) => entry.kind === "data")
+            .map(({ id, row }) => (
+              <tr
+                key={id}
+                aria-selected={selectedIds.has(id)}
+                onClick={() => grid.toggleRowSelection(id)}
+              >
+                {columns.map((c) => (
+                  <td key={c.id}>{String(row[c.id as keyof typeof row])}</td>
+                ))}
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>
