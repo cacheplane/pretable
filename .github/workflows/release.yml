@@ -54,6 +54,14 @@ jobs:
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          # Trusted publishing (OIDC) stays the intended path — npm prefers it
+          # whenever a package has a trusted publisher configured. Without this,
+          # any package that does NOT have one falls back to the `_authToken`
+          # setup-node wrote into .npmrc, which is its literal placeholder when
+          # no token is in the environment, so the publish PUT returns a bare
+          # 404. Supplying the existing secret makes that fallback real rather
+          # than a placeholder; where OIDC works it goes unused.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Enable auto-merge on Version PR
         if: steps.changesets.outputs.pullRequestNumber != '' && env.RELEASE_GITHUB_TOKEN != ''

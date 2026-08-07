@@ -19,4 +19,59 @@ describe("SelectionSection", () => {
     render(<SelectionSection summary={{ rows: 1, cols: 1 }} copied={true} />);
     expect(screen.getByText(/copied/i)).toBeInTheDocument();
   });
+  it("reports a paste even when nothing is selected", () => {
+    render(
+      <SelectionSection
+        summary={null}
+        copied={false}
+        paste={{
+          applied: 2,
+          total: 4,
+          rejected: 2,
+          clippedRows: 1,
+          clippedColumns: 0,
+        }}
+      />,
+    );
+    expect(screen.getByTestId("paste-summary")).toHaveTextContent(
+      "Pasted 2 of 4 · 2 rejected · 1 row past the end",
+    );
+  });
+  it("pluralizes the clipped counts and reports clipped columns", () => {
+    render(
+      <SelectionSection
+        summary={null}
+        copied={false}
+        paste={{
+          applied: 1,
+          total: 5,
+          rejected: 0,
+          clippedRows: 2,
+          clippedColumns: 3,
+        }}
+      />,
+    );
+    expect(screen.getByTestId("paste-summary")).toHaveTextContent(
+      "Pasted 1 of 5 · 2 rows past the end · 3 columns past the last column",
+    );
+  });
+  it("omits the rejected and clipped clauses when there are none", () => {
+    render(
+      <SelectionSection
+        summary={null}
+        copied={false}
+        paste={{
+          applied: 3,
+          total: 3,
+          rejected: 0,
+          clippedRows: 0,
+          clippedColumns: 0,
+        }}
+      />,
+    );
+    expect(screen.getByTestId("paste-summary")).toHaveTextContent(
+      "Pasted 3 of 3",
+    );
+    expect(screen.queryByText(/rejected/i)).not.toBeInTheDocument();
+  });
 });

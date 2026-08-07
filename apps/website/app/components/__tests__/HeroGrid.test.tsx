@@ -1,4 +1,10 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HeroGrid } from "../HeroGrid";
@@ -11,22 +17,50 @@ const renderHeroGrid = () =>
     </ControlStateProvider>,
   );
 
+const stubMatchMedia = (matches: boolean) => {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia;
+};
+
+/**
+ * jsdom ships neither `ClipboardEvent` nor `DataTransfer`, so a paste is a
+ * plain bubbling/cancelable `Event` carrying the slice of `clipboardData` the
+ * surface listener actually reads. The real browser path is covered by the
+ * Playwright smoke test.
+ */
+const firePaste = (target: Element, text: string) => {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", {
+    value: { getData: (type: string) => (type === "text/plain" ? text : "") },
+  });
+  fireEvent(target, event);
+};
+
+const visibleRowIds = (): string[] =>
+  [...document.querySelectorAll("[data-pretable-row]")].map(
+    (row) => row.getAttribute("data-pretable-row-id") ?? "",
+  );
+
+const qtyCell = (rowId: string) =>
+  document.querySelector(
+    `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="qty"]`,
+  ) as HTMLElement;
+
 describe("HeroGrid", () => {
   // The global setup stubs requestAnimationFrame as a no-op. We don't need
   // a real rAF here because we only test structural rendering, not streaming
   // behavior (covered by replay-engine.test.ts).
   const originalMatchMedia = window.matchMedia;
   beforeEach(() => {
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })) as unknown as typeof window.matchMedia;
+    stubMatchMedia(false);
   });
 
   afterEach(() => {
@@ -61,5 +95,72 @@ describe("HeroGrid", () => {
     expect(
       screen.getByRole("button", { name: "Filter Sector" }),
     ).toBeInTheDocument();
+  });
+
+  it("mentions paste in the legend", () => {
+    renderHeroGrid();
+    expect(screen.getByText(/⌘V paste into\s+Qty/i)).toBeInTheDocument();
+  });
+});
+
+describe("HeroGrid paste", () => {
+  // Reduced motion seeds the settled book synchronously, so rows exist without
+  // the (rAF-stubbed) replay engine ever ticking.
+  const originalMatchMedia = window.matchMedia;
+  beforeEach(() => {
+    stubMatchMedia(true);
+  });
+  afterEach(() => {
+    cleanup();
+    window.matchMedia = originalMatchMedia;
+    vi.restoreAllMocks();
+  });
+
+  it("applies a pasted qty block and reports the count in the sidebar", async () => {
+    renderHeroGrid();
+    // The book is ranked by weight, not roster order, so read the neighbour the
+    // block's second row will land on from the DOM rather than assuming it.
+    const order = visibleRowIds();
+    const anchorId = "XOM";
+    const nextId = order[order.indexOf(anchorId) + 1]!;
+    const anchor = qtyCell(anchorId);
+    expect(anchor).toBeTruthy();
+    fireEvent.pointerDown(anchor, { pointerId: 1, button: 0 });
+
+    // 2×1 block: the anchor row and the one below it. Both quantities are
+    // within the 10× sanity rule and keep the name under the 7% guardrail.
+    firePaste(anchor, "23000\n5300");
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("paste-summary")).toHaveTextContent(
+          "Pasted 2 of 2",
+        );
+      },
+      { timeout: 3000 },
+    );
+    expect(qtyCell(anchorId)).toHaveTextContent("23,000");
+    expect(qtyCell(nextId)).toHaveTextContent("5,300");
+  });
+
+  it("reports cells the grid refused (Last is not editable)", async () => {
+    renderHeroGrid();
+    const anchor = qtyCell("JPM");
+    expect(anchor).toBeTruthy();
+    fireEvent.pointerDown(anchor, { pointerId: 1, button: 0 });
+
+    // Two columns wide: qty takes the first field, the non-editable Last column
+    // consumes the second and comes back rejected.
+    firePaste(anchor, "12500\t999");
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("paste-summary")).toHaveTextContent(
+          "Pasted 1 of 2 · 1 rejected",
+        );
+      },
+      { timeout: 3000 },
+    );
+    expect(qtyCell("JPM")).toHaveTextContent("12,500");
   });
 });

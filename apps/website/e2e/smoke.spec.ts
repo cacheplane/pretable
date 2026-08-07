@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 
-import { openDrawer, waitForGridReady } from "./helpers";
+import {
+  dragResizeHandle,
+  openDrawer,
+  openFilterMenu,
+  waitForGridReady,
+  waitForStablePosition,
+} from "./helpers";
 
 test("landing renders grid + control bar + drawer handle; drawer opens", async ({
   page,
@@ -30,6 +36,12 @@ test("landing renders grid + control bar + drawer handle; drawer opens", async (
     waitUntil: "domcontentloaded",
   });
   expect(filteringDocs?.status()).toBe(200);
+
+  // ...as does /docs/grid/paste
+  const pasteDocs = await page.goto("/docs/grid/paste", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(pasteDocs?.status()).toBe(200);
 });
 
 test("docs brand link returns to drawer when it was last open", async ({
@@ -119,17 +131,15 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await waitForGridReady(page);
+  // No separate "grid is up" wait: `openFilterMenu` gates on
+  // `data-pretable-hydrated` itself, and this test's first grid interaction is
+  // the Symbol funnel.
 
   // --- Filter via the built-in header funnels ---
   // ([data-pretable-row] counts only virtualized/visible rows, so assert
   //  deterministic filtered counts and ">5" for the unfiltered view.)
-  // Symbol funnel → contains NVDA → 1 row. The funnel is opacity-0 until the
-  // header row is hovered; opacity does not block Playwright actionability,
-  // but hover first to mirror real usage (and dodge engine flakiness).
-  await page.locator("[data-pretable-header-row]").first().hover();
-  await page.getByRole("button", { name: "Filter Symbol" }).click();
-  const symbolDialog = page.getByRole("dialog", { name: "Filter Symbol" });
+  // Symbol funnel → contains NVDA → 1 row.
+  const symbolDialog = await openFilterMenu(page, "Symbol");
   await symbolDialog.locator("[data-pretable-filter-value]").fill("NVDA");
   await expect(page.locator("[data-pretable-row]")).toHaveCount(1); // auto-waits past the ~200ms live-apply debounce
   // Clear restores the book.
@@ -141,8 +151,7 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   await expect(symbolDialog).toBeHidden();
 
   // Sector funnel → enum checklist (auto-derived) → Energy → 2 rows.
-  await page.getByRole("button", { name: "Filter Sector" }).click();
-  const sectorDialog = page.getByRole("dialog", { name: "Filter Sector" });
+  const sectorDialog = await openFilterMenu(page, "Sector");
   await sectorDialog
     .locator("[data-pretable-filter-set]")
     .getByRole("checkbox", { name: "Energy" })
@@ -212,9 +221,150 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   await page.keyboard.press(
     process.platform === "darwin" ? "Meta+c" : "Control+c",
   );
-  await expect(page.getByText(/Copied/i)).toBeVisible();
+  // Scope to the Selection panel: the toast renders as a nested span inside
+  // the "… selected · ⌘C to copy" span, so a bare getByText(/Copied/) matches
+  // both the child and its parent and trips strict mode.
+  await expect(page.getByRole("region", { name: "Selection" })).toContainText(
+    /Copied/i,
+  );
   await page.waitForTimeout(2000); // ticks
   await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
+});
+
+test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async ({
+  page,
+  context,
+  browserName,
+}) => {
+  // The tail of this test waits for the replay to tick XOM specifically, and
+  // the recording only patches that symbol six times per 27s loop.
+  test.setTimeout(60_000);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+
+  // Filter to Energy first: the book is ranked by live weight, so an unfiltered
+  // "the row below XOM" is not stable under streaming. Energy is exactly
+  // {XOM, CVX} and their weights are far enough apart that the order holds.
+  // (`openFilterMenu` also gates on `data-pretable-hydrated`, which this test
+  // needs anyway before it clicks a cell to move focus into the grid.)
+  const sectorDialog = await openFilterMenu(page, "Sector");
+  await sectorDialog
+    .locator("[data-pretable-filter-set]")
+    .getByRole("checkbox", { name: "Energy" })
+    .check();
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(2); // XOM, CVX
+  // Close the menu: its value input would otherwise hold focus, and a paste
+  // into an input belongs to that input, not to the grid.
+  await page.keyboard.press("Escape");
+  await expect(sectorDialog).toBeHidden();
+
+  const qty = (rowId: string) =>
+    page.locator(
+      `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-column-id="qty"]`,
+    );
+
+  // CRITICAL: a paste event is delivered to document.activeElement, so focus
+  // has to be inside the grid before the keystroke. Clicking a cell moves the
+  // roving tabindex onto it.
+  await qty("XOM").click();
+  await expect(qty("XOM")).toBeFocused();
+
+  // 2 rows × 2 cols anchored on Qty: the first column lands on Qty (editable),
+  // the second on Last (not editable) and comes back rejected.
+  const tsv = "23000\t999\n12800\t888";
+
+  if (browserName === "chromium") {
+    // Real OS-clipboard path: write the text with the page's own Clipboard API,
+    // then press the paste shortcut. Playwright maps it to Chromium's editing
+    // command, so the browser produces a genuine `paste` event.
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.evaluate(
+      async (text) => await navigator.clipboard.writeText(text),
+      tsv,
+    );
+    await page.keyboard.press(
+      process.platform === "darwin" ? "Meta+v" : "Control+v",
+    );
+  } else {
+    // WebKit exposes no clipboard permission to Playwright and refuses
+    // programmatic clipboard writes outside a user gesture, so this engine
+    // dispatches a synthetic `paste` event carrying the same text. That still
+    // exercises the surface's real listener and the whole gate/apply pipeline —
+    // it is NOT coverage of the OS clipboard or of the ⌘V key path.
+    await page.evaluate((text) => {
+      const target = document.activeElement ?? document.body;
+      let event: Event;
+      try {
+        const data = new DataTransfer();
+        data.setData("text/plain", text);
+        event = new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        });
+      } catch {
+        event = new Event("paste", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "clipboardData", {
+          value: { getData: () => text },
+        });
+      }
+      target.dispatchEvent(event);
+    }, tsv);
+  }
+
+  // The pasted quantities actually land in the cells...
+  await expect(qty("XOM")).toContainText("23,000", { timeout: 10_000 });
+  await expect(qty("CVX")).toContainText("12,800");
+  // ...and the non-editable Last column's two cells come back rejected.
+  await expect(page.getByTestId("paste-summary")).toHaveText(
+    /Pasted 2 of 4 · 2 rejected/,
+  );
+
+  // Pasted values survive streaming ticks — checked on a DERIVED column, which
+  // is the only place the check has teeth. Every tick patch in the recording
+  // carries {id,last,mktValue,dayPnl,dayPnlPct} and never `qty`, so re-reading
+  // the Qty cell here would pass even with the edited-qty override map deleted.
+  // What the override map actually does is recompute Mkt Val from the NEW share
+  // count: a tick's own mktValue was computed from XOM's ORIGINAL 22,000 shares
+  // (~$2.46M), while the pasted 23,000 shares is ~$2.58M. So: wait for a real
+  // tick to land on XOM (its price changes), then check Mkt Val against the
+  // price the grid is actually showing rather than a hardcoded one.
+  const cellText = async (rowId: string, columnId: string): Promise<string> =>
+    (
+      await page
+        .locator(
+          `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-column-id="${columnId}"]`,
+        )
+        .innerText()
+    ).trim();
+
+  const priceBeforeTick = await cellText("XOM", "last");
+  await expect
+    .poll(() => cellText("XOM", "last"), { timeout: 20_000 })
+    .not.toBe(priceBeforeTick);
+
+  // One evaluate so price and value come from the same rendered commit.
+  const shown = await page.evaluate(() => {
+    const row = document.querySelector(
+      '[data-pretable-row][data-pretable-row-id="XOM"]',
+    );
+    const text = (id: string) =>
+      (
+        row?.querySelector(`[data-pretable-column-id="${id}"]`) as HTMLElement
+      )?.innerText.trim() ?? "";
+    return { last: text("last"), mktValue: text("mktValue") };
+  });
+  const price = Number.parseFloat(shown.last);
+  expect(Number.isFinite(price)).toBe(true);
+  const compactUsd = (shares: number) =>
+    `$${((shares * price) / 1_000_000).toFixed(1)}M`;
+  const live = compactUsd(23_000); // pasted share count
+  const stale = compactUsd(22_000); // the book's original share count
+  // Guard: if the two formatted the same the assertion below would prove
+  // nothing. Across the recording's XOM price range they never do.
+  expect(live).not.toBe(stale);
+  expect(shown.mktValue).toBe(live);
+  // And the qty itself is of course still there.
+  await expect(qty("XOM")).toContainText("23,000");
 });
 
 test("showcase: scale grid virtualizes; column layout resizes + resets", async ({
@@ -272,25 +422,18 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
     '[data-pretable-header-cell][data-pretable-column-id="symbol"]',
   );
   await expect(symbolHeader).toBeVisible();
-  const widthBefore = (await symbolHeader.boundingBox())?.width ?? 0;
 
-  // Drag the symbol column's resize handle to the right by ~80px. The handle
-  // listens for pointer events and uses setPointerCapture; WebKit only engages
-  // capture once the pointer actually traverses intermediate positions, so the
-  // drag moves in steps (a short hop, then the full distance) rather than a
-  // single jump.
   const handle = layout.locator(
     '[data-pretable-resize-handle][data-pretable-column-id="symbol"]',
   );
-  const hb = await handle.boundingBox();
-  expect(hb).not.toBeNull();
-  if (hb) {
-    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(hb.x + 20, hb.y + hb.height / 2, { steps: 4 });
-    await page.mouse.move(hb.x + 80, hb.y + hb.height / 2, { steps: 8 });
-    await page.mouse.up();
-  }
+  // Measure only once the section has stopped moving, so `widthBefore` and the
+  // drag below describe the same layout.
+  await waitForStablePosition(handle);
+  const widthBefore = (await symbolHeader.boundingBox())?.width ?? 0;
+  expect(widthBefore).toBeGreaterThan(0);
+
+  // Drag the symbol column's resize handle to the right by 80px.
+  await dragResizeHandle(handle, 80);
   await expect
     .poll(async () => (await symbolHeader.boundingBox())?.width ?? 0)
     .toBeGreaterThan(widthBefore + 20);
