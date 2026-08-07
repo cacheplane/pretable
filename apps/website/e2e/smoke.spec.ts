@@ -128,6 +128,65 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
   await expect(bodyCheckbox).toHaveAttribute("aria-checked", "true");
   await page.waitForTimeout(2000); // several stream ticks
   await expect(bodyCheckbox).toHaveAttribute("aria-checked", "true");
+
+  // --- The DOM contract the docs promise for this synthetic column ---
+  // /docs/grid/cell-renderers#telling-it-apart-in-the-dom tells readers how to
+  // include or exclude the checkbox column in a selector. That advice is only
+  // as good as the attributes it rests on, and the trap it warns about is an
+  // asymmetry easy to "tidy" away by accident, so assert it here.
+  const dom = await page
+    .locator("[data-pretable-scroll-viewport]")
+    .first()
+    .evaluate((grid) => {
+      const count = (sel: string) => grid.querySelectorAll(sel).length;
+      return {
+        firstHeaderIsRowSelect: grid
+          .querySelector("[data-pretable-header-cell]")!
+          .hasAttribute("data-pretable-row-select-header"),
+        firstCellIsRowSelect:
+          grid
+            .querySelector("[data-pretable-cell]")!
+            .getAttribute("data-pretable-row-select-cell") === "true",
+        rsHeaderColumnId: grid
+          .querySelector(
+            "[data-pretable-header-cell][data-pretable-row-select-header]",
+          )!
+          .getAttribute("data-pretable-column-id"),
+        rsCellColumnId: grid
+          .querySelector(
+            '[data-pretable-cell][data-pretable-row-select-cell="true"]',
+          )!
+          .getAttribute("data-pretable-column-id"),
+        allCells: count("[data-pretable-cell]"),
+        cellsByColumnId: count("[data-pretable-cell][data-pretable-column-id]"),
+        cellsExcluded: count(
+          "[data-pretable-cell]:not([data-pretable-row-select-cell])",
+        ),
+        rsCells: count(
+          '[data-pretable-cell][data-pretable-row-select-cell="true"]',
+        ),
+        allHeaders: count("[data-pretable-header-cell]"),
+        headersByColumnId: count(
+          "[data-pretable-header-cell][data-pretable-column-id]",
+        ),
+      };
+    });
+
+  // Left-pinned, so it is the FIRST match for both generic selectors.
+  expect(dom.firstHeaderIsRowSelect).toBe(true);
+  expect(dom.firstCellIsRowSelect).toBe(true);
+
+  // The asymmetry: the header omits the column id, the cells publish it.
+  expect(dom.rsHeaderColumnId).toBeNull();
+  expect(dom.rsCellColumnId).toBe("__pretable_row_select__");
+
+  // Which is why [data-pretable-column-id] narrows headers but not cells...
+  expect(dom.headersByColumnId).toBe(dom.allHeaders - 1);
+  expect(dom.cellsByColumnId).toBe(dom.allCells);
+
+  // ...and :not([data-pretable-row-select-cell]) is the one that excludes them.
+  expect(dom.rsCells).toBeGreaterThan(0);
+  expect(dom.cellsExcluded).toBe(dom.allCells - dom.rsCells);
 });
 
 test("cockpit: filter, edit (guardrail + success), and select+copy under streaming", async ({
