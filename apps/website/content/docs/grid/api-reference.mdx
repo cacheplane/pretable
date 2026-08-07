@@ -159,13 +159,19 @@ interface PretableSurfaceMessages {
     columnCount: number;
   }) => string;
   copyFailedAnnouncement?: () => string;
+  pasteAnnouncement?: (args: {
+    cellCount: number; // cells actually written
+    rejectedCount: number; // cells refused by editable/validate
+    clipped: { rows: number; columns: number }; // PastePayload.clipped
+  }) => string;
+  pasteFailedAnnouncement?: () => string;
 }
 ```
 
 - `PretableSortEntry` — one entry in the ordered sort list; index in the list = priority, `[]` = unsorted. See [Sorting](/docs/grid/sorting).
 - `PretableSurfaceState` — the slice-based controlled-state shape passed via the surface's `state` prop. Each slice is independently controlled.
 - `RowSelectionColumnConfig` — opts for the built-in checkbox column. Pass to `<PretableSurface>`'s `rowSelectionColumn` prop.
-- `PretableSurfaceMessages` — overrides for the polite `aria-live` announcements (select-all and copy success/failure).
+- `PretableSurfaceMessages` — overrides for the polite `aria-live` announcements (select-all, and copy/paste success/failure). `pasteAnnouncement` is one function rather than one per outcome because a clean, partial and wholly rejected paste are the same sentence at different counts, and clipping is orthogonal to all three. See [Paste](/docs/grid/paste#announcements).
 
 ## Copy types
 
