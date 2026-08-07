@@ -709,6 +709,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
 
+  // The columns in the order they are DRAWN, which is the engine's order —
+  // drag-to-reorder moves columns there and leaves the `columns` prop in
+  // declaration order. Anything that walks columns left to right (clipboard
+  // copy's serialization, paste's geometry) has to read this rather than the
+  // prop, or a reordered grid serializes and lands cells in an order the user
+  // never sees. Definitions still come from the props, looked up by id — the
+  // same split the header row uses for pin state.
+  const columnsInVisualOrder = useMemo(() => {
+    const byId = new Map(effectiveColumns.map((column) => [column.id, column]));
+    return grid.options.columns.flatMap((engineColumn) => {
+      const definition = byId.get(engineColumn.id);
+      return definition ? [definition] : [];
+    });
+  }, [effectiveColumns, grid.options.columns]);
+
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the
   // closures it captures would otherwise go stale across renders. Keep refs to
   // the latest columns/rows/onCellEdit and read them through stable wrappers so
@@ -716,11 +731,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // layout effect (every render, no deps) — they only need to be current before
   // event handlers / async resolutions read them, which happen post-commit.
   const editColumnsRef = useRef(effectiveColumns);
+  const visualOrderColumnsRef = useRef(columnsInVisualOrder);
   const editVisibleRowsRef = useRef(snapshot.visibleRows);
   const onCellEditRef = useRef(onCellEdit);
   const onPasteRef = useRef(onPaste);
   useLayoutEffect(() => {
     editColumnsRef.current = effectiveColumns;
+    visualOrderColumnsRef.current = columnsInVisualOrder;
     editVisibleRowsRef.current = snapshot.visibleRows;
     onCellEditRef.current = onCellEdit;
     onPasteRef.current = onPaste;
@@ -834,21 +851,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       if (matrix.length === 0) return;
 
       const snap = grid.getSnapshot();
-      // Paste geometry walks columns left to right, so it has to walk them in
-      // the order they are DRAWN. Drag-to-reorder moves columns in the engine
-      // while the `columns` prop keeps its declaration order, so the prop is
-      // the wrong list to count across: anchored on a column the user dragged
-      // rightward, the block would run off the end of the prop array (cells
-      // silently clipped) or land in columns to the left of where they aimed.
-      // Engine order is the drawn order — the same source `renderSnapshot`
-      // reads — with the definitions still coming from the props.
-      const columnDefsById = new Map(
-        editColumnsRef.current.map((column) => [column.id, column]),
-      );
-      const columns = grid.options.columns.flatMap((engineColumn) => {
-        const def = columnDefsById.get(engineColumn.id);
-        return def ? [def] : [];
-      });
+      // Paste geometry walks columns left to right, so it walks the DRAWN
+      // order: anchored on a column the user dragged rightward, the prop order
+      // would run the block off its end (cells silently clipped) or land them
+      // in columns to the left of where the user aimed.
+      const columns = visualOrderColumnsRef.current;
       const anchored = resolvePasteAnchor(
         snap.selection.ranges,
         snap.focus,
@@ -1654,7 +1661,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           const args: SerializeRangesArgs<TRow> = {
             ranges: snap.selection.ranges,
             visibleRows: snap.visibleRows,
-            columns: effectiveColumns,
+            // Drawn order, not the prop's: a range is bounded by the columns
+            // the user highlighted, and resolving those bounds against the
+            // declaration order after a reorder both reorders the TSV and
+            // changes which columns fall inside the range.
+            columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
           };
           const payload = onCopy ? onCopy(args) : serializeRangesAsTsv(args);
