@@ -177,9 +177,34 @@ default**.
 - A group that briefly empties and returns **keeps** the user's collapsed state, because
   the id survives independently of any node. ag-grid loses it (`removeEmptyGroups`
   destroys the node).
-- **Cost we accept:** the set can accumulate ids for groups that never return. v1 prunes
-  it on `setRowGroups` (ids are invalid anyway) and leaves streaming-accumulated ids in
-  place — bounded by distinct group keys, which is bounded by the data. Documented.
+- **Cost we accept — and how it is bounded.** The set has no natural shrink point: ids for
+  groups that never return would otherwise accumulate for the lifetime of the grid. (The
+  original v1 claim that this is "bounded by distinct group keys, which is bounded by the
+  data" is wrong under streaming — a stream whose grouping keys churn mints new keys
+  indefinitely. A measured probe accumulated 500 stale ids over 500 ticks.)
+
+  The set is therefore a **bounded LRU over _decisions_**, holding the
+  `groupExpansionOverrideLimit` (default `10_000`) most recently decided ids, oldest
+  decision evicted first. "Decided" means a `setGroupExpanded`/`toggleGroup` call landed on
+  that id — deliberately **not** "most recently seen in a flattening". Pruning to the
+  current flattening is exactly the ag-grid bug above, so a group may vanish for any number
+  of derives and still return with its state intact; only newer decisions about _other_
+  groups can push it out.
+
+  **Why not the alternatives.** A generation counter ("drop ids unseen for N derives")
+  reintroduces the same bug on a timer — under streaming N derives elapse in milliseconds,
+  so "briefly empties and returns" becomes timing-dependent — and it charges every derive
+  for the bookkeeping. Prefix-aware pruning against `rowGroups` (which would need a
+  `parseGroupId` inverse of the escaping) only helps when the _levels_ change, and that
+  path already clears the whole set; it does nothing for key churn within fixed levels. An
+  explicit `pruneGroupState()` leaks by default for every consumer who does not call it.
+
+  **The bound is observable**, so it is a documented public decision rather than an
+  implementation detail: past the limit, the least-recently-decided group silently reverts
+  to `groupsDefaultExpanded`. Bulk intent keeps an unbounded path — `expandAll`/
+  `collapseAll` flip the default and clear the set, so "collapse every group" costs one
+  operation and zero entries — and `groupExpansionOverrideLimit: Infinity` opts out.
+
 - API: `toggleGroup(id)`, `setGroupExpanded(id, expanded)`, `expandAll()`,
   `collapseAll()`; `snapshot.groupExpansionOverrides: ReadonlySet<string>` and
   `snapshot.groupsDefaultExpanded: boolean` (both are needed to read off whether a given

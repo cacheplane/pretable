@@ -441,6 +441,162 @@ describe("streaming", () => {
       },
     ]);
   });
+
+  test("a group that empties and returns keeps its override", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setGroupExpanded(SECTOR_TECH, false);
+
+    // Every Tech row leaves: ag-grid destroys the RowNode here and with it the
+    // expand state. Ours lives in an id-keyed set, so it outlives the node.
+    grid.setRows(HOLDINGS.filter((row) => row.sector !== "Tech"));
+    expect(ids(grid.getSnapshot().visibleRows)).toEqual([
+      SECTOR_ENERGY,
+      "h5",
+      "h6",
+      "h7",
+      "h8",
+    ]);
+    expect([...grid.getSnapshot().groupExpansionOverrides]).toEqual([
+      SECTOR_TECH,
+    ]);
+
+    grid.setRows(HOLDINGS);
+    const snapshot = grid.getSnapshot();
+
+    // Tech is back, and still collapsed.
+    expect(dataIds(snapshot.visibleRows)).toEqual(["h5", "h6", "h7", "h8"]);
+    expect(groupById(snapshot.visibleRows, SECTOR_TECH).childCount).toBe(4);
+  });
+});
+
+describe("override retention (bounded LRU over decisions)", () => {
+  const churnColumns: PretableColumn<Holding>[] = [
+    { id: "sector", header: "Sector" },
+    { id: "analyst", header: "Analyst" },
+    { id: "qty", header: "Qty", type: "number", aggregate: "sum" },
+  ];
+
+  function makeChurnGrid(limit?: number) {
+    return createGridCore<Holding>({
+      columns: churnColumns.map((column) => ({ ...column })),
+      rows: HOLDINGS,
+      getRowId: (row) => row.id,
+      ...(limit === undefined ? {} : { groupExpansionOverrideLimit: limit }),
+    });
+  }
+
+  const sectorId = (value: string) =>
+    makeGroupId([{ columnId: "sector", value }]);
+
+  /** One streaming tick whose grouping key has never been seen before. */
+  function tick(grid: ReturnType<typeof makeChurnGrid>, n: number) {
+    grid.setRows([{ id: "h1", sector: `S${n}`, analyst: "Ada", qty: 1 }]);
+    grid.setGroupExpanded(sectorId(`S${n}`), false);
+  }
+
+  test("500 ticks of churning keys no longer accumulate 500 ids", () => {
+    const grid = makeChurnGrid(50);
+    grid.setRowGroups(["sector"]);
+
+    for (let n = 0; n < 500; n += 1) tick(grid, n);
+
+    const overrides = grid.getSnapshot().groupExpansionOverrides;
+    expect(overrides.size).toBe(50);
+    // The survivors are the newest decisions, S450…S499.
+    expect(overrides.has(sectorId("S499"))).toBe(true);
+    expect(overrides.has(sectorId("S450"))).toBe(true);
+    expect(overrides.has(sectorId("S449"))).toBe(false);
+    expect(overrides.has(sectorId("S0"))).toBe(false);
+  });
+
+  test("boundary: the limit-th decision is kept, the next one evicts the oldest", () => {
+    const grid = makeChurnGrid(3);
+    grid.setRowGroups(["sector"]);
+
+    for (let n = 0; n < 3; n += 1) tick(grid, n);
+    expect([...grid.getSnapshot().groupExpansionOverrides]).toEqual([
+      sectorId("S0"),
+      sectorId("S1"),
+      sectorId("S2"),
+    ]);
+
+    tick(grid, 3);
+    expect([...grid.getSnapshot().groupExpansionOverrides]).toEqual([
+      sectorId("S1"),
+      sectorId("S2"),
+      sectorId("S3"),
+    ]);
+  });
+
+  test("eviction is by decision age, not by absence from the flattening", () => {
+    const grid = makeChurnGrid(3);
+    grid.setRowGroups(["sector"]);
+
+    // S0 is decided first, then its rows go away for the rest of the run.
+    for (let n = 0; n < 3; n += 1) tick(grid, n);
+    expect(grid.getSnapshot().groupExpansionOverrides.has(sectorId("S0"))).toBe(
+      true,
+    );
+
+    // Two more derives with S0 absent do not touch it — only a *newer decision*
+    // does. Pruning to the current flattening would have dropped it at the
+    // first derive, which is the ag-grid behavior this design rejects.
+    grid.setRows([{ id: "h1", sector: "S2", analyst: "Ada", qty: 1 }]);
+    grid.getSnapshot();
+    grid.setRows([{ id: "h1", sector: "S2", analyst: "Bob", qty: 2 }]);
+    grid.getSnapshot();
+
+    expect(grid.getSnapshot().groupExpansionOverrides.has(sectorId("S0"))).toBe(
+      true,
+    );
+  });
+
+  test("clearing an override frees its slot", () => {
+    const grid = makeChurnGrid(2);
+    grid.setRowGroups(["sector"]);
+
+    for (let n = 0; n < 2; n += 1) tick(grid, n);
+    // Re-expanding S0 removes it rather than counting against the cap.
+    grid.setGroupExpanded(sectorId("S0"), true);
+    tick(grid, 2);
+
+    expect([...grid.getSnapshot().groupExpansionOverrides]).toEqual([
+      sectorId("S1"),
+      sectorId("S2"),
+    ]);
+  });
+
+  test("Infinity opts out of the cap", () => {
+    const grid = makeChurnGrid(Number.POSITIVE_INFINITY);
+    grid.setRowGroups(["sector"]);
+
+    for (let n = 0; n < 200; n += 1) tick(grid, n);
+
+    expect(grid.getSnapshot().groupExpansionOverrides.size).toBe(200);
+  });
+
+  test("the default limit is generous enough not to bite ordinary use", () => {
+    const grid = makeChurnGrid();
+    grid.setRowGroups(["sector"]);
+
+    for (let n = 0; n < 1000; n += 1) tick(grid, n);
+
+    expect(grid.getSnapshot().groupExpansionOverrides.size).toBe(1000);
+  });
+
+  test("collapseAll stays unbounded — it clears the set and flips the default", () => {
+    const grid = makeChurnGrid(2);
+    grid.setRowGroups(["sector"]);
+    for (let n = 0; n < 5; n += 1) tick(grid, n);
+
+    grid.collapseAll();
+    const snapshot = grid.getSnapshot();
+
+    expect(snapshot.groupsDefaultExpanded).toBe(false);
+    expect([...snapshot.groupExpansionOverrides]).toEqual([]);
+    expect(ids(snapshot.visibleRows)).toEqual([sectorId("S4")]);
+  });
 });
 
 describe("group rows are neither focusable nor selectable (v1)", () => {

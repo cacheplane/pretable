@@ -173,6 +173,25 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
    * Default `true`. Groups appearing mid-stream inherit it with no bookkeeping.
    */
   groupsDefaultExpanded?: boolean;
+  /**
+   * How many per-group expand/collapse decisions the grid remembers. Default
+   * `10_000`. Past the limit the least-recently-decided group is forgotten and
+   * reverts to `groupsDefaultExpanded`.
+   *
+   * **Why a limit exists.** Expansion state is keyed by a path-derived group id
+   * rather than owned by a node, which is what lets a group survive emptying and
+   * returning mid-stream. The price is that ids for groups which never return
+   * would otherwise accumulate forever under a stream whose grouping keys churn.
+   *
+   * Values below 1 clamp to 1; a non-finite value other than `Infinity` falls
+   * back to the default. Pass `Infinity` to opt out of the cap entirely and
+   * accept unbounded growth.
+   *
+   * `expandAll()` / `collapseAll()` are unaffected — they flip the default and
+   * clear the set, so "collapse everything" costs one entry-free operation no
+   * matter how many groups exist.
+   */
+  groupExpansionOverrideLimit?: number;
 }
 
 /**
