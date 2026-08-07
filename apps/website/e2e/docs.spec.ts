@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { openDocsSearch } from "./helpers";
+
 test("docs page renders sidebar with active state", async ({ page }) => {
   await page.goto("/docs/grid/pretable-component", {
     waitUntil: "domcontentloaded",
@@ -29,8 +31,7 @@ test("keyboard shortcut opens search palette and focuses input", async ({
   page,
 }) => {
   await page.goto("/docs");
-  await page.keyboard.press("Control+K");
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await openDocsSearch(page);
   await expect(page.getByRole("combobox")).toBeFocused();
 });
 
