@@ -520,3 +520,63 @@ describe("serializeRanges HTML flavor", () => {
     expect(out).toBeNull();
   });
 });
+
+describe("serializeRanges HTML type hints", () => {
+  // Excel's force-as-text format code. The backslash is part of Excel's
+  // syntax (\@ is the escaped text-format code), so the JS literal doubles it.
+  const TEXT_HINT = " style=\"mso-number-format:'\\@'\"";
+
+  function oneTypedCell(
+    value: string,
+    type: PretableColumn<Row>["type"],
+  ): string {
+    const row: Row = { id: "r1", a: value, b: "b1", c: "c1" };
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a")],
+      visibleRows: makeVisibleRows([row]),
+      columns: [{ id: "a", header: "A", type }],
+    });
+    return out?.html ?? "";
+  }
+
+  it("hints a text column so Excel does not date-coerce 1-2", () => {
+    expect(oneTypedCell("1-2", "text")).toContain(
+      `<td${TEXT_HINT}>1-2</td>`,
+    );
+  });
+
+  it("hints an enum column — its labels are text too", () => {
+    expect(oneTypedCell("1-2", "enum")).toContain(
+      `<td${TEXT_HINT}>1-2</td>`,
+    );
+  });
+
+  it("leaves an untyped column bare rather than guessing", () => {
+    expect(oneTypedCell("1-2", undefined)).toContain("<td>1-2</td>");
+  });
+
+  it("leaves number, date, and boolean columns bare", () => {
+    expect(oneTypedCell("42", "number")).toContain("<td>42</td>");
+    expect(oneTypedCell("2026-01-02", "date")).toContain(
+      "<td>2026-01-02</td>",
+    );
+    expect(oneTypedCell("true", "boolean")).toContain("<td>true</td>");
+  });
+
+  it("never hints a header cell — headers are labels, not data", () => {
+    const out = serializeRanges<Row>({
+      ranges: [range("r1", "r1", "a", "a")],
+      visibleRows: makeVisibleRows(rows),
+      columns: [{ id: "a", header: "A", type: "text" }],
+      copyWithHeaders: true,
+    });
+    expect(out?.html).toContain("<th>A</th>");
+    expect(out?.html).not.toContain(`<th${TEXT_HINT}>`);
+  });
+
+  it("keeps the table-level whitespace rule alongside the cell hint", () => {
+    const html = oneTypedCell("a  b", "text");
+    expect(html).toContain('<table style="white-space:pre-wrap">');
+    expect(html).toContain(`<td${TEXT_HINT}>a  b</td>`);
+  });
+});

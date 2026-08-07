@@ -1,4 +1,5 @@
 import type {
+  ColumnType,
   PretableCellRange,
   PretableRow,
   PretableVisibleRow,
@@ -16,6 +17,24 @@ const HTML_META = '<meta charset="utf-8">';
 // holding "a  b" would paste as "a b" — a silent regression against the TSV
 // flavor, since receiving apps prefer text/html when both are present.
 const HTML_TABLE_OPEN = '<table style="white-space:pre-wrap">';
+
+// Excel's force-as-text number format. The backslash is Excel's own syntax —
+// `\@` is the escaped text-format code — so dropping it silently disables the
+// hint. Google Sheets ignores this property; its equivalent is the proprietary
+// and version-fragile data-sheets-value, which we deliberately do not emit.
+const HTML_TEXT_FORMAT_ATTR = ` style="mso-number-format:'\\@'"`;
+
+/**
+ * Attribute string for one body cell.
+ *
+ * Only columns explicitly typed `text` or `enum` are pinned to text format.
+ * Untyped columns are left bare on purpose: forcing text there would catch
+ * more date-coercion cases but would also left-align genuine numbers as
+ * strings. `column.type` is the documented lever.
+ */
+function cellStyleAttr(type: ColumnType | undefined): string {
+  return type === "text" || type === "enum" ? HTML_TEXT_FORMAT_ATTR : "";
+}
 
 /**
  * Input for {@link serializeRanges}.
@@ -256,7 +275,7 @@ export function serializeRanges<TRow extends PretableRow>(
           ? col.format({ value: raw, row: row.row, column: col })
           : defaultCoerceForCopy(raw);
         cells.push(escapeTsvField(text));
-        rowHtml += `<td>${escapeHtmlText(text)}</td>`;
+        rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
       }
       lines.push(cells.join("\t"));
       bodyHtml += `<tr>${rowHtml}</tr>`;
