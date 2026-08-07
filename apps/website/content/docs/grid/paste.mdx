@@ -208,6 +208,8 @@ The grid cannot invent row ids under a controlled data model, so a block that ru
 
 `clipped` counts rows and columns, not cells — and it does not carry their text. It counts the **target area**, i.e. the block _after_ tiling, so when a block [tiled](#shape-mismatch) into a larger selection `clipped.rows` can be larger than the block itself has rows.
 
+The two halves are not equally recoverable. `clipped.rows` is a to-do list: rows are yours to append, and the recipe below does exactly that. `clipped.columns` is a **notice** — a grid's columns are its schema, so there is nowhere for those values to go and nothing to append them to. Surface it to the user ("3 columns were wider than this grid") rather than dropping it on the floor; a paste that reports clipped columns usually means the clipboard came from a different sheet than the one they think they are in.
+
 To append the overflow you need the clipboard text, which you can stash from your own capture-phase listener. The capture phase is load-bearing: the surface listens for `paste` in the **bubble** phase, so a plain `onPaste` on the same wrapper would run _after_ the grid's handler and the ref would still be empty when your `onPaste` callback reads it. `onPasteCapture` runs before the grid sees the event.
 
 ```tsx
