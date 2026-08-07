@@ -1,11 +1,11 @@
 ---
 title: Clipboard
-description: "Cmd+C copy with TSV defaults, per-column format, grid-level onCopy override."
+description: "Cmd+C copy with TSV and HTML clipboard flavors, per-column format, grid-level onCopy override."
 nav: Grid
 order: 6
 ---
 
-`Cmd/Ctrl+C` copies the current selection as TSV. The synthetic row-select column is filtered out of the output, so a copy from a checkbox-enabled grid produces the same text as the same selection from an unchecked grid.
+`Cmd/Ctrl+C` copies the current selection in **two flavors**: `text/plain` (TSV) and `text/html` (a real `<table>`). Both are written in a single clipboard entry, and the receiving application picks. Plain-text targets — a terminal, a code editor — take the TSV; Excel and Google Sheets both prefer the HTML. The synthetic row-select column is filtered out of both, so a copy from a checkbox-enabled grid produces the same output as the same selection from an unchecked grid.
 
 ## Default TSV format
 
@@ -26,9 +26,70 @@ Cell text and header text are escaped with the RFC 4180 quoting convention, usin
 
 This matters for wrapped/multi-line cells: a cell holding a newline would otherwise be indistinguishable from a row break, and the paste would split into extra rows. With the rule above, it pastes back into a single cell.
 
-This matches what Excel and Sheets accept on paste, so a copy out of a Pretable grid pastes cleanly into a spreadsheet.
+This matches what Excel and Sheets accept on paste, so a copy out of a Pretable grid pastes cleanly into a spreadsheet even when only the plain-text flavor survives — though in practice a spreadsheet takes the [HTML flavor](#html-flavor) instead.
 
 Escaping is applied after your per-column [`format`](#per-column-format) runs, so a `format` that returns text containing a tab or newline is still safe — don't pre-quote in `format`, or the quotes get escaped as literal content. If you write a fully custom serializer, you own the escaping.
+
+## HTML flavor
+
+Alongside the TSV, every copy writes a `text/html` flavor: one `<table>` per selected range, concatenated behind a single `<meta charset="utf-8">`.
+
+{/* prettier-ignore */}
+```html
+<meta charset="utf-8"><table style="white-space:pre-wrap"><thead><tr><th>A</th><th>B</th></tr></thead><tbody><tr><td>a1</td><td>b1</td></tr></tbody></table>
+```
+
+Excel and Sheets both prefer `text/html` when both flavors are present, so in practice this is what lands when someone pastes into a spreadsheet. It buys three things the TSV cannot:
+
+- **Structure instead of delimiters.** Cell boundaries are `<td>` elements, so there is no quoting rule for a receiving app to get wrong.
+- **Real line breaks.** A wrapped, multi-line cell emits `<br>` rather than a quoted newline the other application may or may not unquote.
+- **No block-separator ambiguity.** Discontiguous ranges become separate `<table>` elements, so nothing has to encode "new block" as a `\n\n` that a cell could legally contain.
+
+`<thead>` appears only when [`copyWithHeaders`](#copywithheaders) is on. The blank line the TSV puts between headers and body has no HTML analogue and is not reproduced.
+
+Writing two flavors at once needs `ClipboardItem`. Where that is missing — an older browser, a non-DOM test environment — the surface falls back to `navigator.clipboard.writeText` and only the TSV reaches the clipboard. The serializer still produces both; the write is what degrades.
+
+The `white-space:pre-wrap` on the table is not cosmetic. HTML collapses runs of whitespace, so without it a cell holding `a  b` would paste as `a b`. It sits on the `<table>` because `white-space` inherits, covering every cell with one declaration.
+
+### Escaping and markup
+
+Cell and header text is escaped — `&`, `<`, `>`, and `"` become entities — and then line breaks become `<br>`. Text is never interpreted as markup:
+
+- A cell value of `<b>x</b>` copies those literal characters. It does not paste as bold text.
+- The same holds for [`format`](#per-column-format) output. `format` returns **text**, not HTML. Returning `"<b>x</b>"` from it gets escaped exactly like any other value.
+- [`render`](/docs/grid/cell-renderers) is not consulted at all. It returns a `ReactNode` for on-screen display; the clipboard uses `format` (or the default coercion) for both flavors.
+
+### Type hints
+
+A cell from a column declared `type: "text"` or `type: "enum"` carries Excel's force-as-text format:
+
+```html
+<td style="mso-number-format:'\@'">1-2</td>
+```
+
+This is what stops Excel from silently reading `1-2` as a date, or `007` as the number `7`. Declare `type` on columns whose values are text that merely _looks_ numeric — SKUs, part numbers, version strings, zero-padded ids:
+
+```tsx
+{ id: "sku", header: "SKU", type: "text" }
+```
+
+Columns typed `number`, `date`, or `boolean` emit a bare `<td>` so the spreadsheet can parse them as their real type. **Untyped columns also emit a bare `<td>`** — the grid does not guess, because force-formatting an untyped column would turn genuine numbers into left-aligned text. `type` is the lever.
+
+Google Sheets ignores `mso-number-format`. Sheets users get the structure, escaping, and `<br>` benefits, but not the type hint; its equivalent is a proprietary, version-fragile attribute that Pretable deliberately does not emit.
+
+### Opting out
+
+To write TSV only, drop the `html` field in [`onCopy`](#grid-level-oncopy-override):
+
+```tsx
+<PretableSurface
+  onCopy={(args) => {
+    const payload = serializeRanges(args);
+    return payload && { text: payload.text };
+  }}
+  /* ... */
+/>
+```
 
 ## Per-column `format`
 
@@ -51,7 +112,7 @@ const columns: PretableColumn<Event>[] = [
 
 ## Grid-level `onCopy` override
 
-For full control — a custom delimiter, a JSON payload, an HTML clipboard payload alongside the TSV — pass `onCopy` on the surface. It receives the same `SerializeRangesArgs` the default serializer gets and returns a `CopyPayload` (`{ text, html? }`) or `null` to cancel the copy:
+For full control — a custom delimiter, a JSON payload, HTML markup other than the built-in `<table>` — pass `onCopy` on the surface. It receives the same `SerializeRangesArgs` the default serializer gets and returns a `CopyPayload` (`{ text, html? }`) or `null` to cancel the copy:
 
 ```tsx
 import { serializeRanges } from "@pretable/react";
@@ -65,7 +126,8 @@ import { serializeRanges } from "@pretable/react";
     // args is SerializeRangesArgs: { ranges, visibleRows, columns, copyWithHeaders }
     const tsv = serializeRanges(args);
     if (!tsv) return null; // empty selection → cancel the copy
-    // Reuse the built-in TSV, but write CSV instead.
+    // Reuse the built-in TSV, but write CSV instead. Returning only `text`
+    // drops the HTML flavor — see "Opting out" above.
     return { text: tsv.text.replace(/\t/g, ",") };
   }}
 />;
@@ -73,14 +135,14 @@ import { serializeRanges } from "@pretable/react";
 
 `onCopy` returns a `CopyPayload` or `null`:
 
-- `{ text, html? }` — `text` is written as `text/plain`; when `html` is present, the surface also writes `text/html` via the Clipboard API. Excel and Sheets prefer `text/html` when both are present.
+- `{ text, html? }` — `text` is written as `text/plain`; when `html` is present, the surface also writes `text/html` via the Clipboard API. Excel and Sheets prefer `text/html` when both are present. The built-in serializer always populates both — see [HTML flavor](#html-flavor).
 - `null` — skip the clipboard write entirely (suppress copy in this mode).
 
 `serializeRanges` is the same helper the default path uses, so calling it inside `onCopy` (as above) keeps the built-in row/column/range handling — including filtering out the synthetic row-select column — and lets you post-process its output.
 
 ## Building your own serializer
 
-`serializeRanges`, `defaultCoerceForCopy`, and the `SerializeRangesArgs` / `CopyPayload` types are exported from `@pretable/react`, so you can build a serializer from the same primitives the default uses.
+`serializeRanges`, `defaultCoerceForCopy`, and the `SerializeRangesArgs` / `CopyPayload` types are exported from `@pretable/react`, so you can build a serializer from the same primitives the default uses. A custom serializer owns both flavors: return `{ text }` alone and only `text/plain` reaches the clipboard.
 
 `SerializeRangesArgs<TRow>` is the argument both `onCopy` and `serializeRanges` receive:
 
@@ -118,7 +180,7 @@ It receives the `CopyPayload` produced by the default serializer or your `onCopy
 
 ## `copyWithHeaders`
 
-When `copyWithHeaders` is `true`, each block in the output is prefixed with a row of column headers, separated from the body by a blank line:
+When `copyWithHeaders` is `true`, each block in the TSV is prefixed with a row of column headers, separated from the body by a blank line, and each table in the [HTML flavor](#html-flavor) gets a `<thead>`:
 
 ```tsx
 <PretableSurface copyWithHeaders /* ... */ />
@@ -137,6 +199,8 @@ D5\tE5\nD6\tE6
 ```
 
 Each block is its own TSV grid; range order matches the order the ranges were added. With `copyWithHeaders`, the header row is repeated at the top of each block.
+
+On the [HTML flavor](#html-flavor) the same selection becomes one `<table>` per range, in the same order. That is the structural version of the same idea — and it is why the HTML flavor has no block-separator ambiguity: with `copyWithHeaders`, each table gets its own `<thead>`.
 
 ## `aria-live` announcements
 
@@ -173,7 +237,7 @@ Announcements are debounced (~500ms) to avoid screen-reader thrashing on held sh
 
 ## Paste
 
-`Cmd/Ctrl+V` is the other half, and it has its own page: **[Paste](/docs/grid/paste)**. In short, it inverts everything above — `parseTsv` is the exact inverse of the [escaping rule](#escaping), so a wrapped, multi-line cell copied out of a grid pastes back into a single cell — and it hands the whole block to one `onPaste` callback for you to apply, the way `onCellEdit` hands you one edit.
+`Cmd/Ctrl+V` is the other half, and it has its own page: **[Paste](/docs/grid/paste)**. In short, it inverts everything above — `parseTsv` is the exact inverse of the [escaping rule](#escaping), so a wrapped, multi-line cell copied out of a grid pastes back into a single cell — and it hands the whole block to one `onPaste` callback for you to apply, the way `onCellEdit` hands you one edit. Paste reads the `text/plain` flavor, so the HTML flavor never affects a grid-to-grid round-trip.
 
 ## See also
 

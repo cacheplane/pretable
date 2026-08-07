@@ -334,7 +334,7 @@ const matrix = parseTsv(text).filter((row) => row.some((f) => f !== ""));
 
 ## Out of scope
 
-Row creation on overflow (reported, not performed), multi-range reconstruction, cut (`Cmd/Ctrl+X`), the HTML clipboard flavor, and undo. `mapPasteToTargets` — the pure geometry function behind the anchor/tile/clip rules — is internal; open an issue if you want it public.
+Row creation on overflow (reported, not performed), multi-range reconstruction, cut (`Cmd/Ctrl+X`), reading the [HTML clipboard flavor](/docs/grid/clipboard#html-flavor) (copy writes it; paste only ever reads `text/plain`), and undo. `mapPasteToTargets` — the pure geometry function behind the anchor/tile/clip rules — is internal; open an issue if you want it public.
 
 ## See also
 
