@@ -13,6 +13,7 @@ import { waitForGridReady, waitForStablePosition } from "./helpers";
  */
 
 const FIXTURE = "/fixtures/grouping";
+const ROWS_PER_FIXTURE = 200;
 
 function viewportOf(page: Page): Locator {
   return page.locator("[data-pretable-scroll-viewport]");
@@ -256,6 +257,43 @@ const chip = (page: Page, columnId: string) =>
   page.locator(
     `[data-pretable-group-chip][data-pretable-column-id="${columnId}"]`,
   );
+
+const copyOutput = (page: Page) =>
+  page.locator("output[data-grouping-copy-output]");
+
+const platformShortcut = (key: "a" | "c") =>
+  process.platform === "darwin" ? `Meta+${key}` : `Control+${key}`;
+
+/** Natural focus traversal only: never call `focus()` on the target. */
+async function tabUntilFocused(
+  page: Page,
+  target: Locator,
+  traversalKey: "Tab" | "Alt+Tab",
+) {
+  const traversed: string[] = [];
+  for (let press = 0; press < 30; press += 1) {
+    await page.keyboard.press(traversalKey);
+    if (
+      await target.evaluate((element) => element === document.activeElement)
+    ) {
+      return;
+    }
+    traversed.push(
+      await page.evaluate(() => {
+        const active = document.activeElement;
+        if (!(active instanceof HTMLElement)) return "unknown";
+        return `${active.getAttribute("role") ?? active.tagName.toLowerCase()}:${active.getAttribute("aria-label") ?? active.textContent?.trim() ?? ""}`;
+      }),
+    );
+  }
+  throw new Error(
+    `target was not reached through natural Tab order: ${traversed.join(" -> ")}`,
+  );
+}
+
+function nonEmptyTsvLines(text: string) {
+  return text.split("\n").filter((line) => line.length > 0);
+}
 
 /**
  * Presses a column header and moves far enough to arm the reorder drag, leaving
@@ -569,4 +607,118 @@ test("Shift+ArrowRight twice walks the same level two places", async ({
     .poll(() => chipIds(page))
     .toEqual(["industry", "region", "sector"]);
   await expect(chip(page, "sector")).toBeFocused();
+});
+
+test("keyboard grouping keeps focus from the Region menu through final removal", async ({
+  browserName,
+  page,
+}) => {
+  await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const regionMenu = page.getByRole("button", {
+    name: "Column menu for Region",
+  });
+  // WebKit models Safari's default macOS preference, where Option+Tab is the
+  // native chord that includes buttons in sequential focus navigation.
+  await tabUntilFocused(
+    page,
+    regionMenu,
+    browserName === "webkit" ? "Alt+Tab" : "Tab",
+  );
+  await expect(regionMenu).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  const groupItem = page.getByRole("menuitem", {
+    name: "Group by this column",
+  });
+  await expect(groupItem).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  const regionChip = page.getByRole("option", { name: /^Region,/ });
+  await expect(regionChip).toBeFocused();
+  await expect(regionMenu).toHaveCount(0);
+  await expect(headerCell(page, "region")).toHaveCount(0);
+
+  // Region was appended last. Remove the two preceding levels through the
+  // roving listbox keyboard so Region becomes the final remaining chip.
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("option", { name: /^Industry,/ })).toBeFocused();
+  await page.keyboard.press("Delete");
+  await expect(page.getByRole("option", { name: /^Region,/ })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("option", { name: /^Sector,/ })).toBeFocused();
+  await page.keyboard.press("Backspace");
+  await expect(page.getByRole("option", { name: /^Region,/ })).toBeFocused();
+
+  await page.keyboard.press("Delete");
+  await expect(regionMenu).toBeFocused();
+  await expect(page.getByRole("option", { name: /^Region,/ })).toHaveCount(0);
+});
+
+test("grouped Cmd/Ctrl+A copy stays rectangular across labels, leaves, and aggregates", async ({
+  page,
+}) => {
+  await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const visibleNameCell = page.locator(
+    '[data-pretable-row-id="s1-i1-r1"] [data-pretable-column-id="name"]',
+  );
+  await visibleNameCell.click();
+  await page.keyboard.press(platformShortcut("a"));
+  await page.keyboard.press(platformShortcut("c"));
+
+  await expect(copyOutput(page)).not.toHaveText("");
+  const lines = nonEmptyTsvLines((await copyOutput(page).textContent()) ?? "");
+  const representative = lines.slice(0, 7).map((line) => line.split("\t"));
+
+  expect(representative).toHaveLength(7);
+  expect(new Set(representative.map((fields) => fields.length))).toEqual(
+    new Set([4]),
+  );
+  expect(representative[0]).toEqual(["", "West", "Holding 01-1-1", "111"]);
+  expect(representative[1]).toEqual(["", "West", "Holding 01-1-2", "112"]);
+  expect(representative[5]).toEqual(["Industry 01-2", "", "", "Σ 615"]);
+  expect(representative[6]).toEqual(["", "West", "Holding 01-2-1", "121"]);
+  expect(lines).toContain("Sector 02\t\t\tΣ 4560");
+});
+
+test("grouped row checkboxes copy every drawn data column without the selector", async ({
+  page,
+}) => {
+  await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const firstRow = page.locator('[data-pretable-row-id="s1-i1-r1"]');
+  await firstRow.getByRole("checkbox", { name: "Select row" }).click();
+  await page.keyboard.press(platformShortcut("c"));
+
+  await expect(copyOutput(page)).not.toHaveText("");
+  expect(((await copyOutput(page).textContent()) ?? "").split("\t")).toEqual([
+    "",
+    "West",
+    "Holding 01-1-1",
+    "111",
+  ]);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+  const selectAll = page.getByRole("checkbox", { name: "Select all rows" });
+  await selectAll.click();
+  await expect(selectAll).toHaveAttribute("aria-checked", "true");
+  await page
+    .getByRole("treegrid", { name: "Grouped holdings" })
+    .press(platformShortcut("c"));
+
+  await expect(copyOutput(page)).not.toHaveText("");
+  const selectedRows = nonEmptyTsvLines(
+    (await copyOutput(page).textContent()) ?? "",
+  ).map((line) => line.split("\t"));
+  expect(selectedRows).toHaveLength(ROWS_PER_FIXTURE);
+  expect(new Set(selectedRows.map((fields) => fields.length))).toEqual(
+    new Set([4]),
+  );
+  expect(selectedRows[0]).toEqual(["", "West", "Holding 01-1-1", "111"]);
+  expect(selectedRows.at(-1)).toEqual(["", "East", "Holding 10-4-5", "1045"]);
 });

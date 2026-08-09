@@ -1,7 +1,7 @@
 "use client";
 
 import { PretableSurface, type PretableColumn } from "@pretable/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 /**
  * Test fixture for `apps/website/e2e/grouping.spec.ts`.
@@ -76,17 +76,23 @@ const COLUMNS: PretableColumn<HoldingRow>[] = [
 export default function GroupingFixturePage() {
   const rows = useMemo(() => makeRows(), []);
   const columns = useMemo(() => COLUMNS, []);
+  const [copyText, setCopyText] = useState("");
   return (
     <main style={{ padding: 24 }}>
       <h1 style={{ marginBottom: 12 }}>Grouping fixture</h1>
       <PretableSurface<HoldingRow>
         ariaLabel="Grouped holdings"
         columns={columns}
+        copyToClipboard={(payload) => setCopyText(payload.text)}
         getRowId={(row) => row.id}
         groupPanel={{ enabled: true }}
+        rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
         rows={rows}
         viewportHeight={400}
       />
+      <output data-grouping-copy-output hidden>
+        {copyText}
+      </output>
     </main>
   );
 }
