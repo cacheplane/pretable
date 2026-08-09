@@ -1,5 +1,15 @@
 # @pretable/react
 
+## 0.0.9
+
+### Patch Changes
+
+- Fix row grouping selection, focus, clipboard output, and treegrid accessibility, ([#259](https://github.com/cacheplane/pretable/pull/259))
+  including keyboard grouping controls and expansion announcements.
+- Updated dependencies [[`f1b9e43`](https://github.com/cacheplane/pretable/commit/f1b9e4391daf3b57ae987fd022ea577ad81e0e3b)]:
+  - @pretable/core@0.0.9
+  - @pretable/ui@0.0.9
+
 ## 0.0.8
 
 ### Patch Changes

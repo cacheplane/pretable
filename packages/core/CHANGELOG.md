@@ -1,5 +1,12 @@
 # @pretable/core
 
+## 0.0.9
+
+### Patch Changes
+
+- Fix row grouping selection, focus, clipboard output, and treegrid accessibility, ([#259](https://github.com/cacheplane/pretable/pull/259))
+  including keyboard grouping controls and expansion announcements.
+
 ## 0.0.8
 
 ## 0.0.7
