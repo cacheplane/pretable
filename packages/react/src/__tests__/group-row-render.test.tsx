@@ -39,6 +39,9 @@ const groupedColumns: PretableColumn<GroupedRow>[] = [
   { id: "qty", header: "Qty", widthPx: 100, aggregate: "sum" },
 ];
 
+const stableAggregateFormatter = ({ value }: { value: unknown }) =>
+  `aggregate: ${String(value)}`;
+
 interface GridProps {
   columns?: PretableColumn<GroupedRow>[];
   rows?: GroupedRow[];
@@ -279,6 +282,41 @@ describe("group row rendering", () => {
     const tech = groupRows(view)[1]!;
     const qtyCell = tech.querySelector('[data-pretable-column-id="qty"]');
     expect(qtyCell).toHaveTextContent("Σ 3");
+  });
+
+  it("updates a visible aggregate when only its aggregate definition changes", () => {
+    const sumColumns: PretableColumn<GroupedRow>[] = [
+      groupedColumns[0]!,
+      groupedColumns[1]!,
+      {
+        ...groupedColumns[2]!,
+        aggregate: "sum",
+        formatAggregate: stableAggregateFormatter,
+      },
+    ];
+    const view = renderGrouped({
+      columns: sumColumns,
+      rows: groupedRows,
+      state: { rowGroups: ["sector"] },
+    });
+    const techQty = () =>
+      groupRows(view)[1]!.querySelector('[data-pretable-column-id="qty"]');
+    expect(techQty()).toHaveTextContent("aggregate: 3");
+
+    view.rerender(
+      <Grid
+        columns={[
+          sumColumns[0]!,
+          sumColumns[1]!,
+          { ...sumColumns[2]!, aggregate: "count" },
+        ]}
+        rows={groupedRows}
+        state={{ rowGroups: ["sector"] }}
+      />,
+    );
+
+    expect(techQty()).toHaveTextContent("aggregate: 2");
+    expect(groupedRows.map((row) => row.qty)).toEqual([1, 2, 4]);
   });
 
   it("falls back to default stringification without formatAggregate", () => {

@@ -147,6 +147,41 @@ describe("derived group column", () => {
     ]);
   });
 
+  test("removing the grouped column clears grouping state and repairs focus", () => {
+    const grid = make();
+    grid.setRowGroups(["sector"]);
+    const techGroupId = grid
+      .getSnapshot()
+      .visibleRows.find(
+        (row) => row.kind === "group" && row.value === "Tech",
+      )!.id;
+    grid.setGroupExpanded(techGroupId, false);
+    grid.setFocus({ rowId: techGroupId, columnId: GROUP_COLUMN_ID });
+
+    grid.mergeColumnsFromProps([columns[1]!, columns[2]!]);
+
+    const snapshot = grid.getSnapshot();
+    expect(snapshot.rowGroups).toEqual([]);
+    expect([...snapshot.groupExpansionOverrides]).toEqual([]);
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      "name",
+      "qty",
+    ]);
+    expect(snapshot.focus).toEqual({ rowId: "r3", columnId: "name" });
+  });
+
+  test("removing every column clears focus exactly", () => {
+    const grid = make();
+    grid.setFocus({ rowId: "r1", columnId: "qty" });
+
+    grid.mergeColumnsFromProps([]);
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: null,
+      columnId: null,
+    });
+  });
+
   test("getColumns() is referentially stable until something invalidates it", () => {
     const grid = make();
     grid.setRowGroups(["sector"]);

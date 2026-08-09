@@ -1030,14 +1030,41 @@ export function createGridCore<TRow extends PretableRow>(
       // comparison, or a prop update that only reorders within a pinned region
       // would read as a change every time.
       const grouped = groupColumnsByPin(merged);
-      const changed = !sameColumnLayout(options.columns, grouped);
+      const layoutChanged = !sameColumnLayout(options.columns, grouped);
+      const groupingSemanticsChanged = !sameColumnGroupingSemantics(
+        options.columns,
+        grouped,
+      );
+      const before = groupingSemanticsChanged
+        ? captureVisibleRowsForFocusReconciliation()
+        : null;
       originalColumns = groupColumnsByPin(nextColumns).map((c) => ({ ...c }));
       options = { ...options, columns: grouped };
+
+      const nextRowGroups = sanitizeRowGroups(rowGroups, grouped);
+      const sanitizedGroupingChanged = !stringListsEqual(
+        rowGroups,
+        nextRowGroups,
+      );
+      if (sanitizedGroupingChanged) {
+        rowGroups = nextRowGroups;
+        groupExpansionOverrides = new Set<string>();
+      }
+
+      if (groupingSemanticsChanged) {
+        cachedVisibleRows = null;
+        reconcileFocusAfterVisibleModelChange(before);
+      }
+
       // Callers hand us a fresh array whenever `columns` is written inline, so
       // only wake subscribers when something they can observe actually moved.
       // The merged definitions are stored either way, which is what keeps a
       // re-created `value`/`format` closure from going stale.
-      if (changed) {
+      if (
+        layoutChanged ||
+        groupingSemanticsChanged ||
+        sanitizedGroupingChanged
+      ) {
         emit();
       }
     },
@@ -1565,6 +1592,31 @@ function sameColumnLayout<TRow extends PretableRow>(
       left.resizable === right.resizable &&
       left.reorderable === right.reorderable &&
       left.wrap === right.wrap
+    );
+  });
+}
+
+/**
+ * Compare only the column fields that feed grouped-row derivation.
+ *
+ * `formatAggregate` is display-only and React renders it from fresh props;
+ * `rowGroup` seeds the initial state but does not control it after creation.
+ * Keeping both out of this comparison avoids unnecessary engine emissions.
+ */
+function sameColumnGroupingSemantics<TRow extends PretableRow>(
+  a: readonly PretableColumn<TRow>[],
+  b: readonly PretableColumn<TRow>[],
+): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((left, index) => {
+    const right = b[index]!;
+    return (
+      left.id === right.id &&
+      left.value === right.value &&
+      left.aggregate === right.aggregate
     );
   });
 }

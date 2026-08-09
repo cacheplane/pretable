@@ -208,6 +208,112 @@ describe("setRowGroups", () => {
   });
 });
 
+describe("mergeColumnsFromProps grouping semantics", () => {
+  test("rederives aggregates when the aggregate definition changes", () => {
+    const aggregateRows = HOLDINGS.slice(0, 2).map((row) => ({ ...row }));
+    const grid = createGridCore<Holding>({
+      columns: COLUMNS.map((column) => ({ ...column })),
+      rows: aggregateRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setRowGroups(["sector"]);
+
+    expect(
+      groupById(grid.getSnapshot().visibleRows, SECTOR_TECH).aggregates.qty,
+    ).toBe(30);
+
+    grid.mergeColumnsFromProps([
+      COLUMNS[0]!,
+      COLUMNS[1]!,
+      { ...COLUMNS[2]!, aggregate: "count" },
+    ]);
+
+    expect(
+      groupById(grid.getSnapshot().visibleRows, SECTOR_TECH).aggregates.qty,
+    ).toBe(2);
+    expect(aggregateRows).toEqual(HOLDINGS.slice(0, 2));
+  });
+
+  test("rederives group keys when a grouped value accessor changes", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    void grid.getSnapshot();
+
+    grid.mergeColumnsFromProps([
+      {
+        ...COLUMNS[0]!,
+        value: (row) => row.sector.slice(0, 1),
+      },
+      COLUMNS[1]!,
+      COLUMNS[2]!,
+    ]);
+
+    const expectedEnergy = makeGroupId([
+      { columnId: "sector", value: "E" },
+    ]);
+    const expectedTech = makeGroupId([{ columnId: "sector", value: "T" }]);
+    const snapshot = grid.getSnapshot();
+    expect(
+      snapshot.visibleRows
+        .filter((row) => row.kind === "group")
+        .map((row) => row.id),
+    ).toEqual([expectedEnergy, expectedTech]);
+  });
+
+  test("an exact stored-reference merge preserves snapshot identity and emits nothing", () => {
+    const sectorValue = (row: Holding) => row.sector;
+    const aggregate = {
+      init: () => ({ total: 0 }),
+      accumulate: (acc: { total: number }, value: unknown) => ({
+        total: acc.total + Number(value),
+      }),
+      merge: (a: { total: number }, b: { total: number }) => ({
+        total: a.total + b.total,
+      }),
+      finalize: (acc: { total: number }) => acc.total,
+    };
+    const formatAggregate = ({ value }: { value: unknown }) => String(value);
+    const grid = makeGrid([
+      { ...COLUMNS[0]!, value: sectorValue },
+      COLUMNS[1]!,
+      { ...COLUMNS[2]!, aggregate, formatAggregate },
+    ]);
+    grid.setRowGroups(["sector"]);
+
+    grid.mergeColumnsFromProps([
+      { ...COLUMNS[0]!, value: sectorValue },
+      COLUMNS[1]!,
+      { ...COLUMNS[2]!, aggregate, formatAggregate },
+    ]);
+
+    const storedSector = grid.options.columns.find(
+      (column) => column.id === "sector",
+    )!;
+    const storedQty = grid.options.columns.find(
+      (column) => column.id === "qty",
+    )!;
+    const before = grid.getSnapshot();
+    let emissions = 0;
+    const unsubscribe = grid.subscribe(() => {
+      emissions += 1;
+    });
+
+    grid.mergeColumnsFromProps([
+      { ...COLUMNS[0]!, value: storedSector.value },
+      COLUMNS[1]!,
+      {
+        ...COLUMNS[2]!,
+        aggregate: storedQty.aggregate,
+        formatAggregate: storedQty.formatAggregate,
+      },
+    ]);
+
+    expect(grid.getSnapshot()).toBe(before);
+    expect(emissions).toBe(0);
+    unsubscribe();
+  });
+});
+
 describe("expand/collapse", () => {
   test("setGroupExpanded(false) hides the group's children", () => {
     const grid = makeGrid();
