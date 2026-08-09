@@ -14,14 +14,11 @@ import type { ColumnPlan, RowMetricsReader } from "./types";
  * (`pretable-surface.tsx:1331-1336`), with `overflow: auto` and no padding
  * (`styles.ts:14-25`). Its in-flow children, in order, are:
  *
- * 1. the aria-live region — `.pt-sr-only`, which is `position: absolute`
- *    (`packages/ui/src/grid.css:19-29`), so it is out of flow and contributes no
- *    height;
- * 2. `[data-pretable-header-row]` — `position: sticky; top: 0; height: headerHeight`
+ * 1. `[data-pretable-header-row]` — `position: sticky; top: 0; height: headerHeight`
  *    (`styles.ts:27-40`), in flow, so it occupies exactly `headerHeight` at the top
  *    of the content box and stays pinned there for the whole scroll range (its
  *    containing block is the scroller itself);
- * 3. `[data-pretable-scroll-content]` — `position: relative; height: totalHeight`
+ * 2. `[data-pretable-scroll-content]` — `position: relative; height: totalHeight`
  *    (`styles.ts:42-51`), inside which every row is `position: absolute; top`
  *    (`styles.ts:53-62`).
  *

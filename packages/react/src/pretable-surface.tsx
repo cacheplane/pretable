@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
   AutosizeOptions,
@@ -41,6 +42,74 @@ import {
 } from "@pretable-internal/renderer-dom";
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
+
+type GroupingFocusIntent = {
+  target: "chip" | "header";
+  columnId: string;
+};
+
+type PendingGroupingFocusRequest = {
+  intent: GroupingFocusIntent;
+  controlledFocusBefore: PretableFocusState | undefined;
+  controlledFocusWasValid: boolean;
+};
+
+function groupingListsEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((columnId, index) => columnId === right[index])
+  );
+}
+
+function sanitizeControlledRowGroups(
+  rowGroups: readonly string[],
+  columnIds: readonly string[],
+): string[] {
+  const known = new Set(columnIds);
+  const seen = new Set<string>();
+  const sanitized: string[] = [];
+
+  for (const columnId of rowGroups) {
+    if (!known.has(columnId) || seen.has(columnId)) continue;
+    seen.add(columnId);
+    sanitized.push(columnId);
+  }
+
+  return sanitized;
+}
+
+function focusExistsInDerivedModel<TRow extends PretableRow>(
+  focus: PretableFocusState,
+  snapshot: PretableGridSnapshot<TRow>,
+  columns: readonly PretableColumn<TRow>[],
+): boolean {
+  if (focus.rowId === null || focus.columnId === null) {
+    return focus.rowId === null && focus.columnId === null;
+  }
+
+  return (
+    snapshot.visibleRows.some((row) => row.id === focus.rowId) &&
+    columns.some((column) => column.id === focus.columnId)
+  );
+}
+
+function normalizeControlledFocus(
+  focus: PretableFocusState,
+): PretableFocusState {
+  return focus.rowId === null || focus.columnId === null
+    ? { rowId: null, columnId: null }
+    : { rowId: focus.rowId, columnId: focus.columnId };
+}
+
+function focusStatesEqual(
+  left: PretableFocusState,
+  right: PretableFocusState,
+): boolean {
+  return left.rowId === right.rowId && left.columnId === right.columnId;
+}
 
 /**
  * Narrow a visible-row entry to a data row.
@@ -87,7 +156,7 @@ import {
   getScrollContentStyle,
   getViewportStyle,
 } from "./styles";
-import { findParentGroupRow, isGroupExpanded } from "./group-model";
+import { findParentGroupRow, groupLabel, isGroupExpanded } from "./group-model";
 import { GroupRow } from "./group-row";
 import { GroupPanel } from "./group-panel/GroupPanel";
 import { hitTestGroupPanel } from "./group-panel/group-panel-hit-test";
@@ -102,7 +171,7 @@ import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
 import { toBooleanCell } from "./editors/boolean-utils";
-import { ColumnMenu } from "./column-menu/ColumnMenu";
+import { ColumnMenu, type ColumnMenuAction } from "./column-menu/ColumnMenu";
 import { MenuButton } from "./column-menu/MenuButton";
 import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
@@ -213,6 +282,16 @@ export interface PretableSurfaceMessages {
    * applied, so there are no counts to report.
    */
   pasteFailedAnnouncement?: () => string;
+  /** Announced after a user action successfully expands a group. */
+  groupExpandedAnnouncement?: (args: {
+    label: string;
+    childCount: number;
+  }) => string;
+  /** Announced after a user action successfully collapses a group. */
+  groupCollapsedAnnouncement?: (args: {
+    label: string;
+    childCount: number;
+  }) => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -234,6 +313,10 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
       : base;
   },
   pasteFailedAnnouncement: () => "Paste failed",
+  groupExpandedAnnouncement: ({ label, childCount }) =>
+    `${label} expanded, ${childCount} rows`,
+  groupCollapsedAnnouncement: ({ label, childCount }) =>
+    `${label} collapsed, ${childCount} rows`,
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -471,9 +554,8 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    */
   copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
   /**
-   * Localized message factories for ARIA live announcements (select-all,
-   * copy success, copy failure). Each entry is optional; missing entries
-   * fall back to English defaults.
+   * Localized message factories for ARIA live announcements. Each entry is
+   * optional; missing entries fall back to English defaults.
    */
   messages?: PretableSurfaceMessages;
   /**
@@ -798,6 +880,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       pasteFailedAnnouncement:
         messages?.pasteFailedAnnouncement ??
         defaultMessages.pasteFailedAnnouncement,
+      groupExpandedAnnouncement:
+        messages?.groupExpandedAnnouncement ??
+        defaultMessages.groupExpandedAnnouncement,
+      groupCollapsedAnnouncement:
+        messages?.groupCollapsedAnnouncement ??
+        defaultMessages.groupCollapsedAnnouncement,
     }),
     [messages],
   );
@@ -805,7 +893,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const columnMenuButtonNodesRef = useRef<Map<string, HTMLButtonElement>>(
+    new Map(),
+  );
   const viewportRef = useRef<HTMLDivElement>(null);
+  const pendingGroupingFocusRef = useRef<PendingGroupingFocusRequest | null>(
+    null,
+  );
+  // A plain forward Tab from the header may enter the body while engine focus
+  // is still fully null. This ref records that keyboard-owned transition so a
+  // pointer click or direct `.focus()` on the body container cannot invent a
+  // grid focus address.
+  const keyboardBodyEntryOriginRef = useRef<HTMLElement | null>(null);
   const dragAnchorRef = useRef<PretableCellAddress | null>(null);
   // Set when a pointer-drag extended the selection past its origin cell. The
   // click that ends such a drag is a range selection, not a row activation.
@@ -862,6 +961,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   });
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
+  const controlledFocusState = state?.focus;
+  const normalizedControlledFocusForFollow =
+    controlledFocusState === undefined
+      ? undefined
+      : normalizeControlledFocus(controlledFocusState);
+  const controlledFocusFollowRowId = normalizedControlledFocusForFollow?.rowId;
+  const controlledFocusFollowColumnId =
+    normalizedControlledFocusForFollow?.columnId;
+  const bodyEntryTabbable = focusedRowId === null && focusedColumnId === null;
   const isGrouped = snapshot.rowGroups.length > 0;
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
   // then report what the engine actually holds. Reading the list back rather
@@ -872,11 +980,38 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // Programmatic `grid.setRowGroups` bypasses this and stays silent, matching
   // `grid.moveColumn` and `onColumnOrderChange`.
   const applyRowGroups = useCallback(
-    (next: readonly string[]) => {
+    (next: readonly string[], focusIntent?: GroupingFocusIntent) => {
+      const beforeSnapshot = grid.getSnapshot();
+      const controlledFocusBefore =
+        controlledFocusState === undefined
+          ? undefined
+          : normalizeControlledFocus(controlledFocusState);
+      pendingGroupingFocusRef.current = focusIntent
+        ? {
+            intent: focusIntent,
+            controlledFocusBefore,
+            controlledFocusWasValid:
+              controlledFocusBefore !== undefined &&
+              controlledFocusBefore.rowId !== null &&
+              controlledFocusBefore.columnId !== null &&
+              focusExistsInDerivedModel(
+                controlledFocusBefore,
+                beforeSnapshot,
+                grid.getColumns(),
+              ),
+          }
+        : null;
       grid.setRowGroups(next);
-      onRowGroupsChange?.([...grid.getSnapshot().rowGroups]);
+      const committed = grid.getSnapshot().rowGroups;
+      if (groupingListsEqual(beforeSnapshot.rowGroups, committed)) {
+        // A change-guarded engine mutation schedules no render, so there would
+        // be no layout pass to consume this request. Clear it here instead of
+        // letting a later unrelated render act on a stale grouping gesture.
+        pendingGroupingFocusRef.current = null;
+      }
+      onRowGroupsChange?.([...committed]);
     },
-    [grid, onRowGroupsChange],
+    [controlledFocusState, grid, onRowGroupsChange],
   );
   const labelForColumn = useCallback(
     (columnId: string) =>
@@ -893,6 +1028,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         cellNodesRef.current.set(key, node);
       } else {
         cellNodesRef.current.delete(key);
+      }
+    },
+    [],
+  );
+  const registerColumnMenuButton = useCallback(
+    (columnId: string, node: HTMLButtonElement | null) => {
+      if (node) {
+        columnMenuButtonNodesRef.current.set(columnId, node);
+      } else {
+        columnMenuButtonNodesRef.current.delete(columnId);
       }
     },
     [],
@@ -946,6 +1091,49 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     onPasteRef.current = onPaste;
     effectiveMessagesRef.current = effectiveMessages;
   });
+  // Expansion methods mutate the engine synchronously, so the authoritative
+  // result is available immediately. All input paths use this wrapper to avoid
+  // announcing intent when the engine made no state change, and to take the
+  // label/count from the group row that survived the mutation.
+  const mutateGroupExpansion = useCallback(
+    (groupId: string, mutation: () => void) => {
+      const before = grid.getSnapshot();
+      const beforeGroup = before.visibleRows.find((row) => row.id === groupId);
+      const beforeExpanded = isGroupExpanded(before, groupId);
+
+      mutation();
+
+      const after = grid.getSnapshot();
+      const afterGroup = after.visibleRows.find((row) => row.id === groupId);
+      const afterExpanded = isGroupExpanded(after, groupId);
+      if (
+        !beforeGroup ||
+        beforeGroup.kind !== "group" ||
+        beforeGroup.childCount === 0 ||
+        !afterGroup ||
+        afterGroup.kind !== "group" ||
+        afterGroup.childCount === 0 ||
+        beforeExpanded === afterExpanded
+      ) {
+        return;
+      }
+
+      const announcementArgs = {
+        label: groupLabel(afterGroup.value),
+        childCount: afterGroup.childCount,
+      };
+      scheduleAnnouncement(
+        afterExpanded
+          ? effectiveMessagesRef.current.groupExpandedAnnouncement(
+              announcementArgs,
+            )
+          : effectiveMessagesRef.current.groupCollapsedAnnouncement(
+              announcementArgs,
+            ),
+      );
+    },
+    [grid, scheduleAnnouncement],
+  );
   // Which entry path opened the active edit. Type-to-replace seeds the draft
   // with the typed character, so the editor must not select it (the next
   // keystroke would replace it). Every begin() that opens an editor sets this,
@@ -1283,6 +1471,25 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const filterOpenState =
     headerPopover?.kind === "filter" ? headerPopover : null;
   const menuOpenState = headerPopover?.kind === "menu" ? headerPopover : null;
+  const selectColumnMenuAction = useCallback(
+    (action: ColumnMenuAction) => {
+      if (!menuOpenState) return;
+      const level = snapshot.rowGroups.indexOf(menuOpenState.columnId);
+      applyRowGroups(
+        action === "group"
+          ? insertGroupLevel(
+              snapshot.rowGroups,
+              menuOpenState.columnId,
+              snapshot.rowGroups.length,
+            )
+          : removeGroupLevel(snapshot.rowGroups, level),
+        action === "group"
+          ? { target: "chip", columnId: menuOpenState.columnId }
+          : undefined,
+      );
+    },
+    [applyRowGroups, menuOpenState, snapshot.rowGroups],
+  );
 
   // Pin state and pinned offsets are read from the PLANNED column
   // (`renderSnapshot.columns`), never from the prop column. The engine is the
@@ -1611,6 +1818,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       return;
     }
 
+    if (
+      controlledFocusFollowRowId !== undefined &&
+      (controlledFocusFollowRowId !== focusedRowId ||
+        controlledFocusFollowColumnId !== focusedColumnId)
+    ) {
+      // `usePretable` reconciles controlled state in an earlier layout effect.
+      // Its synchronous engine restore schedules a follow-up render, but this
+      // pass still carries the transient focus address that prompted the
+      // callback. Do not move DOM focus to that unaccepted address. Keep the
+      // request pending so an accepted controlled prop can converge without a
+      // second engine move; a rejected null restore clears both refs in the
+      // branch above on its follow-up render.
+      return;
+    }
+
     if (snapshot.editing) {
       // An edit owns the keyboard for its whole lifecycle — the editor input
       // lives *inside* the cell, so it would pass the containment check below.
@@ -1652,6 +1874,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // node here to scroll to at all.
     cellNode.focus({ preventScroll: true });
   }, [
+    controlledFocusFollowColumnId,
+    controlledFocusFollowRowId,
     focusedColumnId,
     focusedRowId,
     // The rendered set. Both arrays are rebuilt whenever the virtualization
@@ -1661,6 +1885,97 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     renderSnapshot.rows,
     snapshot.editing,
   ]);
+
+  useLayoutEffect(() => {
+    const request = pendingGroupingFocusRef.current;
+    if (request === null) return;
+
+    if (grid.getSnapshot() !== snapshot) {
+      // Earlier `usePretable` layout effects may have reconciled rows, columns,
+      // or another controlled slice after this render snapshot was read. Their
+      // engine emit schedules a follow-up render; resolving against this pass
+      // would consume the request before the repaired focus and matching DOM
+      // exist.
+      return;
+    }
+
+    const controlledRowGroups = state?.rowGroups;
+    if (controlledRowGroups !== undefined) {
+      const controlledSnapshot = sanitizeControlledRowGroups(
+        controlledRowGroups,
+        grid.options.columns.map((column) => column.id),
+      );
+      if (!groupingListsEqual(snapshot.rowGroups, controlledSnapshot)) {
+        // `usePretable` reasserts controlled state in an earlier layout effect,
+        // but its synchronous engine emit becomes a later React render. This
+        // pass still owns the transient mutation DOM, so retain the request
+        // until that later render shows the controlled slice's final shape.
+        return;
+      }
+    }
+
+    // A grouping request gets exactly one post-render resolution pass. Keeping
+    // a miss pending would let an unrelated later render mount the same column
+    // and steal focus long after the user's grouping action ended.
+    pendingGroupingFocusRef.current = null;
+
+    const controlledFocus =
+      controlledFocusState === undefined
+        ? undefined
+        : normalizeControlledFocus(controlledFocusState);
+    const derivedColumns = grid.getColumns();
+    const engineFocusIsValidRepair =
+      snapshot.focus.rowId === null && snapshot.focus.columnId === null
+        ? snapshot.visibleRows.length === 0 || derivedColumns.length === 0
+        : focusExistsInDerivedModel(snapshot.focus, snapshot, derivedColumns);
+    if (
+      request.controlledFocusBefore !== undefined &&
+      request.controlledFocusWasValid &&
+      controlledFocus !== undefined &&
+      focusStatesEqual(controlledFocus, request.controlledFocusBefore) &&
+      !focusExistsInDerivedModel(controlledFocus, snapshot, derivedColumns) &&
+      engineFocusIsValidRepair &&
+      !focusStatesEqual(snapshot.focus, controlledFocus)
+    ) {
+      // The engine repaired focus while deriving the final accepted or
+      // transformed grouping model. Report that address only after controlled
+      // rowGroups have converged; clearing the pending request first makes the
+      // callback one-shot even when a controlled parent rejects the repair.
+      onFocusChange?.({ ...snapshot.focus });
+    }
+
+    const requestedNode =
+      request.intent.target === "chip"
+        ? Array.from(
+            groupPanelRef.current?.querySelectorAll<HTMLElement>(
+              "[data-pretable-group-chip]",
+            ) ?? [],
+          ).find(
+            (node) =>
+              node.getAttribute("data-pretable-column-id") ===
+              request.intent.columnId,
+          )
+        : columnMenuButtonNodesRef.current.get(request.intent.columnId);
+
+    if (requestedNode?.isConnected) {
+      requestedNode.focus();
+      return;
+    }
+
+    const { rowId, columnId } = snapshot.focus;
+    const focusedCell =
+      rowId && columnId
+        ? cellNodesRef.current.get(`${rowId}::${columnId}`)
+        : undefined;
+    if (focusedCell?.isConnected) {
+      focusedCell.focus({ preventScroll: true });
+      return;
+    }
+
+    if (viewportRef.current?.isConnected) {
+      viewportRef.current.focus({ preventScroll: true });
+    }
+  });
 
   // Scroll-into-view for keyboard focus. The engine's focus address can move
   // to a cell that is outside the virtualization window, or behind a sticky
@@ -1898,7 +2213,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       aria-colcount={drawnColumns.length}
       aria-label={ariaLabel}
       aria-multiselectable="true"
-      aria-rowcount={snapshot.totalRowCount + 1}
+      aria-rowcount={snapshot.visibleRows.length + 1}
       data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
@@ -1935,6 +2250,49 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             onSelectionChange?.(after.selection);
           }
           event.preventDefault();
+          return;
+        }
+
+        // Header buttons and surface-owned portals own their keyboard
+        // interactions. React events from a portaled menu/dialog still bubble
+        // through this component tree, even though their DOM target is outside
+        // the viewport. In particular, Tab must retain its native focus
+        // behavior, while Enter/Space belong to the sort, filter, and menu
+        // controls rather than acting on a stale engine grid focus. Reorder and
+        // marquee Escape cancellation stay above this guard because those
+        // gestures remain surface-owned even when their originating pointer was
+        // in the header or a portal.
+        const targetIsInsideSurface =
+          event.target instanceof Node &&
+          event.currentTarget.contains(event.target);
+        const targetIsInHeader =
+          targetIsInsideSurface &&
+          event.target instanceof Element &&
+          event.target.closest("[data-pretable-header-row]") !== null;
+        if (!targetIsInsideSurface || targetIsInHeader) {
+          const origin =
+            targetIsInHeader &&
+            event.target instanceof Element &&
+            event.key === "Tab" &&
+            !event.shiftKey &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            !event.defaultPrevented
+              ? event.target.closest<HTMLElement>("button")
+              : null;
+          keyboardBodyEntryOriginRef.current = origin;
+          if (origin) {
+            // Native focus traversal is the Tab keydown's default action, so
+            // it completes before this microtask. If focus went anywhere else,
+            // expire the origin rather than letting a later `.focus()` look
+            // like keyboard entry.
+            queueMicrotask(() => {
+              if (keyboardBodyEntryOriginRef.current === origin) {
+                keyboardBodyEntryOriginRef.current = null;
+              }
+            });
+          }
           return;
         }
 
@@ -1985,7 +2343,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           };
           const payload = onCopy ? onCopy(args) : serializeRanges(args);
           if (payload) {
-            const extent = computeSelectionExtent(
+            const extent = computeCopyExtent(
               snap.selection.ranges,
               snap,
               columnsInVisualOrder,
@@ -2098,6 +2456,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           // bounded by the first and last columns ON SCREEN.
           columns: columnsInVisualOrder,
           grid,
+          onGroupExpansionMutation: mutateGroupExpansion,
           onRowActivate,
           onSelectedRowIdChange,
           selectFocusedRowOnArrowKey,
@@ -2134,6 +2493,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           }
         }
       }}
+      onPointerDownCapture={() => {
+        keyboardBodyEntryOriginRef.current = null;
+      }}
       onScroll={(event) => {
         const el = event.currentTarget;
         grid.setViewport({
@@ -2151,15 +2513,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         ...viewportStyle,
       }}
     >
-      <div
-        aria-atomic="true"
-        aria-live="polite"
-        className="pt-sr-only"
-        data-pretable-live-region=""
-        role="status"
-      >
-        {liveMessage}
-      </div>
       <div
         aria-rowindex={1}
         data-pretable-header-row=""
@@ -2541,6 +2894,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             column.id,
                             current.groupInsertIndex,
                           ),
+                          { target: "chip", columnId: column.id },
                         );
                       } else if (drag.dragging && current) {
                         const beforePinned = buildPinnedMap(grid);
@@ -2792,6 +3146,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       columnId={column.id}
                       label={label}
                       open={menuOpenState?.columnId === column.id}
+                      onNodeChange={registerColumnMenuButton}
                       onToggle={(id, anchor) =>
                         togglePopover("menu", id, anchor)
                       }
@@ -2806,6 +3161,36 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
       <div
         data-pretable-scroll-content=""
+        onFocus={(event) => {
+          if (event.target !== event.currentTarget) {
+            keyboardBodyEntryOriginRef.current = null;
+            return;
+          }
+          const origin = keyboardBodyEntryOriginRef.current;
+          keyboardBodyEntryOriginRef.current = null;
+          if (!origin || event.relatedTarget !== origin) return;
+
+          const before = grid.getSnapshot();
+          if (before.focus.rowId !== null || before.focus.columnId !== null) {
+            return;
+          }
+          const firstRow = before.visibleRows[0];
+          const firstColumn = columnsInVisualOrder.find(
+            (column) => column.id !== ROW_SELECT_COLUMN_ID,
+          );
+          if (!firstRow || !firstColumn) return;
+
+          grid.setFocus({ rowId: firstRow.id, columnId: firstColumn.id });
+          const after = grid.getSnapshot();
+          if (
+            before.focus.rowId !== after.focus.rowId ||
+            before.focus.columnId !== after.focus.columnId
+          ) {
+            onFocusChange?.(after.focus);
+          }
+        }}
+        role="rowgroup"
+        tabIndex={bodyEntryTabbable ? 0 : -1}
         style={
           {
             ...getScrollContentStyle(
@@ -2835,26 +3220,22 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 isFocused={snapshot.focus.rowId === renderRow.id}
                 key={renderRow.id}
                 liveWidth={dragLiveWidth}
-                onCellClick={(columnId, event) => {
-                  // The same click model as a data cell: focus moves and the
-                  // cell becomes the selection. The engine keeps group rows out
-                  // of `deriveSelectedRows`, so no ROW becomes selected — but
-                  // `onSelectionChange` does fire, which is exactly why the
-                  // twisty stops propagation.
-                  handleCellClick({
-                    cmd: event.metaKey || event.ctrlKey,
-                    columnId,
-                    columns: columnsInVisualOrder,
-                    grid,
-                    onFocusChange,
-                    onSelectedRowIdChange,
-                    onSelectionChange,
-                    rowId: renderRow.id,
-                    shift: event.shiftKey,
-                  });
+                onCellClick={(columnId) => {
+                  const before = grid.getSnapshot().focus;
+                  grid.setFocus({ rowId: group.id, columnId });
+                  const after = grid.getSnapshot().focus;
+
+                  if (
+                    before.rowId !== after.rowId ||
+                    before.columnId !== after.columnId
+                  ) {
+                    onFocusChange?.(after);
+                  }
                 }}
                 onToggle={() => {
-                  grid.toggleGroup(group.id);
+                  mutateGroupExpansion(group.id, () => {
+                    grid.toggleGroup(group.id);
+                  });
                 }}
                 registerCell={registerCell}
                 rowIndex={renderRow.rowIndex}
@@ -2865,6 +3246,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           }
 
           const { height, id, row, rowIndex, top } = renderRow;
+          const visibleRow = snapshot.visibleRows[rowIndex];
+          const depth = visibleRow?.kind === "data" ? visibleRow.depth : 0;
           const isFocused = snapshot.focus.rowId === id;
           const isSelected = fullySelectedRowIds.has(id);
           const rowProps =
@@ -2879,6 +3262,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           return (
             <div
               {...rowProps}
+              aria-level={isGrouped ? depth + 1 : undefined}
               aria-rowindex={rowIndex + 2}
               onClick={(event) => {
                 // rowProps is spread above, so this would shadow a consumer's
@@ -3352,22 +3736,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 label={col.header ?? menuOpenState.columnId}
                 style={popoverStyle(menuOpenState.rect)}
                 onClose={closePopover}
-                onSelect={(action) => {
-                  // Through `applyRowGroups` like every other UI mutation —
-                  // one `setRowGroups`, then report the engine's sanitized
-                  // list. Both branches reuse the panel's list helpers so the
-                  // menu and the chips can never disagree about what
-                  // "append a level" or "drop a level" means.
-                  applyRowGroups(
-                    action === "group"
-                      ? insertGroupLevel(
-                          snapshot.rowGroups,
-                          menuOpenState.columnId,
-                          snapshot.rowGroups.length,
-                        )
-                      : removeGroupLevel(snapshot.rowGroups, level),
-                  );
-                }}
+                // Through `applyRowGroups` like every other UI mutation — one
+                // `setRowGroups`, then report the engine's sanitized list.
+                // Both branches reuse the panel's list helpers so the menu and
+                // chips cannot disagree about append/remove semantics.
+                onSelect={selectColumnMenuAction}
               />
             );
           })()
@@ -3375,10 +3748,35 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     </div>
   );
 
+  // A status region is not a valid child of a grid/treegrid. Keep it outside
+  // the surface DOM entirely so the no-panel shape stays unchanged, and gate
+  // the portal with the same hydration signal as the interactive surface: the
+  // server and hydration render both omit it, then the client adds it safely.
+  const liveRegion =
+    hydrated && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            aria-atomic="true"
+            aria-live="polite"
+            className="pt-sr-only"
+            data-pretable-live-region=""
+            role="status"
+          >
+            {liveMessage}
+          </div>,
+          document.body,
+        )
+      : null;
+
   // Without the panel the surface IS the scroll viewport — no wrapper, so a
   // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
   if (!groupPanelEnabled) {
-    return scrollViewport;
+    return (
+      <>
+        {scrollViewport}
+        {liveRegion}
+      </>
+    );
   }
 
   // With it, the viewport keeps every attribute it had and gains a parent. The
@@ -3387,23 +3785,27 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // listbox of chips there is invalid ARIA) and `minWidth: totalWidth` on its
   // content, which would scroll the panel sideways with the data.
   return (
-    <div
-      data-pretable-group-panel-wrapper=""
-      style={getGroupPanelWrapperStyle(viewportHeight)}
-    >
-      <GroupPanel
-        containerRef={groupPanelRef}
-        // Only a header drag reports in from out here; the panel's own chip
-        // drag tracks its insertion index internally.
-        dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
-        emptyMessage={groupPanel?.emptyMessage}
-        height={groupPanelHeight}
-        labelForColumn={labelForColumn}
-        onChange={applyRowGroups}
-        rowGroups={snapshot.rowGroups}
-      />
-      {scrollViewport}
-    </div>
+    <>
+      <div
+        data-pretable-group-panel-wrapper=""
+        style={getGroupPanelWrapperStyle(viewportHeight)}
+      >
+        <GroupPanel
+          containerRef={groupPanelRef}
+          // Only a header drag reports in from out here; the panel's own chip
+          // drag tracks its insertion index internally.
+          dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
+          emptyMessage={groupPanel?.emptyMessage}
+          focusManagedExternally
+          height={groupPanelHeight}
+          labelForColumn={labelForColumn}
+          onChange={applyRowGroups}
+          rowGroups={snapshot.rowGroups}
+        />
+        {scrollViewport}
+      </div>
+      {liveRegion}
+    </>
   );
 }
 
@@ -3832,6 +4234,81 @@ function computeSelectionExtent<TRow extends PretableRow>(
   return { rowCount, columnCount, isAll };
 }
 
+function computeCopyExtent<TRow extends PretableRow>(
+  ranges: readonly PretableCellRange[],
+  snapshot: PretableGridSnapshot<TRow>,
+  columns: readonly PretableColumn<TRow>[],
+): { rowCount: number; columnCount: number } {
+  const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
+  if (
+    ranges.length === 0 ||
+    snapshot.visibleRows.length === 0 ||
+    dataColumns.length === 0
+  ) {
+    return { rowCount: 0, columnCount: 0 };
+  }
+
+  const rowOrder = new Map<string, number>();
+  for (let i = 0; i < snapshot.visibleRows.length; i += 1) {
+    const row = snapshot.visibleRows[i];
+    if (row) rowOrder.set(row.id, i);
+  }
+  const columnOrder = new Map<string, number>();
+  for (let i = 0; i < dataColumns.length; i += 1) {
+    const column = dataColumns[i];
+    if (column) columnOrder.set(column.id, i);
+  }
+
+  const coveredRows = new Set<number>();
+  const coveredColumns = new Set<string>();
+
+  for (const range of ranges) {
+    const r1 = rowOrder.get(range.startRowId);
+    const r2 = rowOrder.get(range.endRowId);
+    if (r1 === undefined || r2 === undefined) continue;
+
+    const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+    const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+    if (startSynth && endSynth) continue;
+
+    const c1 = columnOrder.get(range.startColumnId);
+    const c2 = columnOrder.get(range.endColumnId);
+    let colLo: number;
+    let colHi: number;
+    if (startSynth && c2 !== undefined) {
+      colLo = 0;
+      colHi = c2;
+    } else if (endSynth && c1 !== undefined) {
+      colLo = 0;
+      colHi = c1;
+    } else if (c1 !== undefined && c2 !== undefined) {
+      colLo = Math.min(c1, c2);
+      colHi = Math.max(c1, c2);
+    } else if (c1 !== undefined) {
+      colLo = colHi = c1;
+    } else if (c2 !== undefined) {
+      colLo = colHi = c2;
+    } else {
+      continue;
+    }
+
+    const rowLo = Math.min(r1, r2);
+    const rowHi = Math.max(r1, r2);
+    for (let i = rowLo; i <= rowHi; i += 1) {
+      coveredRows.add(i);
+    }
+    for (let i = colLo; i <= colHi; i += 1) {
+      const column = dataColumns[i];
+      if (column) coveredColumns.add(column.id);
+    }
+  }
+
+  return {
+    rowCount: coveredRows.size,
+    columnCount: coveredColumns.size,
+  };
+}
+
 const ARROW_DIRECTIONS: Record<string, PretableFocusDirection> = {
   ArrowUp: "up",
   ArrowDown: "down",
@@ -3843,6 +4320,7 @@ interface SurfaceKeyDownContext<TRow extends PretableRow> {
   bodyViewportHeight: number;
   columns: PretableColumn<TRow>[];
   grid: PretableGrid<TRow>;
+  onGroupExpansionMutation: (groupId: string, mutation: () => void) => void;
   onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   selectFocusedRowOnArrowKey: boolean;
@@ -3857,6 +4335,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     bodyViewportHeight,
     columns: allColumns,
     grid,
+    onGroupExpansionMutation,
     onRowActivate,
     onSelectedRowIdChange,
     selectFocusedRowOnArrowKey,
@@ -3898,19 +4377,25 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     // data-row path and select a group header.
     if (key === "Enter" || key === " " || key === "Space") {
       if (expandable) {
-        grid.setGroupExpanded(focusedRow.id, !expanded);
+        onGroupExpansionMutation(focusedRow.id, () => {
+          grid.setGroupExpanded(focusedRow.id, !expanded);
+        });
       }
       return true;
     }
 
     if (inGroupColumn && key === "ArrowRight" && expandable && !expanded) {
-      grid.setGroupExpanded(focusedRow.id, true);
+      onGroupExpansionMutation(focusedRow.id, () => {
+        grid.setGroupExpanded(focusedRow.id, true);
+      });
       return true;
     }
 
     if (inGroupColumn && key === "ArrowLeft") {
       if (expandable && expanded) {
-        grid.setGroupExpanded(focusedRow.id, false);
+        onGroupExpansionMutation(focusedRow.id, () => {
+          grid.setGroupExpanded(focusedRow.id, false);
+        });
         return true;
       }
 
@@ -4017,22 +4502,37 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     const addr: PretableCellAddress = { rowId: nextRow.id, columnId };
 
     if (shift) {
-      // Ensure anchor exists before extending
-      if (!snapshot.selection.anchor && focus.rowId && focus.columnId) {
-        grid.setSelection({
-          ranges: [
-            {
-              startRowId: focus.rowId,
-              endRowId: focus.rowId,
-              startColumnId: focus.columnId,
-              endColumnId: focus.columnId,
-            },
-          ],
-          anchor: { rowId: focus.rowId, columnId: focus.columnId },
-        });
+      const focusedRow = focus.rowId
+        ? rows.find((row) => row.id === focus.rowId)
+        : undefined;
+
+      if (isDataRow(nextRow)) {
+        // A group header is focusable but cannot provide an anchor. Preserve a
+        // data anchor while passing through a group, and resume extending when
+        // the next destination is a data row.
+        if (
+          !snapshot.selection.anchor &&
+          focusedRow &&
+          isDataRow(focusedRow) &&
+          focus.columnId
+        ) {
+          grid.setSelection({
+            ranges: [
+              {
+                startRowId: focusedRow.id,
+                endRowId: focusedRow.id,
+                startColumnId: focus.columnId,
+                endColumnId: focus.columnId,
+              },
+            ],
+            anchor: { rowId: focusedRow.id, columnId: focus.columnId },
+          });
+        }
+        grid.setFocus(addr);
+        grid.extendRangeFromAnchor(addr);
+      } else {
+        grid.setFocus(addr);
       }
-      grid.setFocus(addr);
-      grid.extendRangeFromAnchor(addr);
     } else {
       grid.setFocus(addr);
     }

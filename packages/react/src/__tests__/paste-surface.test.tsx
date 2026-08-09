@@ -745,7 +745,7 @@ describe("PretableSurface paste", () => {
 const ANNOUNCE_DEBOUNCE_MS = 500;
 
 function liveRegion(view: ReturnType<typeof render>): HTMLElement | null {
-  return view.container.querySelector("[data-pretable-live-region]");
+  return view.baseElement.querySelector("[data-pretable-live-region]");
 }
 
 /**

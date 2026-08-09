@@ -5,11 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   GROUP_COLUMN_ID,
+  type PretableFocusState,
   type PretableGroupRow,
   type PretableSelectionState,
 } from "@pretable/core";
 
 import { GroupRow } from "../group-row";
+import { serializeRanges } from "../copy";
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
 import type { PretableSurfaceState } from "../use-pretable";
@@ -38,19 +40,33 @@ const groupedColumns: PretableColumn<GroupedRow>[] = [
   { id: "qty", header: "Qty", widthPx: 100, aggregate: "sum" },
 ];
 
+const stableAggregateFormatter = ({ value }: { value: unknown }) =>
+  `aggregate: ${String(value)}`;
+
 interface GridProps {
   columns?: PretableColumn<GroupedRow>[];
   rows?: GroupedRow[];
   state: PretableSurfaceState;
+  onFocusChange?: (next: PretableFocusState) => void;
+  onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
 }
 
-function Grid({ columns, rows, state, onSelectionChange }: GridProps) {
+function Grid({
+  columns,
+  rows,
+  state,
+  onFocusChange,
+  onSelectedRowIdChange,
+  onSelectionChange,
+}: GridProps) {
   return (
     <PretableSurface
       ariaLabel="grouped-grid"
       columns={columns ?? groupedColumns}
       getRowId={(row: GroupedRow) => row.id}
+      onFocusChange={onFocusChange}
+      onSelectedRowIdChange={onSelectedRowIdChange}
       onSelectionChange={onSelectionChange}
       overscan={0}
       rows={rows ?? groupedRows}
@@ -90,6 +106,55 @@ describe("group row rendering", () => {
 
     expect(rows[0]).toHaveAttribute("aria-level", "1");
     expect(rows[1]).toHaveAttribute("aria-level", "2");
+  });
+
+  it("exposes nested group levels and places their data leaves one level deeper", () => {
+    const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
+    const groups = [...groupRows(view)];
+    const dataRows = view
+      .getAllByTestId("pretable-row")
+      .filter((row) => row.hasAttribute("data-pretable-row"));
+
+    expect(groups.some((row) => row.getAttribute("aria-level") === "1")).toBe(
+      true,
+    );
+    expect(groups.some((row) => row.getAttribute("aria-level") === "2")).toBe(
+      true,
+    );
+    expect(dataRows).not.toHaveLength(0);
+    for (const row of dataRows) {
+      expect(row).toHaveAttribute("aria-level", "3");
+    }
+  });
+
+  it("counts expanded synthetic group rows in aria-rowcount", () => {
+    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+    const treegrid = view.getByRole("treegrid");
+
+    // Header + two synthetic groups + three data leaves.
+    expect(treegrid).toHaveAttribute("aria-rowcount", "6");
+  });
+
+  it("shrinks aria-rowcount when a grouped branch collapses", () => {
+    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+    const treegrid = view.getByRole("treegrid");
+
+    fireEvent.click(twistyOf(groupRows(view)[0]!)!);
+
+    // Header + two synthetic groups + the two leaves in the still-open branch.
+    expect(treegrid).toHaveAttribute("aria-rowcount", "5");
+  });
+
+  it("never renders an aria-rowindex beyond the declared aria-rowcount", () => {
+    const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
+    const treegrid = view.getByRole("treegrid");
+    const rowCount = Number(treegrid.getAttribute("aria-rowcount"));
+    const renderedIndices = [
+      ...treegrid.querySelectorAll<HTMLElement>("[role='row'][aria-rowindex]"),
+    ].map((row) => Number(row.getAttribute("aria-rowindex")));
+
+    expect(renderedIndices).not.toHaveLength(0);
+    expect(Math.max(...renderedIndices)).toBeLessThanOrEqual(rowCount);
   });
 
   it("switches the root role to treegrid only while grouped", () => {
@@ -163,6 +228,54 @@ describe("group row rendering", () => {
     expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
+  it("clicking group label and aggregate cells changes only focus", () => {
+    const onFocusChange = vi.fn();
+    const onSelectionChange = vi.fn();
+    const onSelectedRowIdChange = vi.fn();
+    const view = renderGrouped({
+      state: { rowGroups: ["sector"] },
+      onFocusChange,
+      onSelectedRowIdChange,
+      onSelectionChange,
+    });
+    const selectedDataCell = view.container.querySelector(
+      '[data-pretable-row-id="r1"] [data-pretable-column-id="name"]',
+    )!;
+    const group = groupRows(view)[0]!;
+    const groupId = group.getAttribute("data-pretable-row-id");
+    const labelCell = group.querySelector(
+      `[data-pretable-column-id="${GROUP_COLUMN_ID}"]`,
+    )!;
+    const aggregateCell = group.querySelector(
+      '[data-pretable-column-id="qty"]',
+    )!;
+
+    // Seed through the data-cell interaction rather than controlled state, so
+    // a later group click cannot be masked by the next controlled-state sync.
+    fireEvent.click(selectedDataCell);
+
+    onFocusChange.mockClear();
+    onSelectionChange.mockClear();
+    onSelectedRowIdChange.mockClear();
+
+    fireEvent.click(labelCell);
+    fireEvent.click(aggregateCell);
+
+    expect(onFocusChange).toHaveBeenNthCalledWith(1, {
+      rowId: groupId,
+      columnId: GROUP_COLUMN_ID,
+    });
+    expect(onFocusChange).toHaveBeenNthCalledWith(2, {
+      rowId: groupId,
+      columnId: "qty",
+    });
+    fireEvent.click(aggregateCell);
+    expect(onFocusChange).toHaveBeenCalledTimes(2);
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(onSelectedRowIdChange).not.toHaveBeenCalled();
+    expect(selectedDataCell).toHaveAttribute("data-pretable-selected", "true");
+  });
+
   it("double-clicking the group cell toggles, ignoring the twisty", () => {
     const view = renderGrouped({ state: { rowGroups: ["sector"] } });
     const before = view.getAllByTestId("pretable-row").length;
@@ -219,6 +332,91 @@ describe("group row rendering", () => {
     const tech = groupRows(view)[1]!;
     const qtyCell = tech.querySelector('[data-pretable-column-id="qty"]');
     expect(qtyCell).toHaveTextContent("Σ 3");
+  });
+
+  it("passes the same aggregate context to rendering and serialization", () => {
+    const formatAggregate: NonNullable<
+      PretableColumn<GroupedRow>["formatAggregate"]
+    > = ({ value, column, group }) =>
+      `${String(group.value)}:${column.id}:${String(value)}`;
+    const columns: PretableColumn<GroupedRow>[] = [
+      groupedColumns[0]!,
+      groupedColumns[1]!,
+      {
+        ...groupedColumns[2]!,
+        formatAggregate,
+      },
+    ];
+    const view = renderGrouped({
+      columns,
+      state: { rowGroups: ["sector"] },
+    });
+    const rendered = groupRows(view)[1]!.querySelector(
+      '[data-pretable-column-id="qty"]',
+    );
+    const group: PretableGroupRow = {
+      kind: "group",
+      id: "__group__:sector=Tech",
+      depth: 0,
+      columnId: "sector",
+      value: "Tech",
+      childCount: 2,
+      aggregates: { qty: 3 },
+    };
+    const copied = serializeRanges<GroupedRow>({
+      ranges: [
+        {
+          startRowId: group.id,
+          endRowId: group.id,
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      visibleRows: [group],
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        columns[1]!,
+        columns[2]!,
+      ],
+    });
+
+    expect(rendered).toHaveTextContent("Tech:qty:3");
+    expect(copied?.text).toBe(rendered?.textContent);
+  });
+
+  it("updates a visible aggregate when only its aggregate definition changes", () => {
+    const sumColumns: PretableColumn<GroupedRow>[] = [
+      groupedColumns[0]!,
+      groupedColumns[1]!,
+      {
+        ...groupedColumns[2]!,
+        aggregate: "sum",
+        formatAggregate: stableAggregateFormatter,
+      },
+    ];
+    const view = renderGrouped({
+      columns: sumColumns,
+      rows: groupedRows,
+      state: { rowGroups: ["sector"] },
+    });
+    const techQty = () =>
+      groupRows(view)[1]!.querySelector('[data-pretable-column-id="qty"]');
+    expect(techQty()).toHaveTextContent("aggregate: 3");
+
+    view.rerender(
+      <Grid
+        columns={[
+          sumColumns[0]!,
+          sumColumns[1]!,
+          { ...sumColumns[2]!, aggregate: "count" },
+        ]}
+        rows={groupedRows}
+        state={{ rowGroups: ["sector"] }}
+      />,
+    );
+
+    expect(techQty()).toHaveTextContent("aggregate: 2");
+    expect(groupedRows.map((row) => row.qty)).toEqual([1, 2, 4]);
   });
 
   it("falls back to default stringification without formatAggregate", () => {

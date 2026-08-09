@@ -628,6 +628,14 @@ export interface PretableSurfaceMessages {
     }) => string;
     // (undocumented)
     copyFailedAnnouncement?: () => string;
+    groupCollapsedAnnouncement?: (args: {
+        label: string;
+        childCount: number;
+    }) => string;
+    groupExpandedAnnouncement?: (args: {
+        label: string;
+        childCount: number;
+    }) => string;
     pasteAnnouncement?: (args: {
         cellCount: number;
         rejectedCount: number;
@@ -871,7 +879,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:806:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:815:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

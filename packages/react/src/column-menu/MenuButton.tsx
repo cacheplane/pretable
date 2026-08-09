@@ -11,12 +11,14 @@ export function MenuButton({
   label,
   open,
   style,
+  onNodeChange,
   onToggle,
 }: {
   columnId: string;
   label: string;
   open: boolean;
   style?: CSSProperties;
+  onNodeChange?: (columnId: string, node: HTMLButtonElement | null) => void;
   onToggle: (columnId: string, anchor: HTMLElement) => void;
 }) {
   return (
@@ -27,6 +29,7 @@ export function MenuButton({
       aria-haspopup="menu"
       aria-expanded={open}
       aria-label={`Column menu for ${label}`}
+      ref={(node) => onNodeChange?.(columnId, node)}
       style={style}
       // Load-bearing, exactly as on FunnelButton: React delegates at the root
       // container, so stopping here also keeps the pointerdown off `document`

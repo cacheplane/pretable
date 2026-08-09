@@ -7,6 +7,7 @@ import {
   makeGroupId,
 } from "../index";
 import type {
+  PretableCellAddress,
   PretableColumn,
   PretableDataRow,
   PretableGroupRow,
@@ -44,11 +45,30 @@ const TECH_ADA = makeGroupId([
   { columnId: "sector", value: "Tech" },
   { columnId: "analyst", value: "Ada" },
 ]);
+const ENERGY_ADA = makeGroupId([
+  { columnId: "sector", value: "Energy" },
+  { columnId: "analyst", value: "Ada" },
+]);
 
 function makeGrid(columns: PretableColumn<Holding>[] = COLUMNS) {
   return createGridCore<Holding>({
     columns: columns.map((column) => ({ ...column })),
     rows: HOLDINGS,
+    getRowId: (row) => row.id,
+  });
+}
+
+function makeGroupedSelectionGrid() {
+  return createGridCore({
+    columns: [
+      { id: "sector", header: "Sector" },
+      { id: "name", header: "Name" },
+      { id: "qty", header: "Qty" },
+    ],
+    rows: [
+      { id: "r1", sector: "Tech", name: "Ada", qty: 10 },
+      { id: "r2", sector: "Energy", name: "Bob", qty: 20 },
+    ],
     getRowId: (row) => row.id,
   });
 }
@@ -73,6 +93,19 @@ function groupById(
   );
   if (!found) throw new Error(`no group row with id ${id}`);
   return found;
+}
+
+function expectValidFocus(grid: ReturnType<typeof makeGrid>): void {
+  const snapshot = grid.getSnapshot();
+  const { rowId, columnId } = snapshot.focus;
+
+  if (rowId === null || columnId === null) {
+    expect(snapshot.focus).toEqual({ rowId: null, columnId: null });
+    return;
+  }
+
+  expect(snapshot.visibleRows.some((row) => row.id === rowId)).toBe(true);
+  expect(grid.getColumns().some((column) => column.id === columnId)).toBe(true);
 }
 
 describe("setRowGroups", () => {
@@ -172,6 +205,110 @@ describe("setRowGroups", () => {
 
     expect(snapshot.rowGroups).toEqual(["sector", "analyst"]);
     expect(snapshot.visibleRows[0]!.kind).toBe("group");
+  });
+});
+
+describe("mergeColumnsFromProps grouping semantics", () => {
+  test("rederives aggregates when the aggregate definition changes", () => {
+    const aggregateRows = HOLDINGS.slice(0, 2).map((row) => ({ ...row }));
+    const grid = createGridCore<Holding>({
+      columns: COLUMNS.map((column) => ({ ...column })),
+      rows: aggregateRows,
+      getRowId: (row) => row.id,
+    });
+    grid.setRowGroups(["sector"]);
+
+    expect(
+      groupById(grid.getSnapshot().visibleRows, SECTOR_TECH).aggregates.qty,
+    ).toBe(30);
+
+    grid.mergeColumnsFromProps([
+      COLUMNS[0]!,
+      COLUMNS[1]!,
+      { ...COLUMNS[2]!, aggregate: "count" },
+    ]);
+
+    expect(
+      groupById(grid.getSnapshot().visibleRows, SECTOR_TECH).aggregates.qty,
+    ).toBe(2);
+    expect(aggregateRows).toEqual(HOLDINGS.slice(0, 2));
+  });
+
+  test("rederives group keys when a grouped value accessor changes", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    void grid.getSnapshot();
+
+    grid.mergeColumnsFromProps([
+      {
+        ...COLUMNS[0]!,
+        value: (row) => row.sector.slice(0, 1),
+      },
+      COLUMNS[1]!,
+      COLUMNS[2]!,
+    ]);
+
+    const expectedEnergy = makeGroupId([{ columnId: "sector", value: "E" }]);
+    const expectedTech = makeGroupId([{ columnId: "sector", value: "T" }]);
+    const snapshot = grid.getSnapshot();
+    expect(
+      snapshot.visibleRows
+        .filter((row) => row.kind === "group")
+        .map((row) => row.id),
+    ).toEqual([expectedEnergy, expectedTech]);
+  });
+
+  test("an exact stored-reference merge preserves snapshot identity and emits nothing", () => {
+    const sectorValue = (row: Holding) => row.sector;
+    const aggregate = {
+      init: () => ({ total: 0 }),
+      accumulate: (acc: { total: number }, value: unknown) => ({
+        total: acc.total + Number(value),
+      }),
+      merge: (a: { total: number }, b: { total: number }) => ({
+        total: a.total + b.total,
+      }),
+      finalize: (acc: { total: number }) => acc.total,
+    };
+    const formatAggregate = ({ value }: { value: unknown }) => String(value);
+    const grid = makeGrid([
+      { ...COLUMNS[0]!, value: sectorValue },
+      COLUMNS[1]!,
+      { ...COLUMNS[2]!, aggregate, formatAggregate },
+    ]);
+    grid.setRowGroups(["sector"]);
+
+    grid.mergeColumnsFromProps([
+      { ...COLUMNS[0]!, value: sectorValue },
+      COLUMNS[1]!,
+      { ...COLUMNS[2]!, aggregate, formatAggregate },
+    ]);
+
+    const storedSector = grid.options.columns.find(
+      (column) => column.id === "sector",
+    )!;
+    const storedQty = grid.options.columns.find(
+      (column) => column.id === "qty",
+    )!;
+    const before = grid.getSnapshot();
+    let emissions = 0;
+    const unsubscribe = grid.subscribe(() => {
+      emissions += 1;
+    });
+
+    grid.mergeColumnsFromProps([
+      { ...COLUMNS[0]!, value: storedSector.value },
+      COLUMNS[1]!,
+      {
+        ...COLUMNS[2]!,
+        aggregate: storedQty.aggregate,
+        formatAggregate: storedQty.formatAggregate,
+      },
+    ]);
+
+    expect(grid.getSnapshot()).toBe(before);
+    expect(emissions).toBe(0);
+    unsubscribe();
   });
 });
 
@@ -441,7 +578,7 @@ describe("streaming", () => {
       {
         startRowId: "h5",
         endRowId: "h5",
-        startColumnId: "sector",
+        startColumnId: GROUP_COLUMN_ID,
         endColumnId: "qty",
       },
     ]);
@@ -604,6 +741,213 @@ describe("override retention (bounded LRU over decisions)", () => {
   });
 });
 
+describe("focus reconciliation after visible-row mutations", () => {
+  test("null focus does not eagerly derive the pre-mutation visible model", () => {
+    let valueCalls = 0;
+    const grid = createGridCore<Holding>({
+      columns: [
+        {
+          id: "sector",
+          header: "Sector",
+          rowGroup: true,
+          value: (row) => {
+            valueCalls += 1;
+            return row.sector;
+          },
+        },
+        { id: "qty", header: "Qty" },
+      ],
+      rows: HOLDINGS,
+      getRowId: (row) => row.id,
+    });
+
+    grid.setRows(HOLDINGS.map((row) => ({ ...row })));
+
+    expect(valueCalls).toBe(0);
+  });
+
+  test("setRows preserves focus on a surviving cloned group", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: SECTOR_ENERGY, columnId: GROUP_COLUMN_ID });
+
+    grid.setRows(HOLDINGS.map((row) => ({ ...row })));
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: SECTOR_ENERGY,
+      columnId: GROUP_COLUMN_ID,
+    });
+    expectValidFocus(grid);
+  });
+
+  test("applyTransaction replaces a vanished group focus at its old flat index", () => {
+    const grid = createGridCore<Holding>({
+      columns: COLUMNS.map((column) => ({ ...column })),
+      rows: [
+        { id: "a", sector: "A", analyst: "Ada", qty: 1 },
+        { id: "c", sector: "C", analyst: "Bob", qty: 2 },
+      ],
+      getRowId: (row) => row.id,
+    });
+    const groupA = makeGroupId([{ columnId: "sector", value: "A" }]);
+    const groupB = makeGroupId([{ columnId: "sector", value: "B" }]);
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: groupA, columnId: "qty" });
+
+    grid.applyTransaction({ update: [{ id: "a", sector: "B" }] });
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: groupB,
+      columnId: "qty",
+    });
+    expect(
+      grid.getSnapshot().visibleRows.some((row) => row.id === groupA),
+    ).toBe(false);
+    expectValidFocus(grid);
+  });
+
+  test("setRowGroups preserves a data row and repairs its hidden column", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h1", columnId: "sector" });
+
+    grid.setRowGroups(["sector"]);
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: "h1",
+      columnId: GROUP_COLUMN_ID,
+    });
+    expectValidFocus(grid);
+  });
+
+  test("setRowGroups clamps vanished group focus when levels are reordered", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector", "analyst"]);
+    const before = grid.getSnapshot().visibleRows;
+    const oldIndex = before.findIndex((row) => row.id === TECH_ADA);
+    grid.setFocus({ rowId: TECH_ADA, columnId: "qty" });
+
+    grid.setRowGroups(["analyst", "sector"]);
+
+    const after = grid.getSnapshot().visibleRows;
+    const expected = after[Math.min(oldIndex, after.length - 1)]!;
+    expect(after.some((row) => row.id === TECH_ADA)).toBe(false);
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: expected.id,
+      columnId: "qty",
+    });
+    expectValidFocus(grid);
+  });
+
+  test("setColumnFilter repairs focus when the focused row is filtered out", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h5", columnId: "qty" });
+
+    grid.setColumnFilter("sector", { operator: "equals", value: "Tech" });
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: "h4",
+      columnId: "qty",
+    });
+    expectValidFocus(grid);
+  });
+
+  test("replaceFilters repairs focus and clearFilters preserves that repair", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h1", columnId: "analyst" });
+
+    grid.replaceFilters({
+      sector: { operator: "equals", value: "Energy" },
+    });
+
+    const repaired = grid.getSnapshot().focus;
+    expect(repaired).toEqual({ rowId: "h5", columnId: "analyst" });
+    expectValidFocus(grid);
+
+    grid.clearFilters();
+
+    expect(grid.getSnapshot().focus).toEqual(repaired);
+    expectValidFocus(grid);
+  });
+
+  test("collapsing an ancestor preserves the nearest surviving ancestor", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector", "analyst"]);
+    grid.setFocus({ rowId: "h6", columnId: "qty" });
+
+    grid.setGroupExpanded(ENERGY_ADA, false);
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: ENERGY_ADA,
+      columnId: "qty",
+    });
+    expectValidFocus(grid);
+  });
+
+  test("visible-row mutations do not create focus from null focus", () => {
+    const grid = makeGrid();
+
+    grid.setRows(HOLDINGS.map((row) => ({ ...row })));
+    expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
+    grid.setColumnFilter("analyst", { operator: "equals", value: "Ada" });
+    expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
+    grid.setRowGroups(["sector"]);
+    expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
+    expectValidFocus(grid);
+  });
+
+  test("removing every visible row clears both focus fields", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h1", columnId: "qty" });
+
+    grid.setRows([]);
+
+    expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
+    expectValidFocus(grid);
+  });
+
+  test("an already-stale row id falls back to the first visible row", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "missing", columnId: "qty" });
+
+    grid.setRows(HOLDINGS.map((row) => ({ ...row })));
+
+    expect(grid.getSnapshot().focus).toEqual({ rowId: "h1", columnId: "qty" });
+    expectValidFocus(grid);
+  });
+
+  test("runtime partial-null focus shapes normalize after a mutation", () => {
+    const missingRow = makeGrid();
+    // The public type accepts only a complete address or null. These casts
+    // exercise defensive runtime normalization for malformed caller input.
+    missingRow.setFocus({
+      rowId: null,
+      columnId: "qty",
+    } as unknown as PretableCellAddress);
+
+    missingRow.setRows(HOLDINGS.map((row) => ({ ...row })));
+
+    expect(missingRow.getSnapshot().focus).toEqual({
+      rowId: "h1",
+      columnId: "qty",
+    });
+    expectValidFocus(missingRow);
+
+    const missingColumn = makeGrid();
+    missingColumn.setFocus({
+      rowId: "h2",
+      columnId: null,
+    } as unknown as PretableCellAddress);
+
+    missingColumn.applyTransaction({ update: [{ id: "h2", qty: 21 }] });
+
+    expect(missingColumn.getSnapshot().focus).toEqual({
+      rowId: "h2",
+      columnId: "sector",
+    });
+    expectValidFocus(missingColumn);
+  });
+});
+
 /**
  * The contract this suite records inverted in sub-project 2: group rows became
  * keyboard-reachable so their twisty is operable, while staying outside every
@@ -648,6 +992,142 @@ describe("group rows are focusable but never selectable", () => {
     // Vertical movement keeps the column, so focus lands on Tech's qty
     // aggregate rather than snapping to the group column.
     expect(grid.getSnapshot().focus.columnId).toBe("qty");
+  });
+
+  test("moveFocus onto a group preserves the prior data-cell selection", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: "h8", columnId: "qty" });
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+
+    grid.moveFocus("down");
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: SECTOR_TECH,
+      columnId: "qty",
+    });
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+  });
+
+  test("extend move skips a group and extends from the original data anchor", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: "h8", columnId: "qty" });
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+
+    grid.moveFocus("down", { extend: true });
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+
+    grid.moveFocus("down", { extend: true });
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h1",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+  });
+
+  test("clearSelection leaves no selection while a group cell is focused", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: SECTOR_ENERGY, columnId: GROUP_COLUMN_ID });
+    grid.selectAll();
+
+    grid.clearSelection();
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [],
+      anchor: null,
+    });
+  });
+
+  test("clearSelection preserves an unknown focus address", () => {
+    const grid = makeGrid();
+    grid.selectAll();
+    grid.setFocus({ rowId: "not-a-visible-row", columnId: "qty" });
+
+    grid.clearSelection();
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "not-a-visible-row",
+          endRowId: "not-a-visible-row",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "not-a-visible-row", columnId: "qty" },
+    });
+  });
+
+  test("clearSelection derives selection from focus repaired by filtering", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h5", columnId: "qty" });
+    grid.setColumnFilter("sector", { operator: "contains", value: "Tech" });
+
+    expect(grid.getSnapshot().focus).toEqual({ rowId: "h4", columnId: "qty" });
+
+    grid.clearSelection();
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "h4",
+          endRowId: "h4",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h4", columnId: "qty" },
+    });
   });
 
   test("jumpToEdge 'up' lands on the outermost group row", () => {
@@ -700,7 +1180,88 @@ describe("group rows are focusable but never selectable", () => {
       {
         startRowId: "h5",
         endRowId: "h4",
-        startColumnId: "sector",
+        startColumnId: GROUP_COLUMN_ID,
+        endColumnId: "qty",
+      },
+    ]);
+  });
+
+  test("selectAll spans the effective grouped columns", () => {
+    const grid = makeGroupedSelectionGrid();
+    grid.setRowGroups(["sector"]);
+    const effectiveColumns = grid.getColumns();
+    const firstColumn = effectiveColumns[0]!;
+    const lastColumn = effectiveColumns[effectiveColumns.length - 1]!;
+    expect([firstColumn.id, lastColumn.id]).toEqual([GROUP_COLUMN_ID, "qty"]);
+
+    grid.selectAll();
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "r2",
+        endRowId: "r1",
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      },
+    ]);
+  });
+
+  test("toggleRowSelection spans the effective grouped columns", () => {
+    const grid = makeGroupedSelectionGrid();
+    grid.setRowGroups(["sector"]);
+    const effectiveColumns = grid.getColumns();
+    const firstColumn = effectiveColumns[0]!;
+    const lastColumn = effectiveColumns[effectiveColumns.length - 1]!;
+    expect([firstColumn.id, lastColumn.id]).toEqual([GROUP_COLUMN_ID, "qty"]);
+
+    grid.toggleRowSelection("r1");
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "r1",
+        endRowId: "r1",
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      },
+    ]);
+  });
+
+  test("toggleRowSelection ignores visible group ids but accepts unknown ids", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    const priorSelection = {
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    };
+    grid.setSelection(priorSelection);
+    let emits = 0;
+    grid.subscribe(() => {
+      emits += 1;
+    });
+
+    grid.toggleRowSelection(SECTOR_ENERGY);
+    expect(grid.getSnapshot().selection).toEqual(priorSelection);
+    expect(emits).toBe(0);
+
+    grid.toggleRowSelection("not-a-visible-row");
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "h8",
+        endRowId: "h8",
+        startColumnId: "qty",
+        endColumnId: "qty",
+      },
+      {
+        startRowId: "not-a-visible-row",
+        endRowId: "not-a-visible-row",
+        startColumnId: GROUP_COLUMN_ID,
         endColumnId: "qty",
       },
     ]);
@@ -734,6 +1295,40 @@ describe("group rows are focusable but never selectable", () => {
       "h3",
       "h4",
     ]);
+    expect(ranges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          startColumnId: GROUP_COLUMN_ID,
+          endColumnId: "qty",
+        }),
+      ]),
+    );
+  });
+
+  test("setSelectAllVisible spans the effective grouped columns", () => {
+    const grid = makeGroupedSelectionGrid();
+    grid.setRowGroups(["sector"]);
+    const effectiveColumns = grid.getColumns();
+    const firstColumn = effectiveColumns[0]!;
+    const lastColumn = effectiveColumns[effectiveColumns.length - 1]!;
+    expect([firstColumn.id, lastColumn.id]).toEqual([GROUP_COLUMN_ID, "qty"]);
+
+    grid.setSelectAllVisible(true);
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "r2",
+        endRowId: "r2",
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      },
+      {
+        startRowId: "r1",
+        endRowId: "r1",
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      },
+    ]);
   });
 
   test("deriveSelectedRows never reports a group row as selected", () => {
@@ -744,7 +1339,7 @@ describe("group rows are focusable but never selectable", () => {
 
     const selected = deriveSelectedRows({
       visibleRows: snapshot.visibleRows,
-      columns: grid.options.columns,
+      columns: [...grid.getColumns()],
       selection: snapshot.selection,
     });
 

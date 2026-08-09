@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ColumnMenu } from "../column-menu/ColumnMenu";
 import { PretableSurface } from "../pretable-surface";
+import type { PretableSelectionState } from "@pretable/core";
 import type { PretableColumn } from "../types";
 import type { PretableSurfaceState } from "../use-pretable";
 
@@ -33,18 +34,28 @@ const columns: PretableColumn<Holding>[] = [
 
 interface GridProps {
   groupPanel?: { enabled: boolean; emptyMessage?: string };
+  onRowActivate?: () => void;
   onRowGroupsChange?: (rowGroups: string[]) => void;
+  onSelectionChange?: (selection: PretableSelectionState) => void;
   state?: PretableSurfaceState;
 }
 
-function Grid({ groupPanel, onRowGroupsChange, state }: GridProps) {
+function Grid({
+  groupPanel,
+  onRowActivate,
+  onRowGroupsChange,
+  onSelectionChange,
+  state,
+}: GridProps) {
   return (
     <PretableSurface
       ariaLabel="test-grid"
       columns={columns}
       getRowId={(row: Holding) => row.id}
       groupPanel={groupPanel ?? { enabled: true }}
+      onRowActivate={onRowActivate}
       onRowGroupsChange={onRowGroupsChange}
+      onSelectionChange={onSelectionChange}
       overscan={0}
       rows={rows}
       state={state}
@@ -59,6 +70,18 @@ const renderGrid = (props: GridProps = {}) => render(<Grid {...props} />);
 function openMenu(button: HTMLElement) {
   fireEvent.pointerDown(button);
   fireEvent.click(button);
+}
+
+/** Dispatch Enter, then model the browser's native button click if unclaimed. */
+function activateWithEnter(target: HTMLElement) {
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key: "Enter",
+  });
+  fireEvent(target, event);
+  if (!event.defaultPrevented) fireEvent.click(target);
+  return event;
 }
 
 const menuButtons = (view: { container: HTMLElement }) =>
@@ -127,19 +150,53 @@ describe("ColumnMenu — the popover on its own", () => {
     expect(document.activeElement).toBe(view.getByRole("menuitem"));
   });
 
-  it("Escape closes and hands focus back to the button", () => {
+  it("Escape closes and hands focus back to a still-connected button", () => {
     const onClose = vi.fn();
     const { anchor, ...view } = renderMenu({ onClose });
+    expect(anchor.isConnected).toBe(true);
     fireEvent.keyDown(view.getByRole("menu"), { key: "Escape" });
 
     expect(onClose).toHaveBeenCalled();
     expect(document.activeElement).toBe(anchor);
   });
 
-  it("hands focus back to the button after an item is chosen", () => {
-    const { anchor, ...view } = renderMenu();
+  it("Escape does not try to focus an anchor that is no longer connected", () => {
+    const onClose = vi.fn();
+    const { anchor, ...view } = renderMenu({ onClose });
+    const focus = vi.spyOn(anchor, "focus");
+    anchor.remove();
+
+    fireEvent.keyDown(view.getByRole("menu"), { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("outside pointer dismissal leaves focus on the user's outside target", () => {
+    const onClose = vi.fn();
+    const { anchor } = renderMenu({ onClose });
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    outside.focus();
+
+    fireEvent.pointerDown(outside);
+
+    expect(onClose).toHaveBeenCalled();
+    expect(document.activeElement).toBe(outside);
+    expect(document.activeElement).not.toBe(anchor);
+    outside.remove();
+  });
+
+  it("selecting Group calls onSelect and closes without refocusing the anchor", () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    const { anchor, ...view } = renderMenu({ onClose, onSelect });
+
     fireEvent.click(view.getByRole("menuitem"));
-    expect(document.activeElement).toBe(anchor);
+
+    expect(onSelect).toHaveBeenCalledWith("group");
+    expect(onClose).toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(anchor);
   });
 });
 
@@ -169,6 +226,50 @@ describe("column menu in the surface", () => {
     expect(
       view.container.querySelectorAll("[data-pretable-group-chip]"),
     ).toHaveLength(1);
+  });
+
+  it("leaves keyboard activation of the portaled group command to its menu", () => {
+    const onRowActivate = vi.fn();
+    const onRowGroupsChange = vi.fn();
+    const onSelectionChange = vi.fn();
+    const view = renderGrid({
+      onRowActivate,
+      onRowGroupsChange,
+      onSelectionChange,
+    });
+
+    const cell = view.container.querySelector<HTMLElement>(
+      '[data-pretable-row-id="r1"] [data-pretable-column-id="name"]',
+    )!;
+    fireEvent.click(cell);
+    expect(cell).toHaveFocus();
+    onRowActivate.mockClear();
+    onSelectionChange.mockClear();
+
+    const menuButton = view.getByRole("button", {
+      name: "Column menu for Industry",
+    });
+    menuButton.focus();
+    expect(activateWithEnter(menuButton).defaultPrevented).toBe(false);
+
+    const item = view.getByRole("menuitem", {
+      name: "Group by this column",
+    });
+    expect(item).toHaveFocus();
+    const commandEvent = activateWithEnter(item);
+
+    expect(commandEvent.defaultPrevented).toBe(false);
+    expect(onRowGroupsChange).toHaveBeenCalledWith(["industry"]);
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(onRowActivate).not.toHaveBeenCalled();
+    expect(
+      view.container.querySelectorAll('[data-pretable-selected="true"]'),
+    ).toHaveLength(1);
+    expect(
+      view.container.querySelector(
+        '[data-pretable-row-id="r1"] [data-pretable-column-id="name"]',
+      ),
+    ).toHaveAttribute("data-pretable-selected", "true");
   });
 
   it("groups a second level onto the end of the existing list", () => {

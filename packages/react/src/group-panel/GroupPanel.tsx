@@ -21,6 +21,11 @@ import {
 /** Matches the header reorder drag's threshold, so both grabs feel the same. */
 const CHIP_DRAG_THRESHOLD_PX = 5;
 
+type GroupingFocusIntent = {
+  target: "chip" | "header";
+  columnId: string;
+};
+
 export interface GroupPanelProps {
   /**
    * The panel's own container element, published so the surface's header drag
@@ -44,11 +49,16 @@ export interface GroupPanelProps {
   labelForColumn: (columnId: string) => string;
   emptyMessage?: string;
   height: number;
+  /** The owning surface will restore focus after controlled state settles. */
+  focusManagedExternally?: boolean;
   /**
    * Commit a whole new grouping list. Every mutation the panel makes is one
    * call with a rearranged array — there is no add/remove/move protocol.
    */
-  onChange: (next: readonly string[]) => void;
+  onChange: (
+    next: readonly string[],
+    focusIntent?: GroupingFocusIntent,
+  ) => void;
   style?: CSSProperties;
 }
 
@@ -72,6 +82,7 @@ export function GroupPanel({
   labelForColumn,
   emptyMessage,
   height,
+  focusManagedExternally = false,
   onChange,
   style,
 }: GroupPanelProps) {
@@ -90,6 +101,7 @@ export function GroupPanel({
     const columnId = refocusRef.current;
     if (columnId === null) return;
     refocusRef.current = null;
+    if (focusManagedExternally) return;
     // React reorders keyed children by re-inserting the DOM nodes, and
     // detaching a focused element drops focus to the body. Without this the
     // first Shift+Arrow would work and the second would go nowhere.
@@ -192,7 +204,7 @@ export function GroupPanel({
         const next = insertGroupLevel(current, drag.columnId, drag.insertIndex);
         if (next !== current) {
           refocusRef.current = drag.columnId;
-          commit(next);
+          commit(next, { target: "chip", columnId: drag.columnId });
         }
       }
       end();
@@ -345,7 +357,7 @@ export function GroupPanel({
                   event.preventDefault();
                   setActiveIndex(target);
                   refocusRef.current = columnId;
-                  onChange(next);
+                  onChange(next, { target: "chip", columnId });
                   return;
                 }
 
@@ -363,10 +375,16 @@ export function GroupPanel({
                 if (next === rowGroups) return;
                 // Keep the keyboard in the strip: focus the level that slides
                 // into this slot, or the one before it when the last chip went.
-                refocusRef.current =
-                  rowGroups[index + 1] ?? rowGroups[index - 1] ?? null;
+                const adjacentColumnId =
+                  rowGroups[index + 1] ?? rowGroups[index - 1];
+                refocusRef.current = adjacentColumnId ?? null;
                 setActiveIndex(Math.min(index, next.length - 1));
-                onChange(next);
+                onChange(
+                  next,
+                  adjacentColumnId
+                    ? { target: "chip", columnId: adjacentColumnId }
+                    : { target: "header", columnId },
+                );
               }
             }}
             ref={(node) => {
@@ -398,7 +416,17 @@ export function GroupPanel({
               data-pretable-chip-remove=""
               onClick={(event) => {
                 event.stopPropagation();
-                onChange(removeGroupLevel(rowGroups, index));
+                const next = removeGroupLevel(rowGroups, index);
+                const adjacentColumnId =
+                  rowGroups[index + 1] ?? rowGroups[index - 1];
+                refocusRef.current = adjacentColumnId ?? null;
+                setActiveIndex(Math.min(index, next.length - 1));
+                onChange(
+                  next,
+                  adjacentColumnId
+                    ? { target: "chip", columnId: adjacentColumnId }
+                    : { target: "header", columnId },
+                );
               }}
               tabIndex={-1}
               type="button"
