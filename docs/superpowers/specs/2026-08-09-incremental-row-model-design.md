@@ -118,6 +118,7 @@ const rowModel = createLocalRowModel({
   rows: holdings,
   columns,
   getRowId: (row) => row.id,
+  initialExpansion: { kind: "through-depth", depth: 0 },
 });
 
 rowModel.applyTransaction({
@@ -150,10 +151,19 @@ interface PretableRowModel<TRow, TRowId, TColumns> {
   ): PretableMutationResult<TRowId>;
 
   setQuery(query: PretableQueryFor<TColumns>): PretableQueryTransition;
+  setDerivations(
+    derivations: PretableDerivationsFor<TColumns>,
+  ): PretableDerivationTransition<TColumns>;
   setGroupExpanded(
     groupId: PretableGroupId,
     expanded: boolean,
   ): PretableMutationResult<TRowId>;
+  setExpansionDefault(
+    policy: PretableExpansionDefault,
+    options?: { readonly preserveOverrides?: boolean },
+  ): PretableMutationResult<TRowId>;
+  expandAll(): PretableMutationResult<TRowId>;
+  collapseAll(): PretableMutationResult<TRowId>;
 
   changesSince(revision: number): PretableChangeSequence<TRowId>;
   distinctValues<TColumnId extends ColumnIdOf<TColumns>>(
@@ -213,7 +223,8 @@ interface PretableTransaction<TRow, TRowId> {
 
 type PretableMutationIssue<TRowId> =
   | { readonly code: "unknown-update-id"; readonly rowId: TRowId }
-  | { readonly code: "unknown-remove-id"; readonly rowId: TRowId };
+  | { readonly code: "unknown-remove-id"; readonly rowId: TRowId }
+  | { readonly code: "unknown-group-id"; readonly groupId: PretableGroupId };
 
 interface PretableMutationResult<TRowId> {
   readonly previousRevision: number;
@@ -234,12 +245,27 @@ and never exposes a partial candidate. Convenience UI actions form a complete
 next query and call this command rather than maintaining independent filter,
 sort, or grouping state.
 
+`setDerivations` returns the parallel handle shape with
+`requestedDerivations`. Both transition handles share the same cancellation,
+completion, status, journaling, and atomic-publication semantics.
+
 `PretableQueryFor<TColumns>` is a deeply readonly value containing typed
 `filters`, ordered `sort`, and ordered `rowGroups`. Each entry is a
 column-correlated discriminated union: its column ID selects the legal
 operator, comparison value, direction, null policy, and grouping options.
 Expansion is intentionally absent because it changes the view of the current
 group tree rather than compiling a new query plan.
+
+The model's `TColumns` describes a fixed compile-time schema: column IDs and
+their row/value/aggregate types do not change during that model's lifetime.
+`setDerivations` accepts a compatible runtime definition for exactly that
+schema and can replace accessors, comparators, aggregators, filter operators,
+and other derivation behavior without losing the model instance. Its type
+widens option values and function identities while preserving every ID/value
+correlation. A semantic identity change stages the same cooperative rebuild as
+`setQuery`; an equivalent definition is a no-op. Presentation-only column
+state—header content, width, order, pinning, cell components—is not part of this
+command. A genuinely different column schema requires a new typed model.
 
 `changesSince(revision)` returns the ordered structural change sets needed to
 advance from that revision to the current one. The model retains a small,
@@ -269,6 +295,42 @@ insert/remove/move/update operations using `PretableVisibleRowRef`; it also
 identifies group aggregate/count changes that do not move rows. The journal's
 default capacity is implementation-tuned and configurable for diagnostics, but
 its eviction must not affect snapshot validity or revision retention.
+
+### Expansion contract
+
+Expansion is revisioned row-model state with a default policy and sparse group
+overrides:
+
+```ts
+type PretableExpansionDefault =
+  | { readonly kind: "collapsed" }
+  | { readonly kind: "expanded" }
+  | { readonly kind: "through-depth"; readonly depth: number };
+
+interface PretableExpansionState {
+  readonly default: PretableExpansionDefault;
+  readonly overrideCount: number;
+}
+```
+
+Depth is zero-based from the outermost group, and `through-depth` is inclusive:
+depth `2` expands group levels `0`, `1`, and `2`. The policy applies to both
+current and future groups. `setGroupExpanded` records or removes one sparse
+override. `setExpansionDefault` replaces the default and clears overrides
+unless `preserveOverrides` is explicitly true. `expandAll` and `collapseAll`
+are semantic shorthands that set the corresponding default and clear every
+override, so future groups follow the command too.
+
+Factory and rows-mode options accept `initialExpansion`; its default is
+`collapsed`, and it is read only when the long-lived model is created. Later
+expansion changes use model/grid commands rather than a second controlled prop.
+An unknown group ID is a no-op mutation result with an `unknown-group-id` issue.
+
+Bulk default changes do not visit every group. Group nodes retain policy-aware
+subtree counts, and the revision publishes a bulk-reset change for layout.
+Per-group overrides update counts only along the affected path. This preserves
+the current default-expansion, explicit override, expand-all, and collapse-all
+behaviors without making an all-groups command linear in row count.
 
 ### Ownership boundary
 
@@ -314,8 +376,10 @@ interface PretableRowModelSnapshot<TRow, TRowId, TColumns> {
     end: number,
   ): readonly PretableVisibleRow<TRow, TRowId>[];
   indexOf(ref: PretableVisibleRowRef<TRowId>): number;
+  isGroupExpanded(groupId: PretableGroupId): boolean;
 
   readonly query: Readonly<PretableQueryFor<TColumns>>;
+  readonly expansion: Readonly<PretableExpansionState>;
 }
 ```
 
@@ -329,6 +393,11 @@ entry, and structural change uses the discriminated visible-row reference.
 Selection and editing accept only data-row IDs; group rows can be focused but
 never selected or edited. A string data ID may therefore equal a group's
 serialized ID without collision.
+
+Every group row returned by `rowAt` or `range` includes its effective
+`expanded` value. `isGroupExpanded` supports controls holding a group ID that
+is not in the current viewport; unknown or no-longer-existing group IDs return
+`false`.
 
 ## TypeScript design
 
@@ -572,8 +641,8 @@ to the history controller.
 ## Cooperative query transitions
 
 Routine data mutations, expansion changes, and `setRows` diffs commit
-synchronously. A global query-plan change over 100,000 rows is staged in bounded
-main-thread slices:
+synchronously. A global query or compatible derivation change over 100,000 rows
+is staged in bounded main-thread slices:
 
 ```ts
 const transition = model.setQuery({ filters, sort, rowGroups });
@@ -584,16 +653,23 @@ The current committed snapshot remains interactive. Status reports `ready`,
 `rebuilding`, `error`, or terminal `disposed`. Progress/cancellation does not
 create model revisions.
 
+Explicitly cancelling the active transition rejects its `finished` promise
+with a typed cancellation error and returns model status to `ready` without a
+revision. If cancellation occurred because a newer transition superseded it,
+status continues as `rebuilding` under the newer transition ID. Disposal always
+wins and leaves status `disposed`.
+
 The rebuild captures an immutable row-store root. Concurrent transactions
 continue committing to the live model and append to a transition delta journal.
 After bulk construction, the journal is replayed incrementally under the new
 query plan. The candidate catches up and swaps atomically as one query revision.
-A newer query cancels and supersedes the older candidate.
+A newer query or derivation transition cancels and supersedes the older
+candidate.
 
 If a staged accessor, comparator, or aggregator throws, the candidate is
-discarded, the old query remains active, `transition.finished` rejects with
-structured context, and an error-status notification is published without a
-false data revision.
+discarded, the old query and derivations remain active, `transition.finished`
+rejects with structured context, and an error-status notification is published
+without a false data revision.
 
 ## Rendering and incremental layout
 
@@ -634,7 +710,11 @@ nearest surviving group ancestor or logical neighbor.
 
 In rows mode, the surface reconciles rows and derivation columns into its
 long-lived model without mutating during render. Visual-only column definitions
-may update independently.
+may update independently. After commit, a compatible derivation identity change
+calls `setDerivations`; the previous model snapshot stays visible until that
+transition atomically commits. A changed compile-time column schema is a
+development error unless the surface is intentionally remounted with a new
+model key.
 
 Rows mode accepts either no query prop or the paired controlled contract
 `query` plus `onQueryChange`. Without the pair, UI query actions call the
@@ -779,7 +859,9 @@ Cover:
 - stable and changed sort keys;
 - filter entry/exit and `aggregateFilteredRows` both ways;
 - built-in and custom aggregators;
-- group emptying/returning and expansion retention;
+- group emptying/returning, sparse expansion overrides, depth defaults, and
+  all/none defaults applying to future groups;
+- compatible derivation replacement, failure rollback, and stream catch-up;
 - selection/focus reconciliation at the grid boundary; and
 - rows-mode edit proposals versus explicit-model edit commits;
 - lazy/eager distinct-value dictionaries, eviction, and stream catch-up; and
@@ -805,7 +887,8 @@ required structures.
 Compile-time positive/negative fixtures cover zero-annotation happy-path
 inference, string/number IDs, typed accessors, formatters, editors, filters,
 aggregates, invalid IDs/operators/values, rows/model mutual exclusion, model-
-derived React callbacks, and custom accumulator/output inference.
+derived React callbacks, compatible versus changed model column schemas, and
+custom accumulator/output inference.
 
 API Extractor reports are reviewed for readable declarations. Compiler
 diagnostics measure 100- and 500-column definitions to guard editor performance.
