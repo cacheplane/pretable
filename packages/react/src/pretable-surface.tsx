@@ -88,7 +88,7 @@ import {
   getScrollContentStyle,
   getViewportStyle,
 } from "./styles";
-import { findParentGroupRow, isGroupExpanded } from "./group-model";
+import { findParentGroupRow, groupLabel, isGroupExpanded } from "./group-model";
 import { GroupRow } from "./group-row";
 import { GroupPanel } from "./group-panel/GroupPanel";
 import { hitTestGroupPanel } from "./group-panel/group-panel-hit-test";
@@ -214,6 +214,16 @@ export interface PretableSurfaceMessages {
    * applied, so there are no counts to report.
    */
   pasteFailedAnnouncement?: () => string;
+  /** Announced after a user action successfully expands a group. */
+  groupExpandedAnnouncement?: (args: {
+    label: string;
+    childCount: number;
+  }) => string;
+  /** Announced after a user action successfully collapses a group. */
+  groupCollapsedAnnouncement?: (args: {
+    label: string;
+    childCount: number;
+  }) => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -235,6 +245,10 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
       : base;
   },
   pasteFailedAnnouncement: () => "Paste failed",
+  groupExpandedAnnouncement: ({ label, childCount }) =>
+    `${label} expanded, ${childCount} rows`,
+  groupCollapsedAnnouncement: ({ label, childCount }) =>
+    `${label} collapsed, ${childCount} rows`,
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -472,9 +486,8 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    */
   copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
   /**
-   * Localized message factories for ARIA live announcements (select-all,
-   * copy success, copy failure). Each entry is optional; missing entries
-   * fall back to English defaults.
+   * Localized message factories for ARIA live announcements. Each entry is
+   * optional; missing entries fall back to English defaults.
    */
   messages?: PretableSurfaceMessages;
   /**
@@ -799,6 +812,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       pasteFailedAnnouncement:
         messages?.pasteFailedAnnouncement ??
         defaultMessages.pasteFailedAnnouncement,
+      groupExpandedAnnouncement:
+        messages?.groupExpandedAnnouncement ??
+        defaultMessages.groupExpandedAnnouncement,
+      groupCollapsedAnnouncement:
+        messages?.groupCollapsedAnnouncement ??
+        defaultMessages.groupCollapsedAnnouncement,
     }),
     [messages],
   );
@@ -953,6 +972,49 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     onPasteRef.current = onPaste;
     effectiveMessagesRef.current = effectiveMessages;
   });
+  // Expansion methods mutate the engine synchronously, so the authoritative
+  // result is available immediately. All input paths use this wrapper to avoid
+  // announcing intent when the engine made no state change, and to take the
+  // label/count from the group row that survived the mutation.
+  const mutateGroupExpansion = useCallback(
+    (groupId: string, mutation: () => void) => {
+      const before = grid.getSnapshot();
+      const beforeGroup = before.visibleRows.find((row) => row.id === groupId);
+      const beforeExpanded = isGroupExpanded(before, groupId);
+
+      mutation();
+
+      const after = grid.getSnapshot();
+      const afterGroup = after.visibleRows.find((row) => row.id === groupId);
+      const afterExpanded = isGroupExpanded(after, groupId);
+      if (
+        !beforeGroup ||
+        beforeGroup.kind !== "group" ||
+        beforeGroup.childCount === 0 ||
+        !afterGroup ||
+        afterGroup.kind !== "group" ||
+        afterGroup.childCount === 0 ||
+        beforeExpanded === afterExpanded
+      ) {
+        return;
+      }
+
+      const announcementArgs = {
+        label: groupLabel(afterGroup.value),
+        childCount: afterGroup.childCount,
+      };
+      scheduleAnnouncement(
+        afterExpanded
+          ? effectiveMessagesRef.current.groupExpandedAnnouncement(
+              announcementArgs,
+            )
+          : effectiveMessagesRef.current.groupCollapsedAnnouncement(
+              announcementArgs,
+            ),
+      );
+    },
+    [grid, scheduleAnnouncement],
+  );
   // Which entry path opened the active edit. Type-to-replace seeds the draft
   // with the typed character, so the editor must not select it (the next
   // keystroke would replace it). Every begin() that opens an editor sets this,
@@ -2139,6 +2201,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           // bounded by the first and last columns ON SCREEN.
           columns: columnsInVisualOrder,
           grid,
+          onGroupExpansionMutation: mutateGroupExpansion,
           onRowActivate,
           onSelectedRowIdChange,
           selectFocusedRowOnArrowKey,
@@ -2913,7 +2976,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   }
                 }}
                 onToggle={() => {
-                  grid.toggleGroup(group.id);
+                  mutateGroupExpansion(group.id, () => {
+                    grid.toggleGroup(group.id);
+                  });
                 }}
                 registerCell={registerCell}
                 rowIndex={renderRow.rowIndex}
@@ -4008,6 +4073,7 @@ interface SurfaceKeyDownContext<TRow extends PretableRow> {
   bodyViewportHeight: number;
   columns: PretableColumn<TRow>[];
   grid: PretableGrid<TRow>;
+  onGroupExpansionMutation: (groupId: string, mutation: () => void) => void;
   onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   selectFocusedRowOnArrowKey: boolean;
@@ -4022,6 +4088,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     bodyViewportHeight,
     columns: allColumns,
     grid,
+    onGroupExpansionMutation,
     onRowActivate,
     onSelectedRowIdChange,
     selectFocusedRowOnArrowKey,
@@ -4063,19 +4130,25 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     // data-row path and select a group header.
     if (key === "Enter" || key === " " || key === "Space") {
       if (expandable) {
-        grid.setGroupExpanded(focusedRow.id, !expanded);
+        onGroupExpansionMutation(focusedRow.id, () => {
+          grid.setGroupExpanded(focusedRow.id, !expanded);
+        });
       }
       return true;
     }
 
     if (inGroupColumn && key === "ArrowRight" && expandable && !expanded) {
-      grid.setGroupExpanded(focusedRow.id, true);
+      onGroupExpansionMutation(focusedRow.id, () => {
+        grid.setGroupExpanded(focusedRow.id, true);
+      });
       return true;
     }
 
     if (inGroupColumn && key === "ArrowLeft") {
       if (expandable && expanded) {
-        grid.setGroupExpanded(focusedRow.id, false);
+        onGroupExpansionMutation(focusedRow.id, () => {
+          grid.setGroupExpanded(focusedRow.id, false);
+        });
         return true;
       }
 

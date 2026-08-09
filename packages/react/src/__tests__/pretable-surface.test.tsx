@@ -3366,6 +3366,47 @@ function renderGroupedAnnounceHarness(
   );
 }
 
+const expansionAnnouncementRows: AnnounceGroupedRow[] = [
+  { id: "t1", sector: "Tech", name: "One", qty: 1 },
+  { id: "t2", sector: "Tech", name: "Two", qty: 2 },
+];
+
+function renderExpansionAnnounceHarness(
+  opts: { messages?: PretableSurfaceMessages } = {},
+) {
+  return render(
+    <PretableSurface
+      ariaLabel="expansion-announce-grid"
+      columns={announceGroupedColumns}
+      getRowId={(row: AnnounceGroupedRow) => row.id}
+      messages={opts.messages}
+      overscan={0}
+      rows={expansionAnnouncementRows}
+      state={{ rowGroups: ["sector"] }}
+      viewportHeight={300}
+    />,
+  );
+}
+
+function getExpansionGroupCell(view: ReturnType<typeof render>) {
+  const cell = view.container.querySelector<HTMLDivElement>(
+    `[data-pretable-group-cell][data-pretable-column-id="${GROUP_COLUMN_ID}"]`,
+  );
+  if (!cell) throw new Error("expected a rendered group cell");
+  return cell;
+}
+
+function focusExpansionGroup(view: ReturnType<typeof render>) {
+  fireEvent.click(getExpansionGroupCell(view));
+  return view.getByRole("treegrid");
+}
+
+function flushAnnouncement() {
+  act(() => {
+    vi.advanceTimersByTime(500);
+  });
+}
+
 describe("aria-live announcements", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -3396,6 +3437,179 @@ describe("aria-live announcements", () => {
 
     second.unmount();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("announces a twisty-click collapse with the default group message", () => {
+    const view = renderExpansionAnnounceHarness();
+
+    fireEvent.click(view.getByRole("button", { name: "Collapse Tech" }));
+    expect(getLiveRegion(view)?.textContent).toBe("");
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("Tech collapsed, 2 rows");
+  });
+
+  it("announces a group-cell double-click collapse", () => {
+    const view = renderExpansionAnnounceHarness();
+
+    fireEvent.doubleClick(getExpansionGroupCell(view));
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("Tech collapsed, 2 rows");
+  });
+
+  it("announces an Enter collapse", () => {
+    const view = renderExpansionAnnounceHarness();
+    const treegrid = focusExpansionGroup(view);
+
+    fireEvent.keyDown(treegrid, { key: "Enter" });
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("Tech collapsed, 2 rows");
+  });
+
+  it("announces a Space collapse", () => {
+    const view = renderExpansionAnnounceHarness();
+    const treegrid = focusExpansionGroup(view);
+
+    fireEvent.keyDown(treegrid, { key: " " });
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("Tech collapsed, 2 rows");
+  });
+
+  it("announces an ArrowLeft collapse", () => {
+    const view = renderExpansionAnnounceHarness();
+    const treegrid = focusExpansionGroup(view);
+
+    fireEvent.keyDown(treegrid, { key: "ArrowLeft" });
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("Tech collapsed, 2 rows");
+  });
+
+  it("announces an ArrowRight expansion", () => {
+    const view = renderExpansionAnnounceHarness();
+    const treegrid = focusExpansionGroup(view);
+    fireEvent.keyDown(treegrid, { key: "ArrowLeft" });
+    flushAnnouncement();
+
+    fireEvent.keyDown(treegrid, { key: "ArrowRight" });
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("Tech expanded, 2 rows");
+  });
+
+  it("uses custom expanded and collapsed group message factories", () => {
+    const groupCollapsedAnnouncement = vi.fn(
+      ({ label, childCount }: { label: string; childCount: number }) =>
+        `CLOSE ${label}/${childCount}`,
+    );
+    const groupExpandedAnnouncement = vi.fn(
+      ({ label, childCount }: { label: string; childCount: number }) =>
+        `OPEN ${label}/${childCount}`,
+    );
+    const view = renderExpansionAnnounceHarness({
+      messages: {
+        groupCollapsedAnnouncement,
+        groupExpandedAnnouncement,
+      },
+    });
+    const treegrid = focusExpansionGroup(view);
+
+    fireEvent.keyDown(treegrid, { key: "Enter" });
+    flushAnnouncement();
+    expect(getLiveRegion(view)?.textContent).toBe("CLOSE Tech/2");
+    expect(groupCollapsedAnnouncement).toHaveBeenCalledWith({
+      label: "Tech",
+      childCount: 2,
+    });
+
+    fireEvent.keyDown(treegrid, { key: " " });
+    flushAnnouncement();
+    expect(getLiveRegion(view)?.textContent).toBe("OPEN Tech/2");
+    expect(groupExpandedAnnouncement).toHaveBeenCalledWith({
+      label: "Tech",
+      childCount: 2,
+    });
+  });
+
+  it("uses the latest custom group message factory after rerender", () => {
+    const first = vi.fn(() => "STALE");
+    const latest = vi.fn(() => "LATEST");
+    const renderSurface = (groupCollapsedAnnouncement: () => string) => (
+      <PretableSurface
+        ariaLabel="expansion-announce-grid"
+        columns={announceGroupedColumns}
+        getRowId={(row: AnnounceGroupedRow) => row.id}
+        messages={{ groupCollapsedAnnouncement }}
+        overscan={0}
+        rows={expansionAnnouncementRows}
+        state={{ rowGroups: ["sector"] }}
+        viewportHeight={300}
+      />
+    );
+    const view = render(renderSurface(first));
+    view.rerender(renderSurface(latest));
+
+    fireEvent.keyDown(focusExpansionGroup(view), { key: "ArrowLeft" });
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("LATEST");
+    expect(first).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledWith({ label: "Tech", childCount: 2 });
+  });
+
+  it("keeps expansion announcements last-message-wins within the debounce window", () => {
+    const view = renderExpansionAnnounceHarness();
+    const twisty = view.getByRole("button", { name: "Collapse Tech" });
+
+    fireEvent.click(twisty);
+    act(() => {
+      vi.advanceTimersByTime(499);
+    });
+    fireEvent.click(view.getByRole("button", { name: "Expand Tech" }));
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(getLiveRegion(view)?.textContent).toBe("");
+    act(() => {
+      vi.advanceTimersByTime(499);
+    });
+
+    expect(getLiveRegion(view)?.textContent).toBe("Tech expanded, 2 rows");
+  });
+
+  it("does not announce an expansion no-op", () => {
+    const view = renderExpansionAnnounceHarness();
+    const treegrid = focusExpansionGroup(view);
+
+    fireEvent.keyDown(treegrid, { key: "ArrowRight" });
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("");
+  });
+
+  it("does not offer or announce expansion for an empty grouped dataset", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="empty-grouped-announce-grid"
+        columns={announceGroupedColumns}
+        getRowId={(row: AnnounceGroupedRow) => row.id}
+        overscan={0}
+        rows={[]}
+        state={{ rowGroups: ["sector"] }}
+        viewportHeight={300}
+      />,
+    );
+
+    expect(
+      view.queryByRole("button", { name: /^(Expand|Collapse) / }),
+    ).toBeNull();
+    fireEvent.keyDown(view.getByRole("treegrid"), { key: "ArrowRight" });
+    flushAnnouncement();
+
+    expect(getLiveRegion(view)?.textContent).toBe("");
   });
 
   it("Cmd+A announces 'All rows selected' after the debounce window", () => {
