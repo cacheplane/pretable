@@ -1,5 +1,14 @@
 # @pretable/app-bench
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies [[`f1b9e43`](https://github.com/cacheplane/pretable/commit/f1b9e4391daf3b57ae987fd022ea577ad81e0e3b)]:
+  - @pretable/react@0.0.9
+  - @pretable/ui@0.0.9
+  - @pretable/stream-adapter@0.0.9
+
 ## 0.0.9
 
 ### Patch Changes
