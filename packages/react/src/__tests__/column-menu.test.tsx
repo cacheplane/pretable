@@ -127,19 +127,53 @@ describe("ColumnMenu — the popover on its own", () => {
     expect(document.activeElement).toBe(view.getByRole("menuitem"));
   });
 
-  it("Escape closes and hands focus back to the button", () => {
+  it("Escape closes and hands focus back to a still-connected button", () => {
     const onClose = vi.fn();
     const { anchor, ...view } = renderMenu({ onClose });
+    expect(anchor.isConnected).toBe(true);
     fireEvent.keyDown(view.getByRole("menu"), { key: "Escape" });
 
     expect(onClose).toHaveBeenCalled();
     expect(document.activeElement).toBe(anchor);
   });
 
-  it("hands focus back to the button after an item is chosen", () => {
-    const { anchor, ...view } = renderMenu();
+  it("Escape does not try to focus an anchor that is no longer connected", () => {
+    const onClose = vi.fn();
+    const { anchor, ...view } = renderMenu({ onClose });
+    const focus = vi.spyOn(anchor, "focus");
+    anchor.remove();
+
+    fireEvent.keyDown(view.getByRole("menu"), { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("outside pointer dismissal leaves focus on the user's outside target", () => {
+    const onClose = vi.fn();
+    const { anchor } = renderMenu({ onClose });
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    outside.focus();
+
+    fireEvent.pointerDown(outside);
+
+    expect(onClose).toHaveBeenCalled();
+    expect(document.activeElement).toBe(outside);
+    expect(document.activeElement).not.toBe(anchor);
+    outside.remove();
+  });
+
+  it("selecting Group calls onSelect and closes without refocusing the anchor", () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    const { anchor, ...view } = renderMenu({ onClose, onSelect });
+
     fireEvent.click(view.getByRole("menuitem"));
-    expect(document.activeElement).toBe(anchor);
+
+    expect(onSelect).toHaveBeenCalledWith("group");
+    expect(onClose).toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(anchor);
   });
 });
 

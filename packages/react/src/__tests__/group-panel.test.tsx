@@ -4,6 +4,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
+import { GroupPanel } from "../group-panel/GroupPanel";
 import type { PretableColumn } from "../types";
 import type { PretableSurfaceState } from "../use-pretable";
 
@@ -268,6 +269,144 @@ const chipIds = (view: { container: HTMLElement }) =>
 
 const activeChipId = () =>
   document.activeElement?.getAttribute("data-pretable-column-id") ?? null;
+
+type GroupingFocusIntent = {
+  target: "chip" | "header";
+  columnId: string;
+};
+
+function renderPanelContract(rowGroups: readonly string[]) {
+  const onChange =
+    vi.fn<(next: readonly string[], intent?: GroupingFocusIntent) => void>();
+  const view = render(
+    <GroupPanel
+      height={40}
+      labelForColumn={(columnId) => columnId}
+      onChange={onChange}
+      rowGroups={rowGroups}
+    />,
+  );
+  return { ...view, onChange };
+}
+
+describe("group panel — focus intent contract", () => {
+  it("requests the moved chip after a keyboard reorder", () => {
+    const view = renderPanelContract(["sector", "industry"]);
+    const chip = view.getAllByRole("option")[0];
+
+    fireEvent.keyDown(chip, { key: "ArrowRight", shiftKey: true });
+
+    expect(view.onChange).toHaveBeenCalledWith(["industry", "sector"], {
+      target: "chip",
+      columnId: "sector",
+    });
+  });
+
+  it.each([
+    {
+      name: "Delete on a middle chip requests its successor",
+      rowGroups: ["sector", "industry", "name"],
+      index: 1,
+      key: "Delete",
+      expectedGroups: ["sector", "name"],
+      expectedIntent: { target: "chip", columnId: "name" },
+    },
+    {
+      name: "Backspace on an end chip requests its predecessor",
+      rowGroups: ["sector", "industry", "name"],
+      index: 2,
+      key: "Backspace",
+      expectedGroups: ["sector", "industry"],
+      expectedIntent: { target: "chip", columnId: "industry" },
+    },
+    {
+      name: "Delete on the final chip requests the removed column header",
+      rowGroups: ["sector"],
+      index: 0,
+      key: "Delete",
+      expectedGroups: [],
+      expectedIntent: { target: "header", columnId: "sector" },
+    },
+  ])("$name", ({ rowGroups, index, key, expectedGroups, expectedIntent }) => {
+    const view = renderPanelContract(rowGroups);
+
+    fireEvent.keyDown(view.getAllByRole("option")[index]!, { key });
+
+    expect(view.onChange).toHaveBeenCalledWith(expectedGroups, expectedIntent);
+  });
+
+  it.each([
+    {
+      name: "a middle chip remove button requests its successor",
+      rowGroups: ["sector", "industry", "name"],
+      index: 1,
+      expectedGroups: ["sector", "name"],
+      expectedIntent: { target: "chip", columnId: "name" },
+    },
+    {
+      name: "an end chip remove button requests its predecessor",
+      rowGroups: ["sector", "industry", "name"],
+      index: 2,
+      expectedGroups: ["sector", "industry"],
+      expectedIntent: { target: "chip", columnId: "industry" },
+    },
+    {
+      name: "the final chip remove button requests the removed column header",
+      rowGroups: ["sector"],
+      index: 0,
+      expectedGroups: [],
+      expectedIntent: { target: "header", columnId: "sector" },
+    },
+  ])("$name", ({ rowGroups, index, expectedGroups, expectedIntent }) => {
+    const view = renderPanelContract(rowGroups);
+    const removeButton = view
+      .getAllByRole("option")
+      [index]!.querySelector("[data-pretable-chip-remove]")!;
+
+    fireEvent.click(removeButton);
+
+    expect(view.onChange).toHaveBeenCalledWith(expectedGroups, expectedIntent);
+  });
+
+  it("requests the dragged chip after a drag reorder", () => {
+    const view = renderPanelContract(["sector", "industry"]);
+    const panel = view.container.querySelector<HTMLElement>(
+      "[data-pretable-group-panel]",
+    )!;
+    const chips = view.getAllByRole("option");
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 240, 40),
+    );
+    vi.spyOn(chips[0]!, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 100, 40),
+    );
+    vi.spyOn(chips[1]!, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(100, 0, 100, 40),
+    );
+
+    fireEvent.pointerDown(chips[0]!, {
+      button: 0,
+      pointerId: 7,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(document, {
+      pointerId: 7,
+      clientX: 190,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(document, {
+      pointerId: 7,
+      clientX: 190,
+      clientY: 20,
+    });
+
+    expect(view.onChange).toHaveBeenCalledWith(["industry", "sector"], {
+      target: "chip",
+      columnId: "sector",
+    });
+  });
+});
 
 describe("group panel — keyboard model", () => {
   it("arrow keys move focus between chips without wrapping", () => {

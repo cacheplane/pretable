@@ -43,6 +43,11 @@ import {
 
 type PretableFocusDirection = "up" | "down" | "left" | "right";
 
+type GroupingFocusIntent = {
+  target: "chip" | "header";
+  columnId: string;
+};
+
 /**
  * Narrow a visible-row entry to a data row.
  *
@@ -103,7 +108,7 @@ import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
 import { toBooleanCell } from "./editors/boolean-utils";
-import { ColumnMenu } from "./column-menu/ColumnMenu";
+import { ColumnMenu, type ColumnMenuAction } from "./column-menu/ColumnMenu";
 import { MenuButton } from "./column-menu/MenuButton";
 import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
@@ -825,7 +830,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const columnMenuButtonNodesRef = useRef<Map<string, HTMLButtonElement>>(
+    new Map(),
+  );
   const viewportRef = useRef<HTMLDivElement>(null);
+  const pendingGroupingFocusRef = useRef<GroupingFocusIntent | null>(null);
   // A plain forward Tab from the header may enter the body while engine focus
   // is still fully null. This ref records that keyboard-owned transition so a
   // pointer click or direct `.focus()` on the body container cannot invent a
@@ -898,9 +907,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // Programmatic `grid.setRowGroups` bypasses this and stays silent, matching
   // `grid.moveColumn` and `onColumnOrderChange`.
   const applyRowGroups = useCallback(
-    (next: readonly string[]) => {
+    (next: readonly string[], focusIntent?: GroupingFocusIntent) => {
+      const before = grid.getSnapshot().rowGroups;
+      pendingGroupingFocusRef.current = focusIntent ?? null;
       grid.setRowGroups(next);
-      onRowGroupsChange?.([...grid.getSnapshot().rowGroups]);
+      const committed = grid.getSnapshot().rowGroups;
+      if (
+        before.length === committed.length &&
+        before.every((columnId, index) => columnId === committed[index])
+      ) {
+        // A change-guarded engine mutation schedules no render, so there would
+        // be no layout pass to consume this request. Clear it here instead of
+        // letting a later unrelated render act on a stale grouping gesture.
+        pendingGroupingFocusRef.current = null;
+      }
+      onRowGroupsChange?.([...committed]);
     },
     [grid, onRowGroupsChange],
   );
@@ -919,6 +940,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         cellNodesRef.current.set(key, node);
       } else {
         cellNodesRef.current.delete(key);
+      }
+    },
+    [],
+  );
+  const registerColumnMenuButton = useCallback(
+    (columnId: string, node: HTMLButtonElement | null) => {
+      if (node) {
+        columnMenuButtonNodesRef.current.set(columnId, node);
+      } else {
+        columnMenuButtonNodesRef.current.delete(columnId);
       }
     },
     [],
@@ -1352,6 +1383,25 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const filterOpenState =
     headerPopover?.kind === "filter" ? headerPopover : null;
   const menuOpenState = headerPopover?.kind === "menu" ? headerPopover : null;
+  const selectColumnMenuAction = useCallback(
+    (action: ColumnMenuAction) => {
+      if (!menuOpenState) return;
+      const level = snapshot.rowGroups.indexOf(menuOpenState.columnId);
+      applyRowGroups(
+        action === "group"
+          ? insertGroupLevel(
+              snapshot.rowGroups,
+              menuOpenState.columnId,
+              snapshot.rowGroups.length,
+            )
+          : removeGroupLevel(snapshot.rowGroups, level),
+        action === "group"
+          ? { target: "chip", columnId: menuOpenState.columnId }
+          : undefined,
+      );
+    },
+    [applyRowGroups, menuOpenState, snapshot.rowGroups],
+  );
 
   // Pin state and pinned offsets are read from the PLANNED column
   // (`renderSnapshot.columns`), never from the prop column. The engine is the
@@ -1730,6 +1780,47 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     renderSnapshot.rows,
     snapshot.editing,
   ]);
+
+  useLayoutEffect(() => {
+    const request = pendingGroupingFocusRef.current;
+    if (request === null) return;
+
+    // A grouping request gets exactly one post-render resolution pass. Keeping
+    // a miss pending would let an unrelated later render mount the same column
+    // and steal focus long after the user's grouping action ended.
+    pendingGroupingFocusRef.current = null;
+
+    const requestedNode =
+      request.target === "chip"
+        ? Array.from(
+            groupPanelRef.current?.querySelectorAll<HTMLElement>(
+              "[data-pretable-group-chip]",
+            ) ?? [],
+          ).find(
+            (node) =>
+              node.getAttribute("data-pretable-column-id") === request.columnId,
+          )
+        : columnMenuButtonNodesRef.current.get(request.columnId);
+
+    if (requestedNode?.isConnected) {
+      requestedNode.focus();
+      return;
+    }
+
+    const { rowId, columnId } = snapshot.focus;
+    const focusedCell =
+      rowId && columnId
+        ? cellNodesRef.current.get(`${rowId}::${columnId}`)
+        : undefined;
+    if (focusedCell?.isConnected) {
+      focusedCell.focus({ preventScroll: true });
+      return;
+    }
+
+    if (viewportRef.current?.isConnected) {
+      viewportRef.current.focus({ preventScroll: true });
+    }
+  });
 
   // Scroll-into-view for keyboard focus. The engine's focus address can move
   // to a cell that is outside the virtualization window, or behind a sticky
@@ -2639,6 +2730,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             column.id,
                             current.groupInsertIndex,
                           ),
+                          { target: "chip", columnId: column.id },
                         );
                       } else if (drag.dragging && current) {
                         const beforePinned = buildPinnedMap(grid);
@@ -2890,6 +2982,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       columnId={column.id}
                       label={label}
                       open={menuOpenState?.columnId === column.id}
+                      onNodeChange={registerColumnMenuButton}
                       onToggle={(id, anchor) =>
                         togglePopover("menu", id, anchor)
                       }
@@ -3479,22 +3572,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 label={col.header ?? menuOpenState.columnId}
                 style={popoverStyle(menuOpenState.rect)}
                 onClose={closePopover}
-                onSelect={(action) => {
-                  // Through `applyRowGroups` like every other UI mutation —
-                  // one `setRowGroups`, then report the engine's sanitized
-                  // list. Both branches reuse the panel's list helpers so the
-                  // menu and the chips can never disagree about what
-                  // "append a level" or "drop a level" means.
-                  applyRowGroups(
-                    action === "group"
-                      ? insertGroupLevel(
-                          snapshot.rowGroups,
-                          menuOpenState.columnId,
-                          snapshot.rowGroups.length,
-                        )
-                      : removeGroupLevel(snapshot.rowGroups, level),
-                  );
-                }}
+                // Through `applyRowGroups` like every other UI mutation — one
+                // `setRowGroups`, then report the engine's sanitized list.
+                // Both branches reuse the panel's list helpers so the menu and
+                // chips cannot disagree about append/remove semantics.
+                onSelect={selectColumnMenuAction}
               />
             );
           })()

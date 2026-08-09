@@ -1116,6 +1116,194 @@ function getSelectedCells(view: ReturnType<typeof render>) {
   );
 }
 
+function GroupingFocusHarness({
+  initialFocus,
+  initialRowGroups = [],
+  removeColumnOnEmpty,
+}: {
+  initialFocus?: PretableFocusState;
+  initialRowGroups?: string[];
+  removeColumnOnEmpty?: string;
+}) {
+  const [renderedColumns, setRenderedColumns] =
+    React.useState<PretableColumn<GridRow>[]>(gridColumns);
+  const [rowGroups, setRowGroups] = React.useState(initialRowGroups);
+
+  return (
+    <PretableSurface
+      ariaLabel="grouping-focus-grid"
+      columns={renderedColumns}
+      getRowId={getGridRowId}
+      groupPanel={{ enabled: true }}
+      onRowGroupsChange={(next) => {
+        let controlledNext = next;
+        const removedId = next.length === 0 ? removeColumnOnEmpty : undefined;
+        if (removedId) {
+          setRenderedColumns((current) =>
+            current.filter((column) => column.id !== removedId),
+          );
+          controlledNext = next.filter((columnId) => columnId !== removedId);
+        }
+        setRowGroups(controlledNext);
+      }}
+      overscan={0}
+      rows={gridRows}
+      state={{
+        rowGroups,
+        ...(initialFocus ? { focus: initialFocus } : {}),
+      }}
+      viewportHeight={300}
+    />
+  );
+}
+
+function openGroupingMenu(
+  view: ReturnType<typeof render>,
+  columnLabel: string,
+) {
+  const button = view.getByRole("button", {
+    name: `Column menu for ${columnLabel}`,
+  });
+  fireEvent.pointerDown(button);
+  fireEvent.click(button);
+  return view.getByRole("menuitem", { name: "Group by this column" });
+}
+
+describe("grouping DOM focus restoration", () => {
+  it("focuses the new chip after grouping from a column menu", () => {
+    const view = render(<GroupingFocusHarness />);
+    const anchor = view.getByRole("button", { name: "Column menu for A" });
+    const anchorFocus = vi.spyOn(anchor, "focus");
+
+    fireEvent.click(openGroupingMenu(view, "A"));
+
+    const chip = view.container.querySelector<HTMLElement>(
+      '[data-pretable-group-chip][data-pretable-column-id="a"]',
+    );
+    expect(chip).not.toBeNull();
+    expect(chip?.isConnected).toBe(true);
+    expect(document.activeElement).toBe(chip);
+    expect(anchorFocus).not.toHaveBeenCalled();
+  });
+
+  it("focuses the new chip after a header-to-panel grouping drop unmounts the header", () => {
+    const view = render(<GroupingFocusHarness />);
+    const panel = view.container.querySelector<HTMLElement>(
+      "[data-pretable-group-panel]",
+    )!;
+    const header = view.getByRole("columnheader", { name: "Sort A" });
+    vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 300, 40),
+    );
+
+    fireEvent.pointerDown(header, {
+      button: 0,
+      pointerId: 9,
+      clientX: 10,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(header, {
+      pointerId: 9,
+      clientX: 40,
+      clientY: 20,
+    });
+    fireEvent.pointerUp(header, {
+      pointerId: 9,
+      clientX: 40,
+      clientY: 20,
+    });
+
+    const chip = view.container.querySelector<HTMLElement>(
+      '[data-pretable-group-chip][data-pretable-column-id="a"]',
+    );
+    expect(header.isConnected).toBe(false);
+    expect(chip?.isConnected).toBe(true);
+    expect(document.activeElement).toBe(chip);
+  });
+
+  it("keeps DOM focus on the moved chip after keyboard reorder", () => {
+    const view = render(<GroupingFocusHarness initialRowGroups={["a", "b"]} />);
+    const chip = view.container.querySelector<HTMLElement>(
+      '[data-pretable-group-chip][data-pretable-column-id="a"]',
+    )!;
+    chip.focus();
+
+    fireEvent.keyDown(chip, { key: "ArrowRight", shiftKey: true });
+
+    const movedChip = view.container.querySelector<HTMLElement>(
+      '[data-pretable-group-chip][data-pretable-column-id="a"]',
+    );
+    expect(movedChip?.isConnected).toBe(true);
+    expect(document.activeElement).toBe(movedChip);
+  });
+
+  it("focuses the reappearing column menu button after removing the final chip", () => {
+    const view = render(<GroupingFocusHarness initialRowGroups={["a"]} />);
+    const chip = view.getByRole("option");
+    chip.focus();
+
+    fireEvent.keyDown(chip, { key: "Delete" });
+
+    const menuButton = view.getByRole("button", {
+      name: "Column menu for A",
+    });
+    expect(menuButton.isConnected).toBe(true);
+    expect(document.activeElement).toBe(menuButton);
+  });
+
+  it("falls back from a missing requested header to the engine-focused cell", () => {
+    const view = render(
+      <GroupingFocusHarness
+        initialFocus={{ rowId: "r1", columnId: "b" }}
+        initialRowGroups={["a"]}
+        removeColumnOnEmpty="a"
+      />,
+    );
+    const chip = view.getByRole("option");
+    chip.focus();
+
+    fireEvent.keyDown(chip, { key: "Delete" });
+
+    const cell = getCell(view, "r1", "b");
+    expect(cell?.isConnected).toBe(true);
+    expect(document.activeElement).toBe(cell);
+  });
+
+  it("falls back when the requested chip cannot be resolved", () => {
+    const view = render(
+      <GroupingFocusHarness initialFocus={{ rowId: "r1", columnId: "c" }} />,
+    );
+    const panel = view.container.querySelector<HTMLElement>(
+      "[data-pretable-group-panel]",
+    )!;
+    const noChips = document
+      .createElement("div")
+      .querySelectorAll<HTMLElement>("[data-pretable-group-chip]");
+    vi.spyOn(panel, "querySelectorAll").mockReturnValue(noChips);
+
+    fireEvent.click(openGroupingMenu(view, "A"));
+
+    const cell = getCell(view, "r1", "c");
+    expect(cell?.isConnected).toBe(true);
+    expect(document.activeElement).toBe(cell);
+  });
+
+  it("falls back to the scroll viewport when engine focus has no cell", () => {
+    const view = render(
+      <GroupingFocusHarness initialRowGroups={["a"]} removeColumnOnEmpty="a" />,
+    );
+    const chip = view.getByRole("option");
+    chip.focus();
+
+    fireEvent.keyDown(chip, { key: "Delete" });
+
+    const viewport = view.getByRole("grid", { name: "grouping-focus-grid" });
+    expect(viewport.isConnected).toBe(true);
+    expect(document.activeElement).toBe(viewport);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+});
+
 describe("keyboard contract", () => {
   it("ArrowDown moves focus down one row", () => {
     const view = renderHarness();
@@ -5211,6 +5399,8 @@ describe("column reorder", () => {
     let capturedGrid: PretableGrid<GridRow> | null = null;
     let renders = 0;
     function Probe() {
+      // This test intentionally counts render entries to prove convergence.
+      // eslint-disable-next-line react-hooks/globals
       renders += 1;
       return (
         <PretableSurface

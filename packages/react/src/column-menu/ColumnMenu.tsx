@@ -38,7 +38,7 @@ export function ColumnMenu({
   onSelect,
   onClose,
 }: {
-  /** The `⋮` that opened the menu; focus returns here when the menu closes. */
+  /** The `⋮` that opened the menu; Escape returns focus here when it survives. */
   anchor: HTMLElement | null;
   columnId: string;
   /** Whether this column is currently one of the grouping levels. */
@@ -70,9 +70,11 @@ export function ColumnMenu({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [onClose]);
 
-  const dismiss = () => {
+  const dismiss = (restoreFocus: boolean) => {
     onClose();
-    anchor?.focus();
+    if (restoreFocus && anchor?.isConnected) {
+      anchor.focus();
+    }
   };
 
   return (
@@ -93,7 +95,7 @@ export function ColumnMenu({
           // dumped on <body>.
           event.stopPropagation();
           event.preventDefault();
-          dismiss();
+          dismiss(true);
         }}
       >
         <button
@@ -104,7 +106,7 @@ export function ColumnMenu({
           data-pretable-menu-action={action}
           onClick={() => {
             onSelect(action);
-            dismiss();
+            onClose();
           }}
         >
           {ACTION_LABELS[action]}
