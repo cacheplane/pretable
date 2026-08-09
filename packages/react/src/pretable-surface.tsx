@@ -962,6 +962,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
   const controlledFocusState = state?.focus;
+  const normalizedControlledFocusForFollow =
+    controlledFocusState === undefined
+      ? undefined
+      : normalizeControlledFocus(controlledFocusState);
+  const controlledFocusFollowRowId = normalizedControlledFocusForFollow?.rowId;
+  const controlledFocusFollowColumnId =
+    normalizedControlledFocusForFollow?.columnId;
   const bodyEntryTabbable = focusedRowId === null && focusedColumnId === null;
   const isGrouped = snapshot.rowGroups.length > 0;
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
@@ -1811,6 +1818,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       return;
     }
 
+    if (
+      controlledFocusFollowRowId !== undefined &&
+      (controlledFocusFollowRowId !== focusedRowId ||
+        controlledFocusFollowColumnId !== focusedColumnId)
+    ) {
+      // `usePretable` reconciles controlled state in an earlier layout effect.
+      // Its synchronous engine restore schedules a follow-up render, but this
+      // pass still carries the transient focus address that prompted the
+      // callback. Do not move DOM focus to that unaccepted address. Keep the
+      // request pending so an accepted controlled prop can converge without a
+      // second engine move; a rejected null restore clears both refs in the
+      // branch above on its follow-up render.
+      return;
+    }
+
     if (snapshot.editing) {
       // An edit owns the keyboard for its whole lifecycle — the editor input
       // lives *inside* the cell, so it would pass the containment check below.
@@ -1852,6 +1874,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // node here to scroll to at all.
     cellNode.focus({ preventScroll: true });
   }, [
+    controlledFocusFollowColumnId,
+    controlledFocusFollowRowId,
     focusedColumnId,
     focusedRowId,
     // The rendered set. Both arrays are rebuilt whenever the virtualization

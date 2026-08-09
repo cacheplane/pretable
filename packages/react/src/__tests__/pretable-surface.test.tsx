@@ -2325,6 +2325,126 @@ describe("keyboard contract", () => {
     expect(getSelectedCells(view)).toHaveLength(0);
   });
 
+  it("keeps DOM focus on the body entry when controlled null focus rejects its proposal", () => {
+    const onFocusChange = vi.fn();
+    let grid: PretableGrid<GridRow> | undefined;
+    const view = render(
+      <React.StrictMode>
+        <PretableSurface
+          ariaLabel="controlled-tab-entry-grid"
+          columns={gridColumns}
+          getRowId={getGridRowId}
+          onFocusChange={onFocusChange}
+          onGridReady={(readyGrid) => {
+            grid = readyGrid;
+          }}
+          overscan={0}
+          rows={gridRows}
+          state={{ focus: { rowId: null, columnId: null } }}
+          viewportHeight={300}
+        />
+      </React.StrictMode>,
+    );
+    const bodyEntry = view.container.querySelector<HTMLElement>(
+      "[data-pretable-scroll-content]",
+    )!;
+    const headerControls = [
+      ...view.container.querySelectorAll<HTMLElement>(
+        '[data-pretable-header-row] button:not([tabindex="-1"])',
+      ),
+    ];
+    const lastHeaderControl = headerControls.at(-1)!;
+
+    lastHeaderControl.focus();
+    expect(
+      fireEvent.keyDown(lastHeaderControl, {
+        key: "Tab",
+        bubbles: true,
+        cancelable: true,
+      }),
+    ).toBe(true);
+    act(() => bodyEntry.focus());
+
+    expect(onFocusChange).toHaveBeenCalledTimes(1);
+    expect(onFocusChange).toHaveBeenCalledWith({
+      rowId: "r1",
+      columnId: "a",
+    });
+    expect(grid?.getSnapshot().focus).toEqual({
+      rowId: null,
+      columnId: null,
+    });
+    expect(getFocusedCell(view)).toBeNull();
+    expect(getCell(view, "r1", "a")).toHaveAttribute("tabindex", "-1");
+    expect(bodyEntry).toHaveAttribute("tabindex", "0");
+    expect(document.activeElement).toBe(bodyEntry);
+  });
+
+  it("moves DOM focus from the body entry only after controlled focus accepts its proposal", () => {
+    const onFocusChange = vi.fn();
+    let grid: PretableGrid<GridRow> | undefined;
+    const surface = (focus: PretableFocusState) => (
+      <React.StrictMode>
+        <PretableSurface
+          ariaLabel="accepted-tab-entry-grid"
+          columns={gridColumns}
+          getRowId={getGridRowId}
+          onFocusChange={onFocusChange}
+          onGridReady={(readyGrid) => {
+            grid = readyGrid;
+          }}
+          overscan={0}
+          rows={gridRows}
+          state={{ focus }}
+          viewportHeight={300}
+        />
+      </React.StrictMode>
+    );
+    const view = render(surface({ rowId: null, columnId: null }));
+    const bodyEntry = view.container.querySelector<HTMLElement>(
+      "[data-pretable-scroll-content]",
+    )!;
+    const headerControls = [
+      ...view.container.querySelectorAll<HTMLElement>(
+        '[data-pretable-header-row] button:not([tabindex="-1"])',
+      ),
+    ];
+    const lastHeaderControl = headerControls.at(-1)!;
+
+    lastHeaderControl.focus();
+    expect(
+      fireEvent.keyDown(lastHeaderControl, {
+        key: "Tab",
+        bubbles: true,
+        cancelable: true,
+      }),
+    ).toBe(true);
+    act(() => bodyEntry.focus());
+
+    expect(onFocusChange).toHaveBeenCalledTimes(1);
+    expect(grid?.getSnapshot().focus).toEqual({
+      rowId: null,
+      columnId: null,
+    });
+    expect(getFocusedCell(view)).toBeNull();
+    expect(document.activeElement).toBe(bodyEntry);
+
+    view.rerender(surface({ rowId: "r1", columnId: "a" }));
+
+    expect(grid?.getSnapshot().focus).toEqual({
+      rowId: "r1",
+      columnId: "a",
+    });
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
+    expect(getCell(view, "r1", "a")).toHaveAttribute("tabindex", "0");
+    expect(bodyEntry).toHaveAttribute("tabindex", "-1");
+    expect(document.activeElement).toBe(getCell(view, "r1", "a"));
+    expect(onFocusChange).toHaveBeenCalledTimes(1);
+  });
+
   it("Cmd+A selects every cell in the grid", () => {
     const view = renderHarness();
     seedFocus(view, "r1", "a");
