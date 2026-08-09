@@ -139,25 +139,20 @@ export function PretableAdapter({
     () => dataset.columns.map((column) => ({ ...column })),
     [dataset.columns],
   );
-  const surfaceColumns = useMemo<PretableColumn<ScenarioRow>[]>(
-    () => {
-      const flavoredColumns = applyCellRendererFlavor<ScenarioRow>(
-        baseColumns,
-        scriptName !== undefined && isCellRendererScript(scriptName)
-          ? scriptName
-          : null,
-      );
+  const surfaceColumns = useMemo<PretableColumn<ScenarioRow>[]>(() => {
+    const flavoredColumns = applyCellRendererFlavor<ScenarioRow>(
+      baseColumns,
+      scriptName !== undefined && isCellRendererScript(scriptName)
+        ? scriptName
+        : null,
+    );
 
-      return groupedUpdates
-        ? flavoredColumns.map((column) =>
-            column.id === "col_3"
-              ? { ...column, aggregate: "sum" }
-              : column,
-          )
-        : flavoredColumns;
-    },
-    [baseColumns, groupedUpdates, scriptName],
-  );
+    return groupedUpdates
+      ? flavoredColumns.map((column) =>
+          column.id === "col_3" ? { ...column, aggregate: "sum" } : column,
+        )
+      : flavoredColumns;
+  }, [baseColumns, groupedUpdates, scriptName]);
   const surfaceState = useMemo<PretableSurfaceState | null>(() => {
     const interaction = planToState(interactionPlan, surfaceColumns);
     return groupedUpdates
