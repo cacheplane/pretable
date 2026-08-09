@@ -10,7 +10,7 @@ const DEFAULT_SCALE = "dev";
 const DEFAULT_SCENARIOS = ["S1", "S2", "S3", "S7"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
 /**
- * Default update-rate dimension. Only the `updates` script consumes it;
+ * Default update-rate dimension. Only update scripts consume it;
  * other scripts ignore the value. Single-element default keeps non-rate-
  * sweep matrix runs unchanged.
  */
@@ -24,6 +24,10 @@ const DEFAULT_UPDATE_RATES = [1000];
 const COMPARATOR_PARITY_MIN_REPEATS = 10;
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 const BENCH_APP_ID = "@pretable/app-bench";
+
+function isUpdatesScript(scriptName) {
+  return scriptName === "updates" || scriptName === "updates-grouped";
+}
 
 export function parseBenchMatrixArgs(args) {
   const parsed = {
@@ -91,11 +95,11 @@ export function createBenchMatrixEntries(parsedArgs) {
     Array.from({ length: parsedArgs.repeats }, (_, repeatIndex) =>
       parsedArgs.scenarios.flatMap((scenarioId) =>
         parsedArgs.scripts.flatMap((scriptName) => {
-          // Only the `updates` script consumes the update-rate dimension.
+          // Only update scripts consume the update-rate dimension.
           // For every other script, single entry with the default rate so
           // existing matrix runs aren't multiplied.
           const ratesForEntry =
-            scriptName === "updates" ? updateRates : DEFAULT_UPDATE_RATES;
+            isUpdatesScript(scriptName) ? updateRates : DEFAULT_UPDATE_RATES;
           return ratesForEntry.map((updateRatePerSec) => ({
             adapterId,
             repeatIndex,

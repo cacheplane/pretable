@@ -67,6 +67,7 @@ describe("bench-runner contract", () => {
       "filter-metadata",
       "filter-text",
       "updates",
+      "updates-grouped",
       "autosize",
       "select-range-extend",
       "keyboard-nav-row",
@@ -200,6 +201,41 @@ describe("bench-runner contract", () => {
         }),
       ).toEqual({ ok: true });
     }
+
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "pretable",
+        scenarioId: "S5",
+        scriptName: "updates-grouped",
+      }),
+    ).toEqual({ ok: true });
+
+    for (const adapterId of ["ag-grid", "tanstack", "mui"] as const) {
+      expect(
+        validateSupportedP0aRequest({
+          ...baseRequest,
+          adapterId,
+          scenarioId: "S5",
+          scriptName: "updates-grouped",
+        }),
+      ).toEqual({
+        ok: false,
+        reason: expect.stringContaining("adapter"),
+      });
+    }
+
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "pretable",
+        scenarioId: "S2",
+        scriptName: "updates-grouped",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
 
     // updates script is S5-only
     expect(

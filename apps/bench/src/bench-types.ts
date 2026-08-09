@@ -16,6 +16,7 @@ export interface BenchQueryState {
     | "filter-metadata"
     | "filter-text"
     | "updates"
+    | "updates-grouped"
     | "autosize"
     | "select-range-extend"
     | "keyboard-nav-row"
@@ -26,7 +27,7 @@ export interface BenchQueryState {
   >;
   autorun: boolean;
   /**
-   * Patches per second for the `updates` script. Default is 1000/sec
+   * Patches per second for the update scripts. Default is 1000/sec
    * (the existing S5 default), held by varying batch size at a fixed
    * 50 ms tick (so RAF/timer behavior stays consistent across rates).
    */

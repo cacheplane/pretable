@@ -62,6 +62,7 @@ export type BenchScriptName =
   | "filter-metadata"
   | "filter-text"
   | "updates"
+  | "updates-grouped"
   | "autosize"
   | "select-range-extend"
   | "keyboard-nav-row"
@@ -218,6 +219,7 @@ export const benchScriptNames: readonly BenchScriptName[] = [
   "filter-metadata",
   "filter-text",
   "updates",
+  "updates-grouped",
   "autosize",
   "select-range-extend",
   "keyboard-nav-row",
@@ -281,6 +283,7 @@ export function validateSupportedP0aRequest(
     "initial",
     "scroll",
     "updates",
+    "updates-grouped",
     "autosize",
     ...interactionScripts,
     ...selectionNavScripts,
@@ -318,6 +321,22 @@ export function validateSupportedP0aRequest(
       return {
         ok: false,
         reason: `Unsupported scenario for updates script: ${request.scenarioId}`,
+      };
+    }
+  }
+
+  if (request.scriptName === "updates-grouped") {
+    if (request.adapterId !== "pretable") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for updates-grouped: ${request.adapterId}`,
+      };
+    }
+
+    if (request.scenarioId !== "S5") {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for updates-grouped: ${request.scenarioId}`,
       };
     }
   }

@@ -146,6 +146,19 @@ describe("parseBenchQuery", () => {
     });
   });
 
+  test("accepts the grouped-updates script", () => {
+    expect(
+      parseBenchQuery(
+        "?adapter=pretable&scenario=S5&scale=target&script=updates-grouped",
+      ),
+    ).toMatchObject({
+      adapterId: "pretable",
+      scenarioId: "S5",
+      scale: "target",
+      scriptName: "updates-grouped",
+    });
+  });
+
   test("accepts supported interaction scripts without collapsing back to initial", () => {
     expect(parseBenchQuery("?scenario=S2&scale=dev&script=sort")).toMatchObject(
       {

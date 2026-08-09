@@ -211,26 +211,33 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
   );
 });
 
-test("createBenchMatrixEntries multiplies updates entries across rates without affecting other scripts", () => {
+test("createBenchMatrixEntries multiplies update scripts across rates without affecting other scripts", () => {
   const entries = createBenchMatrixEntries({
     adapters: ["pretable"],
     repeats: 1,
     scale: "hypothesis",
     scenarios: ["S5"],
-    scripts: ["scroll", "updates"],
-    updateRates: [100, 1000, 10000],
+    scripts: ["updates", "updates-grouped", "scroll"],
+    updateRates: [100, 1000],
     passthroughArgs: [],
   });
 
-  // scroll runs once with the default rate; updates expands to 3 entries.
-  assert.equal(entries.length, 4);
+  assert.equal(entries.length, 5);
   const scrollEntries = entries.filter((e) => e.scriptName === "scroll");
   const updatesEntries = entries.filter((e) => e.scriptName === "updates");
+  const groupedUpdatesEntries = entries.filter(
+    (e) => e.scriptName === "updates-grouped",
+  );
   assert.equal(scrollEntries.length, 1);
-  assert.equal(updatesEntries.length, 3);
+  assert.equal(updatesEntries.length, 2);
+  assert.equal(groupedUpdatesEntries.length, 2);
   assert.deepEqual(
     updatesEntries.map((e) => e.updateRatePerSec),
-    [100, 1000, 10000],
+    [100, 1000],
+  );
+  assert.deepEqual(
+    groupedUpdatesEntries.map((e) => e.updateRatePerSec),
+    [100, 1000],
   );
   assert.equal(scrollEntries[0].updateRatePerSec, 1000);
 });
