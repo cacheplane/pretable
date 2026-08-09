@@ -166,16 +166,24 @@ adapter/scenario combinations.
 
 For this script only, the Pretable adapter:
 
-- groups by `col_1`, whose generated owner values form a small stable set;
+- groups by `col_1`, whose generated owner values begin as a small set;
 - adds `aggregate: "sum"` to numeric `col_3`;
 - keeps groups expanded, matching the default and the hero's interaction result; and
 - does not render the group panel, so the measurement isolates grouped row derivation
   and rendering rather than panel chrome.
 
-Every update invalidates the current full derived-row cache, even when the randomly
-patched column is neither the group key nor aggregate input. That is intentional: the
-test measures the present full-recompute contract rather than an imagined optimized
-path.
+The existing patch generator remains unchanged. It may choose `col_1` and replace an
+owner with a unique update string, so group cardinality grows during the run instead of
+remaining fixed at the initial owner set. That churn is intentional: the flat and
+grouped scripts receive the same update distribution, while the grouped run exercises
+both stable-key aggregate recomputation and the harder case where a row moves to a new
+group. Do not protect `col_1`, cycle it through a bounded enum, or otherwise make the
+grouped workload easier than the existing S5 stream.
+
+Every update invalidates the current full derived-row cache, including when the
+randomly patched column is neither the group key nor aggregate input. That is also
+intentional: the test measures the present full-recompute contract rather than an
+imagined optimized path.
 
 ### Measurement gate
 
@@ -189,9 +197,9 @@ must satisfy:
 - `visible_row_count_drift === 0`.
 
 The flat run is the diagnostic baseline and its relative delta is reported, but the
-absolute grouped thresholds are the gate. If the grouped run misses either frame or
-long-task threshold, stop before editing the hero. Do not hide the result by lowering
-the update rate, collapsing groups, reducing scale, or optimizing inside this spec.
+absolute grouped thresholds are the gate. **Failure of any one of the four thresholds**
+stops SP4 before editing the hero. Do not hide the result by lowering the update rate,
+collapsing groups, reducing scale, or optimizing inside this spec.
 
 ## Error and edge behavior
 
@@ -257,4 +265,3 @@ the behavior it protects is removed or inverted.
 4. Only after the gate passes, adopt grouping in the hero.
 5. Add the dedicated guide, navigation, cross-links, and API report.
 6. Run browser, benchmark, and full-repository validation.
-
