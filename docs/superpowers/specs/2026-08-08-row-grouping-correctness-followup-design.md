@@ -1,7 +1,7 @@
 # Row grouping correctness follow-up
 
 Date: 2026-08-08
-Status: ready for user review
+Status: approved
 Predecessors: `2026-08-07-row-grouping-engine-design.md` (SP1, #237),
 `2026-08-07-row-grouping-render-design.md` (SP2, #254), and
 `2026-08-07-row-grouping-panel-design.md` (SP3, #258)
