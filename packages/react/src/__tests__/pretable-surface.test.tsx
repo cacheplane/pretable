@@ -22,6 +22,7 @@ import type { PretableCellRenderInput, PretableColumn } from "../types";
 import { type PretableSurfaceState, usePretable } from "../use-pretable";
 import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
+  PretableCellRange,
   PretableFocusState,
   PretableGrid,
   PretableSelectionState,
@@ -3158,6 +3159,7 @@ function renderGroupedAnnounceHarness(
     initialState?: PretableSurfaceState;
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     messages?: PretableSurfaceMessages;
+    rowSelectionColumn?: RowSelectionColumnConfig;
   } = {},
 ) {
   return render(
@@ -3169,6 +3171,7 @@ function renderGroupedAnnounceHarness(
       messages={opts.messages}
       overscan={0}
       rows={announceGroupedRows}
+      rowSelectionColumn={opts.rowSelectionColumn}
       state={opts.initialState ?? { rowGroups: ["sector"] }}
       viewportHeight={300}
     />,
@@ -3320,6 +3323,162 @@ describe("aria-live announcements", () => {
 
     expect(getLiveRegion(view)).toHaveTextContent("3 rows × 2 columns copied");
   });
+
+  it.each<{
+    name: string;
+    ranges: PretableCellRange[];
+    expectedText: string;
+    expectedHtmlRows: number;
+    expectedAnnouncement: string;
+    rowSelectionColumn?: RowSelectionColumnConfig;
+  }>([
+    {
+      name: "normalizes reversed row and column bounds",
+      ranges: [
+        {
+          startRowId: "r2",
+          endRowId: "r1",
+          startColumnId: "qty",
+          endColumnId: "name",
+        },
+      ],
+      expectedText: "One\t1\n\t2\nTwo\t2",
+      expectedHtmlRows: 3,
+      expectedAnnouncement: "3 rows × 2 columns copied",
+    },
+    {
+      name: "counts overlapping multi-ranges as a union",
+      ranges: [
+        {
+          startRowId: "r1",
+          endRowId: "r2",
+          startColumnId: "name",
+          endColumnId: "name",
+        },
+        {
+          startRowId: "r2",
+          endRowId: "r2",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      expectedText: "One\n\nTwo\n\n2",
+      expectedHtmlRows: 4,
+      expectedAnnouncement: "3 rows × 2 columns copied",
+    },
+    {
+      name: "maps the synthetic group-column bound without counting row-select",
+      ranges: [
+        {
+          startRowId: "r1",
+          endRowId: "r2",
+          startColumnId: GROUP_COLUMN_ID,
+          endColumnId: "name",
+        },
+      ],
+      expectedText: "\tOne\nBeta\t\n\tTwo",
+      expectedHtmlRows: 3,
+      expectedAnnouncement: "3 rows × 2 columns copied",
+      rowSelectionColumn: { enabled: true },
+    },
+    {
+      name: "excludes a row-select bound ending at the synthetic group column",
+      ranges: [
+        {
+          startRowId: "r1",
+          endRowId: "r2",
+          startColumnId: ROW_SELECT_COLUMN_ID,
+          endColumnId: GROUP_COLUMN_ID,
+        },
+      ],
+      expectedText: "\nBeta\n",
+      expectedHtmlRows: 3,
+      expectedAnnouncement: "3 rows × 1 columns copied",
+      rowSelectionColumn: { enabled: true },
+    },
+    {
+      name: "falls back from an unknown column endpoint to the known bound",
+      ranges: [
+        {
+          startRowId: "r1",
+          endRowId: "r2",
+          startColumnId: "missing-column",
+          endColumnId: "name",
+        },
+      ],
+      expectedText: "One\n\nTwo",
+      expectedHtmlRows: 3,
+      expectedAnnouncement: "3 rows × 1 columns copied",
+    },
+    {
+      name: "ignores an unknown-row range while counting the emitted block",
+      ranges: [
+        {
+          startRowId: "missing-row",
+          endRowId: "r2",
+          startColumnId: "name",
+          endColumnId: "qty",
+        },
+        {
+          startRowId: "r1",
+          endRowId: "r1",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      expectedText: "1",
+      expectedHtmlRows: 1,
+      expectedAnnouncement: "1 rows × 1 columns copied",
+    },
+  ])(
+    "$name and keeps the announcement aligned with serialization",
+    async ({
+      ranges,
+      expectedText,
+      expectedHtmlRows,
+      expectedAnnouncement,
+      rowSelectionColumn,
+    }) => {
+      const copyToClipboard = vi.fn().mockResolvedValue(undefined);
+      const firstRange = ranges[0]!;
+      const view = renderGroupedAnnounceHarness({
+        initialState: {
+          rowGroups: ["sector"],
+          focus: { rowId: "r1", columnId: "name" },
+          selection: {
+            ranges,
+            anchor: {
+              rowId: firstRange.startRowId,
+              columnId: firstRange.startColumnId,
+            },
+          },
+        },
+        copyToClipboard,
+        rowSelectionColumn,
+      });
+
+      fireEvent.keyDown(view.getByRole("treegrid"), {
+        key: "c",
+        metaKey: true,
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(copyToClipboard).toHaveBeenCalledTimes(1);
+      const payload = copyToClipboard.mock.calls[0]![0] as CopyPayload;
+      expect(payload.text).toBe(expectedText);
+      expect(payload.text).not.toContain(ROW_SELECT_COLUMN_ID);
+      expect(payload.html?.match(/<tr>/g)).toHaveLength(expectedHtmlRows);
+      expect(getLiveRegion(view)?.textContent).toBe("");
+
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      expect(getLiveRegion(view)).toHaveTextContent(expectedAnnouncement);
+    },
+  );
 
   it("keeps select-all announcements limited to selectable data rows", () => {
     const view = renderGroupedAnnounceHarness({
