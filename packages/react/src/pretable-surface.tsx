@@ -807,6 +807,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const viewportRef = useRef<HTMLDivElement>(null);
+  // A plain forward Tab from the header may enter the body while engine focus
+  // is still fully null. This ref records that keyboard-owned transition so a
+  // pointer click or direct `.focus()` on the body container cannot invent a
+  // grid focus address.
+  const keyboardBodyEntryOriginRef = useRef<HTMLElement | null>(null);
   const dragAnchorRef = useRef<PretableCellAddress | null>(null);
   // Set when a pointer-drag extended the selection past its origin cell. The
   // click that ends such a drag is a range selection, not a row activation.
@@ -863,6 +868,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   });
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
+  const bodyEntryTabbable = focusedRowId === null && focusedColumnId === null;
   const isGrouped = snapshot.rowGroups.length > 0;
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
   // then report what the engine actually holds. Reading the list back rather
@@ -1949,6 +1955,27 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           event.target instanceof Element &&
           event.target.closest("[data-pretable-header-row]")
         ) {
+          const origin =
+            event.key === "Tab" &&
+            !event.shiftKey &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.altKey &&
+            !event.defaultPrevented
+              ? event.target.closest<HTMLElement>("button")
+              : null;
+          keyboardBodyEntryOriginRef.current = origin;
+          if (origin) {
+            // Native focus traversal is the Tab keydown's default action, so
+            // it completes before this microtask. If focus went anywhere else,
+            // expire the origin rather than letting a later `.focus()` look
+            // like keyboard entry.
+            queueMicrotask(() => {
+              if (keyboardBodyEntryOriginRef.current === origin) {
+                keyboardBodyEntryOriginRef.current = null;
+              }
+            });
+          }
           return;
         }
 
@@ -2147,6 +2174,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             onSelectionChange?.(after.selection);
           }
         }
+      }}
+      onPointerDownCapture={() => {
+        keyboardBodyEntryOriginRef.current = null;
       }}
       onScroll={(event) => {
         const el = event.currentTarget;
@@ -2811,6 +2841,36 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
       <div
         data-pretable-scroll-content=""
+        onFocus={(event) => {
+          if (event.target !== event.currentTarget) {
+            keyboardBodyEntryOriginRef.current = null;
+            return;
+          }
+          const origin = keyboardBodyEntryOriginRef.current;
+          keyboardBodyEntryOriginRef.current = null;
+          if (!origin || event.relatedTarget !== origin) return;
+
+          const before = grid.getSnapshot();
+          if (before.focus.rowId !== null || before.focus.columnId !== null) {
+            return;
+          }
+          const firstRow = before.visibleRows[0];
+          const firstColumn = columnsInVisualOrder.find(
+            (column) => column.id !== ROW_SELECT_COLUMN_ID,
+          );
+          if (!firstRow || !firstColumn) return;
+
+          grid.setFocus({ rowId: firstRow.id, columnId: firstColumn.id });
+          const after = grid.getSnapshot();
+          if (
+            before.focus.rowId !== after.focus.rowId ||
+            before.focus.columnId !== after.focus.columnId
+          ) {
+            onFocusChange?.(after.focus);
+          }
+        }}
+        role="rowgroup"
+        tabIndex={bodyEntryTabbable ? 0 : -1}
         style={
           {
             ...getScrollContentStyle(

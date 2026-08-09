@@ -1498,6 +1498,100 @@ describe("keyboard contract", () => {
     expect(onSelectedRowIdChange).not.toHaveBeenCalled();
   });
 
+  it("tabs through header controls into the first body cell without creating selection", () => {
+    const onFocusChange = vi.fn();
+    const onSelectionChange = vi.fn();
+    const view = render(
+      <>
+        <button type="button">Before grid</button>
+        <PretableSurface
+          ariaLabel="tab-entry-grid"
+          columns={gridColumns}
+          getRowId={getGridRowId}
+          onFocusChange={onFocusChange}
+          onSelectionChange={onSelectionChange}
+          overscan={0}
+          rows={gridRows}
+          rowSelectionColumn={{ enabled: true }}
+          viewportHeight={300}
+        />
+        <button type="button">After grid</button>
+      </>,
+    );
+    const before = view.getByRole("button", { name: "Before grid" });
+    const bodyEntry = view.container.querySelector<HTMLElement>(
+      "[data-pretable-scroll-content]",
+    )!;
+    const headerControls = [
+      ...view.container.querySelectorAll<HTMLElement>(
+        '[data-pretable-header-row] button:not([tabindex="-1"])',
+      ),
+    ];
+    const pressTab = () => {
+      const current = document.activeElement as HTMLElement;
+      const tabStops = [
+        ...view.container.querySelectorAll<HTMLElement>(
+          'button:not([disabled]):not([tabindex="-1"]), [tabindex="0"]',
+        ),
+      ];
+      const next = tabStops[tabStops.indexOf(current) + 1];
+
+      expect(next).toBeDefined();
+      const allowed = fireEvent.keyDown(current, {
+        key: "Tab",
+        bubbles: true,
+        cancelable: true,
+      });
+      expect(allowed).toBe(true);
+      act(() => next!.focus());
+    };
+
+    expect(bodyEntry).toHaveAttribute("role", "rowgroup");
+    expect(bodyEntry).toHaveAttribute("tabindex", "0");
+
+    // The entry is only an affordance for native keyboard traversal. Direct or
+    // pointer-originated focus must not synthesize an engine focus address.
+    act(() => bodyEntry.focus());
+    expect(onFocusChange).not.toHaveBeenCalled();
+    expect(getFocusedCell(view)).toBeNull();
+    before.focus();
+    fireEvent.pointerDown(bodyEntry);
+    act(() => bodyEntry.focus());
+    expect(onFocusChange).not.toHaveBeenCalled();
+    expect(getFocusedCell(view)).toBeNull();
+
+    // Arming from an earlier header control must not leak into a later,
+    // programmatic body focus after native traversal landed elsewhere.
+    headerControls[0]!.focus();
+    expect(
+      fireEvent.keyDown(headerControls[0]!, {
+        key: "Tab",
+        bubbles: true,
+        cancelable: true,
+      }),
+    ).toBe(true);
+    headerControls[1]!.focus();
+    act(() => bodyEntry.focus());
+    expect(onFocusChange).not.toHaveBeenCalled();
+    expect(getFocusedCell(view)).toBeNull();
+
+    before.focus();
+    const visited: Element[] = [];
+    for (let i = 0; i <= headerControls.length; i += 1) {
+      pressTab();
+      visited.push(document.activeElement!);
+    }
+
+    expect(visited.slice(0, headerControls.length)).toEqual(headerControls);
+    expect(document.activeElement).toBe(getCell(view, "r1", "a"));
+    expect(getCell(view, "r1", "a")).toHaveAttribute("tabindex", "0");
+    expect(bodyEntry).toHaveAttribute("tabindex", "-1");
+    expect(onFocusChange).toHaveBeenCalledTimes(1);
+    expect(onFocusChange).toHaveBeenCalledWith({ rowId: "r1", columnId: "a" });
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(getSelectedCells(view)).toHaveLength(0);
+  });
+
   it("Cmd+A selects every cell in the grid", () => {
     const view = renderHarness();
     seedFocus(view, "r1", "a");
@@ -1853,7 +1947,7 @@ describe("ARIA grid attributes", () => {
     const view = renderHarness();
     const grid = view.getByRole("grid");
     expect(grid).toHaveAttribute("aria-multiselectable", "true");
-    // aria-rowcount = totalRowCount + 1 (header)
+    // aria-rowcount = visibleRows.length + 1 (header)
     expect(grid).toHaveAttribute("aria-rowcount", String(gridRows.length + 1));
     expect(grid).toHaveAttribute("aria-colcount", String(gridColumns.length));
     expect(grid).toHaveAttribute("aria-label", "test-grid");
