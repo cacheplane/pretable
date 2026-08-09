@@ -83,6 +83,8 @@ function makeGroupColumn<TRow extends PretableRow>(
     // no meaning, and both would index into a column that has no `value`.
     sortable: false,
     filterable: false,
+    resizable: false,
+    reorderable: false,
   };
 
   return groupColumn?.pinned === "left"

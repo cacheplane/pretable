@@ -5557,3 +5557,88 @@ describe("keyboard navigation over grouped rows", () => {
     });
   });
 });
+
+describe("grouped full-row selection", () => {
+  type GroupedSelectionRow = {
+    id: string;
+    sector: string;
+    name: string;
+    qty: number;
+  };
+
+  const groupedSelectionColumns = [
+    { id: "sector", header: "Sector", widthPx: 100 },
+    { id: "name", header: "Name", widthPx: 100 },
+    { id: "qty", header: "Qty", widthPx: 100 },
+  ];
+
+  const groupedSelectionRows: GroupedSelectionRow[] = [
+    { id: "r1", sector: "Tech", name: "Ada", qty: 10 },
+    { id: "r2", sector: "Energy", name: "Bob", qty: 20 },
+  ];
+
+  it("header select-all paints the drawn group rows and leaves its header non-interactive", () => {
+    const onColumnOrderChange = vi.fn();
+    const view = render(
+      <PretableSurface
+        ariaLabel="grouped-selection-grid"
+        columns={groupedSelectionColumns}
+        getRowId={(row: GroupedSelectionRow) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        overscan={0}
+        rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
+        rows={groupedSelectionRows}
+        state={{ rowGroups: ["sector"] }}
+        viewportHeight={300}
+      />,
+    );
+
+    fireEvent.click(getHeaderCheckbox(view)!);
+
+    for (const rowId of ["r1", "r2"]) {
+      const selectedColumnIds = Array.from(
+        view.container.querySelectorAll(
+          `[data-pretable-row][data-pretable-row-id="${rowId}"] [data-pretable-selected="true"]`,
+        ),
+      ).map((cell) => cell.getAttribute("data-pretable-column-id"));
+      expect(selectedColumnIds).toEqual([GROUP_COLUMN_ID, "name", "qty"]);
+    }
+    expect(
+      view.container.querySelector(
+        `[data-pretable-cell][data-pretable-column-id="sector"]`,
+      ),
+    ).toBeNull();
+    expect(
+      view.container.querySelector(
+        `[data-pretable-resize-handle][data-pretable-column-id="${GROUP_COLUMN_ID}"]`,
+      ),
+    ).toBeNull();
+
+    const groupHeader = view.container.querySelector<HTMLElement>(
+      `[data-pretable-header-cell][data-pretable-column-id="${GROUP_COLUMN_ID}"]`,
+    );
+    expect(groupHeader).toBeTruthy();
+    if (!groupHeader) return;
+    fireEvent.pointerDown(groupHeader, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(groupHeader, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+    fireEvent.pointerUp(groupHeader, {
+      pointerId: 1,
+      clientX: 250,
+      clientY: 10,
+    });
+
+    expect(
+      document.body.querySelector("[data-pretable-reorder-ghost]"),
+    ).toBeNull();
+    expect(onColumnOrderChange).not.toHaveBeenCalled();
+  });
+});

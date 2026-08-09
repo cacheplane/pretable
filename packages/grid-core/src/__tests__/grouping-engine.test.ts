@@ -53,6 +53,21 @@ function makeGrid(columns: PretableColumn<Holding>[] = COLUMNS) {
   });
 }
 
+function makeGroupedSelectionGrid() {
+  return createGridCore({
+    columns: [
+      { id: "sector", header: "Sector" },
+      { id: "name", header: "Name" },
+      { id: "qty", header: "Qty" },
+    ],
+    rows: [
+      { id: "r1", sector: "Tech", name: "Ada", qty: 10 },
+      { id: "r2", sector: "Energy", name: "Bob", qty: 20 },
+    ],
+    getRowId: (row) => row.id,
+  });
+}
+
 function ids(entries: PretableVisibleRow<Holding>[]): string[] {
   return entries.map((entry) => entry.id);
 }
@@ -142,6 +157,57 @@ describe("setRowGroups", () => {
     grid.setRowGroups(["nope"]);
 
     expect(grid.getSnapshot()).toBe(first);
+  });
+
+  test("keeps ungrouped all-visible row selections removable after grouping", () => {
+    const grid = makeGrid();
+    grid.setSelectAllVisible(true);
+
+    grid.setRowGroups(["sector"]);
+    grid.setSelectAllVisible(false);
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([]);
+  });
+
+  test("keeps grouped row selections removable after ungrouping", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.toggleRowSelection("h5");
+
+    grid.setRowGroups([]);
+    grid.toggleRowSelection("h5");
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([]);
+  });
+
+  test("migrates reverse-direction full-row selections when grouping changes", () => {
+    const grid = makeGrid();
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: "h5",
+          endRowId: "h5",
+          startColumnId: "qty",
+          endColumnId: "sector",
+        },
+      ],
+      anchor: { rowId: "h5", columnId: "qty" },
+    });
+
+    grid.setRowGroups(["sector"]);
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "h5",
+        endRowId: "h5",
+        startColumnId: "qty",
+        endColumnId: GROUP_COLUMN_ID,
+      },
+    ]);
+
+    grid.toggleRowSelection("h5");
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([]);
   });
 
   test("snapshot.rowGroups is a defensive copy of engine state", () => {
@@ -441,7 +507,7 @@ describe("streaming", () => {
       {
         startRowId: "h5",
         endRowId: "h5",
-        startColumnId: "sector",
+        startColumnId: GROUP_COLUMN_ID,
         endColumnId: "qty",
       },
     ]);
@@ -700,8 +766,48 @@ describe("group rows are focusable but never selectable", () => {
       {
         startRowId: "h5",
         endRowId: "h4",
-        startColumnId: "sector",
+        startColumnId: GROUP_COLUMN_ID,
         endColumnId: "qty",
+      },
+    ]);
+  });
+
+  test("selectAll spans the effective grouped columns", () => {
+    const grid = makeGroupedSelectionGrid();
+    grid.setRowGroups(["sector"]);
+    const effectiveColumns = grid.getColumns();
+    const firstColumn = effectiveColumns[0]!;
+    const lastColumn = effectiveColumns[effectiveColumns.length - 1]!;
+    expect([firstColumn.id, lastColumn.id]).toEqual([GROUP_COLUMN_ID, "qty"]);
+
+    grid.selectAll();
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "r2",
+        endRowId: "r1",
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      },
+    ]);
+  });
+
+  test("toggleRowSelection spans the effective grouped columns", () => {
+    const grid = makeGroupedSelectionGrid();
+    grid.setRowGroups(["sector"]);
+    const effectiveColumns = grid.getColumns();
+    const firstColumn = effectiveColumns[0]!;
+    const lastColumn = effectiveColumns[effectiveColumns.length - 1]!;
+    expect([firstColumn.id, lastColumn.id]).toEqual([GROUP_COLUMN_ID, "qty"]);
+
+    grid.toggleRowSelection("r1");
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "r1",
+        endRowId: "r1",
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
       },
     ]);
   });
@@ -734,6 +840,40 @@ describe("group rows are focusable but never selectable", () => {
       "h3",
       "h4",
     ]);
+    expect(ranges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          startColumnId: GROUP_COLUMN_ID,
+          endColumnId: "qty",
+        }),
+      ]),
+    );
+  });
+
+  test("setSelectAllVisible spans the effective grouped columns", () => {
+    const grid = makeGroupedSelectionGrid();
+    grid.setRowGroups(["sector"]);
+    const effectiveColumns = grid.getColumns();
+    const firstColumn = effectiveColumns[0]!;
+    const lastColumn = effectiveColumns[effectiveColumns.length - 1]!;
+    expect([firstColumn.id, lastColumn.id]).toEqual([GROUP_COLUMN_ID, "qty"]);
+
+    grid.setSelectAllVisible(true);
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "r2",
+        endRowId: "r2",
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      },
+      {
+        startRowId: "r1",
+        endRowId: "r1",
+        startColumnId: firstColumn.id,
+        endColumnId: lastColumn.id,
+      },
+    ]);
   });
 
   test("deriveSelectedRows never reports a group row as selected", () => {
@@ -744,7 +884,7 @@ describe("group rows are focusable but never selectable", () => {
 
     const selected = deriveSelectedRows({
       visibleRows: snapshot.visibleRows,
-      columns: grid.options.columns,
+      columns: [...grid.getColumns()],
       selection: snapshot.selection,
     });
 

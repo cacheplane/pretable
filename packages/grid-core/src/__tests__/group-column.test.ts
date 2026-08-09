@@ -91,12 +91,14 @@ describe("derived group column", () => {
     expect(grid.getColumns()[0]!.header).toBe("Sector");
   });
 
-  test("the group column is not sortable or filterable", () => {
+  test("the group column is not sortable, filterable, resizable, or reorderable", () => {
     const grid = make();
     grid.setRowGroups(["sector"]);
     const col = grid.getColumns()[0]!;
     expect(col.sortable).toBe(false);
     expect(col.filterable).toBe(false);
+    expect(col.resizable).toBe(false);
+    expect(col.reorderable).toBe(false);
   });
 
   test("the group column is not pinned by default", () => {
