@@ -53,7 +53,7 @@ describe("setRows", () => {
     expect(snap.totalRowCount).toBe(2);
   });
 
-  test("prunes selection, focus, and edits for rows that no longer exist", () => {
+  test("prunes selection and edits while repairing focus for removed rows", () => {
     const grid = makeGrid([
       { id: "a", name: "A" },
       { id: "b", name: "B" },
@@ -66,7 +66,7 @@ describe("setRows", () => {
 
     const snap = grid.getSnapshot();
     expect(snap.selection.ranges).toEqual([]);
-    expect(snap.focus).toEqual({ rowId: null, columnId: null });
+    expect(snap.focus).toEqual({ rowId: "b", columnId: "name" });
     expect(snap.editing).toBeNull();
     expect(snap.totalRowCount).toBe(1);
   });

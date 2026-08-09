@@ -55,8 +55,9 @@ const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
  *   reported as selected (`deriveSelectedRows` skips them). That is what
  *   {@link isDataRow} still guards.
  *
- * Because focus can now sit on a row that a collapse removes, the expansion
- * mutators re-anchor it — see {@link reanchorFocusAfterCollapse}.
+ * Because focus can now sit on a row that a visible-model mutation removes,
+ * those mutators repair it — see
+ * {@link reconcileFocusAfterVisibleModelChange}.
  */
 function isDataRow<TRow extends PretableRow>(
   entry: PretableVisibleRow<TRow>,
@@ -288,24 +289,26 @@ export function createGridCore<TRow extends PretableRow>(
     },
     setColumnFilter(columnId: string, filter: ColumnFilter | null) {
       const current = filters[columnId];
+      let next: Record<string, ColumnFilter>;
 
       if (filter && isFilterActive(filter)) {
         if (current && columnFilterEqual(current, filter)) {
           return;
         }
 
-        filters = { ...filters, [columnId]: filter };
+        next = { ...filters, [columnId]: filter };
       } else {
         if (current === undefined) {
           return;
         }
 
-        const next = { ...filters };
+        next = { ...filters };
         delete next[columnId];
-
-        filters = next;
       }
 
+      const before = getSnapshot().visibleRows;
+      filters = next;
+      reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
     clearFilters() {
@@ -313,7 +316,9 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
+      const before = getSnapshot().visibleRows;
       filters = {};
+      reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
     replaceFilters(nextFilters: Record<string, ColumnFilter>) {
@@ -329,7 +334,9 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
+      const before = getSnapshot().visibleRows;
       filters = normalized;
+      reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
     distinctColumnValues(columnId: string): string[] {
@@ -1042,6 +1049,7 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       const getRowId = options.getRowId;
+      const before = getSnapshot().visibleRows;
 
       if (transaction.remove) {
         const removeSet = new Set(transaction.remove);
@@ -1096,9 +1104,11 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       cachedVisibleRows = null;
+      reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
     setRows(nextRows: TRow[]) {
+      const before = getSnapshot().visibleRows;
       options = { ...options, rows: nextRows };
       sourceRows = createSourceRows(options);
       sourceRowIndex.clear();
@@ -1106,9 +1116,9 @@ export function createGridCore<TRow extends PretableRow>(
         sourceRowIndex.set(entry.id, entry);
       }
 
-      // Selection and focus are keyed by row id and intentionally survive a row
-      // replacement — this is what lets them persist across streaming updates.
-      // Only drop references whose rows are no longer present.
+      // Selection and editing are keyed by source-row id and intentionally
+      // survive a row replacement. Focus is reconciled against the derived
+      // visible model below because it may target a group row instead.
       const hasRow = (id: string | null | undefined): boolean =>
         id != null && sourceRowIndex.has(id);
 
@@ -1121,10 +1131,6 @@ export function createGridCore<TRow extends PretableRow>(
           ranges: keptRanges,
           anchor: anchorValid ? selection.anchor : null,
         };
-      }
-
-      if (focus.rowId !== null && !hasRow(focus.rowId)) {
-        focus = { rowId: null, columnId: null };
       }
 
       if (editing && !hasRow(editing.rowId)) {
@@ -1164,6 +1170,7 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       cachedVisibleRows = null;
+      reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
     setRowGroups(columnIds: readonly string[]) {
@@ -1173,10 +1180,12 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
+      const before = getSnapshot().visibleRows;
       rowGroups = next;
       // Expansion ids are path-derived, so changing the levels invalidates
       // them. v1 drops the whole set rather than trying to salvage prefixes.
       groupExpansionOverrides = new Set<string>();
+      reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
     toggleGroup(groupId: string) {
@@ -1201,7 +1210,9 @@ export function createGridCore<TRow extends PretableRow>(
         );
       }
 
-      reanchorFocusAfterCollapse(before);
+      reconcileFocusAfterVisibleModelChange(before, {
+        preferAncestor: !expanded,
+      });
       emit();
     },
     expandAll() {
@@ -1290,55 +1301,85 @@ export function createGridCore<TRow extends PretableRow>(
 
     groupsDefaultExpanded = expanded;
     groupExpansionOverrides = new Set<string>();
-    reanchorFocusAfterCollapse(before);
+    reconcileFocusAfterVisibleModelChange(before, {
+      preferAncestor: !expanded,
+    });
     emit();
   }
 
   /**
-   * Keep focus on a row that still exists after an expansion change.
-   *
-   * Focus can sit on a data row that a collapse removes. Left dangling, the
-   * next arrow key finds no current position and reads as "arriving at the
-   * grid" — teleporting focus to row 0. So focus falls back to the nearest
-   * *preceding* group row that survived, which for a single collapse is
-   * exactly the group that was collapsed, and for `collapseAll` is that row's
-   * outermost visible ancestor. The column is preserved, so focus lands on
-   * that group's aggregate for the column the user was already in.
-   *
-   * Call AFTER mutating the expansion state and BEFORE `emit()`, passing the
-   * pre-mutation flat list. A focus id that was already absent from that list
-   * is left alone — this repairs collapses, not pre-existing dangles.
+   * Keep non-null focus valid after any change to the derived row or column
+   * model. Surviving ids win; otherwise row position is retained as closely as
+   * possible and a hidden grouped column moves to the synthetic group column.
+   * Collapses additionally prefer the nearest surviving ancestor so focus does
+   * not jump sideways into a neighboring branch.
    */
-  function reanchorFocusAfterCollapse(
+  function reconcileFocusAfterVisibleModelChange(
     before: readonly PretableVisibleRow<TRow>[],
+    options: { preferAncestor?: boolean } = {},
   ): void {
-    if (focus.rowId === null) return;
+    if (focus.rowId === null && focus.columnId === null) return;
 
-    const fromIndex = before.findIndex((entry) => entry.id === focus.rowId);
-    if (fromIndex === -1) return;
+    const oldRowId = focus.rowId;
+    const oldIndex =
+      oldRowId === null
+        ? -1
+        : before.findIndex((entry) => entry.id === oldRowId);
 
-    // `cachedSnapshot` still holds the pre-mutation focus; the derived row
-    // cache keys on the expansion inputs and so re-derives on its own.
+    // `cachedSnapshot` still describes the pre-mutation model. Clear it before
+    // deriving the new visible rows, then clear it again after repairing focus.
     cachedSnapshot = null;
-    const after = getSnapshot().visibleRows;
+    const afterRows = getSnapshot().visibleRows;
+    const afterColumns = getColumns();
 
-    if (after.some((entry) => entry.id === focus.rowId)) return;
+    if (afterRows.length === 0 || afterColumns.length === 0) {
+      focus = { rowId: null, columnId: null };
+      cachedSnapshot = null;
+      return;
+    }
 
-    const surviving = new Set(after.map((entry) => entry.id));
-    let nextRowId: string | null = null;
+    const survivingRowIds = new Set(afterRows.map((entry) => entry.id));
+    let nextRowId =
+      oldRowId !== null && survivingRowIds.has(oldRowId) ? oldRowId : null;
 
-    for (let i = fromIndex - 1; i >= 0; i -= 1) {
-      const candidate = before[i]!;
-      if (candidate.kind === "group" && surviving.has(candidate.id)) {
-        nextRowId = candidate.id;
-        break;
+    if (
+      nextRowId === null &&
+      options.preferAncestor === true &&
+      oldIndex !== -1
+    ) {
+      const oldDepth = before[oldIndex]!.depth;
+
+      for (let i = oldIndex - 1; i >= 0; i -= 1) {
+        const candidate = before[i]!;
+        if (
+          candidate.kind === "group" &&
+          candidate.depth < oldDepth &&
+          survivingRowIds.has(candidate.id)
+        ) {
+          nextRowId = candidate.id;
+          break;
+        }
       }
     }
 
-    focus =
-      nextRowId === null
-        ? { rowId: null, columnId: null }
-        : { rowId: nextRowId, columnId: focus.columnId };
+    if (nextRowId === null) {
+      const nextIndex =
+        oldIndex === -1 ? 0 : clamp(oldIndex, 0, afterRows.length - 1);
+      nextRowId = afterRows[nextIndex]!.id;
+    }
+
+    const focusedColumnSurvives =
+      focus.columnId !== null &&
+      afterColumns.some((column) => column.id === focus.columnId);
+    const groupColumn =
+      rowGroups.length > 0
+        ? afterColumns.find((column) => column.id === GROUP_COLUMN_ID)
+        : undefined;
+    const nextColumnId = focusedColumnSurvives
+      ? focus.columnId!
+      : (groupColumn?.id ?? afterColumns[0]!.id);
+
+    focus = { rowId: nextRowId, columnId: nextColumnId };
     cachedSnapshot = null;
   }
 

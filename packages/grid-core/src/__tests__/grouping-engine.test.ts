@@ -44,6 +44,10 @@ const TECH_ADA = makeGroupId([
   { columnId: "sector", value: "Tech" },
   { columnId: "analyst", value: "Ada" },
 ]);
+const ENERGY_ADA = makeGroupId([
+  { columnId: "sector", value: "Energy" },
+  { columnId: "analyst", value: "Ada" },
+]);
 
 function makeGrid(columns: PretableColumn<Holding>[] = COLUMNS) {
   return createGridCore<Holding>({
@@ -88,6 +92,19 @@ function groupById(
   );
   if (!found) throw new Error(`no group row with id ${id}`);
   return found;
+}
+
+function expectValidFocus(grid: ReturnType<typeof makeGrid>): void {
+  const snapshot = grid.getSnapshot();
+  const { rowId, columnId } = snapshot.focus;
+
+  if (rowId === null || columnId === null) {
+    expect(snapshot.focus).toEqual({ rowId: null, columnId: null });
+    return;
+  }
+
+  expect(snapshot.visibleRows.some((row) => row.id === rowId)).toBe(true);
+  expect(grid.getColumns().some((column) => column.id === columnId)).toBe(true);
 }
 
 describe("setRowGroups", () => {
@@ -619,6 +636,147 @@ describe("override retention (bounded LRU over decisions)", () => {
   });
 });
 
+describe("focus reconciliation after visible-row mutations", () => {
+  test("setRows preserves focus on a surviving cloned group", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: SECTOR_ENERGY, columnId: GROUP_COLUMN_ID });
+
+    grid.setRows(HOLDINGS.map((row) => ({ ...row })));
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: SECTOR_ENERGY,
+      columnId: GROUP_COLUMN_ID,
+    });
+    expectValidFocus(grid);
+  });
+
+  test("applyTransaction replaces a vanished group focus at its old flat index", () => {
+    const grid = createGridCore<Holding>({
+      columns: COLUMNS.map((column) => ({ ...column })),
+      rows: [
+        { id: "a", sector: "A", analyst: "Ada", qty: 1 },
+        { id: "c", sector: "C", analyst: "Bob", qty: 2 },
+      ],
+      getRowId: (row) => row.id,
+    });
+    const groupA = makeGroupId([{ columnId: "sector", value: "A" }]);
+    const groupB = makeGroupId([{ columnId: "sector", value: "B" }]);
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: groupA, columnId: "qty" });
+
+    grid.applyTransaction({ update: [{ id: "a", sector: "B" }] });
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: groupB,
+      columnId: "qty",
+    });
+    expect(
+      grid.getSnapshot().visibleRows.some((row) => row.id === groupA),
+    ).toBe(false);
+    expectValidFocus(grid);
+  });
+
+  test("setRowGroups preserves a data row and repairs its hidden column", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h1", columnId: "sector" });
+
+    grid.setRowGroups(["sector"]);
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: "h1",
+      columnId: GROUP_COLUMN_ID,
+    });
+    expectValidFocus(grid);
+  });
+
+  test("setRowGroups clamps vanished group focus when levels are reordered", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector", "analyst"]);
+    const before = grid.getSnapshot().visibleRows;
+    const oldIndex = before.findIndex((row) => row.id === TECH_ADA);
+    grid.setFocus({ rowId: TECH_ADA, columnId: "qty" });
+
+    grid.setRowGroups(["analyst", "sector"]);
+
+    const after = grid.getSnapshot().visibleRows;
+    const expected = after[Math.min(oldIndex, after.length - 1)]!;
+    expect(after.some((row) => row.id === TECH_ADA)).toBe(false);
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: expected.id,
+      columnId: "qty",
+    });
+    expectValidFocus(grid);
+  });
+
+  test("setColumnFilter repairs focus when the focused row is filtered out", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h5", columnId: "qty" });
+
+    grid.setColumnFilter("sector", { operator: "equals", value: "Tech" });
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: "h4",
+      columnId: "qty",
+    });
+    expectValidFocus(grid);
+  });
+
+  test("replaceFilters repairs focus and clearFilters preserves that repair", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h1", columnId: "analyst" });
+
+    grid.replaceFilters({
+      sector: { operator: "equals", value: "Energy" },
+    });
+
+    const repaired = grid.getSnapshot().focus;
+    expect(repaired).toEqual({ rowId: "h5", columnId: "analyst" });
+    expectValidFocus(grid);
+
+    grid.clearFilters();
+
+    expect(grid.getSnapshot().focus).toEqual(repaired);
+    expectValidFocus(grid);
+  });
+
+  test("collapsing an ancestor preserves the nearest surviving ancestor", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector", "analyst"]);
+    grid.setFocus({ rowId: "h6", columnId: "qty" });
+
+    grid.setGroupExpanded(ENERGY_ADA, false);
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: ENERGY_ADA,
+      columnId: "qty",
+    });
+    expectValidFocus(grid);
+  });
+
+  test("visible-row mutations do not create focus from null focus", () => {
+    const grid = makeGrid();
+
+    grid.setRows(HOLDINGS.map((row) => ({ ...row })));
+    expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
+    grid.setColumnFilter("analyst", { operator: "equals", value: "Ada" });
+    expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
+    grid.setRowGroups(["sector"]);
+    expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
+    expectValidFocus(grid);
+  });
+
+  test("removing every visible row clears both focus fields", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h1", columnId: "qty" });
+
+    grid.setRows([]);
+
+    expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
+    expectValidFocus(grid);
+  });
+});
+
 /**
  * The contract this suite records inverted in sub-project 2: group rows became
  * keyboard-reachable so their twisty is operable, while staying outside every
@@ -779,27 +937,25 @@ describe("group rows are focusable but never selectable", () => {
     });
   });
 
-  test("clearSelection preserves a data focus made non-visible by filtering", () => {
+  test("clearSelection derives selection from focus repaired by filtering", () => {
     const grid = makeGrid();
     grid.setFocus({ rowId: "h5", columnId: "qty" });
     grid.setColumnFilter("sector", { operator: "contains", value: "Tech" });
 
-    expect(grid.getSnapshot().visibleRows.map((row) => row.id)).not.toContain(
-      "h5",
-    );
+    expect(grid.getSnapshot().focus).toEqual({ rowId: "h4", columnId: "qty" });
 
     grid.clearSelection();
 
     expect(grid.getSnapshot().selection).toEqual({
       ranges: [
         {
-          startRowId: "h5",
-          endRowId: "h5",
+          startRowId: "h4",
+          endRowId: "h4",
           startColumnId: "qty",
           endColumnId: "qty",
         },
       ],
-      anchor: { rowId: "h5", columnId: "qty" },
+      anchor: { rowId: "h4", columnId: "qty" },
     });
   });
 
