@@ -48,6 +48,12 @@ type GroupingFocusIntent = {
   columnId: string;
 };
 
+type PendingGroupingFocusRequest = {
+  intent: GroupingFocusIntent;
+  controlledFocusBefore: PretableFocusState | undefined;
+  controlledFocusWasValid: boolean;
+};
+
 function groupingListsEqual(
   left: readonly string[],
   right: readonly string[],
@@ -88,6 +94,21 @@ function focusExistsInDerivedModel<TRow extends PretableRow>(
     snapshot.visibleRows.some((row) => row.id === focus.rowId) &&
     columns.some((column) => column.id === focus.columnId)
   );
+}
+
+function normalizeControlledFocus(
+  focus: PretableFocusState,
+): PretableFocusState {
+  return focus.rowId === null || focus.columnId === null
+    ? { rowId: null, columnId: null }
+    : { rowId: focus.rowId, columnId: focus.columnId };
+}
+
+function focusStatesEqual(
+  left: PretableFocusState,
+  right: PretableFocusState,
+): boolean {
+  return left.rowId === right.rowId && left.columnId === right.columnId;
 }
 
 /**
@@ -876,7 +897,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     new Map(),
   );
   const viewportRef = useRef<HTMLDivElement>(null);
-  const pendingGroupingFocusRef = useRef<GroupingFocusIntent | null>(null);
+  const pendingGroupingFocusRef = useRef<PendingGroupingFocusRequest | null>(
+    null,
+  );
   // A plain forward Tab from the header may enter the body while engine focus
   // is still fully null. This ref records that keyboard-owned transition so a
   // pointer click or direct `.focus()` on the body container cannot invent a
@@ -938,6 +961,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   });
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
+  const controlledFocusState = state?.focus;
   const bodyEntryTabbable = focusedRowId === null && focusedColumnId === null;
   const isGrouped = snapshot.rowGroups.length > 0;
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
@@ -950,11 +974,29 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // `grid.moveColumn` and `onColumnOrderChange`.
   const applyRowGroups = useCallback(
     (next: readonly string[], focusIntent?: GroupingFocusIntent) => {
-      const before = grid.getSnapshot().rowGroups;
-      pendingGroupingFocusRef.current = focusIntent ?? null;
+      const beforeSnapshot = grid.getSnapshot();
+      const controlledFocusBefore =
+        controlledFocusState === undefined
+          ? undefined
+          : normalizeControlledFocus(controlledFocusState);
+      pendingGroupingFocusRef.current = focusIntent
+        ? {
+            intent: focusIntent,
+            controlledFocusBefore,
+            controlledFocusWasValid:
+              controlledFocusBefore !== undefined &&
+              controlledFocusBefore.rowId !== null &&
+              controlledFocusBefore.columnId !== null &&
+              focusExistsInDerivedModel(
+                controlledFocusBefore,
+                beforeSnapshot,
+                grid.getColumns(),
+              ),
+          }
+        : null;
       grid.setRowGroups(next);
       const committed = grid.getSnapshot().rowGroups;
-      if (groupingListsEqual(before, committed)) {
+      if (groupingListsEqual(beforeSnapshot.rowGroups, committed)) {
         // A change-guarded engine mutation schedules no render, so there would
         // be no layout pass to consume this request. Clear it here instead of
         // letting a later unrelated render act on a stale grouping gesture.
@@ -962,7 +1004,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       }
       onRowGroupsChange?.([...committed]);
     },
-    [grid, onRowGroupsChange],
+    [controlledFocusState, grid, onRowGroupsChange],
   );
   const labelForColumn = useCallback(
     (columnId: string) =>
@@ -1853,12 +1895,23 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // and steal focus long after the user's grouping action ended.
     pendingGroupingFocusRef.current = null;
 
-    const controlledFocus = state?.focus;
+    const controlledFocus =
+      controlledFocusState === undefined
+        ? undefined
+        : normalizeControlledFocus(controlledFocusState);
     const derivedColumns = grid.getColumns();
+    const engineFocusIsValidRepair =
+      snapshot.focus.rowId === null && snapshot.focus.columnId === null
+        ? snapshot.visibleRows.length === 0 || derivedColumns.length === 0
+        : focusExistsInDerivedModel(snapshot.focus, snapshot, derivedColumns);
     if (
+      request.controlledFocusBefore !== undefined &&
+      request.controlledFocusWasValid &&
       controlledFocus !== undefined &&
+      focusStatesEqual(controlledFocus, request.controlledFocusBefore) &&
       !focusExistsInDerivedModel(controlledFocus, snapshot, derivedColumns) &&
-      focusExistsInDerivedModel(snapshot.focus, snapshot, derivedColumns)
+      engineFocusIsValidRepair &&
+      !focusStatesEqual(snapshot.focus, controlledFocus)
     ) {
       // The engine repaired focus while deriving the final accepted or
       // transformed grouping model. Report that address only after controlled
@@ -1868,16 +1921,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     }
 
     const requestedNode =
-      request.target === "chip"
+      request.intent.target === "chip"
         ? Array.from(
             groupPanelRef.current?.querySelectorAll<HTMLElement>(
               "[data-pretable-group-chip]",
             ) ?? [],
           ).find(
             (node) =>
-              node.getAttribute("data-pretable-column-id") === request.columnId,
+              node.getAttribute("data-pretable-column-id") ===
+              request.intent.columnId,
           )
-        : columnMenuButtonNodesRef.current.get(request.columnId);
+        : columnMenuButtonNodesRef.current.get(request.intent.columnId);
 
     if (requestedNode?.isConnected) {
       requestedNode.focus();

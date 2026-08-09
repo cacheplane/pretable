@@ -1164,6 +1164,7 @@ function GroupingFocusHarness({
 }
 
 function ControlledGroupingFocusHarness({
+  addFutureRow,
   initialFocus,
   initialRowGroups = [],
   onFocusChange,
@@ -1172,6 +1173,7 @@ function ControlledGroupingFocusHarness({
   resolveRowGroups = (requested) => requested,
   resolveRows,
 }: {
+  addFutureRow?: GridRow;
   initialFocus: PretableFocusState;
   initialRowGroups?: string[];
   onFocusChange: (next: PretableFocusState) => void;
@@ -1188,27 +1190,39 @@ function ControlledGroupingFocusHarness({
   const [rows, setRows] = React.useState(gridRows);
 
   return (
-    <PretableSurface
-      ariaLabel="controlled-grouping-focus-grid"
-      columns={gridColumns}
-      getRowId={getGridRowId}
-      groupPanel={{ enabled: true }}
-      onFocusChange={(next) => {
-        onFocusChange(next);
-        setFocus((current) => resolveFocus(next, current));
-      }}
-      onGridReady={onGridReady}
-      onRowGroupsChange={(next) => {
-        setRowGroups((current) => resolveRowGroups(next, current));
-        if (resolveRows) {
-          setRows((current) => resolveRows(next, current));
-        }
-      }}
-      overscan={0}
-      rows={rows}
-      state={{ focus, rowGroups }}
-      viewportHeight={300}
-    />
+    <>
+      {addFutureRow ? (
+        <button
+          onClick={() => {
+            setRows((current) => [...current, addFutureRow]);
+          }}
+          type="button"
+        >
+          Add future row
+        </button>
+      ) : null}
+      <PretableSurface
+        ariaLabel="controlled-grouping-focus-grid"
+        columns={gridColumns}
+        getRowId={getGridRowId}
+        groupPanel={{ enabled: true }}
+        onFocusChange={(next) => {
+          onFocusChange(next);
+          setFocus((current) => resolveFocus(next, current));
+        }}
+        onGridReady={onGridReady}
+        onRowGroupsChange={(next) => {
+          setRowGroups((current) => resolveRowGroups(next, current));
+          if (resolveRows) {
+            setRows((current) => resolveRows(next, current));
+          }
+        }}
+        overscan={0}
+        rows={rows}
+        state={{ focus, rowGroups }}
+        viewportHeight={300}
+      />
+    </>
   );
 }
 
@@ -1557,6 +1571,83 @@ describe("grouping DOM focus restoration", () => {
   });
 
   describe("controlled focus repair after grouping reconciliation", () => {
+    it("preserves a pre-existing future-row focus through grouping and applies it when the row arrives", () => {
+      const onFocusChange = vi.fn();
+      let grid: PretableGrid<GridRow> | undefined;
+      const view = render(
+        <ControlledGroupingFocusHarness
+          addFutureRow={{
+            id: "future",
+            a: "a1",
+            b: "future-b",
+            c: "future-c",
+          }}
+          initialFocus={{ rowId: "future", columnId: "b" }}
+          onFocusChange={onFocusChange}
+          onGridReady={(readyGrid) => {
+            grid = readyGrid;
+          }}
+        />,
+      );
+
+      fireEvent.click(openGroupingMenu(view, "A"));
+
+      expect(onFocusChange).not.toHaveBeenCalled();
+      expect(grid?.getSnapshot().focus).toEqual({
+        rowId: null,
+        columnId: null,
+      });
+      const chip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      );
+      expect(chip?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(chip);
+
+      fireEvent.click(view.getByRole("button", { name: "Add future row" }));
+
+      expect(onFocusChange).not.toHaveBeenCalled();
+      expect(grid?.getSnapshot().focus).toEqual({
+        rowId: "future",
+        columnId: "b",
+      });
+      expect(getCell(view, "future", "b")).toHaveAttribute(
+        "data-pretable-focused",
+        "true",
+      );
+    });
+
+    it.each([
+      { rowId: null, columnId: "b" },
+      { rowId: "r1", columnId: null },
+    ] as PretableFocusState[])(
+      "normalizes partial controlled focus $rowId/$columnId without reporting a grouping repair",
+      (initialFocus) => {
+        const onFocusChange = vi.fn();
+        let grid: PretableGrid<GridRow> | undefined;
+        const view = render(
+          <ControlledGroupingFocusHarness
+            initialFocus={initialFocus}
+            onFocusChange={onFocusChange}
+            onGridReady={(readyGrid) => {
+              grid = readyGrid;
+            }}
+          />,
+        );
+
+        fireEvent.click(openGroupingMenu(view, "A"));
+
+        expect(onFocusChange).not.toHaveBeenCalled();
+        expect(grid?.getSnapshot().focus).toEqual({
+          rowId: null,
+          columnId: null,
+        });
+        const chip = view.container.querySelector<HTMLElement>(
+          '[data-pretable-group-chip][data-pretable-column-id="a"]',
+        );
+        expect(document.activeElement).toBe(chip);
+      },
+    );
+
     it("reports and preserves repaired focus after accepted grouping hides the focused column", () => {
       const onFocusChange = vi.fn();
       let grid: PretableGrid<GridRow> | undefined;
