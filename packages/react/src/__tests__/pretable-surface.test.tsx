@@ -21,7 +21,7 @@ import type { CopyPayload, SerializeRangesArgs } from "../copy";
 import * as rowHeight from "../row-height";
 import type { PretableCellRenderInput, PretableColumn } from "../types";
 import { type PretableSurfaceState, usePretable } from "../use-pretable";
-import { GROUP_COLUMN_ID } from "@pretable/core";
+import { createGrid, GROUP_COLUMN_ID } from "@pretable/core";
 import type {
   PretableCellRange,
   PretableFocusState,
@@ -1163,6 +1163,55 @@ function GroupingFocusHarness({
   );
 }
 
+function ControlledGroupingFocusHarness({
+  initialFocus,
+  initialRowGroups = [],
+  onFocusChange,
+  onGridReady,
+  resolveFocus = (requested) => requested,
+  resolveRowGroups = (requested) => requested,
+  resolveRows,
+}: {
+  initialFocus: PretableFocusState;
+  initialRowGroups?: string[];
+  onFocusChange: (next: PretableFocusState) => void;
+  onGridReady?: (grid: PretableGrid<GridRow>) => void;
+  resolveFocus?: (
+    requested: PretableFocusState,
+    current: PretableFocusState,
+  ) => PretableFocusState;
+  resolveRowGroups?: (requested: string[], current: string[]) => string[];
+  resolveRows?: (requested: string[], current: GridRow[]) => GridRow[];
+}) {
+  const [focus, setFocus] = React.useState(initialFocus);
+  const [rowGroups, setRowGroups] = React.useState(initialRowGroups);
+  const [rows, setRows] = React.useState(gridRows);
+
+  return (
+    <PretableSurface
+      ariaLabel="controlled-grouping-focus-grid"
+      columns={gridColumns}
+      getRowId={getGridRowId}
+      groupPanel={{ enabled: true }}
+      onFocusChange={(next) => {
+        onFocusChange(next);
+        setFocus((current) => resolveFocus(next, current));
+      }}
+      onGridReady={onGridReady}
+      onRowGroupsChange={(next) => {
+        setRowGroups((current) => resolveRowGroups(next, current));
+        if (resolveRows) {
+          setRows((current) => resolveRows(next, current));
+        }
+      }}
+      overscan={0}
+      rows={rows}
+      state={{ focus, rowGroups }}
+      viewportHeight={300}
+    />
+  );
+}
+
 function openGroupingMenu(
   view: ReturnType<typeof render>,
   columnLabel: string,
@@ -1180,6 +1229,50 @@ function groupingChipIds(view: ReturnType<typeof render>) {
     view.container.querySelectorAll<HTMLElement>("[data-pretable-group-chip]"),
   ).map((chip) => chip.getAttribute("data-pretable-column-id"));
 }
+
+it("does not reassert a controlled focus column hidden by grouping", () => {
+  function Probe({ rowGroups }: { rowGroups: string[] }) {
+    const model = usePretable({
+      columns: gridColumns,
+      getRowId: getGridRowId,
+      overscan: 0,
+      rows: gridRows,
+      state: {
+        focus: { rowId: "r1", columnId: "a" },
+        rowGroups,
+      },
+      viewportHeight: 300,
+    });
+
+    return (
+      <output
+        data-column-id={model.snapshot.focus.columnId ?? ""}
+        data-column-ids={model.grid
+          .getColumns()
+          .map((column) => column.id)
+          .join(",")}
+        data-row-id={model.snapshot.focus.rowId ?? ""}
+      />
+    );
+  }
+
+  const view = render(<Probe rowGroups={[]} />);
+  expect(view.container.querySelector("output")).toHaveAttribute(
+    "data-column-id",
+    "a",
+  );
+
+  view.rerender(<Probe rowGroups={["a"]} />);
+
+  expect(view.container.querySelector("output")).toHaveAttribute(
+    "data-column-id",
+    GROUP_COLUMN_ID,
+  );
+  expect(view.container.querySelector("output")).toHaveAttribute(
+    "data-column-ids",
+    `${GROUP_COLUMN_ID},b,c`,
+  );
+});
 
 describe("grouping DOM focus restoration", () => {
   it("focuses the new chip after grouping from a column menu", () => {
@@ -1460,6 +1553,207 @@ describe("grouping DOM focus restoration", () => {
       const focusedCell = getCell(view, "r1", "c");
       expect(focusedCell?.isConnected).toBe(true);
       expect(document.activeElement).toBe(focusedCell);
+    });
+  });
+
+  describe("controlled focus repair after grouping reconciliation", () => {
+    it("reports and preserves repaired focus after accepted grouping hides the focused column", () => {
+      const onFocusChange = vi.fn();
+      let grid: PretableGrid<GridRow> | undefined;
+      const view = render(
+        <ControlledGroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "a" }}
+          onFocusChange={onFocusChange}
+          onGridReady={(readyGrid) => {
+            grid = readyGrid;
+          }}
+        />,
+      );
+
+      fireEvent.click(openGroupingMenu(view, "A"));
+
+      const repaired = { rowId: "r1", columnId: GROUP_COLUMN_ID };
+      expect(onFocusChange).toHaveBeenCalledTimes(1);
+      expect(onFocusChange).toHaveBeenCalledWith(repaired);
+      expect(grid?.getSnapshot().focus).toEqual(repaired);
+      expect(grid?.getColumns().some((column) => column.id === "a")).toBe(
+        false,
+      );
+      const chip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      );
+      expect(chip?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(chip);
+    });
+
+    it("does not report a repair when rejected grouping leaves controlled focus valid", () => {
+      const onFocusChange = vi.fn();
+      let grid: PretableGrid<GridRow> | undefined;
+      const view = render(
+        <ControlledGroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "a" }}
+          onFocusChange={onFocusChange}
+          onGridReady={(readyGrid) => {
+            grid = readyGrid;
+          }}
+          resolveRowGroups={(_requested, current) => current}
+        />,
+      );
+
+      fireEvent.click(openGroupingMenu(view, "A"));
+
+      expect(onFocusChange).not.toHaveBeenCalled();
+      expect(grid?.getSnapshot().focus).toEqual({
+        rowId: "r1",
+        columnId: "a",
+      });
+      expect(document.activeElement).toBe(getCell(view, "r1", "a"));
+    });
+
+    it("reports focus repaired against transformed grouping instead of its transient model", () => {
+      const onFocusChange = vi.fn();
+      let grid: PretableGrid<GridRow> | undefined;
+      const view = render(
+        <ControlledGroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "b" }}
+          onFocusChange={onFocusChange}
+          onGridReady={(readyGrid) => {
+            grid = readyGrid;
+          }}
+          resolveRowGroups={() => ["b"]}
+        />,
+      );
+
+      fireEvent.click(openGroupingMenu(view, "A"));
+
+      const repaired = { rowId: "r1", columnId: GROUP_COLUMN_ID };
+      expect(groupingChipIds(view)).toEqual(["b"]);
+      expect(onFocusChange).toHaveBeenCalledTimes(1);
+      expect(onFocusChange).toHaveBeenCalledWith(repaired);
+      expect(grid?.getSnapshot().focus).toEqual(repaired);
+      expect(grid?.getColumns().some((column) => column.id === "b")).toBe(
+        false,
+      );
+      const focusedCell = getCell(view, repaired.rowId, repaired.columnId);
+      expect(focusedCell?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(focusedCell);
+    });
+
+    it("reports a final repaired row when transformed grouping removes the controlled group row", () => {
+      const seedGrid = createGrid({
+        columns: gridColumns,
+        getRowId: getGridRowId,
+        rows: gridRows,
+      });
+      seedGrid.setRowGroups(["a", "b"]);
+      const oldGroupRowId = seedGrid
+        .getSnapshot()
+        .visibleRows.find((row) => row.kind === "group" && row.depth === 1)!.id;
+      const onFocusChange = vi.fn();
+      let grid: PretableGrid<GridRow> | undefined;
+      const view = render(
+        <ControlledGroupingFocusHarness
+          initialFocus={{
+            rowId: oldGroupRowId,
+            columnId: GROUP_COLUMN_ID,
+          }}
+          initialRowGroups={["a", "b"]}
+          onFocusChange={onFocusChange}
+          onGridReady={(readyGrid) => {
+            grid = readyGrid;
+          }}
+          resolveRowGroups={() => ["b"]}
+        />,
+      );
+      const chip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      )!;
+      chip.focus();
+
+      fireEvent.keyDown(chip, { key: "ArrowRight", shiftKey: true });
+
+      expect(groupingChipIds(view)).toEqual(["b"]);
+      expect(onFocusChange).toHaveBeenCalledTimes(1);
+      const repaired = onFocusChange.mock.calls[0]![0];
+      expect(repaired.rowId).not.toBe(oldGroupRowId);
+      expect(repaired.columnId).toBe(GROUP_COLUMN_ID);
+      expect(
+        grid?.getSnapshot().visibleRows.some((row) => row.id === oldGroupRowId),
+      ).toBe(false);
+      expect(grid?.getSnapshot().focus).toEqual(repaired);
+      const focusedCell = getCell(view, repaired.rowId!, repaired.columnId!);
+      expect(focusedCell?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(focusedCell);
+    });
+
+    it("waits for an accepted grouping render that also removes the controlled focused row", () => {
+      const onFocusChange = vi.fn();
+      let grid: PretableGrid<GridRow> | undefined;
+      const view = render(
+        <ControlledGroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "b" }}
+          onFocusChange={onFocusChange}
+          onGridReady={(readyGrid) => {
+            grid = readyGrid;
+          }}
+          resolveRows={(_requested, current) =>
+            current.filter((row) => row.id !== "r1")
+          }
+        />,
+      );
+
+      fireEvent.click(openGroupingMenu(view, "A"));
+
+      expect(onFocusChange).toHaveBeenCalledTimes(1);
+      expect(onFocusChange).toHaveBeenCalledWith({
+        rowId: "r2",
+        columnId: "b",
+      });
+      expect(grid?.getSnapshot().focus).toEqual({
+        rowId: "r2",
+        columnId: "b",
+      });
+      expect(
+        grid?.getSnapshot().visibleRows.some((row) => row.id === "r1"),
+      ).toBe(false);
+      const chip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      );
+      expect(chip?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(chip);
+    });
+
+    it("does not loop or steal the grouping target when the parent rejects the repaired focus", () => {
+      const onFocusChange = vi.fn();
+      let grid: PretableGrid<GridRow> | undefined;
+      const view = render(
+        <React.StrictMode>
+          <ControlledGroupingFocusHarness
+            initialFocus={{ rowId: "r1", columnId: "a" }}
+            onFocusChange={onFocusChange}
+            onGridReady={(readyGrid) => {
+              grid = readyGrid;
+            }}
+            resolveFocus={(_requested, current) => current}
+          />
+        </React.StrictMode>,
+      );
+
+      fireEvent.click(openGroupingMenu(view, "A"));
+
+      expect(onFocusChange).toHaveBeenCalledTimes(1);
+      expect(onFocusChange).toHaveBeenCalledWith({
+        rowId: "r1",
+        columnId: GROUP_COLUMN_ID,
+      });
+      expect(grid?.getSnapshot().focus).toEqual({
+        rowId: "r1",
+        columnId: GROUP_COLUMN_ID,
+      });
+      const chip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      );
+      expect(document.activeElement).toBe(chip);
     });
   });
 });

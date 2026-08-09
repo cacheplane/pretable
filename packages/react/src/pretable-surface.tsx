@@ -75,6 +75,21 @@ function sanitizeControlledRowGroups(
   return sanitized;
 }
 
+function focusExistsInDerivedModel<TRow extends PretableRow>(
+  focus: PretableFocusState,
+  snapshot: PretableGridSnapshot<TRow>,
+  columns: readonly PretableColumn<TRow>[],
+): boolean {
+  if (focus.rowId === null || focus.columnId === null) {
+    return focus.rowId === null && focus.columnId === null;
+  }
+
+  return (
+    snapshot.visibleRows.some((row) => row.id === focus.rowId) &&
+    columns.some((column) => column.id === focus.columnId)
+  );
+}
+
 /**
  * Narrow a visible-row entry to a data row.
  *
@@ -1809,6 +1824,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     const request = pendingGroupingFocusRef.current;
     if (request === null) return;
 
+    if (grid.getSnapshot() !== snapshot) {
+      // Earlier `usePretable` layout effects may have reconciled rows, columns,
+      // or another controlled slice after this render snapshot was read. Their
+      // engine emit schedules a follow-up render; resolving against this pass
+      // would consume the request before the repaired focus and matching DOM
+      // exist.
+      return;
+    }
+
     const controlledRowGroups = state?.rowGroups;
     if (controlledRowGroups !== undefined) {
       const controlledSnapshot = sanitizeControlledRowGroups(
@@ -1828,6 +1852,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // a miss pending would let an unrelated later render mount the same column
     // and steal focus long after the user's grouping action ended.
     pendingGroupingFocusRef.current = null;
+
+    const controlledFocus = state?.focus;
+    const derivedColumns = grid.getColumns();
+    if (
+      controlledFocus !== undefined &&
+      !focusExistsInDerivedModel(controlledFocus, snapshot, derivedColumns) &&
+      focusExistsInDerivedModel(snapshot.focus, snapshot, derivedColumns)
+    ) {
+      // The engine repaired focus while deriving the final accepted or
+      // transformed grouping model. Report that address only after controlled
+      // rowGroups have converged; clearing the pending request first makes the
+      // callback one-shot even when a controlled parent rejects the repair.
+      onFocusChange?.({ ...snapshot.focus });
+    }
 
     const requestedNode =
       request.target === "chip"
