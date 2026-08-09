@@ -48,6 +48,33 @@ type GroupingFocusIntent = {
   columnId: string;
 };
 
+function groupingListsEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((columnId, index) => columnId === right[index])
+  );
+}
+
+function sanitizeControlledRowGroups(
+  rowGroups: readonly string[],
+  columnIds: readonly string[],
+): string[] {
+  const known = new Set(columnIds);
+  const seen = new Set<string>();
+  const sanitized: string[] = [];
+
+  for (const columnId of rowGroups) {
+    if (!known.has(columnId) || seen.has(columnId)) continue;
+    seen.add(columnId);
+    sanitized.push(columnId);
+  }
+
+  return sanitized;
+}
+
 /**
  * Narrow a visible-row entry to a data row.
  *
@@ -912,10 +939,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       pendingGroupingFocusRef.current = focusIntent ?? null;
       grid.setRowGroups(next);
       const committed = grid.getSnapshot().rowGroups;
-      if (
-        before.length === committed.length &&
-        before.every((columnId, index) => columnId === committed[index])
-      ) {
+      if (groupingListsEqual(before, committed)) {
         // A change-guarded engine mutation schedules no render, so there would
         // be no layout pass to consume this request. Clear it here instead of
         // letting a later unrelated render act on a stale grouping gesture.
@@ -1784,6 +1808,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   useLayoutEffect(() => {
     const request = pendingGroupingFocusRef.current;
     if (request === null) return;
+
+    const controlledRowGroups = state?.rowGroups;
+    if (controlledRowGroups !== undefined) {
+      const controlledSnapshot = sanitizeControlledRowGroups(
+        controlledRowGroups,
+        grid.options.columns.map((column) => column.id),
+      );
+      if (!groupingListsEqual(snapshot.rowGroups, controlledSnapshot)) {
+        // `usePretable` reasserts controlled state in an earlier layout effect,
+        // but its synchronous engine emit becomes a later React render. This
+        // pass still owns the transient mutation DOM, so retain the request
+        // until that later render shows the controlled slice's final shape.
+        return;
+      }
+    }
 
     // A grouping request gets exactly one post-render resolution pass. Keeping
     // a miss pending would let an unrelated later render mount the same column
@@ -3632,6 +3671,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           // drag tracks its insertion index internally.
           dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
           emptyMessage={groupPanel?.emptyMessage}
+          focusManagedExternally
           height={groupPanelHeight}
           labelForColumn={labelForColumn}
           onChange={applyRowGroups}

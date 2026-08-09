@@ -49,6 +49,8 @@ export interface GroupPanelProps {
   labelForColumn: (columnId: string) => string;
   emptyMessage?: string;
   height: number;
+  /** The owning surface will restore focus after controlled state settles. */
+  focusManagedExternally?: boolean;
   /**
    * Commit a whole new grouping list. Every mutation the panel makes is one
    * call with a rearranged array — there is no add/remove/move protocol.
@@ -80,6 +82,7 @@ export function GroupPanel({
   labelForColumn,
   emptyMessage,
   height,
+  focusManagedExternally = false,
   onChange,
   style,
 }: GroupPanelProps) {
@@ -98,6 +101,7 @@ export function GroupPanel({
     const columnId = refocusRef.current;
     if (columnId === null) return;
     refocusRef.current = null;
+    if (focusManagedExternally) return;
     // React reorders keyed children by re-inserting the DOM nodes, and
     // detaching a focused element drops focus to the body. Without this the
     // first Shift+Arrow would work and the second would go nowhere.

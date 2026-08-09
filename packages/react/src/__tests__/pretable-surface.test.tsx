@@ -1120,10 +1120,12 @@ function GroupingFocusHarness({
   initialFocus,
   initialRowGroups = [],
   removeColumnOnEmpty,
+  resolveRowGroups,
 }: {
   initialFocus?: PretableFocusState;
   initialRowGroups?: string[];
   removeColumnOnEmpty?: string;
+  resolveRowGroups?: (requested: string[], current: string[]) => string[];
 }) {
   const [renderedColumns, setRenderedColumns] =
     React.useState<PretableColumn<GridRow>[]>(gridColumns);
@@ -1136,6 +1138,10 @@ function GroupingFocusHarness({
       getRowId={getGridRowId}
       groupPanel={{ enabled: true }}
       onRowGroupsChange={(next) => {
+        if (resolveRowGroups) {
+          setRowGroups((current) => resolveRowGroups(next, current));
+          return;
+        }
         let controlledNext = next;
         const removedId = next.length === 0 ? removeColumnOnEmpty : undefined;
         if (removedId) {
@@ -1167,6 +1173,12 @@ function openGroupingMenu(
   fireEvent.pointerDown(button);
   fireEvent.click(button);
   return view.getByRole("menuitem", { name: "Group by this column" });
+}
+
+function groupingChipIds(view: ReturnType<typeof render>) {
+  return Array.from(
+    view.container.querySelectorAll<HTMLElement>("[data-pretable-group-chip]"),
+  ).map((chip) => chip.getAttribute("data-pretable-column-id"));
 }
 
 describe("grouping DOM focus restoration", () => {
@@ -1301,6 +1313,154 @@ describe("grouping DOM focus restoration", () => {
     expect(viewport.isConnected).toBe(true);
     expect(document.activeElement).toBe(viewport);
     expect(document.activeElement).not.toBe(document.body);
+  });
+
+  describe("controlled rowGroups reconciliation", () => {
+    it("waits for a rejected menu grouping before falling back to the focused cell", () => {
+      const view = render(
+        <GroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "b" }}
+          resolveRowGroups={(_requested, current) => current}
+        />,
+      );
+
+      fireEvent.click(openGroupingMenu(view, "A"));
+
+      expect(groupingChipIds(view)).toEqual([]);
+      const focusedCell = getCell(view, "r1", "b");
+      expect(focusedCell?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(focusedCell);
+      expect(document.activeElement).not.toBe(document.body);
+    });
+
+    it("waits for a transformed header grouping before resolving against its final DOM", () => {
+      const view = render(
+        <GroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "c" }}
+          resolveRowGroups={() => ["missing", "b", "b"]}
+        />,
+      );
+      const panel = view.container.querySelector<HTMLElement>(
+        "[data-pretable-group-panel]",
+      )!;
+      const header = view.getByRole("columnheader", { name: "Sort A" });
+      vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(0, 0, 300, 40),
+      );
+
+      fireEvent.pointerDown(header, {
+        button: 0,
+        pointerId: 17,
+        clientX: 10,
+        clientY: 100,
+      });
+      fireEvent.pointerMove(header, {
+        pointerId: 17,
+        clientX: 40,
+        clientY: 20,
+      });
+      fireEvent.pointerUp(header, {
+        pointerId: 17,
+        clientX: 40,
+        clientY: 20,
+      });
+
+      expect(groupingChipIds(view)).toEqual(["b"]);
+      expect(header.isConnected).toBe(false);
+      expect(
+        view.getByRole("columnheader", { name: "Sort A" }).isConnected,
+      ).toBe(true);
+      const focusedCell = getCell(view, "r1", "c");
+      expect(focusedCell?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(focusedCell);
+    });
+
+    it("does not end on body when final-chip deletion is rejected", () => {
+      const view = render(
+        <React.StrictMode>
+          <GroupingFocusHarness
+            initialFocus={{ rowId: "r1", columnId: "b" }}
+            initialRowGroups={["a"]}
+            resolveRowGroups={(_requested, current) => current}
+          />
+        </React.StrictMode>,
+      );
+      const chip = view.getByRole("option");
+      chip.focus();
+
+      fireEvent.keyDown(chip, { key: "Delete" });
+
+      expect(groupingChipIds(view)).toEqual(["a"]);
+      const focusedCell = getCell(view, "r1", "b");
+      expect(focusedCell?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(focusedCell);
+      expect(document.activeElement).not.toBe(document.body);
+    });
+
+    it("waits for transformed removal before falling back from its missing successor", () => {
+      const view = render(
+        <GroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "c" }}
+          initialRowGroups={["a", "b"]}
+          resolveRowGroups={() => ["a"]}
+        />,
+      );
+      const chip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      )!;
+      chip.focus();
+
+      fireEvent.keyDown(chip, { key: "Delete" });
+
+      expect(groupingChipIds(view)).toEqual(["a"]);
+      const focusedCell = getCell(view, "r1", "c");
+      expect(focusedCell?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(focusedCell);
+    });
+
+    it("resolves a rejected reorder only after the old order is restored", () => {
+      const view = render(
+        <GroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "c" }}
+          initialRowGroups={["a", "b"]}
+          resolveRowGroups={(_requested, current) => current}
+        />,
+      );
+      const chip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      )!;
+      chip.focus();
+
+      fireEvent.keyDown(chip, { key: "ArrowRight", shiftKey: true });
+
+      expect(groupingChipIds(view)).toEqual(["a", "b"]);
+      const restoredChip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      );
+      expect(restoredChip?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(restoredChip);
+    });
+
+    it("waits for transformed reorder before falling back from its missing moved chip", () => {
+      const view = render(
+        <GroupingFocusHarness
+          initialFocus={{ rowId: "r1", columnId: "c" }}
+          initialRowGroups={["a", "b"]}
+          resolveRowGroups={() => ["b"]}
+        />,
+      );
+      const chip = view.container.querySelector<HTMLElement>(
+        '[data-pretable-group-chip][data-pretable-column-id="a"]',
+      )!;
+      chip.focus();
+
+      fireEvent.keyDown(chip, { key: "ArrowRight", shiftKey: true });
+
+      expect(groupingChipIds(view)).toEqual(["b"]);
+      const focusedCell = getCell(view, "r1", "c");
+      expect(focusedCell?.isConnected).toBe(true);
+      expect(document.activeElement).toBe(focusedCell);
+    });
   });
 });
 
