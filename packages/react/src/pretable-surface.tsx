@@ -2137,17 +2137,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           return;
         }
 
-        // Header buttons own their keyboard interactions. In particular, Tab
-        // must retain its native focus behavior, while Enter/Space belong to
-        // the sort, filter, and column-menu controls rather than acting on a
-        // stale engine grid focus. Reorder and marquee Escape cancellation stay
-        // above this guard because those gestures remain surface-owned even
-        // when their originating pointer was in the header.
-        if (
+        // Header buttons and surface-owned portals own their keyboard
+        // interactions. React events from a portaled menu/dialog still bubble
+        // through this component tree, even though their DOM target is outside
+        // the viewport. In particular, Tab must retain its native focus
+        // behavior, while Enter/Space belong to the sort, filter, and menu
+        // controls rather than acting on a stale engine grid focus. Reorder and
+        // marquee Escape cancellation stay above this guard because those
+        // gestures remain surface-owned even when their originating pointer was
+        // in the header or a portal.
+        const targetIsInsideSurface =
+          event.target instanceof Node &&
+          event.currentTarget.contains(event.target);
+        const targetIsInHeader =
+          targetIsInsideSurface &&
           event.target instanceof Element &&
-          event.target.closest("[data-pretable-header-row]")
-        ) {
+          event.target.closest("[data-pretable-header-row]") !== null;
+        if (!targetIsInsideSurface || targetIsInHeader) {
           const origin =
+            targetIsInHeader &&
+            event.target instanceof Element &&
             event.key === "Tab" &&
             !event.shiftKey &&
             !event.metaKey &&

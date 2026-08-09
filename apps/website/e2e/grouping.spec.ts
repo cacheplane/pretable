@@ -619,8 +619,21 @@ test("keyboard grouping keeps focus from the Region menu through final removal",
   const regionMenu = page.getByRole("button", {
     name: "Column menu for Region",
   });
+  const bodyCell = page.locator(
+    '[data-pretable-row-id="s1-i1-r1"] [data-pretable-column-id="name"]',
+  );
+  await bodyCell.click();
+  await expect(bodyCell).toBeFocused();
+
+  const regionFilter = page.getByRole("button", { name: "Filter Region" });
+  await regionFilter.focus();
+  await expect(regionFilter).toBeFocused();
+
   // WebKit models Safari's default macOS preference, where Option+Tab is the
-  // native chord that includes buttons in sequential focus navigation.
+  // native chord that includes buttons in sequential focus navigation. The
+  // body click above leaves a real engine focus behind; starting on the
+  // adjacent filter makes the final move into Region's menu button native
+  // traversal in both engines.
   await tabUntilFocused(
     page,
     regionMenu,

@@ -68,6 +68,18 @@ function renderSurface(
   );
 }
 
+/** Dispatch Enter, then model the browser's native button click if unclaimed. */
+function activateWithEnter(target: HTMLElement) {
+  const event = new KeyboardEvent("keydown", {
+    bubbles: true,
+    cancelable: true,
+    key: "Enter",
+  });
+  fireEvent(target, event);
+  if (!event.defaultPrevented) fireEvent.click(target);
+  return event;
+}
+
 describe("PretableSurface — built-in filter funnel", () => {
   it("renders a funnel for filterable columns and omits it for filterable:false", () => {
     const view = renderSurface();
@@ -371,5 +383,42 @@ describe("PretableSurface — built-in filter funnel", () => {
     >;
     expect(lastFilters.severity).toBeUndefined();
     expect(view.getAllByTestId("pretable-row")).toHaveLength(3);
+  });
+
+  it("leaves keyboard activation of portaled filter controls to the dialog", () => {
+    const onFiltersChange = vi.fn();
+    const onRowActivate = vi.fn();
+    const onSelectionChange = vi.fn();
+    const view = renderSurface({
+      onFiltersChange,
+      onRowActivate,
+      onSelectionChange,
+    });
+
+    const cell = view.container.querySelector<HTMLElement>(
+      '[data-pretable-row-id="b1"] [data-pretable-column-id="title"]',
+    )!;
+    fireEvent.click(cell);
+    expect(cell).toHaveFocus();
+    onRowActivate.mockClear();
+    onSelectionChange.mockClear();
+
+    const funnel = view.getByRole("button", { name: "Filter Severity" });
+    funnel.focus();
+    expect(activateWithEnter(funnel).defaultPrevented).toBe(false);
+
+    const dialog = view.getByRole("dialog", { name: "Filter Severity" });
+    const clear = within(dialog).getByRole("button", { name: "Clear" });
+    clear.focus();
+    const clearEvent = activateWithEnter(clear);
+
+    expect(clearEvent.defaultPrevented).toBe(false);
+    expect(onFiltersChange).toHaveBeenCalledWith({});
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(onRowActivate).not.toHaveBeenCalled();
+    expect(
+      view.container.querySelectorAll('[data-pretable-selected="true"]'),
+    ).toHaveLength(1);
+    expect(cell).toHaveAttribute("data-pretable-selected", "true");
   });
 });
