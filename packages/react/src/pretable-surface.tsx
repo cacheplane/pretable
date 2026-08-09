@@ -4135,9 +4135,24 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
  * index, which is what `grid.moveColumn` takes.
  *
  * The two spaces are the same array while ungrouped, and this returns
- * `dropIndex` unchanged. Grouped they differ by the derived group column at the
- * head and the grouped columns that dropped out, so a raw drawn-space index
- * would land the column that many slots off.
+ * `dropIndex` unchanged. Grouped they differ in BOTH directions: the derived
+ * group column is drawn but is not an engine column, and every grouped column
+ * is an engine column that is not drawn (`hideGroupedColumns` defaults on).
+ *
+ * Counting positions in the drawn list therefore cannot answer the question —
+ * it has no slot for the columns that dropped out, so an index taken from it is
+ * short by however many of them precede the drop. Measured, before this was
+ * written the right way: grouping by one column and dragging a header ONTO
+ * ITSELF (a drop index that should be a no-op) moved that column to engine
+ * index 0, silently reordering `options.columns` while the drawn header row
+ * did not visibly change and `onColumnOrderChange` reported an order the user
+ * never asked for.
+ *
+ * So the drop is resolved by NEIGHBOUR instead of by count: the drawn order
+ * says which column the dragged one now sits after, and that column's position
+ * in the engine array — which does have a slot for everything — says where it
+ * goes. The returned index is in post-removal space, which is what
+ * `moveColumn`'s splice-out-then-splice-in takes.
  */
 function toEngineDropIndex<TRow extends PretableRow>(
   drawn: readonly PretableColumn<TRow>[],
@@ -4145,11 +4160,28 @@ function toEngineDropIndex<TRow extends PretableRow>(
   columnId: string,
   dropIndex: number,
 ): number {
-  const engineIds = new Set(engineColumns.map((c) => c.id));
+  const engineIds = engineColumns.map((c) => c.id);
+  const known = new Set(engineIds);
+
   const ids = drawn.map((c) => c.id).filter((id) => id !== columnId);
   ids.splice(dropIndex, 0, columnId);
+  // Drop the derived group column: it is drawn but the engine has never heard
+  // of it, so it can be neither an anchor nor an offset.
+  const ordered = ids.filter((id) => known.has(id));
 
-  return ids.filter((id) => engineIds.has(id)).indexOf(columnId);
+  const position = ordered.indexOf(columnId);
+  const rest = engineIds.filter((id) => id !== columnId);
+
+  const predecessor = ordered[position - 1];
+  if (predecessor !== undefined) return rest.indexOf(predecessor) + 1;
+
+  // Nothing drawn before it. Anchor to what follows instead — the two differ
+  // when hidden grouped columns sit at the head of the engine array, and
+  // "before the first drawn column" must not mean "before those".
+  const successor = ordered[position + 1];
+  if (successor !== undefined) return rest.indexOf(successor);
+
+  return 0;
 }
 
 function buildWidthsMap<TRow extends PretableRow>(

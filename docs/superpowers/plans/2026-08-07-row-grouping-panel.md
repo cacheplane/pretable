@@ -90,6 +90,61 @@ button out of the option — it is documented at the call site.
 
 ---
 
+## Status — Task 8 is DONE, and it found a shipped bug
+
+`apps/website/e2e/grouping.spec.ts` is at **20 browser tests (10 × Chromium +
+WebKit)**, all passing. React is at **757 passing (44 files)**; the whole e2e
+suite is 68/68. `pnpm api` is a clean no-op after one refresh (`groupPanel`,
+`onRowGroupsChange`).
+
+**The bug: header reorder was broken for every grouped grid, and had been since
+SP2.** `toEngineDropIndex` translated the drop index by counting positions in
+the DRAWN column list. That list has no slot for a grouped column
+(`hideGroupedColumns` defaults on) and an extra slot for the derived group
+column, so the translated index was off by however many hidden columns preceded
+the drop. Measured: grouping by one column and dragging a header **onto its own
+slot** — a no-op drop — moved that column to engine index 0, silently rewriting
+`options.columns` while the header row did not visibly change, and reporting the
+bogus order to `onColumnOrderChange`. Fixed by resolving the drop by NEIGHBOUR
+(what the column now sits after in drawn order, looked up in the engine array)
+rather than by count. Pinned by two new jsdom tests under `column reorder ›
+while grouped` — it is index arithmetic, not geometry, so it belongs there; it
+just took a browser to notice.
+
+**Two of this plan's own premises are wrong. Measured, not argued:**
+
+- **"A capture wrongly placed on a chip is only catchable in a browser" is
+  false.** Moving the capture onto the chip fails the unit suite's structural
+  assertion and changes **nothing** in either engine: every handler after
+  `pointerdown` is on `document`, and a captured event still bubbles there. The
+  rule is sound defensively; it is not what makes the chip drag work, and there
+  is no behavioural proof of it anywhere.
+- **"Browsers drop focus when React re-inserts a keyed node" is false.** A
+  MutationObserver confirms the focused chip really is removed and re-inserted
+  on both `Shift+ArrowRight` presses — and Chromium and WebKit both keep
+  `document.activeElement` on it. Deleting the refocus effect's reorder branch
+  leaves all 757 unit tests **and** Step 2 item 6 green. Its negative control
+  fires nowhere. The effect stays because the REMOVAL path genuinely needs it
+  (the node is destroyed there, and jsdom covers it), but item 6 pins an
+  outcome, not that effect.
+
+**One spec/implementation conflict, left as-is.** Spec Decision 2 says "release
+over neither zone and nothing happens". For the **header** drag that is not what
+was built: the drop index is a function of cursor X alone, so a header released
+600px below the grid still reorders — confirmed in both engines. Task 4's jsdom
+test pins that behaviour explicitly ("a header released over neither zone
+reorders and does not group"). Only the **chip** drag has a real third outcome,
+and that is what Step 2 item 5 asserts here. Decide which one is wanted and fix
+the loser; do not assume the doc.
+
+**Also worth knowing:** the header drag's Escape branch lives on the scroll
+viewport's `onKeyDown`, which needs focus inside the viewport — and macOS/WebKit
+does not focus a `<button>` on click. It works anyway in both engines, and there
+is now a test saying so; `fireEvent.keyDown(header)` in jsdom could never have
+told you.
+
+---
+
 ## Ground rules for every task
 
 - **Vanilla CSS in `packages/*`.** No Tailwind. `:where()` + existing

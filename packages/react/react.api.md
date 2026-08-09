@@ -681,6 +681,10 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     //
     // (undocumented)
     getRowProps?: (input: PretableSurfaceRowAttributesInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
+    groupPanel?: {
+        enabled: boolean;
+        emptyMessage?: string;
+    };
     messages?: PretableSurfaceMessages;
     onCellEdit?: (payload: {
         rowId: string;
@@ -702,6 +706,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     onGridReady?: (grid: PretableGrid<TRow>) => void;
     onPaste?: (payload: PastePayload<TRow>) => void | Promise<void>;
     onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
+    onRowGroupsChange?: (rowGroups: string[]) => void;
     onRowSelectionChange?: (rowIds: string[]) => void;
     // (undocumented)
     onSelectedRowIdChange?: (rowId: string | null) => void;
@@ -866,7 +871,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:785:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:806:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
