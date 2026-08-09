@@ -11,6 +11,7 @@ import {
 } from "@pretable/core";
 
 import { GroupRow } from "../group-row";
+import { serializeRanges } from "../copy";
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
 import type { PretableSurfaceState } from "../use-pretable";
@@ -282,6 +283,56 @@ describe("group row rendering", () => {
     const tech = groupRows(view)[1]!;
     const qtyCell = tech.querySelector('[data-pretable-column-id="qty"]');
     expect(qtyCell).toHaveTextContent("Σ 3");
+  });
+
+  it("passes the same aggregate context to rendering and serialization", () => {
+    const formatAggregate: NonNullable<
+      PretableColumn<GroupedRow>["formatAggregate"]
+    > = ({ value, column, group }) =>
+      `${String(group.value)}:${column.id}:${String(value)}`;
+    const columns: PretableColumn<GroupedRow>[] = [
+      groupedColumns[0]!,
+      groupedColumns[1]!,
+      {
+        ...groupedColumns[2]!,
+        formatAggregate,
+      },
+    ];
+    const view = renderGrouped({
+      columns,
+      state: { rowGroups: ["sector"] },
+    });
+    const rendered = groupRows(view)[1]!.querySelector(
+      '[data-pretable-column-id="qty"]',
+    );
+    const group: PretableGroupRow = {
+      kind: "group",
+      id: "__group__:sector=Tech",
+      depth: 0,
+      columnId: "sector",
+      value: "Tech",
+      childCount: 2,
+      aggregates: { qty: 3 },
+    };
+    const copied = serializeRanges<GroupedRow>({
+      ranges: [
+        {
+          startRowId: group.id,
+          endRowId: group.id,
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      visibleRows: [group],
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        columns[1]!,
+        columns[2]!,
+      ],
+    });
+
+    expect(rendered).toHaveTextContent("Tech:qty:3");
+    expect(copied?.text).toBe(rendered?.textContent);
   });
 
   it("updates a visible aggregate when only its aggregate definition changes", () => {

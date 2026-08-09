@@ -1985,7 +1985,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           };
           const payload = onCopy ? onCopy(args) : serializeRanges(args);
           if (payload) {
-            const extent = computeSelectionExtent(
+            const extent = computeCopyExtent(
               snap.selection.ranges,
               snap,
               columnsInVisualOrder,
@@ -3824,6 +3824,81 @@ function computeSelectionExtent<TRow extends PretableRow>(
   const isAll = rowCount === dataRowCount && columnCount === dataColumns.length;
 
   return { rowCount, columnCount, isAll };
+}
+
+function computeCopyExtent<TRow extends PretableRow>(
+  ranges: readonly PretableCellRange[],
+  snapshot: PretableGridSnapshot<TRow>,
+  columns: readonly PretableColumn<TRow>[],
+): { rowCount: number; columnCount: number } {
+  const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
+  if (
+    ranges.length === 0 ||
+    snapshot.visibleRows.length === 0 ||
+    dataColumns.length === 0
+  ) {
+    return { rowCount: 0, columnCount: 0 };
+  }
+
+  const rowOrder = new Map<string, number>();
+  for (let i = 0; i < snapshot.visibleRows.length; i += 1) {
+    const row = snapshot.visibleRows[i];
+    if (row) rowOrder.set(row.id, i);
+  }
+  const columnOrder = new Map<string, number>();
+  for (let i = 0; i < dataColumns.length; i += 1) {
+    const column = dataColumns[i];
+    if (column) columnOrder.set(column.id, i);
+  }
+
+  const coveredRows = new Set<number>();
+  const coveredColumns = new Set<string>();
+
+  for (const range of ranges) {
+    const r1 = rowOrder.get(range.startRowId);
+    const r2 = rowOrder.get(range.endRowId);
+    if (r1 === undefined || r2 === undefined) continue;
+
+    const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
+    const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
+    if (startSynth && endSynth) continue;
+
+    const c1 = columnOrder.get(range.startColumnId);
+    const c2 = columnOrder.get(range.endColumnId);
+    let colLo: number;
+    let colHi: number;
+    if (startSynth && c2 !== undefined) {
+      colLo = 0;
+      colHi = c2;
+    } else if (endSynth && c1 !== undefined) {
+      colLo = 0;
+      colHi = c1;
+    } else if (c1 !== undefined && c2 !== undefined) {
+      colLo = Math.min(c1, c2);
+      colHi = Math.max(c1, c2);
+    } else if (c1 !== undefined) {
+      colLo = colHi = c1;
+    } else if (c2 !== undefined) {
+      colLo = colHi = c2;
+    } else {
+      continue;
+    }
+
+    const rowLo = Math.min(r1, r2);
+    const rowHi = Math.max(r1, r2);
+    for (let i = rowLo; i <= rowHi; i += 1) {
+      coveredRows.add(i);
+    }
+    for (let i = colLo; i <= colHi; i += 1) {
+      const column = dataColumns[i];
+      if (column) coveredColumns.add(column.id);
+    }
+  }
+
+  return {
+    rowCount: coveredRows.size,
+    columnCount: coveredColumns.size,
+  };
 }
 
 const ARROW_DIRECTIONS: Record<string, PretableFocusDirection> = {

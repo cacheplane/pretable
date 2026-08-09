@@ -1,4 +1,8 @@
-import type { PretableRow, PretableSortDirection } from "@pretable/core";
+import type {
+  PretableGroupRow,
+  PretableRow,
+  PretableSortDirection,
+} from "@pretable/core";
 import type { PretableColumn } from "./types";
 
 export const DEFAULT_ROW_HEIGHT = 44;
@@ -29,4 +33,14 @@ export function formatCellValue(value: unknown) {
   }
 
   return String(value ?? "");
+}
+
+export function formatAggregateValue<TRow extends PretableRow>(
+  column: PretableColumn<TRow>,
+  group: PretableGroupRow,
+): string {
+  const value = group.aggregates[column.id];
+  return column.formatAggregate
+    ? column.formatAggregate({ value, column, group })
+    : formatCellValue(value);
 }

@@ -7,7 +7,7 @@ import {
 import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 
 import { groupLabel } from "./group-model";
-import { formatCellValue } from "./rendering";
+import { formatAggregateValue } from "./rendering";
 import { getPositionedCellStyle, getRowStyle } from "./styles";
 import type { PretableColumn } from "./types";
 
@@ -103,7 +103,6 @@ export function GroupRow<TRow extends PretableRow>({
         const hasAggregate =
           !isGroupCell &&
           Object.prototype.hasOwnProperty.call(group.aggregates, plannedCol.id);
-        const aggregate = group.aggregates[plannedCol.id];
 
         return (
           <div
@@ -163,12 +162,8 @@ export function GroupRow<TRow extends PretableRow>({
                 <span data-pretable-group-label="">{label}</span>
                 <span data-pretable-group-count="">({group.childCount})</span>
               </>
-            ) : hasAggregate ? (
-              column?.formatAggregate ? (
-                column.formatAggregate({ value: aggregate, column, group })
-              ) : (
-                formatCellValue(aggregate)
-              )
+            ) : hasAggregate && column ? (
+              formatAggregateValue(column, group)
             ) : null}
           </div>
         );

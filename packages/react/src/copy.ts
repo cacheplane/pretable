@@ -1,11 +1,14 @@
-import type {
-  ColumnType,
-  PretableCellRange,
-  PretableRow,
-  PretableVisibleRow,
+import {
+  GROUP_COLUMN_ID,
+  type ColumnType,
+  type PretableCellRange,
+  type PretableRow,
+  type PretableVisibleRow,
 } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
+import { groupLabel } from "./group-model";
+import { formatAggregateValue } from "./rendering";
 import type { PretableColumn } from "./types";
 
 // The Blob written by defaultCopyToClipboard carries `type: "text/html"` with
@@ -264,34 +267,42 @@ export function serializeRanges<TRow extends PretableRow>(
     }
 
     let bodyHtml = "";
+    let bodyRowCount = 0;
     for (let r = rowLo; r <= rowHi; r += 1) {
       const row = args.visibleRows[r]!;
-
-      // TODO(sub-project 2): decide what a copied group header emits — its
-      // label, its aggregates, or nothing. Until that shape is defined a group
-      // row inside the range is simply omitted, which keeps the emitted block
-      // rectangular over the data rows it spans.
-      if (row.kind !== "data") {
-        continue;
-      }
 
       const cells: string[] = [];
       let rowHtml = "";
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;
-        const raw = col.value
-          ? col.value(row.row)
-          : (row.row as Record<string, unknown>)[col.id];
-        const text = col.format
-          ? col.format({ value: raw, row: row.row, column: col })
-          : defaultCoerceForCopy(raw);
+        let text: string;
+        if (row.kind === "group") {
+          if (col.id === GROUP_COLUMN_ID) {
+            text = groupLabel(row.value);
+          } else if (
+            Object.prototype.hasOwnProperty.call(row.aggregates, col.id)
+          ) {
+            text = formatAggregateValue(col, row);
+          } else {
+            text = "";
+          }
+        } else {
+          const raw = col.value
+            ? col.value(row.row)
+            : (row.row as Record<string, unknown>)[col.id];
+          text = col.format
+            ? col.format({ value: raw, row: row.row, column: col })
+            : defaultCoerceForCopy(raw);
+        }
         cells.push(escapeTsvField(text));
         rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
       }
       lines.push(cells.join("\t"));
       bodyHtml += `<tr>${rowHtml}</tr>`;
+      bodyRowCount += 1;
     }
 
+    if (bodyRowCount === 0) continue;
     textBlocks.push(lines.join("\n"));
     htmlTables.push(
       `${HTML_TABLE_OPEN}${headHtml}<tbody>${bodyHtml}</tbody></table>`,

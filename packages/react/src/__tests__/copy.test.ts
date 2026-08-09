@@ -8,7 +8,12 @@ import {
   type SerializeRangesArgs,
 } from "../copy";
 import { ROW_SELECT_COLUMN_ID } from "../pretable-surface";
-import type { PretableCellRange, PretableVisibleRow } from "@pretable/core";
+import {
+  GROUP_COLUMN_ID,
+  type PretableCellRange,
+  type PretableGroupRow,
+  type PretableVisibleRow,
+} from "@pretable/core";
 import type { PretableColumn } from "../types";
 
 type Row = { id: string; a: string; b: string; c: string };
@@ -306,35 +311,149 @@ describe("serializeRanges escaping", () => {
     expect(out?.text).toBe("A\tB\n\na1\tb1");
   });
 
-  // Sub-project 2 decides what a copied group header emits. Until then it is
-  // omitted, which keeps the block rectangular over the data rows it spans.
-  it("omits group header rows spanned by a range", () => {
-    const [r1, r2, r3] = makeVisibleRows(rows);
-    const visibleRows: PretableVisibleRow<Row>[] = [
-      r1!,
+  describe("group rows", () => {
+    type GroupCopyRow = {
+      id: string;
+      name: string;
+      qty: number;
+    };
+
+    const columns: PretableColumn<GroupCopyRow>[] = [
+      { id: GROUP_COLUMN_ID, header: "Group" },
+      { id: "name", header: "Name" },
       {
-        kind: "group",
-        id: "__group__:a=a2",
-        depth: 0,
-        columnId: "a",
-        value: "a2",
-        childCount: 1,
-        aggregates: {},
+        id: "qty",
+        header: "Qty",
+        formatAggregate: ({ value }) => `Σ ${String(value)}`,
       },
-      r2!,
-      r3!,
     ];
-    const out = serializeRanges<Row>({
-      ranges: [range("r1", "r3", "a", "b")],
-      visibleRows,
-      columns: baseColumns,
-      copyWithHeaders: false,
+    const techGroup: PretableGroupRow = {
+      kind: "group",
+      id: "__group__:sector=Tech",
+      depth: 0,
+      columnId: "sector",
+      value: "Tech",
+      childCount: 2,
+      aggregates: { qty: 3 },
+    };
+    const alpha: GroupCopyRow = { id: "r1", name: "Alpha", qty: 1 };
+    const beta: GroupCopyRow = { id: "r2", name: "Beta", qty: 2 };
+    const visibleRows: PretableVisibleRow<GroupCopyRow>[] = [
+      techGroup,
+      { kind: "data", id: alpha.id, row: alpha, sourceIndex: 0, depth: 0 },
+      { kind: "data", id: beta.id, row: beta, sourceIndex: 1, depth: 0 },
+    ];
+
+    it("serializes a rectangular group header with its label and aggregates", () => {
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [range(techGroup.id, beta.id, GROUP_COLUMN_ID, "qty")],
+        visibleRows,
+        columns,
+      });
+
+      expect(out?.text).toBe("Tech\t\tΣ 3\n\tAlpha\t1\n\tBeta\t2");
+      expect(out?.html?.match(/<tr>/g)).toHaveLength(3);
+      expect(out?.html).toContain("<td>Tech</td><td></td><td>Σ 3</td>");
     });
-    expect(out?.text).toBe("a1\tb1\na2\tb2\na3\tb3");
-    // The HTML flavor walks the same loop, so the group row is skipped there
-    // too — three <tr>, not four.
-    expect(out?.html?.match(/<tr>/g)).toHaveLength(3);
-    expect(out?.html).not.toContain("a2</td><td>b2</td></tr><tr><td>a2");
+
+    it("serializes a group-only range in the derived group column", () => {
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [
+          range(techGroup.id, techGroup.id, GROUP_COLUMN_ID, GROUP_COLUMN_ID),
+        ],
+        visibleRows,
+        columns,
+      });
+
+      expect(out?.text).toBe("Tech");
+      expect(out?.html?.match(/<tr>/g)).toHaveLength(1);
+      expect(out?.html).toContain("<tbody><tr><td>Tech</td></tr></tbody>");
+    });
+
+    it("uses the displayed blank-group label", () => {
+      const blankGroup: PretableGroupRow = {
+        ...techGroup,
+        id: "__group__:sector=blank",
+        value: "",
+      };
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [
+          range(blankGroup.id, blankGroup.id, GROUP_COLUMN_ID, GROUP_COLUMN_ID),
+        ],
+        visibleRows: [blankGroup],
+        columns,
+      });
+
+      expect(out?.text).toBe("(Blanks)");
+      expect(out?.html).toContain("<td>(Blanks)</td>");
+    });
+
+    it("escapes formatted aggregates in both clipboard flavors", () => {
+      const escapingColumns: PretableColumn<GroupCopyRow>[] = [
+        columns[0]!,
+        columns[1]!,
+        {
+          ...columns[2]!,
+          formatAggregate: () => 'sum\t<&"\n3',
+        },
+      ];
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [range(techGroup.id, techGroup.id, "qty", "qty")],
+        visibleRows,
+        columns: escapingColumns,
+      });
+
+      expect(out?.text).toBe('"sum\t<&""\n3"');
+      expect(out?.html).toContain("<td>sum\t&lt;&amp;&quot;<br>3</td>");
+    });
+
+    it("omits the group label when the group column is outside the range", () => {
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [range(techGroup.id, beta.id, "name", "qty")],
+        visibleRows,
+        columns,
+      });
+
+      expect(out?.text).toBe("\tΣ 3\nAlpha\t1\nBeta\t2");
+      expect(out?.html).toContain("<tbody><tr><td></td><td>Σ 3</td></tr>");
+    });
+
+    it("preserves the header blank line and thead contracts", () => {
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [range(techGroup.id, beta.id, GROUP_COLUMN_ID, "qty")],
+        visibleRows,
+        columns,
+        copyWithHeaders: true,
+      });
+
+      expect(out?.text).toBe(
+        "Group\tName\tQty\n\nTech\t\tΣ 3\n\tAlpha\t1\n\tBeta\t2",
+      );
+      expect(out?.html).toContain(
+        "<thead><tr><th>Group</th><th>Name</th><th>Qty</th></tr></thead>",
+      );
+    });
+
+    it("omits ranges with no body rows and returns null when all are empty", () => {
+      const valid = range(techGroup.id, techGroup.id, "qty", "qty");
+      const empty = range("missing", "missing", "qty", "qty");
+
+      expect(
+        serializeRanges<GroupCopyRow>({
+          ranges: [empty, valid, empty],
+          visibleRows,
+          columns,
+        })?.text,
+      ).toBe("Σ 3");
+      expect(
+        serializeRanges<GroupCopyRow>({
+          ranges: [empty],
+          visibleRows,
+          columns,
+          copyWithHeaders: true,
+        }),
+      ).toBeNull();
+    });
   });
 });
 

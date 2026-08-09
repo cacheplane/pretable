@@ -18,7 +18,7 @@ import {
 } from "../pretable-surface";
 import type { CopyPayload, SerializeRangesArgs } from "../copy";
 import * as rowHeight from "../row-height";
-import type { PretableCellRenderInput } from "../types";
+import type { PretableCellRenderInput, PretableColumn } from "../types";
 import { type PretableSurfaceState, usePretable } from "../use-pretable";
 import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
@@ -3136,6 +3136,45 @@ function getLiveRegion(view: ReturnType<typeof render>) {
   ) as HTMLDivElement | null;
 }
 
+type AnnounceGroupedRow = {
+  id: string;
+  sector: string;
+  name: string;
+  qty: number;
+};
+
+const announceGroupedColumns: PretableColumn<AnnounceGroupedRow>[] = [
+  { id: "sector", header: "Sector", widthPx: 100 },
+  { id: "name", header: "Name", widthPx: 100 },
+  { id: "qty", header: "Qty", widthPx: 100, aggregate: "sum" },
+];
+const announceGroupedRows: AnnounceGroupedRow[] = [
+  { id: "r1", sector: "Alpha", name: "One", qty: 1 },
+  { id: "r2", sector: "Beta", name: "Two", qty: 2 },
+];
+
+function renderGroupedAnnounceHarness(
+  opts: {
+    initialState?: PretableSurfaceState;
+    copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
+    messages?: PretableSurfaceMessages;
+  } = {},
+) {
+  return render(
+    <PretableSurface
+      ariaLabel="grouped-announce-grid"
+      columns={announceGroupedColumns}
+      copyToClipboard={opts.copyToClipboard}
+      getRowId={(row: AnnounceGroupedRow) => row.id}
+      messages={opts.messages}
+      overscan={0}
+      rows={announceGroupedRows}
+      state={opts.initialState ?? { rowGroups: ["sector"] }}
+      viewportHeight={300}
+    />,
+  );
+}
+
 describe("aria-live announcements", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -3245,6 +3284,59 @@ describe("aria-live announcements", () => {
     });
 
     expect(getLiveRegion(view)).toHaveTextContent("2 rows × 1 columns copied");
+  });
+
+  it("counts a group header geometrically spanned by a copied data range", async () => {
+    const copyToClipboard = vi.fn().mockResolvedValue(undefined);
+    const view = renderGroupedAnnounceHarness({
+      initialState: {
+        rowGroups: ["sector"],
+        focus: { rowId: "r1", columnId: "name" },
+        selection: {
+          ranges: [
+            {
+              startRowId: "r1",
+              endRowId: "r2",
+              startColumnId: "name",
+              endColumnId: "qty",
+            },
+          ],
+          anchor: { rowId: "r1", columnId: "name" },
+        },
+      },
+      copyToClipboard,
+    });
+
+    fireEvent.keyDown(view.getByRole("treegrid"), {
+      key: "c",
+      metaKey: true,
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("3 rows × 2 columns copied");
+  });
+
+  it("keeps select-all announcements limited to selectable data rows", () => {
+    const view = renderGroupedAnnounceHarness({
+      messages: {
+        selectAllAnnouncement: ({ rowCount }) => `${rowCount} rows selected`,
+      },
+    });
+
+    fireEvent.keyDown(view.getByRole("treegrid"), {
+      key: "a",
+      metaKey: true,
+    });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(getLiveRegion(view)).toHaveTextContent("2 rows selected");
   });
 
   it("custom messages.copyAnnouncement overrides the default copy text", async () => {
