@@ -306,7 +306,7 @@ export function createGridCore<TRow extends PretableRow>(
         delete next[columnId];
       }
 
-      const before = getSnapshot().visibleRows;
+      const before = captureVisibleRowsForFocusReconciliation();
       filters = next;
       reconcileFocusAfterVisibleModelChange(before);
       emit();
@@ -316,7 +316,7 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
-      const before = getSnapshot().visibleRows;
+      const before = captureVisibleRowsForFocusReconciliation();
       filters = {};
       reconcileFocusAfterVisibleModelChange(before);
       emit();
@@ -334,7 +334,7 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
-      const before = getSnapshot().visibleRows;
+      const before = captureVisibleRowsForFocusReconciliation();
       filters = normalized;
       reconcileFocusAfterVisibleModelChange(before);
       emit();
@@ -1049,7 +1049,7 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       const getRowId = options.getRowId;
-      const before = getSnapshot().visibleRows;
+      const before = captureVisibleRowsForFocusReconciliation();
 
       if (transaction.remove) {
         const removeSet = new Set(transaction.remove);
@@ -1108,7 +1108,7 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     setRows(nextRows: TRow[]) {
-      const before = getSnapshot().visibleRows;
+      const before = captureVisibleRowsForFocusReconciliation();
       options = { ...options, rows: nextRows };
       sourceRows = createSourceRows(options);
       sourceRowIndex.clear();
@@ -1180,7 +1180,7 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
-      const before = getSnapshot().visibleRows;
+      const before = captureVisibleRowsForFocusReconciliation();
       rowGroups = next;
       // Expansion ids are path-derived, so changing the levels invalidates
       // them. v1 drops the whole set rather than trying to salvage prefixes.
@@ -1196,7 +1196,7 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
-      const before = getSnapshot().visibleRows;
+      const before = captureVisibleRowsForFocusReconciliation();
 
       if (expanded === groupsDefaultExpanded) {
         const next = new Set(groupExpansionOverrides);
@@ -1297,7 +1297,7 @@ export function createGridCore<TRow extends PretableRow>(
       return;
     }
 
-    const before = getSnapshot().visibleRows;
+    const before = captureVisibleRowsForFocusReconciliation();
 
     groupsDefaultExpanded = expanded;
     groupExpansionOverrides = new Set<string>();
@@ -1305,6 +1305,14 @@ export function createGridCore<TRow extends PretableRow>(
       preferAncestor: !expanded,
     });
     emit();
+  }
+
+  /** Avoid deriving the old visible model when there is no focus to repair. */
+  function captureVisibleRowsForFocusReconciliation():
+    readonly PretableVisibleRow<TRow>[] | null {
+    return focus.rowId === null && focus.columnId === null
+      ? null
+      : getSnapshot().visibleRows;
   }
 
   /**
@@ -1315,10 +1323,12 @@ export function createGridCore<TRow extends PretableRow>(
    * not jump sideways into a neighboring branch.
    */
   function reconcileFocusAfterVisibleModelChange(
-    before: readonly PretableVisibleRow<TRow>[],
+    before: readonly PretableVisibleRow<TRow>[] | null,
     options: { preferAncestor?: boolean } = {},
   ): void {
-    if (focus.rowId === null && focus.columnId === null) return;
+    if (before === null || (focus.rowId === null && focus.columnId === null)) {
+      return;
+    }
 
     const oldRowId = focus.rowId;
     const oldIndex =

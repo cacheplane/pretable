@@ -7,6 +7,7 @@ import {
   makeGroupId,
 } from "../index";
 import type {
+  PretableCellAddress,
   PretableColumn,
   PretableDataRow,
   PretableGroupRow,
@@ -637,6 +638,30 @@ describe("override retention (bounded LRU over decisions)", () => {
 });
 
 describe("focus reconciliation after visible-row mutations", () => {
+  test("null focus does not eagerly derive the pre-mutation visible model", () => {
+    let valueCalls = 0;
+    const grid = createGridCore<Holding>({
+      columns: [
+        {
+          id: "sector",
+          header: "Sector",
+          rowGroup: true,
+          value: (row) => {
+            valueCalls += 1;
+            return row.sector;
+          },
+        },
+        { id: "qty", header: "Qty" },
+      ],
+      rows: HOLDINGS,
+      getRowId: (row) => row.id,
+    });
+
+    grid.setRows(HOLDINGS.map((row) => ({ ...row })));
+
+    expect(valueCalls).toBe(0);
+  });
+
   test("setRows preserves focus on a surviving cloned group", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
@@ -774,6 +799,48 @@ describe("focus reconciliation after visible-row mutations", () => {
 
     expect(grid.getSnapshot().focus).toEqual({ rowId: null, columnId: null });
     expectValidFocus(grid);
+  });
+
+  test("an already-stale row id falls back to the first visible row", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "missing", columnId: "qty" });
+
+    grid.setRows(HOLDINGS.map((row) => ({ ...row })));
+
+    expect(grid.getSnapshot().focus).toEqual({ rowId: "h1", columnId: "qty" });
+    expectValidFocus(grid);
+  });
+
+  test("runtime partial-null focus shapes normalize after a mutation", () => {
+    const missingRow = makeGrid();
+    // The public type accepts only a complete address or null. These casts
+    // exercise defensive runtime normalization for malformed caller input.
+    missingRow.setFocus({
+      rowId: null,
+      columnId: "qty",
+    } as unknown as PretableCellAddress);
+
+    missingRow.setRows(HOLDINGS.map((row) => ({ ...row })));
+
+    expect(missingRow.getSnapshot().focus).toEqual({
+      rowId: "h1",
+      columnId: "qty",
+    });
+    expectValidFocus(missingRow);
+
+    const missingColumn = makeGrid();
+    missingColumn.setFocus({
+      rowId: "h2",
+      columnId: null,
+    } as unknown as PretableCellAddress);
+
+    missingColumn.applyTransaction({ update: [{ id: "h2", qty: 21 }] });
+
+    expect(missingColumn.getSnapshot().focus).toEqual({
+      rowId: "h2",
+      columnId: "sector",
+    });
+    expectValidFocus(missingColumn);
   });
 });
 
