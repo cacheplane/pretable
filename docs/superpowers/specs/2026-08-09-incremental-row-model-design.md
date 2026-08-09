@@ -17,8 +17,7 @@ three-second duration. Grouped mode used `col_1` as the group key and summed
 
 The flat run passed at `scroll_frame_p95_ms = 10.099999999999909`. The grouped
 run failed the hard frame gate at `26 ms`, despite zero long tasks, zero scroll
-drift, and zero visible-row-count drift. Frame-budget overruns rose from 6 to
-60. The evidence is recorded in
+drift, and zero visible-row-count drift. Frame-budget overruns rose from 6 to 60. The evidence is recorded in
 `docs/research/2026-08-08-row-grouping-streaming-benchmark.md`.
 
 The failure is not excessive DOM rendering. Only a viewport-sized row window is
@@ -35,12 +34,12 @@ drawn. The cost occurs earlier:
 
 A local diagnostic over the compiled engine corroborated the browser result:
 
-| Operation over 20,000 S5 rows | Median | p95 |
-| --- | ---: | ---: |
-| Flat derivation | 0.60 ms | 2.18 ms |
-| Grouping without aggregation | 7.67 ms | 8.34 ms |
-| Grouping with aggregation | 14.87 ms | 15.97 ms |
-| Random grouped 50-patch transaction + snapshot | 16.26 ms | 19.85 ms |
+| Operation over 20,000 S5 rows                   |   Median |      p95 |
+| ----------------------------------------------- | -------: | -------: |
+| Flat derivation                                 |  0.60 ms |  2.18 ms |
+| Grouping without aggregation                    |  7.67 ms |  8.34 ms |
+| Grouping with aggregation                       | 14.87 ms | 15.97 ms |
+| Random grouped 50-patch transaction + snapshot  | 16.26 ms | 19.85 ms |
 | Group-key-heavy 50-patch transaction + snapshot | 20.11 ms | 25.43 ms |
 
 The benchmark intentionally updates random columns. Updates to `col_1` assign
@@ -106,11 +105,7 @@ API today.
 ### React happy path
 
 ```tsx
-<PretableSurface
-  rows={holdings}
-  columns={columns}
-  getRowId={(row) => row.id}
-/>
+<PretableSurface rows={holdings} columns={columns} getRowId={(row) => row.id} />
 ```
 
 The surface creates one local row model for its lifetime. Subsequent row props
@@ -137,6 +132,143 @@ rowModel.applyTransaction({
 Rows mode and explicit-model mode are mutually exclusive at the type level. In
 explicit-model mode, the model is the only source of data and derivation
 configuration.
+
+### Functional model contract
+
+The explicit model has one observable state object and one subscription
+mechanism. This gives React a correct `useSyncExternalStore` source and gives
+headless consumers the same contract:
+
+```ts
+interface PretableRowModel<TRow, TRowId, TColumns> {
+  getState(): PretableRowModelState<TRow, TRowId, TColumns>;
+  subscribe(listener: () => void): () => void;
+
+  setRows(rows: readonly TRow[]): PretableMutationResult<TRowId>;
+  applyTransaction(
+    transaction: PretableTransaction<TRow, TRowId>,
+  ): PretableMutationResult<TRowId>;
+
+  setQuery(query: PretableQueryFor<TColumns>): PretableQueryTransition;
+  setGroupExpanded(
+    groupId: PretableGroupId,
+    expanded: boolean,
+  ): PretableMutationResult<TRowId>;
+
+  changesSince(revision: number): PretableChangeSequence<TRowId>;
+  distinctValues<TColumnId extends ColumnIdOf<TColumns>>(
+    columnId: TColumnId,
+    options?: PretableDistinctValueOptions,
+  ): PretableDistinctValueQuery<ColumnValueOf<TColumns, TColumnId>>;
+
+  dispose(): void;
+}
+```
+
+`getState()` returns a referentially stable object until either the committed
+snapshot or observable status changes. `subscribe` wakes once after each such
+change; listeners call `getState()` and receive no mutable event payload.
+Unsubscribing is idempotent.
+
+`PretableRowModelState` contains the current immutable snapshot and status. The
+status is a discriminated union:
+
+```ts
+type PretableRowModelStatus =
+  | { readonly kind: "ready" }
+  | {
+      readonly kind: "rebuilding";
+      readonly transitionId: number;
+      readonly completedRows: number;
+      readonly totalRows: number;
+    }
+  | {
+      readonly kind: "error";
+      readonly transitionId: number;
+      readonly error: PretableRowModelError;
+    }
+  | { readonly kind: "disposed" };
+```
+
+`applyTransaction`, `setRows`, and expansion commands are synchronous and
+return the committed revision, previous revision, typed issues, and
+added/updated/removed/unchanged/ignored counts. Unknown update or removal IDs
+are non-fatal issues. Duplicate source IDs, adding an existing ID, cross-list
+transaction conflicts, or accessor/aggregator failures throw a structured
+`PretableRowModelError` before publication. A no-op returns the unchanged
+revision and does not notify.
+
+Expansion results use the same envelope with zero row-mutation counts. They
+advance the revision only when the requested expansion state differs.
+
+```ts
+interface PretableTransaction<TRow, TRowId> {
+  readonly add?: readonly TRow[];
+  readonly update?: readonly {
+    readonly id: TRowId;
+    readonly changes: Partial<TRow>;
+  }[];
+  readonly remove?: readonly TRowId[];
+}
+
+type PretableMutationIssue<TRowId> =
+  | { readonly code: "unknown-update-id"; readonly rowId: TRowId }
+  | { readonly code: "unknown-remove-id"; readonly rowId: TRowId };
+
+interface PretableMutationResult<TRowId> {
+  readonly previousRevision: number;
+  readonly revision: number;
+  readonly added: number;
+  readonly updated: number;
+  readonly removed: number;
+  readonly unchanged: number;
+  readonly ignored: number;
+  readonly issues: readonly PretableMutationIssue<TRowId>[];
+}
+```
+
+`setQuery` is the sole global filter/sort/grouping command. It returns a handle
+with `id`, `requestedQuery`, `finished`, and `cancel()`. `finished` resolves to
+the atomically committed query revision, rejects on failure or cancellation,
+and never exposes a partial candidate. Convenience UI actions form a complete
+next query and call this command rather than maintaining independent filter,
+sort, or grouping state.
+
+`PretableQueryFor<TColumns>` is a deeply readonly value containing typed
+`filters`, ordered `sort`, and ordered `rowGroups`. Each entry is a
+column-correlated discriminated union: its column ID selects the legal
+operator, comparison value, direction, null policy, and grouping options.
+Expansion is intentionally absent because it changes the view of the current
+group tree rather than compiling a new query plan.
+
+`changesSince(revision)` returns the ordered structural change sets needed to
+advance from that revision to the current one. The model retains a small,
+bounded change journal independently of historical roots. If the caller is too
+far behind, the revision is unknown, or a bulk replacement occurred, it returns
+a discriminated `reset` result. Consumers must then rebuild from the current
+snapshot. This is the only change-set delivery contract; subscription timing
+is never used as data.
+
+```ts
+type PretableChangeSequence<TRowId> =
+  | {
+      readonly kind: "changes";
+      readonly fromRevision: number;
+      readonly toRevision: number;
+      readonly changes: readonly PretableChangeSet<TRowId>[];
+    }
+  | {
+      readonly kind: "reset";
+      readonly toRevision: number;
+      readonly reason: "unknown-revision" | "journal-evicted" | "bulk-replace";
+    };
+```
+
+Each `PretableChangeSet` records its parent/current revision and ordered
+insert/remove/move/update operations using `PretableVisibleRowRef`; it also
+identifies group aggregate/count changes that do not move rows. The journal's
+default capacity is implementation-tuned and configurable for diagnostics, but
+its eviction must not affect snapshot validity or revision retention.
 
 ### Ownership boundary
 
@@ -167,7 +299,11 @@ The complete `visibleRows` array is removed. A model snapshot captures one
 immutable revision root:
 
 ```ts
-interface PretableRowModelSnapshot<TRow, TRowId> {
+type PretableVisibleRowRef<TRowId> =
+  | { readonly kind: "data"; readonly rowId: TRowId }
+  | { readonly kind: "group"; readonly groupId: PretableGroupId };
+
+interface PretableRowModelSnapshot<TRow, TRowId, TColumns> {
   readonly revision: number;
   readonly sourceRowCount: number;
   readonly visibleRowCount: number;
@@ -177,17 +313,22 @@ interface PretableRowModelSnapshot<TRow, TRowId> {
     start: number,
     end: number,
   ): readonly PretableVisibleRow<TRow, TRowId>[];
-  indexOf(rowId: TRowId | PretableGroupId): number;
+  indexOf(ref: PretableVisibleRowRef<TRowId>): number;
 
-  readonly filters: Readonly<PretableFilterState>;
-  readonly sort: readonly PretableSortEntry[];
-  readonly rowGroups: readonly string[];
+  readonly query: Readonly<PretableQueryFor<TColumns>>;
 }
 ```
 
 All reads from a captured snapshot remain consistent after the live model
 advances. Headless consumers can iterate intentionally through indexed reads,
 but ordinary observation never materializes every row.
+
+`PretableGroupId` is an opaque generated type, but opacity alone is not relied
+on for runtime identity. Every rank lookup, focus target, render key, layout
+entry, and structural change uses the discriminated visible-row reference.
+Selection and editing accept only data-row IDs; group rows can be focused but
+never selected or edited. A string data ID may therefore equal a group's
+serialized ID without collision.
 
 ## TypeScript design
 
@@ -259,11 +400,9 @@ dependency stabilization:
 ```ts
 const columns = usePretableColumns(
   () => [
-    column.accessor(
-      "marketValue",
-      (row) => row.quantity * fxRate,
-      { type: "number" },
-    ),
+    column.accessor("marketValue", (row) => row.quantity * fxRate, {
+      type: "number",
+    }),
   ],
   [fxRate],
 );
@@ -367,7 +506,7 @@ array. Expansion state changes visible subtree counts along one path.
 
 - `rowAt(index)` descends counts.
 - `range(start, end)` walks only intersecting subtrees.
-- `indexOf(id)` uses cached membership plus rank calculations.
+- `indexOf(ref)` uses cached membership plus rank calculations.
 - a flat ungrouped model uses the same ordered-row abstraction without group
   nodes.
 
@@ -442,8 +581,8 @@ await transition.finished;
 ```
 
 The current committed snapshot remains interactive. Status reports `ready`,
-`rebuilding`, or an error. Progress/cancellation does not create model
-revisions.
+`rebuilding`, `error`, or terminal `disposed`. Progress/cancellation does not
+create model revisions.
 
 The rebuild captures an immutable row-store root. Concurrent transactions
 continue committing to the live model and append to a transition delta journal.
@@ -459,9 +598,9 @@ false data revision.
 ## Rendering and incremental layout
 
 Each committed revision describes its change relative to its parent: inserted,
-removed, moved, updated, and affected group IDs. A bulk query transition may
-publish a root replacement instead of an enormous move list. Consumers that
-miss retained changes receive a safe reset.
+removed, moved, updated, and aggregate/count-changed visible-row references. A
+bulk query transition may publish a root replacement instead of an enormous
+move list. Consumers that miss retained changes receive a safe reset.
 
 The renderer owns a persistent order-statistic height tree. Its nodes store row
 ID, estimated/measured height, subtree count, and subtree total height. It
@@ -497,10 +636,17 @@ In rows mode, the surface reconciles rows and derivation columns into its
 long-lived model without mutating during render. Visual-only column definitions
 may update independently.
 
-Rows mode may accept a controlled query plus an `onQueryChange` callback. When
-omitted, the internal model owns query state. In explicit-model mode, query
-props are disallowed and callers control the model directly; there is never a
-second source of truth.
+Rows mode accepts either no query prop or the paired controlled contract
+`query` plus `onQueryChange`. Without the pair, UI query actions call the
+internal model's `setQuery`. With the pair, a UI action emits the complete next
+query through `onQueryChange` and does not mutate query state; the internal
+model transitions only when the new `query` prop arrives. Supplying only one
+member of the pair is a type error.
+
+In explicit-model mode, query props and `onQueryChange` are disallowed. UI
+query actions call that model's `setQuery` directly. A caller that needs to
+approve or persist query changes subscribes to the model or wraps the UI action
+at the application boundary; the grid never mirrors model-owned query state.
 
 `usePretable` returns both layers:
 
@@ -518,6 +664,74 @@ second source of truth.
 A `useLocalRowModel` convenience hook creates/disposes the same public model as
 the framework-independent factory. It does not introduce a React-only engine.
 
+### Editing ownership
+
+The grid owns edit-session UI and validation; committed row data always follows
+the ownership mode:
+
+- In rows mode, a successful edit emits a typed `onRowChange` proposal with
+  row ID, column ID, previous row, proposed row, and minimal changes. It does
+  not mutate the internal row model. The owner accepts by publishing the next
+  `rows` prop. Async acceptance keeps the edit in `saving`; rejection returns
+  it to an error/editing state.
+- In explicit-model mode, a successful edit maps the typed column value to a
+  row patch and calls `rowModel.applyTransaction` atomically. An optional async
+  `beforeRowChange` hook may validate or persist before that commit. If it
+  rejects, the model revision does not advance.
+
+Editable accessor columns must provide a typed reverse mapping when assigning
+the accessor value cannot be expressed as `{ [field]: value }`. Read-only
+computed columns omit it. Streaming changes and edit proposals are resolved by
+the application; the row model does not silently pin edited cells or maintain
+a second override map.
+
+### Distinct filter values
+
+The existing filter-menu distinct-value query moves behind the row-model
+boundary. It must never make the renderer or menu synchronously scan all rows.
+`rowModel.distinctValues(columnId, options)` returns a cancellable query with a
+status and `finished` promise. Values retain the column's inferred value type;
+presentation formatting remains a column/UI concern.
+
+```ts
+interface PretableDistinctValueOptions {
+  readonly search?: string;
+  readonly start?: number;
+  readonly limit?: number;
+  readonly population?: "all" | "filtered";
+}
+
+interface PretableDistinctValueResult<TValue> {
+  readonly values: readonly {
+    readonly value: TValue;
+    readonly count: number;
+  }[];
+  readonly totalDistinct: number;
+  readonly population: "all" | "filtered";
+  readonly rowModelRevision: number;
+}
+
+interface PretableDistinctValueQuery<TValue> {
+  readonly status: "pending" | "ready" | "error" | "cancelled";
+  readonly finished: Promise<PretableDistinctValueResult<TValue>>;
+  cancel(): void;
+}
+```
+
+The first query for a column cooperatively builds a value/count dictionary from
+the immutable row-store root, then catches up through the same transaction
+journal pattern as a query rebuild. While retained, transactions update the
+dictionary incrementally. The cache is bounded and evictable, and its key
+includes the derivation accessor/comparator identity. Set-filter columns may
+request eager construction; other columns remain lazy. This is a UI dictionary,
+not a general filter or sort execution index, and filters continue to use the
+compiled per-row predicate path.
+
+The query supports bounded ranges/search rather than returning an unbounded
+array. Its result states whether values come from all source rows or the current
+post-filter population; the default is all source rows, matching the existing
+behavior. Blank-value inclusion and ordering are explicit column options.
+
 ## Error and lifecycle behavior
 
 - All synchronous mutations are atomic. On failure, discard the draft, keep the
@@ -525,8 +739,12 @@ the framework-independent factory. It does not introduce a React-only engine.
 - Structured errors identify operation, row ID, column ID, and original cause.
 - Mutation results report revision and added/updated/removed/unchanged/ignored
   counts.
-- A disposed model rejects new commands clearly. Captured immutable snapshots
-  remain readable.
+- `dispose()` is idempotent. Its first call cancels transitions and distinct-
+  value work, releases journals/caches, publishes one final `disposed` state to
+  current listeners, and then detaches them. `getState()` and previously
+  captured immutable snapshots remain readable; later subscriptions return an
+  inert unsubscriber. Mutation, query, and distinct-value commands throw a
+  structured disposed-model error.
 - Query transition cancellation releases candidate roots and delta journals.
 - Development builds warn about unstable derivation functions and pathological
   transaction conflicts.
@@ -557,16 +775,22 @@ Cover:
 
 - flat, single-level, and multi-level grouping;
 - escaped group keys and group-key churn;
+- string data IDs equal to serialized group IDs, proving discriminated lookup;
 - stable and changed sort keys;
 - filter entry/exit and `aggregateFilteredRows` both ways;
 - built-in and custom aggregators;
 - group emptying/returning and expansion retention;
 - selection/focus reconciliation at the grid boundary; and
+- rows-mode edit proposals versus explicit-model edit commits;
+- lazy/eager distinct-value dictionaries, eviction, and stream catch-up; and
 - concurrent streaming while a query transition catches up.
 
 Assert `rowAt`, `range`, and `indexOf` consistency; one revision/notification
 per commit; no revision on failure; immutable old snapshots; and stable identity
-for unchanged rows, groups, and aggregate outputs.
+for unchanged rows, groups, and aggregate outputs. Contract tests also cover
+stable `getState` identity, no-op notification behavior, mutation issue/result
+counts, bounded change-journal reset, transition cancellation/disposal, and
+controlled-query non-mutation before the next prop arrives.
 
 ### Work-sensitive diagnostics
 
@@ -652,4 +876,3 @@ row engine at the end, not a permanent compatibility engine beside the new one.
   streaming revision.
 - No remote public protocol in this project, only a clean model boundary.
 - Type inference quality and compiler performance are release gates.
-
