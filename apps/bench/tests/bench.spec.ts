@@ -119,6 +119,8 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     scriptName === "sort" ||
     scriptName === "filter-metadata" ||
     scriptName === "filter-text";
+  const updatesScript =
+    scriptName === "updates" || scriptName === "updates-grouped";
 
   const cwd = process.cwd();
   const summaryPath = path.join(
@@ -217,6 +219,23 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       dom_nodes_peak: expect.any(Number),
       rendered_rows_peak: expect.any(Number),
       rendered_cells_peak: expect.any(Number),
+    });
+  }
+
+  if (updatesScript) {
+    expect(result.notes).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^updates total: \d+$/),
+        expect.stringMatching(/^update rate per sec: \d+$/),
+        expect.stringMatching(/^updates per tick: \d+$/),
+        expect.stringMatching(/^batch interval ms: \d+$/),
+      ]),
+    );
+    expect(result.metrics).toMatchObject({
+      scroll_frame_p95_ms: expect.any(Number),
+      long_tasks_count: expect.any(Number),
+      scroll_position_drift_px: expect.any(Number),
+      visible_row_count_drift: expect.any(Number),
     });
   }
 

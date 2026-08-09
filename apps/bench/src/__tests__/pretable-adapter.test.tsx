@@ -72,6 +72,44 @@ describe("PretableAdapter", () => {
     );
   });
 
+  test("configures grouping and aggregation only for grouped updates without mutating the dataset", () => {
+    const dataset = createScenarioDataset("S5", { scale: "smoke" });
+    const originalColumns = dataset.columns.map((column) => ({ ...column }));
+    const surfaceSpy = vi.spyOn(pretableReactInternal, "PretableSurface");
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        runKey={1}
+        scriptName="updates-grouped"
+      />,
+    );
+
+    const groupedProps = surfaceSpy.mock.calls.at(-1)?.[0];
+    expect(groupedProps?.state?.rowGroups).toEqual(["col_1"]);
+    expect(
+      groupedProps?.columns.find((column) => column.id === "col_3"),
+    ).toMatchObject({ aggregate: "sum" });
+    expect(groupedProps?.groupPanel).toBeUndefined();
+
+    cleanup();
+    surfaceSpy.mockClear();
+
+    render(
+      <PretableAdapter dataset={dataset} runKey={2} scriptName="updates" />,
+    );
+
+    const updatesProps = surfaceSpy.mock.calls.at(-1)?.[0];
+    expect(updatesProps?.state?.rowGroups).toBeUndefined();
+    expect(
+      updatesProps?.columns.find((column) => column.id === "col_3")?.aggregate,
+    ).toBeUndefined();
+    expect(updatesProps?.groupPanel).toBeUndefined();
+    expect(dataset.columns).toEqual(originalColumns);
+
+    surfaceSpy.mockRestore();
+  });
+
   test("derives interaction preservation markers from actual telemetry instead of the requested plan", async () => {
     const dataset = createScenarioDataset("S2", { scale: "smoke" });
     const interactionPlan = createBenchInteractionPlan(dataset, "sort");

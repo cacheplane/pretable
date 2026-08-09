@@ -135,6 +135,8 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   }, [search]);
 
   async function executeRun(scriptName: BenchQueryState["scriptName"]) {
+    const updatesScript =
+      scriptName === "updates" || scriptName === "updates-grouped";
     const nextQuery = {
       ...query,
       scriptName,
@@ -296,7 +298,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       // frame after setRunKey would race past it and leave updateApiRef
       // null (no metrics get collected).
       let updatesApi = updateApiRef.current;
-      if (scriptName === "updates" && !updatesApi) {
+      if (updatesScript && !updatesApi) {
         for (let i = 0; i < 60 && !updateApiRef.current; i++) {
           await waitForNextAnimationFrame();
         }
@@ -304,7 +306,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       }
 
       const updatesRun =
-        scriptName === "updates" && updatesApi
+        updatesScript && updatesApi
           ? await measureBenchUpdatesRun(
               viewportRef.current ?? document.body,
               query.adapterId,
@@ -346,7 +348,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 ],
                 metrics: keySequenceRun.metrics,
               })
-            : scriptName === "updates" && updatesRun
+            : updatesScript && updatesRun
               ? createBenchRunSummary({
                   request,
                   status: updatesRun.status,

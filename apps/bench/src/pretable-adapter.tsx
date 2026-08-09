@@ -134,20 +134,36 @@ export function PretableAdapter({
   scriptName,
 }: PretableAdapterProps) {
   const adapterRef = useRef<HTMLElement>(null);
+  const groupedUpdates = scriptName === "updates-grouped";
   const baseColumns = useMemo<PretableColumn<ScenarioRow>[]>(
-    () => [...dataset.columns],
+    () => dataset.columns.map((column) => ({ ...column })),
     [dataset.columns],
   );
   const surfaceColumns = useMemo<PretableColumn<ScenarioRow>[]>(
-    () =>
-      applyCellRendererFlavor<ScenarioRow>(
+    () => {
+      const flavoredColumns = applyCellRendererFlavor<ScenarioRow>(
         baseColumns,
         scriptName !== undefined && isCellRendererScript(scriptName)
           ? scriptName
           : null,
-      ),
-    [baseColumns, scriptName],
+      );
+
+      return groupedUpdates
+        ? flavoredColumns.map((column) =>
+            column.id === "col_3"
+              ? { ...column, aggregate: "sum" }
+              : column,
+          )
+        : flavoredColumns;
+    },
+    [baseColumns, groupedUpdates, scriptName],
   );
+  const surfaceState = useMemo<PretableSurfaceState | null>(() => {
+    const interaction = planToState(interactionPlan, surfaceColumns);
+    return groupedUpdates
+      ? { ...(interaction ?? {}), rowGroups: ["col_1"] }
+      : interaction;
+  }, [groupedUpdates, interactionPlan, surfaceColumns]);
   const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
   const autosize = dataset.scenario.autosize_all_columns === true;
 
@@ -253,7 +269,7 @@ export function PretableAdapter({
         autosize={autosize}
         columns={surfaceColumns}
         getRowId={getScenarioRowId}
-        state={planToState(interactionPlan, surfaceColumns)}
+        state={surfaceState}
         onGridReady={handleGridReady}
         onTelemetryChange={handleTelemetryChange}
         overscan={4}
