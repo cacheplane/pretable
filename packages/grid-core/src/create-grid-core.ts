@@ -407,13 +407,15 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     clearSelection() {
-      const focusedRow = focus.rowId
-        ? getSnapshot().visibleRows.find((row) => row.id === focus.rowId)
+      const focusedRowId = focus.rowId;
+      const focusedColumnId = focus.columnId;
+      const focusedRow = focusedRowId
+        ? getSnapshot().visibleRows.find((row) => row.id === focusedRowId)
         : undefined;
       const focusAddr =
-        focusedRow && isDataRow(focusedRow) && focus.columnId
-          ? { rowId: focusedRow.id, columnId: focus.columnId }
-          : null;
+        focusedRow?.kind === "group" || !focusedRowId || !focusedColumnId
+          ? null
+          : { rowId: focusedRowId, columnId: focusedColumnId };
       const next: PretableSelectionState = focusAddr
         ? {
             ranges: [

@@ -4011,22 +4011,37 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     const addr: PretableCellAddress = { rowId: nextRow.id, columnId };
 
     if (shift) {
-      // Ensure anchor exists before extending
-      if (!snapshot.selection.anchor && focus.rowId && focus.columnId) {
-        grid.setSelection({
-          ranges: [
-            {
-              startRowId: focus.rowId,
-              endRowId: focus.rowId,
-              startColumnId: focus.columnId,
-              endColumnId: focus.columnId,
-            },
-          ],
-          anchor: { rowId: focus.rowId, columnId: focus.columnId },
-        });
+      const focusedRow = focus.rowId
+        ? rows.find((row) => row.id === focus.rowId)
+        : undefined;
+
+      if (isDataRow(nextRow)) {
+        // A group header is focusable but cannot provide an anchor. Preserve a
+        // data anchor while passing through a group, and resume extending when
+        // the next destination is a data row.
+        if (
+          !snapshot.selection.anchor &&
+          focusedRow &&
+          isDataRow(focusedRow) &&
+          focus.columnId
+        ) {
+          grid.setSelection({
+            ranges: [
+              {
+                startRowId: focusedRow.id,
+                endRowId: focusedRow.id,
+                startColumnId: focus.columnId,
+                endColumnId: focus.columnId,
+              },
+            ],
+            anchor: { rowId: focusedRow.id, columnId: focus.columnId },
+          });
+        }
+        grid.setFocus(addr);
+        grid.extendRangeFromAnchor(addr);
+      } else {
+        grid.setFocus(addr);
       }
-      grid.setFocus(addr);
-      grid.extendRangeFromAnchor(addr);
     } else {
       grid.setFocus(addr);
     }

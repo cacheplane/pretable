@@ -759,6 +759,50 @@ describe("group rows are focusable but never selectable", () => {
     });
   });
 
+  test("clearSelection preserves an unknown focus address", () => {
+    const grid = makeGrid();
+    grid.selectAll();
+    grid.setFocus({ rowId: "not-a-visible-row", columnId: "qty" });
+
+    grid.clearSelection();
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "not-a-visible-row",
+          endRowId: "not-a-visible-row",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "not-a-visible-row", columnId: "qty" },
+    });
+  });
+
+  test("clearSelection preserves a data focus made non-visible by filtering", () => {
+    const grid = makeGrid();
+    grid.setFocus({ rowId: "h5", columnId: "qty" });
+    grid.setColumnFilter("sector", { operator: "contains", value: "Tech" });
+
+    expect(grid.getSnapshot().visibleRows.map((row) => row.id)).not.toContain(
+      "h5",
+    );
+
+    grid.clearSelection();
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "h5",
+          endRowId: "h5",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h5", columnId: "qty" },
+    });
+  });
+
   test("jumpToEdge 'up' lands on the outermost group row", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
@@ -858,12 +902,35 @@ describe("group rows are focusable but never selectable", () => {
   test("toggleRowSelection ignores visible group ids but accepts unknown ids", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
+    const priorSelection = {
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    };
+    grid.setSelection(priorSelection);
+    let emits = 0;
+    grid.subscribe(() => {
+      emits += 1;
+    });
 
     grid.toggleRowSelection(SECTOR_ENERGY);
-    expect(grid.getSnapshot().selection).toEqual({ ranges: [], anchor: null });
+    expect(grid.getSnapshot().selection).toEqual(priorSelection);
+    expect(emits).toBe(0);
 
     grid.toggleRowSelection("not-a-visible-row");
     expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "h8",
+        endRowId: "h8",
+        startColumnId: "qty",
+        endColumnId: "qty",
+      },
       {
         startRowId: "not-a-visible-row",
         endRowId: "not-a-visible-row",

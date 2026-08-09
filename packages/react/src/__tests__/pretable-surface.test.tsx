@@ -5233,6 +5233,7 @@ describe("keyboard navigation over grouped rows", () => {
    */
   function renderGrouped(opts: { viewportHeight?: number } = {}) {
     let focus: PretableFocusState = { rowId: null, columnId: null };
+    let selection: PretableSelectionState = { ranges: [], anchor: null };
     const view = render(
       <PretableSurface
         ariaLabel="grouped-grid"
@@ -5240,6 +5241,9 @@ describe("keyboard navigation over grouped rows", () => {
         getRowId={(row: GroupedRow) => row.id}
         onFocusChange={(next) => {
           focus = next;
+        }}
+        onSelectionChange={(next) => {
+          selection = next;
         }}
         overscan={0}
         rows={groupedRows}
@@ -5278,6 +5282,7 @@ describe("keyboard navigation over grouped rows", () => {
       groupRowCount,
       dataRowCount,
       focus: () => focus,
+      selection: () => selection,
     };
   }
 
@@ -5337,6 +5342,58 @@ describe("keyboard navigation over grouped rows", () => {
 
     fireEvent.keyDown(grid, { key: "PageUp" });
     expect(isGroupRowId(focus().rowId)).toBe(true);
+  });
+
+  it("Shift+Page skips group selection and resumes extending on data", () => {
+    const first = renderGrouped();
+    first.seed(dataAt(1), "a");
+
+    fireEvent.keyDown(first.grid, { key: "PageDown", shiftKey: true });
+
+    expect(isGroupRowId(first.focus().rowId)).toBe(true);
+    expect(first.selection()).toEqual({
+      ranges: [
+        {
+          startRowId: "d1",
+          endRowId: "d1",
+          startColumnId: "a",
+          endColumnId: "a",
+        },
+      ],
+      anchor: { rowId: "d1", columnId: "a" },
+    });
+
+    fireEvent.keyDown(first.grid, { key: "PageDown", shiftKey: true });
+
+    expect(first.focus()).toEqual({ rowId: "d2", columnId: "a" });
+    expect(first.selection()).toEqual({
+      ranges: [
+        {
+          startRowId: "d1",
+          endRowId: "d2",
+          startColumnId: "a",
+          endColumnId: "a",
+        },
+      ],
+      anchor: { rowId: "d1", columnId: "a" },
+    });
+
+    first.view.unmount();
+    const fromEmptyGroup = renderGrouped();
+    fireEvent.keyDown(fromEmptyGroup.grid, { key: "ArrowDown" });
+    expect(isGroupRowId(fromEmptyGroup.focus().rowId)).toBe(true);
+    expect(fromEmptyGroup.selection()).toEqual({ ranges: [], anchor: null });
+
+    fireEvent.keyDown(fromEmptyGroup.grid, {
+      key: "PageDown",
+      shiftKey: true,
+    });
+
+    expect(fromEmptyGroup.focus()).toEqual({
+      rowId: "d1",
+      columnId: GROUP_COLUMN_ID,
+    });
+    expect(fromEmptyGroup.selection()).toEqual({ ranges: [], anchor: null });
   });
 
   it("Tab wrapping past the last column lands on the next group row", () => {
