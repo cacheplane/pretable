@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   GROUP_COLUMN_ID,
+  type PretableFocusState,
   type PretableGroupRow,
   type PretableSelectionState,
 } from "@pretable/core";
@@ -42,15 +43,26 @@ interface GridProps {
   columns?: PretableColumn<GroupedRow>[];
   rows?: GroupedRow[];
   state: PretableSurfaceState;
+  onFocusChange?: (next: PretableFocusState) => void;
+  onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
 }
 
-function Grid({ columns, rows, state, onSelectionChange }: GridProps) {
+function Grid({
+  columns,
+  rows,
+  state,
+  onFocusChange,
+  onSelectedRowIdChange,
+  onSelectionChange,
+}: GridProps) {
   return (
     <PretableSurface
       ariaLabel="grouped-grid"
       columns={columns ?? groupedColumns}
       getRowId={(row: GroupedRow) => row.id}
+      onFocusChange={onFocusChange}
+      onSelectedRowIdChange={onSelectedRowIdChange}
       onSelectionChange={onSelectionChange}
       overscan={0}
       rows={rows ?? groupedRows}
@@ -161,6 +173,63 @@ describe("group row rendering", () => {
 
     expect(view.getAllByTestId("pretable-row").length).toBeLessThan(before);
     expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it("clicking group label and aggregate cells changes only focus", () => {
+    const onFocusChange = vi.fn();
+    const onSelectionChange = vi.fn();
+    const onSelectedRowIdChange = vi.fn();
+    const selection = {
+      ranges: [
+        {
+          startRowId: "r1",
+          endRowId: "r1",
+          startColumnId: "name",
+          endColumnId: "name",
+        },
+      ],
+      anchor: { rowId: "r1", columnId: "name" },
+    };
+    const view = renderGrouped({
+      state: { rowGroups: ["sector"], selection },
+      onFocusChange,
+      onSelectedRowIdChange,
+      onSelectionChange,
+    });
+    const group = groupRows(view)[0]!;
+    const groupId = group.getAttribute("data-pretable-row-id");
+    const labelCell = group.querySelector(
+      `[data-pretable-column-id="${GROUP_COLUMN_ID}"]`,
+    )!;
+    const aggregateCell = group.querySelector(
+      '[data-pretable-column-id="qty"]',
+    )!;
+
+    // The controlled seed is itself a full-row-compatible state transition
+    // observed by the surface's mount effect. The assertions below concern
+    // only the group-cell clicks.
+    onFocusChange.mockClear();
+    onSelectionChange.mockClear();
+    onSelectedRowIdChange.mockClear();
+
+    fireEvent.click(labelCell);
+    fireEvent.click(aggregateCell);
+
+    expect(onFocusChange).toHaveBeenNthCalledWith(1, {
+      rowId: groupId,
+      columnId: GROUP_COLUMN_ID,
+    });
+    expect(onFocusChange).toHaveBeenNthCalledWith(2, {
+      rowId: groupId,
+      columnId: "qty",
+    });
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(onSelectedRowIdChange).not.toHaveBeenCalled();
+    expect(
+      view.container.querySelector(
+        '[data-pretable-row-id="r1"] [data-pretable-column-id="name"]',
+      ),
+    ).toHaveAttribute("data-pretable-selected", "true");
   });
 
   it("double-clicking the group cell toggles, ignoring the twisty", () => {

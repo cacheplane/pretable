@@ -2835,23 +2835,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 isFocused={snapshot.focus.rowId === renderRow.id}
                 key={renderRow.id}
                 liveWidth={dragLiveWidth}
-                onCellClick={(columnId, event) => {
-                  // The same click model as a data cell: focus moves and the
-                  // cell becomes the selection. The engine keeps group rows out
-                  // of `deriveSelectedRows`, so no ROW becomes selected — but
-                  // `onSelectionChange` does fire, which is exactly why the
-                  // twisty stops propagation.
-                  handleCellClick({
-                    cmd: event.metaKey || event.ctrlKey,
-                    columnId,
-                    columns: columnsInVisualOrder,
-                    grid,
-                    onFocusChange,
-                    onSelectedRowIdChange,
-                    onSelectionChange,
-                    rowId: renderRow.id,
-                    shift: event.shiftKey,
-                  });
+                onCellClick={(columnId) => {
+                  const before = grid.getSnapshot().focus;
+                  grid.setFocus({ rowId: group.id, columnId });
+                  const after = grid.getSnapshot().focus;
+
+                  if (
+                    before.rowId !== after.rowId ||
+                    before.columnId !== after.columnId
+                  ) {
+                    onFocusChange?.(after);
+                  }
                 }}
                 onToggle={() => {
                   grid.toggleGroup(group.id);

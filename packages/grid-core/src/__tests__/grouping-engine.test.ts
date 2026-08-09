@@ -665,6 +665,100 @@ describe("group rows are focusable but never selectable", () => {
     expect(grid.getSnapshot().focus.columnId).toBe("qty");
   });
 
+  test("moveFocus onto a group preserves the prior data-cell selection", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: "h8", columnId: "qty" });
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+
+    grid.moveFocus("down");
+
+    expect(grid.getSnapshot().focus).toEqual({
+      rowId: SECTOR_TECH,
+      columnId: "qty",
+    });
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+  });
+
+  test("extend move skips a group and extends from the original data anchor", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: "h8", columnId: "qty" });
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+
+    grid.moveFocus("down", { extend: true });
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h8",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+
+    grid.moveFocus("down", { extend: true });
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [
+        {
+          startRowId: "h8",
+          endRowId: "h1",
+          startColumnId: "qty",
+          endColumnId: "qty",
+        },
+      ],
+      anchor: { rowId: "h8", columnId: "qty" },
+    });
+  });
+
+  test("clearSelection leaves no selection while a group cell is focused", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    grid.setFocus({ rowId: SECTOR_ENERGY, columnId: GROUP_COLUMN_ID });
+    grid.selectAll();
+
+    grid.clearSelection();
+
+    expect(grid.getSnapshot().selection).toEqual({
+      ranges: [],
+      anchor: null,
+    });
+  });
+
   test("jumpToEdge 'up' lands on the outermost group row", () => {
     const grid = makeGrid();
     grid.setRowGroups(["sector"]);
@@ -757,6 +851,24 @@ describe("group rows are focusable but never selectable", () => {
         endRowId: "r1",
         startColumnId: firstColumn.id,
         endColumnId: lastColumn.id,
+      },
+    ]);
+  });
+
+  test("toggleRowSelection ignores visible group ids but accepts unknown ids", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+
+    grid.toggleRowSelection(SECTOR_ENERGY);
+    expect(grid.getSnapshot().selection).toEqual({ ranges: [], anchor: null });
+
+    grid.toggleRowSelection("not-a-visible-row");
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "not-a-visible-row",
+        endRowId: "not-a-visible-row",
+        startColumnId: GROUP_COLUMN_ID,
+        endColumnId: "qty",
       },
     ]);
   });

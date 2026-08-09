@@ -407,9 +407,12 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     clearSelection() {
+      const focusedRow = focus.rowId
+        ? getSnapshot().visibleRows.find((row) => row.id === focus.rowId)
+        : undefined;
       const focusAddr =
-        focus.rowId && focus.columnId
-          ? { rowId: focus.rowId, columnId: focus.columnId }
+        focusedRow && isDataRow(focusedRow) && focus.columnId
+          ? { rowId: focusedRow.id, columnId: focus.columnId }
           : null;
       const next: PretableSelectionState = focusAddr
         ? {
@@ -460,6 +463,13 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     toggleRowSelection(rowId: string) {
+      const visibleRow = getSnapshot().visibleRows.find(
+        (row) => row.id === rowId,
+      );
+      if (visibleRow?.kind === "group") {
+        return;
+      }
+
       const effectiveColumns = getColumns();
       const firstColumn = effectiveColumns[0];
       const lastColumn = effectiveColumns[effectiveColumns.length - 1];
@@ -655,8 +665,34 @@ export function createGridCore<TRow extends PretableRow>(
 
       focus = nextAddr;
 
-      if (moveOptions.extend) {
-        if (!selection.anchor) {
+      if (isDataRow(nextRow)) {
+        if (moveOptions.extend) {
+          if (!selection.anchor) {
+            selection = {
+              ranges: [
+                {
+                  startRowId: nextAddr.rowId,
+                  endRowId: nextAddr.rowId,
+                  startColumnId: nextAddr.columnId,
+                  endColumnId: nextAddr.columnId,
+                },
+              ],
+              anchor: nextAddr,
+            };
+          } else {
+            const newActive: PretableCellRange = {
+              startRowId: selection.anchor.rowId,
+              endRowId: nextAddr.rowId,
+              startColumnId: selection.anchor.columnId,
+              endColumnId: nextAddr.columnId,
+            };
+            const ranges =
+              selection.ranges.length === 0
+                ? [newActive]
+                : [...selection.ranges.slice(0, -1), newActive];
+            selection = { ranges, anchor: selection.anchor };
+          }
+        } else {
           selection = {
             ranges: [
               {
@@ -668,31 +704,7 @@ export function createGridCore<TRow extends PretableRow>(
             ],
             anchor: nextAddr,
           };
-        } else {
-          const newActive: PretableCellRange = {
-            startRowId: selection.anchor.rowId,
-            endRowId: nextAddr.rowId,
-            startColumnId: selection.anchor.columnId,
-            endColumnId: nextAddr.columnId,
-          };
-          const ranges =
-            selection.ranges.length === 0
-              ? [newActive]
-              : [...selection.ranges.slice(0, -1), newActive];
-          selection = { ranges, anchor: selection.anchor };
         }
-      } else {
-        selection = {
-          ranges: [
-            {
-              startRowId: nextAddr.rowId,
-              endRowId: nextAddr.rowId,
-              startColumnId: nextAddr.columnId,
-              endColumnId: nextAddr.columnId,
-            },
-          ],
-          anchor: nextAddr,
-        };
       }
 
       emit();
