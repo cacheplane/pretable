@@ -877,7 +877,7 @@ function getUpdateRateFromRun(run) {
 }
 
 /**
- * Groups completed S5/updates runs by (adapter, rate). Returns a
+ * Groups completed S5 update-script runs by (adapter, rate). Returns a
  * Map<adapterId, Map<rate, RunSeries>> so callers can ask: "what's
  * Pretable's series at 5,000 patches/sec?"
  */
@@ -887,7 +887,7 @@ function groupUpdatesRunsByAdapterAndRate(runs) {
     if (
       run.status !== "completed" ||
       run.scenarioId !== "S5" ||
-      run.scriptName !== "updates"
+      !isUpdatesScript(run.scriptName)
     ) {
       continue;
     }

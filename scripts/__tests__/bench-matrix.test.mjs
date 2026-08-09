@@ -2241,6 +2241,31 @@ test("H15 insufficient when no rate-tagged S5 updates runs exist for pretable", 
   assert.equal(h15?.status, "insufficient");
 });
 
+test("H14 and H15 include rate-tagged grouped updates runs", () => {
+  const report = createHypothesisReport({
+    runsetId: "grouped-updates-rate-test",
+    generatedAt: "2026-04-30T22:00:00.000Z",
+    entries: [],
+    runs: [
+      createUpdatesRun({
+        adapterId: "pretable",
+        scriptName: "updates-grouped",
+        timestamp: "2026-04-30T22:00:00.000Z",
+        scroll_frame_p95_ms: 9,
+        long_tasks_count: 0,
+        visible_row_count_drift: 0,
+        updateRatePerSec: 1000,
+      }),
+    ],
+  });
+
+  const h14 = report.hypotheses.find((h) => h.id === "H14");
+  const h15 = report.hypotheses.find((h) => h.id === "H15");
+
+  assert.equal(h14?.status, "directional");
+  assert.equal(h15?.status, "directional");
+});
+
 test("H15 satisfied when pretable holds drift ≤ 1 and a comparator drifts > 5", () => {
   const runs = [
     createUpdatesRun({
@@ -2374,6 +2399,7 @@ function createScrollRun({
 
 function createUpdatesRun({
   adapterId,
+  scriptName = "updates",
   timestamp,
   scenarioId = "S5",
   notes = ["streaming demo replay"],
@@ -2387,7 +2413,7 @@ function createUpdatesRun({
   updateRatePerSec,
 }) {
   // The bench-runtime emits `update rate per sec: N` in notes for every
-  // updates run since PR #26. The H14/H15 evaluators parse this; tests
+  // update-script run since PR #26. The H14/H15 evaluators parse this; tests
   // that exercise rate-aware paths should set updateRatePerSec.
   const ratedNotes =
     updateRatePerSec !== undefined
@@ -2397,7 +2423,7 @@ function createUpdatesRun({
     adapterId,
     profile: "default",
     scenarioId,
-    scriptName: "updates",
+    scriptName,
     browserName: "chromium",
     browserVersion: "123.0",
     timestamp,
@@ -2407,7 +2433,7 @@ function createUpdatesRun({
     deviceScaleFactor: 1,
     notes: ratedNotes,
     status: "completed",
-    tracePath: `status/traces/chromium-${adapterId}-default-${scenarioId.toLowerCase()}-updates.trace.zip`,
+    tracePath: `status/traces/chromium-${adapterId}-default-${scenarioId.toLowerCase()}-${scriptName}.trace.zip`,
     metrics: {
       scroll_frame_p95_ms,
       long_tasks_count,
