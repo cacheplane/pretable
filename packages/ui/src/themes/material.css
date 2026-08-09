@@ -58,6 +58,7 @@
   /* Density — natural default = standard */
   --pretable-row-height: 48px;
   --pretable-header-height: 52px;
+  --pretable-group-panel-height: 44px; /* drag-to-group strip above the header */
   --pretable-cell-padding-x: 16px;
   --pretable-group-indent: 24px;
   --pretable-cell-padding-y: 12px;
@@ -76,6 +77,7 @@
 [data-density="compact"] {
   --pretable-row-height: 40px;
   --pretable-header-height: 44px;
+  --pretable-group-panel-height: 36px;
   --pretable-cell-padding-x: 12px;
   --pretable-group-indent: 20px;
   --pretable-cell-padding-y: 6px;
@@ -86,6 +88,7 @@
 [data-density="spacious"] {
   --pretable-row-height: 56px;
   --pretable-header-height: 64px;
+  --pretable-group-panel-height: 52px;
   --pretable-cell-padding-x: 24px;
   --pretable-group-indent: 32px;
   --pretable-cell-padding-y: 16px;

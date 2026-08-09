@@ -13,6 +13,14 @@ import { useMemo } from "react";
  * overflow the viewport (so collapsing near the bottom can strand `scrollTop`
  * past the shrunken `scrollHeight`).
  *
+ * SP3 adds the group panel to it, for the same reason. The panel's drop-zone
+ * disambiguation is a comparison of the pointer against two RECTANGLES — the
+ * panel's and the header row's — which jsdom cannot express at all, so the
+ * unit suite mocks the hit test and this route is the only place the geometry
+ * is exercised. `region` is here purely so there is an ungrouped column to drag
+ * onto the panel that no other assertion depends on the position of; `name` and
+ * `qty` stay free for the header-row reorder assertion.
+ *
  * Deliberately not part of the product surface: grouping does not appear in the
  * hero or the docs yet, that is SP4. Kept out of search engines accordingly.
  */
@@ -22,6 +30,7 @@ interface HoldingRow {
   id: string;
   sector: string;
   industry: string;
+  region: string;
   name: string;
   qty: number;
 }
@@ -39,6 +48,7 @@ function makeRows(): HoldingRow[] {
           id: `s${s}-i${i}-r${r}`,
           sector: `Sector ${String(s).padStart(2, "0")}`,
           industry: `Industry ${String(s).padStart(2, "0")}-${i}`,
+          region: s <= SECTOR_COUNT / 2 ? "West" : "East",
           name: `Holding ${String(s).padStart(2, "0")}-${i}-${r}`,
           qty: s * 100 + i * 10 + r,
         });
@@ -51,6 +61,7 @@ function makeRows(): HoldingRow[] {
 const COLUMNS: PretableColumn<HoldingRow>[] = [
   { id: "sector", header: "Sector", rowGroup: true },
   { id: "industry", header: "Industry", rowGroup: true },
+  { id: "region", header: "Region", widthPx: 140 },
   { id: "name", header: "Name", widthPx: 220 },
   {
     id: "qty",
@@ -72,6 +83,7 @@ export default function GroupingFixturePage() {
         ariaLabel="Grouped holdings"
         columns={columns}
         getRowId={(row) => row.id}
+        groupPanel={{ enabled: true }}
         rows={rows}
         viewportHeight={400}
       />

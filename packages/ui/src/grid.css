@@ -433,6 +433,193 @@
     padding: 2px 4px;
   }
 
+  /* ---- Drag-to-group panel (sub-project 3) ----------------------------- */
+
+  /* The strip above the header. @pretable/react sets its `height` inline —
+     the panel's height is layout math the surface has to know in JS, because
+     it is SUBTRACTED from viewportHeight — and reads it from this same token.
+     Mirrored here as a min-height so the token stays the single source for
+     both, and so a server-rendered panel has its height before hydration.
+     No calc(): a theme that misses the token would collapse the strip to
+     nothing rather than degrade. */
+  :where([data-pretable-group-panel]) {
+    box-sizing: border-box;
+    min-height: var(--pretable-group-panel-height);
+    gap: var(--pretable-cell-padding-x);
+    padding: 0 var(--pretable-cell-padding-x);
+    background: var(--pretable-bg-toolbar);
+    border: 1px solid var(--pretable-rule-strong);
+    border-bottom: 0;
+    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+    color: var(--pretable-text-header);
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-header);
+  }
+
+  /* The panel and the viewport are stacked in one box, so the two rounded
+     corners that now meet in the middle have to go — otherwise the strip
+     floats above a separately rounded card. */
+  :where(
+    [data-pretable-group-panel-wrapper] > [data-pretable-scroll-viewport]
+  ) {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  /* A drop is pending over the panel. Present-or-absent rather than a value,
+     so it is selected on with an attribute-existence check.
+     `--pretable-selection-bg` rather than `--pretable-bg-hover`: Excel sets
+     hover to `transparent` on purpose, and a drop target that gives no
+     feedback in one of the two shipped themes is not feedback. */
+  :where([data-pretable-group-panel][data-pretable-group-panel-active]) {
+    background: var(--pretable-selection-bg);
+  }
+
+  :where([data-pretable-group-panel-empty]) {
+    color: var(--pretable-text-dim);
+    font-style: italic;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :where([data-pretable-group-chip]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-sizing: border-box;
+    max-width: 14em;
+    padding: 2px 4px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    cursor: grab;
+    user-select: none;
+    /* The chip is a pointer drag handle; without this a touch drag scrolls
+       the page instead of reordering the level. */
+    touch-action: none;
+  }
+
+  :where([data-pretable-group-chip]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: 1px;
+  }
+
+  :where([data-pretable-group-chip][data-pretable-chip-dragging]) {
+    opacity: 0.5;
+    cursor: grabbing;
+  }
+
+  /* Grip dots, drawn rather than added to the DOM — the handle is an empty,
+     aria-hidden span so it costs no accessible content. */
+  :where([data-pretable-chip-handle]) {
+    flex: none;
+    width: 5px;
+    height: 12px;
+    background-image: radial-gradient(currentColor 40%, transparent 45%);
+    background-size: 3px 4px;
+    color: var(--pretable-text-dim);
+  }
+
+  :where([data-pretable-chip-label]) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :where([data-pretable-chip-remove]) {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--pretable-radius);
+    background: transparent;
+    color: var(--pretable-text-dim);
+    font-size: 10px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  :where([data-pretable-chip-remove]:hover) {
+    background: var(--pretable-selection-bg);
+    color: var(--pretable-text-cell);
+  }
+
+  /* The gap between two chips that a drop would land in. A zero-content span,
+     so every pixel of it is this rule. */
+  :where([data-pretable-chip-drop-indicator]) {
+    flex: none;
+    align-self: stretch;
+    width: 2px;
+    margin: 4px 0;
+    background: var(--pretable-reorder-drop-indicator);
+  }
+
+  /* ---- Column menu (sub-project 3) ------------------------------------- */
+
+  /* Same reveal model as the funnel it sits beside: invisible until the header
+     row is hovered, the button is keyboard-focused, or its menu is open. The
+     open case matters — without it the button vanishes the moment the pointer
+     leaves the header, while its own menu is still up. */
+  :where([data-pretable-column-menu-button]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--pretable-radius);
+    background: transparent;
+    color: var(--pretable-text-dim);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+  }
+  :where([data-pretable-header-row]:hover [data-pretable-column-menu-button]),
+  :where([data-pretable-column-menu-button]:focus-visible),
+  :where([data-pretable-column-menu-button][aria-expanded="true"]) {
+    opacity: 1;
+  }
+  :where([data-pretable-column-menu-button]:hover) {
+    background: var(--pretable-selection-bg);
+  }
+
+  /* The popover itself takes its surface from [data-pretable-popover]. */
+  :where([data-pretable-column-menu]) {
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    box-shadow: var(--pretable-reorder-ghost-shadow);
+    /* Portaled into <body>, so nothing is inherited from the viewport. */
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+  }
+  :where([data-pretable-menu-item]) {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: var(--pretable-radius);
+    background: transparent;
+    color: var(--pretable-text-cell);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  :where([data-pretable-menu-item]:hover) {
+    background: var(--pretable-selection-bg);
+  }
+  :where([data-pretable-menu-item]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+
   /* Enum combobox listbox (cell editor) */
   :where([data-pretable-enum-editor]) {
     display: block;

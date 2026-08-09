@@ -21,6 +21,7 @@ const TOKENS = [
   "pretable-accent",
   "pretable-row-height",
   "pretable-header-height",
+  "pretable-group-panel-height",
   "pretable-cell-padding-x",
   "pretable-cell-padding-y",
   "pretable-font-size-cell",
@@ -39,6 +40,18 @@ const TOKENS = [
   "pretable-reorder-drop-indicator",
   "pretable-edit-bg",
   "pretable-text-error",
+];
+
+/**
+ * The tokens @pretable/react parses in JS as pixel numbers. `useResolvedPx`
+ * matches `^<number>px$` and silently falls back on anything else, so one of
+ * these resolving to a non-px value does not throw — it quietly renders every
+ * theme at the hard-coded fallback.
+ */
+const HEIGHT_TOKENS = [
+  "--pretable-row-height",
+  "--pretable-header-height",
+  "--pretable-group-panel-height",
 ];
 
 const THEMES_DIR = path.resolve(__dirname, "../themes");
@@ -89,14 +102,40 @@ describe("token contract", () => {
       for (const density of ["compact", "standard", "spacious"]) {
         document.documentElement.setAttribute("data-density", density);
         const computed = getComputedStyle(document.documentElement);
+        for (const token of HEIGHT_TOKENS) {
+          expect(
+            computed.getPropertyValue(token).trim(),
+            `${themeFile} @ ${density}: ${token} not <number>px`,
+          ).toMatch(/^\d+(\.\d+)?px$/);
+        }
+      }
+      cleanup();
+    });
+
+    test(`${themeFile} grows every height token from tier to tier`, () => {
+      // The test above cannot catch a token that a tier FORGOT: custom
+      // properties inherit, so a missing `[data-density="spacious"]` value
+      // silently resolves to the `:root` tier's and still reads as `<n>px`.
+      // Measured — deleting one tier's --pretable-group-panel-height left the
+      // suite green until this test existed. Strict growth is the invariant
+      // that distinguishes "this tier declares it" from "this tier inherited
+      // whatever the default tier said".
+      const cleanup = loadCSS(path.join(THEMES_DIR, themeFile));
+      for (const token of HEIGHT_TOKENS) {
+        const heights = ["compact", "standard", "spacious"].map((density) => {
+          document.documentElement.setAttribute("data-density", density);
+          return parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue(token),
+          );
+        });
         expect(
-          computed.getPropertyValue("--pretable-row-height").trim(),
-          `${themeFile} @ ${density}: --pretable-row-height not <number>px`,
-        ).toMatch(/^\d+(\.\d+)?px$/);
+          heights[1],
+          `${themeFile}: ${token} standard (${heights[1]}) is not taller than compact (${heights[0]})`,
+        ).toBeGreaterThan(heights[0]);
         expect(
-          computed.getPropertyValue("--pretable-header-height").trim(),
-          `${themeFile} @ ${density}: --pretable-header-height not <number>px`,
-        ).toMatch(/^\d+(\.\d+)?px$/);
+          heights[2],
+          `${themeFile}: ${token} spacious (${heights[2]}) is not taller than standard (${heights[1]})`,
+        ).toBeGreaterThan(heights[1]);
       }
       cleanup();
     });

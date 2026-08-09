@@ -3861,6 +3861,82 @@ describe("column reorder", () => {
     return view.getByLabelText(`Sort ${label}`) as HTMLButtonElement;
   }
 
+  /**
+   * Reordering while grouped, where the drawn header row and
+   * `options.columns` are two different arrays in BOTH directions: the derived
+   * group column is drawn but is not an engine column, and every grouped
+   * column is an engine column that is not drawn.
+   *
+   * This is index arithmetic, not geometry, so it belongs here rather than in
+   * Playwright — but it was Task 8's browser run that found it: dragging a
+   * header in the grouped fixture visibly did nothing while silently
+   * rewriting the engine's column order underneath.
+   *
+   * Layout in this harness: the group column occupies 0–200, "b" 200–300 and
+   * "c" 300–400, so a cursor at 270 is inside "b"'s own slot and one at 380 is
+   * past "c"'s midpoint.
+   */
+  describe("while grouped", () => {
+    function dragHeader(
+      view: ReturnType<typeof render>,
+      label: string,
+      { from, to }: { from: number; to: number },
+    ) {
+      const header = getHeaderButton(view, label);
+      fireEvent.pointerDown(header, {
+        button: 0,
+        pointerId: 1,
+        clientX: from,
+        clientY: 10,
+      });
+      fireEvent.pointerMove(header, { pointerId: 1, clientX: to, clientY: 10 });
+      fireEvent.pointerUp(header, { pointerId: 1, clientX: to, clientY: 10 });
+    }
+
+    function renderGrouped(onColumnOrderChange: () => void) {
+      return render(
+        <PretableSurface
+          ariaLabel="grouped-reorder-grid"
+          columns={gridColumns}
+          getRowId={(row: GridRow) => row.id}
+          onColumnOrderChange={onColumnOrderChange}
+          overscan={0}
+          rows={gridRows}
+          state={{ rowGroups: ["a"] }}
+          viewportHeight={300}
+        />,
+      );
+    }
+
+    it("a drop inside the dragged header's own slot leaves the order alone", () => {
+      // The regression that shipped: counting positions in the drawn list has
+      // no slot for the grouped column that dropped out, so "stay where you
+      // are" resolved one place to the left and pushed "b" ahead of the
+      // grouped "a" — invisible in the header row, and reported to the
+      // consumer as an order they never asked for.
+      const onColumnOrderChange = vi.fn();
+      const view = renderGrouped(onColumnOrderChange);
+
+      dragHeader(view, "B", { from: 250, to: 270 });
+
+      expect(onColumnOrderChange).toHaveBeenCalledWith(["a", "b", "c"]);
+    });
+
+    it("a drop past the last drawn header puts the column last", () => {
+      const onColumnOrderChange = vi.fn();
+      const view = renderGrouped(onColumnOrderChange);
+
+      dragHeader(view, "B", { from: 250, to: 380 });
+
+      expect(onColumnOrderChange).toHaveBeenCalledWith(["a", "c", "b"]);
+      expect(
+        Array.from(
+          view.container.querySelectorAll("[data-pretable-header-cell]"),
+        ).map((cell) => cell.getAttribute("data-pretable-column-id")),
+      ).toEqual(["__pretable_group__", "c", "b"]);
+    });
+  });
+
   it("pointerDown + small move (<5px) + pointerUp + click triggers sort, not reorder", () => {
     const onColumnOrderChange = vi.fn();
     const onSortChange = vi.fn();

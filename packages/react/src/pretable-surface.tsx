@@ -67,7 +67,7 @@ import {
   type PretableTelemetry,
   usePretable,
 } from "./use-pretable";
-import { useResolvedHeights } from "./density";
+import { useResolvedHeights, useResolvedPx } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
   formatCellValue,
@@ -75,6 +75,7 @@ import {
   resolveCellValue,
 } from "./rendering";
 import {
+  getGroupPanelWrapperStyle,
   getHeaderCellStyle,
   getHeaderOverlayAnchorStyle,
   getHeaderRowStyle,
@@ -88,21 +89,26 @@ import {
 } from "./styles";
 import { findParentGroupRow, isGroupExpanded } from "./group-model";
 import { GroupRow } from "./group-row";
+import { GroupPanel } from "./group-panel/GroupPanel";
+import { hitTestGroupPanel } from "./group-panel/group-panel-hit-test";
+import {
+  insertGroupLevel,
+  removeGroupLevel,
+} from "./group-panel/group-panel-model";
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
-import { ROW_SELECT_COLUMN_ID } from "./constants";
+import { GROUP_PANEL_HEIGHT, ROW_SELECT_COLUMN_ID } from "./constants";
 import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
 import { toBooleanCell } from "./editors/boolean-utils";
-import {
-  FilterMenu,
-  FunnelButton,
-  popoverStyle,
-  useFilterPopover,
-} from "./filter-menu";
+import { ColumnMenu } from "./column-menu/ColumnMenu";
+import { MenuButton } from "./column-menu/MenuButton";
+import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import { OverlayPortal } from "./overlay/OverlayPortal";
+import { popoverStyle } from "./overlay/popover-position";
+import { useHeaderPopover } from "./overlay/useHeaderPopover";
 import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
@@ -407,6 +413,24 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   /**
+   * Show the drag-to-group panel above the header — a strip listing the active
+   * grouping levels as chips, which columns are dropped onto to group by them.
+   *
+   * An enabled panel is always visible, including when nothing is grouped:
+   * that is exactly when its `emptyMessage` matters. It consumes from
+   * {@link PretableSurfaceProps.viewportHeight} rather than adding to it, so
+   * enabling it never reflows the surrounding layout.
+   */
+  groupPanel?: { enabled: boolean; emptyMessage?: string };
+  /**
+   * Called after the panel or the column menu mutates the grouping. Receives
+   * the engine's full ordered list (index = grouping level; `[]` = ungrouped).
+   * Use to mirror grouping state externally (e.g. controlled
+   * `state.rowGroups`). Programmatic `grid.setRowGroups` does not fire it,
+   * matching how `grid.moveColumn` stays silent.
+   */
+  onRowGroupsChange?: (rowGroups: string[]) => void;
+  /**
    * Called when the built-in column filter menu mutates the active filter set.
    * Receives the engine's full `filters` map after the change. Use to mirror
    * filter state externally (e.g. controlled `state.filters`).
@@ -655,6 +679,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   onColumnPinnedChange,
   onTelemetryChange,
   onFiltersChange,
+  groupPanel,
+  onRowGroupsChange,
   renderBodyCell,
   renderHeaderCell,
   rows,
@@ -707,11 +733,22 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     startY: number;
     dragging: boolean;
   } | null>(null);
+  const groupPanelRef = useRef<HTMLDivElement>(null);
   const [reorderDrag, setReorderDrag] = useState<{
     columnId: string;
     cursorX: number;
     cursorY: number;
     dropIndex: number;
+    /**
+     * The grouping level this drag would drop into, or `null` when the pointer
+     * is not over the panel. This is the whole of the two-drop-zone model: the
+     * pointer is over the panel's rectangle or it is not, and there is no
+     * modifier key or intent heuristic anywhere.
+     *
+     * It is recomputed on every move but **committed by nobody until
+     * pointerup** — see the drop handler.
+     */
+    groupInsertIndex: number | null;
     // Content-space offset for the drop indicator, resolved from the same
     // pointer event as `dropIndex` so the two can never disagree.
     indicatorLeft: number;
@@ -776,7 +813,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
   const lastCheckedRowAnchorRef = useRef<string | null>(null);
   const { headerHeight } = useResolvedHeights();
-  const bodyViewportHeight = Math.max(viewportHeight - headerHeight, 0);
+  // The panel eats into `viewportHeight` instead of extending past it, so the
+  // surface occupies the same box whether or not it is enabled. Zero when
+  // disabled, which keeps every height below bit-for-bit what it was.
+  const groupPanelEnabled = groupPanel?.enabled ?? false;
+  const resolvedGroupPanelHeight = useResolvedPx(
+    "--pretable-group-panel-height",
+    GROUP_PANEL_HEIGHT,
+    groupPanelEnabled,
+  );
+  const groupPanelHeight = groupPanelEnabled ? resolvedGroupPanelHeight : 0;
+  const scrollViewportHeight = Math.max(viewportHeight - groupPanelHeight, 0);
+  const bodyViewportHeight = Math.max(
+    viewportHeight - headerHeight - groupPanelHeight,
+    0,
+  );
   // Depend on the primitive fields, not the rowSelectionColumn object: callers
   // typically pass it inline (`rowSelectionColumn={{ enabled: true }}`), so a new
   // object every render would churn effectiveColumns — and recreate the grid,
@@ -812,6 +863,27 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
   const isGrouped = snapshot.rowGroups.length > 0;
+  // Every UI-driven grouping change funnels through here: one `setRowGroups`,
+  // then report what the engine actually holds. Reading the list back rather
+  // than echoing the argument matters — `sanitizeRowGroups` drops unknown and
+  // duplicate ids, so the two can differ, and a consumer mirroring this into
+  // controlled `state.rowGroups` must be handed the sanitized truth.
+  //
+  // Programmatic `grid.setRowGroups` bypasses this and stays silent, matching
+  // `grid.moveColumn` and `onColumnOrderChange`.
+  const applyRowGroups = useCallback(
+    (next: readonly string[]) => {
+      grid.setRowGroups(next);
+      onRowGroupsChange?.([...grid.getSnapshot().rowGroups]);
+    },
+    [grid, onRowGroupsChange],
+  );
+  const labelForColumn = useCallback(
+    (columnId: string) =>
+      effectiveColumns.find((column) => column.id === columnId)?.header ??
+      columnId,
+    [effectiveColumns],
+  );
   // Shared by the data-row and group-row cell refs: the focus-follow effect
   // looks a cell up by `rowId::columnId`, and a group cell that never
   // registered would leave DOM focus stranded on an unmounted data cell.
@@ -1200,12 +1272,17 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     };
   }, [handlePaste]);
 
-  // Built-in column filter menu: one open-state for the whole surface.
+  // Header popovers: one open-state for the whole surface, shared by the
+  // funnel's filter dialog and the ⋮ column menu, so opening either closes the
+  // other. See useHeaderPopover for why they cannot be independent.
   const {
-    openState: filterOpenState,
-    toggle: toggleFilter,
-    close: closeFilter,
-  } = useFilterPopover();
+    openState: headerPopover,
+    toggle: togglePopover,
+    close: closePopover,
+  } = useHeaderPopover();
+  const filterOpenState =
+    headerPopover?.kind === "filter" ? headerPopover : null;
+  const menuOpenState = headerPopover?.kind === "menu" ? headerPopover : null;
 
   // Pin state and pinned offsets are read from the PLANNED column
   // (`renderSnapshot.columns`), never from the prop column. The engine is the
@@ -1816,7 +1893,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // of looping — even under high-churn streaming with wrap:true rows.
   });
 
-  return (
+  const scrollViewport = (
     <div
       aria-colcount={drawnColumns.length}
       aria-label={ariaLabel}
@@ -2070,7 +2147,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         }
       }}
       style={{
-        ...getViewportStyle(viewportHeight),
+        ...getViewportStyle(scrollViewportHeight),
         ...viewportStyle,
       }}
     >
@@ -2258,6 +2335,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
           const showResizeHandle = column.resizable !== false;
           const showFilterFunnel = column.filterable !== false;
+          // The menu's only items are grouping ones, so it is offered exactly
+          // where grouping is: with the panel enabled, on a real data column.
+          // The derived group column is excluded (grouping the tree column by
+          // itself is meaningless) and so is the row-select checkbox column.
+          const showColumnMenu =
+            groupPanelEnabled &&
+            column.id !== GROUP_COLUMN_ID &&
+            column.id !== ROW_SELECT_COLUMN_ID;
           const isDragging = dragLiveWidth?.columnId === column.id;
           // Both header overlays hang off one zero-width anchor parked on the
           // column's trailing edge — `pinnedRightEdge` for a right-pinned
@@ -2374,6 +2459,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         scrollLeft: scrollport?.scrollLeft ?? 0,
                       });
 
+                      // The second drop zone. `groupPanelRef` is null unless a
+                      // panel is rendered, and the hit test rejects a hidden or
+                      // zero-size one, so a collapsed panel cannot swallow a
+                      // drop meant for the header underneath it.
+                      const panelHit =
+                        column.id === GROUP_COLUMN_ID
+                          ? null
+                          : hitTestGroupPanel(
+                              groupPanelRef.current,
+                              event.clientX,
+                              event.clientY,
+                            );
+                      const groupInsertIndex = panelHit?.insertIndex ?? null;
+
                       if (!drag.dragging) {
                         if (dist < REORDER_THRESHOLD_PX) return;
                         drag.dragging = true;
@@ -2391,6 +2490,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                           cursorX: event.clientX,
                           cursorY: event.clientY,
                           dropIndex: target.dropIndex,
+                          groupInsertIndex,
                           indicatorLeft: target.indicatorLeft,
                           ghostWidth: rect.width || effWidth,
                           ghostHeight: rect.height || headerHeight,
@@ -2406,6 +2506,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                               cursorX: event.clientX,
                               cursorY: event.clientY,
                               dropIndex: target.dropIndex,
+                              groupInsertIndex,
                               indicatorLeft: target.indicatorLeft,
                             }
                           : null,
@@ -2420,7 +2521,28 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
                       const current = reorderDrag;
                       if (drag.dragging && current) {
+                        // The trailing click must not sort either way — this
+                        // gesture was a drag, whichever zone it ended in.
                         wasReorderingRef.current = true;
+                      }
+                      if (
+                        drag.dragging &&
+                        current &&
+                        current.groupInsertIndex !== null
+                      ) {
+                        // Dropped on the panel: group, and do NOT also move the
+                        // column. This is the only place in the drag that
+                        // mutates grouping — nothing ran on drag-enter or
+                        // drag-leave, so Escape had something to cancel right
+                        // up to this instant.
+                        applyRowGroups(
+                          insertGroupLevel(
+                            snapshot.rowGroups,
+                            column.id,
+                            current.groupInsertIndex,
+                          ),
+                        );
+                      } else if (drag.dragging && current) {
                         const beforePinned = buildPinnedMap(grid);
                         grid.moveColumn(
                           column.id,
@@ -2513,7 +2635,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 }
               />
             </button>,
-            showResizeHandle || showFilterFunnel ? (
+            showResizeHandle || showFilterFunnel || showColumnMenu ? (
               // Header overlays — the resize strip and the filter funnel — are
               // NOT nested in the header <button> (interactive controls inside
               // a button is invalid HTML). They live in a zero-width anchor
@@ -2645,7 +2767,34 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       label={label}
                       active={Boolean(snapshot.filters[column.id])}
                       open={filterOpenState?.columnId === column.id}
-                      onToggle={(id, anchor) => toggleFilter(id, anchor)}
+                      onToggle={(id, anchor) =>
+                        togglePopover("filter", id, anchor)
+                      }
+                    />
+                  </div>
+                ) : null}
+                {showColumnMenu ? (
+                  <div
+                    data-pretable-column-menu-slot=""
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      // Counted back from the trailing edge like the funnel:
+                      // 4px resize strip, then the 18px funnel when there is
+                      // one, then this.
+                      left: showFilterFunnel ? -40 : -22,
+                    }}
+                  >
+                    <MenuButton
+                      columnId={column.id}
+                      label={label}
+                      open={menuOpenState?.columnId === column.id}
+                      onToggle={(id, anchor) =>
+                        togglePopover("menu", id, anchor)
+                      }
                     />
                   </div>
                 ) : null}
@@ -3144,13 +3293,18 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               {reorderDrag.ghostHeader}
             </div>
           </OverlayPortal>
-          <div
-            data-pretable-reorder-drop-indicator=""
-            style={{
-              left: reorderDrag.indicatorLeft,
-              height: reorderDrag.ghostHeight + bodyViewportHeight,
-            }}
-          />
+          {/* Over the panel the drop would group, not reorder, so the column
+              insertion line would be promising something that will not happen.
+              The panel shows its own gap indicator instead. */}
+          {reorderDrag.groupInsertIndex === null ? (
+            <div
+              data-pretable-reorder-drop-indicator=""
+              style={{
+                left: reorderDrag.indicatorLeft,
+                height: reorderDrag.ghostHeight + bodyViewportHeight,
+              }}
+            />
+          ) : null}
         </>
       ) : null}
       {filterOpenState
@@ -3177,11 +3331,78 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   grid.setColumnFilter(id, filter);
                   onFiltersChange?.(grid.getSnapshot().filters);
                 }}
-                onClose={closeFilter}
+                onClose={closePopover}
               />
             );
           })()
         : null}
+      {menuOpenState
+        ? (() => {
+            const col = effectiveColumns.find(
+              (c) => c.id === menuOpenState.columnId,
+            );
+            if (!col) return null;
+            const level = snapshot.rowGroups.indexOf(menuOpenState.columnId);
+            return (
+              <ColumnMenu
+                key={menuOpenState.columnId}
+                anchor={menuOpenState.anchor}
+                columnId={menuOpenState.columnId}
+                grouped={level !== -1}
+                label={col.header ?? menuOpenState.columnId}
+                style={popoverStyle(menuOpenState.rect)}
+                onClose={closePopover}
+                onSelect={(action) => {
+                  // Through `applyRowGroups` like every other UI mutation —
+                  // one `setRowGroups`, then report the engine's sanitized
+                  // list. Both branches reuse the panel's list helpers so the
+                  // menu and the chips can never disagree about what
+                  // "append a level" or "drop a level" means.
+                  applyRowGroups(
+                    action === "group"
+                      ? insertGroupLevel(
+                          snapshot.rowGroups,
+                          menuOpenState.columnId,
+                          snapshot.rowGroups.length,
+                        )
+                      : removeGroupLevel(snapshot.rowGroups, level),
+                  );
+                }}
+              />
+            );
+          })()
+        : null}
+    </div>
+  );
+
+  // Without the panel the surface IS the scroll viewport — no wrapper, so a
+  // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
+  if (!groupPanelEnabled) {
+    return scrollViewport;
+  }
+
+  // With it, the viewport keeps every attribute it had and gains a parent. The
+  // panel cannot live inside the viewport: that element carries
+  // `role="grid"`/`"treegrid"` (whose children must be rows and rowgroups, so a
+  // listbox of chips there is invalid ARIA) and `minWidth: totalWidth` on its
+  // content, which would scroll the panel sideways with the data.
+  return (
+    <div
+      data-pretable-group-panel-wrapper=""
+      style={getGroupPanelWrapperStyle(viewportHeight)}
+    >
+      <GroupPanel
+        containerRef={groupPanelRef}
+        // Only a header drag reports in from out here; the panel's own chip
+        // drag tracks its insertion index internally.
+        dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
+        emptyMessage={groupPanel?.emptyMessage}
+        height={groupPanelHeight}
+        labelForColumn={labelForColumn}
+        onChange={applyRowGroups}
+        rowGroups={snapshot.rowGroups}
+      />
+      {scrollViewport}
     </div>
   );
 }
@@ -3914,9 +4135,24 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
  * index, which is what `grid.moveColumn` takes.
  *
  * The two spaces are the same array while ungrouped, and this returns
- * `dropIndex` unchanged. Grouped they differ by the derived group column at the
- * head and the grouped columns that dropped out, so a raw drawn-space index
- * would land the column that many slots off.
+ * `dropIndex` unchanged. Grouped they differ in BOTH directions: the derived
+ * group column is drawn but is not an engine column, and every grouped column
+ * is an engine column that is not drawn (`hideGroupedColumns` defaults on).
+ *
+ * Counting positions in the drawn list therefore cannot answer the question —
+ * it has no slot for the columns that dropped out, so an index taken from it is
+ * short by however many of them precede the drop. Measured, before this was
+ * written the right way: grouping by one column and dragging a header ONTO
+ * ITSELF (a drop index that should be a no-op) moved that column to engine
+ * index 0, silently reordering `options.columns` while the drawn header row
+ * did not visibly change and `onColumnOrderChange` reported an order the user
+ * never asked for.
+ *
+ * So the drop is resolved by NEIGHBOUR instead of by count: the drawn order
+ * says which column the dragged one now sits after, and that column's position
+ * in the engine array — which does have a slot for everything — says where it
+ * goes. The returned index is in post-removal space, which is what
+ * `moveColumn`'s splice-out-then-splice-in takes.
  */
 function toEngineDropIndex<TRow extends PretableRow>(
   drawn: readonly PretableColumn<TRow>[],
@@ -3924,11 +4160,28 @@ function toEngineDropIndex<TRow extends PretableRow>(
   columnId: string,
   dropIndex: number,
 ): number {
-  const engineIds = new Set(engineColumns.map((c) => c.id));
+  const engineIds = engineColumns.map((c) => c.id);
+  const known = new Set(engineIds);
+
   const ids = drawn.map((c) => c.id).filter((id) => id !== columnId);
   ids.splice(dropIndex, 0, columnId);
+  // Drop the derived group column: it is drawn but the engine has never heard
+  // of it, so it can be neither an anchor nor an offset.
+  const ordered = ids.filter((id) => known.has(id));
 
-  return ids.filter((id) => engineIds.has(id)).indexOf(columnId);
+  const position = ordered.indexOf(columnId);
+  const rest = engineIds.filter((id) => id !== columnId);
+
+  const predecessor = ordered[position - 1];
+  if (predecessor !== undefined) return rest.indexOf(predecessor) + 1;
+
+  // Nothing drawn before it. Anchor to what follows instead — the two differ
+  // when hidden grouped columns sit at the head of the engine array, and
+  // "before the first drawn column" must not mean "before those".
+  const successor = ordered[position + 1];
+  if (successor !== undefined) return rest.indexOf(successor);
+
+  return 0;
 }
 
 function buildWidthsMap<TRow extends PretableRow>(

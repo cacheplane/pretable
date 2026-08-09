@@ -55,6 +55,7 @@
   /* Density — natural default = compact (Excel "Compact" tier) */
   --pretable-row-height: 20px; /* 15pt at 96 DPI */
   --pretable-header-height: 24px;
+  --pretable-group-panel-height: 28px; /* drag-to-group strip above the header */
   --pretable-cell-padding-x: 6px;
   --pretable-group-indent: 12px;
   --pretable-cell-padding-y: 2px;
@@ -74,6 +75,7 @@
 [data-density="standard"] {
   --pretable-row-height: 24px;
   --pretable-header-height: 32px;
+  --pretable-group-panel-height: 34px;
   --pretable-cell-padding-x: 8px;
   --pretable-group-indent: 16px;
   --pretable-cell-padding-y: 4px;
@@ -84,6 +86,7 @@
 [data-density="spacious"] {
   --pretable-row-height: 32px;
   --pretable-header-height: 40px;
+  --pretable-group-panel-height: 42px;
   --pretable-cell-padding-x: 12px;
   --pretable-group-indent: 20px;
   --pretable-cell-padding-y: 8px;
