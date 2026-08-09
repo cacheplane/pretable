@@ -179,23 +179,15 @@ describe("group row rendering", () => {
     const onFocusChange = vi.fn();
     const onSelectionChange = vi.fn();
     const onSelectedRowIdChange = vi.fn();
-    const selection = {
-      ranges: [
-        {
-          startRowId: "r1",
-          endRowId: "r1",
-          startColumnId: "name",
-          endColumnId: "name",
-        },
-      ],
-      anchor: { rowId: "r1", columnId: "name" },
-    };
     const view = renderGrouped({
-      state: { rowGroups: ["sector"], selection },
+      state: { rowGroups: ["sector"] },
       onFocusChange,
       onSelectedRowIdChange,
       onSelectionChange,
     });
+    const selectedDataCell = view.container.querySelector(
+      '[data-pretable-row-id="r1"] [data-pretable-column-id="name"]',
+    )!;
     const group = groupRows(view)[0]!;
     const groupId = group.getAttribute("data-pretable-row-id");
     const labelCell = group.querySelector(
@@ -205,9 +197,10 @@ describe("group row rendering", () => {
       '[data-pretable-column-id="qty"]',
     )!;
 
-    // The controlled seed is itself a full-row-compatible state transition
-    // observed by the surface's mount effect. The assertions below concern
-    // only the group-cell clicks.
+    // Seed through the data-cell interaction rather than controlled state, so
+    // a later group click cannot be masked by the next controlled-state sync.
+    fireEvent.click(selectedDataCell);
+
     onFocusChange.mockClear();
     onSelectionChange.mockClear();
     onSelectedRowIdChange.mockClear();
@@ -223,13 +216,11 @@ describe("group row rendering", () => {
       rowId: groupId,
       columnId: "qty",
     });
+    fireEvent.click(aggregateCell);
+    expect(onFocusChange).toHaveBeenCalledTimes(2);
     expect(onSelectionChange).not.toHaveBeenCalled();
     expect(onSelectedRowIdChange).not.toHaveBeenCalled();
-    expect(
-      view.container.querySelector(
-        '[data-pretable-row-id="r1"] [data-pretable-column-id="name"]',
-      ),
-    ).toHaveAttribute("data-pretable-selected", "true");
+    expect(selectedDataCell).toHaveAttribute("data-pretable-selected", "true");
   });
 
   it("double-clicking the group cell toggles, ignoring the twisty", () => {
