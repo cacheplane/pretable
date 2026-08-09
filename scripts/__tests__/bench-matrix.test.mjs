@@ -2241,9 +2241,48 @@ test("H15 insufficient when no rate-tagged S5 updates runs exist for pretable", 
   assert.equal(h15?.status, "insufficient");
 });
 
-test("H14 and H15 include rate-tagged grouped updates runs", () => {
+test("H14 and H15 isolate flat updates statistics from grouped updates", () => {
+  const flatRun = createUpdatesRun({
+    adapterId: "pretable",
+    timestamp: "2026-04-30T22:00:00.000Z",
+    scroll_frame_p95_ms: 9,
+    long_tasks_count: 0,
+    visible_row_count_drift: 0,
+    updateRatePerSec: 1000,
+  });
+  const groupedRun = createUpdatesRun({
+    adapterId: "pretable",
+    scriptName: "updates-grouped",
+    timestamp: "2026-04-30T22:00:01.000Z",
+    scroll_frame_p95_ms: 100,
+    long_tasks_count: 20,
+    visible_row_count_drift: 22,
+    updateRatePerSec: 1000,
+  });
+  const createReport = (runs) =>
+    createHypothesisReport({
+      runsetId: "updates-script-isolation-test",
+      generatedAt: "2026-04-30T22:01:00.000Z",
+      entries: [],
+      runs,
+    });
+
+  const flatReport = createReport([flatRun]);
+  const mixedReport = createReport([flatRun, groupedRun]);
+  const flatH14 = flatReport.hypotheses.find((h) => h.id === "H14");
+  const flatH15 = flatReport.hypotheses.find((h) => h.id === "H15");
+  const mixedH14 = mixedReport.hypotheses.find((h) => h.id === "H14");
+  const mixedH15 = mixedReport.hypotheses.find((h) => h.id === "H15");
+
+  assert.equal(flatH14?.status, "directional");
+  assert.equal(flatH15?.status, "directional");
+  assert.equal(mixedH14?.status, flatH14?.status);
+  assert.equal(mixedH15?.status, flatH15?.status);
+});
+
+test("grouped-only runs leave flat H14 and H15 insufficient", () => {
   const report = createHypothesisReport({
-    runsetId: "grouped-updates-rate-test",
+    runsetId: "grouped-only-rate-test",
     generatedAt: "2026-04-30T22:00:00.000Z",
     entries: [],
     runs: [
@@ -2262,8 +2301,8 @@ test("H14 and H15 include rate-tagged grouped updates runs", () => {
   const h14 = report.hypotheses.find((h) => h.id === "H14");
   const h15 = report.hypotheses.find((h) => h.id === "H15");
 
-  assert.equal(h14?.status, "directional");
-  assert.equal(h15?.status, "directional");
+  assert.equal(h14?.status, "insufficient");
+  assert.equal(h15?.status, "insufficient");
 });
 
 test("H15 satisfied when pretable holds drift ≤ 1 and a comparator drifts > 5", () => {
