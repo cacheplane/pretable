@@ -61,8 +61,18 @@ grouping.
 The header already has a pointer drag for column reorder
 (`pretable-surface.tsx:2329-2453`, 5px threshold, capture on the header button,
 `computeColumnDropTarget` for the drop index). SP3 gives that same drag a second
-drop zone: release over the panel's rect and the column is grouped; release over
-the header or body and it reorders; release over neither and nothing happens.
+drop zone: release over the panel's rect and the column is grouped, otherwise it
+reorders.
+
+**Corrected during implementation.** I originally wrote "release over neither
+zone and nothing happens." That is true of a **chip** drag, which has three
+outcomes, but false of a **header** drag, which has two. The reorder drop index
+is a function of cursor **X alone** — a header released 600px below the grid
+still reorders, measured in both engines. That behaviour predates SP3; it is the
+existing reorder drag, which SP3 only adds a zone to. Changing it would alter a
+shipped feature outside this sub-project's scope, and it is defensible on its
+own terms: the drop indicator shows exactly where the column will land for the
+whole gesture, so the outcome is never a surprise. Escape remains the cancel.
 
 No modifier key, no gesture, no intent heuristic — this is what ag-grid does
 (`baseDragAndDropService.ts:295-350`) and it is the only model users can
