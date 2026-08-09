@@ -175,17 +175,32 @@ export interface PretableModel<TRow extends PretableRow = PretableRow> {
 
 function controlledFocusExistsInGrid<TRow extends PretableRow>(
   grid: PretableGrid<TRow>,
+  snapshot: PretableGridSnapshot<TRow>,
   focus: PretableFocusState,
 ): boolean {
   if (focus.rowId === null || focus.columnId === null) {
     return focus.rowId === null && focus.columnId === null;
   }
 
-  const current = grid.getSnapshot();
   return (
-    current.visibleRows.some((row) => row.id === focus.rowId) &&
+    snapshot.visibleRows.some((row) => row.id === focus.rowId) &&
     grid.getColumns().some((column) => column.id === focus.columnId)
   );
+}
+
+function normalizeControlledFocus(
+  focus: PretableFocusState,
+): PretableFocusState {
+  return focus.rowId === null || focus.columnId === null
+    ? { rowId: null, columnId: null }
+    : focus;
+}
+
+function focusStatesEqual(
+  left: PretableFocusState,
+  right: PretableFocusState,
+): boolean {
+  return left.rowId === right.rowId && left.columnId === right.columnId;
 }
 
 /**
@@ -354,16 +369,22 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     }
 
     if (state.focus !== undefined) {
-      const focus = state.focus;
+      const focus = normalizeControlledFocus(state.focus);
+      const currentSnapshot = grid.getSnapshot();
 
-      if (focus.rowId === null || focus.columnId === null) {
-        grid.setFocus(null);
-      } else if (controlledFocusExistsInGrid(grid, focus)) {
-        // Row grouping, filtering, and streamed row replacement can repair the
-        // engine focus earlier in this same layout pass. Do not overwrite that
-        // repair with a controlled address that disappeared from the derived
-        // row/column model.
-        grid.setFocus({ rowId: focus.rowId, columnId: focus.columnId });
+      // This effect runs for every engine snapshot, including scroll and
+      // viewport updates. Matching focus is the steady-state hot path: keep it
+      // O(1) and enter derived-model membership checks only after divergence.
+      if (!focusStatesEqual(currentSnapshot.focus, focus)) {
+        if (focus.rowId === null || focus.columnId === null) {
+          grid.setFocus(null);
+        } else if (controlledFocusExistsInGrid(grid, currentSnapshot, focus)) {
+          // Row grouping, filtering, and streamed row replacement can repair
+          // the engine focus earlier in this same layout pass. Do not overwrite
+          // that repair with a controlled address that disappeared from the
+          // derived row/column model.
+          grid.setFocus({ rowId: focus.rowId, columnId: focus.columnId });
+        }
       }
     }
     // `snapshot` is an intentional dependency: it makes the effect re-assert the

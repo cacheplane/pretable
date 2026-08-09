@@ -1288,6 +1288,85 @@ it("does not reassert a controlled focus column hidden by grouping", () => {
   );
 });
 
+it("does not traverse visible rows for matched controlled focus on viewport updates", () => {
+  let grid: PretableGrid<GridRow> | undefined;
+  const onReady = vi.fn((readyGrid: PretableGrid<GridRow>) => {
+    grid = readyGrid;
+  });
+
+  function Probe() {
+    const model = usePretable({
+      columns: gridColumns,
+      getRowId: getGridRowId,
+      overscan: 0,
+      rows: gridRows,
+      state: { focus: { rowId: "r1", columnId: "a" } },
+      viewportHeight: 300,
+    });
+
+    React.useLayoutEffect(() => {
+      onReady(model.grid);
+    }, [model.grid]);
+
+    return <output data-scroll-top={model.snapshot.viewport.scrollTop} />;
+  }
+
+  render(<Probe />);
+  const visibleRows = grid!.getSnapshot().visibleRows;
+  const membershipTraversal = vi.spyOn(visibleRows, "some");
+  const setFocus = vi.spyOn(grid!, "setFocus");
+  const viewport = grid!.getSnapshot().viewport;
+
+  act(() => {
+    grid!.setViewport({ ...viewport, scrollTop: viewport.scrollTop + 1 });
+  });
+
+  expect(grid!.getSnapshot().focus).toEqual({
+    rowId: "r1",
+    columnId: "a",
+  });
+  expect(membershipTraversal).not.toHaveBeenCalled();
+  expect(setFocus).not.toHaveBeenCalled();
+});
+
+it("does not call setFocus for matched fully null focus on viewport updates", () => {
+  let grid: PretableGrid<GridRow> | undefined;
+  const onReady = vi.fn((readyGrid: PretableGrid<GridRow>) => {
+    grid = readyGrid;
+  });
+
+  function Probe() {
+    const model = usePretable({
+      columns: gridColumns,
+      getRowId: getGridRowId,
+      overscan: 0,
+      rows: gridRows,
+      state: { focus: { rowId: null, columnId: null } },
+      viewportHeight: 300,
+    });
+
+    React.useLayoutEffect(() => {
+      onReady(model.grid);
+    }, [model.grid]);
+
+    return <output data-scroll-top={model.snapshot.viewport.scrollTop} />;
+  }
+
+  render(<Probe />);
+  const setFocus = vi.spyOn(grid!, "setFocus");
+  const viewport = grid!.getSnapshot().viewport;
+
+  act(() => {
+    grid!.setViewport({ ...viewport, scrollTop: viewport.scrollTop + 1 });
+  });
+
+  expect(grid!.getSnapshot().focus).toEqual({
+    rowId: null,
+    columnId: null,
+  });
+  expect(setFocus).not.toHaveBeenCalled();
+});
+
 describe("grouping DOM focus restoration", () => {
   it("focuses the new chip after grouping from a column menu", () => {
     const view = render(<GroupingFocusHarness />);
