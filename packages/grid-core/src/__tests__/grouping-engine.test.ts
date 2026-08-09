@@ -159,57 +159,6 @@ describe("setRowGroups", () => {
     expect(grid.getSnapshot()).toBe(first);
   });
 
-  test("keeps ungrouped all-visible row selections removable after grouping", () => {
-    const grid = makeGrid();
-    grid.setSelectAllVisible(true);
-
-    grid.setRowGroups(["sector"]);
-    grid.setSelectAllVisible(false);
-
-    expect(grid.getSnapshot().selection.ranges).toEqual([]);
-  });
-
-  test("keeps grouped row selections removable after ungrouping", () => {
-    const grid = makeGrid();
-    grid.setRowGroups(["sector"]);
-    grid.toggleRowSelection("h5");
-
-    grid.setRowGroups([]);
-    grid.toggleRowSelection("h5");
-
-    expect(grid.getSnapshot().selection.ranges).toEqual([]);
-  });
-
-  test("migrates reverse-direction full-row selections when grouping changes", () => {
-    const grid = makeGrid();
-    grid.setSelection({
-      ranges: [
-        {
-          startRowId: "h5",
-          endRowId: "h5",
-          startColumnId: "qty",
-          endColumnId: "sector",
-        },
-      ],
-      anchor: { rowId: "h5", columnId: "qty" },
-    });
-
-    grid.setRowGroups(["sector"]);
-
-    expect(grid.getSnapshot().selection.ranges).toEqual([
-      {
-        startRowId: "h5",
-        endRowId: "h5",
-        startColumnId: "qty",
-        endColumnId: GROUP_COLUMN_ID,
-      },
-    ]);
-
-    grid.toggleRowSelection("h5");
-
-    expect(grid.getSnapshot().selection.ranges).toEqual([]);
-  });
-
   test("snapshot.rowGroups is a defensive copy of engine state", () => {
     const grid = makeGrid();
 

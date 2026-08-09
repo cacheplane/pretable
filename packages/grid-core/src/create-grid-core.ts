@@ -1159,65 +1159,7 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
-      const previousColumns = getColumns();
-      const previousFirstColumn = previousColumns[0];
-      const previousLastColumn = previousColumns[previousColumns.length - 1];
       rowGroups = next;
-      const effectiveColumns = getColumns();
-      const firstColumn = effectiveColumns[0];
-      const lastColumn = effectiveColumns[effectiveColumns.length - 1];
-
-      if (
-        previousFirstColumn &&
-        previousLastColumn &&
-        firstColumn &&
-        lastColumn
-      ) {
-        const ranges = selection.ranges.map((range) =>
-          isFullRowRange(
-            range,
-            range.startRowId,
-            previousFirstColumn.id,
-            previousLastColumn.id,
-          )
-            ? {
-                ...range,
-                startColumnId:
-                  range.startColumnId === previousFirstColumn.id
-                    ? firstColumn.id
-                    : lastColumn.id,
-                endColumnId:
-                  range.endColumnId === previousLastColumn.id
-                    ? lastColumn.id
-                    : firstColumn.id,
-              }
-            : range,
-        );
-        const anchorRange = selection.anchor
-          ? selection.ranges.find((range) =>
-              isFullRowRange(
-                range,
-                selection.anchor!.rowId,
-                previousFirstColumn.id,
-                previousLastColumn.id,
-              ),
-            )
-          : undefined;
-        const anchor =
-          anchorRange && selection.anchor
-            ? {
-                ...selection.anchor,
-                columnId:
-                  selection.anchor.columnId === previousFirstColumn.id
-                    ? firstColumn.id
-                    : selection.anchor.columnId === previousLastColumn.id
-                      ? lastColumn.id
-                      : selection.anchor.columnId,
-              }
-            : selection.anchor;
-
-        selection = { ranges, anchor };
-      }
       // Expansion ids are path-derived, so changing the levels invalidates
       // them. v1 drops the whole set rather than trying to salvage prefixes.
       groupExpansionOverrides = new Set<string>();
@@ -1593,10 +1535,8 @@ function isFullRowRange(
   return (
     range.startRowId === rowId &&
     range.endRowId === rowId &&
-    ((range.startColumnId === firstColumnId &&
-      range.endColumnId === lastColumnId) ||
-      (range.startColumnId === lastColumnId &&
-        range.endColumnId === firstColumnId))
+    range.startColumnId === firstColumnId &&
+    range.endColumnId === lastColumnId
   );
 }
 
