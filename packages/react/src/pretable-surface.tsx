@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
   AutosizeOptions,
@@ -1898,7 +1899,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       aria-colcount={drawnColumns.length}
       aria-label={ariaLabel}
       aria-multiselectable="true"
-      aria-rowcount={snapshot.totalRowCount + 1}
+      aria-rowcount={snapshot.visibleRows.length + 1}
       data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
@@ -1935,6 +1936,19 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             onSelectionChange?.(after.selection);
           }
           event.preventDefault();
+          return;
+        }
+
+        // Header buttons own their keyboard interactions. In particular, Tab
+        // must retain its native focus behavior, while Enter/Space belong to
+        // the sort, filter, and column-menu controls rather than acting on a
+        // stale engine grid focus. Reorder and marquee Escape cancellation stay
+        // above this guard because those gestures remain surface-owned even
+        // when their originating pointer was in the header.
+        if (
+          event.target instanceof Element &&
+          event.target.closest("[data-pretable-header-row]")
+        ) {
           return;
         }
 
@@ -2151,15 +2165,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         ...viewportStyle,
       }}
     >
-      <div
-        aria-atomic="true"
-        aria-live="polite"
-        className="pt-sr-only"
-        data-pretable-live-region=""
-        role="status"
-      >
-        {liveMessage}
-      </div>
       <div
         aria-rowindex={1}
         data-pretable-header-row=""
@@ -2859,6 +2864,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           }
 
           const { height, id, row, rowIndex, top } = renderRow;
+          const visibleRow = snapshot.visibleRows[rowIndex];
+          const depth = visibleRow?.kind === "data" ? visibleRow.depth : 0;
           const isFocused = snapshot.focus.rowId === id;
           const isSelected = fullySelectedRowIds.has(id);
           const rowProps =
@@ -2873,6 +2880,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           return (
             <div
               {...rowProps}
+              aria-level={isGrouped ? depth + 1 : undefined}
               aria-rowindex={rowIndex + 2}
               onClick={(event) => {
                 // rowProps is spread above, so this would shadow a consumer's
@@ -3369,10 +3377,35 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     </div>
   );
 
+  // A status region is not a valid child of a grid/treegrid. Keep it outside
+  // the surface DOM entirely so the no-panel shape stays unchanged, and gate
+  // the portal with the same hydration signal as the interactive surface: the
+  // server and hydration render both omit it, then the client adds it safely.
+  const liveRegion =
+    hydrated && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            aria-atomic="true"
+            aria-live="polite"
+            className="pt-sr-only"
+            data-pretable-live-region=""
+            role="status"
+          >
+            {liveMessage}
+          </div>,
+          document.body,
+        )
+      : null;
+
   // Without the panel the surface IS the scroll viewport — no wrapper, so a
   // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
   if (!groupPanelEnabled) {
-    return scrollViewport;
+    return (
+      <>
+        {scrollViewport}
+        {liveRegion}
+      </>
+    );
   }
 
   // With it, the viewport keeps every attribute it had and gains a parent. The
@@ -3381,23 +3414,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // listbox of chips there is invalid ARIA) and `minWidth: totalWidth` on its
   // content, which would scroll the panel sideways with the data.
   return (
-    <div
-      data-pretable-group-panel-wrapper=""
-      style={getGroupPanelWrapperStyle(viewportHeight)}
-    >
-      <GroupPanel
-        containerRef={groupPanelRef}
-        // Only a header drag reports in from out here; the panel's own chip
-        // drag tracks its insertion index internally.
-        dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
-        emptyMessage={groupPanel?.emptyMessage}
-        height={groupPanelHeight}
-        labelForColumn={labelForColumn}
-        onChange={applyRowGroups}
-        rowGroups={snapshot.rowGroups}
-      />
-      {scrollViewport}
-    </div>
+    <>
+      <div
+        data-pretable-group-panel-wrapper=""
+        style={getGroupPanelWrapperStyle(viewportHeight)}
+      >
+        <GroupPanel
+          containerRef={groupPanelRef}
+          // Only a header drag reports in from out here; the panel's own chip
+          // drag tracks its insertion index internally.
+          dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
+          emptyMessage={groupPanel?.emptyMessage}
+          height={groupPanelHeight}
+          labelForColumn={labelForColumn}
+          onChange={applyRowGroups}
+          rowGroups={snapshot.rowGroups}
+        />
+        {scrollViewport}
+      </div>
+      {liveRegion}
+    </>
   );
 }
 

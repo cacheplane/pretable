@@ -108,6 +108,55 @@ describe("group row rendering", () => {
     expect(rows[1]).toHaveAttribute("aria-level", "2");
   });
 
+  it("exposes nested group levels and places their data leaves one level deeper", () => {
+    const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
+    const groups = [...groupRows(view)];
+    const dataRows = view
+      .getAllByTestId("pretable-row")
+      .filter((row) => row.hasAttribute("data-pretable-row"));
+
+    expect(groups.some((row) => row.getAttribute("aria-level") === "1")).toBe(
+      true,
+    );
+    expect(groups.some((row) => row.getAttribute("aria-level") === "2")).toBe(
+      true,
+    );
+    expect(dataRows).not.toHaveLength(0);
+    for (const row of dataRows) {
+      expect(row).toHaveAttribute("aria-level", "3");
+    }
+  });
+
+  it("counts expanded synthetic group rows in aria-rowcount", () => {
+    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+    const treegrid = view.getByRole("treegrid");
+
+    // Header + two synthetic groups + three data leaves.
+    expect(treegrid).toHaveAttribute("aria-rowcount", "6");
+  });
+
+  it("shrinks aria-rowcount when a grouped branch collapses", () => {
+    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+    const treegrid = view.getByRole("treegrid");
+
+    fireEvent.click(twistyOf(groupRows(view)[0]!)!);
+
+    // Header + two synthetic groups + the two leaves in the still-open branch.
+    expect(treegrid).toHaveAttribute("aria-rowcount", "5");
+  });
+
+  it("never renders an aria-rowindex beyond the declared aria-rowcount", () => {
+    const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
+    const treegrid = view.getByRole("treegrid");
+    const rowCount = Number(treegrid.getAttribute("aria-rowcount"));
+    const renderedIndices = [
+      ...treegrid.querySelectorAll<HTMLElement>("[role='row'][aria-rowindex]"),
+    ].map((row) => Number(row.getAttribute("aria-rowindex")));
+
+    expect(renderedIndices).not.toHaveLength(0);
+    expect(Math.max(...renderedIndices)).toBeLessThanOrEqual(rowCount);
+  });
+
   it("switches the root role to treegrid only while grouped", () => {
     const view = render(<Grid state={{ rowGroups: [] }} />);
     expect(view.getByRole("grid")).toBeInTheDocument();

@@ -4,6 +4,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  screen,
   waitFor,
   within,
 } from "@testing-library/react";
@@ -1030,6 +1031,7 @@ const gridRows: GridRow[] = [
 ];
 
 interface RenderHarnessOpts {
+  groupPanel?: boolean;
   initialState?: PretableSurfaceState;
   onSelectionChange?: (next: PretableSelectionState) => void;
   onFocusChange?: (next: PretableFocusState) => void;
@@ -1045,6 +1047,7 @@ function renderHarness(opts: RenderHarnessOpts = {}) {
       ariaLabel="test-grid"
       columns={gridColumns}
       getRowId={(row: GridRow) => row.id}
+      groupPanel={opts.groupPanel ? { enabled: true } : undefined}
       onFocusChange={opts.onFocusChange}
       onSelectedRowIdChange={opts.onSelectedRowIdChange}
       onSelectionChange={opts.onSelectionChange}
@@ -1422,6 +1425,79 @@ describe("keyboard contract", () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
+  it.each([
+    {
+      kind: "sort button",
+      role: "columnheader" as const,
+      name: "Sort A",
+      key: "Tab",
+    },
+    {
+      kind: "sort button",
+      role: "columnheader" as const,
+      name: "Sort A",
+      key: "Enter",
+    },
+    {
+      kind: "sort button",
+      role: "columnheader" as const,
+      name: "Sort A",
+      key: " ",
+    },
+    {
+      kind: "column menu button",
+      role: "button" as const,
+      name: "Column menu for A",
+      key: "Tab",
+    },
+    {
+      kind: "column menu button",
+      role: "button" as const,
+      name: "Column menu for A",
+      key: "Enter",
+    },
+    {
+      kind: "column menu button",
+      role: "button" as const,
+      name: "Column menu for A",
+      key: " ",
+    },
+  ])("$kind keeps native ownership of $key", ({ role, name, key }) => {
+    const onFocusChange = vi.fn();
+    const onSelectionChange = vi.fn();
+    const onSelectedRowIdChange = vi.fn();
+    const view = renderHarness({
+      groupPanel: true,
+      onFocusChange,
+      onSelectedRowIdChange,
+      onSelectionChange,
+    });
+    seedFocus(view, "r1", "a");
+    onFocusChange.mockClear();
+    onSelectionChange.mockClear();
+    onSelectedRowIdChange.mockClear();
+    const button = view.getByRole(role, { name });
+    button.focus();
+    const event = new KeyboardEvent("keydown", {
+      key,
+      bubbles: true,
+      cancelable: true,
+    });
+
+    button.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(button);
+    expect(getCell(view, "r1", "a")).toHaveAttribute(
+      "data-pretable-focused",
+      "true",
+    );
+    expect(getSelectedCells(view)).toHaveLength(1);
+    expect(onFocusChange).not.toHaveBeenCalled();
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(onSelectedRowIdChange).not.toHaveBeenCalled();
+  });
+
   it("Cmd+A selects every cell in the grid", () => {
     const view = renderHarness();
     seedFocus(view, "r1", "a");
@@ -1781,6 +1857,24 @@ describe("ARIA grid attributes", () => {
     expect(grid).toHaveAttribute("aria-rowcount", String(gridRows.length + 1));
     expect(grid).toHaveAttribute("aria-colcount", String(gridColumns.length));
     expect(grid).toHaveAttribute("aria-label", "test-grid");
+  });
+
+  it("counts only currently visible filtered rows plus the header", () => {
+    const view = renderHarness({
+      initialState: {
+        filters: { a: { operator: "contains", value: "a1" } },
+      },
+    });
+
+    expect(view.getByRole("grid")).toHaveAttribute("aria-rowcount", "2");
+  });
+
+  it("omits aria-level from ungrouped data rows", () => {
+    const view = renderHarness();
+
+    for (const row of view.getAllByTestId("pretable-row")) {
+      expect(row).not.toHaveAttribute("aria-level");
+    }
   });
 
   it("Cmd+A marks every body cell with aria-selected=true", () => {
@@ -3132,7 +3226,7 @@ function renderAnnounceHarness(opts: RenderAnnounceHarnessOpts = {}) {
 }
 
 function getLiveRegion(view: ReturnType<typeof render>) {
-  return view.container.querySelector(
+  return view.baseElement.querySelector(
     "[data-pretable-live-region]",
   ) as HTMLDivElement | null;
 }
@@ -3185,6 +3279,29 @@ describe("aria-live announcements", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("portals the status region outside the treegrid", () => {
+    renderGroupedAnnounceHarness();
+    const treegrid = screen.getByRole("treegrid");
+    const status = screen.getByRole("status");
+
+    expect(treegrid.contains(status)).toBe(false);
+    expect(status).toHaveAttribute("data-pretable-live-region");
+  });
+
+  it("keeps status regions independent and removes each one on unmount", () => {
+    const first = renderAnnounceHarness();
+    const second = renderGroupedAnnounceHarness();
+    const [firstStatus, secondStatus] = screen.getAllByRole("status");
+
+    expect(firstStatus).not.toBe(secondStatus);
+    first.unmount();
+    expect(firstStatus).not.toBeInTheDocument();
+    expect(screen.getAllByRole("status")).toEqual([secondStatus]);
+
+    second.unmount();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("Cmd+A announces 'All rows selected' after the debounce window", () => {
@@ -5428,7 +5545,7 @@ describe("announcements count the drawn column order", () => {
     // Two columns are highlighted on screen, and #226 already makes the copied
     // TSV two columns wide — the announcement has to agree with both.
     expect(
-      view.container.querySelector("[data-pretable-live-region]"),
+      view.baseElement.querySelector("[data-pretable-live-region]"),
     ).toHaveTextContent("1 rows × 2 columns copied");
   });
 });
