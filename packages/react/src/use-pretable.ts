@@ -6,6 +6,7 @@ import {
   type PretableGrid,
   type PretableGridOptions,
   type PretableGridSnapshot,
+  type PretableGroupColumnOptions,
   type PretableGroupRow,
   type PretableRow,
   type PretableSelectionState,
@@ -147,10 +148,14 @@ export interface PretableSurfaceState {
  * @public
  */
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
+  aggregateFilteredRows?: boolean;
   autosize?: boolean | AutosizeOptions;
   columns: PretableColumn<TRow>[];
+  groupsDefaultExpanded?: boolean;
+  groupColumn?: PretableGroupColumnOptions;
   rows: TRow[];
   getRowId?: PretableGridOptions<TRow>["getRowId"];
+  hideGroupedColumns?: boolean;
   viewportHeight: number;
   viewportWidth?: number;
   overscan?: number;
@@ -191,10 +196,14 @@ export interface PretableModel<TRow extends PretableRow = PretableRow> {
  * @public
  */
 export function usePretable<TRow extends PretableRow = PretableRow>({
+  aggregateFilteredRows,
   autosize,
   columns,
+  groupsDefaultExpanded,
+  groupColumn,
   rows,
   getRowId,
+  hideGroupedColumns,
   viewportHeight,
   viewportWidth,
   overscan = 6,
@@ -203,6 +212,29 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   onSelectionChange,
   onFocusChange,
 }: UsePretableOptions<TRow>): PretableModel<TRow> {
+  const groupColumnHeader = groupColumn?.header;
+  const groupColumnWidthPx = groupColumn?.widthPx;
+  const groupColumnPinned = groupColumn?.pinned;
+  const stableGroupColumn = useMemo<PretableGroupColumnOptions | undefined>(
+    () =>
+      groupColumnHeader === undefined &&
+      groupColumnWidthPx === undefined &&
+      groupColumnPinned === undefined
+        ? undefined
+        : {
+            ...(groupColumnHeader === undefined
+              ? {}
+              : { header: groupColumnHeader }),
+            ...(groupColumnWidthPx === undefined
+              ? {}
+              : { widthPx: groupColumnWidthPx }),
+            ...(groupColumnPinned === undefined
+              ? {}
+              : { pinned: groupColumnPinned }),
+          },
+    [groupColumnHeader, groupColumnWidthPx, groupColumnPinned],
+  );
+
   // getRowId may be an inline closure that changes identity every render. Wrap
   // it in a stable function so it never forces the grid — and the selection /
   // focus state it holds — to be recreated. Mirrors createSourceRows' default.
@@ -221,9 +253,26 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   // survive high-frequency row updates (streaming) — and survive an inline
   // `columns={[...]}`, which is a new identity on every render.
   const grid = useMemo(
-    () => createGrid({ columns, rows, getRowId: stableGetRowId, autosize }),
+    () =>
+      createGrid({
+        aggregateFilteredRows,
+        autosize,
+        columns,
+        groupsDefaultExpanded,
+        groupColumn: stableGroupColumn,
+        getRowId: stableGetRowId,
+        hideGroupedColumns,
+        rows,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above
-    [autosize, stableGetRowId],
+    [
+      aggregateFilteredRows,
+      autosize,
+      groupsDefaultExpanded,
+      hideGroupedColumns,
+      stableGetRowId,
+      stableGroupColumn,
+    ],
   );
 
   // Reconcile streamed row updates into the existing grid (instead of recreating

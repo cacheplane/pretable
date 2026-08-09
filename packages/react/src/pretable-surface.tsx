@@ -24,6 +24,7 @@ import type {
   PretableGrid,
   PretableGridOptions,
   PretableGridSnapshot,
+  PretableGroupColumnOptions,
   PretableRow,
   PretableSelectionState,
   PretableSortEntry,
@@ -345,9 +346,12 @@ interface PretableSurfaceRowAttributesInput<
  * @public
  */
 export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
+  aggregateFilteredRows?: boolean;
   ariaLabel: string;
   autosize?: boolean | AutosizeOptions;
   columns: PretableColumn<TRow>[];
+  groupsDefaultExpanded?: boolean;
+  groupColumn?: PretableGroupColumnOptions;
   getBodyCellClassName?: (
     input: PretableSurfaceBodyCellClassNameInput<TRow>,
   ) => string | undefined;
@@ -364,6 +368,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     input: PretableSurfaceRowClassNameInput<TRow>,
   ) => string | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
+  hideGroupedColumns?: boolean;
   getRowProps?: (
     input: PretableSurfaceRowAttributesInput<TRow>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
@@ -655,15 +660,19 @@ const EMPTY_ROW_IDS: string[] = [];
  */
 
 export function PretableSurface<TRow extends PretableRow = PretableRow>({
+  aggregateFilteredRows,
   ariaLabel,
   autosize,
   columns,
+  groupsDefaultExpanded,
+  groupColumn,
   getBodyCellClassName,
   getBodyCellProps,
   getHeaderCellClassName,
   getHeaderCellProps,
   getRowClassName,
   getRowId,
+  hideGroupedColumns,
   getRowProps,
   state,
   overscan = 6,
@@ -848,9 +857,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     return [synth, ...columns];
   }, [columns, rowSelectEnabled, rowSelectWidth, rowSelectPinned]);
   const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
+    aggregateFilteredRows,
     autosize,
     columns: effectiveColumns,
     getRowId,
+    groupColumn,
+    groupsDefaultExpanded,
+    hideGroupedColumns,
     state: state ?? undefined,
     measuredHeights,
     overscan,
