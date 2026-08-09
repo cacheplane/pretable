@@ -1,7 +1,7 @@
 # Incremental local row model design
 
 **Date:** 2026-08-09  
-**Status:** Approved in conversation; pending independent spec review  
+**Status:** Approved in conversation and independent spec review
 **Scope:** Replace Pretable's full local derived-row recomputation with a
 persistent indexed row model, migrate the grid and React renderer to windowed
 access, and prove grouped streaming at 100,000 local rows. A remote transport
