@@ -248,9 +248,7 @@ describe("mergeColumnsFromProps grouping semantics", () => {
       COLUMNS[2]!,
     ]);
 
-    const expectedEnergy = makeGroupId([
-      { columnId: "sector", value: "E" },
-    ]);
+    const expectedEnergy = makeGroupId([{ columnId: "sector", value: "E" }]);
     const expectedTech = makeGroupId([{ columnId: "sector", value: "T" }]);
     const snapshot = grid.getSnapshot();
     expect(
