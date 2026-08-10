@@ -212,6 +212,31 @@ describe("grid.css cascade contract", () => {
     expect(css).not.toMatch(/data-pretable-numeric/);
   });
 
+  test("the selected-cell rule sets color only, not background", () => {
+    // @pretable/react sets `aria-selected` and `data-pretable-selected` from
+    // the same condition, and :where([role="gridcell"][aria-selected="true"])
+    // follows this rule at equal (0,0,0) specificity — so a `background` here
+    // has never painted. The `color` line HAS: nothing else sets a color on a
+    // selected cell.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\[data-pretable-cell\]\[data-pretable-selected="true"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no selected-cell rule found").toBeDefined();
+    expect(rule).toMatch(/color:\s*var\(--pretable-text-selected\)/);
+    expect(rule).not.toMatch(/background/);
+  });
+
+  test("grid.css styles no element the surface cannot emit", () => {
+    // [data-pretable-toolbar] and [data-pretable-status-bar] were styled from
+    // day one and are emitted by nothing in @pretable/react — verified by grep
+    // across every .ts/.tsx/.mdx in the repo. Dead skin invites consumers to
+    // target a contract that does not exist.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).not.toMatch(/data-pretable-toolbar/);
+    expect(css).not.toMatch(/data-pretable-status-bar/);
+  });
+
   test("every grid.css rule selector is wrapped in :where()", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");

@@ -223,9 +223,13 @@
       var(--pretable-rule-vertical, var(--pretable-rule));
   }
 
-  /* Selection — wins over zebra/hover via source order (they precede it) */
+  /* Selection text color. The selection FILL is drawn by the
+     [role="gridcell"][aria-selected="true"] rule below: @pretable/react sets
+     `aria-selected` and `data-pretable-selected` from the same condition, and
+     that rule follows this one at equal (0,0,0) specificity, so a `background`
+     declared here could never win. Only the color is load-bearing — nothing
+     else sets a color on a selected cell. */
   :where([data-pretable-cell][data-pretable-selected="true"]) {
-    background: var(--pretable-bg-selected);
     color: var(--pretable-text-selected);
   }
 
@@ -284,14 +288,6 @@
     [data-pretable-cell][data-pretable-type="date"]
   ) {
     font-variant-numeric: tabular-nums lining-nums;
-  }
-
-  /* Toolbar / status bar — applied if engine wraps in named data attribute */
-  :where([data-pretable-toolbar], [data-pretable-status-bar]) {
-    background: var(--pretable-bg-toolbar);
-    color: var(--pretable-text-dim);
-    font-family: var(--pretable-font-sans);
-    font-size: var(--pretable-font-size-cell);
   }
 
   /* Row-selection checkbox column (Phase 4) */
