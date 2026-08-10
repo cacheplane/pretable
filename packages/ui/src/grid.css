@@ -249,12 +249,41 @@
     box-shadow: inset 0 0 0 2px var(--pretable-focus-ring);
   }
 
-  /* Numeric cells (opt-in via [data-pretable-numeric="true"]) */
-  :where([data-pretable-cell][data-pretable-numeric="true"]) {
-    font-family: var(--pretable-font-mono);
-    text-align: right;
-    justify-content: flex-end;
-    font-variant-numeric: tabular-nums;
+  /* Column alignment.
+     `justify-content`, not `text-align`: cells are flex containers and an
+     unwrapped value is an anonymous flex item, which text-align cannot move.
+     `safe`, not bare `flex-end`: with `overflow: hidden` and `nowrap`, a value
+     wider than its column would otherwise overflow and be clipped at its
+     LEADING edge — 1,234,567 renders as a legible, plausible, wrong 34,567.
+     `safe` degrades to start-alignment in exactly that case, so the truncation
+     stays visible at the trailing edge where a reader expects it.
+     Group cells are excluded: they own the twisty indent. */
+  :where(
+    [data-pretable-cell][data-pretable-align="end"]:not(
+        [data-pretable-group-cell]
+      ),
+    [data-pretable-header-cell][data-pretable-align="end"]
+  ) {
+    justify-content: safe flex-end;
+  }
+
+  :where(
+    [data-pretable-cell][data-pretable-align="center"]:not(
+        [data-pretable-group-cell]
+      ),
+    [data-pretable-header-cell][data-pretable-align="center"]
+  ) {
+    justify-content: safe center;
+  }
+
+  /* Tabular, lining figures so digits line up down the column and share a
+     common height. Deliberately NOT a font-family switch — one family
+     throughout; the numerals do the aligning. */
+  :where(
+    [data-pretable-cell][data-pretable-type="number"],
+    [data-pretable-cell][data-pretable-type="date"]
+  ) {
+    font-variant-numeric: tabular-nums lining-nums;
   }
 
   /* Toolbar / status bar — applied if engine wraps in named data attribute */

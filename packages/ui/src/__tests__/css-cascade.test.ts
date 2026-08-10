@@ -188,6 +188,30 @@ describe("grid.css cascade contract", () => {
     expect(cellRule).toMatch(/overflow:\s*hidden/);
   });
 
+  test("alignment uses justify-content, and the trailing edge is safe", () => {
+    // Cells are flex containers (`display: flex`) and an unwrapped cell value is
+    // an anonymous flex item, which `text-align` cannot move — only
+    // `justify-content` can. And plain `flex-end` clips an over-wide value at
+    // its LEADING edge under `overflow: hidden`, rendering 1,234,567 as a
+    // legible, plausible, WRONG 34,567. `safe` falls back to start-alignment
+    // rather than overflowing the start edge.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\s*\[data-pretable-cell\]\[data-pretable-align="end"\][\s\S]*?\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no align=end rule found").toBeDefined();
+    expect(rule).toMatch(/justify-content:\s*safe flex-end/);
+    expect(rule).not.toMatch(/text-align/);
+  });
+
+  test("numeric and date cells get tabular figures without changing family", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums/);
+    // The old rule swapped in the mono stack, which put a typographic seam down
+    // every numeric column. One family throughout; the numerals do the aligning.
+    expect(css).not.toMatch(/data-pretable-numeric/);
+  });
+
   test("every grid.css rule selector is wrapped in :where()", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
