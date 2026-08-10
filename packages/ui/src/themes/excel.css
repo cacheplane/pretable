@@ -36,6 +36,7 @@
   --pretable-rule-vertical: var(--pretable-rule);
   --pretable-rule-width: 1px;
   --pretable-radius: 0; /* Sharp edges — Excel never rounds */
+  --pretable-radius-control: 0; /* Buttons and menu items don't round either */
 
   /* State */
   --pretable-bg-hover: transparent; /* No row hover — iconic Excel; consumers opt in */

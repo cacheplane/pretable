@@ -126,6 +126,18 @@ describe("grid.css cascade contract", () => {
     expect(rule).toMatch(/background:\s*transparent/);
   });
 
+  test("small controls use the control radius, surfaces use the card radius", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const funnel = css.match(
+      /:where\(\[data-pretable-filter-funnel\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(funnel).toMatch(/border-radius:\s*var\(--pretable-radius-control\)/);
+    const viewport = css.match(
+      /:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(viewport).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
+  });
+
   test("grid.css styles the enum combobox listbox", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]\)/);

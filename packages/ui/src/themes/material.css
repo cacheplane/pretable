@@ -35,6 +35,10 @@
   --pretable-rule-vertical: var(--pretable-rule);
   --pretable-rule-width: 1px;
   --pretable-radius: 12px; /* M3 medium shape scale (matches Card) */
+  /* Small affordances need their own step: the card radius applied to a 14–18px
+     control (funnel, ⋮ button, chip remove) rounds it into a circle. M3 small
+     shape scale. */
+  --pretable-radius-control: 6px;
 
   /* State */
   --pretable-bg-hover: rgba(

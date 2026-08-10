@@ -18,6 +18,7 @@ const TOKENS = [
   "pretable-rule-vertical",
   "pretable-rule-width",
   "pretable-radius",
+  "pretable-radius-control",
   "pretable-bg-hover",
   "pretable-bg-selected",
   "pretable-text-selected",
