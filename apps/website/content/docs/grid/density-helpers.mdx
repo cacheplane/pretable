@@ -39,13 +39,13 @@ If neither argument nor CSS variable resolves to a `<number>px` value, the hook 
 | Variable                   | Fallback |
 | -------------------------- | -------- |
 | `--pretable-row-height`    | `32`     |
-| `--pretable-header-height` | `52`     |
+| `--pretable-header-height` | `36`     |
 
-The header-height fallback matches the legacy `HEADER_HEIGHT` constant the engine used before the theming bridge landed, so unmigrated apps see no behavior change. The row-height fallback is conservative (between Excel's 20px compact and Material's 48px standard).
+These fallbacks match `@pretable/ui`'s density snapshot contract and provide deterministic geometry when CSS cannot be read, including during server rendering and the browser hydration pass.
 
 ### SSR safety
 
-The hook is SSR-safe. On the server (where `document` is undefined), the snapshot returns the fallback values without DOM access. After hydration on the client, the `MutationObserver` subscribes and the hook returns CSS-resolved values.
+The hook is SSR-safe. During server rendering and the browser hydration pass, it uses explicit prop overrides or deterministic fallbacks so the geometry matches. Immediately after hydration, the client snapshot adopts CSS-resolved values. Later theme or density changes are observed through `MutationObserver`.
 
 ### Used internally
 
