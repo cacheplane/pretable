@@ -706,6 +706,13 @@ export async function measureBenchUpdatesRun(
     });
   };
 
+  // Window markers for scripts/analyze-cdp.mjs --window=streaming. Without
+  // them a streaming trace can only be read whole, and the whole is dominated
+  // by initial mount — which is not what this script measures. Two
+  // performance.mark calls across a 3 s run; the metrics themselves are
+  // computed from frameDurations and are untouched by them.
+  performance.mark("pretable.streaming.start");
+
   tickRaf();
 
   try {
@@ -756,6 +763,7 @@ export async function measureBenchUpdatesRun(
     cancelAnimationFrame(rafHandle.id);
     observer?.disconnect();
     layoutShiftObserver?.disconnect();
+    performance.mark("pretable.streaming.end");
   }
 
   const domNodesPeak = root.querySelectorAll("*").length;
