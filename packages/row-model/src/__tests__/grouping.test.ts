@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   createColumnHelper,
   createLocalRowModel,
+  isPretableGroupKey,
   type PretableAggregator,
   type PretableGroupId,
 } from "../index";
@@ -465,6 +466,108 @@ describe("incremental grouped row model", () => {
           cause: expect.any(TypeError),
         }),
       );
+    },
+  );
+
+  test("recognizes genuine Dates without accepting Date proxies or spoofs", () => {
+    const trap = new Error("brand trap");
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf: () => {
+          throw trap;
+        },
+      },
+    );
+    const dateProxy = new Proxy(new Date(0), {});
+    const dateSpoof = Object.create(Date.prototype);
+
+    expect(isPretableGroupKey(new Date(0))).toBe(true);
+    expect(isPretableGroupKey(dateProxy)).toBe(false);
+    expect(isPretableGroupKey(dateSpoof)).toBe(false);
+    expect(() => isPretableGroupKey(hostile)).not.toThrow();
+    expect(isPretableGroupKey(hostile)).toBe(false);
+  });
+
+  test.each([
+    ["construction", "set-rows"],
+    ["transaction", "apply-transaction"],
+    ["query transition", "set-query"],
+  ] as const)(
+    "wraps a hostile Proxy group key during %s",
+    (scenario, operation) => {
+      interface HostileKeyRow {
+        id: number;
+        key: unknown;
+      }
+      const trap = new Error(`${scenario} getPrototypeOf exploded`);
+      const key = new Proxy(
+        {},
+        {
+          getPrototypeOf: () => {
+            throw trap;
+          },
+        },
+      );
+      const hostileHelper = createColumnHelper<HostileKeyRow>();
+      const hostileColumns = [
+        hostileHelper.accessor("key", { type: "text" }),
+      ] as const;
+      const groupedQuery = {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "key" }],
+      } as never;
+      let before: unknown;
+      const listener = vi.fn<() => void>();
+      let getState: (() => unknown) | undefined;
+      const action = (() => {
+        if (scenario === "construction") {
+          return () =>
+            createLocalRowModel({
+              rows: [{ id: 7, key }],
+              columns: hostileColumns,
+              query: groupedQuery,
+            });
+        }
+        const model = createLocalRowModel({
+          rows: [{ id: 7, key: "supported" }],
+          columns: hostileColumns,
+          ...(scenario === "transaction" ? { query: groupedQuery } : {}),
+        });
+        before = model.getState();
+        getState = () => model.getState();
+        model.subscribe(listener);
+        if (scenario === "transaction") {
+          return () =>
+            model.applyTransaction({
+              update: [{ id: 7, changes: { key } }],
+            });
+        }
+        model.setRows([{ id: 7, key }]);
+        before = model.getState();
+        listener.mockClear();
+        return () => model.setQuery(groupedQuery);
+      })();
+
+      let caught: unknown;
+      try {
+        action();
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toMatchObject({
+        code: "invalid-group-key",
+        operation,
+        rowId: 7,
+        columnId: "key",
+      });
+      expect((caught as { readonly value?: unknown }).value).toBe(key);
+      expect((caught as Error).cause).toBe(trap);
+      if (scenario !== "construction") {
+        expect(listener).not.toHaveBeenCalled();
+        expect(getState?.()).toBe(before);
+      }
     },
   );
 

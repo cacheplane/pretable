@@ -142,15 +142,23 @@ export class PretableInvalidGroupKeyError extends PretableRowModelError {
 
 /** Runtime complement to the wholly-assignable `PretableRowGroupFor` check. */
 export function isPretableGroupKey(value: unknown): value is PretableGroupKey {
-  return (
+  if (
     value === null ||
     value === undefined ||
     typeof value === "string" ||
     typeof value === "number" ||
     typeof value === "bigint" ||
-    typeof value === "boolean" ||
-    value instanceof Date
-  );
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (typeof value !== "object") return false;
+  try {
+    Date.prototype.getTime.call(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export type PretableTransitionCancellationReason =

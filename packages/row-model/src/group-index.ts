@@ -1,7 +1,6 @@
 import type { CompiledGroupKey, CompiledQuery } from "./compiled-query";
 import type { PretableRowId } from "./column-types";
 import {
-  isPretableGroupKey,
   PretableInvalidGroupKeyError,
   PretableRowModelError,
   type PretableRowModelOperation,
@@ -236,14 +235,6 @@ export function encodeGroupValue(
   value: unknown,
   context?: GroupKeyErrorContext,
 ): string {
-  if (!isPretableGroupKey(value)) {
-    throw new PretableInvalidGroupKeyError(
-      context?.operation ?? "set-query",
-      context?.rowId,
-      context?.columnId ?? "<unknown>",
-      value,
-    );
-  }
   if (value === null || value === undefined) return "~";
   if (typeof value === "string") return `s:${value}`;
   if (typeof value === "number") {
@@ -253,20 +244,32 @@ export function encodeGroupValue(
   }
   if (typeof value === "boolean") return `b:${String(value)}`;
   if (typeof value === "bigint") return `i:${String(value)}`;
-  if (value instanceof Date) {
-    let time: number;
+  if (typeof value === "object") {
     try {
-      time = value.getTime();
-    } catch (cause) {
+      const time = Date.prototype.getTime.call(value);
+      return Number.isNaN(time) ? "d:Invalid" : `d:${String(time)}`;
+    } catch (brandCause) {
+      // A guarded prototype walk preserves a hostile Proxy's exact trap as
+      // context without ever accepting Date proxies or prototype spoofs.
+      try {
+        void (value instanceof Date);
+      } catch (cause) {
+        throw new PretableInvalidGroupKeyError(
+          context?.operation ?? "set-query",
+          context?.rowId,
+          context?.columnId ?? "<unknown>",
+          value,
+          cause,
+        );
+      }
       throw new PretableInvalidGroupKeyError(
         context?.operation ?? "set-query",
         context?.rowId,
         context?.columnId ?? "<unknown>",
         value,
-        cause,
+        brandCause,
       );
     }
-    return Number.isNaN(time) ? "d:Invalid" : `d:${String(time)}`;
   }
   throw new PretableInvalidGroupKeyError(
     context?.operation ?? "set-query",
