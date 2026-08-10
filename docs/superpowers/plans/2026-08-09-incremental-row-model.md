@@ -25,7 +25,7 @@ This is one project, not several independent plans: persistent data structures,
 the model, grid ownership, indexed layout, React, and the browser gate form one
 dependency chain. Each task below leaves the repository buildable and has its
 own commit. Temporary side-by-side internals are permitted only during the
-migration; no compatibility API or materializing adapter survives Task 24.
+migration; no compatibility API or materializing adapter survives Task 23.
 
 ## Locked implementation decisions
 
@@ -193,12 +193,15 @@ migration; no compatibility API or materializing adapter survives Task 24.
 - Modify: `packages/core/tsup.config.ts`
 - Modify: `pnpm-lock.yaml`
 
-- [ ] **Step 1: Write compile-time and runtime contract tests first.**
+- [ ] **Step 1: Create the package shell and write compile-time contract tests.**
 
-  Cover `TRow extends object`, string/number IDs, the opaque carrier,
-  `RowOf/RowIdOf/ColumnsOf`, discriminated visible refs, range clamping,
-  missing `indexOf = -1`, status, mutation result/issues, query and derivation
-  transitions, expansion policy, exact change operations, and disposal.
+  Create `package.json` with working `test`, `build`, and `typecheck` scripts
+  before invoking pnpm, plus the two tsconfigs and a test that imports the still-
+  missing contract. Cover `TRow extends object`, string/number IDs, the opaque
+  carrier, `RowOf/RowIdOf/ColumnsOf`, discriminated visible refs, status,
+  mutation result/issues, query and derivation transitions, expansion policy,
+  exact change operations, and disposal signatures. Runtime range/lifecycle
+  behavior belongs to Task 7 after a model exists.
 
   Representative fixture:
 
@@ -225,9 +228,10 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
 - [ ] **Step 2: Run RED.**
 
-  Run: `pnpm --filter @pretable-internal/row-model test`
+  Run: `pnpm --filter @pretable-internal/row-model --fail-if-no-match test`
 
-  Expected: FAIL because the package/contracts do not exist.
+  Expected: the package is matched and the fixture FAILS on missing exports;
+  zero executed test files is not an acceptable RED result.
 
 - [ ] **Step 3: Add the minimal complete contract.**
 
@@ -335,24 +339,32 @@ migration; no compatibility API or materializing adapter survives Task 24.
 **Files:**
 
 - Create: `packages/row-model/src/persistent/aggregate-tree.ts`
+- Create: `packages/row-model/src/aggregator-law.ts`
 - Create: `packages/row-model/src/__tests__/aggregate-tree.test.ts`
+- Create: `packages/row-model/src/__tests__/aggregator-law.test.ts`
 - Modify: `packages/row-model/src/index.ts`
 
 - [ ] **Step 1: Write failing aggregate tests.**
 
   Cover insert/remove/replace, empty identity, logarithmic merge counts,
   filtered/all populations, built-in sum/avg/min/max/count, a custom monoid,
-  and old-root immutability.
+  and old-root immutability. Add a deliberately invalid custom aggregator whose
+  sequential fold differs from merged one-row partitions; assert development
+  validation reports its column ID and suppresses duplicate warnings.
 
 - [ ] **Step 2: Run RED.**
 
-  Run: `pnpm --filter @pretable-internal/row-model exec vitest run src/__tests__/aggregate-tree.test.ts`
+  Run: `pnpm --filter @pretable-internal/row-model exec vitest run src/__tests__/aggregate-tree.test.ts src/__tests__/aggregator-law.test.ts`
 
 - [ ] **Step 3: Implement rollups over the order tree.**
 
   Each leaf stores the accumulator produced from one row. Internal nodes cache
   `merge(left, self, right)`. Keep finalized output outside tree comparison and
-  reuse it by identity while its accumulator root is unchanged.
+  reuse it by identity while its accumulator root is unchanged. In development,
+  retain at most eight representative leaf samples per custom aggregator and
+  compare `finalize(sequential accumulate)` with `finalize(merge(one-row
+accumulators))`; emit one structured diagnostic on mismatch. Production
+  builds contain no sampling or comparison path.
 
 - [ ] **Step 4: Run GREEN.**
 
@@ -408,6 +420,7 @@ migration; no compatibility API or materializing adapter survives Task 24.
 **Files:**
 
 - Create: `packages/row-model/src/internal-types.ts`
+- Create: `packages/row-model/src/row-integrity.ts`
 - Create: `packages/row-model/src/row-store.ts`
 - Create: `packages/row-model/src/visible-index.ts`
 - Create: `packages/row-model/src/create-local-row-model.ts`
@@ -421,7 +434,19 @@ migration; no compatibility API or materializing adapter survives Task 24.
   `rowAt`/`dataRowAt`/`range`/`indexOf`, first/last/next/previous data rows,
   clamping, absent sentinels, number IDs, equal text between a data ID and a
   synthetic group ID, duplicate-ID rejection, and no notification during
-  construction.
+  construction. Add the full disposal contract: the first disposal publishes
+  exactly one final `disposed` state, detaches current listeners, later
+  subscriptions return inert idempotent unsubscribers, repeated disposal is a
+  no-op, `getState` and captured snapshots remain readable, and every mutation,
+  query, derivation, expansion, distinct-value, and change command throws the
+  structured disposed-model error (commands added later repeat this assertion
+  in their own suites).
+
+  Add row-integrity tests proving development ingestion shallow-freezes
+  extensible row objects before publication. For non-extensible/proxied rows,
+  store a shallow own-key/value fingerprint; if `setRows` receives the same
+  reference with a changed fingerprint, emit one structured diagnostic and
+  reevaluate it rather than treating it as unchanged.
 
 - [ ] **Step 2: Run RED.**
 
@@ -446,6 +471,8 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
   Snapshot methods close over one root. Public data/group row objects are
   memoized in row/group records and reused while observable fields are equal.
+  `row-integrity.ts` owns development-only shallow freeze/fingerprint behavior;
+  production assumes the documented immutable-row contract and adds no scans.
 
 - [ ] **Step 4: Run GREEN and typecheck.**
 
@@ -474,13 +501,15 @@ migration; no compatibility API or materializing adapter survives Task 24.
   Assert add/update/remove, partial merge, repeated-update coalescing, unknown
   issues, cross-list conflict, duplicate add, accessor failure rollback,
   monotonic source order, one revision/notification, no-op suppression, and
-  unchanged captured snapshots.
+  unchanged captured snapshots. After disposal, `applyTransaction` throws the
+  shared structured disposed-model error and publishes no further notification.
 
 - [ ] **Step 2: Write flat query and `setRows` RED tests.**
 
   Cover filter entry/exit, multi-sort and stable ties, sort-key moves, typed
   query state, same-reference reuse, changed-reference reevaluation, one ID
-  scan, reordered source positions, and atomic duplicate rejection.
+  scan, reordered source positions, and atomic duplicate rejection. After
+  disposal, `setRows` throws the shared disposed-model error.
 
 - [ ] **Step 3: Run RED.**
 
@@ -526,6 +555,8 @@ migration; no compatibility API or materializing adapter survives Task 24.
   Cover collapsed/expanded/through-depth defaults, inclusive zero-based depth,
   sparse overrides, override removal when it equals the default, unknown group
   issues, future groups, and O(1)-style expand/collapse-all policy changes.
+  After disposal, every expansion command and `setDerivations` throws the shared
+  disposed-model error.
 
 - [ ] **Step 3: Run RED.**
 
@@ -565,7 +596,9 @@ migration; no compatibility API or materializing adapter survives Task 24.
   Assert exact sequential insert/remove/move/update indices, aggregate/count
   updates, parent/current revisions, ordered multi-row changes, bounded
   eviction, unknown revision, bulk replacement, no entry on failure/no-op,
-  and independence from retained snapshot roots.
+  and independence from retained snapshot roots. The final disposed state is
+  readable, but any command that requests or advances consumer change history
+  after disposal throws the shared disposed-model error.
 
 - [ ] **Step 2: Run RED.**
 
@@ -600,7 +633,10 @@ migration; no compatibility API or materializing adapter survives Task 24.
   Test bounded slices, old snapshot interactivity, progress status, explicit
   cancellation to ready, supersession that remains rebuilding, disposal,
   accessor/comparator/aggregator rollback, transactions during rebuild, delta
-  catch-up, one atomic revision, and no partial candidate publication.
+  catch-up, one atomic revision, and no partial candidate publication. After
+  disposal, `setQuery`, `setDerivations`, and transition cancellation commands
+  throw the shared disposed-model error; disposal itself cancels and releases
+  the active candidate and delta journal before the final notification.
 
 - [ ] **Step 2: Run RED.**
 
@@ -636,7 +672,9 @@ migration; no compatibility API or materializing adapter survives Task 24.
   Cover typed values/counts, all/filtered populations, search/range limits,
   explicit blank ordering, lazy and eager build, cooperative progress,
   cancellation/disposal, accessor identity keys, LRU eviction, and transaction
-  catch-up without renderer/menu scans.
+  catch-up without renderer/menu scans. After model disposal, a new distinct
+  query must synchronously throw the same structured disposed-model error; an
+  in-flight query must cancel, release its candidate dictionary, and reject.
 
 - [ ] **Step 2: Run RED.**
 
@@ -664,6 +702,7 @@ migration; no compatibility API or materializing adapter survives Task 24.
 - Create: `packages/grid-core/src/__tests__/row-model/differential.test.ts`
 - Create: `packages/row-model/src/diagnostics.ts`
 - Create: `packages/row-model/src/__tests__/work.test.ts`
+- Create: `packages/row-model/src/__tests__/retention.test.ts`
 - Modify: `packages/grid-core/package.json`
 - Modify: `pnpm-lock.yaml`
 
@@ -693,6 +732,12 @@ migration; no compatibility API or materializing adapter survives Task 24.
   Compare the same 50-ID transaction at 10,000 and 100,000 rows. Row evaluation
   must be identical; structural work must remain within a documented logarithmic
   bound. Assert a 100-row `range` reads 100 outputs.
+
+  Add deterministic retention counters for live revision roots, consumer-journal
+  entries, transition candidates/deltas, and distinct dictionaries. After
+  10,000 discarded revisions, repeated transition cancellation, and dictionary
+  eviction, assert one live current root (plus explicitly retained snapshots),
+  bounded journal/cache counts, and zero cancelled candidates/delta journals.
 
 - [ ] **Step 4: Run the complete engine proof.**
 
@@ -849,6 +894,7 @@ migration; no compatibility API or materializing adapter survives Task 24.
 - Modify: `packages/renderer-dom/src/index.ts`
 - Modify: `packages/renderer-dom/package.json`
 - Modify: `packages/renderer-dom/tsconfig.json`
+- Modify: `pnpm-lock.yaml`
 
 - [ ] **Step 1: Write RED tests with fake indexed snapshots.**
 
@@ -882,7 +928,7 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
 - [ ] **Step 5: Commit.**
 
-  `git add packages/renderer-dom packages/layout-core && git commit -m "feat(renderer): project indexed row windows"`
+  `git add packages/renderer-dom packages/layout-core pnpm-lock.yaml && git commit -m "feat(renderer): project indexed row windows"`
 
 ## Task 18: Add the UI-only grid core
 
@@ -945,6 +991,10 @@ migration; no compatibility API or materializing adapter survives Task 24.
 - Modify: `packages/react/src/types.ts`
 - Modify: `packages/react/src/public_api.ts`
 - Modify: `packages/react/react.api.md`
+- Modify: `packages/react/package.json`
+- Modify: `packages/react/tsconfig.json`
+- Modify: `packages/react/tsconfig.typecheck.json`
+- Modify: `pnpm-lock.yaml`
 
 - [ ] **Step 1: Write runtime RED tests.**
 
@@ -959,7 +1009,11 @@ migration; no compatibility API or materializing adapter survives Task 24.
   Cover rows/model mutual exclusion, incomplete controlled-query pairs,
   rows-mode `onRowChange`, model-mode `beforeRowChange`, inferred callbacks,
   compatible presentation columns, rejected derivation override, and
-  `usePretableColumns(factory,deps)` literal/value preservation.
+  `usePretableColumns(factory,deps)` literal/value preservation. A direct
+  property accessor infers its patch automatically; an editable computed
+  accessor must provide a typed `setValue({ row, value }) => Partial<TRow>`.
+  Omitting it, returning the wrong row fields, or accepting the wrong value type
+  is a compile-time error.
 
 - [ ] **Step 3: Run RED.**
 
@@ -972,7 +1026,10 @@ migration; no compatibility API or materializing adapter survives Task 24.
   `useIndexedPretable` is temporary internal plumbing. The public
   `usePretable` overloads delegate to it, returning
   `{ grid, rowModel, gridSnapshot, rowModelSnapshot, renderSnapshot, status }`.
-  Do not mutate any external store during render.
+  Do not mutate any external store during render. Add grid-core as an internal
+  bundled React dependency and resolve its source/declarations in the build and
+  typecheck projects; keep React's published dependency surface limited to its
+  existing public packages.
 
 - [ ] **Step 5: Run GREEN and refresh the API report.**
 
@@ -982,7 +1039,7 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
 - [ ] **Step 6: Commit.**
 
-  `git add packages/react type-tests/react && git commit -m "feat(react): add rows and model ownership modes"`
+  `git add packages/react type-tests/react pnpm-lock.yaml && git commit -m "feat(react): add rows and model ownership modes"`
 
 ## Task 20: Migrate the React surface and all interaction scans
 
@@ -1002,9 +1059,20 @@ migration; no compatibility API or materializing adapter survives Task 24.
 - Modify: `packages/react/src/labeled-grid-surface.tsx`
 - Modify: `packages/react/src/inspection-grid.tsx`
 - Modify: affected tests under `packages/react/src/__tests__`
-- Modify: `packages/core/src/create-grid.ts`
-- Modify: `packages/core/src/pretable-grid.ts`
-- Modify: `packages/core/src/types.ts`
+- Modify: `apps/bench/src/pretable-adapter.tsx`
+- Modify: `apps/bench/src/__tests__/pretable-adapter.test.tsx`
+- Modify: `apps/website/app/components/HeroGrid.tsx`
+- Modify: `apps/website/app/components/showcase/ColumnLayoutGrid.tsx`
+- Modify: `apps/website/app/components/showcase/ScaleGrid.tsx`
+- Modify: `apps/website/app/fixtures/grouping/page.tsx`
+- Modify: `apps/website/content/examples/streaming-chat-grid/ChatGrid.tsx`
+- Modify: `packages/stream-adapter/src/types.ts`
+- Modify: `packages/stream-adapter/src/create-batcher.ts`
+- Modify: `packages/stream-adapter/src/connect-element-stream.ts`
+- Modify: `packages/stream-adapter/src/connect-partial-stream.ts`
+- Modify: `packages/stream-adapter/src/public_api.ts`
+- Modify: stream-adapter tests, README, and API report
+- Modify: corresponding website tests
 
 - [ ] **Step 1: Add failing no-scan render/interaction tests.**
 
@@ -1014,11 +1082,25 @@ migration; no compatibility API or materializing adapter survives Task 24.
   and selection announcements. Routine rendering may read only the viewport;
   copy/paste may read only the selected/output span.
 
+  Editing cases must assert: rows mode enters `saving` before an async
+  `onRowChange` runs, remains saving until the accepted `rows` prop contains the
+  proposal, and returns to editing/error on rejection without a model revision;
+  explicit-model mode awaits one `beforeRowChange(batch)`, commits exactly one
+  transaction only after resolution, and leaves the revision unchanged on
+  rejection. Test both automatic direct-field patches and a computed editable
+  accessor whose typed `setValue` creates a multi-field patch.
+
+  In the same RED batch, add stream-adapter tests proving RAF coalescing emits
+  `update: [{ id, changes }]`, preserves number IDs, remains atomic after a
+  thrown transaction, and targets a structural ID-generic `RowModelLike`.
+  Existing partial-stream IDs update; missing IDs report an issue unless
+  `createRow(partial,id)` yields a complete accepted row.
+
 - [ ] **Step 2: Run the focused RED suites.**
 
   Run:
 
-  `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/indexed-rendering.test.tsx src/__tests__/focus-scroll.test.tsx src/__tests__/group-row-render.test.tsx src/__tests__/copy.test.ts src/__tests__/paste-map.test.ts`
+  `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/indexed-rendering.test.tsx src/__tests__/focus-scroll.test.tsx src/__tests__/group-row-render.test.tsx src/__tests__/copy.test.ts src/__tests__/paste-map.test.ts && pnpm --filter @pretable/stream-adapter test`
 
 - [ ] **Step 3: Replace every production `visibleRows` consumer.**
 
@@ -1032,20 +1114,34 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
   Header/group/filter actions construct one complete next query. The enum menu
   cancels stale distinct queries and renders loading/error states. Rows-mode
-  edit emits a proposal; explicit model mode validates one edit/paste batch and
-  commits one transaction.
+  edit derives a patch from the direct field or required computed-accessor
+  `setValue`, emits a proposal, and waits for prop reconciliation. Explicit
+  model mode derives every patch, validates the entire edit/paste batch, enters
+  `saving`, awaits `beforeRowChange(batch)`, then commits one transaction and
+  closes the edit. Rejection restores the draft/error and commits nothing.
 
-- [ ] **Step 5: Switch public grid construction and remove the temporary hook.**
+- [ ] **Step 5: Activate the new React path and migrate compiled consumers.**
 
-  `createGrid` wraps `createGridUiCore({ rowModel, columns })`. Remove the old
-  data/query mutators from `PretableGrid`. Rename `useIndexedPretable` internals
-  into the public path and delete the temporary wrapper once all surfaces use it.
+  Rename `useIndexedPretable` internals into the public React path and delete the
+  temporary hook. Update bench, hero, showcase, and grouping-fixture controlled
+  query props in the same commit. Keep legacy headless `createGrid` and its old
+  grid-core implementation temporarily for still-compiled headless examples;
+  they are no longer used by React and are deleted in Task 23, not here.
 
-- [ ] **Step 6: Run React/core/grid GREEN and grep for scans.**
+- [ ] **Step 6: Retarget streaming atomically with the React switch.**
+
+  Replace `GridLike` with ID-generic `RowModelLike` and the explicit
+  `{ id, changes }` update shape. Missing partial-stream IDs require
+  `createRow(partial,id)` or report an issue; never fabricate a full row.
+  Migrate bench, HeroGrid, and ChatGrid to pass the row model. Run stream tests,
+  typecheck, API generation/check, and the compiled app typechecks before
+  committing. Do not leave an overloaded legacy batcher.
+
+- [ ] **Step 7: Run React/core/grid/stream GREEN and grep for scans.**
 
   Run:
 
-  `pnpm --filter @pretable-internal/grid-core test && pnpm --filter @pretable/core test && pnpm --filter @pretable/react test && pnpm --filter @pretable/react typecheck`
+  `pnpm --filter @pretable-internal/grid-core test && pnpm --filter @pretable/core test && pnpm --filter @pretable/react test && pnpm --filter @pretable/react typecheck && pnpm --filter @pretable/stream-adapter test && pnpm --filter @pretable/stream-adapter typecheck && pnpm --filter @pretable/stream-adapter api && pnpm --filter @pretable/stream-adapter api:check && pnpm --filter @pretable/app-bench typecheck && pnpm --filter @pretable/app-website typecheck`
 
   Run:
 
@@ -1053,46 +1149,11 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
   Expected: only temporary oracle/test fixtures or deliberate migration comments.
 
-- [ ] **Step 7: Commit.**
+- [ ] **Step 8: Commit.**
 
-  `git add packages/core packages/grid-core packages/react packages/renderer-dom && git commit -m "feat(react): render and interact through indexed rows"`
+  `git add packages/grid-core packages/react packages/renderer-dom packages/stream-adapter apps/bench apps/website && git commit -m "feat(react): switch surfaces and streams to indexed rows"`
 
-## Task 21: Retarget the streaming adapter to row models
-
-**Files:**
-
-- Modify: `packages/stream-adapter/src/types.ts`
-- Modify: `packages/stream-adapter/src/create-batcher.ts`
-- Modify: `packages/stream-adapter/src/connect-element-stream.ts`
-- Modify: `packages/stream-adapter/src/connect-partial-stream.ts`
-- Modify: `packages/stream-adapter/src/public_api.ts`
-- Modify: tests under `packages/stream-adapter/src/__tests__`
-- Modify: `packages/stream-adapter/README.md`
-- Modify: `packages/stream-adapter/stream-adapter.api.md`
-
-- [ ] **Step 1: Write transaction-shape and ID-generic RED tests.**
-
-  Assert RAF coalescing produces
-  `update: [{ id, changes }]`, preserves number IDs, remains atomic after a
-  thrown transaction, and targets a structural `RowModelLike`.
-
-- [ ] **Step 2: Write partial-stream RED tests.**
-
-  Existing IDs update normally. Missing IDs produce an unknown-ID issue unless
-  `createRow(partial,id)` is supplied; with a factory, the first complete
-  accepted value adds a full row and later chunks update it.
-
-- [ ] **Step 3: Run RED, implement, and run GREEN.**
-
-  Run:
-
-  `pnpm --filter @pretable/stream-adapter test && pnpm --filter @pretable/stream-adapter typecheck && pnpm --filter @pretable/stream-adapter api && pnpm --filter @pretable/stream-adapter api:check`
-
-- [ ] **Step 4: Commit.**
-
-  `git add packages/stream-adapter && git commit -m "feat(streaming): batch typed row-model transactions"`
-
-## Task 22: Make the 20k/100k workload deterministic and permanent
+## Task 21: Make the 20k/100k workload deterministic and permanent
 
 **Files:**
 
@@ -1156,11 +1217,14 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
   `git add apps/bench packages/scenario-data scripts package.json && git commit -m "test(bench): add deterministic row-model gate"`
 
-## Task 23: Pass the hard browser performance gate
+## Task 22: Pass the hard browser performance gate
 
 **Files:**
 
 - Create: `docs/research/2026-08-09-incremental-row-model-benchmark.md`
+- Create: `status/milestones/2026-08-09-incremental-row-model-gate.json`
+- Create: `scripts/bench-row-model-memory.mjs`
+- Create: `scripts/__tests__/bench-row-model-memory.test.mjs`
 - Modify: only the smallest engine/layout/render files demonstrated by traces
   and deterministic counters if the first run fails
 
@@ -1192,17 +1256,36 @@ migration; no compatibility API or materializing adapter survives Task 24.
   the package containing the change, then the four-run gate. Do not proceed on
   a partial or one-off pass.
 
-- [ ] **Step 5: Record the evidence.**
+- [ ] **Step 5: Run the dedicated retention/memory proof.**
+
+  First rerun `packages/row-model/src/__tests__/retention.test.ts` to prove
+  exact internal ownership counts. Then run the production browser under CDP:
+
+  `node --expose-gc scripts/bench-row-model-memory.mjs`
+
+  The script loads grouped `local-max`, warms through 2,000 unpublished old
+  revisions, forces `HeapProfiler.collectGarbage`, and records five further
+  2,000-revision windows. Every window also starts/cancels query candidates,
+  cancels distinct-value builds, and churns past both journal/cache limits.
+  With no captured historical snapshots, assert zero retained candidates/delta
+  journals, configured journal/dictionary bounds, final heap growth no greater
+  than 16 MiB over the post-warmup baseline, and least-squares retained slope no
+  greater than 256 bytes/revision. The unit test feeds synthetic samples to the
+  slope/threshold parser. Record this as a dedicated release-machine gate, not
+  a noisy shared-CI wall-time assertion.
+
+- [ ] **Step 6: Record the evidence.**
 
   The research note contains commit, machine/browser metadata, seed, commands,
-  artifact paths, all four metric tables, engine work counters, and PASS/FAIL.
-  Commit only policy-approved milestone evidence, not ignored raw traces.
+  artifact paths, all four metric tables, engine work/retention counters, heap
+  samples/slope, and PASS/FAIL. The exact milestone JSON summarizes the four
+  browser artifacts and memory gate. Commit no ignored raw traces.
 
-- [ ] **Step 6: Commit the passing gate.**
+- [ ] **Step 7: Commit the passing gate.**
 
-  `git add docs/research/2026-08-09-incremental-row-model-benchmark.md status/milestones && git commit -m "perf(row-model): pass grouped local maximum gate"`
+  `git add docs/research/2026-08-09-incremental-row-model-benchmark.md status/milestones/2026-08-09-incremental-row-model-gate.json scripts/bench-row-model-memory.mjs scripts/__tests__/bench-row-model-memory.test.mjs && git commit -m "perf(row-model): pass grouped local maximum gate"`
 
-## Task 24: Remove legacy paths, migrate documentation, and resume grouping adoption
+## Task 23: Remove legacy paths, migrate documentation, and resume grouping adoption
 
 **Files:**
 
@@ -1218,14 +1301,20 @@ migration; no compatibility API or materializing adapter survives Task 24.
 - Create: `packages/row-model/src/__tests__/properties.test.ts`
 - Modify: matching exports and legacy tests in `packages/grid-core`,
   `packages/layout-core`, and `packages/renderer-dom`
+- Modify: `packages/core/src/create-grid.ts`
+- Modify: `packages/core/src/pretable-grid.ts`
+- Modify: `packages/core/src/types.ts`
+- Modify: `packages/core/src/public_api.ts`
 - Modify: `packages/core/README.md`
 - Modify: `packages/stream-adapter/README.md`
 - Modify: `apps/website/content/docs/headless/{index,getting-started,state-model,mutations,api-reference}.mdx`
-- Modify: `apps/website/content/docs/grid/{api-reference,custom-rendering,filtering,sorting,editing,clipboard,pretable-surface}.mdx`
+- Modify: `apps/website/content/docs/grid/{index,api-reference,custom-rendering,filtering,sorting,editing,clipboard,pretable-surface}.mdx`
 - Modify: `apps/website/content/docs/streaming/{index,element-streams,partial-streams,api-reference}.mdx`
 - Modify: `apps/website/content/examples/headless-custom-renderer/HeadlessTable.tsx`
 - Modify: streaming examples under `apps/website/content/examples/streaming-chat-grid`
 - Modify: `apps/website/app/bench/page.tsx`
+- Modify: `apps/website/app/components/StreamingByDesign.tsx`
+- Modify: `apps/website/__tests__/components/StreamingByDesign.test.tsx`
 - Create: `apps/website/content/docs/grid/grouping.mdx`
 - Modify: `apps/website/app/docs/_nav.ts` and its nav test
 - Modify: `apps/website/app/components/HeroGrid.tsx`
@@ -1246,15 +1335,20 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
   Remove old derivation, old grid store, prefix sums, legacy renderer entry
   point, obsolete types/methods, and stale tests. Update exports, package
-  references, and build configs. There must be exactly one production row
-  engine and one layout path.
+  references, and build configs. Switch public `createGrid` to
+  `createGridUiCore({ rowModel, columns })` and delete grid-owned row/query/data
+  mutation methods. There must be exactly one production row engine and one
+  layout path.
 
 - [ ] **Step 3: Write docs/example RED tests and migrate the breaking API.**
 
   Headless examples create a row model, use `snapshot.range`, and create a UI
   grid only when they need UI state. Streaming examples target `rowModel`.
   Remove all documentation of grid-owned rows/query state, synchronous
-  distinct values, old partial updates, and `visibleRows`.
+  distinct values, old partial updates, and `visibleRows`. Rewrite the Grid
+  overview's `grid.applyTransaction` example and the StreamingByDesign card's
+  obsolete “one transaction path” claim: rows props are the declarative path,
+  while high-frequency producers explicitly target a row model.
 
 - [ ] **Step 4: Resume the deferred hero and grouping guide only now.**
 
@@ -1305,7 +1399,7 @@ migration; no compatibility API or materializing adapter survives Task 24.
 
   Run:
 
-  `rg -n "visibleRows|distinctColumnValues|grid\.applyTransaction|grid\.setRows|GridLike<|groupsDefaultExpanded" packages apps/website/content apps/website/app`
+  `rg -n "visibleRows|distinctColumnValues|grid\.applyTransaction|grid\.setRows|GridLike<|groupsDefaultExpanded|one transaction path" packages apps/website/content apps/website/app`
 
   Expected: no production/API/docs occurrences; historical research and old
   design documents are intentionally outside this sweep.
