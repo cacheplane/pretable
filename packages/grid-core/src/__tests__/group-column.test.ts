@@ -85,10 +85,26 @@ describe("derived group column", () => {
     expect(col.widthPx).toBe(320);
   });
 
+  // Deliberately groups by `name`, NOT by the consumer's first column. Grouping
+  // by `sector` would put the expected header ("Sector") in the same place the
+  // consumer's own first column already puts it, so the assertion could not
+  // tell a derived group column from no group column at all.
   test("default header comes from the first grouped column", () => {
     const grid = make();
-    grid.setRowGroups(["sector"]);
-    expect(grid.getColumns()[0]!.header).toBe("Sector");
+    grid.setRowGroups(["name"]);
+    const drawn = grid.getColumns();
+
+    expect(drawn.map((c) => c.id)).toEqual([GROUP_COLUMN_ID, "sector", "qty"]);
+    expect(drawn[0]!.header).toBe("Name");
+  });
+
+  test("default header follows the FIRST level of a multi-level grouping", () => {
+    const grid = make();
+    grid.setRowGroups(["qty", "name"]);
+    const drawn = grid.getColumns();
+
+    expect(drawn.map((c) => c.id)).toEqual([GROUP_COLUMN_ID, "sector"]);
+    expect(drawn[0]!.header).toBe("Qty");
   });
 
   test("the group column is not sortable, filterable, resizable, or reorderable", () => {
@@ -101,10 +117,34 @@ describe("derived group column", () => {
     expect(col.reorderable).toBe(false);
   });
 
-  test("the group column is not pinned by default", () => {
-    const grid = make();
+  // The grouped column is left-pinned and kept visible, so the drawn order
+  // separates all three outcomes: an unpinned group column lands after the
+  // pinned run, a group column that inherited the pin leads the whole list, and
+  // no group column at all leaves the consumer's list untouched. Asserting
+  // `pinned` alone on a fixture with no pinned column distinguishes none of
+  // them.
+  test("the group column is not pinned by default, even off a pinned level", () => {
+    const grid = createGridCore<Row>({
+      columns: [
+        { id: "sector", header: "Sector", pinned: "left" },
+        { id: "name", header: "Name" },
+        { id: "qty", header: "Qty" },
+      ],
+      rows,
+      getRowId: (row) => row.id,
+      hideGroupedColumns: false,
+    });
     grid.setRowGroups(["sector"]);
-    expect(grid.getColumns()[0]!.pinned).toBeUndefined();
+
+    expect(grid.getColumns().map((c) => c.id)).toEqual([
+      "sector",
+      GROUP_COLUMN_ID,
+      "name",
+      "qty",
+    ]);
+    expect(
+      grid.getColumns().find((c) => c.id === GROUP_COLUMN_ID)!.pinned,
+    ).toBeUndefined();
   });
 
   test("groupColumn.pinned seats it in the left-pinned region", () => {

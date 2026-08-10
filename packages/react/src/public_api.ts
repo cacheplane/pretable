@@ -81,6 +81,7 @@ export type {
   PretableGrid,
   PretableGridOptions,
   PretableGridSnapshot,
+  PretableGroupColumnOptions,
   PretableGroupRow,
   PretableRow,
   PretableSortEntry,

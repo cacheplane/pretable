@@ -10,6 +10,7 @@ import {
 import { ROW_SELECT_COLUMN_ID } from "../pretable-surface";
 import {
   GROUP_COLUMN_ID,
+  createGrid,
   type PretableCellRange,
   type PretableGroupRow,
   type PretableVisibleRow,
@@ -701,5 +702,64 @@ describe("serializeRanges HTML type hints", () => {
     const html = oneTypedCell("a  b", "text");
     expect(html).toContain('<table style="white-space:pre-wrap">');
     expect(html).toContain(`<td${TEXT_HINT}>a  b</td>`);
+  });
+});
+
+/**
+ * The engine encodes a full-row range as `getColumns()` first-id → last-id, so
+ * a grouping change that rewrites those bounds is what the clipboard sees. When
+ * `endColumnId` no longer resolves, `resolveRangeBounds` degrades the range to
+ * a single column — Cmd+C after grouping would copy one cell of the row.
+ */
+describe("copy of an engine selection across a grouping change", () => {
+  type Expense = { id: string; dept: string; name: string; amount: number };
+
+  function makeGrid() {
+    return createGrid<Expense>({
+      columns: [
+        { id: "dept", header: "Dept" },
+        { id: "name", header: "Name" },
+        { id: "amount", header: "Amount" },
+      ],
+      rows: [
+        { id: "e1", dept: "Eng", name: "Ada", amount: 10 },
+        { id: "e2", dept: "Ops", name: "Bob", amount: 20 },
+      ],
+      getRowId: (row) => row.id,
+    });
+  }
+
+  function copySelection(grid: ReturnType<typeof makeGrid>) {
+    const snapshot = grid.getSnapshot();
+    return serializeRanges<Expense>({
+      ranges: snapshot.selection.ranges,
+      visibleRows: snapshot.visibleRows,
+      columns: [...grid.getColumns()],
+    });
+  }
+
+  it("copies every drawn column of a row selected before grouping", () => {
+    const grid = makeGrid();
+    grid.toggleRowSelection("e1");
+    expect(copySelection(grid)?.text).toBe("Eng\tAda\t10");
+
+    grid.setRowGroups(["amount"]);
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      GROUP_COLUMN_ID,
+      "dept",
+      "name",
+    ]);
+    expect(copySelection(grid)?.text).toBe("\tEng\tAda");
+  });
+
+  it("copies every drawn column of a grouped select-all after ungrouping", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["amount"]);
+    grid.selectAll();
+
+    grid.setRowGroups([]);
+
+    expect(copySelection(grid)?.text).toBe("Eng\tAda\t10\nOps\tBob\t20");
   });
 });

@@ -29,6 +29,20 @@ export interface GroupPanelHit {
  * merely invisible. It has to be: a collapsed panel still occupies a point in
  * the document, and treating it as a live target would silently swallow drops
  * aimed at the header underneath it.
+ *
+ * ## Edge semantics
+ *
+ * The rect is treated as **half-open**: `[left, right) × [top, bottom)`, the
+ * same convention `elementFromPoint` follows. Left and top are inside; right
+ * and bottom are not.
+ *
+ * The bottom edge is the one that matters. The panel and the scroll viewport
+ * are adjacent children of a fixed-height flex column, so the panel's
+ * `rect.bottom` IS the header row's `rect.top` — the same coordinate, to the
+ * pixel. Whichever side claims it decides whether a drop there groups or
+ * reorders, and the header must win: this module's whole reason for rejecting
+ * a collapsed panel is that the panel must not swallow drops aimed at the
+ * header, and an inclusive bottom edge swallows exactly one row of them.
  */
 export function hitTestGroupPanel(
   panel: HTMLElement | null,
@@ -39,8 +53,8 @@ export function hitTestGroupPanel(
 
   const rect = panel.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
-  if (clientX < rect.left || clientX > rect.right) return null;
-  if (clientY < rect.top || clientY > rect.bottom) return null;
+  if (clientX < rect.left || clientX >= rect.right) return null;
+  if (clientY < rect.top || clientY >= rect.bottom) return null;
 
   return { insertIndex: insertIndexAt(panel, clientX) };
 }

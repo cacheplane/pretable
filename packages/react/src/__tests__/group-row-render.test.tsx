@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   GROUP_COLUMN_ID,
+  createGrid,
   type PretableFocusState,
   type PretableGroupRow,
   type PretableSelectionState,
@@ -145,7 +146,12 @@ describe("group row rendering", () => {
     expect(treegrid).toHaveAttribute("aria-rowcount", "5");
   });
 
-  it("never renders an aria-rowindex beyond the declared aria-rowcount", () => {
+  it("numbers every row 1..aria-rowcount, once each, groups and leaves alike", () => {
+    // `max <= rowCount` is satisfied by giving every row the index 1, which is
+    // the exact failure a screen reader would report as "row 1 of 9" nine times
+    // over. The whole sequence is asserted instead: header at 1, then the eight
+    // grouped rows, contiguous and unique. The fixture fits in the 600px
+    // viewport, so virtualization draws all of them.
     const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
     const treegrid = view.getByRole("treegrid");
     const rowCount = Number(treegrid.getAttribute("aria-rowcount"));
@@ -153,8 +159,12 @@ describe("group row rendering", () => {
       ...treegrid.querySelectorAll<HTMLElement>("[role='row'][aria-rowindex]"),
     ].map((row) => Number(row.getAttribute("aria-rowindex")));
 
-    expect(renderedIndices).not.toHaveLength(0);
-    expect(Math.max(...renderedIndices)).toBeLessThanOrEqual(rowCount);
+    // Header + Energy > alpha > r3 + Tech > (alpha > r1, beta > r2).
+    expect(rowCount).toBe(9);
+    expect([...renderedIndices].sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+    expect(new Set(renderedIndices).size).toBe(renderedIndices.length);
   });
 
   it("switches the root role to treegrid only while grouped", () => {
@@ -334,35 +344,54 @@ describe("group row rendering", () => {
     expect(qtyCell).toHaveTextContent("Σ 3");
   });
 
+  /**
+   * Nothing here is hand-built. The old version of this test constructed its
+   * own `PretableGroupRow` — with an id that was not even `makeGroupId`'s
+   * format — and handed it to the serializer, so it compared two strings the
+   * test itself had arranged to match. It could not fail if the two paths
+   * disagreed about which group they were looking at.
+   *
+   * The engine below is fed the same columns, rows and grouping the surface
+   * got, so its group rows carry the real ids and the real computed
+   * aggregates. `group.id` is folded into the formatted string, and the DOM is
+   * addressed BY that id — so the row the serializer describes and the row the
+   * renderer drew are proven to be the same row, not merely to read alike.
+   */
   it("passes the same aggregate context to rendering and serialization", () => {
     const formatAggregate: NonNullable<
       PretableColumn<GroupedRow>["formatAggregate"]
     > = ({ value, column, group }) =>
-      `${String(group.value)}:${column.id}:${String(value)}`;
+      `${group.id}|${String(group.value)}|${column.id}|${String(value)}|${group.childCount}`;
     const columns: PretableColumn<GroupedRow>[] = [
       groupedColumns[0]!,
       groupedColumns[1]!,
-      {
-        ...groupedColumns[2]!,
-        formatAggregate,
-      },
+      { ...groupedColumns[2]!, formatAggregate },
     ];
-    const view = renderGrouped({
+    const view = renderGrouped({ columns, state: { rowGroups: ["sector"] } });
+
+    const engine = createGrid<GroupedRow>({
       columns,
-      state: { rowGroups: ["sector"] },
+      rows: groupedRows,
+      getRowId: (row) => row.id,
     });
-    const rendered = groupRows(view)[1]!.querySelector(
+    engine.setRowGroups(["sector"]);
+    const visibleRows = engine.getSnapshot().visibleRows;
+    const group = visibleRows.find(
+      (row): row is PretableGroupRow =>
+        row.kind === "group" && row.value === "Tech",
+    )!;
+
+    // The renderer's row, located by the engine's own id rather than by
+    // ordinal — if the two paths built different ids this query finds nothing.
+    const renderedRow = view.container.querySelector(
+      `[data-pretable-row-id="${group.id}"]`,
+    );
+    expect(renderedRow).not.toBeNull();
+    expect(renderedRow).toHaveAttribute("data-pretable-group-row");
+    const rendered = renderedRow!.querySelector(
       '[data-pretable-column-id="qty"]',
     );
-    const group: PretableGroupRow = {
-      kind: "group",
-      id: "__group__:sector=Tech",
-      depth: 0,
-      columnId: "sector",
-      value: "Tech",
-      childCount: 2,
-      aggregates: { qty: 3 },
-    };
+
     const copied = serializeRanges<GroupedRow>({
       ranges: [
         {
@@ -372,16 +401,20 @@ describe("group row rendering", () => {
           endColumnId: "qty",
         },
       ],
-      visibleRows: [group],
-      columns: [
-        { id: GROUP_COLUMN_ID, header: "Group" },
-        columns[1]!,
-        columns[2]!,
-      ],
+      visibleRows,
+      columns: engine.getColumns(),
     });
 
-    expect(rendered).toHaveTextContent("Tech:qty:3");
+    expect(rendered?.textContent).toBe(`${group.id}|Tech|qty|3|2`);
     expect(copied?.text).toBe(rendered?.textContent);
+    // The group column is in the drawn list the serializer was handed, so a
+    // range that never resolved its endpoints could not have produced the text
+    // above.
+    expect(engine.getColumns().map((c) => c.id)).toEqual([
+      GROUP_COLUMN_ID,
+      "name",
+      "qty",
+    ]);
   });
 
   it("updates a visible aggregate when only its aggregate definition changes", () => {

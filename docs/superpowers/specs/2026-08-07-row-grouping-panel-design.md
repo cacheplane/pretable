@@ -201,6 +201,18 @@ is correct, not a bug, but it is surprising enough to belong in SP4's docs.
 - **Panel autoscroll.** Many chips overflow; ag-grid autoscrolls with an
   interval, a 50px buffer, and escalating step size
   (`moveColumnFeature.ts:578-641`). Ours wraps instead. Revisit if it bites.
+
+  > **This claim was false and was never implemented.** Corrected 2026-08-09.
+  > `styles.ts:57-66` gives the panel `display: flex` (nowrap default), a fixed
+  > `height`, and `overflow: hidden`, and `grid.css` sets no `flex-wrap`. Chips
+  > do not wrap — they are clipped into dead space that cannot be scrolled.
+  > A clipped chip is unreachable by mouse, focusable-but-invisible by keyboard,
+  > and hands `hitTestGroupPanel` an off-screen rect, so drag insertion is wrong
+  > for exactly the levels the user cannot see. Fixing it is a layout design
+  > — measured multi-line height versus accessible horizontal scrolling, plus
+  > two-dimensional drop hit-testing if wrapping wins — and is deliberately not
+  > folded into a correctness branch. Tracked, unfixed, no test coverage.
+
 - **Locked grouping levels** (`groupLockGroupColumns`).
 - **Sorting by clicking a chip.** ag-grid does this; it collides with the chip
   being a drag handle and a listbox option at once.

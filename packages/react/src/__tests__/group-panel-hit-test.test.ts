@@ -50,11 +50,65 @@ describe("hitTestGroupPanel", () => {
     expect(hitTestGroupPanel(null, 10, 10)).toBeNull();
   });
 
-  it("hits inside the rect and misses outside it", () => {
+  it("hits well inside the rect and misses well outside it", () => {
     expect(hitTestGroupPanel(panel, 150, 18)).not.toBeNull();
     // Below the strip — this is the header, which must stay a reorder target.
     expect(hitTestGroupPanel(panel, 150, 80)).toBeNull();
     expect(hitTestGroupPanel(panel, 400, 18)).toBeNull();
+    expect(hitTestGroupPanel(panel, -1, 18)).toBeNull();
+    expect(hitTestGroupPanel(panel, 150, -1)).toBeNull();
+  });
+
+  /**
+   * The rect is half-open — `[left, right) × [top, bottom)`. Every probe below
+   * sits ON a boundary coordinate or one pixel either side of it, which is the
+   * only way this file can distinguish `<` from `<=`: with all four
+   * comparisons flipped, a suite whose probes are all in the interior passes
+   * unchanged.
+   *
+   * `bottom` is the load-bearing one. The panel and the scroll viewport abut,
+   * so `panel.bottom === header.top` exactly, and the header must own that
+   * coordinate — otherwise one row of pixels aimed at the header groups the
+   * column instead of reordering it.
+   */
+  describe("edge semantics", () => {
+    it.each([
+      { name: "left edge is inside", x: 0, y: 18, hit: true },
+      { name: "one pixel left of it is not", x: -1, y: 18, hit: false },
+      {
+        name: "one pixel inside the right edge is inside",
+        x: 299,
+        y: 18,
+        hit: true,
+      },
+      { name: "the right edge itself is not", x: 300, y: 18, hit: false },
+      { name: "top edge is inside", x: 150, y: 0, hit: true },
+      { name: "one pixel above it is not", x: 150, y: -1, hit: false },
+      {
+        name: "one pixel inside the bottom edge is inside",
+        x: 150,
+        y: 35,
+        hit: true,
+      },
+      {
+        name: "the bottom edge belongs to the header, not the panel",
+        x: 150,
+        y: 36,
+        hit: false,
+      },
+    ])("$name", ({ x, y, hit }) => {
+      const result = hitTestGroupPanel(panel, x, y);
+      if (hit) {
+        expect(result).not.toBeNull();
+      } else {
+        expect(result).toBeNull();
+      }
+    });
+
+    it("the top-left corner is inside and the bottom-right corner is not", () => {
+      expect(hitTestGroupPanel(panel, 0, 0)).not.toBeNull();
+      expect(hitTestGroupPanel(panel, 300, 36)).toBeNull();
+    });
   });
 
   it("excludes a zero-size panel rather than merely hiding it", () => {

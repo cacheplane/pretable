@@ -834,7 +834,9 @@ export function createGridCore<TRow extends PretableRow>(
         nextColumns[clampedTo] = { ...moved, pinned: nextPinned };
       }
 
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       options = { ...options, columns: nextColumns };
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     setColumnOrder(ids: readonly string[]) {
@@ -887,7 +889,9 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       options = { ...options, columns: nextColumns };
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     setColumnPinned(columnId: string, pinned: "left" | "right" | null) {
@@ -945,7 +949,9 @@ export function createGridCore<TRow extends PretableRow>(
       };
       nextColumns.splice(insertAt, 0, nextColumn);
 
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       options = { ...options, columns: nextColumns };
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     autosizeColumn(columnId: string, autosizeOptions?: AutosizeOptions) {
@@ -1008,7 +1014,11 @@ export function createGridCore<TRow extends PretableRow>(
         }
       }
 
+      // Restoring the original layout is a reorder and a re-pin at once, so it
+      // corrupts ranges exactly the way `moveColumn` does.
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       options = { ...options, columns: next };
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]) {
@@ -1031,13 +1041,23 @@ export function createGridCore<TRow extends PretableRow>(
       // would read as a change every time.
       const grouped = groupColumnsByPin(merged);
       const layoutChanged = !sameColumnLayout(options.columns, grouped);
-      const groupingSemanticsChanged = !sameColumnGroupingSemantics(
-        options.columns,
-        grouped,
-      );
+      // The derived rows are a function of the column SET always — filters and
+      // sorts resolve their column by id — but of `value`/`aggregate` identity
+      // only while grouping is active, and then only for the columns that feed
+      // the grouped model. Comparing accessors by identity is the only signal
+      // available, and an inline `columns={[…]}` re-creates them every render:
+      // consulting it unconditionally would re-derive and emit on every parent
+      // update of every grid, grouped or not.
+      const columnSetChanged = !sameColumnIds(options.columns, grouped);
+      const groupingAccessorsChanged =
+        rowGroups.length > 0 &&
+        !sameGroupingAccessors(options.columns, grouped, rowGroups);
+      const groupingSemanticsChanged =
+        columnSetChanged || groupingAccessorsChanged;
       const before = groupingSemanticsChanged
         ? captureVisibleRowsForFocusReconciliation()
         : null;
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       originalColumns = groupColumnsByPin(nextColumns).map((c) => ({ ...c }));
       options = { ...options, columns: grouped };
 
@@ -1056,6 +1076,9 @@ export function createGridCore<TRow extends PretableRow>(
         reconcileFocusAfterVisibleModelChange(before);
       }
 
+      const selectionChanged =
+        reconcileSelectionAfterColumnModelChange(beforeColumns);
+
       // Callers hand us a fresh array whenever `columns` is written inline, so
       // only wake subscribers when something they can observe actually moved.
       // The merged definitions are stored either way, which is what keeps a
@@ -1063,7 +1086,8 @@ export function createGridCore<TRow extends PretableRow>(
       if (
         layoutChanged ||
         groupingSemanticsChanged ||
-        sanitizedGroupingChanged
+        sanitizedGroupingChanged ||
+        selectionChanged
       ) {
         emit();
       }
@@ -1208,11 +1232,13 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       const before = captureVisibleRowsForFocusReconciliation();
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       rowGroups = next;
       // Expansion ids are path-derived, so changing the levels invalidates
       // them. v1 drops the whole set rather than trying to salvage prefixes.
       groupExpansionOverrides = new Set<string>();
       reconcileFocusAfterVisibleModelChange(before);
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     toggleGroup(groupId: string) {
@@ -1332,6 +1358,220 @@ export function createGridCore<TRow extends PretableRow>(
       preferAncestor: !expanded,
     });
     emit();
+  }
+
+  /** Avoid deriving the old column model when there is no selection to repair. */
+  function captureColumnsForSelectionReconciliation():
+    readonly PretableColumn<TRow>[] | null {
+    return selection.ranges.length === 0 && selection.anchor === null
+      ? null
+      : getColumns();
+  }
+
+  /**
+   * Keep the selection valid after any change to the DERIVED column model.
+   *
+   * `selectAll`, `toggleRowSelection` and `setSelectAllVisible` encode a
+   * full-row range as `getColumns()` first-id → last-id (see the class comment
+   * on {@link isDataRow}), so the instant grouping adds the synthetic column or
+   * hides a grouped one, those ids describe a rectangle the user can no longer
+   * see. Left alone the range is not merely cosmetic: `deriveSelectedRows`
+   * needs both endpoints to resolve, `toggleRowSelection` no longer recognises
+   * its own range and appends a second one, and `copy.ts` degrades a range with
+   * one unresolvable endpoint to a single column.
+   *
+   * The same corruption happens with no grouping involved at all, because a
+   * range does not need to LOSE a column to break — it only needs the columns
+   * BETWEEN its endpoints to change. On `a,b,c`, `moveColumn("c", 0)` draws
+   * `c,a,b` while the range still reads `a…c`, which now resolves to the
+   * two-column span `(c,a)` and reports the row as indeterminate. So every
+   * reordering and pinning path reconciles too, not just the paths that change
+   * membership.
+   *
+   * Two rules, in order:
+   *
+   * 1. A range whose endpoints were the pre-change first/last is re-encoded
+   *    onto the post-change first/last, preserving the row span and the drag
+   *    orientation. Its endpoints were positional ("the whole row"), not two
+   *    columns the user picked, so they follow the position. This has to come
+   *    first: rule 2 would pin a full-row range to the old columns and leave a
+   *    newly added one (the synthetic group column) outside it.
+   * 2. Otherwise the range means the specific columns it covered, so those are
+   *    what is preserved: the pre-change members that still exist are re-encoded
+   *    onto their new extremes. That is exact whenever they are still adjacent,
+   *    including when they moved together or when one of them was hidden. When
+   *    a reorder has split them the range is DROPPED rather than stretched over
+   *    the intruder — a selection that quietly grows is the same silent-wrong-
+   *    answer bug this function exists to fix (`copy` would emit a column the
+   *    user never selected, and a two-cell range would report the row fully
+   *    selected), whereas a dropped range is visible and re-selectable.
+   *
+   * Returns whether the selection actually changed, so callers that emit
+   * conditionally can include it.
+   */
+  function reconcileSelectionAfterColumnModelChange(
+    before: readonly PretableColumn<TRow>[] | null,
+  ): boolean {
+    if (before === null) {
+      return false;
+    }
+
+    const beforeFirst = before[0];
+    const beforeLast = before[before.length - 1];
+    const after = getColumns();
+    const afterFirst = after[0];
+    const afterLast = after[after.length - 1];
+
+    if (!afterFirst || !afterLast) {
+      // No drawable columns left: nothing can be addressed, so nothing is
+      // selected.
+      selection = { ranges: [], anchor: null };
+      return true;
+    }
+
+    if (!beforeFirst || !beforeLast) {
+      return false;
+    }
+
+    const surviving = new Set(after.map((column) => column.id));
+    const beforeIndex = new Map(before.map((column, i) => [column.id, i]));
+    const afterIndex = new Map(after.map((column, i) => [column.id, i]));
+    const anchor = selection.anchor;
+    let anchorColumnId: string | null = anchor ? anchor.columnId : null;
+    let anchorRemapped = false;
+    let changed = false;
+    const ranges: PretableCellRange[] = [];
+
+    for (const range of selection.ranges) {
+      const forwardFullRow =
+        range.startColumnId === beforeFirst.id &&
+        range.endColumnId === beforeLast.id;
+      // A range dragged right-to-left stores its bounds reversed; re-encoding
+      // has to keep that orientation or the anchor end would flip.
+      const reverseFullRow =
+        !forwardFullRow &&
+        range.startColumnId === beforeLast.id &&
+        range.endColumnId === beforeFirst.id;
+
+      if (forwardFullRow || reverseFullRow) {
+        const startColumnId = forwardFullRow ? afterFirst.id : afterLast.id;
+        const endColumnId = forwardFullRow ? afterLast.id : afterFirst.id;
+
+        if (
+          startColumnId !== range.startColumnId ||
+          endColumnId !== range.endColumnId
+        ) {
+          changed = true;
+        }
+
+        // The anchor is a corner of the range it belongs to, so it follows that
+        // range's re-encoding rather than being remapped on its own — an anchor
+        // that merely happened to sit in the old last column is not a full-row
+        // bound and must not be dragged somewhere the user never clicked.
+        if (
+          anchor &&
+          !anchorRemapped &&
+          (range.startRowId === anchor.rowId || range.endRowId === anchor.rowId)
+        ) {
+          if (anchor.columnId === range.startColumnId) {
+            anchorColumnId = startColumnId;
+            anchorRemapped = true;
+          } else if (anchor.columnId === range.endColumnId) {
+            anchorColumnId = endColumnId;
+            anchorRemapped = true;
+          }
+        }
+
+        ranges.push({ ...range, startColumnId, endColumnId });
+        continue;
+      }
+
+      const beforeStart = beforeIndex.get(range.startColumnId);
+      const beforeEnd = beforeIndex.get(range.endColumnId);
+
+      if (beforeStart === undefined || beforeEnd === undefined) {
+        // An endpoint that was not part of the pre-change model has no members
+        // to preserve — it can only be kept as-is or dropped.
+        if (
+          surviving.has(range.startColumnId) &&
+          surviving.has(range.endColumnId)
+        ) {
+          ranges.push(range);
+          continue;
+        }
+
+        changed = true;
+        continue;
+      }
+
+      const lo = Math.min(beforeStart, beforeEnd);
+      const hi = Math.max(beforeStart, beforeEnd);
+      let memberLo = Infinity;
+      let memberHi = -Infinity;
+      let memberCount = 0;
+
+      for (let i = lo; i <= hi; i += 1) {
+        const nextIndex = afterIndex.get(before[i]!.id);
+
+        if (nextIndex === undefined) {
+          continue;
+        }
+
+        memberLo = Math.min(memberLo, nextIndex);
+        memberHi = Math.max(memberHi, nextIndex);
+        memberCount += 1;
+      }
+
+      // Every member gone, or the survivors no longer sit next to each other:
+      // no contiguous range covers exactly them, so there is nothing honest to
+      // re-encode onto.
+      if (memberCount === 0 || memberHi - memberLo + 1 !== memberCount) {
+        changed = true;
+        continue;
+      }
+
+      const forward = beforeStart <= beforeEnd;
+      const startColumnId = after[forward ? memberLo : memberHi]!.id;
+      const endColumnId = after[forward ? memberHi : memberLo]!.id;
+
+      if (
+        startColumnId === range.startColumnId &&
+        endColumnId === range.endColumnId
+      ) {
+        ranges.push(range);
+        continue;
+      }
+
+      // The anchor is remapped by identity below when its own column survives,
+      // which is the right answer here: unlike a full-row bound, a partial
+      // range's anchor names a column the user actually clicked.
+      changed = true;
+      ranges.push({ ...range, startColumnId, endColumnId });
+    }
+
+    let nextAnchor = anchor;
+
+    if (anchor) {
+      if (!anchorRemapped && !surviving.has(anchor.columnId)) {
+        // A cell the user can no longer see is not a usable extend-from origin.
+        anchorColumnId = null;
+      }
+
+      if (anchorColumnId === null) {
+        nextAnchor = null;
+        changed = true;
+      } else if (anchorColumnId !== anchor.columnId) {
+        nextAnchor = { ...anchor, columnId: anchorColumnId };
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      return false;
+    }
+
+    selection = { ranges, anchor: nextAnchor };
+    return true;
   }
 
   /** Avoid deriving the old visible model when there is no focus to repair. */
@@ -1597,27 +1837,56 @@ function sameColumnLayout<TRow extends PretableRow>(
 }
 
 /**
- * Compare only the column fields that feed grouped-row derivation.
- *
- * `formatAggregate` is display-only and React renders it from fresh props;
- * `rowGroup` seeds the initial state but does not control it after creation.
- * Keeping both out of this comparison avoids unnecessary engine emissions.
+ * The column set the derived rows resolve against: ids, in order. A changed set
+ * can change filtering, sorting and grouping regardless of whether grouping is
+ * active, so this one is never gated.
  */
-function sameColumnGroupingSemantics<TRow extends PretableRow>(
+function sameColumnIds<TRow extends PretableRow>(
   a: readonly PretableColumn<TRow>[],
   b: readonly PretableColumn<TRow>[],
 ): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
+  return (
+    a.length === b.length && a.every((left, index) => left.id === b[index]!.id)
+  );
+}
+
+/**
+ * Compare the accessors that feed grouped-row derivation, for the columns that
+ * actually feed it: a grouping level's `value`, and any column's `aggregate`.
+ * A `value` closure on an ungrouped, non-aggregated column cannot move the
+ * grouped row model, and it is re-created on every render by the inline-columns
+ * idiom — comparing it would emit for nothing.
+ *
+ * `formatAggregate` is display-only and React renders it from fresh props;
+ * `rowGroup` seeds the initial state but does not control it after creation.
+ * Both stay out of this comparison for the same reason.
+ *
+ * Assumes {@link sameColumnIds} already holds.
+ */
+function sameGroupingAccessors<TRow extends PretableRow>(
+  a: readonly PretableColumn<TRow>[],
+  b: readonly PretableColumn<TRow>[],
+  rowGroups: readonly string[],
+): boolean {
+  const levels = new Set(rowGroups);
 
   return a.every((left, index) => {
-    const right = b[index]!;
-    return (
-      left.id === right.id &&
-      left.value === right.value &&
-      left.aggregate === right.aggregate
-    );
+    const right = b[index];
+
+    if (!right || left.id !== right.id) {
+      return false;
+    }
+
+    const participates =
+      levels.has(left.id) ||
+      left.aggregate !== undefined ||
+      right.aggregate !== undefined;
+
+    if (!participates) {
+      return true;
+    }
+
+    return left.value === right.value && left.aggregate === right.aggregate;
   });
 }
 

@@ -292,3 +292,226 @@ describe("selection state", () => {
     expect(derived.get("b")).toBe("indeterminate");
   });
 });
+
+/**
+ * Reordering and pinning corrupt ranges with no grouping involved at all: a
+ * range does not need to LOSE a column to break, it only needs the columns
+ * between its endpoints to change. Every grid with row selection plus
+ * drag-to-reorder is exposed, both of which shipped long before grouping.
+ */
+describe("selection reconciliation across reorder and pin", () => {
+  function triState(grid: ReturnType<typeof makeGrid>, rowId: string) {
+    const snapshot = grid.getSnapshot();
+
+    return deriveSelectedRows({
+      visibleRows: snapshot.visibleRows,
+      columns: [...grid.getColumns()],
+      selection: snapshot.selection,
+    }).get(rowId);
+  }
+
+  test("moveColumn re-encodes a full-row range onto the new first/last", () => {
+    const grid = makeGrid();
+    grid.toggleRowSelection("b");
+
+    grid.moveColumn("message", 0);
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      "message",
+      "name",
+      "status",
+    ]);
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "b",
+        endRowId: "b",
+        startColumnId: "message",
+        endColumnId: "status",
+      },
+    ]);
+    expect(triState(grid, "b")).toBe("selected");
+  });
+
+  test("toggling the same row after a reorder deselects instead of appending a second range", () => {
+    const grid = makeGrid();
+    grid.toggleRowSelection("b");
+    grid.moveColumn("message", 0);
+
+    grid.toggleRowSelection("b");
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([]);
+    expect(triState(grid, "b")).toBeUndefined();
+  });
+
+  test("setColumnOrder re-encodes a full-row range onto the new first/last", () => {
+    const grid = makeGrid();
+    grid.selectAll();
+
+    grid.setColumnOrder(["message", "status", "name"]);
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "a",
+        endRowId: "c",
+        startColumnId: "message",
+        endColumnId: "name",
+      },
+    ]);
+    expect(triState(grid, "a")).toBe("selected");
+    expect(triState(grid, "c")).toBe("selected");
+  });
+
+  test("setColumnPinned re-encodes a full-row range onto the new first/last", () => {
+    const grid = makeGrid();
+    grid.toggleRowSelection("b");
+
+    grid.setColumnPinned("message", "left");
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      "message",
+      "name",
+      "status",
+    ]);
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "b",
+        endRowId: "b",
+        startColumnId: "message",
+        endColumnId: "status",
+      },
+    ]);
+    expect(triState(grid, "b")).toBe("selected");
+  });
+
+  test("resetColumnLayout re-encodes a full-row range onto the restored order", () => {
+    const grid = makeGrid();
+    grid.moveColumn("message", 0);
+    grid.toggleRowSelection("b");
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "b",
+        endRowId: "b",
+        startColumnId: "message",
+        endColumnId: "status",
+      },
+    ]);
+
+    grid.resetColumnLayout();
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      "name",
+      "status",
+      "message",
+    ]);
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "b",
+        endRowId: "b",
+        startColumnId: "name",
+        endColumnId: "message",
+      },
+    ]);
+    expect(triState(grid, "b")).toBe("selected");
+  });
+
+  test("the anchor follows its range's re-encoded corner", () => {
+    const grid = makeGrid();
+    grid.toggleRowSelection("b");
+    expect(grid.getSnapshot().selection.anchor).toEqual({
+      rowId: "b",
+      columnId: "name",
+    });
+
+    grid.moveColumn("message", 0);
+
+    expect(grid.getSnapshot().selection.anchor).toEqual({
+      rowId: "b",
+      columnId: "message",
+    });
+  });
+
+  test("a partial range keeps exactly its columns when the reorder leaves them adjacent", () => {
+    const grid = makeGrid();
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: "b",
+          endRowId: "b",
+          startColumnId: "status",
+          endColumnId: "message",
+        },
+      ],
+      anchor: { rowId: "b", columnId: "status" },
+    });
+
+    // `name` leaves the front; `status` and `message` stay next to each other.
+    grid.moveColumn("name", 2);
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      "status",
+      "message",
+      "name",
+    ]);
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "b",
+        endRowId: "b",
+        startColumnId: "status",
+        endColumnId: "message",
+      },
+    ]);
+    expect(triState(grid, "b")).toBe("indeterminate");
+  });
+
+  test("a partial range a reorder would widen is dropped rather than swallowing a column", () => {
+    const grid = makeGrid();
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: "b",
+          endRowId: "b",
+          startColumnId: "status",
+          endColumnId: "message",
+        },
+      ],
+      anchor: { rowId: "b", columnId: "status" },
+    });
+
+    // `name` lands between the range's two columns.
+    grid.moveColumn("name", 1);
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      "status",
+      "name",
+      "message",
+    ]);
+    expect(grid.getSnapshot().selection.ranges).toEqual([]);
+    expect(triState(grid, "b")).toBeUndefined();
+  });
+
+  test("a reorder that disturbs no range leaves the selection alone", () => {
+    const grid = createGridCore({
+      columns: [
+        { id: "a", header: "A" },
+        { id: "b", header: "B" },
+        { id: "c", header: "C" },
+        { id: "d", header: "D" },
+      ],
+      rows: [{ id: "r1" }] as { id: string }[],
+      getRowId: (row) => row.id,
+    });
+    grid.selectAll();
+    const before = grid.getSnapshot().selection;
+
+    // Interior swap: neither the drawn first/last nor the range's span moves.
+    grid.moveColumn("c", 1);
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      "a",
+      "c",
+      "b",
+      "d",
+    ]);
+    expect(grid.getSnapshot().selection).toEqual(before);
+  });
+});

@@ -438,7 +438,6 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     columns: PretableColumn_2<TRow>[];
     // (undocumented)
     getRowId?: (row: TRow, index: number) => string;
-    // Warning: (ae-forgotten-export) The symbol "PretableGroupColumnOptions" needs to be exported by the entry point index.d.ts
     groupColumn?: PretableGroupColumnOptions;
     groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;
@@ -474,6 +473,13 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     visibleRange: PretableRowRange;
     // (undocumented)
     visibleRows: PretableVisibleRow<TRow>[];
+}
+
+// @public
+export interface PretableGroupColumnOptions {
+    header?: string;
+    pinned?: "left";
+    widthPx?: number;
 }
 
 // @public
@@ -655,6 +661,7 @@ export interface PretableSurfaceMessages {
 
 // @public
 export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
+    aggregateFilteredRows?: boolean;
     // (undocumented)
     ariaLabel: string;
     // (undocumented)
@@ -689,10 +696,13 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     //
     // (undocumented)
     getRowProps?: (input: PretableSurfaceRowAttributesInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
+    groupColumn?: PretableGroupColumnOptions;
     groupPanel?: {
         enabled: boolean;
         emptyMessage?: string;
     };
+    groupsDefaultExpanded?: boolean;
+    hideGroupedColumns?: boolean;
     messages?: PretableSurfaceMessages;
     onCellEdit?: (payload: {
         rowId: string;
@@ -838,12 +848,16 @@ export function usePretable<TRow extends PretableRow = PretableRow>(input: UsePr
 
 // @public
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
+    aggregateFilteredRows?: boolean;
     // (undocumented)
     autosize?: boolean | AutosizeOptions;
     // (undocumented)
     columns: PretableColumn<TRow>[];
     // (undocumented)
     getRowId?: PretableGridOptions<TRow>["getRowId"];
+    groupColumn?: PretableGroupColumnOptions;
+    groupsDefaultExpanded?: boolean;
+    hideGroupedColumns?: boolean;
     // (undocumented)
     measuredHeights?: Record<string, number>;
     // (undocumented)
@@ -879,7 +893,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:815:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:858:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

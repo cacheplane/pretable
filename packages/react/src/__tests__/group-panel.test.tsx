@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { GROUP_PANEL_HEIGHT } from "../constants";
 import { PretableSurface } from "../pretable-surface";
 import { GroupPanel } from "../group-panel/GroupPanel";
 import type { PretableColumn } from "../types";
@@ -80,9 +81,12 @@ describe("group panel — wrapper and height accounting", () => {
     expect(viewport).toHaveAttribute("aria-label", "test-grid");
   });
 
-  it("the panel consumes from viewportHeight rather than adding to it", () => {
+  it("the panel consumes exactly its own height from viewportHeight", () => {
     // The component must occupy exactly `viewportHeight` either way, so a
-    // consumer's layout does not shift when they enable the panel.
+    // consumer's layout does not shift when they enable the panel. The numbers
+    // are asserted exactly, not as `< 400`: any reservation at all satisfies an
+    // inequality, so it would still pass if the panel reserved one pixel for
+    // itself and then drew 36 — which is precisely how this goes wrong.
     const plain = renderGrid({ viewportHeight: 400 });
     const plainVp = plain.container.querySelector(
       "[data-pretable-scroll-viewport]",
@@ -98,8 +102,15 @@ describe("group panel — wrapper and height accounting", () => {
     const vp = panelled.container.querySelector(
       "[data-pretable-scroll-viewport]",
     ) as HTMLElement;
-    expect(parseInt(vp.style.height, 10)).toBeLessThan(400);
-    // …and the total is still exactly `viewportHeight`.
+    const strip = panel(panelled) as HTMLElement;
+
+    expect(strip.style.height).toBe(`${GROUP_PANEL_HEIGHT}px`);
+    expect(vp.style.height).toBe(`${400 - GROUP_PANEL_HEIGHT}px`);
+    // …and the two together are still exactly `viewportHeight`, with the
+    // wrapper claiming no more than that.
+    expect(
+      parseInt(vp.style.height, 10) + parseInt(strip.style.height, 10),
+    ).toBe(400);
     expect(wrapper.style.height).toBe("400px");
   });
 });
