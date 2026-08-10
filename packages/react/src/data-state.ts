@@ -23,29 +23,42 @@ export type PretableDataState =
   | { phase: "loading-more" }
   | { phase: "error"; message?: string };
 
-/** Which body block the surface owes, or `null` when the rows are the answer. */
+/**
+ * Which body block the surface owes, or `null` when the rows are the answer.
+ *
+ * @experimental
+ * @public
+ */
 export type PretableBodyStateKind =
   "loading" | "empty" | "error" | "error-strip";
 
 /**
- * §4.4's table, as a function. Called only when `dataState` was supplied.
+ * The body-state table of
+ * `docs/superpowers/specs/2026-08-09-server-controlled-exploration-design.md`
+ * §4.4, as a function. Called only when `dataState` was supplied.
  *
- * The two non-obvious rows are deliberate: `stale` with nothing loaded shows
+ * `bodyRowCount` is what the body currently RENDERS, not
+ * `snapshot.loadedRowCount`: under engine filter authority a grid can hold
+ * loaded records and still show nothing, and "no results" is exactly the
+ * answer that case needs. Under external filter authority — the remote shape
+ * this table was written for — the two counts are the same number.
+ *
+ * The two non-obvious rows are deliberate: `stale` with nothing shown gets
  * loading, because an old-empty result with a NEW query in flight is not "no
- * results"; and `refreshing` with nothing loaded keeps the empty block, because
+ * results"; and `refreshing` with nothing shown keeps the empty block, because
  * a 2 s poll over an empty result must not flicker empty → loading → empty.
  */
 export function resolveBodyStateKind(
   phase: PretableDataState["phase"],
-  loadedRowCount: number,
+  bodyRowCount: number,
 ): PretableBodyStateKind | null {
   if (phase === "error") {
     // Never discard fulfilled records for a failure: rows stay visible and
     // interactive, and the failure gets a strip at the top of the viewport.
-    return loadedRowCount === 0 ? "error" : "error-strip";
+    return bodyRowCount === 0 ? "error" : "error-strip";
   }
 
-  if (loadedRowCount > 0) {
+  if (bodyRowCount > 0) {
     return null;
   }
 

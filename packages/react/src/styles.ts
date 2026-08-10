@@ -46,6 +46,49 @@ export function getGroupPanelWrapperStyle(
 }
 
 /**
+ * The box that holds the scroll viewport and the data-lifecycle body states,
+ * used only once `dataState` has been supplied.
+ *
+ * `position: relative` is the containing block the full-bleed body states are
+ * measured against, so it belongs here rather than in grid.css — a consumer
+ * unsetting it would strand the block over the page instead of the grid.
+ */
+export function getDataStateWrapperStyle(): CSSProperties {
+  return {
+    display: "flex",
+    flexDirection: "column",
+    position: "relative",
+  };
+}
+
+/**
+ * A full-bleed body state (loading / empty / error): the viewport's body band,
+ * header excluded.
+ *
+ * Out of flow on purpose. The viewport's own height is pinned inline, so a
+ * block stacked beneath it would push the surface past `viewportHeight` and
+ * leave the message stranded under a full-height empty card. Overlaying the
+ * band instead keeps the surface exactly the box the consumer asked for, and
+ * keeps the header — with its sort and filter controls — reachable while the
+ * body has nothing to show.
+ *
+ * `topInset` is the height the header (plus the group panel, when enabled)
+ * occupies above the band; both are already resolved in JS, and neither is
+ * derivable in CSS.
+ */
+export function getBodyStateOverlayStyle(topInset: number): CSSProperties {
+  return {
+    alignItems: "center",
+    bottom: 0,
+    display: "flex",
+    insetInline: 0,
+    justifyContent: "center",
+    position: "absolute",
+    top: topInset,
+  };
+}
+
+/**
  * The group panel strip itself. Layout only — its skin (background, chip
  * spacing, the empty message's styling) lives in @pretable/ui's grid.css.
  *

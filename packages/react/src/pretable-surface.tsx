@@ -149,6 +149,8 @@ import {
   resolveCellValue,
 } from "./rendering";
 import {
+  getBodyStateOverlayStyle,
+  getDataStateWrapperStyle,
   getGroupPanelWrapperStyle,
   getHeaderCellStyle,
   getHeaderOverlayAnchorStyle,
@@ -206,7 +208,11 @@ import {
   resolveDataScope,
   warnOnEngineSortOverPartialWindow,
 } from "./data-scope";
-import { resolveBodyStateKind, type PretableDataState } from "./data-state";
+import {
+  resolveBodyStateKind,
+  type PretableBodyStateKind,
+  type PretableDataState,
+} from "./data-state";
 
 async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -332,11 +338,26 @@ export interface PretableSurfaceMessages {
     childCount: number;
     scope: "all" | "loaded";
   }) => string;
-  /** Body copy for the empty block. Filtered vs unfiltered wording is the consumer's call. @experimental */
+  /**
+   * Body copy for the empty block, which covers both a query that matched
+   * nothing server-side and a local filter that matched nothing. Filtered vs
+   * unfiltered wording is the consumer's call.
+   *
+   * @experimental
+   */
   emptyStateMessage?: () => string;
-  /** Body copy for the loading block. @experimental */
+  /**
+   * Body copy for the loading block.
+   *
+   * @experimental
+   */
   loadingStateMessage?: () => string;
-  /** Announced — and rendered as the error block's copy — when Pretable owns the failure UI. @experimental */
+  /**
+   * Announced — and rendered as the error block's copy — when Pretable owns
+   * the failure UI.
+   *
+   * @experimental
+   */
   dataErrorAnnouncement?: (args: { message?: string }) => string;
 }
 
@@ -574,6 +595,12 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * @experimental
    */
   renderBodyState?: (input: {
+    /**
+     * Which block is being rendered. A retry control belongs in
+     * `error-strip` but not in a full-bleed `error`, and re-deriving that
+     * from the counts is the library's job, not the consumer's.
+     */
+    kind: PretableBodyStateKind;
     phase: PretableDataState["phase"];
     errorMessage?: string;
     loadedRowCount: number;
@@ -1180,10 +1207,22 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // scope from the snapshot they are reporting on, so the scope word and the
   // counts in one sentence are always the same observation.
   const dataScope = resolveDataScope(dataHonestyInput, processing);
+  // Keyed on the rows the body RENDERS, not on the records the engine holds:
+  // an engine-filtered grid with loaded records and no matches is "no results".
   const bodyStateKind =
     dataState === undefined
       ? null
-      : resolveBodyStateKind(dataState.phase, snapshot.loadedRowCount);
+      : resolveBodyStateKind(dataState.phase, snapshot.visibleRows.length);
+  // Latched, never unlatched. Dropping the wrapper again would change the
+  // viewport's DOM depth, and React re-creates the node one level down: the
+  // scroll offset, DOM focus and every ref inside the grid go with it. A
+  // surface that is never handed the prop still gets no wrapper (D1-GRID-04).
+  const [bodyStateWrapped, setBodyStateWrapped] = useState(
+    dataState !== undefined,
+  );
+  if (dataState !== undefined && !bodyStateWrapped) {
+    setBodyStateWrapped(true);
+  }
 
   const errorMessage =
     dataState !== undefined && dataState.phase === "error"
@@ -1194,12 +1233,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     dataState === undefined || bodyStateKind === null ? null : (
       <div
         data-pretable-body-state={bodyStateKind}
-        // A status role only where the block appears alongside live content;
-        // a full-viewport block is the content, not a status about it.
-        role={bodyStateKind === "error-strip" ? "status" : undefined}
+        // No live-region role. The surface already owns one permanent polite
+        // region, and a second one carrying the same sentence is spoken twice
+        // — while a region inserted together with its text is unreliably
+        // announced at all. The failure reaches assistive technology through
+        // `dataErrorAnnouncement` on the shared region.
+        style={
+          bodyStateKind === "error-strip"
+            ? undefined
+            : getBodyStateOverlayStyle(groupPanelHeight + headerHeight)
+        }
       >
         {renderBodyState
           ? renderBodyState({
+              kind: bodyStateKind,
               phase: dataState.phase,
               errorMessage,
               loadedRowCount: snapshot.loadedRowCount,
@@ -2466,8 +2513,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       aria-label={ariaLabel}
       aria-multiselectable="true"
       aria-rowcount={ariaRowCount}
-      data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-data-phase={dataState?.phase}
+      data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
       // A grouped grid IS a tree, and the role is what makes Left/Right
@@ -4062,14 +4109,20 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
   // The block cannot live inside the viewport: that element carries
   // role="grid"/"treegrid", whose children must be rows and rowgroups. It gets
-  // a wrapper — created ONLY when `dataState` is supplied, so a local
-  // consumer's DOM, CSS selectors and layout are byte-identical to before this
-  // prop existed.
+  // a wrapper, and a surface that never receives `dataState` never gets one.
+  //
+  // The three slots are fixed positions, not a filtered list: React keys these
+  // children by index, so a `null` placeholder is what keeps `content` in the
+  // same slot as the strip comes and goes.
   const withBodyState = (content: ReactNode): ReactNode =>
-    dataState === undefined ? (
+    !bodyStateWrapped ? (
       content
     ) : (
-      <div data-pretable-data-state-wrapper="">
+      <div
+        data-pretable-data-phase={dataState?.phase}
+        data-pretable-data-state-wrapper=""
+        style={getDataStateWrapperStyle()}
+      >
         {bodyStateKind === "error-strip" ? bodyStateBlock : null}
         {content}
         {bodyStateKind !== null && bodyStateKind !== "error-strip"
