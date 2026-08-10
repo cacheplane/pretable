@@ -30,6 +30,24 @@ a quiet header, elevation instead of borders — is not reachable from the curre
    rests on one hairline and the rail needs the extra air to read as chrome rather than as a first
    data row. Density tiers 44 / 52 / 60 satisfy the strict-growth guard.
 
+_Added 2026-08-10, after reviewing the running site:_
+
+5. **Ship a first-party stroked icon set.** There is no icon set today — there are three
+   incompatible rendering systems. Two _filled_ SVGs (the funnel and the ⋮), both authored on a 16
+   grid and rendered at 11px so every edge lands on a fractional pixel; four Unicode text glyphs
+   (`▲`/`▼` sort, `▾` twisty, `✓` checkbox and boolean cell) which re-render in whatever font the
+   theme picked, so their size, weight and baseline change between Excel's Aptos and Material's
+   Roboto and across platforms; and a CSS `radial-gradient` for the chip grip dots. Nothing can give
+   them a shared stroke weight or optical size. Replace all of it with ~8 inline SVG glyphs on one
+   16px grid: 1.5px stroke, rounded caps and joins, `currentColor`, sized from a token. **No icon
+   library dependency** — that remains rejected on bundle, licensing and tree-shaking grounds.
+6. **The container edge becomes a hairline plus real elevation**, not a drawn frame. Today it is
+   `1px solid var(--pretable-rule-strong)` with no shadow, which under Material resolves to
+   `rgb(121,121,121)` — a mid-grey box around the hero grid. Excel keeps its frame and sets
+   `--pretable-shadow-card: none`.
+7. **The homepage visual pass lands inside SP2**, not as a separate quick PR, so the demo changes
+   once, coherently, rather than twice.
+
 ## Verified current state
 
 Every claim below was confirmed against the tree at `e7fcc97`.
@@ -137,6 +155,51 @@ stale `dist/` silently strips exports.
   `outline: "none"` so `:237` governs both, or drop `:237` and let the inset shadow govern both —
   not to add a third.
 
+#### SP2b — the first-party icon set
+
+Roughly eight glyphs, all inline SVG on one 16px grid, 1.5px stroke, rounded caps and joins,
+`fill: none`, `stroke: currentColor`, sized from `--pretable-icon-size` (default 14px). No
+dependency; one small module in `@pretable/react`.
+
+Glyphs needed, replacing what is there now: **funnel** (currently a filled SVG), **⋮ overflow**
+(filled circles — keep circles, they are correct at this size, but move onto the shared grid),
+**chevron** for the group twisty (replaces the Unicode `▾`, and the existing CSS rotation still
+works), **sort ascending/descending** (replaces `▲`/`▼`), **check** (replaces `✓` in both the
+row-select checkbox and the boolean cell), **close/×** for the chip remove, and **grip** for the
+chip handle (replaces the `radial-gradient`).
+
+Two behavioural changes ride along, both visible on the running site:
+
+- The reveal rule is keyed on `[data-pretable-header-row]:hover`, so hovering any single header
+  lights every funnel in the grid at once. The original comment explains why a `~` selector
+  over-matched — but since SP1, header cells and their overlay slots both carry
+  `data-pretable-column-id`, so per-column scoping is now reachable. Fix it or record why not.
+- Sort indicators currently render beside every sortable label. The reference shows an affordance
+  only on the actively sorted column; the rest stay quiet until hover.
+
+Accessibility: every glyph stays `aria-hidden`, because each already sits inside a button with an
+`aria-label` or beside `aria-sort`. Do not add titles that would double-announce.
+
+#### SP2c — the homepage visual pass
+
+Apply the system to the hero once the tokens exist, in this order. Measured on the running site:
+of 153 rendered cells, **zero** carry alignment, because the hero's numeric columns never declare a
+type.
+
+1. Add `type: "number"` to `qty`, `last`, `mktValue`, `dayPnl`, `weight` in
+   `apps/website/app/components/heroGrid/positionColumns.tsx`. This is the single largest
+   readability change on the page and needs no new tokens.
+2. Set `--pretable-rule-vertical: transparent` for the site — reachable since SP1.
+3. Quiet the header: ~12.5px, muted, unfilled.
+4. Un-grey the pinned Symbol column via `--pretable-bg-pinned` plus the seam shadow. **Verified by
+   live CSS injection:** with the header white, the pinned column currently reads as a grey stripe,
+   because it borrows `--pretable-bg-header`. This is the clearest argument for the surface split.
+5. Container edge to hairline plus `--pretable-shadow-card`.
+
+Leave alone: the `Day P&L` two-line value-over-delta stack already does the reference's metric
+pattern well, and the `trim`/`watch`/`hold` pills are the reference's badge pattern hand-rolled in
+app CSS — they are the natural first SP4 primitive, not an SP2 edit.
+
 ### SP3 — `pretable.css` and the docs sweep
 
 - New theme defining **all** contract tokens at `:root` plus a dark block covering every color
@@ -178,6 +241,60 @@ meter, and two-line entity stack.
   So a two-line stack in a non-wrap column, in a row that _also_ has a wrap column, is measured at
   single-line height and clipped — in browsers only, invisible to jsdom.
 
+### SP5 — Wrapped text and variable-height rows (the wedge)
+
+Added 2026-08-10. Wrapped, variable-height rows are pretable's differentiator, and they have **no
+design treatment at all**: `data-pretable-wrap` is emitted on every cell of a wrapping column and is
+matched by nothing in `grid.css`. Neither the reference designs nor any competitor screenshot can
+supply the answer here, which is exactly why it is worth doing — this is where the theme stops
+imitating and starts having an opinion.
+
+**Three defects gate the design work.**
+
+1. **The row-height floor is theme-blind.** `packages/react/src/row-height.ts:1` hardcodes
+   `MIN_ROW_HEIGHT = 44`, while `pretable-surface.tsx` already resolves `--pretable-row-height`
+   through `useResolvedHeights` in the same component that calls `measureRenderedRowHeight`. Excel's
+   density tiers are 20/24/32px, so under Excel every wrapped row is at least 44px — the wedge
+   silently opts out of Excel's entire density model. Under Material's 40/48/56 the floor is inert.
+   Too aggressive for one shipped theme, dead for the other. **Ships immediately as its own small
+   PR**, ahead of the rest of SP5, because it is self-contained and everything else builds on it.
+   Must be checked against the bench: changing the floor changes row heights under the Excel-themed
+   bench, and `row_height_error_p95_px` is a committed gate.
+2. **The estimator is calibrated against a font nothing ships.**
+   `packages/renderer-dom/src/create-renderer.ts:21` sets `ROW_LINE_HEIGHT = 24` with a comment
+   saying it was calibrated for "Inter Variable at 16px in the bench app" — but the bench ships the
+   Excel theme, Aptos Narrow at 15px. The same comment records that mismatched constants previously
+   failed `row_height_error_p95_px` at 5px. A line-height token cannot be a pure CSS choice; it must
+   move this constant in lockstep. `text-core`'s `layoutPreparedText` already accepts `lineHeightPx`
+   (`layout-text.ts:16`), so the plumbing exists — the calibration is the gate.
+3. **Measurement ignores non-wrap cells** (see SP4 above); it is really a wedge bug.
+
+**The design, deliberately small.**
+
+- **Row-level top alignment.** Rows containing a wrapped cell top-align every cell, so first lines
+  share a baseline. Verified empirically on the running hero: `data-pretable-wrap` is emitted from
+  `column.wrap`, a **column** property, so every cell in a wrapping column carries it regardless of
+  whether that cell's text actually wrapped — all 13 hero rows match. The attribute is therefore
+  static, alignment never flips as content streams, and `:has()` is the clean implementation. A
+  _true_ per-row signal ("this row actually wrapped") is not reachable without new engine output,
+  and that version **would** jitter under streaming — do not add it.
+- **A line-height token scoped to wrap cells only**, around 1.45. Wrapped cells are prose; single-
+  line cells are data, and they want different leading. Scoping to wrap cells also leaves the
+  estimator's non-wrap path untouched, which contains the blast radius of defect 2.
+- **`column.maxLines` is opt-in, uncapped by default.** Showing the full text is the product's
+  pitch; capping by default would hide data on the very demo built to showcase it.
+
+**Deliberately not doing:** no max measure on wide wrap columns — an 85-character line is past
+comfortable reading, but capping it is invisible rather than opt-in, and column width is already the
+consumer's lever. No treatment for empty wrapped cells — a blank cell in a tall row is honest, and
+decorating absence is worse than showing it. No distinct background, border, or inset on wrapped
+cells: it would make the grid read as a form. The differentiation is alignment and leading, nothing
+else.
+
+**A finding that strengthens SP2/SP3.** Vertical gridlines and variable row height fight each other:
+in a 90px row the column dividers become long empty channels of line running through whitespace.
+Dropping the cage matters _more_ for the wedge than for a uniform grid.
+
 ## Explicitly rejected
 
 - **A page-canvas token.** The grid renders a card; the consumer owns the page. Shipping a token the
@@ -207,6 +324,17 @@ for token presence and resolution, `css-cascade.test.ts` for the `@layer` / `:wh
 `apps/bench/tests/cascade-override.spec.ts` for real-browser cascade behavior. SP1 and SP2 both
 touch cascade-sensitive rules, so the Playwright cascade spec is the gate that matters most.
 Contrast ratios in SP3 are asserted numerically, not eyeballed.
+
+Two gates added by other work since this spec was written, both of which bite here:
+
+- **Docs tables are test-pinned to the `.api.md` reports** (#280), fail-closed. Any new docs table
+  SP2 or SP3 adds — the attribute contract table, the token reference rows — must be registered with
+  that guard or the suite breaks. Register it in the same PR that adds the table.
+- **`row_height_error_p95_px` is a committed benchmark gate**, and the bench runs the Excel theme.
+  SP5's row-height floor change moves real row heights under exactly that theme, so it needs bench
+  evidence, not just unit tests. The roadmap's governing principles require this anyway: every major
+  capability gets "an explicit complexity/memory budget, deterministic workload, and committed
+  evidence."
 
 ## Open items
 
