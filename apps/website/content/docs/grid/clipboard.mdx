@@ -16,6 +16,8 @@ The default serializer emits tab-separated cells, newline-separated rows, with a
 - `string` / `number` / `boolean` / `bigint` → `String(value)`
 - plain object → `JSON.stringify(value)` (best-effort fallback)
 
+A range that spans [group rows](/docs/grid/grouping) serializes them too: the group's label in the derived group column, each column's `formatAggregate` output where it has an aggregate, and an empty cell everywhere else.
+
 ### Escaping
 
 Cell text and header text are escaped with the RFC 4180 quoting convention, using TAB as the delimiter — the same rule Excel and Google Sheets emit and accept on their plain-text clipboard flavor:
@@ -244,4 +246,5 @@ Announcements are debounced (~500ms) to avoid screen-reader thrashing on held sh
 - [Paste](/docs/grid/paste) — `Cmd/Ctrl+V`, the inverse of this page.
 - [Selection](/docs/grid/selection) — what gets serialized when you copy.
 - [Keyboard](/docs/grid/keyboard) — the `Cmd/Ctrl+C` binding lives here too.
+- [Row grouping](/docs/grid/grouping) — what a copied group row contains.
 - [API reference](/docs/grid/api-reference) — `CopyPayload`, `SerializeRangesArgs`, `PretableSurfaceMessages` types.

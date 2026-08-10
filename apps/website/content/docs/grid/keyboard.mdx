@@ -28,6 +28,8 @@ order: 5
 | `Esc`                             | Collapse selection to focused cell.                                                                    |
 | `Enter` / `Space`                 | Toggle full-row selection on focused row.                                                              |
 
+When [row grouping](/docs/grid/grouping#keyboard) is active the grid becomes a `treegrid`: on a group row `←` and `→` take on collapse and expand inside the group column, and `Enter` / `Space` toggles the group instead of selecting it.
+
 ## `tabBehavior` config
 
 `tabBehavior` controls what `Tab` and `Shift+Tab` do inside the grid:
@@ -121,4 +123,5 @@ See [API reference](/docs/grid/api-reference) for the full method list.
 
 - [Selection](/docs/grid/selection) — the cell-range model the keyboard mutates.
 - [Clipboard](/docs/grid/clipboard) — `Cmd/Ctrl + C` semantics and overrides.
+- [Row grouping](/docs/grid/grouping#keyboard) — the treegrid bindings and the group panel's chip keys.
 - [API reference](/docs/grid/api-reference) — `moveFocus`, `setFocus`, `selectAll`, `clearSelection` signatures.

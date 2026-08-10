@@ -6,6 +6,7 @@ import { CodeBlock } from "./mdx/CodeBlock";
 import { CodeGroup } from "./mdx/CodeGroup";
 import { Example } from "./mdx/Example";
 import { Frame } from "./mdx/Frame";
+import { GroupingExample } from "./mdx/GroupingExample";
 import { HeadlessExample } from "./mdx/HeadlessExample";
 import { Prompt } from "./mdx/Prompt";
 import { Step, Steps } from "./mdx/Steps";
@@ -44,5 +45,6 @@ export const docsMdxComponents: MDXComponents = {
   Frame,
   Prompt,
   Example,
+  GroupingExample,
   HeadlessExample,
 };

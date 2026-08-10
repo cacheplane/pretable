@@ -31,6 +31,18 @@ A column definition. Generic over your row type.
 | `maxWidthPx`   | `number`                                                | no       | Per-column maximum width clamp. Applied during resize and autosize. Engine default max is 800.                                                                                                                                                                                                                                                   |
 | `resizable`    | `boolean`                                               | no       | If `false`, the column has no resize handle and `setColumnWidth` is a no-op for it. Defaults true.                                                                                                                                                                                                                                               |
 | `reorderable`  | `boolean`                                               | no       | If `false`, header drag does not trigger reorder for this column. Defaults true.                                                                                                                                                                                                                                                                 |
+| `align`        | `ColumnAlign`                                           | no       | Horizontal alignment of cells and header label. Defaults to `"end"` for `type: "number"`, and to the writing direction otherwise.                                                                                                                                                                                                                |
+| `flex`         | `number`                                                | no       | Share of the width the fixed columns leave over, so the row ends exactly at the viewport edge. Weights are relative. `minWidthPx`/`maxWidthPx` still apply, and a resized column (which sets `widthPx`) stops flexing. See [Column layout](/docs/grid/column-layout).                                                                            |
+
+### Row grouping fields
+
+See [Row grouping](/docs/grid/grouping).
+
+| Field             | Type                                                    | Description                                                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rowGroup`        | `boolean`                                               | Group rows by this column; levels follow column order. A **seed only** — read once when the grid is created. Changing it later does nothing; use `state.rowGroups` or `grid.setRowGroups`.       |
+| `aggregate`       | `PretableAggregateSpec`                                 | The aggregate shown for this column on group rows: `"sum" \| "avg" \| "min" \| "max" \| "count"`, or a custom `PretableAggregator`.                                                              |
+| `formatAggregate` | `(input: PretableAggregateFormatInput<TRow>) => string` | Formats this column's aggregate on a group row. **Not `format`** — `PretableFormatInput.row` is non-optional and a group row has no row, so a cell formatter is not a legal aggregate formatter. |
 
 ### Cell editing fields
 
@@ -100,7 +112,8 @@ interface PretableMoveFocusOptions {
   byPage?: boolean; // page up/down
 }
 
-type RowSelectionTriState = "selected" | "indeterminate";
+// exported from `@pretable/core`, not from `@pretable/react`
+type PretableRowSelectionTriState = "selected" | "indeterminate";
 ```
 
 ## Cell renderer types
@@ -132,6 +145,14 @@ interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRow> {
   isSorted: boolean;
   pinned: "left" | "right" | null;
 }
+
+// The aggregate counterpart of PretableFormatInput. Note there is no `row`:
+// an aggregate belongs to a group, not to a data row.
+interface PretableAggregateFormatInput<TRow extends PretableRow = PretableRow> {
+  value: unknown;
+  column: PretableColumn<TRow>;
+  group: PretableGroupRow;
+}
 ```
 
 `pinned` is the authoritative pin side, read from the engine's column plan
@@ -142,13 +163,15 @@ the prop. It is normalized to `null` when the column is unpinned, unlike
 
 `PretableCoreColumn<TRow>` is the engine-level (React-free) column type re-exported from `@pretable/core`. `PretableColumn<TRow>` extends it with the React-only `render` and `renderHeader` fields. Most consumers import `PretableColumn` from `@pretable/react`.
 
+`PretableAggregateFormatInput` is exported from `@pretable/core` only — writing a `formatAggregate` inline on a `PretableColumn` infers it, so you rarely need the name.
+
 - `PretableCellAddress` — a single cell, identified by stable row + column id.
 - `PretableCellRange` — a rectangular range over ids; survives sort/filter/reorder.
 - `PretableSelectionState` — the engine's full selection slice (ranges plus the anchor for shift-extends).
 - `PretableFocusState` — the focused cell address; nullable on each axis when focus has not landed yet.
 - `PretableFocusDirection` — direction argument for `grid.moveFocus`.
 - `PretableMoveFocusOptions` — modifier flags that turn `moveFocus` into shift-extend, edge-jump, or page-step.
-- `RowSelectionTriState` — derived per-row state for the checkbox column header (full = `"selected"`, mixed = `"indeterminate"`; absent means unchecked).
+- `PretableRowSelectionTriState` — derived per-row state for the checkbox column header (full = `"selected"`, mixed = `"indeterminate"`; absent means unchecked). Exported from `@pretable/core`.
 
 ## Surface configuration types
 
@@ -166,6 +189,7 @@ interface PretableSurfaceState {
   columnWidths?: Record<string, number>;
   columnOrder?: readonly string[];
   columnPinned?: Record<string, "left" | "right" | null>;
+  rowGroups?: string[]; // grouping columns, outermost first; [] ungroups
 }
 
 interface RowSelectionColumnConfig {
@@ -193,13 +217,21 @@ interface PretableSurfaceMessages {
     clipped: { rows: number; columns: number }; // PastePayload.clipped
   }) => string;
   pasteFailedAnnouncement?: () => string;
+  groupExpandedAnnouncement?: (args: {
+    label: string;
+    childCount: number;
+  }) => string;
+  groupCollapsedAnnouncement?: (args: {
+    label: string;
+    childCount: number;
+  }) => string;
 }
 ```
 
 - `PretableSortEntry` — one entry in the ordered sort list; index in the list = priority, `[]` = unsorted. See [Sorting](/docs/grid/sorting).
 - `PretableSurfaceState` — the slice-based controlled-state shape passed via the surface's `state` prop. Each slice is independently controlled.
 - `RowSelectionColumnConfig` — opts for the built-in checkbox column. Pass to `<PretableSurface>`'s `rowSelectionColumn` prop.
-- `PretableSurfaceMessages` — overrides for the polite `aria-live` announcements (select-all, and copy/paste success/failure). `pasteAnnouncement` is one function rather than one per outcome because a clean, partial and wholly rejected paste are the same sentence at different counts, and clipping is orthogonal to all three. See [Paste](/docs/grid/paste#announcements).
+- `PretableSurfaceMessages` — overrides for the polite `aria-live` announcements (select-all, copy/paste success/failure, and group expand/collapse). `pasteAnnouncement` is one function rather than one per outcome because a clean, partial and wholly rejected paste are the same sentence at different counts, and clipping is orthogonal to all three. See [Paste](/docs/grid/paste#announcements) and [Row grouping](/docs/grid/grouping#keyboard).
 
 ## Copy types
 
@@ -254,28 +286,30 @@ interface PastePayload<TRow> {
 
 The `grid` returned by `usePretable`.
 
-| Method                                                                        | Description                                                                                     |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `getSnapshot(): PretableGridSnapshot<TRow>`                                   | Read the current state.                                                                         |
-| `subscribe(listener: () => void): () => void`                                 | Subscribe to state changes. Returns an unsubscribe fn.                                          |
-| `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Single-column sort: replaces the whole sort list with one entry. Pass `null` to clear.          |
-| `replaceSort(entries: PretableSortEntry[]): void`                             | Atomic multi-sort: replace the ordered entry list. Drops unknown / `sortable: false` columns.   |
-| `setColumnFilter(columnId: string, filter: ColumnFilter \| null): void`       | Set one column's filter. Pass `null` to remove it.                                              |
-| `clearFilters(): void`                                                        | Remove all filters.                                                                             |
-| `replaceFilters(map: Record<string, ColumnFilter>): void`                     | Replace all filters with a new map.                                                             |
-| `distinctColumnValues(columnId: string): string[]`                            | Sorted, de-duped non-empty cell values for a column (for enum filter options).                  |
-| `setSelection(state): void`                                                   | Replace the full selection state ({ ranges, anchor }).                                          |
-| `selectAll(): void`                                                           | Select every visible cell as a single full-grid range.                                          |
-| `clearSelection(): void`                                                      | Collapse selection to the focused cell (or empty if no focus).                                  |
-| `addRange(range): void`                                                       | Append a discontiguous cell range; updates the anchor to the range start.                       |
-| `extendRangeFromAnchor(addr): void`                                           | Replace the active range with one spanning anchor → addr.                                       |
-| `toggleRowSelection(rowId: string): void`                                     | Add or remove a full-row range for the given row.                                               |
-| `setSelectAllVisible(checked: boolean): void`                                 | Toggle full-row ranges across all currently visible rows.                                       |
-| `setFocus(addr: { rowId, columnId } \| null): void`                           | Set the focused cell.                                                                           |
-| `moveFocus(direction, options?): void`                                        | Move focus in `"up" \| "down" \| "left" \| "right"`; options: `extend`, `jumpToEdge`, `byPage`. |
-| `setViewport({scrollTop, scrollLeft, height, width}): void`                   | Update viewport metrics. Wire to your scroll container's `onScroll`.                            |
-| `applyTransaction({add?, update?, remove?}): void`                            | Live-update rows. `add` appends, `update` patches by `id`, `remove` deletes by `id`.            |
-| `autosizeColumns(opts?): void`                                                | Resize columns to content. Optional `AutosizeOptions` controls the algorithm.                   |
+| Method                                                                        | Description                                                                                                                                                                                           |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getSnapshot(): PretableGridSnapshot<TRow>`                                   | Read the current state.                                                                                                                                                                               |
+| `subscribe(listener: () => void): () => void`                                 | Subscribe to state changes. Returns an unsubscribe fn.                                                                                                                                                |
+| `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Single-column sort: replaces the whole sort list with one entry. Pass `null` to clear.                                                                                                                |
+| `replaceSort(entries: PretableSortEntry[]): void`                             | Atomic multi-sort: replace the ordered entry list. Drops unknown / `sortable: false` columns.                                                                                                         |
+| `setColumnFilter(columnId: string, filter: ColumnFilter \| null): void`       | Set one column's filter. Pass `null` to remove it.                                                                                                                                                    |
+| `clearFilters(): void`                                                        | Remove all filters.                                                                                                                                                                                   |
+| `replaceFilters(map: Record<string, ColumnFilter>): void`                     | Replace all filters with a new map.                                                                                                                                                                   |
+| `distinctColumnValues(columnId: string): string[]`                            | Sorted, de-duped non-empty cell values for a column (for enum filter options).                                                                                                                        |
+| `setSelection(state): void`                                                   | Replace the full selection state ({ ranges, anchor }).                                                                                                                                                |
+| `selectAll(): void`                                                           | Select every visible cell as a single full-grid range.                                                                                                                                                |
+| `clearSelection(): void`                                                      | Collapse selection to the focused cell (or empty if no focus).                                                                                                                                        |
+| `addRange(range): void`                                                       | Append a discontiguous cell range; updates the anchor to the range start.                                                                                                                             |
+| `extendRangeFromAnchor(addr): void`                                           | Replace the active range with one spanning anchor → addr.                                                                                                                                             |
+| `toggleRowSelection(rowId: string): void`                                     | Add or remove a full-row range for the given row.                                                                                                                                                     |
+| `setSelectAllVisible(checked: boolean): void`                                 | Toggle full-row ranges across all currently visible rows.                                                                                                                                             |
+| `setFocus(addr: { rowId, columnId } \| null): void`                           | Set the focused cell.                                                                                                                                                                                 |
+| `moveFocus(direction, options?): void`                                        | Move focus in `"up" \| "down" \| "left" \| "right"`; options: `extend`, `jumpToEdge`, `byPage`.                                                                                                       |
+| `setViewport({scrollTop, scrollLeft, height, width}): void`                   | Update viewport metrics. Wire to your scroll container's `onScroll`.                                                                                                                                  |
+| `applyTransaction({add?, update?, remove?}): void`                            | Live-update rows. `add` appends, `update` patches by `id`, `remove` deletes by `id`.                                                                                                                  |
+| `setRows(rows: TRow[]): void`                                                 | Replace the whole row array in place, preserving sort, filters, selection and focus.                                                                                                                  |
+| `autosizeColumns(opts?): void`                                                | Resize columns to content. Optional `AutosizeOptions` controls the algorithm.                                                                                                                         |
+| `getColumns(): readonly PretableColumn<TRow>[]`                               | The columns a renderer should **draw** — the prop columns plus the derived group column, minus the grouped ones, while grouping is active. Identical to `options.columns` by identity when ungrouped. |
 
 ### Column layout actions
 
@@ -288,6 +322,18 @@ The `grid` returned by `usePretable`.
 | `autosizeColumn(columnId: string, options?: AutosizeOptions): void`          | Autosize a single column to its measured content width.                                         |
 | `resetColumnLayout(): void`                                                  | Restore order, widths, and pinned state to the original `columns` prop snapshot taken at mount. |
 | `mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void`           | Internal: called by `usePretable` when the columns prop's id list changes structurally.         |
+
+### Row grouping actions
+
+See [Row grouping](/docs/grid/grouping).
+
+| Method                                                       | Description                                                                                                                                                                     |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setRowGroups(columnIds: readonly string[]): void`           | Replace the grouping levels, outermost first. `[]` ungroups. Unknown ids and duplicates are dropped. Resets every expand/collapse decision, because group ids are path-derived. |
+| `toggleGroup(groupId: string): void`                         | Flip one group's expanded state.                                                                                                                                                |
+| `setGroupExpanded(groupId: string, expanded: boolean): void` | Set one group's expanded state explicitly.                                                                                                                                      |
+| `expandAll(): void`                                          | Expand every group, including ones that do not exist yet.                                                                                                                       |
+| `collapseAll(): void`                                        | Collapse every group, including ones that do not exist yet.                                                                                                                     |
 
 ## `PretableGridSnapshot<TRow>`
 
@@ -314,10 +360,39 @@ interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   totalRowCount: number;
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: { start: number; end: number };
+  editing: PretableEditState | null;
+  // Row grouping:
+  rowGroups: string[]; // grouping columns, outermost first; [] when ungrouped
+  groupsDefaultExpanded: boolean;
+  groupExpansionOverrides: ReadonlySet<string>; // ids that DIFFER from the default
 }
 ```
 
 Read via `grid.getSnapshot()` or directly from the `usePretable` return value.
+
+`visibleRows` is a union, not a row array — a grouped grid interleaves group headers among the data rows:
+
+```ts
+type PretableVisibleRow<TRow> = PretableDataRow<TRow> | PretableGroupRow;
+
+interface PretableDataRow<TRow> {
+  kind: "data";
+  id: string;
+  row: TRow;
+  sourceIndex: number;
+  depth: number; // 0 when ungrouped
+}
+
+interface PretableGroupRow {
+  kind: "group";
+  id: string; // stable and path-derived
+  depth: number; // 0 is the outermost level
+  columnId: string; // the column this level groups by
+  value: unknown; // the group key
+  childCount: number; // data rows beneath it, post-filter
+  aggregates: Record<string, unknown>; // finalized values, keyed by column id
+}
+```
 
 ## `UsePretableOptions<TRow>` — `usePretable` arguments
 
@@ -334,6 +409,17 @@ interface UsePretableOptions<TRow> {
   measuredHeights?: Record<string, number>;
   onSelectionChange?: (next: PretableSelectionState) => void;
   onFocusChange?: (next: PretableFocusState) => void;
+  // Row grouping — all four are create-time: changing one rebuilds the grid.
+  groupColumn?: PretableGroupColumnOptions;
+  hideGroupedColumns?: boolean; // default true
+  aggregateFilteredRows?: boolean; // default false
+  groupsDefaultExpanded?: boolean; // default true
+}
+
+interface PretableGroupColumnOptions {
+  header?: string; // defaults to the first grouped column's header
+  widthPx?: number; // default 200
+  pinned?: "left"; // unpinned by default
 }
 
 interface PretableSurfaceState {
@@ -347,6 +433,8 @@ interface PretableSurfaceState {
   rowGroups?: string[];
 }
 ```
+
+`groupExpansionOverrideLimit` (default `10_000`) is a `createGrid` option only — it is not forwarded by `usePretable` or `<PretableSurface>`. See [Row grouping](/docs/grid/grouping#expansion).
 
 `viewportHeight` is the one required field beyond `columns` and `rows` — the hook always virtualizes. `usePretable` returns `{grid, snapshot, renderSnapshot, telemetry}`.
 
@@ -384,12 +472,26 @@ interface PretableRenderSnapshot<TRow> {
   };
 }
 
-interface PretableRenderRow<TRow> {
+// A union, discriminated on `kind` — a grouped grid renders group headers
+// interleaved with the data rows.
+type PretableRenderRow<TRow> =
+  PretableRenderDataRow<TRow> | PretableRenderGroupRow;
+
+interface PretableRenderRowGeometry {
   id: string;
-  row: TRow;
-  rowIndex: number;
+  rowIndex: number; // index into snapshot.visibleRows
   top: number;
   height: number;
+}
+
+interface PretableRenderDataRow<TRow> extends PretableRenderRowGeometry {
+  kind: "data";
+  row: TRow;
+}
+
+interface PretableRenderGroupRow extends PretableRenderRowGeometry {
+  kind: "group";
+  group: PretableGroupRow;
 }
 
 interface PlannedColumn {
@@ -405,7 +507,7 @@ interface PlannedColumn {
 
 `renderSnapshot.rows` is the slice of rows currently visible in the viewport (plus overscan). Each has `top` (the absolute Y position) and `height` (the row's height — measured if you provided `measuredHeights`, otherwise estimated). Use these to position your row JSX with `position: absolute; top: ${row.top}px; height: ${row.height}px`.
 
-`renderSnapshot.columns` is the column layout — left offset and width per column, accounting for pinned positioning. Left-pinned columns come first, then the visible scrollable window, then the right-pinned columns. A right-pinned entry additionally carries `right`, its offset from the viewport's right edge, which is what its sticky position is derived from; its `left` is still the column's true content offset (where it sits in the end-to-end layout), so mapping any entry back to a content coordinate works uniformly.
+`renderSnapshot.columns` is the column layout, planned from the **drawn** column list (`grid.getColumns()`), so while grouping is active it includes the derived group column and excludes the grouped ones — left offset and width per column, accounting for pinned positioning. Left-pinned columns come first, then the visible scrollable window, then the right-pinned columns. A right-pinned entry additionally carries `right`, its offset from the viewport's right edge, which is what its sticky position is derived from; its `left` is still the column's true content offset (where it sits in the end-to-end layout), so mapping any entry back to a content coordinate works uniformly.
 
 `renderSnapshot.rowMetrics` covers **every** visible row, including rows outside the rendered window that `renderSnapshot.rows` omits — that is what makes it possible to compute a scroll offset for a row that has no DOM node yet. Together with `pinnedLeftWidth` / `pinnedRightWidth` it's the state `<PretableSurface>` uses for [scroll-into-view on keyboard focus](/docs/grid/keyboard#scroll-follows-focus); a custom renderer needs the same inputs to reproduce it. The `rowMetrics` interface is fully typed but isn't exported under a name — write it down as `PretableRenderSnapshot["rowMetrics"]` if you need to.
 
@@ -441,6 +543,7 @@ function measureRenderedRowHeight(node: HTMLElement): number;
 
 ## Where to go next
 
+- [Row grouping](/docs/grid/grouping) — `rowGroup`, `aggregate`, `formatAggregate`, and the grouping actions in context.
 - [Custom rendering](/docs/grid/custom-rendering) — uses every type listed above in a runnable example.
 - [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights` deeper dive.
 - [Theming Overview](/docs/theming) — the `[data-pretable-*]` attribute contract that pairs with this engine.
