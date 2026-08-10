@@ -42,6 +42,9 @@ describe("icon set", () => {
       expect(svg.getAttribute("width")).toBeNull();
       expect(svg.getAttribute("height")).toBeNull();
       expect(container.innerHTML).not.toMatch(/#[0-9a-f]{3,6}/i);
+      // The hook grid.css sizes it through. Without it the glyph falls back to
+      // the SVG default of 300x150 and blows the row apart.
+      expect(svg.getAttribute("data-pretable-icon")).toBe("");
     },
   );
 

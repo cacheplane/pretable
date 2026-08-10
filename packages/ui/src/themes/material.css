@@ -91,6 +91,12 @@
   --pretable-font-size-cell: 14px; /* body-medium */
   --pretable-font-size-header: 14px; /* label-large (px equal; weight differs in grid.css) */
 
+  /* Every glyph in the icon set draws at this size. 16px is M3's own icon size
+     for dense components, and it matches the 14px header and 48px row far
+     better than Excel's 12px would. Deliberately not density-scoped: the
+     chrome glyphs are affordances, not text. */
+  --pretable-icon-size: 16px;
+
   /* Typography */
   --pretable-font-sans:
     "Roboto Flex", "Roboto", system-ui, -apple-system, BlinkMacSystemFont,

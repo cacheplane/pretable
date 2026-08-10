@@ -28,6 +28,15 @@
     border: 0;
   }
 
+  /* Every glyph in the set draws on a 16px grid in currentColor and takes its
+     size from here, so one token moves all of them. `flex: none` because most
+     sit inside flex containers that would otherwise squash them. */
+  :where([data-pretable-icon]) {
+    flex: none;
+    width: var(--pretable-icon-size);
+    height: var(--pretable-icon-size);
+  }
+
   /* Outer viewport (scrollable container) */
   :where([data-pretable-scroll-viewport]) {
     background: var(--pretable-bg-grid);

@@ -84,6 +84,13 @@
   --pretable-font-size-cell: 15px; /* Aptos Narrow 11pt */
   --pretable-font-size-header: 13px;
 
+  /* Every glyph in the icon set draws at this size. 12px because Excel is a
+     dense skin — its header runs 13px and its row 20px, so a 16px glyph would
+     out-weigh the label it sits beside. Deliberately not density-scoped: the
+     chrome glyphs are affordances, not text, and they stay legible at 12px in
+     every tier. */
+  --pretable-icon-size: 12px;
+
   /* Typography */
   --pretable-font-sans:
     "Aptos Narrow", "Aptos", "Segoe UI", -apple-system, BlinkMacSystemFont,

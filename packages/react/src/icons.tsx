@@ -28,6 +28,10 @@ function Glyph({ children, ...props }: IconProps) {
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
+      // The hook `@pretable/ui` sizes every glyph through, from
+      // `--pretable-icon-size`. It lives on the shared wrapper rather than at
+      // each call site so a new glyph cannot be added unsized.
+      data-pretable-icon=""
       {...props}
     >
       {children}
