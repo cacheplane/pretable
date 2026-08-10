@@ -197,6 +197,22 @@ describe("grid.css cascade contract", () => {
     expect(panel?.[0]).toMatch(/var\(--pretable-group-panel-height\)/);
   });
 
+  test("the icon rule keeps a literal size fallback", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(/:where\(\[data-pretable-icon\]\)\s*\{[^}]*\}/)?.[0];
+    expect(rule, "no [data-pretable-icon] rule found").toBeDefined();
+    // An SVG with a viewBox and no width has no useful intrinsic size, so a
+    // bare var() against a theme that predates the token computes to
+    // `width: auto` — measured at 54px for the chip grip, which drags the
+    // drag-to-group strip's height up with it. Same reasoning as
+    // --pretable-group-indent.
+    for (const axis of ["width", "height"]) {
+      expect(rule, `${axis} has no literal fallback`).toMatch(
+        new RegExp(`${axis}:\\s*var\\(--pretable-icon-size,\\s*\\d+px\\)`),
+      );
+    }
+  });
+
   test("grid.css styles the column menu and its ⋮ button", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/:where\(\[data-pretable-column-menu-button\]\)/);

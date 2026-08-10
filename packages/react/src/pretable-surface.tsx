@@ -187,9 +187,9 @@ import { MenuButton } from "./column-menu/MenuButton";
 import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import { OverlayPortal } from "./overlay/OverlayPortal";
-import { CheckIcon, SortAscIcon, SortDescIcon } from "./icons";
 import { popoverStyle } from "./overlay/popover-position";
 import { useHeaderPopover } from "./overlay/useHeaderPopover";
+import { CheckIcon, SortAscIcon, SortDescIcon } from "./icons";
 import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
