@@ -7,7 +7,7 @@ order: 8
 
 Pretable's public theming surface is 39 CSS variables, all `--pretable-*` prefixed. Each theme defines all 39 at `:root`. Excel and Material 3 ship preset values; consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
 
-> Three tokens — `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` — are read by the engine in JavaScript: the first two via the `useResolvedHeights` hook, the third via `useResolvedPx`. The other 36 are CSS-only.
+> Three tokens — `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` — are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 36 are CSS-only. Of the three, the first two are also readable from your own code via [`getDensityHeights`](/docs/grid/density-helpers) in `@pretable/ui`.
 
 ## Surfaces (5)
 

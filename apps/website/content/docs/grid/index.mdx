@@ -119,11 +119,11 @@ Grids that only ever mount on the client (lazily, on scroll into view) report `"
 
 ## Engine reads two CSS variables in JS
 
-For row virtualization, the engine needs `rowHeight` and `headerHeight` as numbers (to compute row `top` positions and the body viewport height). It reads `--pretable-row-height` and `--pretable-header-height` from `<html>`'s computed style via the `useResolvedHeights` hook. When you flip `data-density="..."` on `<html>`, the engine re-renders with new heights automatically.
+For row virtualization, the engine needs `rowHeight` and `headerHeight` as numbers (to compute row `top` positions and the body viewport height). It reads `--pretable-row-height` and `--pretable-header-height` from `<html>`'s computed style, and watches `<html>` for attribute changes. When you flip `data-density="..."` on `<html>`, the engine re-renders with new heights automatically — you do not wire anything.
 
 The other 22 tokens in [the theming contract](/docs/theming/token-reference) are CSS-only — they style the data-attribute selectors but don't enter JavaScript.
 
-See [Density helpers](/docs/grid/density-helpers) for the hook API and SSR considerations.
+To read the same two values in your own code, use `getDensityHeights` from `@pretable/ui` — see [Density helpers](/docs/grid/density-helpers) for its fallbacks and SSR behaviour.
 
 ## What's not yet documented
 
@@ -146,6 +146,6 @@ The engine ships full cell-range selection (Excel/Sheets semantics with shift-ex
 - [Keyboard](/docs/grid/keyboard) — full keyboard contract.
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
 - [Custom rendering](/docs/grid/custom-rendering) — `usePretable` walkthrough with code.
-- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
+- [Density helpers](/docs/grid/density-helpers) — `getDensityHeights`, and the recipe for making it reactive.
 - [API reference](/docs/grid/api-reference) — model methods + types.
 - [Theming Overview](/docs/theming) — how the data-attribute contract gets styled.
