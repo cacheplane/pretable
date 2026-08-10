@@ -4,6 +4,7 @@ import type {
   ColumnOption,
   ColumnType,
   FilterOperator,
+  PretableProcessingOptions,
 } from "@pretable/core";
 import { warnOnce } from "../dev-warn";
 
@@ -211,13 +212,33 @@ const BOOLEAN_OPTIONS: ColumnOption[] = [
  * implicit True/False unless they declare their own; enum columns use their
  * declared options, falling back to the caller-supplied distinct values.
  * Every other type has no checklist, so no distinct-value scan runs.
+ *
+ * `processing` is read only to judge that fallback: values scanned out of the
+ * loaded records are the whole universe under engine filter authority and a
+ * fragment of it under external.
  */
 export function resolveColumnOptions(
-  column: { type?: ColumnType; options?: ColumnOption[] },
+  column: { id: string; type?: ColumnType; options?: ColumnOption[] },
   distinctValues: () => string[],
+  processing?: PretableProcessingOptions,
 ): ColumnOption[] {
   // Only enum-style columns render a checklist; skip the scan for the rest.
   if (column.type === "boolean") return column.options ?? BOOLEAN_OPTIONS;
   if (column.type !== "enum") return [];
-  return column.options ?? distinctValues().map((value) => ({ value }));
+  if (column.options) return column.options;
+
+  // Reaching the fallback under external filter authority means the funnel is
+  // about to offer the distinct values of the LOADED window as an `isAnyOf`
+  // universe — an incomplete one, silently.
+  if (processing?.filter === "external") {
+    warnOnce(
+      `distinct-values-fallback:${column.id}`,
+      `[pretable] Column "${column.id}" has no \`options\` and filtering is ` +
+        "external, so the funnel is offering the distinct values of the " +
+        "loaded window. That is an incomplete universe for isAnyOf. " +
+        "Declare `column.options`.",
+    );
+  }
+
+  return distinctValues().map((value) => ({ value }));
 }

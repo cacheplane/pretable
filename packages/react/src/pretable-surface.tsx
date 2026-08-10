@@ -186,7 +186,6 @@ import { ColumnMenu, type ColumnMenuAction } from "./column-menu/ColumnMenu";
 import { MenuButton } from "./column-menu/MenuButton";
 import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
-import { warnOnce } from "./dev-warn";
 import { OverlayPortal } from "./overlay/OverlayPortal";
 import { popoverStyle } from "./overlay/popover-position";
 import { useHeaderPopover } from "./overlay/useHeaderPopover";
@@ -404,8 +403,10 @@ export interface PretableSurfaceMessages {
   focusedRowRemovedAnnouncement?: () => string;
 
   /**
-   * Announced when navigation is refused at the last loaded row while more
-   * matching rows exist. Once per boundary arrival, not once per keypress.
+   * Announced when navigation reaches the last loaded row while the loaded
+   * records are only a window onto the matching population. Once per boundary
+   * arrival, not once per keypress. `total` is absent unless the population is
+   * known exactly, so an estimate is never subtracted into a difference.
    *
    * @experimental
    */
@@ -1713,33 +1714,51 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     );
   });
 
-  const boundaryAnnouncedForRowIdRef = useRef<string | null>(null);
+  // The boundary an announcement has already been spent on: the focused row
+  // AND the window it sat at the end of. The row id alone cannot tell "still
+  // sitting there" from "the same id at the end of records just replaced
+  // beneath it", and only the second is a fresh boundary.
+  const announcedBoundaryRef = useRef<{
+    rowId: string | null;
+    rows: readonly TRow[];
+  } | null>(null);
 
-  // Reset when focus leaves the boundary row, so a second arrival announces
-  // again while sitting there does not.
+  // Re-arm once focus has left, so a second arrival announces again while
+  // sitting there does not. Compared rather than cleared outright: this also
+  // runs on the commit that follows the announcement itself, and an
+  // unconditional reset would disarm the latch before the very keypress it
+  // exists to swallow. A replacement under a stationary cursor needs no reset —
+  // the recorded window no longer matches the current one.
   useEffect(() => {
-    if (snapshot.focus.rowId !== boundaryAnnouncedForRowIdRef.current) {
-      boundaryAnnouncedForRowIdRef.current = null;
+    if (snapshot.focus.rowId !== announcedBoundaryRef.current?.rowId) {
+      announcedBoundaryRef.current = null;
     }
   }, [snapshot.focus.rowId]);
 
   const announceLoadedBoundary = useCallback(() => {
     const snap = grid.getSnapshot();
+    // The same partial-window rule every count label routes through, rather
+    // than a fourth hand-rolled copy of it: when the loaded records are the
+    // whole population the end of them is not a boundary to report.
+    if (resolveDataScope(snap, processing) === "all") {
+      return;
+    }
+    const announced = announcedBoundaryRef.current;
+    if (announced?.rowId === snap.focus.rowId && announced.rows === rows) {
+      return;
+    }
+    announcedBoundaryRef.current = { rowId: snap.focus.rowId, rows };
     const total = snap.matchingTotal;
-    if (!(total.kind === "exact" && total.count > snap.loadedRowCount)) {
-      return;
-    }
-    if (boundaryAnnouncedForRowIdRef.current === snap.focus.rowId) {
-      return;
-    }
-    boundaryAnnouncedForRowIdRef.current = snap.focus.rowId;
     scheduleAnnouncement(
       effectiveMessages.moreRowsBoundaryAnnouncement({
         loadedCount: snap.loadedRowCount,
-        total: total.count,
+        // An estimate or a floor cannot be subtracted into "N more available".
+        // Withholding it is what routes the message to its no-population
+        // wording instead of quoting a difference nobody can stand behind.
+        total: total.kind === "exact" ? total.count : undefined,
       }),
     );
-  }, [effectiveMessages, grid, scheduleAnnouncement]);
+  }, [effectiveMessages, grid, processing, rows, scheduleAnnouncement]);
 
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the
   // closures it captures would otherwise go stale across renders. Keep refs to
@@ -4419,21 +4438,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               (c) => c.id === filterOpenState.columnId,
             );
             if (!col) return null;
-            const options = resolveColumnOptions(col, () => {
-              // Reaching the fallback under external filter authority means the
-              // funnel is about to offer the distinct values of the LOADED
-              // window as an `isAnyOf` universe — an incomplete one, silently.
-              if (processing?.filter === "external") {
-                warnOnce(
-                  `distinct-values-fallback:${col.id}`,
-                  `[pretable] Column "${col.id}" has no \`options\` and filtering is ` +
-                    "external, so the funnel is offering the distinct values of the " +
-                    "loaded window. That is an incomplete universe for isAnyOf. " +
-                    "Declare `column.options`.",
-                );
-              }
-              return grid.distinctColumnValues(filterOpenState.columnId);
-            });
+            const options = resolveColumnOptions(
+              col,
+              () => grid.distinctColumnValues(filterOpenState.columnId),
+              processing,
+            );
             return (
               <FilterMenu
                 key={filterOpenState.columnId}
@@ -5082,7 +5091,7 @@ interface SurfaceKeyDownContext<TRow extends PretableRow> {
   columns: PretableColumn<TRow>[];
   grid: PretableGrid<TRow>;
   onGroupExpansionMutation: (groupId: string, mutation: () => void) => void;
-  /** Called when a downward move was refused at the last row of the model. */
+  /** Called when an end-ward move leaves focus on the last row of the model. */
   onLoadedBoundaryReached?: () => void;
   onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
@@ -5121,6 +5130,19 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   const rows = snapshot.visibleRows;
   const firstColumn = columns[0];
   const lastColumn = columns[columns.length - 1];
+
+  // Call after any end-ward move — an arrow, a page, a jump to the end. Whether
+  // the move was refused or merely landed there is not a distinction worth
+  // drawing: both leave the user at the end of a window they cannot tell from
+  // the end of the data, and the caller's latch is what keeps one arrival to
+  // one announcement. Detecting it here rather than in the engine keeps the
+  // engine ignorant of what "more" means.
+  const noteLoadedBoundary = () => {
+    const lastRow = rows[rows.length - 1];
+    if (!onLoadedBoundaryReached || !lastRow) return;
+    if (grid.getSnapshot().focus.rowId !== lastRow.id) return;
+    onLoadedBoundaryReached();
+  };
 
   // Expand/collapse, per the ARIA APG treegrid model. It comes first because
   // Left/Right/Enter/Space mean something different on a group row than they do
@@ -5187,17 +5209,8 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       jumpToEdge: cmd,
     });
 
-    // A refused downward move at the end of the model is the load-more
-    // boundary. Detecting it here rather than in the engine keeps the engine
-    // ignorant of what "more" means.
-    if (
-      direction === "down" &&
-      onLoadedBoundaryReached &&
-      focus.rowId !== null &&
-      grid.getSnapshot().focus.rowId === focus.rowId &&
-      rows[rows.length - 1]?.id === focus.rowId
-    ) {
-      onLoadedBoundaryReached();
+    if (direction === "down") {
+      noteLoadedBoundary();
     }
 
     // Snap off the synthetic row-select column if we landed there.
@@ -5248,6 +5261,9 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       const lastRow = rows[rows.length - 1];
       if (!lastRow) return false;
       grid.setFocus({ rowId: lastRow.id, columnId: lastColumn.id });
+      // Bare End is a move along the row; only the jump reaches for the end of
+      // the rows, so only the jump can arrive at their boundary.
+      noteLoadedBoundary();
     } else if (focus.rowId) {
       grid.setFocus({ rowId: focus.rowId, columnId: lastColumn.id });
     } else {
@@ -5312,6 +5328,10 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       }
     } else {
       grid.setFocus(addr);
+    }
+
+    if (key === "PageDown") {
+      noteLoadedBoundary();
     }
     return true;
   }

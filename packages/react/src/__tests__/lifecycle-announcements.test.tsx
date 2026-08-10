@@ -581,16 +581,41 @@ describe("data-driven focus reconciliation", () => {
 });
 
 describe("loaded-boundary announcement", () => {
-  function lastLoadedCell(view: ReturnType<typeof render>): HTMLElement {
+  /** Counts announcements, which the live region's last-wins text cannot. */
+  function boundarySpy(): {
+    args: { loadedCount: number; total?: number }[];
+    messages: PretableSurfaceMessages;
+  } {
+    const args: { loadedCount: number; total?: number }[] = [];
+    return {
+      args,
+      messages: {
+        moreRowsBoundaryAnnouncement: (a) => {
+          args.push(a);
+          return "BOUNDARY";
+        },
+      },
+    };
+  }
+
+  function focusCell(
+    view: ReturnType<typeof render>,
+    rowId: string,
+  ): HTMLElement {
     const cell = view.container.querySelector<HTMLElement>(
-      '[data-pretable-row-id="b"] [data-pretable-column-id="name"]',
+      `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="name"]`,
     );
-    if (!cell) throw new Error("no rendered cell for row b");
+    if (!cell) throw new Error(`no rendered cell for row ${rowId}`);
     act(() => {
       cell.focus();
       fireEvent.click(cell);
     });
     return cell;
+  }
+
+  /** Row "b" is the last of `page2`, so focusing it is arriving at the end. */
+  function lastLoadedCell(view: ReturnType<typeof render>): HTMLElement {
+    return focusCell(view, "b");
   }
 
   it("announces once when ArrowDown is refused at the last loaded row", () => {
@@ -625,5 +650,176 @@ describe("loaded-boundary announcement", () => {
     });
     flushAnnouncement();
     expect(liveRegionText(view)).toBe("");
+  });
+
+  it("quotes only the loaded count when the population is an estimate", () => {
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "estimate", count: 5432 }}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("End of loaded rows. 2 loaded.");
+  });
+
+  it("quotes only the loaded count when the population is a floor", () => {
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "unknown", atLeast: 9000 }}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("End of loaded rows. 2 loaded.");
+  });
+
+  it("says nothing at the boundary when the engine owns filtering", () => {
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        filterAuthority="engine"
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("");
+  });
+
+  it("stays quiet while the user keeps pressing at the same boundary", () => {
+    const spy = boundarySpy();
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+        messages={spy.messages}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    flushAnnouncement();
+    expect(spy.args).toEqual([{ loadedCount: 2, total: 5432 }]);
+    expect(liveRegionText(view)).toBe("BOUNDARY");
+  });
+
+  it("announces when paging stops at the last loaded row", () => {
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "PageDown" });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe(
+      "End of loaded rows. 5430 more available.",
+    );
+  });
+
+  it("announces when the jump to the end lands on the last loaded row", () => {
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+      />,
+    );
+    const firstCell = focusCell(view, "a");
+    act(() => {
+      fireEvent.keyDown(firstCell, { key: "End", metaKey: true });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe(
+      "End of loaded rows. 5430 more available.",
+    );
+  });
+
+  it("says nothing when the jump is horizontal, not to the end of the rows", () => {
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "End" });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("");
+  });
+
+  it("announces again when the rows are replaced under the boundary row", () => {
+    const spy = boundarySpy();
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+        messages={spy.messages}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    view.rerender(
+      <Harness
+        rows={[...page2]}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+        messages={spy.messages}
+      />,
+    );
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    flushAnnouncement();
+    expect(spy.args).toHaveLength(2);
+  });
+
+  it("announces again once focus has left the boundary row and come back", () => {
+    const spy = boundarySpy();
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+        messages={spy.messages}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    for (const key of ["ArrowDown", "ArrowUp", "ArrowDown", "ArrowDown"]) {
+      act(() => {
+        fireEvent.keyDown(lastCell, { key });
+      });
+    }
+    flushAnnouncement();
+    expect(spy.args).toHaveLength(2);
   });
 });

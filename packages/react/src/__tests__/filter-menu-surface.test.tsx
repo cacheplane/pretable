@@ -10,6 +10,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
+import { resetDevWarnings } from "../dev-warn";
 import type { ColumnFilter } from "@pretable/core";
 import type { PretableColumn } from "../types";
 
@@ -508,5 +509,18 @@ describe("PretableSurface — built-in filter funnel", () => {
       ),
     ).toEqual(["contains", "startsWith", "isEmpty"]);
     expect(select.value).toBe("isEmpty");
+  });
+
+  it("tells the option resolver who owns filtering", () => {
+    // `severity` is an enum with no `options`, so opening its menu takes the
+    // distinct-value fallback. Only the surface knows the authority that makes
+    // that fallback a lie.
+    resetDevWarnings();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const view = renderSurface({ processing: { filter: "external" } });
+    fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('Column "severity"');
   });
 });
