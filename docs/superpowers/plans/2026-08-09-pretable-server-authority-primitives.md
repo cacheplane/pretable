@@ -3305,7 +3305,7 @@ read this first.
 - **Task 4 also had to regenerate `packages/core/core.api.md`**, which its file
   list omits — adding public exports immediately stales the `api:check` gate.
 - **`pnpm api:check` is RED for the middle of this slice, by design.** Green
-  requires both React exporting the new types (Task 12) *and* both reports
+  requires both React exporting the new types (Task 12) _and_ both reports
   regenerated (Task 18). Do not claim it green before then.
 - **Task 8's prose is stale in three places:** it names an "aggregate-identity
   cache" in the clear bundle (since removed as behaviorally unnecessary), a

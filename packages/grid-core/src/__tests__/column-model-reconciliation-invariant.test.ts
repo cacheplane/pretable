@@ -419,6 +419,16 @@ const METHODS: Record<string, MethodSpec> = {
       grid.setRows(ROWS.filter(() => rnd() < 0.85).map((row) => ({ ...row })));
     },
   },
+  setResultMeta: {
+    // A CHANGED datasetKey means the loaded records answer a different
+    // question, so the engine drops selection and focus wholesale rather than
+    // reconciling them. No `total` here: this grid has engine filter
+    // authority, where a supplied total is a warned no-op.
+    authors: ["selection", "focus"],
+    call: (grid, rnd) => {
+      grid.setResultMeta({ datasetKey: pick(rnd, ["ds-a", "ds-b", "ds-c"]) });
+    },
+  },
   setRowGroups: {
     call: (grid, rnd) => {
       const roll = rnd();

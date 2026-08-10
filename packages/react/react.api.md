@@ -232,6 +232,9 @@ export interface PretableAggregator<TAcc = unknown, TOut = unknown> {
 }
 
 // @public
+export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip";
+
+// @public
 export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow> extends PretableFormatInput<TRow> {
     // (undocumented)
     formattedValue: string;
@@ -270,6 +273,32 @@ export interface PretableDataRow<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     sourceIndex: number;
 }
+
+// @public
+export type PretableDataState =
+/** The loaded records answer the desired query. */
+    {
+    phase: "idle";
+}
+/** Nothing usable is loaded for the desired query. */
+| {
+    phase: "loading";
+}
+/** The records answer a PREVIOUS query; the desired one is in flight. */
+| {
+    phase: "stale";
+}
+/** Same query, a newer fulfillment in flight (polling). */
+| {
+    phase: "refreshing";
+}
+/** A tail extension is in flight. */
+| {
+    phase: "loading-more";
+} | {
+    phase: "error";
+    message?: string;
+};
 
 // @public
 export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
@@ -412,8 +441,9 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     setFocus(addr: PretableCellAddress | null): void;
     setGroupExpanded(groupId: string, expanded: boolean): void;
+    setResultMeta(meta: PretableResultMeta): void;
     setRowGroups(columnIds: readonly string[]): void;
-    setRows(rows: TRow[]): void;
+    setRows(rows: TRow[], meta?: PretableResultMeta): void;
     // (undocumented)
     setSelectAllVisible(checked: boolean): void;
     // Warning: (ae-forgotten-export) The symbol "PretableSelectionState" needs to be exported by the entry point index.d.ts
@@ -445,12 +475,14 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;
     hideGroupedColumns?: boolean;
+    processing?: PretableProcessingOptions;
     // (undocumented)
     rows: TRow[];
 }
 
 // @public
 export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
+    datasetKey: string | null;
     // (undocumented)
     editing: PretableEditState | null;
     // (undocumented)
@@ -462,6 +494,7 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     groupExpansionOverrides: ReadonlySet<string>;
     groupsDefaultExpanded: boolean;
     loadedRowCount: number;
+    matchingTotal: PretableMatchingTotal;
     rowGroups: string[];
     // (undocumented)
     selection: PretableSelectionState;
@@ -510,6 +543,18 @@ export interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRo
 }
 
 // @public
+export type PretableMatchingTotal = {
+    kind: "exact";
+    count: number;
+} | {
+    kind: "estimate";
+    count: number;
+} | {
+    kind: "unknown";
+    atLeast?: number;
+};
+
+// @public
 export interface PretableModel<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     grid: PretableGrid<TRow>;
@@ -519,6 +564,15 @@ export interface PretableModel<TRow extends PretableRow = PretableRow> {
     snapshot: PretableGridSnapshot<TRow>;
     // (undocumented)
     telemetry: PretableTelemetry;
+}
+
+// @public
+export type PretableProcessingAuthority = "engine" | "external";
+
+// @public
+export interface PretableProcessingOptions {
+    filter?: PretableProcessingAuthority;
+    sort?: PretableProcessingAuthority;
 }
 
 // @public
@@ -605,6 +659,12 @@ export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> 
 }
 
 // @public
+export interface PretableResultMeta {
+    datasetKey?: string;
+    total?: PretableMatchingTotal;
+}
+
+// @public
 export type PretableRow = Record<string, unknown>;
 
 // @public
@@ -633,9 +693,19 @@ export interface PretableSurfaceMessages {
     copyAnnouncement?: (args: {
         rowCount: number;
         columnCount: number;
+        scope: "all" | "loaded";
     }) => string;
     // (undocumented)
     copyFailedAnnouncement?: () => string;
+    dataErrorAnnouncement?: (args: {
+        message?: string;
+    }) => string;
+    emptyStateMessage?: () => string;
+    focusedRowRemovedAnnouncement?: () => string;
+    groupChildCountLabel?: (args: {
+        childCount: number;
+        scope: "all" | "loaded";
+    }) => string;
     groupCollapsedAnnouncement?: (args: {
         label: string;
         childCount: number;
@@ -643,6 +713,11 @@ export interface PretableSurfaceMessages {
     groupExpandedAnnouncement?: (args: {
         label: string;
         childCount: number;
+    }) => string;
+    loadingStateMessage?: () => string;
+    moreRowsBoundaryAnnouncement?: (args: {
+        loadedCount: number;
+        total?: number;
     }) => string;
     pasteAnnouncement?: (args: {
         cellCount: number;
@@ -653,17 +728,31 @@ export interface PretableSurfaceMessages {
         };
     }) => string;
     pasteFailedAnnouncement?: () => string;
+    resultsAnnouncement?: (args: {
+        loaded: number;
+        total: PretableMatchingTotal;
+        added?: number;
+        scope: "all" | "loaded";
+    }) => string;
     // (undocumented)
     selectAllAnnouncement?: (args: {
         rowCount: number;
         columnCount: number;
         isAll: boolean;
+        scope: "all" | "loaded";
+        loadedCount: number;
+        total?: number;
     }) => string;
+    selectAllLabel?: (args: {
+        scope: "all" | "loaded";
+    }) => string;
+    staleAnnouncement?: () => string;
 }
 
 // @public
 export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     aggregateFilteredRows?: boolean;
+    ariaDescribedBy?: string;
     // (undocumented)
     ariaLabel: string;
     // (undocumented)
@@ -672,6 +761,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     columns: PretableColumn<TRow>[];
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     copyWithHeaders?: boolean;
+    dataState?: PretableDataState;
     // Warning: (ae-forgotten-export) The symbol "PretableSurfaceBodyCellClassNameInput" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -737,14 +827,23 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     onTelemetryChange?: (telemetry: PretableTelemetry) => void;
     // (undocumented)
     overscan?: number;
+    processing?: PretableProcessingOptions;
     // Warning: (ae-forgotten-export) The symbol "PretableSurfaceBodyCellRenderInput" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
     renderBodyCell?: (input: PretableSurfaceBodyCellRenderInput<TRow>) => ReactNode;
+    renderBodyState?: (input: {
+        kind: PretableBodyStateKind;
+        phase: PretableDataState["phase"];
+        errorMessage?: string;
+        loadedRowCount: number;
+        matchingTotal: PretableMatchingTotal;
+    }) => ReactNode;
     // Warning: (ae-forgotten-export) The symbol "PretableSurfaceHeaderCellRenderInput" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
     renderHeaderCell?: (input: PretableSurfaceHeaderCellRenderInput<TRow>) => ReactNode;
+    resultMeta?: PretableResultMeta;
     // (undocumented)
     rows: TRow[];
     // (undocumented)
@@ -783,6 +882,7 @@ export interface PretableTelemetry {
     // (undocumented)
     focusedRowId: string | null;
     loadedRowCount: number;
+    matchingTotal: PretableMatchingTotal;
     // (undocumented)
     renderedRowCount: number;
     // (undocumented)
@@ -840,6 +940,7 @@ export interface SerializeRangesArgs<TRow extends PretableRow> {
     copyWithHeaders?: boolean;
     // (undocumented)
     ranges: readonly PretableCellRange[];
+    scope?: "all" | "loaded";
     // (undocumented)
     visibleRows: readonly PretableVisibleRow<TRow>[];
 }
@@ -867,6 +968,8 @@ export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
     onSelectionChange?: (next: PretableSelectionState) => void;
     // (undocumented)
     overscan?: number;
+    processing?: PretableProcessingOptions;
+    resultMeta?: PretableResultMeta;
     // (undocumented)
     rows: TRow[];
     // (undocumented)
@@ -894,7 +997,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:859:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:1085:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
