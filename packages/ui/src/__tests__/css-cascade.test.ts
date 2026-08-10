@@ -51,6 +51,22 @@ describe("grid.css cascade contract", () => {
     expect(groupRow).toMatch(/background:\s*var\(--pretable-bg-group-row\)/);
   });
 
+  test("row hover is declared after the pinned surfaces so it reaches them", () => {
+    // Everything here is :where()-flattened to (0,0,0), so source order is the
+    // only cascade lever. Declared before the pinned rules, hover loses on
+    // pinned cells and a hovered row visibly breaks in half at the frozen edge.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const pinned = css.indexOf(
+      '[data-pretable-cell][data-pretable-pinned="left"]',
+    );
+    const hover = css.indexOf("[data-pretable-row]:hover [data-pretable-cell]");
+    expect(pinned, "no pinned rule").toBeGreaterThan(-1);
+    expect(hover, "no hover rule").toBeGreaterThan(-1);
+    expect(hover, "hover must come after the pinned surfaces").toBeGreaterThan(
+      pinned,
+    );
+  });
+
   test("header cells reset the button border before drawing the tokenized divider", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const rule = css.match(

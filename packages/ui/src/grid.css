@@ -195,11 +195,6 @@
     );
   }
 
-  /* Hover */
-  :where([data-pretable-row]:hover [data-pretable-cell]) {
-    background: var(--pretable-bg-hover);
-  }
-
   /* Pinned cells (sticky left) — an opaque fill so scrolled columns pass
      underneath, on their own token rather than the header's. */
   :where([data-pretable-cell][data-pretable-pinned="left"]) {
@@ -223,6 +218,15 @@
   ) {
     border-left: var(--pretable-rule-width, 1px) solid
       var(--pretable-rule-vertical, var(--pretable-rule));
+  }
+
+  /* Hover. Declared after the pinned surfaces on purpose: every selector here is
+     :where()-flattened to (0,0,0), so source order is the only cascade lever,
+     and a hover declared earlier loses on pinned cells — leaving a hovered row
+     visibly broken in half at the frozen edge. Selection follows this rule for
+     the same reason. */
+  :where([data-pretable-row]:hover [data-pretable-cell]) {
+    background: var(--pretable-bg-hover);
   }
 
   /* Selection text color. The selection FILL is drawn by the
