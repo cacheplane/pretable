@@ -70,7 +70,8 @@ export function parseBenchQuery(
       script === "scroll-with-heavy-render" ||
       script === "group" ||
       script === "group-expand" ||
-      script === "group-updates"
+      script === "group-updates" ||
+      script === "group-updates-stable-keys"
         ? script
         : DEFAULT_QUERY_STATE.scriptName,
     autorun: searchParams.get("autorun") === "1",

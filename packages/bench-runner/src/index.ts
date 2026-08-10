@@ -71,7 +71,8 @@ export type BenchScriptName =
   | "scroll-with-heavy-render"
   | "group"
   | "group-expand"
-  | "group-updates";
+  | "group-updates"
+  | "group-updates-stable-keys";
 
 export interface BenchViewport {
   width: number;
@@ -231,6 +232,7 @@ export const benchScriptNames: readonly BenchScriptName[] = [
   "group",
   "group-expand",
   "group-updates",
+  "group-updates-stable-keys",
 ];
 
 export function validateSupportedP0aRequest(
@@ -285,12 +287,27 @@ export function validateSupportedP0aRequest(
   ];
   // Row-grouping family. `group` applies a grouping to an ungrouped grid and
   // `group-expand` toggles one group's expansion on an already-grouped one, so
-  // both run through measureBenchInteractionRun; `group-updates` streams row
-  // updates into a grouped grid and runs through measureBenchUpdatesRun.
+  // both run through measureBenchInteractionRun; the two streaming variants
+  // stream row updates into a grouped grid and run through
+  // measureBenchUpdatesRun.
   //
-  // All three are pretable-only — see the adapter gate below.
+  // `group-updates` and `group-updates-stable-keys` differ in ONE respect: the
+  // former's patch generator can pick the grouping level (so rows re-path
+  // between groups mid-run and the tree is rebuilt with a different shape each
+  // tick), the latter's cannot. That separates "grouping under streaming" from
+  // "grouping-key churn under streaming"; see apps/bench/src/bench-runtime.ts'
+  // MeasureBenchUpdatesOptions.excludeColumnIds.
+  //
+  // All four are pretable-only — see the adapter gate below.
   const groupingInteractionScripts = ["group", "group-expand"];
-  const groupingScripts = [...groupingInteractionScripts, "group-updates"];
+  const groupingStreamingScripts = [
+    "group-updates",
+    "group-updates-stable-keys",
+  ];
+  const groupingScripts = [
+    ...groupingInteractionScripts,
+    ...groupingStreamingScripts,
+  ];
   const supportedScripts = [
     "initial",
     "scroll",
@@ -403,13 +420,14 @@ export function validateSupportedP0aRequest(
     }
   }
 
-  if (request.scriptName === "group-updates") {
+  if (groupingStreamingScripts.includes(request.scriptName)) {
     // Mirrors `updates`: S5 is the streaming-updates scenario, and holding
-    // the scenario fixed is what makes group-updates readable against it.
+    // the scenario fixed is what makes both grouped variants readable against
+    // it and against each other.
     if (request.scenarioId !== "S5") {
       return {
         ok: false,
-        reason: `Unsupported scenario for group-updates script: ${request.scenarioId} (S5 only)`,
+        reason: `Unsupported scenario for ${request.scriptName} script: ${request.scenarioId} (S5 only)`,
       };
     }
   }
@@ -643,10 +661,15 @@ function assertRequiredMetrics(
     }
   }
 
-  // `group-updates` runs through measureBenchUpdatesRun, which always emits
-  // the streaming set. (`updates` itself has no entry here — a pre-existing
-  // gap left alone so this change cannot shift an existing script's result.)
-  if (status === "completed" && scriptName === "group-updates") {
+  // Both grouped streaming scripts run through measureBenchUpdatesRun, which
+  // always emits the streaming set. (`updates` itself has no entry here — a
+  // pre-existing gap left alone so this change cannot shift an existing
+  // script's result.)
+  if (
+    status === "completed" &&
+    (scriptName === "group-updates" ||
+      scriptName === "group-updates-stable-keys")
+  ) {
     for (const metricId of [
       "scroll_frame_p95_ms",
       "long_tasks_count",

@@ -13,6 +13,12 @@
 //                 events in the trace (the bench harness emits these
 //                 automatically when PLAYWRIGHT_PERF_TRACE=1).
 //   settle        Slice trigger-to-settled (first-frame plus follow-up frames).
+//   streaming     Slice to the update-stream window of `updates` /
+//                 `group-updates` / `group-updates-stable-keys`. Requires
+//                 performance.mark("pretable.streaming.start" / ".end").
+//                 Use this for any streaming script: those runs have no
+//                 interaction marks, so --window=interaction falls back to
+//                 the full trace, which is dominated by initial mount.
 
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -25,7 +31,7 @@ const windowMode = windowArg ? windowArg.split("=")[1] : "full";
 
 if (!tracePath) {
   console.error(
-    "usage: node scripts/analyze-cdp.mjs <trace.cdp.json> [index.js.map] [--window=full|interaction|settle]",
+    "usage: node scripts/analyze-cdp.mjs <trace.cdp.json> [index.js.map] [--window=full|interaction|settle|streaming]",
   );
   process.exit(1);
 }
@@ -76,6 +82,18 @@ if (windowMode === "interaction") {
     windowStartTs = startTs;
     windowEndTs = endTs;
     windowLabel = `settle (${((endTs - startTs) / 1000).toFixed(2)} ms)`;
+  }
+} else if (windowMode === "streaming") {
+  const startTs = marks.get("pretable.streaming.start");
+  const endTs = marks.get("pretable.streaming.end");
+  if (startTs == null || endTs == null) {
+    console.error(
+      "[analyze-cdp] --window=streaming needs both pretable.streaming.start and .end marks; falling back to full",
+    );
+  } else {
+    windowStartTs = startTs;
+    windowEndTs = endTs;
+    windowLabel = `streaming (${((endTs - startTs) / 1000).toFixed(2)} ms)`;
   }
 }
 

@@ -619,6 +619,16 @@ export interface MeasureBenchUpdatesOptions {
    * behavior consistent across rates.
    */
   updateRatePerSec?: number;
+  /**
+   * Column ids the patch generator may not write. Defaults to `[]`, which is
+   * the historical behaviour — `updates` and `group-updates` both pick
+   * uniformly from every column and must keep doing so.
+   *
+   * Used only by `group-updates-stable-keys`, to hold group membership fixed
+   * while rows stream. See `benchUpdatesExcludedColumnIds` in
+   * apps/bench/src/interaction-plan.ts for why, and for the sampling caveat.
+   */
+  excludeColumnIds?: readonly string[];
 }
 
 export async function measureBenchUpdatesRun(
@@ -656,7 +666,23 @@ export async function measureBenchUpdatesRun(
     1,
     Math.round((updateRatePerSec * BATCH_INTERVAL_MS) / 1000),
   );
-  const columnIds = dataset.columns.map((c) => c.id);
+  // Default `[]` keeps the pool byte-identical to what `updates` and
+  // `group-updates` have always used.
+  const excluded = new Set(options.excludeColumnIds ?? []);
+  const columnIds = dataset.columns
+    .map((c) => c.id)
+    .filter((id) => !excluded.has(id));
+
+  if (columnIds.length === 0) {
+    return {
+      status: "partial",
+      notes: [
+        ...viewportPolicyNotes,
+        "updates patch generator has no columns left to write after exclusions",
+      ],
+      metrics: {},
+    };
+  }
 
   let totalUpdates = 0;
   const longTaskDurations: number[] = [];
@@ -686,6 +712,13 @@ export async function measureBenchUpdatesRun(
       tickRaf();
     });
   };
+
+  // Window markers for scripts/analyze-cdp.mjs --window=streaming. Without
+  // them a streaming trace can only be read whole, and the whole is dominated
+  // by initial mount — which is not what this script measures. Two
+  // performance.mark calls across a 3 s run; the metrics themselves are
+  // computed from frameDurations and are untouched by them.
+  performance.mark("pretable.streaming.start");
 
   tickRaf();
 
@@ -737,6 +770,7 @@ export async function measureBenchUpdatesRun(
     cancelAnimationFrame(rafHandle.id);
     observer?.disconnect();
     layoutShiftObserver?.disconnect();
+    performance.mark("pretable.streaming.end");
   }
 
   const domNodesPeak = root.querySelectorAll("*").length;

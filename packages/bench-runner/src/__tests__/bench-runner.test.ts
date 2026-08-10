@@ -77,6 +77,7 @@ describe("bench-runner contract", () => {
       "group",
       "group-expand",
       "group-updates",
+      "group-updates-stable-keys",
     ]);
   });
 
@@ -284,14 +285,19 @@ describe("bench-runner contract", () => {
       }
     }
 
-    expect(
-      validateSupportedP0aRequest({
-        ...baseRequest,
-        adapterId: "pretable",
-        scenarioId: "S5",
-        scriptName: "group-updates",
-      }),
-    ).toEqual({ ok: true });
+    for (const scriptName of [
+      "group-updates",
+      "group-updates-stable-keys",
+    ] as const) {
+      expect(
+        validateSupportedP0aRequest({
+          ...baseRequest,
+          adapterId: "pretable",
+          scenarioId: "S5",
+          scriptName,
+        }),
+      ).toEqual({ ok: true });
+    }
 
     // ...and rejected, with a reason, for every other adapter. Row grouping
     // is AG Grid Enterprise / MUI X Premium and absent from TanStack, so
@@ -311,17 +317,22 @@ describe("bench-runner contract", () => {
         });
       }
 
-      expect(
-        validateSupportedP0aRequest({
-          ...baseRequest,
-          adapterId,
-          scenarioId: "S5",
-          scriptName: "group-updates",
-        }),
-      ).toEqual({
-        ok: false,
-        reason: expect.stringContaining("adapter"),
-      });
+      for (const scriptName of [
+        "group-updates",
+        "group-updates-stable-keys",
+      ] as const) {
+        expect(
+          validateSupportedP0aRequest({
+            ...baseRequest,
+            adapterId,
+            scenarioId: "S5",
+            scriptName,
+          }),
+        ).toEqual({
+          ok: false,
+          reason: expect.stringContaining("adapter"),
+        });
+      }
     }
 
     // The adapter gate fires ahead of the scenario gate, so a comparator gets
@@ -338,7 +349,8 @@ describe("bench-runner contract", () => {
       reason: expect.stringContaining("adapter"),
     });
 
-    // group / group-expand are S2/S7-only; group-updates is S5-only.
+    // group / group-expand are S2/S7-only; both streaming variants are
+    // S5-only.
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
@@ -361,16 +373,21 @@ describe("bench-runner contract", () => {
       reason: expect.stringContaining("scenario"),
     });
 
-    expect(
-      validateSupportedP0aRequest({
-        ...baseRequest,
-        scenarioId: "S2",
-        scriptName: "group-updates",
-      }),
-    ).toEqual({
-      ok: false,
-      reason: expect.stringContaining("scenario"),
-    });
+    for (const scriptName of [
+      "group-updates",
+      "group-updates-stable-keys",
+    ] as const) {
+      expect(
+        validateSupportedP0aRequest({
+          ...baseRequest,
+          scenarioId: "S2",
+          scriptName,
+        }),
+      ).toEqual({
+        ok: false,
+        reason: expect.stringContaining("scenario"),
+      });
+    }
 
     expect(
       validateSupportedP0aRequest({
@@ -591,11 +608,6 @@ describe("bench-runner contract", () => {
       ).toThrow(/interaction_latency_ms/);
     }
 
-    const groupUpdatesRequest = {
-      ...baseRequest,
-      scenarioId: "S5" as const,
-      scriptName: "group-updates" as const,
-    };
     const groupUpdatesMetrics = {
       scroll_frame_p95_ms: 8.4,
       long_tasks_count: 2,
@@ -609,25 +621,39 @@ describe("bench-runner contract", () => {
       dom_nodes_peak: 900,
     };
 
-    expect(
-      createBenchRunSummary({
-        request: groupUpdatesRequest,
-        status: "completed",
-        timestamp: "2026-08-10T13:00:00.000Z",
-        tracePath: "status/traces/pretable-s5-default-group-updates.trace.zip",
-        metrics: groupUpdatesMetrics,
-      }),
-    ).toMatchObject({ status: "completed", scriptName: "group-updates" });
+    // Both grouped streaming variants owe the same metric set — that is what
+    // makes the churn-free one readable against the churning one.
+    for (const scriptName of [
+      "group-updates",
+      "group-updates-stable-keys",
+    ] as const) {
+      const groupUpdatesRequest = {
+        ...baseRequest,
+        scenarioId: "S5" as const,
+        scriptName,
+      };
+      const tracePath = `status/traces/pretable-s5-default-${scriptName}.trace.zip`;
 
-    expect(() =>
-      createBenchRunSummary({
-        request: groupUpdatesRequest,
-        status: "completed",
-        timestamp: "2026-08-10T13:00:00.000Z",
-        tracePath: "status/traces/pretable-s5-default-group-updates.trace.zip",
-        metrics: { ...groupUpdatesMetrics, streaming_cls: undefined },
-      }),
-    ).toThrow(/streaming_cls/);
+      expect(
+        createBenchRunSummary({
+          request: groupUpdatesRequest,
+          status: "completed",
+          timestamp: "2026-08-10T13:00:00.000Z",
+          tracePath,
+          metrics: groupUpdatesMetrics,
+        }),
+      ).toMatchObject({ status: "completed", scriptName });
+
+      expect(() =>
+        createBenchRunSummary({
+          request: groupUpdatesRequest,
+          status: "completed",
+          timestamp: "2026-08-10T13:00:00.000Z",
+          tracePath,
+          metrics: { ...groupUpdatesMetrics, streaming_cls: undefined },
+        }),
+      ).toThrow(/streaming_cls/);
+    }
   });
 
   test("serializes failed runs and aggregates dashboard entries deterministically", () => {

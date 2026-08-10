@@ -202,12 +202,14 @@ describe("parseBenchQuery", () => {
       });
     }
 
-    expect(
-      parseBenchQuery("?scenario=S5&scale=hypothesis&script=group-updates"),
-    ).toMatchObject({
-      scenarioId: "S5",
-      scale: "hypothesis",
-      scriptName: "group-updates",
-    });
+    for (const script of ["group-updates", "group-updates-stable-keys"]) {
+      expect(
+        parseBenchQuery(`?scenario=S5&scale=hypothesis&script=${script}`),
+      ).toMatchObject({
+        scenarioId: "S5",
+        scale: "hypothesis",
+        scriptName: script,
+      });
+    }
   });
 });
