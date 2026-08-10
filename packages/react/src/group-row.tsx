@@ -113,10 +113,8 @@ export function GroupRow<TRow extends PretableRow>({
             data-pretable-focused={cellIsFocused ? "true" : "false"}
             data-pretable-group-cell={isGroupCell ? "" : undefined}
             data-pretable-pinned={plannedCol.pinned}
-            data-pretable-column-type={column?.type}
-            data-pretable-column-align={
-              column ? resolveColumnAlign(column) : undefined
-            }
+            data-pretable-column-type={column && column.type}
+            data-pretable-column-align={column && resolveColumnAlign(column)}
             key={plannedCol.id}
             onClick={(event) => onCellClick(plannedCol.id, event)}
             onDoubleClick={(event) => {
