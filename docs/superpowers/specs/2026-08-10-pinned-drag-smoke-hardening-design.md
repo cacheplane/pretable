@@ -65,12 +65,13 @@ The destination remains deliberately narrow because that geometry is the behavio
 
 ## Test strategy
 
-The change is itself an end-to-end test hardening, so the negative control must demonstrate that the new engagement guard matters:
+The change is itself an end-to-end test hardening, so two temporary negative controls must exercise both branches of the new engagement guard:
 
-- Temporarily make the grab loop incapable of observing the ghost and confirm the focused test fails at the new engagement assertion rather than timing out on the final header order.
-- Restore the implementation and run the focused Chromium and WebKit test repeatedly enough to exercise the gesture without relying on a whole-test retry.
-- Run the complete website smoke suite in both browsers against a tracked production server.
-- Preserve separate initial-run and retry counts in the report; a green result with a Playwright retry is not considered clean verification for this follow-up.
+- First-miss recovery: temporarily ignore an observed ghost on attempt one, release the pointer through the normal miss path, and allow later attempts to observe it. The focused Chromium test must pass without a runner retry, proving that the loop releases, remeasures, and recovers rather than only succeeding when attempt one engages.
+- Terminal guard: temporarily make every attempt incapable of observing the ghost and confirm the focused Chromium test fails at the new engagement assertion rather than timing out on the final header order.
+- Restore the intended implementation and run the focused test ten times in Chromium and ten times in WebKit with Playwright retries explicitly disabled. All 20 executions must pass.
+- Run the complete website smoke suite once in Chromium and once in WebKit against a tracked production server, again with Playwright retries explicitly disabled. Both suites must pass on their initial execution.
+- Preserve exact execution, failure, and retry counts in the report. Any runner retry or focused repetition failure prevents clean verification for this follow-up.
 
 Static verification includes website type checking, linting the changed test, formatting, and `git diff --check`.
 
@@ -88,6 +89,6 @@ Static verification includes website type checking, linting the changed test, fo
 - Failed grab attempts release the pointer and are bounded at three.
 - The `note` destination is measured after engagement.
 - Final ordering, right-pin state, and `aria-colindex` assertions remain unchanged.
-- Focused Chromium and WebKit verification passes without Playwright retries.
-- Full Chromium and WebKit smoke suites pass without new failures.
+- Focused verification passes 10/10 in Chromium and 10/10 in WebKit with Playwright retries disabled.
+- Full Chromium and WebKit smoke suites pass once each with Playwright retries disabled.
 - No product or public API files change.
