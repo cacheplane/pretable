@@ -6,7 +6,6 @@ import {
   type DeriveVisibleRowsResult,
   type SourceRow,
 } from "./derived-rows";
-import { warnOnce } from "./dev-warn";
 import { isFilterActive } from "./evaluate-filter";
 import { GROUP_COLUMN_ID, resolveEffectiveColumns } from "./group-column";
 import {
@@ -37,6 +36,7 @@ import type {
   PretableTransaction,
   PretableViewportState,
 } from "./types";
+import { warnOnce } from "./warn-once";
 
 const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 
@@ -302,7 +302,10 @@ export function createGridCore<TRow extends PretableRow>(
     }
     if (meta.total !== undefined) {
       if (filterAuthority === "external") {
-        suppliedTotal = meta.total;
+        // Copied because a polling consumer reasonably reuses one meta object
+        // across ticks: aliasing would let a later mutation write engine state
+        // behind the store's back, with no emit to tell anyone.
+        suppliedTotal = { ...meta.total };
       } else {
         warnOnce(SUPPLIED_TOTAL_WARN_KEY, SUPPLIED_TOTAL_WARN_MESSAGE);
       }
@@ -1289,7 +1292,7 @@ export function createGridCore<TRow extends PretableRow>(
       const nextKey = meta.datasetKey ?? datasetKey;
       const nextTotal =
         meta.total !== undefined && filterAuthority === "external"
-          ? meta.total
+          ? { ...meta.total }
           : suppliedTotal;
 
       if (meta.total !== undefined && filterAuthority !== "external") {
@@ -1879,7 +1882,9 @@ export function createGridCore<TRow extends PretableRow>(
       loadedRowCount: sourceRows.length,
       matchingTotal:
         filterAuthority === "external"
-          ? (suppliedTotal ?? { kind: "unknown" })
+          ? suppliedTotal
+            ? { ...suppliedTotal }
+            : { kind: "unknown" }
           : { kind: "exact", count: filteredCount },
       datasetKey,
       visibleRows,
@@ -1903,19 +1908,6 @@ export function createGridCore<TRow extends PretableRow>(
       listener();
     }
   }
-}
-
-function matchingTotalsEqual(
-  a: PretableMatchingTotal | null,
-  b: PretableMatchingTotal | null,
-): boolean {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (a.kind !== b.kind) return false;
-  if (a.kind === "unknown") {
-    return a.atLeast === (b as { atLeast?: number }).atLeast;
-  }
-  return a.count === (b as { count: number }).count;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -2185,4 +2177,29 @@ function filtersEqual(
   }
 
   return true;
+}
+
+function matchingTotalsEqual(
+  a: PretableMatchingTotal | null,
+  b: PretableMatchingTotal | null,
+): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (a === null || b === null) {
+    return false;
+  }
+
+  // Split on the discriminant so both operands narrow, rather than comparing
+  // `a.kind !== b.kind` once and then reaching for a field TypeScript cannot
+  // see: if the union gains a variant, the counted branch below stops
+  // compiling instead of silently comparing the wrong thing.
+  if (a.kind === "unknown" || b.kind === "unknown") {
+    return (
+      a.kind === "unknown" && b.kind === "unknown" && a.atLeast === b.atLeast
+    );
+  }
+
+  return a.kind === b.kind && a.count === b.count;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { resetDevWarnings } from "../dev-warn";
+import { resetDevWarnings } from "../warn-once";
 import { createGridCore, type PretableProcessingOptions } from "../index";
 
 type Row = { id: string; name: string; score: number };
@@ -83,13 +83,6 @@ describe("result meta under external filter authority", () => {
     expect(snap.matchingTotal).toEqual({ kind: "exact", count: 4120 });
   });
 
-  test("matchingTotal is unknown until a total is supplied", () => {
-    expect(
-      makeGrid({ filter: "external", sort: "external" }).getSnapshot()
-        .matchingTotal,
-    ).toEqual({ kind: "unknown" });
-  });
-
   test("setResultMeta refines the total without a rows replacement", () => {
     const grid = makeGrid({ filter: "external" });
     grid.setRows(rows, { total: { kind: "estimate", count: 5000 } });
@@ -113,9 +106,12 @@ describe("result meta under external filter authority", () => {
 
   test("appending is setRows(prev.concat(page)) and preserves selection", () => {
     const grid = makeGrid({ filter: "external", sort: "external" });
-    grid.setRows(rows.slice(0, 2), { total: { kind: "exact", count: 3 } });
+    const loaded = rows.slice(0, 2);
+    grid.setRows(loaded, { total: { kind: "exact", count: 3 } });
     grid.toggleRowSelection("a");
-    grid.setRows(rows, { total: { kind: "exact", count: 3 } });
+    grid.setRows(loaded.concat(rows.slice(2)), {
+      total: { kind: "exact", count: 3 },
+    });
     const snap = grid.getSnapshot();
     expect(snap.loadedRowCount).toBe(3);
     expect(snap.selection.ranges).toHaveLength(1);
@@ -134,5 +130,105 @@ describe("result meta under external filter authority", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]![0]).toContain("resultMeta.total");
     warn.mockRestore();
+  });
+
+  // `setRows` and `setResultMeta` spell the authority rule out separately, so
+  // the setRows coverage above does not protect this path.
+  test("setResultMeta under engine filter authority is ignored, with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    resetDevWarnings();
+    const grid = makeGrid();
+    let emits = 0;
+    grid.subscribe(() => {
+      emits += 1;
+    });
+    grid.setResultMeta({ total: { kind: "exact", count: 999 } });
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "exact",
+      count: 3,
+    });
+    // A refused total must not reach the state either: storing it would emit,
+    // repainting every subscriber for a value the snapshot cannot show.
+    expect(emits).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("resultMeta.total");
+    warn.mockRestore();
+  });
+
+  // A polling consumer that reuses one meta object across ticks is the natural
+  // shape for a 2 s refresh. Aliasing the caller's object would let it write
+  // engine state directly, and would then read back as "unchanged".
+  test("a supplied total is copied, not aliased", () => {
+    const grid = makeGrid({ filter: "external" });
+    const total = { kind: "exact" as const, count: 10 };
+    grid.setRows(rows, { total });
+    total.count = 999;
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "exact",
+      count: 10,
+    });
+  });
+
+  test("a mutated-and-resubmitted total emits", () => {
+    const grid = makeGrid({ filter: "external" });
+    const meta = { total: { kind: "exact" as const, count: 10 } };
+    grid.setRows(rows, meta);
+    let emits = 0;
+    grid.subscribe(() => {
+      emits += 1;
+    });
+    meta.total.count = 11;
+    grid.setResultMeta(meta);
+    expect(emits).toBe(1);
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "exact",
+      count: 11,
+    });
+  });
+
+  // The same reuse hazard on the path that never passes meta to `setRows`:
+  // rows stream in unannotated and only the total is refined on a tick.
+  test("a total resubmitted through setResultMeta alone emits", () => {
+    const grid = makeGrid({ filter: "external" });
+    const meta = { total: { kind: "exact" as const, count: 10 } };
+    grid.setResultMeta(meta);
+    let emits = 0;
+    grid.subscribe(() => {
+      emits += 1;
+    });
+    meta.total.count = 11;
+    grid.setResultMeta(meta);
+    expect(emits).toBe(1);
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "exact",
+      count: 11,
+    });
+  });
+
+  test("mutating the snapshot's matchingTotal does not reach engine state", () => {
+    const grid = makeGrid({ filter: "external" });
+    grid.setRows(rows, { total: { kind: "exact", count: 10 } });
+    const exposed = grid.getSnapshot().matchingTotal as { count: number };
+    exposed.count = 999;
+    grid.setResultMeta({ datasetKey: "next" });
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "exact",
+      count: 10,
+    });
+  });
+
+  test("a growing atLeast lower bound emits", () => {
+    const grid = makeGrid({ filter: "external" });
+    grid.setResultMeta({ total: { kind: "unknown", atLeast: 200 } });
+    let emits = 0;
+    grid.subscribe(() => {
+      emits += 1;
+    });
+    grid.setResultMeta({ total: { kind: "unknown", atLeast: 400 } });
+    expect(emits).toBe(1);
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "unknown",
+      atLeast: 400,
+    });
   });
 });
