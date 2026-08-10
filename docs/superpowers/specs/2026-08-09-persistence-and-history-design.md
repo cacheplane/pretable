@@ -146,8 +146,11 @@ Persistence and history are three related systems with distinct guarantees.
 | Command history       | Reverse recent local grid operations                  | Bounded current session   |
 | Audit/version history | Explain accepted revisions across actors and sessions | Durable, provider-defined |
 
-They share command IDs, revisions, typed operations, and structured results, but
-they do not share retention, reversibility, or authorization guarantees.
+All three systems can use versioned records and structured results. Command
+history and audit/version history may additionally share command IDs, data
+revisions, and typed mutation operations; view-store revisions remain separate
+from data revisions. They do not share retention, reversibility, or
+authorization guarantees.
 
 ## Saved-view persistence
 
@@ -294,15 +297,25 @@ Providers return a typed result:
 - validation error with operation or cell context;
 - forbidden;
 - revision conflict with current revision and retry guidance;
-- transient failure.
+- transient failure known not to have been accepted; or
+- outcome-unknown failure that requires command-status lookup or
+  resynchronization.
+
+In provider mode, `commandId` is an idempotency key. For a documented retention
+horizon, the provider deduplicates accepted submissions: a repeat submission
+with the same payload returns the original accepted result, while a payload
+mismatch for a reused ID is rejected. When a response is lost and acceptance is
+uncertain, the client queries by command ID or resynchronizes revision before
+retrying; it never blindly resubmits the operation as a new command.
 
 Pessimistic mode applies and records only after acceptance. Optimistic mode
 applies immediately and retains the inverse, but does not expose the command as
 undoable until acceptance.
 
 Validation and authorization rejection roll back optimistic changes. Revision
-conflicts roll back or resynchronize before retry. Transient failures follow an
-explicit retry policy and never disappear silently.
+conflicts roll back or resynchronize before retry. Failures known not to have
+been accepted follow an explicit retry policy; outcome-unknown failures use the
+status or resynchronization path above and never disappear silently.
 
 Commands are atomic by default. Partial application requires an explicitly
 non-atomic command and per-operation results.
@@ -329,9 +342,14 @@ Pretable should provide paginated history state and a built-in history panel.
 The provider controls retention, permissions, redaction, actor identity, and
 whether detailed values or summaries are available.
 
-Reverting a durable event always creates a new command. Derived calculation
-events may appear in the timeline, but are reversible only when their provider
-supplies a valid inverse.
+Each event has provider- and authorization-gated revert capability. A revert
+creates a new command only when the provider supplies an executable inverse and
+current authorization permits it. Summary-only and redacted events are
+non-revertible by default unless the provider separately retains and authorizes
+an inverse; the built-in UI disables the action and exposes the reason when an
+inverse is unavailable or forbidden. Derived calculation events may appear in
+the timeline, but are reversible only when their provider supplies a valid
+inverse.
 
 ## Ownership boundary
 
