@@ -202,6 +202,7 @@ import {
 import { parseDraftForType } from "./editors/type-parsing";
 import {
   resolveAriaRowCount,
+  resolveDataScope,
   warnOnEngineSortOverPartialWindow,
 } from "./data-scope";
 
@@ -251,14 +252,29 @@ export interface RowSelectionColumnConfig {
  * @public
  */
 export interface PretableSurfaceMessages {
+  /**
+   * `aria-label` for the header select-all checkbox. `scope: "loaded"` means
+   * the checkbox targets a window onto a larger population.
+   *
+   * @experimental
+   */
+  selectAllLabel?: (args: { scope: "all" | "loaded" }) => string;
   selectAllAnnouncement?: (args: {
     rowCount: number;
     columnCount: number;
     isAll: boolean;
+    /** @experimental */
+    scope: "all" | "loaded";
+    /** @experimental */
+    loadedCount: number;
+    /** @experimental — exact matching total, when one is known. */
+    total?: number;
   }) => string;
   copyAnnouncement?: (args: {
     rowCount: number;
     columnCount: number;
+    /** @experimental — a copy of 200-of-10,432 is not an unscoped copy. */
+    scope: "all" | "loaded";
   }) => string;
   copyFailedAnnouncement?: () => string;
   /**
@@ -307,12 +323,18 @@ export interface PretableSurfaceMessages {
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
-  selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
+  selectAllLabel: ({ scope }) =>
+    scope === "loaded" ? "Select all loaded rows" : "Select all rows",
+  selectAllAnnouncement: ({ rowCount, columnCount, isAll, scope }) =>
     isAll
-      ? "All rows selected"
+      ? scope === "loaded"
+        ? `All ${rowCount} loaded rows selected`
+        : "All rows selected"
       : `${rowCount} rows × ${columnCount} columns selected`,
-  copyAnnouncement: ({ rowCount, columnCount }) =>
-    `${rowCount} rows × ${columnCount} columns copied`,
+  copyAnnouncement: ({ rowCount, columnCount, scope }) =>
+    scope === "loaded"
+      ? `${rowCount} loaded rows × ${columnCount} columns copied`
+      : `${rowCount} rows × ${columnCount} columns copied`,
   copyFailedAnnouncement: () => "Copy failed",
   pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) => {
     const base =
@@ -964,6 +986,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
   const effectiveMessages = useMemo(
     () => ({
+      selectAllLabel: messages?.selectAllLabel ?? defaultMessages.selectAllLabel,
       selectAllAnnouncement:
         messages?.selectAllAnnouncement ??
         defaultMessages.selectAllAnnouncement,
@@ -1086,6 +1109,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // props here would pair a prop-supplied count with a snapshot the engine has
   // not rebuilt for that authority yet.
   const ariaRowCount = resolveAriaRowCount(dataHonestyInput, processing);
+  const dataScope = resolveDataScope(dataHonestyInput, processing);
   warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
   // then report what the engine actually holds. Reading the list back rather
@@ -2481,6 +2505,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   effectiveMessages.copyAnnouncement({
                     rowCount: extent.rowCount,
                     columnCount: extent.columnCount,
+                    scope: dataScope,
                   }),
                 );
               })
@@ -2602,6 +2627,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 rowCount: extent.rowCount,
                 columnCount: extent.columnCount,
                 isAll: extent.isAll,
+                scope: dataScope,
+                loadedCount: after.loadedRowCount,
+                total:
+                  after.matchingTotal.kind === "exact"
+                    ? after.matchingTotal.count
+                    : undefined,
               }),
             );
           }
@@ -2726,7 +2757,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 {showHeaderCheckbox ? (
                   <button
                     aria-checked={headerCheckState}
-                    aria-label="Select all rows"
+                    aria-label={effectiveMessages.selectAllLabel({
+                      scope: dataScope,
+                    })}
                     data-pretable-row-select-all="true"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -2751,6 +2784,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             rowCount: extent.rowCount,
                             columnCount: extent.columnCount,
                             isAll: extent.isAll,
+                            scope: dataScope,
+                            loadedCount: after.loadedRowCount,
+                            total:
+                              after.matchingTotal.kind === "exact"
+                                ? after.matchingTotal.count
+                                : undefined,
                           }),
                         );
                       }
