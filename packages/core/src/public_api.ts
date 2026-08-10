@@ -35,6 +35,7 @@ export type {
   PretableGridOptions,
   PretableGridSnapshot,
   PretableGroupRow,
+  PretableMatchingTotal,
   PretableMoveFocusOptions,
   PretableProcessingAuthority,
   PretableProcessingOptions,

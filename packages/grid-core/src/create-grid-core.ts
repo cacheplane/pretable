@@ -23,6 +23,7 @@ import type {
   PretableMoveFocusOptions,
   PretableProcessingAuthority,
   PretableGridOptions,
+  PretableMatchingTotal,
   PretableRow,
   PretableVisibleRow,
   PretableSelectionState,
@@ -201,6 +202,10 @@ export function createGridCore<TRow extends PretableRow>(
    */
   const pinnedWidthColumnIds = new Set<string>();
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
+  let cachedFilteredCount = 0;
+  /** Last supplied `resultMeta.total`; only consulted under external filter authority. */
+  const suppliedTotal: PretableMatchingTotal | null = null;
+  const datasetKey: string | null = null;
   let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
   let cachedDerivedSort: readonly PretableSortEntry[] | null = null;
   let cachedDerivedFilters: Readonly<Record<string, ColumnFilter>> | null =
@@ -1779,22 +1784,29 @@ export function createGridCore<TRow extends PretableRow>(
       cachedDerivedDefaultExpanded === groupsDefaultExpanded &&
       cachedDerivedAggregateFiltered === aggregateFilteredRows;
 
-    const visibleRows = derivedIsFresh
-      ? cachedVisibleRows!
-      : preserveAggregateIdentity(
-          deriveVisibleRows({
-            columns: options.columns,
-            filters: derivedFilters,
-            rows: sourceRows,
-            sort: derivedSort,
-            rowGroups,
-            groupExpansionOverrides,
-            groupsDefaultExpanded,
-            aggregateFilteredRows,
-          }),
-        );
+    let visibleRows: PretableVisibleRow<TRow>[];
+    let filteredCount: number;
+
+    if (derivedIsFresh) {
+      visibleRows = cachedVisibleRows!;
+      filteredCount = cachedFilteredCount;
+    } else {
+      const derived = deriveVisibleRows({
+        columns: options.columns,
+        filters: derivedFilters,
+        rows: sourceRows,
+        sort: derivedSort,
+        rowGroups,
+        groupExpansionOverrides,
+        groupsDefaultExpanded,
+        aggregateFilteredRows,
+      });
+      visibleRows = preserveAggregateIdentity(derived.rows);
+      filteredCount = derived.filteredCount;
+    }
 
     cachedVisibleRows = visibleRows;
+    cachedFilteredCount = filteredCount;
     cachedDerivedSort = derivedSort;
     cachedDerivedFilters = derivedFilters;
     cachedDerivedRowGroups = rowGroups;
@@ -1812,6 +1824,11 @@ export function createGridCore<TRow extends PretableRow>(
       },
       focus,
       loadedRowCount: sourceRows.length,
+      matchingTotal:
+        filterAuthority === "external"
+          ? (suppliedTotal ?? { kind: "unknown" })
+          : { kind: "exact", count: filteredCount },
+      datasetKey,
       visibleRows,
       visibleRange: {
         start: 0,

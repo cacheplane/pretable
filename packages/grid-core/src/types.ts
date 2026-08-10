@@ -443,6 +443,20 @@ export type PretableAggregateSpec =
   "sum" | "avg" | "min" | "max" | "count" | PretableAggregator;
 
 /**
+ * How many records match the fulfilled query — loaded or not. Three kinds
+ * because real backends have three answers: SQL gives an exact count,
+ * sampling engines give an estimate, and Elasticsearch gives
+ * `{ relation: "gte", value: 10000 }`.
+ *
+ * @experimental
+ * @public
+ */
+export type PretableMatchingTotal =
+  | { kind: "exact"; count: number }
+  | { kind: "estimate"; count: number }
+  | { kind: "unknown"; atLeast?: number };
+
+/**
  * Read-only state observed via `PretableGrid.getSnapshot`.
  *
  * @public
@@ -455,6 +469,21 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   focus: PretableFocusState;
   /** Count of loaded source records — not the matching population. */
   loadedRowCount: number;
+  /**
+   * Engine filter authority: computed locally and always exact (post-filter,
+   * pre-grouping). External filter authority: the last supplied
+   * `resultMeta.total`, else `{ kind: "unknown" }`.
+   *
+   * @experimental
+   */
+  matchingTotal: PretableMatchingTotal;
+  /**
+   * The last supplied dataset identity; `null` before any. Local mode never
+   * changes it.
+   *
+   * @experimental
+   */
+  datasetKey: string | null;
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
   editing: PretableEditState | null;

@@ -35,31 +35,46 @@ export interface DeriveVisibleRowsInput<TRow extends PretableRow> {
   aggregateFilteredRows?: boolean;
 }
 
+/** Output of the pipeline: the flat visible model plus the count behind it. */
+export interface DeriveVisibleRowsResult<TRow extends PretableRow> {
+  rows: PretableVisibleRow<TRow>[];
+  /**
+   * How many source rows survived the filter pass — post-filter, pre-grouping.
+   * Deliberately reported here rather than recomputed: it is not derivable from
+   * `rows` (group synthesis adds header rows and collapsed branches hide their
+   * children), and a second filter pass would double the pipeline's cost.
+   */
+  filteredCount: number;
+}
+
 export function deriveVisibleRows<TRow extends PretableRow>(
   input: DeriveVisibleRowsInput<TRow>,
-): PretableVisibleRow<TRow>[] {
+): DeriveVisibleRowsResult<TRow> {
   const resolvedFilters = resolveFilters(input.columns, input.filters);
   const filtered = input.rows.filter((entry) =>
     matchesFilters(entry.row, resolvedFilters),
   );
 
-  return buildGroupedRows<TRow>({
-    rows: filtered,
-    // Only worth carrying the pre-filter set when it can actually differ.
-    // Equal lengths mean the filter removed nothing, so `filtered` is a copy of
-    // `input.rows` in the same order and the two sort identically —
-    // `buildGroupedRows` sorts whichever it folds over, so skipping here does
-    // not change the fold order.
-    allRows:
-      input.aggregateFilteredRows && filtered.length !== input.rows.length
-        ? input.rows
-        : undefined,
-    columns: input.columns,
-    rowGroups: input.rowGroups ?? [],
-    sort: input.sort,
-    groupExpansionOverrides: input.groupExpansionOverrides ?? NO_OVERRIDES,
-    defaultExpanded: input.groupsDefaultExpanded ?? true,
-  });
+  return {
+    rows: buildGroupedRows<TRow>({
+      rows: filtered,
+      // Only worth carrying the pre-filter set when it can actually differ.
+      // Equal lengths mean the filter removed nothing, so `filtered` is a copy
+      // of `input.rows` in the same order and the two sort identically —
+      // `buildGroupedRows` sorts whichever it folds over, so skipping here does
+      // not change the fold order.
+      allRows:
+        input.aggregateFilteredRows && filtered.length !== input.rows.length
+          ? input.rows
+          : undefined,
+      columns: input.columns,
+      rowGroups: input.rowGroups ?? [],
+      sort: input.sort,
+      groupExpansionOverrides: input.groupExpansionOverrides ?? NO_OVERRIDES,
+      defaultExpanded: input.groupsDefaultExpanded ?? true,
+    }),
+    filteredCount: filtered.length,
+  };
 }
 
 interface ResolvedFilter<TRow extends PretableRow> {

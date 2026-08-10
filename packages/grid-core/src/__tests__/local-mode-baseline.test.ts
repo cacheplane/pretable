@@ -72,6 +72,8 @@ describe("local mode baseline", () => {
         "selection",
         "sort",
         "loadedRowCount",
+        "matchingTotal",
+        "datasetKey",
         "viewport",
         "visibleRange",
         "visibleRows",

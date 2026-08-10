@@ -109,7 +109,7 @@ describe("ungrouped short-circuit", () => {
       filters: {},
       rows: SOURCE,
       sort,
-    });
+    }).rows;
 
     expect(build({ sort })).toEqual(expected);
   });

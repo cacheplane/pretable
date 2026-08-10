@@ -47,6 +47,7 @@ export type {
   PretableFocusState,
   PretableFormatInput,
   PretableFrame,
+  PretableMatchingTotal,
   PretableMoveFocusOptions,
   PretableGridOptions,
   PretableProcessingAuthority,
