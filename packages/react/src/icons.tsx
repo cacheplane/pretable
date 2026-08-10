@@ -71,6 +71,17 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+/* The indeterminate checkbox. Paired with CheckIcon on the same control, so it
+   has to carry the same weight — an en-dash here re-rendered in the theme's
+   font while the tick beside it did not. */
+export function MinusIcon(props: IconProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M4 8h8" />
+    </Glyph>
+  );
+}
+
 export function CloseIcon(props: IconProps) {
   return (
     <Glyph {...props}>

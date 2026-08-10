@@ -189,7 +189,7 @@ import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import { OverlayPortal } from "./overlay/OverlayPortal";
 import { popoverStyle } from "./overlay/popover-position";
 import { useHeaderPopover } from "./overlay/useHeaderPopover";
-import { CheckIcon, SortAscIcon, SortDescIcon } from "./icons";
+import { CheckIcon, MinusIcon, SortAscIcon, SortDescIcon } from "./icons";
 import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
@@ -3373,7 +3373,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     {headerCheckState === "true" ? (
                       <CheckIcon />
                     ) : headerCheckState === "mixed" ? (
-                      "–"
+                      <MinusIcon />
                     ) : null}
                   </button>
                 ) : null}
@@ -4371,7 +4371,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         {rowCheckState === "true" ? (
                           <CheckIcon />
                         ) : rowCheckState === "mixed" ? (
-                          "–"
+                          <MinusIcon />
                         ) : null}
                       </button>
                     ) : (
