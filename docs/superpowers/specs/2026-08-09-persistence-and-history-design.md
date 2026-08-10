@@ -416,6 +416,7 @@ streaming continuity.
 
 - The documentation-only change set is limited to `ROADMAP.md`,
   `docs/README.md`, `README.md`, this spec,
+  `docs/superpowers/plans/2026-08-09-persistence-and-history-documentation.md`,
   `docs/superpowers/specs/2026-04-20-roadmap-fix-then-expand-design.md`, and
   `docs/research/repo-memory.md`.
 - `ROADMAP.md` is the linked canonical prioritization document.
