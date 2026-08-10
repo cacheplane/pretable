@@ -1,5 +1,6 @@
 export * from "./column-types";
 export * from "./compiled-query";
+export * from "./create-local-row-model";
 export * from "./aggregator-law";
 export * from "./errors";
 export {
@@ -30,4 +31,8 @@ export {
   type TransientOrderStatisticTree,
 } from "./persistent/order-statistic-tree";
 export type { TransientMap } from "./persistent/transient";
+export type {
+  PretableRowIntegrityDiagnostic,
+  PretableRowIntegrityDiagnosticSink,
+} from "./row-integrity";
 export * from "./types";
