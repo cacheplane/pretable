@@ -10,13 +10,17 @@ export type PretableRowModelOperation =
   | "expand-all"
   | "collapse-all"
   | "changes-since"
-  | "distinct-values";
+  | "distinct-values"
+  | "dispose";
 
 export type PretableRowModelErrorCode =
   | "disposed-model"
   | "duplicate-row-id"
   | "existing-row-id"
   | "transaction-conflict"
+  | "reentrant-mutation"
+  | "row-identity-change"
+  | "unsupported-row-update"
   | "accessor-failed"
   | "comparator-failed"
   | "aggregator-failed"
@@ -54,6 +58,64 @@ export class PretableDisposedModelError extends PretableRowModelError {
 
   constructor(operation: PretableRowModelOperation) {
     super("disposed-model", "The row model has been disposed.", { operation });
+  }
+}
+
+export class PretableReentrantMutationError extends PretableRowModelError {
+  readonly name = "PretableReentrantMutationError";
+
+  constructor(
+    operation: PretableRowModelOperation,
+    readonly activeOperation: PretableRowModelOperation,
+  ) {
+    super(
+      "reentrant-mutation",
+      `Cannot run ${operation} while ${activeOperation} is preparing an atomic publication.`,
+      { operation },
+    );
+  }
+}
+
+/** Finds a nested guard failure through structured callback-error causes. */
+export function findPretableReentrantMutationError(
+  error: unknown,
+): PretableReentrantMutationError | undefined {
+  const visited = new Set<object>();
+  let current = error;
+  while (current !== null && typeof current === "object") {
+    if (current instanceof PretableReentrantMutationError) return current;
+    if (visited.has(current)) return undefined;
+    visited.add(current);
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return undefined;
+}
+
+export class PretableRowIdentityChangeError extends PretableRowModelError {
+  readonly name = "PretableRowIdentityChangeError";
+
+  constructor(
+    rowId: PretableRowId,
+    readonly nextRowId: unknown,
+    cause?: unknown,
+  ) {
+    super(
+      "row-identity-change",
+      `An update for row ${String(rowId)} changed its configured identity.`,
+      { operation: "apply-transaction", rowId, cause },
+    );
+  }
+}
+
+export class PretableUnsupportedRowUpdateError extends PretableRowModelError {
+  readonly name = "PretableUnsupportedRowUpdateError";
+
+  constructor(rowId: PretableRowId, cause?: unknown) {
+    super(
+      "unsupported-row-update",
+      "Partial updates require an ordinary object or null-prototype record; replace class and exotic rows with setRows instead.",
+      { operation: "apply-transaction", rowId, cause },
+    );
   }
 }
 

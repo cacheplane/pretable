@@ -12,6 +12,50 @@ interface Row {
 const helper = createColumnHelper<Row>();
 
 describe("incremental flat queries", () => {
+  test("guards comparator reentrancy through synchronous setQuery publication", () => {
+    let nestedError: unknown;
+    let armed = false;
+    const columns = [
+      helper.accessor("score", (row) => row.score, {
+        type: "number",
+        compare: (left, right) => {
+          if (armed) {
+            try {
+              model.applyTransaction({
+                add: [{ id: 99, team: "x", score: 99, label: "nested" }],
+              });
+            } catch (error) {
+              nestedError = error;
+            }
+          }
+          return left - right;
+        },
+      }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, team: "a", score: 2, label: "one" },
+        { id: 2, team: "a", score: 1, label: "two" },
+      ],
+      columns,
+    });
+    armed = true;
+
+    const transition = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "asc" }],
+      rowGroups: [],
+    });
+
+    expect(transition.requestedQuery.sort).toHaveLength(1);
+    expect(nestedError).toMatchObject({
+      code: "reentrant-mutation",
+      operation: "apply-transaction",
+      activeOperation: "set-query",
+    });
+    expect(model.getState().snapshot.revision).toBe(1);
+    expect(model.getState().snapshot.sourceRowCount).toBe(2);
+  });
   test("updates filter membership, multi-sort keys, and stable source ties", () => {
     const columns = [
       helper.accessor("team", { type: "text" }),

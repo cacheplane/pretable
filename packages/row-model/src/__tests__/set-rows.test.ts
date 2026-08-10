@@ -14,6 +14,37 @@ interface Row {
 const helper = createColumnHelper<Row>();
 
 describe("setRows incremental replacement", () => {
+  test("rejects nested setRows from getRowId while allowing caught outer work", () => {
+    let armed = false;
+    let nestedError: unknown;
+    const getRowId = (row: Row) => {
+      if (armed) {
+        try {
+          model.setRows([]);
+        } catch (error) {
+          nestedError = error;
+        }
+      }
+      return row.id;
+    };
+    const columns = [helper.accessor("value", { type: "number" })] as const;
+    const model = createLocalRowModel({
+      rows: [{ id: 1, value: 1, label: "one" }],
+      columns,
+      getRowId,
+    });
+    armed = true;
+
+    expect(
+      model.setRows([{ id: 1, value: 2, label: "changed" }]),
+    ).toMatchObject({ revision: 1, updated: 1 });
+    expect(nestedError).toMatchObject({
+      code: "reentrant-mutation",
+      operation: "set-rows",
+      activeOperation: "set-rows",
+    });
+    expect(model.getState().snapshot.sourceRowCount).toBe(1);
+  });
   test("scans IDs once, reuses unchanged references, and reevaluates changed references", () => {
     const value = vi.fn((row: Row) => row.value);
     const getRowId = vi.fn((row: Row) => row.id);

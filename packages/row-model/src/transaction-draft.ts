@@ -1,6 +1,10 @@
 import type { CompiledQuery } from "./compiled-query";
 import type { PretableRowId } from "./column-types";
-import { PretableRowModelError } from "./errors";
+import {
+  PretableRowIdentityChangeError,
+  PretableRowModelError,
+  PretableUnsupportedRowUpdateError,
+} from "./errors";
 import type { RevisionRoot, RowRecord } from "./internal-types";
 import {
   inspectRowIntegrity,
@@ -86,6 +90,7 @@ class TransactionValidationError extends PretableRowModelError {
 function remap(error: unknown): never {
   if (
     error instanceof PretableRowModelError &&
+    error.code !== "reentrant-mutation" &&
     error.operation !== "apply-transaction"
   ) {
     throw new TransactionExecutionError(error);
@@ -194,6 +199,12 @@ function mergeChanges<TRow extends object, TRowId extends PretableRowId>(
 ): { readonly row: TRow; readonly changed: boolean } {
   try {
     const prototype = Object.getPrototypeOf(previous);
+    if (
+      Array.isArray(previous) ||
+      (prototype !== Object.prototype && prototype !== null)
+    ) {
+      throw new PretableUnsupportedRowUpdateError(rowId);
+    }
     const row = Object.create(prototype) as TRow;
     for (const key of Reflect.ownKeys(previous)) {
       const descriptor = Object.getOwnPropertyDescriptor(previous, key);
@@ -233,12 +244,8 @@ function mergeChanges<TRow extends object, TRowId extends PretableRowId>(
     }).some(Boolean);
     return { row: changed ? Object.freeze(row) : previous, changed };
   } catch (cause) {
-    return fail(
-      "derivation-failed",
-      "A transaction update could not be merged safely.",
-      rowId,
-      cause,
-    );
+    if (cause instanceof PretableUnsupportedRowUpdateError) throw cause;
+    throw new PretableUnsupportedRowUpdateError(rowId, cause);
   }
 }
 
@@ -462,6 +469,7 @@ export function applyFlatTransactionDraft<
       readonly rowId: TRowId;
       readonly row: TRow;
       readonly sourceOrder: number;
+      readonly kind: "add" | "update";
     }[] = [];
     const prepared: RowRecord<TRow, TRowId, TColumns>[] = [];
     const diagnostics: PretableRowIntegrityDiagnostic<TRowId>[] = [];
@@ -487,10 +495,16 @@ export function applyFlatTransactionDraft<
         rowId,
         row: merged.row,
         sourceOrder: previous.sourceOrder,
+        kind: "update",
       });
     }
     for (const [rowId, row] of addById) {
-      pending.push({ rowId, row, sourceOrder: nextSourceOrder });
+      pending.push({
+        rowId,
+        row,
+        sourceOrder: nextSourceOrder,
+        kind: "add",
+      });
       nextSourceOrder += 1;
     }
 
@@ -504,8 +518,31 @@ export function applyFlatTransactionDraft<
       } else effectiveRemoves.push(rowId);
     }
 
-    // All lists, IDs, and partial values are captured before active accessors
-    // are allowed to run.
+    for (const candidate of pending) {
+      if (candidate.kind !== "update") continue;
+      let nextRowId: unknown;
+      try {
+        nextRowId = input.getRowId(candidate.row);
+      } catch (cause) {
+        throw new PretableRowIdentityChangeError(
+          candidate.rowId,
+          undefined,
+          cause,
+        );
+      }
+      if (
+        !validRowId(nextRowId) ||
+        !(
+          nextRowId === candidate.rowId ||
+          (nextRowId !== nextRowId && candidate.rowId !== candidate.rowId)
+        )
+      ) {
+        throw new PretableRowIdentityChangeError(candidate.rowId, nextRowId);
+      }
+    }
+
+    // All lists, IDs, partial values, and resulting identities are validated
+    // before active derivation callbacks are allowed to run.
     for (const candidate of pending) {
       const made = createRecord(
         candidate.row,

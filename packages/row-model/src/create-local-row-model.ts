@@ -7,6 +7,8 @@ import type {
 } from "./column-types";
 import {
   PretableDisposedModelError,
+  findPretableReentrantMutationError,
+  PretableReentrantMutationError,
   PretableRowModelError,
   type PretableRowModelOperation,
 } from "./errors";
@@ -122,6 +124,7 @@ class PretableSetRowsExecutionError extends PretableRowModelError {
 function remapSetRowsError(error: unknown): unknown {
   if (
     error instanceof PretableRowModelError &&
+    error.code !== "reentrant-mutation" &&
     error.operation !== "set-rows"
   ) {
     return new PretableSetRowsExecutionError(error);
@@ -252,21 +255,43 @@ export function createLocalRowModel<
     status: READY,
   });
   let disposed = false;
+  let activeMutation: PretableRowModelOperation | undefined;
   let nextSourceOrder = initialStore.records.length;
   let nextTransitionId = 1;
   const listeners = new Set<() => void>();
 
-  const assertActive = (operation: PretableRowModelOperation): void => {
+  const assertCommandAllowed = (operation: PretableRowModelOperation): void => {
+    if (activeMutation !== undefined) {
+      throw new PretableReentrantMutationError(operation, activeMutation);
+    }
     if (disposed) throw new PretableDisposedModelError(operation);
   };
+  const guarded = <T>(
+    operation: PretableRowModelOperation,
+    action: () => T,
+  ): T => {
+    assertCommandAllowed(operation);
+    activeMutation = operation;
+    try {
+      return action();
+    } catch (error) {
+      const reentrant = findPretableReentrantMutationError(error);
+      if (reentrant !== undefined) throw reentrant;
+      throw error;
+    } finally {
+      activeMutation = undefined;
+    }
+  };
   const unavailable = (operation: PretableRowModelOperation): never => {
-    assertActive(operation);
+    assertCommandAllowed(operation);
     throw new PretableNotYetImplementedError(operation);
   };
-  const publish = (next: RevisionRoot<TRow, TRowId, TColumns>): void => {
+  const commit = (next: RevisionRoot<TRow, TRowId, TColumns>): void => {
     root = next;
     snapshot = createFlatSnapshot(root);
     state = Object.freeze({ snapshot, status: READY });
+  };
+  const notify = (): void => {
     for (const listener of Array.from(listeners)) {
       try {
         listener();
@@ -290,166 +315,190 @@ export function createLocalRowModel<
       };
     },
     setRows(nextRows: readonly TRow[]): PretableMutationResult<TRowId> {
-      assertActive("set-rows");
-      const previousRoot = root;
       try {
-        let nextPlan = queryPlan;
-        let drafted = replaceFlatRowsDraft({
-          root: previousRoot,
-          rows: nextRows,
-          getRowId,
-          queryPlan: nextPlan,
-          nextSourceOrder,
-        });
-        const pendingDiagnostics = drafted.diagnostics;
-        if (drafted.sameReferenceMutation) {
-          nextPlan = compileQuery({ derivations, query });
-          drafted = replaceFlatRowsDraft({
+        const prepared = guarded("set-rows", () => {
+          const previousRoot = root;
+          let nextPlan = queryPlan;
+          let drafted = replaceFlatRowsDraft({
             root: previousRoot,
             rows: nextRows,
             getRowId,
             queryPlan: nextPlan,
             nextSourceOrder,
-            acceptSameReferenceMutation: true,
           });
-        }
-        if (!drafted.effective) {
-          return mutationResult(
-            previousRoot.revision,
-            previousRoot.revision,
+          const pendingDiagnostics = drafted.diagnostics;
+          if (drafted.sameReferenceMutation) {
+            nextPlan = compileQuery({ derivations, query });
+            drafted = replaceFlatRowsDraft({
+              root: previousRoot,
+              rows: nextRows,
+              getRowId,
+              queryPlan: nextPlan,
+              nextSourceOrder,
+              acceptSameReferenceMutation: true,
+            });
+          }
+          if (!drafted.effective) {
+            return {
+              result: mutationResult<TRowId>(
+                previousRoot.revision,
+                previousRoot.revision,
+                drafted,
+              ),
+              notify: false,
+              diagnostics: Object.freeze(
+                [],
+              ) as readonly PretableRowIntegrityDiagnostic<TRowId>[],
+            };
+          }
+          const previousRevision = previousRoot.revision;
+          const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
+            Object.freeze({
+              revision: previousRevision + 1,
+              parentRevision: previousRevision,
+              rows: drafted.rows,
+              sourceOrder: drafted.sourceOrder,
+              visible: drafted.visible,
+              queryPlan: nextPlan,
+              expansion: previousRoot.expansion,
+              cause: Object.freeze({ kind: "set-rows" as const }),
+            });
+          const result = mutationResult<TRowId>(
+            previousRevision,
+            committedRoot.revision,
             drafted,
           );
-        }
-        const previousRevision = previousRoot.revision;
-        const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
-          Object.freeze({
-            revision: previousRevision + 1,
-            parentRevision: previousRevision,
-            rows: drafted.rows,
-            sourceOrder: drafted.sourceOrder,
-            visible: drafted.visible,
-            queryPlan: nextPlan,
-            expansion: previousRoot.expansion,
-            cause: Object.freeze({ kind: "set-rows" as const }),
-          });
-        const result = mutationResult<TRowId>(
-          previousRevision,
-          committedRoot.revision,
-          drafted,
-        );
-        queryPlan = nextPlan;
-        nextSourceOrder = drafted.nextSourceOrder;
-        publish(committedRoot);
-        emitDiagnostics(pendingDiagnostics, diagnosticSink);
-        return result;
+          queryPlan = nextPlan;
+          nextSourceOrder = drafted.nextSourceOrder;
+          commit(committedRoot);
+          return {
+            result,
+            notify: true,
+            diagnostics: pendingDiagnostics,
+          };
+        });
+        if (prepared.notify) notify();
+        emitDiagnostics(prepared.diagnostics, diagnosticSink);
+        return prepared.result;
       } catch (error) {
         throw remapSetRowsError(error);
       }
     },
     applyTransaction(transaction: PretableTransaction<TRow, TRowId>) {
-      assertActive("apply-transaction");
-      const previousRoot = root;
-      const drafted = applyFlatTransactionDraft({
-        root: previousRoot,
-        transaction,
-        getRowId,
-        queryPlan,
-        nextSourceOrder,
-      });
-      const result = mutationResult<TRowId>(
-        previousRoot.revision,
-        drafted.effective ? previousRoot.revision + 1 : previousRoot.revision,
-        drafted,
-        drafted.issues,
-      );
-      if (!drafted.effective) return result;
-      const committedRoot: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze(
-        {
-          revision: result.revision,
-          parentRevision: previousRoot.revision,
-          rows: drafted.rows,
-          sourceOrder: drafted.sourceOrder,
-          visible: drafted.visible,
+      const prepared = guarded("apply-transaction", () => {
+        const previousRoot = root;
+        const drafted = applyFlatTransactionDraft({
+          root: previousRoot,
+          transaction,
+          getRowId,
           queryPlan,
-          expansion: previousRoot.expansion,
-          cause: Object.freeze({ kind: "set-rows" as const }),
-        },
-      );
-      nextSourceOrder = drafted.nextSourceOrder;
-      publish(committedRoot);
-      emitDiagnostics(drafted.diagnostics, diagnosticSink);
-      return result;
+          nextSourceOrder,
+        });
+        const result = mutationResult<TRowId>(
+          previousRoot.revision,
+          drafted.effective ? previousRoot.revision + 1 : previousRoot.revision,
+          drafted,
+          drafted.issues,
+        );
+        if (!drafted.effective) {
+          return { result, notify: false, diagnostics: drafted.diagnostics };
+        }
+        const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
+          Object.freeze({
+            revision: result.revision,
+            parentRevision: previousRoot.revision,
+            rows: drafted.rows,
+            sourceOrder: drafted.sourceOrder,
+            visible: drafted.visible,
+            queryPlan,
+            expansion: previousRoot.expansion,
+            cause: Object.freeze({ kind: "set-rows" as const }),
+          });
+        nextSourceOrder = drafted.nextSourceOrder;
+        commit(committedRoot);
+        return { result, notify: true, diagnostics: drafted.diagnostics };
+      });
+      if (prepared.notify) notify();
+      emitDiagnostics(prepared.diagnostics, diagnosticSink);
+      return prepared.result;
     },
     setQuery(
       nextQuery: PretableQueryFor<TColumns>,
     ): PretableQueryTransition<TColumns> {
-      assertActive("set-query");
-      const id = nextTransitionId++;
-      const previousRoot = root;
-      const nextPlan = compileQuery({
-        derivations,
-        query: nextQuery,
-        previous: queryPlan,
-      });
-      if (nextPlan === queryPlan) {
-        return Object.freeze({
-          id,
-          requestedQuery: queryPlan.query,
-          finished: Promise.resolve(previousRoot.revision),
-          cancel: () => assertActive("set-query"),
+      const prepared = guarded("set-query", () => {
+        const id = nextTransitionId++;
+        const previousRoot = root;
+        const nextPlan = compileQuery({
+          derivations,
+          query: nextQuery,
+          previous: queryPlan,
         });
-      }
-      let store: ReturnType<
-        typeof rebuildRowStoreForQuery<TRow, TRowId, TColumns>
-      >;
-      try {
-        store = rebuildRowStoreForQuery(
-          previousRoot.rows,
-          previousRoot.sourceOrder,
-          nextPlan,
-        );
-      } catch (error) {
-        if (
-          error instanceof PretableRowModelError &&
-          error.operation !== "set-query"
-        ) {
-          throw new PretableRowModelError(error.code, error.message, {
-            operation: "set-query",
-            rowId: error.rowId,
-            columnId: error.columnId,
-            cause: error.cause,
-          });
+        if (nextPlan === queryPlan) {
+          return {
+            transition: Object.freeze({
+              id,
+              requestedQuery: queryPlan.query,
+              finished: Promise.resolve(previousRoot.revision),
+              cancel: () => assertCommandAllowed("set-query"),
+            }),
+            notify: false,
+          };
         }
-        throw error;
-      }
-      const revision = previousRoot.revision + 1;
-      const committedRoot: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze(
-        {
-          revision,
-          parentRevision: previousRoot.revision,
-          rows: store.rows,
-          sourceOrder: store.sourceOrder,
-          visible: createFlatVisibleIndex(
-            store.records,
-            nextPlan.compareRows as unknown as (
-              left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-              right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-            ) => number,
-          ),
-          queryPlan: nextPlan,
-          expansion: previousRoot.expansion,
-          cause: Object.freeze({ kind: "set-rows" as const }),
-        },
-      );
-      queryPlan = nextPlan;
-      publish(committedRoot);
-      const finished = Promise.resolve(revision);
-      return Object.freeze({
-        id,
-        requestedQuery: nextPlan.query,
-        finished,
-        cancel: () => assertActive("set-query"),
+        let store: ReturnType<
+          typeof rebuildRowStoreForQuery<TRow, TRowId, TColumns>
+        >;
+        try {
+          store = rebuildRowStoreForQuery(
+            previousRoot.rows,
+            previousRoot.sourceOrder,
+            nextPlan,
+          );
+        } catch (error) {
+          if (
+            error instanceof PretableRowModelError &&
+            error.operation !== "set-query"
+          ) {
+            throw new PretableRowModelError(error.code, error.message, {
+              operation: "set-query",
+              rowId: error.rowId,
+              columnId: error.columnId,
+              cause: error.cause,
+            });
+          }
+          throw error;
+        }
+        const revision = previousRoot.revision + 1;
+        const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
+          Object.freeze({
+            revision,
+            parentRevision: previousRoot.revision,
+            rows: store.rows,
+            sourceOrder: store.sourceOrder,
+            visible: createFlatVisibleIndex(
+              store.records,
+              nextPlan.compareRows as unknown as (
+                left: RowRecord<TRow, TRowId, TColumns>["metadata"],
+                right: RowRecord<TRow, TRowId, TColumns>["metadata"],
+              ) => number,
+            ),
+            queryPlan: nextPlan,
+            expansion: previousRoot.expansion,
+            cause: Object.freeze({ kind: "set-rows" as const }),
+          });
+        queryPlan = nextPlan;
+        commit(committedRoot);
+        return {
+          transition: Object.freeze({
+            id,
+            requestedQuery: nextPlan.query,
+            finished: Promise.resolve(revision),
+            cancel: () => assertCommandAllowed("set-query"),
+          }),
+          notify: true,
+        };
       });
+      if (prepared.notify) notify();
+      return prepared.transition;
     },
     setDerivations(): PretableDerivationTransition<TColumns> {
       return unavailable("set-derivations");
@@ -473,11 +522,17 @@ export function createLocalRowModel<
       return unavailable("distinct-values");
     },
     dispose(): void {
+      if (activeMutation !== undefined) {
+        throw new PretableReentrantMutationError("dispose", activeMutation);
+      }
       if (disposed) return;
-      disposed = true;
-      state = Object.freeze({ snapshot, status: DISPOSED });
-      const current = Array.from(listeners);
-      listeners.clear();
+      const current = guarded("dispose", () => {
+        disposed = true;
+        state = Object.freeze({ snapshot, status: DISPOSED });
+        const captured = Array.from(listeners);
+        listeners.clear();
+        return captured;
+      });
       for (const listener of current) {
         try {
           listener();

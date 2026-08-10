@@ -19,6 +19,62 @@ const columns = [
 ] as const;
 
 describe("flat transactions", () => {
+  test("rejects nested commands during proxy capture without losing the outer commit", () => {
+    const model = createLocalRowModel({
+      rows: [{ id: 1, label: "one", score: 1 }],
+      columns,
+    });
+    let nestedError: unknown;
+    const transaction = Object.defineProperty({}, "add", {
+      get: () => {
+        try {
+          model.applyTransaction({
+            add: [{ id: 99, label: "nested", score: 99 }],
+          });
+        } catch (error) {
+          nestedError = error;
+        }
+        return [{ id: 2, label: "outer", score: 2 }];
+      },
+    });
+
+    expect(model.applyTransaction(transaction as never)).toMatchObject({
+      revision: 1,
+      added: 1,
+    });
+    expect(nestedError).toMatchObject({
+      code: "reentrant-mutation",
+      operation: "apply-transaction",
+      activeOperation: "apply-transaction",
+    });
+    expect(model.getState().snapshot.sourceRowCount).toBe(2);
+    expect(model.getState().snapshot.indexOf({ kind: "data", rowId: 99 })).toBe(
+      -1,
+    );
+  });
+
+  test("rolls back when an uncaught nested command escapes a user trap", () => {
+    const model = createLocalRowModel({
+      rows: [{ id: 1, label: "one", score: 1 }],
+      columns,
+    });
+    const before = model.getState();
+    const transaction = Object.defineProperty({}, "add", {
+      get: () => {
+        model.dispose();
+        return [{ id: 2, label: "outer", score: 2 }];
+      },
+    });
+
+    expect(() => model.applyTransaction(transaction as never)).toThrowError(
+      expect.objectContaining({
+        code: "reentrant-mutation",
+        operation: "dispose",
+      }),
+    );
+    expect(model.getState()).toBe(before);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+  });
   test("adds, coalesces partial updates, removes, and preserves captured snapshots", () => {
     const original = { id: 1, label: "one", score: 1 };
     const model = createLocalRowModel({ rows: [original], columns });
@@ -246,6 +302,191 @@ describe("flat transactions", () => {
     );
     expect(model.getState()).toBe(before);
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  test("guards query and disposal reentrancy from accessors and comparators", () => {
+    let accessorNested: unknown;
+    let comparatorNested: unknown;
+    let runAccessor = false;
+    let runComparator = false;
+    const activeColumns = [
+      helper.accessor(
+        "score",
+        (row) => {
+          if (runAccessor) {
+            try {
+              model.setQuery({ filters: [], sort: [], rowGroups: [] });
+            } catch (error) {
+              accessorNested = error;
+            }
+          }
+          return row.score;
+        },
+        {
+          type: "number",
+          compare: (left, right) => {
+            if (runComparator) {
+              try {
+                model.dispose();
+              } catch (error) {
+                comparatorNested = error;
+              }
+            }
+            return left - right;
+          },
+        },
+      ),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, label: "one", score: 1 },
+        { id: 2, label: "two", score: 2 },
+      ],
+      columns: activeColumns,
+      query: {
+        filters: [],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [],
+      },
+    });
+    runAccessor = true;
+    runComparator = true;
+
+    expect(
+      model.applyTransaction({
+        update: [{ id: 1, changes: { score: 3 } }],
+      }),
+    ).toMatchObject({ revision: 1, updated: 1 });
+    expect(accessorNested).toMatchObject({
+      code: "reentrant-mutation",
+      operation: "set-query",
+    });
+    expect(comparatorNested).toMatchObject({
+      code: "reentrant-mutation",
+      operation: "dispose",
+    });
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(model.getState().snapshot.revision).toBe(1);
+  });
+
+  test("rejects row identity changes before derivation work", () => {
+    const accessor = vi.fn((row: Row) => row.score);
+    const activeColumns = [
+      helper.accessor("score", accessor, { type: "number" }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: [{ id: 1, label: "one", score: 1 }],
+      columns: activeColumns,
+      query: {
+        filters: [],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [],
+      },
+    });
+    const before = model.getState();
+    accessor.mockClear();
+
+    expect(() =>
+      model.applyTransaction({ update: [{ id: 1, changes: { id: 2 } }] }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "row-identity-change",
+        operation: "apply-transaction",
+        rowId: 1,
+        nextRowId: 2,
+      }),
+    );
+    expect(accessor).not.toHaveBeenCalled();
+    expect(model.getState()).toBe(before);
+  });
+
+  test("rejects custom identity changes and exotic partial updates", () => {
+    interface CustomRow {
+      key: string;
+      label: string;
+    }
+    const custom = createColumnHelper<CustomRow>();
+    const customColumns = [custom.accessor("label", { type: "text" })] as const;
+    const customModel = createLocalRowModel({
+      rows: [{ key: "one", label: "one" }],
+      columns: customColumns,
+      getRowId: (row) => row.key,
+    });
+    expect(() =>
+      customModel.applyTransaction({
+        update: [{ id: "one", changes: { key: "two" } }],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "row-identity-change", rowId: "one" }),
+    );
+
+    class PrivateRow {
+      #secret = 7;
+      constructor(
+        readonly id: number,
+        readonly label: string,
+      ) {}
+      secret(): number {
+        return this.#secret;
+      }
+    }
+    const privateHelper = createColumnHelper<PrivateRow>();
+    const privateColumns = [
+      privateHelper.accessor("label", { type: "text" }),
+    ] as const;
+    const original = new PrivateRow(1, "one");
+    const privateModel = createLocalRowModel({
+      rows: [original],
+      columns: privateColumns,
+    });
+    expect(() =>
+      privateModel.applyTransaction({
+        update: [{ id: 1, changes: { label: "changed" } }],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "unsupported-row-update", rowId: 1 }),
+    );
+    expect(original.secret()).toBe(7);
+    expect(() =>
+      privateModel.setRows([new PrivateRow(1, "replacement")]),
+    ).not.toThrow();
+
+    const exoticRows = [
+      Object.assign(new Date(0), { id: 1 }),
+      Object.assign(new Map(), { id: 1 }),
+      Object.assign([], { id: 1 }),
+      new Proxy(new PrivateRow(1, "proxy"), {}),
+    ];
+    for (const exotic of exoticRows) {
+      const exoticModel = createLocalRowModel({
+        rows: [exotic as unknown as PrivateRow],
+        columns: privateColumns,
+      });
+      expect(() =>
+        exoticModel.applyTransaction({
+          update: [{ id: 1, changes: { label: "changed" } }],
+        }),
+      ).toThrowError(
+        expect.objectContaining({ code: "unsupported-row-update", rowId: 1 }),
+      );
+    }
+
+    const revocable = Proxy.revocable(
+      { id: 1, label: "revocable", secret: () => 7 },
+      {},
+    );
+    const revocableModel = createLocalRowModel({
+      rows: [revocable.proxy as unknown as PrivateRow],
+      columns: privateColumns,
+    });
+    revocable.revoke();
+    expect(() =>
+      revocableModel.applyTransaction({
+        update: [{ id: 1, changes: { label: "changed" } }],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "unsupported-row-update", rowId: 1 }),
+    );
   });
 
   test("captures every partial patch before running any active accessor", () => {
