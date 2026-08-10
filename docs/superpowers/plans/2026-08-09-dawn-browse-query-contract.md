@@ -3546,6 +3546,13 @@ materializes the whole filtered set and kills the lazy top-k path."
               expect(parse("", "2026-08-09T00:00:00.000Z").now).toBe("2026-08-09T00:00:00.000Z")
               expect(parse("includeExpired=1", "2026-08-09T00:00:00.000Z").now).toBeUndefined()
             })
+            it("lets the caller pin `now` so one walk holds it across every page", () => {
+              // `now` is part of the cursor fingerprint, so a `now` stamped per request would
+              // reject every continuation the previous request issued.
+              expect(parse("now=2026-01-02T03:04:05.000Z", "2026-08-09T00:00:00.000Z").now).toBe("2026-01-02T03:04:05.000Z")
+              expect(parse("now=2026-01-02T03:04:05%2B02:00", "2026-08-09T00:00:00.000Z").now).toBe("2026-01-02T01:04:05.000Z")
+              expect(parse("now=2026-01-02T03:04:05.000Z&includeExpired=1").now).toBeUndefined()
+            })
             it("decodes the new JSON params", () => {
               const filters = [{ field: "content", op: "contains", value: "acme" }]
               const orderBy = [{ field: "confidence", dir: "desc" }]
@@ -3559,6 +3566,9 @@ materializes the whole filtered set and kills the lazy top-k path."
             })
             it("omits offset entirely when a cursor is supplied", () => {
               expect(parse("cursor=abc").offset).toBeUndefined()
+            })
+            it("dedupes a repeated enum value so one narrowing has one spelling", () => {
+              expect(parse("status=active&status=active&status=candidate").status).toEqual(["active", "candidate"])
             })
           })
 
@@ -3575,7 +3585,15 @@ materializes the whole filtered set and kills the lazy top-k path."
             it("rejects unknown enum values", () => rejects("status=bogus", /invalid status "bogus"/))
             it("rejects unparseable instants with the message the e2e pins", () =>
               rejects("since=notadate", /invalid since "notadate"/))
+            it("rejects an unparseable pinned now", () => rejects("now=notadate", /invalid now "notadate"/))
             it("rejects malformed JSON params", () => rejects("filters=%7Bnot-json", /filters must be valid JSON/))
+            it("hands a falsy JSON param to the validator rather than dropping it", () => {
+              rejects("filters=0", /filters must be an array/)
+              rejects("filters=null", /filters must be an array/)
+              rejects("orderBy=false", /orderBy must be an array/)
+            })
+            it("rejects a cursor sent with a non-zero offset instead of ignoring the offset", () =>
+              rejects("cursor=abc&offset=50", /cursor and a non-zero offset cannot be combined/))
             it("rejects a non-numeric limit", () => rejects("limit=abc", /limit must be a number/))
             it("enforces the 1000 ceiling that in-process callers are exempt from", () =>
               rejects("limit=5000", /limit must be at most 1000/))
@@ -3657,6 +3675,13 @@ materializes the whole filtered set and kills the lazy top-k path."
             return parsed
           }
 
+          /** A repeated param is a SET, so a duplicate is not a second narrowing. The cursor
+           *  fingerprint is taken over this list, so leaving one in would give a single dataset
+           *  two fingerprints and reject its own continuation. */
+          function uniqueValues(values: readonly string[]): string[] {
+            return [...new Set(values)]
+          }
+
           /**
            * `URLSearchParams` → a validated `BrowseQuery`. Throws `BrowseQueryError`; the route
            * maps that to 400. Pure, so it is unit-tested without booting Next.
@@ -3665,46 +3690,47 @@ materializes the whole filtered set and kills the lazy top-k path."
             sp: URLSearchParams,
             opts: { readonly now?: string },
           ): BrowseQuery {
-            const statuses = sp.getAll("status")
-            const kinds = sp.getAll("kind")
+            const statuses = uniqueValues(sp.getAll("status"))
+            const kinds = uniqueValues(sp.getAll("kind"))
             const namespace = sp.get("namespace")
             const namespacePrefix = sp.get("namespacePrefix")
             const sourceType = sp.get("sourceType")
             const cursor = sp.get("cursor")
-            // includeExpired=1 reveals expired-but-unpruned rows; this is a debugging surface.
+            const rawOffset = sp.get("offset")
+            // includeExpired=1 drops the expiry cutoff; a caller-pinned past `now` moves it. Both
+            // reveal expired-but-unpruned rows to this local-only caller, the flag strictly more.
             const includeExpired = sp.get("includeExpired") === "1"
+            const since = parseInstant(sp.get("since"), "since")
+            const until = parseInstant(sp.get("until"), "until")
+            // Pinned by the caller, not stamped per request: `now` is part of the cursor
+            // fingerprint, so a fresh stamp on each page rejects the continuation the page before
+            // it issued.
+            const now = parseInstant(sp.get("now"), "now") ?? opts.now
+            // Passed on even when falsy, so `filters=0` is the validator's "must be an array"
+            // rather than a silently unfiltered 200.
+            const filters = parseJsonParam<readonly BrowseFilter[]>(sp.get("filters"), "filters")
+            const orderBy = parseJsonParam<readonly BrowseSortEntry[]>(sp.get("orderBy"), "orderBy")
             const query: BrowseQuery = {
               ...(namespace ? { namespace } : {}),
               ...(namespacePrefix ? { namespacePrefix } : {}),
               // A param that appears zero times is ABSENT, not an empty set — the store's
               // "empty matches nothing" rule is deliberately unreachable over HTTP.
-              ...(statuses.length > 0 ? { status: statuses as BrowseQuery["status"] } : {}),
-              ...(kinds.length > 0 ? { kind: kinds as BrowseQuery["kind"] } : {}),
-              ...(sourceType ? { sourceType: sourceType as BrowseQuery["sourceType"] } : {}),
-              ...(() => {
-                const since = parseInstant(sp.get("since"), "since")
-                return since ? { since } : {}
-              })(),
-              ...(() => {
-                const until = parseInstant(sp.get("until"), "until")
-                return until ? { until } : {}
-              })(),
-              ...(includeExpired || !opts.now ? {} : { now: opts.now }),
-              ...(() => {
-                const filters = parseJsonParam<readonly BrowseFilter[]>(sp.get("filters"), "filters")
-                return filters ? { filters } : {}
-              })(),
-              ...(() => {
-                const orderBy = parseJsonParam<readonly BrowseSortEntry[]>(sp.get("orderBy"), "orderBy")
-                return orderBy ? { orderBy } : {}
-              })(),
+              // The casts are `NonNullable`: under exactOptionalPropertyTypes the bare indexed
+              // access carries `undefined`, which TS2375-rejects in a key only written when set.
+              ...(statuses.length > 0 ? { status: statuses as NonNullable<BrowseQuery["status"]> } : {}),
+              ...(kinds.length > 0 ? { kind: kinds as NonNullable<BrowseQuery["kind"]> } : {}),
+              ...(sourceType ? { sourceType: sourceType as NonNullable<BrowseQuery["sourceType"]> } : {}),
+              ...(since === undefined ? {} : { since }),
+              ...(until === undefined ? {} : { until }),
+              ...(includeExpired || now === undefined ? {} : { now }),
+              ...(filters === undefined ? {} : { filters }),
+              ...(orderBy === undefined ? {} : { orderBy }),
               ...(cursor ? { cursor } : {}),
               limit: parseCount(sp.get("limit"), "limit", BROWSE_DEFAULT_LIMIT),
-              // A cursor already carries the position; sending both is a caller bug the
-              // validator rejects, so do not default `offset` alongside one.
-              ...(cursor ? {} : { offset: parseCount(sp.get("offset"), "offset", 0) }),
+              // Only the DEFAULT is conditional. An offset the caller actually sent alongside a
+              // cursor has to reach the validator, which is the one place that pair is named.
+              ...(cursor && rawOffset === null ? {} : { offset: parseCount(rawOffset, "offset", 0) }),
             }
-            // The untrusted boundary is where the 1..1000 ceiling applies.
             validateBrowseQuery(query, { maxLimit: BROWSE_MAX_LIMIT })
             return query
           }
@@ -3716,8 +3742,9 @@ materializes the whole filtered set and kills the lazy top-k path."
 - [ ] **Step 6: Rewrite the route around the decoder.** Replace the entire contents of
       `packages/inspector/app/api/memory/list/route.ts` with:
       ```ts
-      import { assertLocalRequest } from "../../../../src/store/guard"
+      import type { BrowseQuery } from "@dawn-ai/memory/browse"
       import { isBrowseQueryError, parseBrowseQuery } from "../../../../src/store/browse-params"
+      import { assertLocalRequest } from "../../../../src/store/guard"
       import { storeOr500 } from "../../../../src/store/resolve"
 
       export const dynamic = "force-dynamic"
@@ -3731,16 +3758,22 @@ materializes the whole filtered set and kills the lazy top-k path."
            * JSON-encoded; `cursor` is opaque. Note the import is the PURE `/browse` subpath:
            * a bare "@dawn-ai/memory" import here would drag node:sqlite into the Next bundle
            * (see src/store/runtime-imports.ts).
+           *
+           * A 400 body carries `code` beside `error`. Clients match on the code: the prose is the
+           * only part that varies across the several ways one continuation can be wrong.
            */
           export async function GET(req: Request): Promise<Response> {
             const denied = assertLocalRequest(req)
             if (denied) return denied
             const sp = new URL(req.url).searchParams
-            let query: ReturnType<typeof parseBrowseQuery>
+            let query: BrowseQuery
             try {
+              // Only a DEFAULT, and one that cannot walk: `now` is part of the cursor fingerprint,
+              // so a caller paging through continuations pins its own.
               query = parseBrowseQuery(sp, { now: new Date().toISOString() })
             } catch (error) {
-              if (isBrowseQueryError(error)) return Response.json({ error: error.message }, { status: 400 })
+              if (isBrowseQueryError(error))
+                return Response.json({ error: error.message, code: error.code }, { status: 400 })
               throw error
             }
             const resolved = await storeOr500()
@@ -3750,11 +3783,18 @@ materializes the whole filtered set and kills the lazy top-k path."
             } catch (error) {
               // A store-side rejection (a stale or forged continuation, most likely) is a bad
               // request, not a server fault.
-              if (isBrowseQueryError(error)) return Response.json({ error: error.message }, { status: 400 })
+              if (isBrowseQueryError(error))
+                return Response.json({ error: error.message, code: error.code }, { status: 400 })
               throw error
             }
           }
           ```
+
+      > **`now` is a REQUEST parameter, not a route-internal stamp.** The route's
+      > `new Date().toISOString()` is a first-page default only. `now` is part of the cursor
+      > fingerprint (`browseQueryFingerprint`), so a caller walking pages must pin one `now`
+      > across the whole walk or page 2 rejects the continuation page 1 issued. Any client
+      > built on this route (slice 3) has to carry `now` alongside `cursor`.
 
 - [ ] **Step 7: Add the gated e2e coverage.** In `packages/inspector/test/api.e2e.test.ts`,
       inside the `describe.skipIf(!gated)("memory JSON API", …)` block, after the existing
@@ -3770,18 +3810,39 @@ materializes the whole filtered set and kills the lazy top-k path."
       expect(page.continuation).toBeNull()
 
           const orderBy = encodeURIComponent(JSON.stringify([{ field: "namespace", dir: "asc" }]))
-              const ordered = await fetch(`${server.base}/api/memory/list?orderBy=${orderBy}&limit=2`)
+              // ONE `now` for the whole walk: it is part of the cursor fingerprint, so letting the
+              // route stamp a fresh one per request would reject the continuation it just issued.
+              const walk = `orderBy=${orderBy}&limit=2&now=2026-08-09T00%3A00%3A00.000Z`
+              const ordered = await fetch(`${server.base}/api/memory/list?${walk}`)
               const orderedPage = (await ordered.json()) as { records: MemoryRecord[]; continuation: string | null }
-              expect(orderedPage.records).toHaveLength(2)
+              // Pinned to the ids namespace-asc puts first, which the default updatedAt-desc order
+              // does NOT (that leads with cand2) — otherwise a dropped `orderBy` would still pass.
+              expect(orderedPage.records.map((r) => r.id)).toEqual(["active1", "cand1"])
               expect(orderedPage.continuation).not.toBeNull()
 
               const next = await fetch(
-                `${server.base}/api/memory/list?orderBy=${orderBy}&limit=2&cursor=${encodeURIComponent(orderedPage.continuation as string)}`,
+                `${server.base}/api/memory/list?${walk}&cursor=${encodeURIComponent(orderedPage.continuation as string)}`,
               )
               expect(next.status).toBe(200)
               const nextPage = (await next.json()) as { records: MemoryRecord[] }
-              const firstIds = orderedPage.records.map((r) => r.id)
-              expect(nextPage.records.every((r) => !firstIds.includes(r.id))).toBe(true)
+              expect(nextPage.records.map((r) => r.id)).toEqual(["cand2", "other1"])
+            })
+
+            it("browse cannot walk a continuation unless the caller pins `now`", async () => {
+              // The route's per-request stamp is a first-page default only: `now` is part of the
+              // cursor fingerprint, so an unpinned walk rejects the continuation it was just handed.
+              const orderBy = encodeURIComponent(JSON.stringify([{ field: "namespace", dir: "asc" }]))
+              const first = await fetch(`${server.base}/api/memory/list?orderBy=${orderBy}&limit=2`)
+              expect(first.status).toBe(200)
+              const { continuation } = (await first.json()) as { continuation: string | null }
+              expect(typeof continuation).toBe("string")
+              // Far enough apart that the next request's stamp cannot land in the same millisecond.
+              await new Promise((done) => setTimeout(done, 5))
+              const next = await fetch(
+                `${server.base}/api/memory/list?orderBy=${orderBy}&limit=2&cursor=${encodeURIComponent(continuation as string)}`,
+              )
+              expect(next.status).toBe(400)
+              expect((await next.json()) as { error: string; code: string }).toMatchObject({ code: "continuation-invalid" })
             })
 
             it("browse narrows to an exact namespace", async () => {
@@ -3807,7 +3868,10 @@ materializes the whole filtered set and kills the lazy top-k path."
 
               const forged = await fetch(`${server.base}/api/memory/list?cursor=not-a-real-cursor`)
               expect(forged.status).toBe(400)
-              expect(((await forged.json()) as { error: string }).error).toContain("continuation-invalid")
+              // Pinned on the CODE, not the prose: `continuation-invalid` is the BrowseQueryError's
+              // `code`, never part of its message (see browse-cursor.ts `invalid()`), and a
+              // continuation can be wrong several ways that share that one stable name.
+              expect((await forged.json()) as { error: string; code: string }).toMatchObject({ code: "continuation-invalid" })
             })
           ```
 
