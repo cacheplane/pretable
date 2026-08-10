@@ -23,7 +23,9 @@
   --pretable-rule-strong: #797979; /* outline */
   /* Aliased to --pretable-rule so this theme's appearance is unchanged by the
      axis split. Material's own list spec has no vertical rules; revisiting that
-     is a deliberate change, not a side effect of introducing the token. */
+     is a deliberate change, not a side effect of introducing the token.
+     --pretable-rule-width only governs the per-cell row/column dividers — the
+     -strong frame borders and popover/menu/editor borders are still hardcoded 1px. */
   --pretable-rule-vertical: var(--pretable-rule);
   --pretable-rule-width: 1px;
   --pretable-radius: 12px; /* M3 medium shape scale (matches Card) */
