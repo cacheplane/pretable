@@ -265,12 +265,16 @@ export function createRowLayoutController<
   let synchronizeAgain = false;
   const queuedActions: Array<() => void> = [];
   let active: ActiveReplacement<TRow, TRowId, TColumns> | undefined;
+  let stagedRowHeights:
+    RowHeightIndex<PretableVisibleRowRef<TRowId>> | undefined;
   let replacementSliceCount = 0;
   let maxReplacementUnitsPerSlice = 0;
   let scheduledCallbackCount = 0;
   let lastPublishedRangeRows = 0;
   let anchorSearchUnits = 0;
   let deferredViewportWithoutAnchor = false;
+  let unsubscribeModel: (() => void) | undefined;
+  let detachModelWhenAvailable = false;
   const initialModelState = options.model.getState();
   let unreadInitialModelState: typeof initialModelState | undefined =
     initialModelState;
@@ -361,6 +365,12 @@ export function createRowLayoutController<
     bestEffortCancel(cancel);
     replacement.builder.cancel();
     replacement.candidate = undefined;
+  };
+
+  const rollbackDeferredViewport = (): void => {
+    if (!deferredViewportWithoutAnchor) return;
+    viewport = state.viewport;
+    deferredViewportWithoutAnchor = false;
   };
 
   const prepareWindow = (
@@ -527,8 +537,11 @@ export function createRowLayoutController<
     }
     try {
       publishReady(replacement.target, candidate, scrollTop);
+      stagedRowHeights = undefined;
       deferredViewportWithoutAnchor = false;
     } catch (error) {
+      stagedRowHeights = undefined;
+      rollbackDeferredViewport();
       publishError(
         "layout-failed",
         "The rebuilt row window could not be published.",
@@ -609,11 +622,12 @@ export function createRowLayoutController<
       } while (units < maxUnitsPerSlice && now() - startedAt < budgetMs);
       scheduleReplacement(replacement);
     } catch (error) {
-      if (active === replacement) {
-        active = undefined;
-        replacement.builder.cancel();
-        replacement.candidate = undefined;
-      }
+      if (active !== replacement || disposed) return;
+      active = undefined;
+      replacement.builder.cancel();
+      replacement.candidate = undefined;
+      stagedRowHeights = undefined;
+      rollbackDeferredViewport();
       publishError(
         "layout-failed",
         "The cooperative row-layout replacement failed.",
@@ -653,9 +667,12 @@ export function createRowLayoutController<
       scheduledCallbackCount += 1;
     } catch (error) {
       scheduling = false;
-      if (active === replacement) active = undefined;
+      if (active !== replacement || disposed) return;
+      active = undefined;
       replacement.builder.cancel();
       replacement.candidate = undefined;
+      stagedRowHeights = undefined;
+      rollbackDeferredViewport();
       publishError(
         "scheduler-failed",
         "The row-layout scheduler rejected a continuation.",
@@ -667,12 +684,14 @@ export function createRowLayoutController<
   const startReplacement = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     shouldNotify: boolean,
+    updateStatus = true,
   ): void => {
     cancelActive();
     const anchor = deferredViewportWithoutAnchor ? undefined : captureAnchor();
+    const base = stagedRowHeights ?? state.rowHeights;
     let builder: RowHeightReplacementBuilder<PretableVisibleRowRef<TRowId>>;
     try {
-      builder = state.rowHeights.beginReplacement({
+      builder = base.beginReplacement({
         rowCount: target.visibleRowCount,
         entryAt(index) {
           const row = target.rowAt(index);
@@ -686,6 +705,8 @@ export function createRowLayoutController<
         },
       });
     } catch (error) {
+      stagedRowHeights = undefined;
+      rollbackDeferredViewport();
       publishError(
         "layout-failed",
         "The row-layout replacement source could not be captured.",
@@ -704,14 +725,15 @@ export function createRowLayoutController<
       searchPrevious: false,
     };
     active = replacement;
-    state = Object.freeze({
-      ...state,
-      viewport,
-      status: Object.freeze({
-        kind: "rebuilding" as const,
-        targetRevision: target.revision,
-      }),
-    });
+    if (updateStatus) {
+      state = Object.freeze({
+        ...state,
+        status: Object.freeze({
+          kind: "rebuilding" as const,
+          targetRevision: target.revision,
+        }),
+      });
+    }
     if (shouldNotify) notify();
     scheduleReplacement(replacement);
   };
@@ -813,13 +835,13 @@ export function createRowLayoutController<
         let sequence: PretableChangeSequence<TRowId>;
         try {
           sequence = options.model.changesSince(state.observedRevision);
+          if (
+            !validateChanges(sequence, state.observedRevision, target.revision)
+          ) {
+            startReplacement(target, true);
+            continue;
+          }
         } catch {
-          startReplacement(target, true);
-          continue;
-        }
-        if (
-          !validateChanges(sequence, state.observedRevision, target.revision)
-        ) {
           startReplacement(target, true);
           continue;
         }
@@ -866,13 +888,23 @@ export function createRowLayoutController<
     drainActions();
   };
 
-  const unsubscribeModel = options.model.subscribe(synchronize);
+  function detachModel(): void {
+    const unsubscribe = unsubscribeModel;
+    if (unsubscribe === undefined) {
+      detachModelWhenAvailable = true;
+      return;
+    }
+    unsubscribeModel = undefined;
+    bestEffortCancel(unsubscribe);
+  }
 
-  const disposeController = (): void => {
+  function disposeController(): void {
     if (disposed) return;
     disposed = true;
     cancelActive();
-    unsubscribeModel();
+    stagedRowHeights = undefined;
+    rollbackDeferredViewport();
+    detachModel();
     queuedActions.length = 0;
     const captured = Array.from(listeners);
     listeners.clear();
@@ -884,7 +916,7 @@ export function createRowLayoutController<
         // Disposal still settles and wakes every attached subscriber once.
       }
     }
-  };
+  }
 
   const controller: RowLayoutController<TRow, TRowId, TColumns> = {
     getState: () => state,
@@ -939,7 +971,7 @@ export function createRowLayoutController<
           "A disposed row-layout controller cannot accept measurements.",
         );
       }
-      if (active !== undefined || state.snapshot === null) return;
+      if (state.snapshot === null) return;
       const index = state.snapshot.indexOf(ref);
       if (index < 0) {
         throw new RangeError("Cannot measure a row that is not visible.");
@@ -953,6 +985,21 @@ export function createRowLayoutController<
         queuedActions.push(() => {
           if (!disposed) controller.measure(ref, height);
         });
+        return;
+      }
+      if (active !== undefined) {
+        const previousStaged = stagedRowHeights;
+        const base = previousStaged ?? state.rowHeights;
+        try {
+          const measured = base.measure(index, ref, height);
+          if (measured === base) return;
+          stagedRowHeights = measured;
+          const target = active.target;
+          startReplacement(target, false, false);
+        } catch (error) {
+          stagedRowHeights = previousStaged;
+          throw error;
+        }
         return;
       }
       const previous = state;
@@ -995,6 +1042,25 @@ export function createRowLayoutController<
       anchorSearchUnits,
     }),
   );
+  try {
+    const unsubscribe = options.model.subscribe(synchronize);
+    if (typeof unsubscribe !== "function") {
+      throw new TypeError(
+        "The row model subscribe method must return a function.",
+      );
+    }
+    unsubscribeModel = unsubscribe;
+    if (detachModelWhenAvailable || disposed) detachModel();
+  } catch (error) {
+    disposed = true;
+    cancelActive();
+    stagedRowHeights = undefined;
+    rollbackDeferredViewport();
+    queuedActions.length = 0;
+    listeners.clear();
+    state = Object.freeze({ ...state, status: DISPOSED });
+    throw error;
+  }
   synchronize();
   return controller;
 }

@@ -13,6 +13,7 @@ import {
   getRowLayoutControllerDiagnosticsForTesting,
   type RowLayoutScheduler,
 } from "../row-layout-controller";
+import type { RowLayoutController } from "../types";
 
 interface Row {
   id: number | string;
@@ -114,6 +115,32 @@ function createReadyController(
 }
 
 describe("indexed DOM row layout controller", () => {
+  test("keeps controller row, ID, and column inference invariant", () => {
+    if (false) {
+      const literal = null as unknown as RowLayoutController<
+        Row,
+        1,
+        typeof modelColumns
+      >;
+      const numeric = null as unknown as RowLayoutController<
+        Row,
+        number,
+        typeof modelColumns
+      >;
+      literal.measure({ kind: "data", rowId: 1 }, 44);
+      numeric.measure({ kind: "data", rowId: 2 }, 44);
+      // @ts-expect-error A literal-ID controller cannot accept another ID.
+      literal.measure({ kind: "data", rowId: 2 }, 44);
+      // @ts-expect-error Controller generics are invariant from wide to narrow.
+      const narrow: typeof literal = numeric;
+      // @ts-expect-error Controller generics are invariant from narrow to wide.
+      const wide: typeof numeric = literal;
+      void narrow;
+      void wide;
+    }
+    expect(true).toBe(true);
+  });
+
   test("publishes a stable external-store state and projects only its planned range", () => {
     const rows = Array.from({ length: 1_000 }, (_, index) => ({
       id: index,
@@ -390,6 +417,8 @@ describe("indexed DOM row layout controller", () => {
         label: `superseding ${index}`,
       })),
     );
+    expect(controller.getState().viewport.scrollTop).toBe(0);
+    expect(controller.getState().window).toBe(rebuilding.window);
     scheduler.flushAll();
     expect(controller.getState()).toMatchObject({
       scrollTop: 440,
@@ -397,6 +426,198 @@ describe("indexed DOM row layout controller", () => {
       status: { kind: "ready" },
     });
     expect(controller.getState().range.start).toBeGreaterThan(0);
+  });
+
+  test("rolls a deferred viewport back after reset failure so the same request can retry", () => {
+    const model = createModel(
+      Array.from({ length: 40 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    let failNextEstimate = false;
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
+      scheduler,
+      estimateRowHeight(row) {
+        if (failNextEstimate && row.id === 10) {
+          failNextEstimate = false;
+          throw new Error("estimate exploded");
+        }
+        return 44;
+      },
+      now: () => 0,
+    });
+    scheduler.flushAll();
+    failNextEstimate = true;
+    model.setRows(
+      Array.from({ length: 40 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `new ${index}`,
+      })),
+    );
+    controller.setViewport({ scrollTop: 440, viewportHeight: 88, overscan: 0 });
+    scheduler.flushAll();
+    expect(controller.getState()).toMatchObject({
+      viewport: { scrollTop: 0 },
+      status: { kind: "error" },
+    });
+
+    controller.setViewport({ scrollTop: 440, viewportHeight: 88, overscan: 0 });
+    expect(controller.getState()).toMatchObject({
+      viewport: { scrollTop: 440 },
+      status: { kind: "ready" },
+    });
+  });
+
+  test("ignores a failing stale replacement after reentrant reset supersession", () => {
+    const source = createModel(
+      Array.from({ length: 300 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    let superseded = false;
+    const model = new Proxy(source, {
+      get(target, property, receiver) {
+        if (property !== "getState") {
+          return Reflect.get(target, property, receiver);
+        }
+        return () => {
+          const modelState = source.getState();
+          if (modelState.snapshot.revision !== 1) return modelState;
+          const snapshot = modelState.snapshot;
+          return {
+            ...modelState,
+            snapshot: Object.freeze({
+              ...snapshot,
+              rowAt(index: number) {
+                if (!superseded) {
+                  superseded = true;
+                  source.setRows(
+                    Array.from({ length: 301 }, (_, rowIndex) => ({
+                      id: rowIndex,
+                      team: "C",
+                      score: rowIndex,
+                      label: `latest ${rowIndex}`,
+                    })),
+                  );
+                  throw new Error("stale source exploded");
+                }
+                return snapshot.rowAt(index);
+              },
+            }),
+          };
+        };
+      },
+    });
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
+      scheduler,
+      now: () => 0,
+    });
+    scheduler.flushAll();
+    const statuses: string[] = [];
+    controller.subscribe(() =>
+      statuses.push(controller.getState().status.kind),
+    );
+    source.setRows(
+      Array.from({ length: 300 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `intermediate ${index}`,
+      })),
+    );
+    scheduler.flushAll();
+    expect(controller.getState()).toMatchObject({
+      observedRevision: 2,
+      status: { kind: "ready" },
+    });
+    expect(statuses).not.toContain("error");
+  });
+
+  test("ignores a stale scheduler throw after reentrant measurement and reset supersession", () => {
+    const model = createModel(
+      Array.from({ length: 20 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    const queue = new ManualScheduler();
+    let onSchedule: (() => void) | undefined;
+    const scheduler: RowLayoutScheduler = {
+      schedule(task) {
+        const reenter = onSchedule;
+        if (reenter !== undefined) {
+          onSchedule = undefined;
+          reenter();
+          throw new Error("stale schedule exploded");
+        }
+        return queue.schedule(task);
+      },
+    };
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
+      scheduler,
+      now: () => 0,
+    });
+    queue.flushAll();
+    const statuses: string[] = [];
+    controller.subscribe(() =>
+      statuses.push(controller.getState().status.kind),
+    );
+    model.setRows(
+      Array.from({ length: 301 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `intermediate ${index}`,
+      })),
+    );
+    onSchedule = () => {
+      controller.setViewport({
+        scrollTop: 440,
+        viewportHeight: 88,
+        overscan: 0,
+      });
+      controller.measure(data(1), 99);
+      model.setRows(
+        Array.from({ length: 302 }, (_, index) => ({
+          id: index,
+          team: "C",
+          score: index,
+          label: `latest ${index}`,
+        })),
+      );
+    };
+    expect(() => queue.flushOne()).not.toThrow();
+    queue.flushAll();
+    const settled = controller.getState();
+    const rank = settled.snapshot!.indexOf(data(1));
+    expect(settled).toMatchObject({
+      observedRevision: 2,
+      viewport: { scrollTop: 440 },
+      status: { kind: "ready" },
+    });
+    expect(settled.rowHeights.getHeight(rank)).toBe(99);
+    expect(statuses).not.toContain("error");
   });
 
   test("preserves a reset anchor by exact ref, ancestor, then logical neighbor", () => {
@@ -652,6 +873,192 @@ describe("indexed DOM row layout controller", () => {
     expect(
       getRowLayoutControllerDiagnosticsForTesting(failed).retainedBuilderCount,
     ).toBe(0);
+  });
+
+  test.each(["kind", "fromRevision", "changes", "operation"] as const)(
+    "recovers atomically when a hostile journal %s getter throws",
+    (failurePoint) => {
+      const model = createModel([
+        { id: 1, team: "A", score: 1, label: "one" },
+        { id: 2, team: "A", score: 2, label: "two" },
+      ]);
+      const { controller, scheduler } = createReadyController(model);
+      const before = controller.getState();
+      const actualChangesSince = model.changesSince.bind(model);
+      vi.spyOn(model, "changesSince").mockImplementation((revision) => {
+        const actual = actualChangesSince(revision);
+        if (actual.kind === "reset") return actual;
+        const explode = () => {
+          throw new Error(`hostile ${failurePoint}`);
+        };
+        if (failurePoint === "kind") {
+          return Object.defineProperty({}, "kind", {
+            enumerable: true,
+            get: explode,
+          }) as typeof actual;
+        }
+        if (failurePoint === "fromRevision") {
+          return Object.defineProperty({ ...actual }, "fromRevision", {
+            enumerable: true,
+            get: explode,
+          }) as typeof actual;
+        }
+        if (failurePoint === "changes") {
+          return Object.defineProperty({ ...actual }, "changes", {
+            enumerable: true,
+            get: explode,
+          }) as unknown as typeof actual;
+        }
+        const first = actual.changes[0]!;
+        const operation = Object.defineProperty({}, "kind", {
+          enumerable: true,
+          get: explode,
+        });
+        return {
+          ...actual,
+          changes: [
+            {
+              ...first,
+              operations: [operation] as unknown as typeof first.operations,
+            },
+          ],
+        };
+      });
+      expect(() =>
+        model.applyTransaction({
+          add: [{ id: 3, team: "B", score: 3, label: "three" }],
+        }),
+      ).not.toThrow();
+      expect(controller.getState().status.kind).toBe("rebuilding");
+      expect(controller.getState().observedRevision).toBe(
+        before.observedRevision,
+      );
+      expect(controller.getState().rowHeights).toBe(before.rowHeights);
+      scheduler.flushAll();
+      expect(controller.getState()).toMatchObject({
+        observedRevision: model.getState().snapshot.revision,
+        status: { kind: "ready" },
+      });
+    },
+  );
+
+  test("stages reset-time measurements through removal and reset supersession", () => {
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+    ]);
+    const { controller, scheduler } = createReadyController(model);
+    const before = controller.getState();
+    model.setRows([{ id: 2, team: "B", score: 2, label: "two reset" }]);
+    controller.measure(data(1), 91);
+    expect(controller.getState().rowHeights).toBe(before.rowHeights);
+    model.setRows([
+      { id: 2, team: "C", score: 2, label: "two superseded" },
+      { id: 1, team: "C", score: 3, label: "one superseded" },
+    ]);
+    scheduler.flushAll();
+    const restored = controller.getState();
+    const rank = restored.snapshot!.indexOf(data(1));
+    expect(restored.rowHeights.getHeight(rank)).toBe(91);
+    expect(restored.rowHeights.hasMeasurement(data(1))).toBe(true);
+  });
+
+  test("retains a reset-time measurement when the row is removed then inserted later", () => {
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+    ]);
+    const { controller, scheduler } = createReadyController(model);
+    model.setRows([{ id: 2, team: "B", score: 2, label: "two reset" }]);
+    controller.measure(data(1), 93);
+    scheduler.flushAll();
+    expect(controller.getState().snapshot!.indexOf(data(1))).toBe(-1);
+    model.applyTransaction({
+      add: [{ id: 1, team: "B", score: 3, label: "one reinserted" }],
+    });
+    const inserted = controller.getState();
+    const rank = inserted.snapshot!.indexOf(data(1));
+    expect(inserted.rowHeights.getHeight(rank)).toBe(93);
+    expect(inserted.rowHeights.hasMeasurement(data(1))).toBe(true);
+  });
+
+  test("initializes safely when subscribe notifies synchronously or cleanup throws", () => {
+    const disposedModel = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+    ]);
+    disposedModel.dispose();
+    const detached = vi.fn();
+    const synchronousDisposedModel = new Proxy(disposedModel, {
+      get(target, property, receiver) {
+        if (property !== "subscribe")
+          return Reflect.get(target, property, receiver);
+        return (listener: () => void) => {
+          listener();
+          return detached;
+        };
+      },
+    });
+    const disposedController = createRowLayoutController({
+      model: synchronousDisposedModel,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
+    });
+    expect(disposedController.getState().status.kind).toBe("disposed");
+    expect(detached).toHaveBeenCalledTimes(1);
+
+    const readyModel = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+    ]);
+    const throwingCleanupModel = new Proxy(readyModel, {
+      get(target, property, receiver) {
+        if (property !== "subscribe")
+          return Reflect.get(target, property, receiver);
+        return (listener: () => void) => {
+          listener();
+          return () => {
+            throw new Error("unsubscribe exploded");
+          };
+        };
+      },
+    });
+    const scheduler = new ManualScheduler();
+    const cleanupController = createRowLayoutController({
+      model: throwingCleanupModel,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
+      scheduler,
+      now: () => 0,
+    });
+    scheduler.flushAll();
+    expect(() => cleanupController.dispose()).not.toThrow();
+    expect(cleanupController.getState().status.kind).toBe("disposed");
+  });
+
+  test("releases synchronous subscription work when subscribe throws", () => {
+    const model = createModel([{ id: 1, team: "A", score: 1, label: "one" }]);
+    const scheduler = new ManualScheduler();
+    const failure = new Error("subscribe exploded");
+    const hostileModel = new Proxy(model, {
+      get(target, property, receiver) {
+        if (property !== "subscribe")
+          return Reflect.get(target, property, receiver);
+        return (listener: () => void) => {
+          listener();
+          throw failure;
+        };
+      },
+    });
+    expect(() =>
+      createRowLayoutController({
+        model: hostileModel,
+        columns: renderColumns,
+        viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
+        scheduler,
+        now: () => 0,
+      }),
+    ).toThrow(failure);
+    expect(scheduler.tasks.every((entry) => entry.cancelled)).toBe(true);
+    expect(() => scheduler.flushAll()).not.toThrow();
   });
 
   test("disposal cancels private candidates and stale scheduled work is inert", () => {

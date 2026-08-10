@@ -161,16 +161,25 @@ export interface RowLayoutControllerState<
   readonly status: RowLayoutControllerStatus;
 }
 
+declare const rowLayoutControllerType: unique symbol;
+
 export interface RowLayoutController<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
 > {
-  getState(): RowLayoutControllerState<TRow, TRowId, TColumns>;
-  subscribe(listener: () => void): () => void;
-  setViewport(viewport: RowLayoutViewport): void;
-  measure(ref: PretableVisibleRowRef<TRowId>, height: number): void;
-  dispose(): void;
+  readonly getState: () => RowLayoutControllerState<TRow, TRowId, TColumns>;
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly setViewport: (viewport: RowLayoutViewport) => void;
+  readonly measure: (
+    ref: PretableVisibleRowRef<TRowId>,
+    height: number,
+  ) => void;
+  readonly dispose: () => void;
+  /** @internal Compile-time-only invariant descriptor. */
+  readonly [rowLayoutControllerType]?: (
+    value: readonly [TRow, TRowId, TColumns],
+  ) => readonly [TRow, TRowId, TColumns];
 }
 
 /** Visual/layout fields consumed by the indexed DOM renderer. */
