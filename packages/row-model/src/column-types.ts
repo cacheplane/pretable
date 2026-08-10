@@ -382,6 +382,26 @@ export type PretableAggregatesFor<TColumns> = Prettify<{
     : never;
 }>;
 
+/**
+ * The runtime filter operand accepted by a declared column type.
+ * Enum columns retain known string literal values and otherwise accept strings.
+ * @public
+ */
+export type PretableFilterOperandFor<
+  TValue,
+  TType extends PretableColumnType,
+> = TType extends "text"
+  ? string
+  : TType extends "number"
+    ? number
+    : TType extends "date"
+      ? string | number | Date
+      : TType extends "boolean"
+        ? boolean
+        : [Extract<NonNullable<TValue>, string>] extends [never]
+          ? string
+          : Extract<NonNullable<TValue>, string>;
+
 /** @public */
 export type PretableFilterFor<TColumns> =
   TColumns extends readonly (infer TColumn)[]
@@ -399,29 +419,38 @@ export type PretableFilterFor<TColumns> =
                   readonly columnId: TId;
                   readonly operator:
                     "equals" | "notEquals" | "gt" | "gte" | "lt" | "lte";
-                  readonly value: TValue;
+                  readonly value: PretableFilterOperandFor<TValue, TType>;
                 }
               | {
                   readonly columnId: TId;
                   readonly operator: "between";
-                  readonly value: readonly [TValue, TValue];
+                  readonly value: readonly [
+                    PretableFilterOperandFor<TValue, TType>,
+                    PretableFilterOperandFor<TValue, TType>,
+                  ];
                 }
             : TType extends "date"
               ? | {
                     readonly columnId: TId;
                     readonly operator: "on" | "before" | "after";
-                    readonly value: TValue;
+                    readonly value: PretableFilterOperandFor<TValue, TType>;
                   }
                 | {
                     readonly columnId: TId;
                     readonly operator: "dateBetween";
-                    readonly value: readonly [TValue, TValue];
+                    readonly value: readonly [
+                      PretableFilterOperandFor<TValue, TType>,
+                      PretableFilterOperandFor<TValue, TType>,
+                    ];
                   }
               : TType extends "enum" | "boolean"
                 ? {
                     readonly columnId: TId;
                     readonly operator: "isAnyOf" | "isNoneOf";
-                    readonly value: readonly TValue[];
+                    readonly value: readonly PretableFilterOperandFor<
+                      TValue,
+                      TType
+                    >[];
                   }
                 : {
                     readonly columnId: TId;
@@ -432,7 +461,7 @@ export type PretableFilterFor<TColumns> =
                       | "notEquals"
                       | "startsWith"
                       | "endsWith";
-                    readonly value: TValue;
+                    readonly value: PretableFilterOperandFor<TValue, TType>;
                   })
       : never
     : never;

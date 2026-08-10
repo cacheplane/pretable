@@ -69,6 +69,7 @@ export type {
   PretableExpansionDefault,
   PretableExpansionState,
   PretableFilterFor,
+  PretableFilterOperandFor,
   PretableFocusDirection,
   PretableFocusState,
   PretableFormatInput,

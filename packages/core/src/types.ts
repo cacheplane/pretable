@@ -70,6 +70,7 @@ export type {
   PretableExpansionDefault,
   PretableExpansionState,
   PretableFilterFor,
+  PretableFilterOperandFor,
   PretableFormatInput,
   PretableGroupId,
   PretableGroupKey,
