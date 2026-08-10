@@ -371,6 +371,37 @@ describe("serializeRanges escaping", () => {
       expect(out?.html).toContain("<tbody><tr><td>Tech</td></tr></tbody>");
     });
 
+    const scopedColumns: PretableColumn<GroupCopyRow>[] = [
+      columns[0]!,
+      columns[1]!,
+      {
+        ...columns[2]!,
+        formatAggregate: ({ value, scope }) => `${String(value)} [${scope}]`,
+      },
+    ];
+
+    it("marks copied aggregates loaded when the window is partial", () => {
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [range(techGroup.id, techGroup.id, GROUP_COLUMN_ID, "qty")],
+        visibleRows,
+        columns: scopedColumns,
+        scope: "loaded",
+      });
+
+      expect(out?.text).toBe("Tech\t\t3 [loaded]");
+      expect(out?.html).toContain("<td>3 [loaded]</td>");
+    });
+
+    it('defaults the aggregate scope to "all" when the caller omits it', () => {
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [range(techGroup.id, techGroup.id, GROUP_COLUMN_ID, "qty")],
+        visibleRows,
+        columns: scopedColumns,
+      });
+
+      expect(out?.text).toBe("Tech\t\t3 [all]");
+    });
+
     it("uses the displayed blank-group label", () => {
       const blankGroup: PretableGroupRow = {
         ...techGroup,

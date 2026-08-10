@@ -14,8 +14,15 @@ import type { PretableColumn } from "./types";
 
 /** @internal */
 export interface GroupRowProps<TRow extends PretableRow> {
-  /** Renders the child count; supplied by the surface from `messages`. */
-  childCountLabel: (childCount: number) => string;
+  /**
+   * Renders the child count; supplied by the surface from `messages`. Takes
+   * `scope` as an argument rather than pre-bound so this row has one source of
+   * truth for it — the `scope` prop below.
+   */
+  childCountLabel: (args: {
+    childCount: number;
+    scope: "all" | "loaded";
+  }) => string;
   /** Every planned column, in drawn order — the same list data rows use. */
   columns: readonly PlannedColumn[];
   /** Column definitions by id, including the derived group column. */
@@ -170,7 +177,7 @@ export function GroupRow<TRow extends PretableRow>({
                 ) : null}
                 <span data-pretable-group-label="">{label}</span>
                 <span data-pretable-group-count="">
-                  {childCountLabel(group.childCount)}
+                  {childCountLabel({ childCount: group.childCount, scope })}
                 </span>
               </>
             ) : hasAggregate && column ? (

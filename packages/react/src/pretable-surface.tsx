@@ -1139,10 +1139,6 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // scope from the snapshot they are reporting on, so the scope word and the
   // counts in one sentence are always the same observation.
   const dataScope = resolveDataScope(dataHonestyInput, processing);
-  // Deliberately not `useCallback`: the React Compiler cannot preserve that
-  // memoization here, and `GroupRow` is not memoized, so identity buys nothing.
-  const groupChildCountLabel = (childCount: number) =>
-    effectiveMessages.groupChildCountLabel({ childCount, scope: dataScope });
   warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
   // then report what the engine actually holds. Reading the list back rather
@@ -2522,7 +2518,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             // changes which columns fall inside the range.
             columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
-            scope: dataScope,
+            // Re-derived from `snap`, the same observation the rows and ranges
+            // above come from — the committed render's scope can describe an
+            // older one.
+            scope: resolveDataScope(snap, processing),
           };
           const payload = onCopy ? onCopy(args) : serializeRanges(args);
           if (payload) {
@@ -3423,7 +3422,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
             return (
               <GroupRow
-                childCountLabel={groupChildCountLabel}
+                childCountLabel={effectiveMessages.groupChildCountLabel}
                 columns={renderSnapshot.columns}
                 columnsById={columnsById}
                 expanded={isGroupExpanded(snapshot, group.id)}

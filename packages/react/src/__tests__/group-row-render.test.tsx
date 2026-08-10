@@ -509,7 +509,7 @@ describe("a group with no children left", () => {
   const renderChildless = () =>
     render(
       <GroupRow
-        childCountLabel={(childCount) => `(${childCount})`}
+        childCountLabel={({ childCount }) => `(${childCount})`}
         columns={[
           {
             id: GROUP_COLUMN_ID,

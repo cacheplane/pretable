@@ -9,6 +9,8 @@ import {
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { PretableGrid } from "@pretable/core";
+
 import { PretableSurface } from "../pretable-surface";
 import type { PretableSurfaceMessages } from "../pretable-surface";
 
@@ -333,5 +335,51 @@ describe("grouping honesty under a partial window", () => {
   it("passes scope all in local mode", () => {
     const view = renderGrouped(false);
     expect(view.container.textContent).toContain("7 [all]");
+  });
+
+  /**
+   * A stream adapter mutates the engine between React's commit and the next
+   * event. The copy handler serializes the snapshot it reads inside the event,
+   * so the aggregate scope word has to come from that same snapshot — the
+   * committed render's scope describes a different observation.
+   */
+  it("labels copied aggregates with the scope of the snapshot it serialized", () => {
+    const copyRows: GRow[] = [
+      { id: "a", team: "Red", points: 3 },
+      { id: "b", team: "Red", points: 4 },
+      { id: "c", team: "Blue", points: 5 },
+    ];
+    const captured: { grid?: PretableGrid<GRow>; text?: string } = {};
+    const view = render(
+      <PretableSurface<GRow>
+        ariaLabel="Teams"
+        columns={gColumns}
+        rows={copyRows}
+        getRowId={(row) => row.id}
+        viewportHeight={400}
+        state={{ rowGroups: ["team"] }}
+        processing={{ filter: "external", sort: "external" }}
+        resultMeta={{ total: { kind: "exact", count: 3 } }}
+        onGridReady={(grid) => {
+          captured.grid = grid;
+        }}
+        copyToClipboard={(payload) => {
+          captured.text = payload.text;
+        }}
+      />,
+    );
+    const gridEl = view.getByRole("treegrid");
+    fireEvent.keyDown(gridEl, { key: "a", metaKey: true });
+
+    // Deliberately outside `act`: the engine learns the window is partial and
+    // the copy fires before React can re-render, which is the whole point.
+    captured.grid?.setResultMeta({ total: { kind: "exact", count: 5432 } });
+    gridEl.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "c", metaKey: true }),
+    );
+
+    // Select-all spans first data row → last data row, so the second group's
+    // header row — its aggregate included — falls inside the range.
+    expect(captured.text).toContain("7 [loaded]");
   });
 });
