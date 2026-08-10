@@ -1777,7 +1777,7 @@ export function createGridCore<TRow extends PretableRow>(
         anchor: selection.anchor ? { ...selection.anchor } : null,
       },
       focus,
-      totalRowCount: sourceRows.length,
+      loadedRowCount: sourceRows.length,
       visibleRows,
       visibleRange: {
         start: 0,

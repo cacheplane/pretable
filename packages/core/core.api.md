@@ -315,13 +315,12 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     focus: PretableFocusState;
     groupExpansionOverrides: ReadonlySet<string>;
     groupsDefaultExpanded: boolean;
+    loadedRowCount: number;
     rowGroups: string[];
     // (undocumented)
     selection: PretableSelectionState;
     // (undocumented)
     sort: PretableSortEntry[];
-    // (undocumented)
-    totalRowCount: number;
     // (undocumented)
     viewport: PretableViewportState;
     // (undocumented)

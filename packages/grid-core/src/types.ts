@@ -413,7 +413,8 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   filters: Record<string, ColumnFilter>;
   selection: PretableSelectionState;
   focus: PretableFocusState;
-  totalRowCount: number;
+  /** Count of loaded source records. Not the matching population — see {@link PretableGridSnapshot.matchingTotal}. */
+  loadedRowCount: number;
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
   editing: PretableEditState | null;

@@ -9,16 +9,16 @@ order: 3
 
 ## The snapshot shape
 
-| Field           | Type                         | What it is                                                                                                                                         |
-| --------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `visibleRows`   | `PretableVisibleRow<TRow>[]` | The flat, non-windowed list after filtering, sorting, and grouping. Ungrouped lists contain only data entries; grouping adds group-header entries. |
-| `visibleRange`  | `PretableRowRange`           | `{ start, end }`. Currently the full range `{ start: 0, end: visibleRows.length }`.                                                                |
-| `totalRowCount` | `number`                     | Count of source rows, before filtering.                                                                                                            |
-| `sort`          | `PretableSortEntry[]`        | Ordered sort list — `{ columnId, direction }` entries, index = priority; `[]` = unsorted.                                                          |
-| `filters`       | `Record<string, string>`     | Active per-column filter values, keyed by column id.                                                                                               |
-| `selection`     | `PretableSelectionState`     | `{ anchor, ranges }` — the current cell-range selection.                                                                                           |
-| `focus`         | `PretableFocusState`         | `{ rowId, columnId }` — the focused cell.                                                                                                          |
-| `viewport`      | `PretableViewportState`      | `{ scrollTop, scrollLeft, width, height }`.                                                                                                        |
+| Field            | Type                         | What it is                                                                                                                                        |
+| ---------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `visibleRows`    | `PretableVisibleRow<TRow>[]` | The flat, non-windowed list after filtering, sorting, and grouping. Ungrouped lists contain only data entries; grouping adds group-header entries. |
+| `visibleRange`   | `PretableRowRange`           | `{ start, end }`. Currently the full range `{ start: 0, end: visibleRows.length }`.                                                                |
+| `loadedRowCount` | `number`                     | Count of loaded source records, before filtering.                                                                                                 |
+| `sort`           | `PretableSortEntry[]`        | Ordered sort list — `{ columnId, direction }` entries, index = priority; `[]` = unsorted.                                                          |
+| `filters`        | `Record<string, string>`     | Active per-column filter values, keyed by column id.                                                                                              |
+| `selection`      | `PretableSelectionState`     | `{ anchor, ranges }` — the current cell-range selection.                                                                                          |
+| `focus`          | `PretableFocusState`         | `{ rowId, columnId }` — the focused cell.                                                                                                         |
+| `viewport`       | `PretableViewportState`      | `{ scrollTop, scrollLeft, width, height }`.                                                                                                       |
 
 ### `visibleRows`
 

@@ -50,7 +50,7 @@ describe("setRows", () => {
     expect(snap.selection).toEqual(selectionBefore);
     expect(snap.focus).toEqual({ rowId: "a", columnId: "name" });
     expect(findDataRow(snap.visibleRows, "a")?.row.name).toBe("A2");
-    expect(snap.totalRowCount).toBe(2);
+    expect(snap.loadedRowCount).toBe(2);
   });
 
   test("prunes selection and edits while repairing focus for removed rows", () => {
@@ -68,7 +68,7 @@ describe("setRows", () => {
     expect(snap.selection.ranges).toEqual([]);
     expect(snap.focus).toEqual({ rowId: "b", columnId: "name" });
     expect(snap.editing).toBeNull();
-    expect(snap.totalRowCount).toBe(1);
+    expect(snap.loadedRowCount).toBe(1);
   });
 
   test("notifies subscribers once", () => {

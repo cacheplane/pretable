@@ -115,7 +115,8 @@ export interface PretableTelemetry {
   rowModelRowCount: number;
   renderedRowCount: number;
   selectedRowId: string | null;
-  totalRowCount: number;
+  /** Count of loaded source records. Renamed from `totalRowCount` — it never meant the matching population. */
+  loadedRowCount: number;
   totalHeight: number;
   visibleRowCount: number;
   visibleRowRange: {
@@ -522,7 +523,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
       rowModelRowCount: snapshot.visibleRows.length,
       renderedRowCount: renderSnapshot.rows.length,
       selectedRowId: snapshot.selection.ranges[0]?.startRowId ?? null,
-      totalRowCount: snapshot.totalRowCount,
+      loadedRowCount: snapshot.loadedRowCount,
       totalHeight: renderSnapshot.totalHeight,
       visibleRowCount: viewportRows.length,
       visibleRowRange:
@@ -542,7 +543,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     snapshot.focus.rowId,
     snapshot.visibleRows.length,
     snapshot.selection.ranges,
-    snapshot.totalRowCount,
+    snapshot.loadedRowCount,
     snapshot.viewport.height,
     snapshot.viewport.scrollTop,
     viewportHeight,

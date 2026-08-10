@@ -92,7 +92,7 @@ describe("bench runtime", () => {
         rowModelRowCount: 750,
         renderedRowCount: 8,
         selectedRowId: "evt-dev-0001",
-        totalRowCount: 750,
+        loadedRowCount: 750,
         totalHeight: 59010,
         visibleRowCount: 6,
         visibleRowRange: {
@@ -121,7 +121,7 @@ describe("bench runtime", () => {
           rowModelRowCount: 187,
           renderedRowCount: 7,
           selectedRowId: "evt-002",
-          totalRowCount: 750,
+          loadedRowCount: 750,
           totalHeight: 24115,
           visibleRowCount: 3,
           visibleRowRange: {

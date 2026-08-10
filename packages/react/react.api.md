@@ -461,13 +461,12 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     focus: PretableFocusState;
     groupExpansionOverrides: ReadonlySet<string>;
     groupsDefaultExpanded: boolean;
+    loadedRowCount: number;
     rowGroups: string[];
     // (undocumented)
     selection: PretableSelectionState;
     // (undocumented)
     sort: PretableSortEntry[];
-    // (undocumented)
-    totalRowCount: number;
     // (undocumented)
     viewport: PretableViewportState;
     // Warning: (ae-forgotten-export) The symbol "PretableRowRange" needs to be exported by the entry point index.d.ts
@@ -783,6 +782,7 @@ export interface PretableSurfaceState {
 export interface PretableTelemetry {
     // (undocumented)
     focusedRowId: string | null;
+    loadedRowCount: number;
     // (undocumented)
     renderedRowCount: number;
     // (undocumented)
@@ -791,8 +791,6 @@ export interface PretableTelemetry {
     selectedRowId: string | null;
     // (undocumented)
     totalHeight: number;
-    // (undocumented)
-    totalRowCount: number;
     // (undocumented)
     visibleRowCount: number;
     // (undocumented)
@@ -896,7 +894,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:858:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:859:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

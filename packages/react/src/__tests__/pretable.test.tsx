@@ -371,7 +371,7 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
         data-rendered-row-count={model.renderSnapshot.rows.length}
         data-total-height={model.renderSnapshot.totalHeight}
         data-total-width={model.renderSnapshot.totalWidth}
-        data-total-rows={model.snapshot.totalRowCount}
+        data-total-rows={model.snapshot.loadedRowCount}
       />
     );
   };

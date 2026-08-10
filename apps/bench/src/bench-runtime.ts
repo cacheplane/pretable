@@ -52,7 +52,7 @@ export function createPretableTelemetryNotes(
   return [
     `internal telemetry rendered rows: ${telemetry.renderedRowCount}`,
     `internal telemetry visible rows: ${telemetry.visibleRowCount}`,
-    `internal telemetry total rows: ${telemetry.totalRowCount}`,
+    `internal telemetry total rows: ${telemetry.loadedRowCount}`,
     `internal telemetry planned height: ${telemetry.totalHeight}`,
     `internal telemetry viewport range: ${telemetry.visibleRowRange.start}-${telemetry.visibleRowRange.end}`,
     `internal telemetry selected row: ${telemetry.selectedRowId ?? "none"}`,

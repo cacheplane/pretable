@@ -52,7 +52,7 @@ describe("local mode baseline", () => {
         "rowGroups",
         "selection",
         "sort",
-        "totalRowCount",
+        "loadedRowCount",
         "viewport",
         "visibleRange",
         "visibleRows",
@@ -76,10 +76,10 @@ describe("local mode baseline", () => {
     expect(dataIds(grid)).toEqual(["a"]);
   });
 
-  test("totalRowCount counts source rows, not post-filter rows", () => {
+  test("loadedRowCount counts source rows, not post-filter rows", () => {
     const grid = makeGrid();
     grid.setColumnFilter("name", { operator: "contains", value: "a" });
-    expect(grid.getSnapshot().totalRowCount).toBe(3);
+    expect(grid.getSnapshot().loadedRowCount).toBe(3);
   });
 
   test("setRows preserves selection and focus for surviving ids", () => {
