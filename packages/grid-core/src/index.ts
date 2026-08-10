@@ -1,5 +1,24 @@
 export { createGridCore } from "./create-grid-core";
 export {
+  createGridUiCore,
+  PretableGridUiError,
+  type CreateGridUiCoreOptions,
+} from "./create-grid-ui-core";
+export {
+  createEmptyIndexedSelection,
+  getIndexedSelectionSummary,
+  indexedRangeContainsCell,
+  isIndexedRowSelected,
+  reconcileIndexedSelection,
+  selectAllVisibleRows,
+  toggleIndexedRowSelection,
+} from "./indexed-selection";
+export {
+  getScrollTopForIndexedFocus,
+  moveIndexedFocus,
+  reconcileIndexedFocus,
+} from "./indexed-focus";
+export {
   deriveSelectedRows,
   rangeContainsCell,
   type PretableRowSelectionTriState,
@@ -57,6 +76,18 @@ export type {
   PretableEngine,
   PretableTransaction,
   PretableViewportState,
+  PretableGridUiColumn,
+  PretableGridUiColumnLayout,
+  PretableGridUiCore,
+  PretableGridUiState,
+  PretableIndexedCellAddress,
+  PretableIndexedCellRange,
+  PretableIndexedEditingState,
+  PretableIndexedFocusMovement,
+  PretableIndexedFocusState,
+  PretableIndexedRowSelection,
+  PretableIndexedSelectionState,
+  PretableIndexedSelectionSummary,
 } from "./types";
 export type {
   AutosizeOptions,

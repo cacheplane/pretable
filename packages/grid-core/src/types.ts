@@ -2,6 +2,13 @@ import type {
   AutosizeOptions,
   PretableRowRange,
 } from "@pretable-internal/layout-core";
+import type {
+  ColumnIdOf,
+  ColumnValueOf,
+  PretableRowId as IndexedPretableRowId,
+  PretableRowModel,
+  PretableVisibleRowRef,
+} from "@pretable-internal/row-model";
 import type { PretableGroupColumnOptions } from "./group-column";
 
 /**
@@ -514,4 +521,169 @@ export interface PretableMoveFocusOptions {
 /** @internal */
 export interface PretableFrame<TRow extends PretableRow = PretableRow> {
   snapshot: PretableGridSnapshot<TRow>;
+}
+
+/** A typed data-cell address owned by the indexed UI layer. @public */
+export interface PretableIndexedCellAddress<
+  TRowId extends IndexedPretableRowId,
+  TColumnId extends string,
+> {
+  readonly rowId: TRowId;
+  readonly columnId: TColumnId;
+}
+
+/** Inclusive data-cell range; group rows can never be endpoints. @public */
+export interface PretableIndexedCellRange<
+  TRowId extends IndexedPretableRowId,
+  TColumnId extends string,
+> {
+  readonly start: PretableIndexedCellAddress<TRowId, TColumnId>;
+  readonly end: PretableIndexedCellAddress<TRowId, TColumnId>;
+}
+
+/** Sparse row-checkbox state. Select-all never materializes the data population. @public */
+export type PretableIndexedRowSelection<TRowId extends IndexedPretableRowId> =
+  | {
+      readonly kind: "explicit";
+      readonly rowIds: ReadonlySet<TRowId>;
+    }
+  | {
+      readonly kind: "all";
+      readonly excludedRowIds: ReadonlySet<TRowId>;
+    };
+
+/** Data-only selection owned by the indexed UI layer. @public */
+export interface PretableIndexedSelectionState<
+  TRowId extends IndexedPretableRowId,
+  TColumnId extends string,
+> {
+  readonly rows: PretableIndexedRowSelection<TRowId>;
+  readonly ranges: readonly PretableIndexedCellRange<TRowId, TColumnId>[];
+  readonly anchor: PretableIndexedCellAddress<TRowId, TColumnId> | null;
+}
+
+/** Header-checkbox state derived without visiting every visible row. @public */
+export interface PretableIndexedSelectionSummary {
+  readonly state: "none" | "some" | "all";
+  readonly selectedCount: number;
+  readonly visibleCount: number;
+}
+
+/** Group and data rows share one focus path while preserving runtime identity. @public */
+export interface PretableIndexedFocusState<
+  TRowId extends IndexedPretableRowId,
+  TColumnId extends string,
+> {
+  readonly ref: PretableVisibleRowRef<TRowId> | null;
+  readonly columnId: TColumnId | null;
+}
+
+/** Keyboard movements supported by indexed focus navigation. @public */
+export type PretableIndexedFocusMovement =
+  | "up"
+  | "down"
+  | "left"
+  | "right"
+  | "page-up"
+  | "page-down"
+  | "home"
+  | "end"
+  | "tab"
+  | "shift-tab"
+  | "parent";
+
+/** Visual-column input; derivation behavior remains in the row model. @public */
+export interface PretableGridUiColumn<TColumnId extends string> {
+  readonly id: TColumnId;
+  readonly widthPx?: number;
+  readonly pinned?: "left" | "right";
+}
+
+/** Normalized visual-only column layout published by the UI store. @public */
+export interface PretableGridUiColumnLayout<TColumnId extends string> {
+  readonly id: TColumnId;
+  readonly widthPx: number;
+  readonly pinned?: "left" | "right";
+}
+
+/** A correlated, data-row-only editing session. @public */
+export type PretableIndexedEditingState<
+  TRowId extends IndexedPretableRowId,
+  TColumns,
+> = {
+  readonly [TColumnId in ColumnIdOf<TColumns>]: {
+    readonly rowId: TRowId;
+    readonly columnId: TColumnId;
+    readonly value: ColumnValueOf<TColumns, TColumnId>;
+    readonly status: "editing" | "validating" | "saving" | "error";
+    readonly error?: string;
+  };
+}[ColumnIdOf<TColumns>];
+
+/** The long-lived grid store's complete observable UI state. @public */
+export interface PretableGridUiState<
+  TRowId extends IndexedPretableRowId,
+  TColumns,
+> {
+  readonly viewport: Readonly<PretableViewportState>;
+  readonly focus: Readonly<
+    PretableIndexedFocusState<TRowId, ColumnIdOf<TColumns>>
+  >;
+  readonly selection: Readonly<
+    PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>
+  >;
+  readonly editing: PretableIndexedEditingState<TRowId, TColumns> | null;
+  readonly columnLayout: readonly Readonly<
+    PretableGridUiColumnLayout<ColumnIdOf<TColumns>>
+  >[];
+  readonly observedRowModelRevision: number | null;
+}
+
+declare const gridUiCoreType: unique symbol;
+
+/** Framework-independent UI-only indexed grid store. @public */
+export interface PretableGridUiCore<
+  TRow extends object,
+  TRowId extends IndexedPretableRowId,
+  TColumns,
+> {
+  readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
+  readonly getState: () => PretableGridUiState<TRowId, TColumns>;
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly setViewport: (viewport: PretableViewportState) => void;
+  readonly setFocus: (
+    focus: PretableIndexedFocusState<TRowId, ColumnIdOf<TColumns>>,
+  ) => void;
+  readonly moveFocus: (
+    movement: PretableIndexedFocusMovement,
+    options?: { readonly pageRows?: number },
+  ) => void;
+  readonly setSelection: (
+    selection: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>,
+  ) => void;
+  readonly toggleRowSelection: (rowId: TRowId) => void;
+  readonly selectAllVisibleRows: () => void;
+  readonly clearSelection: () => void;
+  readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
+    readonly rowId: TRowId;
+    readonly columnId: TColumnId;
+    readonly value: ColumnValueOf<TColumns, TColumnId>;
+  }) => void;
+  readonly cancelEdit: () => void;
+  readonly setColumnWidth: (
+    columnId: ColumnIdOf<TColumns>,
+    width: number,
+  ) => void;
+  readonly setColumnPinned: (
+    columnId: ColumnIdOf<TColumns>,
+    pinned: "left" | "right" | null,
+  ) => void;
+  readonly setColumnOrder: (columnIds: readonly ColumnIdOf<TColumns>[]) => void;
+  /** @internal Called only after renderer geometry for this exact revision exists. */
+  readonly observeRowModelRevision: (revision: number) => void;
+  readonly dispose: () => void;
+  /** @internal Compile-time-only invariant descriptor. */
+  readonly [gridUiCoreType]?: (
+    value: readonly [TRow, TRowId, TColumns],
+  ) => readonly [TRow, TRowId, TColumns];
 }
