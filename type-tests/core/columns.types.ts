@@ -75,6 +75,7 @@ interface NumericEligibilityRow {
   nullableNumber: number | null;
   nullOnly: null;
   undefinedOnly: undefined;
+  neverOnly: never;
   numberOrText: number | string;
 }
 const numericEligibilityColumn = createColumnHelper<NumericEligibilityRow>();
@@ -100,6 +101,11 @@ numericEligibilityColumn.accessor("undefinedOnly", {
   // @ts-expect-error undefined-only values are not averageable
   aggregate: "avg",
 });
+numericEligibilityColumn.accessor("neverOnly", {
+  // @ts-expect-error direct never values cannot declare a column type
+  type: "text",
+  aggregate: "count",
+});
 numericEligibilityColumn.accessor("numberOrText", {
   type: "number",
   // @ts-expect-error a number|string value is not wholly numeric
@@ -121,6 +127,21 @@ numericEligibilityColumn.accessor(
     aggregate: "avg",
   },
 );
+numericEligibilityColumn.accessor(
+  "computedNeverNumeric",
+  (row) => row.neverOnly,
+  {
+    // @ts-expect-error computed never values cannot declare a column type
+    type: "number",
+    // @ts-expect-error computed never values are not summable
+    aggregate: "sum",
+  },
+);
+numericEligibilityColumn.accessor("computedNeverText", (row) => row.neverOnly, {
+  // @ts-expect-error no column type is legal for an uninhabited value
+  type: "text",
+  aggregate: "count",
+});
 
 void (null as unknown as _ColumnIds);
 void (null as unknown as _Quantity);

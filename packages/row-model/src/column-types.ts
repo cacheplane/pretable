@@ -134,19 +134,19 @@ export interface PretableColumnDefinition<
 }
 
 /** @public */
-export type PretableColumnTypeFor<TValue> = [NonNullable<TValue>] extends [
-  never,
-]
-  ? Exclude<PretableColumnType, "number">
-  : NonNullable<TValue> extends number
-    ? "number"
-    : NonNullable<TValue> extends boolean
-      ? "boolean"
-      : NonNullable<TValue> extends Date
-        ? "date"
-        : NonNullable<TValue> extends string
-          ? "text" | "enum" | "date"
-          : PretableColumnType;
+export type PretableColumnTypeFor<TValue> = [TValue] extends [never]
+  ? never
+  : [NonNullable<TValue>] extends [never]
+    ? Exclude<PretableColumnType, "number">
+    : NonNullable<TValue> extends number
+      ? "number"
+      : NonNullable<TValue> extends boolean
+        ? "boolean"
+        : NonNullable<TValue> extends Date
+          ? "date"
+          : NonNullable<TValue> extends string
+            ? "text" | "enum" | "date"
+            : PretableColumnType;
 
 /** @public */
 export interface PretableColumnCallbackContext<
@@ -209,11 +209,7 @@ export interface PretableColumnHelper<TRow extends object> {
             TAccessor extends (row: TRow) => infer TValue ? TValue : never
           >
         >
-      | ([
-          TAccessor extends (row: TRow) => infer TValue ? TValue : never,
-        ] extends [never]
-          ? PretableColumnType
-          : never),
+      | (unknown extends TAccessor ? PretableColumnType : never),
     const TAggregate extends
       | PretableAggregateSpec<
           TRow,
@@ -221,9 +217,7 @@ export interface PretableColumnHelper<TRow extends object> {
             TAccessor extends (row: TRow) => infer TValue ? TValue : never
           >
         >
-      | ([
-          TAccessor extends (row: TRow) => infer TValue ? TValue : never,
-        ] extends [never]
+      | (unknown extends TAccessor
           ? PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max"
           : never)
       | undefined = undefined,

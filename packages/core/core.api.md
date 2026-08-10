@@ -366,11 +366,7 @@ export interface PretableColumnDerivation<TRow extends object, TId extends strin
 // @public (undocumented)
 export interface PretableColumnHelper<TRow extends object> {
     // (undocumented)
-    accessor<const TId extends string, const TAccessor, const TType extends PretableColumnTypeFor<NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | ([
-    TAccessor extends (row: TRow) => infer TValue ? TValue : never
-    ] extends [never] ? PretableColumnType : never), const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | ([
-    TAccessor extends (row: TRow) => infer TValue ? TValue : never
-    ] extends [never] ? PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max" : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => unknown), options: {
+    accessor<const TId extends string, const TAccessor, const TType extends PretableColumnTypeFor<NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | (unknown extends TAccessor ? PretableColumnType : never), const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | (unknown extends TAccessor ? PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max" : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => unknown), options: {
         readonly type: TType;
         readonly header?: string;
         readonly compare?: (left: TAccessor extends (row: TRow) => infer TValue ? TValue : never, right: TAccessor extends (row: TRow) => infer TValue ? TValue : never) => number;
@@ -410,9 +406,7 @@ export type PretableColumnOptions<TRow extends object, TId extends string, TValu
 export type PretableColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 // @public (undocumented)
-export type PretableColumnTypeFor<TValue> = [NonNullable<TValue>] extends [
-never
-] ? Exclude<PretableColumnType, "number"> : NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends Date ? "date" : NonNullable<TValue> extends string ? "text" | "enum" | "date" : PretableColumnType;
+export type PretableColumnTypeFor<TValue> = [TValue] extends [never] ? never : [NonNullable<TValue>] extends [never] ? Exclude<PretableColumnType, "number"> : NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends Date ? "date" : NonNullable<TValue> extends string ? "text" | "enum" | "date" : PretableColumnType;
 
 // @public (undocumented)
 export type PretableCompatibleAggregateSpec<TRow extends object, TValue, TAggregate> = [TAggregate] extends [undefined] ? undefined : ([PretableAggregateOutputOf<TAggregate>] extends [number | null] ? [number | null] extends [PretableAggregateOutputOf<TAggregate>] ? PretableBuiltinAggregate<TValue> : never : never) | PretableCompatibleAggregator<TRow, TValue, PretableAggregateOutputOf<TAggregate>>;
