@@ -1,7 +1,7 @@
 # Post-release website maintenance design
 
 Date: 2026-08-09
-Status: revised after independent review
+Status: approved for implementation
 
 ## Goal
 
