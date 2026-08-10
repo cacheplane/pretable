@@ -7,6 +7,7 @@ import {
   type CooperativeTransitionScheduler,
 } from "./cooperative-transition";
 import { createDistinctValueManager } from "./distinct-values";
+import type { LocalRowModelInstrumentation } from "./diagnostics";
 import {
   createChangeJournal,
   getChangeJournalDiagnosticsForTesting,
@@ -65,6 +66,38 @@ import {
   replaceFlatRowsDraft,
 } from "./transaction-draft";
 
+function createSnapshot<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  root: RevisionRoot<TRow, TRowId, TColumns>,
+  instrumentation: LocalRowModelInstrumentation | undefined,
+): PretableRowModelState<TRow, TRowId, TColumns>["snapshot"] {
+  const snapshot = createFlatSnapshot(root);
+  if (instrumentation === undefined) return snapshot;
+  const count = <T>(value: T | undefined): T | undefined => {
+    if (value !== undefined) instrumentation.work.snapshotOutputRowsRead += 1;
+    return value;
+  };
+  return Object.freeze({
+    ...snapshot,
+    rowAt: (index: number) => count(snapshot.rowAt(index)),
+    range: (start: number, end: number) => {
+      const rows = snapshot.range(start, end);
+      instrumentation.work.snapshotOutputRowsRead += rows.length;
+      return rows;
+    },
+    dataRowAt: (index: number) => count(snapshot.dataRowAt(index)),
+    firstDataRow: () => count(snapshot.firstDataRow()),
+    lastDataRow: () => count(snapshot.lastDataRow()),
+    nextDataRow: (ref: PretableVisibleRowRef<TRowId>) =>
+      count(snapshot.nextDataRow(ref)),
+    previousDataRow: (ref: PretableVisibleRowRef<TRowId>) =>
+      count(snapshot.previousDataRow(ref)),
+  });
+}
+
 interface CreateLocalRowModelBaseOptions<
   TColumns,
   TRowId extends PretableRowId,
@@ -98,11 +131,23 @@ interface CreateLocalRowModelBaseOptions<
 }
 
 const modelChangeJournals = new WeakMap<object, ChangeJournal<PretableRowId>>();
+const optionInstrumentation = new WeakMap<
+  object,
+  LocalRowModelInstrumentation
+>();
 const modelRevisionCauses = new WeakMap<object, () => PretableRevisionCause>();
 const modelActiveTransitionCandidates = new WeakMap<
   object,
   () => object | undefined
 >();
+
+/** Direct diagnostics seam; intentionally absent from the package barrel. */
+export function registerLocalRowModelInstrumentationForTesting(
+  options: object,
+  instrumentation: LocalRowModelInstrumentation,
+): void {
+  optionInstrumentation.set(options, instrumentation);
+}
 
 export function getLocalRowModelRevisionCauseForTesting(
   model: object,
@@ -428,6 +473,8 @@ export function createLocalRowModel<
   options: RuntimeCreateLocalRowModelOptions<TColumns, TRowId>,
 ): PretableRowModel<RowForColumns<TColumns>, TRowId, TColumns> {
   type TRow = RowForColumns<TColumns>;
+  const instrumentation = optionInstrumentation.get(options);
+  optionInstrumentation.delete(options);
   const columns = Object.freeze(
     Array.from(options.columns),
   ) as unknown as TColumns;
@@ -451,6 +498,7 @@ export function createLocalRowModel<
     rows: options.rows,
     getRowId,
     queryPlan,
+    instrumentation,
   });
   const initialExpansion = createExpansionRoot(options.initialExpansion);
   let root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
@@ -468,7 +516,7 @@ export function createLocalRowModel<
     expansion: initialExpansion,
     cause: Object.freeze({ kind: "initial" as const }),
   });
-  let snapshot = createFlatSnapshot(root);
+  let snapshot = createSnapshot(root, instrumentation);
   let state: PretableRowModelState<TRow, TRowId, TColumns> = Object.freeze({
     snapshot,
     status: READY,
@@ -487,6 +535,7 @@ export function createLocalRowModel<
     now: options.transitionClock,
     budgetMs: options.transitionBudgetMs,
     maxUnitsPerSlice: options.transitionMaxUnitsPerSlice,
+    instrumentation,
   });
   const distinctValues = createDistinctValueManager({
     getRoot: () => root,
@@ -533,7 +582,7 @@ export function createLocalRowModel<
       : rebuildingStatus(activeTransition),
   ): void => {
     root = next;
-    snapshot = createFlatSnapshot(root);
+    snapshot = createSnapshot(root, instrumentation);
     state = Object.freeze({ snapshot, status });
   };
   const notify = (): void => {
@@ -673,6 +722,7 @@ export function createLocalRowModel<
         queryPlan: nextPlan,
         aggregateFilteredRows,
         operation,
+        instrumentation,
       }),
       finished,
       resolve,
@@ -801,6 +851,7 @@ export function createLocalRowModel<
             getRowId,
             queryPlan: nextPlan,
             nextSourceOrder,
+            instrumentation,
           });
           const pendingDiagnostics = drafted.diagnostics;
           if (drafted.sameReferenceMutation) {
@@ -812,6 +863,7 @@ export function createLocalRowModel<
               queryPlan: nextPlan,
               nextSourceOrder,
               acceptSameReferenceMutation: true,
+              instrumentation,
             });
           }
           if (!drafted.effective) {
@@ -881,6 +933,7 @@ export function createLocalRowModel<
           getRowId,
           queryPlan,
           nextSourceOrder,
+          instrumentation,
         });
         const result = mutationResult<TRowId>(
           previousRoot.revision,

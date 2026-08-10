@@ -4,12 +4,15 @@ import {
   getChangeOperationDiagnosticsForTesting,
 } from "./change-journal";
 import type { PretableRowId } from "./column-types";
+import type { LocalRowModelInstrumentation } from "./diagnostics";
 import {
   PretableRowIdentityChangeError,
   PretableRowModelError,
   PretableUnsupportedRowUpdateError,
 } from "./errors";
 import type { RevisionRoot, RowRecord } from "./internal-types";
+import { instrumentOrderStatisticTree } from "./persistent/order-statistic-tree";
+import { instrumentPersistentMap } from "./persistent/persistent-map";
 import {
   attachGroupIndex,
   getGroupIndex,
@@ -41,6 +44,7 @@ interface TransactionDraftInput<
   readonly getRowId: (row: TRow) => TRowId;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly nextSourceOrder: number;
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
 export interface TransactionDraftResult<
@@ -285,10 +289,12 @@ function createRecord<
   rowId: TRowId,
   sourceOrder: number,
   queryPlan: CompiledQuery<TColumns>,
+  instrumentation: LocalRowModelInstrumentation | undefined,
 ): {
   readonly record: RowRecord<TRow, TRowId, TColumns>;
   readonly diagnostic?: PretableRowIntegrityDiagnostic<TRowId>;
 } {
+  if (instrumentation !== undefined) instrumentation.work.rowsEvaluated += 1;
   const metadata = queryPlan.evaluate({
     rowId,
     row: row as never,
@@ -853,6 +859,7 @@ export function applyFlatTransactionDraft<
         candidate.rowId,
         candidate.sourceOrder,
         input.queryPlan,
+        input.instrumentation,
       );
       prepared.push(made.record);
       if (made.diagnostic) diagnostics.push(made.diagnostic);
@@ -878,8 +885,14 @@ export function applyFlatTransactionDraft<
       };
     }
 
-    const rowDraft = input.root.rows.asTransient();
-    const sourceDraft = input.root.sourceOrder.asTransient();
+    const rowDraft = instrumentPersistentMap(
+      input.root.rows,
+      input.instrumentation,
+    ).asTransient();
+    const sourceDraft = instrumentOrderStatisticTree(
+      input.root.sourceOrder,
+      input.instrumentation,
+    ).asTransient();
     const previousGroups = getGroupIndex(input.root.visible);
     const visibleNeedsChange =
       previousGroups === undefined &&
@@ -895,7 +908,10 @@ export function applyFlatTransactionDraft<
           );
         }));
     const visibleDraft = visibleNeedsChange
-      ? input.root.visible.rows.asTransient()
+      ? instrumentOrderStatisticTree(
+          input.root.visible.rows,
+          input.instrumentation,
+        ).asTransient()
       : undefined;
     const operations: PretableChangeOperation<TRowId>[] = [];
     const ref = (rowId: TRowId) =>
@@ -1006,6 +1022,8 @@ export function applyFlatTransactionDraft<
             ],
             prepared,
             input.root.expansion.overrides,
+            "apply-transaction",
+            input.instrumentation,
           );
     const visible =
       grouped !== undefined
@@ -1064,6 +1082,7 @@ export function replaceFlatRowsDraft<
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly nextSourceOrder: number;
   readonly acceptSameReferenceMutation?: boolean;
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }): RowsReplacementDraftResult<TRow, TRowId, TColumns> {
   let captured: readonly TRow[];
   try {
@@ -1181,14 +1200,17 @@ export function replaceFlatRowsDraft<
     const { row, rowId, sourceOrder } = candidate;
     let metadata: RowRecord<TRow, TRowId, TColumns>["metadata"];
     try {
-      metadata =
-        candidate.cachedMetadata === undefined
-          ? (input.queryPlan.evaluate({
-              rowId,
-              row: row as never,
-              sourceOrder,
-            }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"])
-          : rebaseSourceOrder(candidate.cachedMetadata, sourceOrder);
+      if (candidate.cachedMetadata === undefined) {
+        if (input.instrumentation !== undefined)
+          input.instrumentation.work.rowsEvaluated += 1;
+        metadata = input.queryPlan.evaluate({
+          rowId,
+          row: row as never,
+          sourceOrder,
+        }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
+      } else {
+        metadata = rebaseSourceOrder(candidate.cachedMetadata, sourceOrder);
+      }
     } catch (error) {
       if (
         error instanceof PretableRowModelError &&
@@ -1240,8 +1262,14 @@ export function replaceFlatRowsDraft<
     };
   }
 
-  const rowDraft = input.root.rows.asTransient();
-  const sourceDraft = input.root.sourceOrder.asTransient();
+  const rowDraft = instrumentPersistentMap(
+    input.root.rows,
+    input.instrumentation,
+  ).asTransient();
+  const sourceDraft = instrumentOrderStatisticTree(
+    input.root.sourceOrder,
+    input.instrumentation,
+  ).asTransient();
   const orderChangedRecords = changedRecords.filter((record) => {
     const previous = input.root.rows.get(record.rowId);
     return previous === undefined || !sameFlatOrder(previous, record);
@@ -1270,14 +1298,16 @@ export function replaceFlatRowsDraft<
   const visibleDraft =
     affectedVisibleIds.size === 0
       ? undefined
-      : (hasUnaffectedVisible
-          ? input.root.visible.rows
-          : createFlatVisibleTree<TRow, TRowId, TColumns>(
-              input.queryPlan.compareRows as unknown as (
-                left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-                right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-              ) => number,
-            )
+      : instrumentOrderStatisticTree(
+          hasUnaffectedVisible
+            ? input.root.visible.rows
+            : createFlatVisibleTree<TRow, TRowId, TColumns>(
+                input.queryPlan.compareRows as unknown as (
+                  left: RowRecord<TRow, TRowId, TColumns>["metadata"],
+                  right: RowRecord<TRow, TRowId, TColumns>["metadata"],
+                ) => number,
+              ),
+          input.instrumentation,
         ).asTransient();
   for (const record of removedRecords) {
     rowDraft.delete(record.rowId);
@@ -1325,6 +1355,7 @@ export function replaceFlatRowsDraft<
             changedRecords,
             input.root.expansion.overrides,
             "set-rows",
+            input.instrumentation,
           ),
         );
   return {

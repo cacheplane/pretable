@@ -1,5 +1,9 @@
 import { createPersistentMap, type PersistentMap } from "./persistent-map";
+import { instrumentPersistentMap } from "./persistent-map";
 import type { TransientMap } from "./transient";
+import type { LocalRowModelInstrumentation } from "../diagnostics";
+
+const attachInstrumentation = Symbol("attachOrderInstrumentation");
 
 export type OrderStatisticTreeId = string | number;
 
@@ -71,6 +75,7 @@ interface TreeContext<TId extends OrderStatisticTreeId, TEntry, TMeasure> {
   readonly getId: (entry: TEntry) => TId;
   readonly compare: (left: TEntry, right: TEntry) => number;
   readonly measure: OrderStatisticTreeMeasure<TEntry, TMeasure>;
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
 class TreeEditToken {
@@ -207,8 +212,10 @@ function createNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
 function editableNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   node: TreeNode<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
+  instrumentation: LocalRowModelInstrumentation | undefined,
 ): TreeNode<TId, TEntry, TMeasure> {
   if (edit !== null && node.edit === edit) return node;
+  if (instrumentation !== undefined) instrumentation.work.orderNodesCopied += 1;
   return { ...node, edit };
 }
 
@@ -237,8 +244,8 @@ function rotateRight<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
 ): TreeNode<TId, TEntry, TMeasure> {
-  const lower = editableNode(root, edit);
-  const pivot = editableNode(lower.left!, edit);
+  const lower = editableNode(root, edit, context.instrumentation);
+  const pivot = editableNode(lower.left!, edit, context.instrumentation);
   lower.left = pivot.right;
   refreshNode(lower, context);
   pivot.right = lower;
@@ -251,8 +258,8 @@ function rotateLeft<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
 ): TreeNode<TId, TEntry, TMeasure> {
-  const lower = editableNode(root, edit);
-  const pivot = editableNode(lower.right!, edit);
+  const lower = editableNode(root, edit, context.instrumentation);
+  const pivot = editableNode(lower.right!, edit, context.instrumentation);
   lower.right = pivot.left;
   refreshNode(lower, context);
   pivot.left = lower;
@@ -298,7 +305,7 @@ function insertNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   );
   if (comparison === 0) return root;
 
-  const updated = editableNode(root, edit);
+  const updated = editableNode(root, edit, context.instrumentation);
   if (comparison < 0) {
     updated.left = insertNode(updated.left, inserted, context, edit);
   } else {
@@ -314,7 +321,7 @@ function extractMinimum<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
 ): ExtractedMinimum<TId, TEntry, TMeasure> {
   if (root.left === null) return { minimum: root, node: root.right };
   const extracted = extractMinimum(root.left, context, edit);
-  const updated = editableNode(root, edit);
+  const updated = editableNode(root, edit, context.instrumentation);
   updated.left = extracted.node;
   return {
     minimum: extracted.minimum,
@@ -341,7 +348,11 @@ function removeNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
     if (root.left === null) return { node: root.right, changed: true };
     if (root.right === null) return { node: root.left, changed: true };
     const extracted = extractMinimum(root.right, context, edit);
-    const replacement = editableNode(extracted.minimum, edit);
+    const replacement = editableNode(
+      extracted.minimum,
+      edit,
+      context.instrumentation,
+    );
     replacement.left = root.left;
     replacement.right = extracted.node;
     return {
@@ -359,14 +370,14 @@ function removeNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
       edit,
     );
     if (!change.changed) return { node: root, changed: false };
-    const updated = editableNode(root, edit);
+    const updated = editableNode(root, edit, context.instrumentation);
     updated.left = change.node;
     return { node: rebalance(updated, context, edit), changed: true };
   }
 
   const change = removeNode(root.right, removedEntry, removedId, context, edit);
   if (!change.changed) return { node: root, changed: false };
-  const updated = editableNode(root, edit);
+  const updated = editableNode(root, edit, context.instrumentation);
   updated.right = change.node;
   return { node: rebalance(updated, context, edit), changed: true };
 }
@@ -566,6 +577,27 @@ class PersistentOrderStatisticTree<
   entries(): IterableIterator<TEntry> {
     return iterateEntries(this.#root);
   }
+
+  [attachInstrumentation](
+    instrumentation: LocalRowModelInstrumentation,
+    beforeCombine?: () => void,
+  ) {
+    const measure =
+      beforeCombine === undefined
+        ? this.#context.measure
+        : {
+            ...this.#context.measure,
+            combine: (left: TMeasure, right: TMeasure) => {
+              beforeCombine();
+              return this.#context.measure.combine(left, right);
+            },
+          };
+    return new PersistentOrderStatisticTree(
+      this.#root,
+      instrumentPersistentMap(this.#byId, instrumentation),
+      { ...this.#context, measure, instrumentation },
+    );
+  }
 }
 
 class TransientOrderStatisticTreeImpl<
@@ -737,6 +769,40 @@ export function createOrderStatisticTree<
     createPersistentMap<TId, TEntry>(),
     context,
   );
+}
+
+export function instrumentOrderStatisticTree<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+>(
+  tree: OrderStatisticTree<TId, TEntry, TMeasure>,
+  instrumentation: LocalRowModelInstrumentation | undefined,
+): OrderStatisticTree<TId, TEntry, TMeasure> {
+  if (instrumentation === undefined) return tree;
+  if (!(tree instanceof PersistentOrderStatisticTree)) {
+    throw new TypeError(
+      "Instrumentation requires an order tree created by this module.",
+    );
+  }
+  return tree[attachInstrumentation](instrumentation);
+}
+
+export function instrumentMeasuredOrderStatisticTree<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+>(
+  tree: OrderStatisticTree<TId, TEntry, TMeasure>,
+  instrumentation: LocalRowModelInstrumentation,
+  beforeCombine: () => void,
+): OrderStatisticTree<TId, TEntry, TMeasure> {
+  if (!(tree instanceof PersistentOrderStatisticTree)) {
+    throw new TypeError(
+      "Instrumentation requires an order tree created by this module.",
+    );
+  }
+  return tree[attachInstrumentation](instrumentation, beforeCombine);
 }
 
 function inspectNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(

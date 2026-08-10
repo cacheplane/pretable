@@ -1,11 +1,15 @@
 import type { AggregatorLawValidator } from "../aggregator-law";
 import type { PretableAggregator } from "../column-types";
+import type { LocalRowModelInstrumentation } from "../diagnostics";
 import {
   createOrderStatisticTree,
+  instrumentMeasuredOrderStatisticTree,
   type OrderStatisticTree,
   type OrderStatisticTreeId,
   type TransientOrderStatisticTree,
 } from "./order-statistic-tree";
+
+const attachInstrumentation = Symbol("attachAggregateInstrumentation");
 
 const DEVELOPMENT = process.env.NODE_ENV !== "production";
 
@@ -439,6 +443,7 @@ interface TreeContext<TRow extends object, TValue, TAccumulator, TOutput> {
   readonly snapshotAccumulator:
     ((accumulator: TAccumulator) => TAccumulator) | undefined;
   readonly custom: boolean;
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
 interface FinalizedCache<TAccumulator, TOutput> {
@@ -671,6 +676,22 @@ class PersistentAggregateTree<
       this.#cache,
     );
   }
+
+  [attachInstrumentation](instrumentation: LocalRowModelInstrumentation) {
+    if (this.#context.instrumentation === instrumentation) return this;
+    const tree = instrumentMeasuredOrderStatisticTree(
+      this.#tree,
+      instrumentation,
+      () => {
+        instrumentation.work.aggregateMerges += 1;
+      },
+    );
+    return new PersistentAggregateTree(
+      tree,
+      { ...this.#context, instrumentation },
+      this.#cache,
+    );
+  }
 }
 
 class TransientAggregateTreeImpl<
@@ -899,4 +920,23 @@ export function createAggregateTree<
     },
   });
   return new PersistentAggregateTree(tree, context);
+}
+
+export function instrumentAggregateTree<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+  TOutput,
+>(
+  tree: AggregateTree<TId, TRow, TValue, TDependency, TOutput>,
+  instrumentation: LocalRowModelInstrumentation | undefined,
+): AggregateTree<TId, TRow, TValue, TDependency, TOutput> {
+  if (instrumentation === undefined) return tree;
+  if (!(tree instanceof PersistentAggregateTree)) {
+    throw new TypeError(
+      "Instrumentation requires an aggregate tree created by this module.",
+    );
+  }
+  return tree[attachInstrumentation](instrumentation);
 }

@@ -1,10 +1,12 @@
 import { TransientEditToken, type TransientMap } from "./transient";
+import type { LocalRowModelInstrumentation } from "../diagnostics";
 
 type MapKey = string | number;
 type HashFunction<K extends MapKey> = (key: K) => number;
 type Entry<K extends MapKey, V> = [key: K, value: V];
 const inspectPersistentPath = Symbol("inspectPersistentPath");
 const inspectTransientPath = Symbol("inspectTransientPath");
+const attachInstrumentation = Symbol("attachInstrumentation");
 
 interface LeafNode<K extends MapKey, V> {
   readonly kind: "leaf";
@@ -86,16 +88,20 @@ function createLeaf<K extends MapKey, V>(
 function editableLeaf<K extends MapKey, V>(
   node: LeafNode<K, V>,
   edit: TransientEditToken | null,
+  instrumentation: LocalRowModelInstrumentation | undefined,
 ): LeafNode<K, V> {
   if (edit !== null && node.edit === edit) return node;
+  if (instrumentation !== undefined) instrumentation.work.hamtNodesCopied += 1;
   return { ...node, edit, entries: node.entries.slice() };
 }
 
 function editableBranch<K extends MapKey, V>(
   node: BranchNode<K, V>,
   edit: TransientEditToken | null,
+  instrumentation: LocalRowModelInstrumentation | undefined,
 ): BranchNode<K, V> {
   if (edit !== null && node.edit === edit) return node;
+  if (instrumentation !== undefined) instrumentation.work.hamtNodesCopied += 1;
   return { ...node, edit, children: node.children.slice() };
 }
 
@@ -132,6 +138,7 @@ function setNode<K extends MapKey, V>(
   key: K,
   value: V,
   edit: TransientEditToken | null,
+  instrumentation: LocalRowModelInstrumentation | undefined,
 ): Change<K, V> {
   if (node === null) {
     return {
@@ -162,12 +169,12 @@ function setNode<K extends MapKey, V>(
       if (Object.is(node.entries[entryIndex]![1], value)) {
         return { node, changed: false, sizeDelta: 0 };
       }
-      const updated = editableLeaf(node, edit);
+      const updated = editableLeaf(node, edit, instrumentation);
       updated.entries[entryIndex] = [key, value];
       return { node: updated, changed: true, sizeDelta: 0 };
     }
 
-    const updated = editableLeaf(node, edit);
+    const updated = editableLeaf(node, edit, instrumentation);
     updated.entries.push([key, value]);
     return { node: updated, changed: true, sizeDelta: 1 };
   }
@@ -175,7 +182,7 @@ function setNode<K extends MapKey, V>(
   const bit = bitPosition(hash, shift);
   const index = childIndex(node.bitmap, bit);
   if ((node.bitmap & bit) === 0) {
-    const updated = editableBranch(node, edit);
+    const updated = editableBranch(node, edit, instrumentation);
     updated.bitmap |= bit;
     updated.children.splice(index, 0, createLeaf(edit, hash, key, value));
     return { node: updated, changed: true, sizeDelta: 1 };
@@ -188,10 +195,11 @@ function setNode<K extends MapKey, V>(
     key,
     value,
     edit,
+    instrumentation,
   );
   if (!childChange.changed) return { node, changed: false, sizeDelta: 0 };
 
-  const updated = editableBranch(node, edit);
+  const updated = editableBranch(node, edit, instrumentation);
   updated.children[index] = childChange.node!;
   return {
     node: updated,
@@ -206,6 +214,7 @@ function deleteNode<K extends MapKey, V>(
   hash: number,
   key: K,
   edit: TransientEditToken | null,
+  instrumentation: LocalRowModelInstrumentation | undefined,
 ): Change<K, V> {
   if (node === null) return { node, changed: false, sizeDelta: 0 };
 
@@ -219,7 +228,7 @@ function deleteNode<K extends MapKey, V>(
       return { node: null, changed: true, sizeDelta: -1 };
     }
 
-    const updated = editableLeaf(node, edit);
+    const updated = editableLeaf(node, edit, instrumentation);
     updated.entries.splice(entryIndex, 1);
     return { node: updated, changed: true, sizeDelta: -1 };
   }
@@ -236,10 +245,11 @@ function deleteNode<K extends MapKey, V>(
     hash,
     key,
     edit,
+    instrumentation,
   );
   if (!childChange.changed) return { node, changed: false, sizeDelta: 0 };
 
-  const updated = editableBranch(node, edit);
+  const updated = editableBranch(node, edit, instrumentation);
   if (childChange.node === null) {
     updated.bitmap &= ~bit;
     updated.children.splice(index, 1);
@@ -308,11 +318,18 @@ class PersistentHashMap<K extends MapKey, V> implements PersistentMap<K, V> {
   readonly #size: number;
   readonly #root: Node<K, V> | null;
   readonly #hash: HashFunction<K>;
+  readonly #instrumentation: LocalRowModelInstrumentation | undefined;
 
-  constructor(size: number, root: Node<K, V> | null, hash: HashFunction<K>) {
+  constructor(
+    size: number,
+    root: Node<K, V> | null,
+    hash: HashFunction<K>,
+    instrumentation?: LocalRowModelInstrumentation,
+  ) {
     this.#size = size;
     this.#root = root;
     this.#hash = hash;
+    this.#instrumentation = instrumentation;
   }
 
   get size(): number {
@@ -335,27 +352,42 @@ class PersistentHashMap<K extends MapKey, V> implements PersistentMap<K, V> {
       key,
       value,
       null,
+      this.#instrumentation,
     );
     if (!change.changed) return this;
     return new PersistentHashMap(
       this.#size + change.sizeDelta,
       change.node,
       this.#hash,
+      this.#instrumentation,
     );
   }
 
   delete(key: K): PersistentMap<K, V> {
-    const change = deleteNode(this.#root, 0, this.#hash(key) >>> 0, key, null);
+    const change = deleteNode(
+      this.#root,
+      0,
+      this.#hash(key) >>> 0,
+      key,
+      null,
+      this.#instrumentation,
+    );
     if (!change.changed) return this;
     return new PersistentHashMap(
       this.#size + change.sizeDelta,
       change.node,
       this.#hash,
+      this.#instrumentation,
     );
   }
 
   asTransient(): TransientMap<K, V> {
-    return new TransientHashMap(this.#size, this.#root, this.#hash);
+    return new TransientHashMap(
+      this.#size,
+      this.#root,
+      this.#hash,
+      this.#instrumentation,
+    );
   }
 
   entries(): IterableIterator<readonly [K, V]> {
@@ -365,6 +397,15 @@ class PersistentHashMap<K extends MapKey, V> implements PersistentMap<K, V> {
   [inspectPersistentPath](key: K): readonly object[] {
     return nodePath(this.#root, this.#hash(key) >>> 0);
   }
+
+  [attachInstrumentation](instrumentation: LocalRowModelInstrumentation) {
+    return new PersistentHashMap(
+      this.#size,
+      this.#root,
+      this.#hash,
+      instrumentation,
+    );
+  }
 }
 
 class TransientHashMap<K extends MapKey, V> implements TransientMap<K, V> {
@@ -372,12 +413,19 @@ class TransientHashMap<K extends MapKey, V> implements TransientMap<K, V> {
   #root: Node<K, V> | null;
   readonly #hash: HashFunction<K>;
   readonly #edit = new TransientEditToken();
+  readonly #instrumentation: LocalRowModelInstrumentation | undefined;
   #frozen: PersistentMap<K, V> | undefined;
 
-  constructor(size: number, root: Node<K, V> | null, hash: HashFunction<K>) {
+  constructor(
+    size: number,
+    root: Node<K, V> | null,
+    hash: HashFunction<K>,
+    instrumentation?: LocalRowModelInstrumentation,
+  ) {
     this.#size = size;
     this.#root = root;
     this.#hash = hash;
+    this.#instrumentation = instrumentation;
   }
 
   get size(): number {
@@ -401,6 +449,7 @@ class TransientHashMap<K extends MapKey, V> implements TransientMap<K, V> {
       key,
       value,
       this.#edit,
+      this.#instrumentation,
     );
     this.#root = change.node;
     this.#size += change.sizeDelta;
@@ -415,6 +464,7 @@ class TransientHashMap<K extends MapKey, V> implements TransientMap<K, V> {
       this.#hash(key) >>> 0,
       key,
       this.#edit,
+      this.#instrumentation,
     );
     this.#root = change.node;
     this.#size += change.sizeDelta;
@@ -424,7 +474,12 @@ class TransientHashMap<K extends MapKey, V> implements TransientMap<K, V> {
   freeze(): PersistentMap<K, V> {
     if (this.#frozen !== undefined) return this.#frozen;
     this.#edit.freeze();
-    this.#frozen = new PersistentHashMap(this.#size, this.#root, this.#hash);
+    this.#frozen = new PersistentHashMap(
+      this.#size,
+      this.#root,
+      this.#hash,
+      this.#instrumentation,
+    );
     return this.#frozen;
   }
 
@@ -442,6 +497,19 @@ export function createPersistentMap<K extends MapKey, V>(): PersistentMap<
   V
 > {
   return new PersistentHashMap<K, V>(0, null, hashKey);
+}
+
+export function instrumentPersistentMap<K extends MapKey, V>(
+  map: PersistentMap<K, V>,
+  instrumentation: LocalRowModelInstrumentation | undefined,
+): PersistentMap<K, V> {
+  if (instrumentation === undefined) return map;
+  if (!(map instanceof PersistentHashMap)) {
+    throw new TypeError(
+      "Instrumentation requires a map created by this module.",
+    );
+  }
+  return map[attachInstrumentation](instrumentation);
 }
 
 export function createPersistentMapForTesting<K extends MapKey, V>(

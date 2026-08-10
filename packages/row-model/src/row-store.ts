@@ -1,10 +1,15 @@
 import type { CompiledQuery } from "./compiled-query";
 import type { PretableRowId } from "./column-types";
+import type { LocalRowModelInstrumentation } from "./diagnostics";
 import { PretableRowModelError } from "./errors";
 import type { RowRecord, SourceOrderKey } from "./internal-types";
-import { createOrderStatisticTree } from "./persistent/order-statistic-tree";
+import {
+  createOrderStatisticTree,
+  instrumentOrderStatisticTree,
+} from "./persistent/order-statistic-tree";
 import {
   createPersistentMap,
+  instrumentPersistentMap,
   type PersistentMap,
 } from "./persistent/persistent-map";
 import {
@@ -21,6 +26,7 @@ export interface BuildRowStoreInput<
   readonly getRowId: (row: TRow) => TRowId;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly previous?: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>;
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
 export interface BuiltRowStore<
@@ -79,16 +85,21 @@ export function rebuildRowStoreForQuery<
   };
 }
 
-export function createSourceOrderTree<TRowId extends PretableRowId>() {
-  return createOrderStatisticTree<TRowId, SourceOrderKey<TRowId>, number>({
-    getId: (entry) => entry.rowId,
-    compare: (left, right) => left.sourceOrder - right.sourceOrder,
-    measure: {
-      empty: 0,
-      fromEntry: () => 1,
-      combine: (left, right) => left + right,
-    },
-  });
+export function createSourceOrderTree<TRowId extends PretableRowId>(
+  instrumentation?: LocalRowModelInstrumentation,
+) {
+  return instrumentOrderStatisticTree(
+    createOrderStatisticTree<TRowId, SourceOrderKey<TRowId>, number>({
+      getId: (entry) => entry.rowId,
+      compare: (left, right) => left.sourceOrder - right.sourceOrder,
+      measure: {
+        empty: 0,
+        fromEntry: () => 1,
+        combine: (left, right) => left + right,
+      },
+    }),
+    instrumentation,
+  );
 }
 
 function captureRows<TRow extends object>(
@@ -162,16 +173,20 @@ export function buildRowStore<
     (inspection) => inspection.sameReferenceMutation,
   );
 
-  const mapDraft = createPersistentMap<
-    TRowId,
-    RowRecord<TRow, TRowId, TColumns>
-  >().asTransient();
-  const sourceDraft = createSourceOrderTree<TRowId>().asTransient();
+  const mapDraft = instrumentPersistentMap(
+    createPersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>(),
+    input.instrumentation,
+  ).asTransient();
+  const sourceDraft = createSourceOrderTree<TRowId>(
+    input.instrumentation,
+  ).asTransient();
   const records: RowRecord<TRow, TRowId, TColumns>[] = [];
   for (let sourceOrder = 0; sourceOrder < captured.length; sourceOrder += 1) {
     const row = captured[sourceOrder]!;
     const rowId = ids[sourceOrder]!;
     const previous = input.previous?.get(rowId);
+    if (input.instrumentation !== undefined)
+      input.instrumentation.work.rowsEvaluated += 1;
     const metadata = input.queryPlan.evaluate({
       rowId,
       row: row as never,

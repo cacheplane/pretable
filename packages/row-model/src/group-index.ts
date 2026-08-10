@@ -1,5 +1,6 @@
 import type { CompiledGroupKey, CompiledQuery } from "./compiled-query";
 import type { PretableRowId } from "./column-types";
+import type { LocalRowModelInstrumentation } from "./diagnostics";
 import {
   PretableInvalidGroupKeyError,
   PretableRowModelError,
@@ -8,6 +9,7 @@ import {
 import type { RowRecord, VisibleIndexRoot } from "./internal-types";
 import {
   createAggregateTree,
+  instrumentAggregateTree,
   type AggregateTree,
   type AggregateTreeLeaf,
   type BuiltinAggregatorName,
@@ -15,10 +17,12 @@ import {
 import type { PretableAggregator } from "./column-types";
 import {
   createOrderStatisticTree,
+  instrumentOrderStatisticTree,
   type OrderStatisticTree,
 } from "./persistent/order-statistic-tree";
 import {
   createPersistentMap,
+  instrumentPersistentMap,
   type PersistentMap,
 } from "./persistent/persistent-map";
 import type {
@@ -186,6 +190,11 @@ export interface GroupIndexRoot<
   readonly rowParents: PersistentMap<TRowId, PretableGroupId>;
   readonly counts: PolicyCounts;
 }
+
+const groupIndexInstrumentation = new WeakMap<
+  object,
+  LocalRowModelInstrumentation
+>();
 
 const groupedIndex = Symbol("pretable.grouped-index");
 
@@ -871,16 +880,21 @@ function updateAggregateRoots<
   record: RowRecord<TRow, TRowId, TColumns>,
   operation: "insert" | "remove",
   modelOperation: PretableRowModelOperation,
+  instrumentation?: LocalRowModelInstrumentation,
 ): AggregateRoots {
   const all = new Map(roots.all);
   const filtered = new Map(roots.filtered);
   for (const leaf of record.metadata
     .aggregateLeaves as unknown as readonly RuntimeAggregateLeaf[]) {
     try {
-      const allTree =
-        all.get(leaf.columnId) ?? emptyAggregateTree(queryPlan, leaf);
-      const filteredTree =
-        filtered.get(leaf.columnId) ?? emptyAggregateTree(queryPlan, leaf);
+      const allTree = instrumentAggregateTree(
+        all.get(leaf.columnId) ?? emptyAggregateTree(queryPlan, leaf),
+        instrumentation,
+      );
+      const filteredTree = instrumentAggregateTree(
+        filtered.get(leaf.columnId) ?? emptyAggregateTree(queryPlan, leaf),
+        instrumentation,
+      );
       all.set(
         leaf.columnId,
         operation === "insert"
@@ -1087,6 +1101,7 @@ interface FinishContext<
     GroupNode<TRow, TRowId, TColumns>
   >;
   readonly operation: PretableRowModelOperation;
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
 function finishNode<
@@ -1102,6 +1117,8 @@ function finishNode<
   triggerRowId: TRowId | undefined,
 ): GroupNode<TRow, TRowId, TColumns> {
   const previous = context.reusable.get(node.groupId);
+  if (previous !== undefined && context.instrumentation !== undefined)
+    context.instrumentation.work.groupNodesCopied += 1;
   const aggregates = aggregateRecord(
     node.aggregateRoots,
     context.aggregateFilteredRows,
@@ -1206,10 +1223,19 @@ function mutatePath<
     const groupPath = Object.freeze(path.slice(0, depth + 1));
     const groupId = makeGroupId(groupPath);
     const leafLevel = depth === path.length - 1;
-    let childrenByKey = previous?.childrenByKey ?? createPersistentMap();
+    let childrenByKey = instrumentPersistentMap(
+      previous?.childrenByKey ??
+        createPersistentMap<string, GroupNode<TRow, TRowId, TColumns>>(),
+      context.instrumentation,
+    );
     let children =
-      previous?.children ?? createChildTree(context.queryPlan, depth + 1);
-    let leaves = previous?.leaves ?? createLeafTree(context.queryPlan);
+      previous?.children ??
+      createChildTree<TRow, TRowId, TColumns>(context.queryPlan, depth + 1);
+    let leaves = instrumentOrderStatisticTree(
+      previous?.leaves ??
+        createLeafTree<TRow, TRowId, TColumns>(context.queryPlan),
+      context.instrumentation,
+    );
 
     if (leafLevel) {
       leaves =
@@ -1246,6 +1272,7 @@ function mutatePath<
       record,
       operation,
       context.operation,
+      context.instrumentation,
     );
     const override = previous?.override;
     const next = finishNode(
@@ -1255,7 +1282,7 @@ function mutatePath<
         pathKeys: Object.freeze(pathKeys.slice(0, depth + 1)),
         depth,
         columnId: entry.columnId,
-        value: previous === undefined ? (entry.value ?? null) : previous.value,
+        value: previous === undefined ? entry.value : previous.value,
         key: pathKeys[depth]!,
         parentGroupId,
         override,
@@ -1297,13 +1324,16 @@ function rootFromState<
   state: MutationState<TRow, TRowId, TColumns>,
   context: FinishContext<TRow, TRowId, TColumns>,
 ): GroupIndexRoot<TRow, TRowId, TColumns> {
-  return Object.freeze({
+  const root = Object.freeze({
     levelCount: context.levelCount,
     queryPlan: context.queryPlan,
     aggregateFilteredRows: context.aggregateFilteredRows,
     ...state,
     counts: state.roots.measure,
   });
+  if (context.instrumentation !== undefined)
+    groupIndexInstrumentation.set(root, context.instrumentation);
+  return root;
 }
 
 export function createGroupIndex<
@@ -1317,6 +1347,7 @@ export function createGroupIndex<
   overrides: PersistentMap<PretableGroupId, boolean>,
   operation: PretableRowModelOperation = "set-rows",
   reusable?: GroupIndexRoot<TRow, TRowId, TColumns>,
+  instrumentation?: LocalRowModelInstrumentation,
 ): GroupIndexRoot<TRow, TRowId, TColumns> {
   const levelCount = queryPlan.query.rowGroups.length;
   const rootsByKey = createPersistentMap<
@@ -1335,6 +1366,7 @@ export function createGroupIndex<
     aggregateFilteredRows,
     reusable: reusable?.groups ?? state.groups,
     operation,
+    instrumentation,
   };
   for (const record of records) mutatePath(state, record, "insert", context);
   // Apply retained overrides after all future/current groups have been materialized.
@@ -1356,12 +1388,13 @@ export function updateGroupIndex<
   insertions: readonly RowRecord<TRow, TRowId, TColumns>[],
   overrides?: PersistentMap<PretableGroupId, boolean>,
   operation: PretableRowModelOperation = "apply-transaction",
+  instrumentation = groupIndexInstrumentation.get(previous),
 ): GroupIndexRoot<TRow, TRowId, TColumns> {
   const state: MutationState<TRow, TRowId, TColumns> = {
-    rootsByKey: previous.rootsByKey,
+    rootsByKey: instrumentPersistentMap(previous.rootsByKey, instrumentation),
     roots: previous.roots,
-    groups: previous.groups,
-    rowParents: previous.rowParents,
+    groups: instrumentPersistentMap(previous.groups, instrumentation),
+    rowParents: instrumentPersistentMap(previous.rowParents, instrumentation),
   };
   const context: FinishContext<TRow, TRowId, TColumns> = {
     queryPlan: previous.queryPlan,
@@ -1369,6 +1402,7 @@ export function updateGroupIndex<
     aggregateFilteredRows: previous.aggregateFilteredRows,
     reusable: previous.groups,
     operation,
+    instrumentation,
   };
   for (const record of removals) mutatePath(state, record, "remove", context);
   for (const record of insertions) mutatePath(state, record, "insert", context);
@@ -1402,6 +1436,7 @@ export function setGroupOverride<
     aggregateFilteredRows: root.aggregateFilteredRows,
     reusable: root.groups,
     operation,
+    instrumentation: groupIndexInstrumentation.get(root),
   };
   let groups = root.groups;
   const representativeRowId = (
@@ -1451,13 +1486,16 @@ export function setGroupOverride<
   let roots = root.roots;
   if (oldTop.filteredCount) roots = roots.remove(oldTop.groupId);
   if (nextTop.filteredCount) roots = roots.insertOrReplace(nextTop);
-  return Object.freeze({
+  const nextRoot = Object.freeze({
     ...root,
     rootsByKey: root.rootsByKey.set(rootKey, nextTop),
     roots,
     groups,
     counts: roots.measure,
   });
+  if (context.instrumentation !== undefined)
+    groupIndexInstrumentation.set(nextRoot, context.instrumentation);
+  return nextRoot;
 }
 
 function publicGroup<

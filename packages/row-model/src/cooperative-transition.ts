@@ -1,5 +1,6 @@
 import type { CompiledQuery } from "./compiled-query";
 import type { PretableRowId } from "./column-types";
+import type { LocalRowModelInstrumentation } from "./diagnostics";
 import {
   attachGroupIndex,
   createGroupIndex,
@@ -13,7 +14,11 @@ import type {
   RowRecord,
   VisibleIndexRoot,
 } from "./internal-types";
-import { createPersistentMap } from "./persistent/persistent-map";
+import {
+  createPersistentMap,
+  instrumentPersistentMap,
+} from "./persistent/persistent-map";
+import { instrumentOrderStatisticTree } from "./persistent/order-statistic-tree";
 import type { PretableGroupId } from "./types";
 import { createFlatVisibleTree } from "./visible-index";
 
@@ -27,6 +32,7 @@ export interface CooperativeTransitionRuntime {
   readonly now: () => number;
   readonly budgetMs: number;
   readonly maxUnitsPerSlice: number;
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
 export interface CooperativeTransitionCandidateDiagnostics {
@@ -187,6 +193,7 @@ export function createCooperativeTransitionRuntime(options: {
   readonly now?: () => number;
   readonly budgetMs?: number;
   readonly maxUnitsPerSlice?: number;
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }): CooperativeTransitionRuntime {
   const budgetMs = options.budgetMs ?? DEFAULT_BUDGET_MS;
   const maxUnitsPerSlice =
@@ -199,9 +206,27 @@ export function createCooperativeTransitionRuntime(options: {
       "The cooperative transition unit cap must be a positive safe integer.",
     );
   }
+  const scheduler =
+    options.scheduler ?? createDefaultCooperativeTransitionScheduler();
+  const instrumentedScheduler: CooperativeTransitionScheduler | undefined =
+    options.instrumentation === undefined
+      ? undefined
+      : {
+          schedule(task) {
+            const token = {};
+            options.instrumentation!.scheduledCallbacks.add(token);
+            const cancel = scheduler.schedule(() => {
+              options.instrumentation!.scheduledCallbacks.delete(token);
+              task();
+            });
+            return () => {
+              options.instrumentation!.scheduledCallbacks.delete(token);
+              cancel();
+            };
+          },
+        };
   return Object.freeze({
-    scheduler:
-      options.scheduler ?? createDefaultCooperativeTransitionScheduler(),
+    scheduler: instrumentedScheduler ?? scheduler,
     now:
       options.now ??
       (() =>
@@ -212,6 +237,7 @@ export function createCooperativeTransitionRuntime(options: {
           : Date.now()),
     budgetMs,
     maxUnitsPerSlice,
+    instrumentation: options.instrumentation,
   });
 }
 
@@ -223,12 +249,24 @@ export function runCooperativeTransitionSlice(
   const startedAt = runtime.now();
   let completedUnits = 0;
   do {
-    if (step()) return true;
+    if (step()) {
+      if (runtime.instrumentation !== undefined) {
+        runtime.instrumentation.work.schedulerSliceDurations.push(
+          Math.max(0, runtime.now() - startedAt),
+        );
+      }
+      return true;
+    }
     completedUnits += 1;
   } while (
     completedUnits < runtime.maxUnitsPerSlice &&
     runtime.now() - startedAt < runtime.budgetMs
   );
+  if (runtime.instrumentation !== undefined) {
+    runtime.instrumentation.work.schedulerSliceDurations.push(
+      Math.max(0, runtime.now() - startedAt),
+    );
+  }
   return false;
 }
 
@@ -268,8 +306,10 @@ export function createCooperativeTransitionCandidate<
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly aggregateFilteredRows: boolean;
   readonly operation: "set-query" | "set-derivations";
+  readonly instrumentation?: LocalRowModelInstrumentation;
 }): CooperativeTransitionCandidate<TRow, TRowId, TColumns> {
   const operation = options.operation;
+  const instrumentation = options.instrumentation;
   let retained:
     | {
         captured: RevisionRoot<TRow, TRowId, TColumns>;
@@ -306,14 +346,20 @@ export function createCooperativeTransitionCandidate<
     | undefined = {
     captured: options.captured,
     queryPlan: options.queryPlan,
-    rows: createPersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>(),
+    rows: instrumentPersistentMap(
+      createPersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>(),
+      instrumentation,
+    ),
     sourceOrder: options.captured.sourceOrder,
     expansion: options.captured.expansion,
-    flatRows: createFlatVisibleTree<TRow, TRowId, TColumns>(
-      options.queryPlan.compareRows as unknown as (
-        left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-        right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-      ) => number,
+    flatRows: instrumentOrderStatisticTree(
+      createFlatVisibleTree<TRow, TRowId, TColumns>(
+        options.queryPlan.compareRows as unknown as (
+          left: RowRecord<TRow, TRowId, TColumns>["metadata"],
+          right: RowRecord<TRow, TRowId, TColumns>["metadata"],
+        ) => number,
+      ),
+      instrumentation,
     ),
     groups:
       options.queryPlan.query.rowGroups.length === 0
@@ -325,6 +371,7 @@ export function createCooperativeTransitionCandidate<
             createPersistentMap(),
             operation,
             getGroupIndex(options.captured.visible),
+            instrumentation,
           ),
     iterator: options.captured.sourceOrder.entries(),
     deltas: [],
@@ -440,6 +487,7 @@ export function createCooperativeTransitionCandidate<
         [],
         undefined,
         operation,
+        instrumentation,
       );
     }
   };
@@ -447,6 +495,10 @@ export function createCooperativeTransitionCandidate<
   const insertRecord = (source: RowRecord<TRow, TRowId, TColumns>): void => {
     const state = retained;
     if (state === undefined) return;
+    if (instrumentation !== undefined) {
+      instrumentation.work.transitionRows += 1;
+      instrumentation.work.rowsEvaluated += 1;
+    }
     const metadata = state.queryPlan.evaluate({
       rowId: source.rowId,
       row: source.row as never,
@@ -465,6 +517,7 @@ export function createCooperativeTransitionCandidate<
         [record],
         undefined,
         operation,
+        instrumentation,
       );
     }
   };
