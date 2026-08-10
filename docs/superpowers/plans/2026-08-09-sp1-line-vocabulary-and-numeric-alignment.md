@@ -1,5 +1,14 @@
 # SP1: Line Vocabulary & Numeric Alignment Implementation Plan
 
+> **Post-implementation note (do not rewrite the plan below).** During implementation, in response
+> to code review, the two new attributes were renamed `data-pretable-type` →
+> `data-pretable-column-type` and `data-pretable-align` → `data-pretable-column-align`, so they sit
+> in the same namespace as the existing `data-pretable-column-id`. This document is a
+> point-in-time record and still uses the pre-rename spellings throughout — including the
+> self-review claim that the names are "spelled identically in Tasks 4 and 5", which no longer
+> describes shipped code. **The `data-pretable-column-*` names are authoritative**; see
+> `packages/ui/README.md` and the design spec for the current contract.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the grid's two line axes independently themeable, give numeric columns real alignment and tabular figures, and remove three rules that have never painted.

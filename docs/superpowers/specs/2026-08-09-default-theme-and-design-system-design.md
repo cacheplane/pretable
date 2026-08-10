@@ -76,8 +76,16 @@ The foundation. No new theme, no palette change; existing themes keep their curr
 - Add `--pretable-rule-vertical` and `--pretable-rule-width`. Retint `grid.css:55`, `:93`, `:210`
   to the vertical token; `:94` keeps `--pretable-rule`. Excel sets vertical = `--pretable-rule`
   and keeps its cage.
-- Add `align?: "start" | "center" | "end"` to `PretableColumn`. Emit `data-pretable-type` and
-  `data-pretable-align` on body cells, header cells, and group-row aggregate cells.
+- Add `align?: "start" | "center" | "end"` to `PretableColumn`. Emit
+  `data-pretable-column-type` and `data-pretable-column-align` on body cells, header cells, and
+  group-row aggregate cells. (Namespaced `-column-` so they sit alongside the existing
+  `data-pretable-column-id`. They were renamed from the shorter `data-pretable-type` /
+  `data-pretable-align` during SP1 implementation in response to code review; the `-column-`
+  spellings are what shipped and are the names later sub-projects must style.)
+- `data-pretable-column-align` is **absent** for the default start case — `resolveColumnAlign`
+  returns `undefined` unless the column sets `align` explicitly or is a `number` column. Style the
+  default off the attribute's absence; a `[data-pretable-column-align="start"]` rule matches only
+  columns that opted in by hand.
 - Alignment must use **`justify-content`**, not `text-align`. Cells are flex containers and an
   unwrapped value is an anonymous flex item, which `text-align` cannot move. Use
   `justify-content: safe flex-end` — plain `flex-end` clips an over-wide number at its _leading_
@@ -115,6 +123,19 @@ stale `dist/` silently strips exports.
   are surface fills competing for one slot.
 - Excel sets `--pretable-shadow-card: none`; it declares `--pretable-radius: 0` and must not float
   on a drop shadow.
+- **Deferred from SP1 — the focus ring is both dead and doubled.** `grid.css:237`'s outline rule,
+  keyed on `[data-pretable-cell][data-pretable-focused="true"]`, never paints on data rows:
+  `packages/react/src/pretable-surface.tsx:3595` sets an inline `outline: "none"` on every body
+  cell, and inline style beats a layered `:where()` rule. Group-row cells (`group-row.tsx:137-138`)
+  carry the same `data-pretable-cell` / `role="gridcell"` / `data-pretable-focused` attributes but
+  set **no** inline outline, so they receive both that outline _and_ the
+  `[role="gridcell"][data-pretable-focused="true"]` inset `box-shadow` at `:252` — two focus rings,
+  at different offsets, on group rows only. This is a **live accessibility defect, not only dead
+  CSS**: the focus indicator is visually inconsistent between row kinds, so its weight reads as
+  meaning something it does not, and one of the two rings is unthemeable in practice because no
+  theme can suppress an inline `none`. The fix is to pick one mechanism — drop the inline
+  `outline: "none"` so `:237` governs both, or drop `:237` and let the inset shadow govern both —
+  not to add a third.
 
 ### SP3 — `pretable.css` and the docs sweep
 
