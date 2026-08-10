@@ -177,7 +177,7 @@ type PretableRow = Record<string, unknown>;
 ### `PretableGridSnapshot<TRow>`
 
 ```ts
-interface PretableGridSnapshot<TRow = PretableRow> {
+interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
   totalRowCount: number;

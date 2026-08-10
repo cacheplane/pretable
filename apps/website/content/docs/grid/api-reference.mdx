@@ -292,7 +292,7 @@ The `grid` returned by `usePretable`.
 ## `PretableGridSnapshot<TRow>`
 
 ```ts
-interface PretableGridSnapshot<TRow> {
+interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   viewport: {
     scrollTop: number;
     scrollLeft: number;
