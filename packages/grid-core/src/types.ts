@@ -193,6 +193,38 @@ export interface PretableAggregateFormatInput<
 }
 
 /**
+ * Who applies an operation to the loaded records: the engine's derivation
+ * pipeline, or an external processor upstream of `setRows` (a server, a worker,
+ * a wasm index — the engine does not know or care).
+ *
+ * @experimental
+ * @public
+ */
+export type PretableProcessingAuthority = "engine" | "external";
+
+/**
+ * Per-operation processing authority. Construction-time: flipping authority is
+ * a dataset pivot, so it takes a new grid rather than a mutator.
+ *
+ * @experimental
+ * @public
+ */
+export interface PretableProcessingOptions {
+  /**
+   * `"external"`: filter state is displayed (funnel indicators, menu contents,
+   * `snapshot.filters`) but never applied to the loaded records. Default
+   * `"engine"`.
+   */
+  filter?: PretableProcessingAuthority;
+  /**
+   * `"external"`: sort state is displayed (header arrows, priority badges,
+   * `snapshot.sort`) but the model order is the supplied record order. Default
+   * `"engine"`.
+   */
+  sort?: PretableProcessingAuthority;
+}
+
+/**
  * Options accepted by `createGrid`.
  *
  * @public
@@ -202,6 +234,13 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
   rows: TRow[];
   getRowId?: (row: TRow, index: number) => string;
   autosize?: boolean | AutosizeOptions;
+  /**
+   * Who applies filtering and sorting to the loaded records. Construction-time
+   * only — flipping authority is honestly a new grid.
+   *
+   * @experimental
+   */
+  processing?: PretableProcessingOptions;
   // row grouping (v1):
   /**
    * Fold group aggregates over rows the active filter hides. Default `false`,

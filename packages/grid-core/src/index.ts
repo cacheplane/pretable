@@ -49,6 +49,8 @@ export type {
   PretableFrame,
   PretableMoveFocusOptions,
   PretableGridOptions,
+  PretableProcessingAuthority,
+  PretableProcessingOptions,
   PretableRow,
   PretableVisibleRow,
   PretableSelectionState,

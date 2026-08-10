@@ -36,6 +36,8 @@ export type {
   PretableGridSnapshot,
   PretableGroupRow,
   PretableMoveFocusOptions,
+  PretableProcessingAuthority,
+  PretableProcessingOptions,
   PretableRow,
   PretableRowRange,
   PretableRowSelectionTriState,
