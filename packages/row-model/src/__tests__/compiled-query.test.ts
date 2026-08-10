@@ -723,13 +723,24 @@ describe("compileQuery", () => {
 
   test("captures every caller-owned query, derivation, and aggregator property once", () => {
     const reads = new Map<string, number>();
+    const record = (name: string) =>
+      reads.set(name, (reads.get(name) ?? 0) + 1);
     const counted = (name: string, value: unknown) => ({
       enumerable: true,
       get() {
-        reads.set(name, (reads.get(name) ?? 0) + 1);
+        record(name);
         return value;
       },
     });
+    const countedArray = (name: string, entries: unknown[]) =>
+      new Proxy(entries, {
+        get(target, property, receiver) {
+          if (property === "length" || /^\d+$/.test(String(property))) {
+            record(`${name}.${String(property)}`);
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
     const init = () => ({ total: 0 });
     const accumulate = (accumulator: { total: number }, value: number) => ({
       total: accumulator.total + value,
@@ -771,15 +782,18 @@ describe("compileQuery", () => {
     const query = Object.defineProperties(
       {},
       {
-        filters: counted("query.filters", [filter]),
-        sort: counted("query.sort", []),
-        rowGroups: counted("query.rowGroups", []),
+        filters: counted("query.filters", countedArray("filters", [filter])),
+        sort: counted("query.sort", countedArray("sort", [])),
+        rowGroups: counted("query.rowGroups", countedArray("rowGroups", [])),
       },
     );
     const input = Object.defineProperties(
       {},
       {
-        derivations: counted("input.derivations", [derivation]),
+        derivations: counted(
+          "input.derivations",
+          countedArray("derivations", [derivation]),
+        ),
         query: counted("input.query", query),
         previous: counted("input.previous", undefined),
       },
@@ -792,6 +806,8 @@ describe("compileQuery", () => {
       "input.derivations": 1,
       "input.query": 1,
       "input.previous": 1,
+      "derivations.length": 1,
+      "derivations.0": 1,
       "derivation.id": 1,
       "derivation.type": 1,
       "derivation.accessor": 1,
@@ -806,11 +822,81 @@ describe("compileQuery", () => {
       "query.filters": 1,
       "query.sort": 1,
       "query.rowGroups": 1,
+      "filters.length": 1,
+      "filters.0": 1,
+      "sort.length": 1,
+      "rowGroups.length": 1,
       "filter.columnId": 1,
       "filter.operator": 1,
       "filter.value": 1,
     });
   });
+
+  test.each(["derivations", "filters", "sort", "rowGroups"] as const)(
+    "wraps a throwing %s array index with its exact capture path",
+    (area) => {
+      const { input, path } = arrayCaptureInput(area, "throwing-index");
+      let caught: unknown;
+      try {
+        compileQuery(input as never);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(CompiledQueryValidationError);
+      expect(caught).toMatchObject({ path });
+      expect((caught as Error).cause).toBeInstanceOf(Error);
+    },
+  );
+
+  test.each(["derivations", "filters", "sort", "rowGroups"] as const)(
+    "rejects a sparse %s array at its missing index",
+    (area) => {
+      const { input, path } = arrayCaptureInput(area, "sparse");
+
+      expect(() => compileQuery(input as never)).toThrowError(
+        expect.objectContaining({
+          name: "CompiledQueryValidationError",
+          detail: "array index is missing",
+          path,
+        }),
+      );
+    },
+  );
+
+  test.each(["derivations", "filters", "sort", "rowGroups"] as const)(
+    "wraps a throwing %s proxy length read with its exact capture path",
+    (area) => {
+      const { input, path } = arrayCaptureInput(area, "throwing-length");
+      let caught: unknown;
+      try {
+        compileQuery(input as never);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(CompiledQueryValidationError);
+      expect(caught).toMatchObject({ path });
+      expect((caught as Error).cause).toBeInstanceOf(Error);
+    },
+  );
+
+  test.each(["derivations", "filters", "sort", "rowGroups"] as const)(
+    "wraps a throwing %s proxy index-presence trap with its exact capture path",
+    (area) => {
+      const { input, path } = arrayCaptureInput(area, "throwing-presence");
+      let caught: unknown;
+      try {
+        compileQuery(input as never);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(CompiledQueryValidationError);
+      expect(caught).toMatchObject({ path });
+      expect((caught as Error).cause).toBeInstanceOf(Error);
+    },
+  );
 
   test.each([
     [
@@ -1073,4 +1159,68 @@ function throwingAggregateInput(aggregator: object, suffix: string) {
     path: `derivations[0].${suffix}`,
     columnId: "value",
   };
+}
+
+type ArrayCaptureArea = "derivations" | "filters" | "sort" | "rowGroups";
+type ArrayCaptureFailure =
+  "throwing-index" | "sparse" | "throwing-length" | "throwing-presence";
+
+function arrayCaptureInput(
+  area: ArrayCaptureArea,
+  failure: ArrayCaptureFailure,
+): { input: object; path: string } {
+  const column = createColumnHelper<{ id: number; value: number }>();
+  const derivation = column.accessor("value", { type: "number" });
+  const entries = {
+    derivations: derivation,
+    filters: { columnId: "value", operator: "gte", value: 1 },
+    sort: { columnId: "value", direction: "asc" },
+    rowGroups: { columnId: "value" },
+  } as const;
+  const array = arrayWithCaptureFailure(entries[area], failure);
+  const query = {
+    filters: area === "filters" ? array : [],
+    sort: area === "sort" ? array : [],
+    rowGroups: area === "rowGroups" ? array : [],
+  };
+  const input = {
+    derivations: area === "derivations" ? array : [derivation],
+    query,
+  };
+  const prefix = area === "derivations" ? "derivations" : `query.${area}`;
+  return {
+    input,
+    path: failure === "throwing-length" ? `${prefix}.length` : `${prefix}[0]`,
+  };
+}
+
+function arrayWithCaptureFailure(
+  entry: unknown,
+  failure: ArrayCaptureFailure,
+): unknown[] {
+  if (failure === "sparse") return new Array(1) as unknown[];
+  const array = [entry];
+  if (failure === "throwing-index") {
+    Object.defineProperty(array, 0, {
+      configurable: true,
+      get() {
+        throw new Error("index getter");
+      },
+    });
+    return array;
+  }
+  return new Proxy(array, {
+    get(target, property, receiver) {
+      if (failure === "throwing-length" && property === "length") {
+        throw new Error("length trap");
+      }
+      return Reflect.get(target, property, receiver);
+    },
+    getOwnPropertyDescriptor(target, property) {
+      if (failure === "throwing-presence" && property === "0") {
+        throw new Error("presence trap");
+      }
+      return Reflect.getOwnPropertyDescriptor(target, property);
+    },
+  });
 }

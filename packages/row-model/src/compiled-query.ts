@@ -282,8 +282,6 @@ function captureCompileInput(input: object): CapturedCompileInput {
   const rawColumns = captureProperty(input, "derivations", "input.derivations");
   const rawQuery = captureProperty(input, "query", "input.query");
   const previous = captureProperty(input, "previous", "input.previous");
-  if (!Array.isArray(rawColumns))
-    fail("derivations must be an array", "input.derivations");
   if (rawQuery === null || typeof rawQuery !== "object")
     fail("query must be an object", "input.query");
   return {
@@ -293,11 +291,12 @@ function captureCompileInput(input: object): CapturedCompileInput {
   };
 }
 
-function captureColumns(
-  rawColumns: readonly unknown[],
-): readonly RuntimeColumn[] {
-  return Object.freeze(
-    rawColumns.map((rawColumn, index) => {
+function captureColumns(rawColumns: unknown): readonly RuntimeColumn[] {
+  return captureDenseArray(
+    rawColumns,
+    "derivations",
+    "derivations must be an array",
+    (rawColumn, index) => {
       const path = `derivations[${index}]`;
       if (rawColumn === null || typeof rawColumn !== "object")
         fail("a derivation is not an object", path);
@@ -340,7 +339,7 @@ function captureColumns(
         compare,
         aggregate,
       }) as unknown as RuntimeColumn;
-    }),
+    },
   );
 }
 
@@ -379,24 +378,77 @@ function captureQuery(source: object): RuntimeQuery {
   const rawFilters = captureProperty(source, "filters", "query.filters");
   const rawSort = captureProperty(source, "sort", "query.sort");
   const rawRowGroups = captureProperty(source, "rowGroups", "query.rowGroups");
-  if (!Array.isArray(rawFilters))
-    fail("filters must be an array", "query.filters");
-  if (!Array.isArray(rawSort)) fail("sort must be an array", "query.sort");
-  if (!Array.isArray(rawRowGroups))
-    fail("rowGroups must be an array", "query.rowGroups");
   return Object.freeze({
-    filters: Object.freeze(
-      rawFilters.map((entry, index) => captureFilter(entry, index)),
+    filters: captureDenseArray(
+      rawFilters,
+      "query.filters",
+      "filters must be an array",
+      captureFilter,
     ),
-    sort: Object.freeze(
-      rawSort.map((entry, index) => captureOrdering(entry, "sort", index)),
+    sort: captureDenseArray(
+      rawSort,
+      "query.sort",
+      "sort must be an array",
+      (entry, index) => captureOrdering(entry, "sort", index),
     ),
-    rowGroups: Object.freeze(
-      rawRowGroups.map((entry, index) =>
-        captureOrdering(entry, "rowGroups", index),
-      ),
+    rowGroups: captureDenseArray(
+      rawRowGroups,
+      "query.rowGroups",
+      "rowGroups must be an array",
+      (entry, index) => captureOrdering(entry, "rowGroups", index),
     ),
   });
+}
+
+function captureDenseArray<T>(
+  source: unknown,
+  path: string,
+  notArrayDetail: string,
+  captureEntry: (entry: unknown, index: number) => T,
+): readonly T[] {
+  let isArray: boolean;
+  try {
+    isArray = Array.isArray(source);
+  } catch (cause) {
+    throw new CompiledQueryValidationError(
+      "array brand check threw while compiling",
+      path,
+      undefined,
+      { cause },
+    );
+  }
+  if (!isArray) fail(notArrayDetail, path);
+
+  const array = source as unknown[];
+  const length = captureProperty(array, "length", `${path}.length`);
+  if (
+    typeof length !== "number" ||
+    !Number.isInteger(length) ||
+    length < 0 ||
+    length > 0xffff_ffff
+  ) {
+    fail("array length is invalid", `${path}.length`);
+  }
+
+  const captured: T[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const entryPath = `${path}[${index}]`;
+    let hasOwnIndex: boolean;
+    try {
+      hasOwnIndex = Object.prototype.hasOwnProperty.call(array, index);
+    } catch (cause) {
+      throw new CompiledQueryValidationError(
+        "array index presence check threw while compiling",
+        entryPath,
+        undefined,
+        { cause },
+      );
+    }
+    if (!hasOwnIndex) fail("array index is missing", entryPath);
+    const entry = captureProperty(array, index, entryPath);
+    captured.push(captureEntry(entry, index));
+  }
+  return Object.freeze(captured);
 }
 
 function captureFilter(raw: unknown, index: number): RuntimeFilter {
