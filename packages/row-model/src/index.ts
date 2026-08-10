@@ -1,6 +1,10 @@
 export * from "./column-types";
 export * from "./compiled-query";
-export * from "./create-local-row-model";
+export {
+  createLocalRowModel,
+  type CreateLocalRowModelOptions,
+  type CreateLocalRowModelWithDefaultIdOptions,
+} from "./create-local-row-model";
 export * from "./aggregator-law";
 export * from "./errors";
 export {

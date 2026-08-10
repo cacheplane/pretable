@@ -1,9 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 
+import * as publicRowModelApi from "../index";
 import {
   PretableDisposedModelError,
   createColumnHelper,
   createLocalRowModel,
+  type CreateLocalRowModelOptions,
+  type CreateLocalRowModelWithDefaultIdOptions,
   type PretableChangeOperation,
   type PretableGroupId,
   type PretableVisibleRowRef,
@@ -112,6 +115,19 @@ function groupedModel(changeJournalCapacity = 32) {
 }
 
 describe("bounded revision change journal", () => {
+  test("keeps local journal diagnostics out of the package public surface", () => {
+    type ExplicitIdOptions = CreateLocalRowModelOptions<typeof columns, number>;
+    type DefaultIdOptions = CreateLocalRowModelWithDefaultIdOptions<
+      typeof columns
+    >;
+
+    expect(publicRowModelApi.createLocalRowModel).toBe(createLocalRowModel);
+    expect(
+      "getLocalRowModelChangeJournalDiagnosticsForTesting" in publicRowModelApi,
+    ).toBe(false);
+    expect(null as ExplicitIdOptions | DefaultIdOptions | null).toBeNull();
+  });
+
   test("returns a frozen empty sequence at the current revision", () => {
     const model = flatModel();
 
