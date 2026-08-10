@@ -377,3 +377,21 @@ describe("datasetKey", () => {
     expect(grid.getSnapshot().selection.ranges).toEqual([]);
   });
 });
+
+describe("setResultMeta with a non-string datasetKey", () => {
+  // TypeScript rejects this; an untyped JS consumer passing a numeric query id
+  // does not. `isDatasetPivot` already requires a string, so without the same
+  // guard on the assignment the key lands in a `string | null` slot and the
+  // pivot is consumed without clearing.
+  test("leaves the key and the interaction state alone", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    grid.setRows(rows, { datasetKey: "q1" });
+    grid.toggleRowSelection("a");
+
+    grid.setResultMeta({ datasetKey: 7 as unknown as string });
+
+    const snap = grid.getSnapshot();
+    expect(snap.datasetKey).toBe("q1");
+    expect(snap.selection.ranges).toHaveLength(1);
+  });
+});

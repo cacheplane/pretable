@@ -1328,7 +1328,11 @@ export function createGridCore<TRow extends PretableRow>(
     },
     setResultMeta(meta: PretableResultMeta) {
       const pivot = isDatasetPivot(meta.datasetKey);
-      const nextKey = meta.datasetKey ?? datasetKey;
+      // Mirrors `applyResultMeta`: only a string is an identity. `??` would let
+      // a non-string from an untyped consumer past `isDatasetPivot`'s guard and
+      // into a `string | null` slot, consuming the pivot without clearing.
+      const nextKey =
+        typeof meta.datasetKey === "string" ? meta.datasetKey : datasetKey;
       // Carrying `suppliedTotal` forward is what makes a total-less call a
       // no-op. Across a pivot that same carry would re-land the old count
       // right after `clearForDatasetChange` dropped it.
