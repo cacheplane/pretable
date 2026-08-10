@@ -131,6 +131,7 @@ export interface CompiledQuery<TColumns> {
 export interface CompileQueryInput<TColumns> {
   readonly derivations: PretableDerivationsFor<TColumns>;
   readonly query: PretableQueryFor<TColumns>;
+  readonly operation?: "set-query" | "set-derivations";
   /** Supply the current plan so semantic no-ops preserve plan and cache identity. */
   readonly previous?: CompiledQuery<TColumns>;
 }
@@ -160,10 +161,11 @@ export class CompiledQueryComparatorError extends PretableRowModelError {
       readonly columnId: string;
       readonly cause: unknown;
       readonly groupValues?: readonly unknown[];
+      readonly operation?: "set-query" | "set-derivations";
     },
   ) {
     super("comparator-failed", message, {
-      operation: "set-query",
+      operation: context.operation ?? "set-query",
       rowId: rowIds?.[0],
       columnId: context.columnId,
       cause: context.cause,
@@ -1225,6 +1227,7 @@ class CompiledQueryPlan<TColumns>
   readonly #byId: ReadonlyMap<string, RuntimeColumn>;
   readonly #active: readonly RuntimeColumn[];
   readonly #aggregateColumns: readonly RuntimeColumn[];
+  readonly #operation: "set-query" | "set-derivations";
   readonly #evaluationCache = new WeakMap<object, CachedEvaluation>();
 
   readonly [internals] = {
@@ -1256,11 +1259,13 @@ class CompiledQueryPlan<TColumns>
   constructor(
     capturedColumns: readonly RuntimeColumn[],
     capturedQuery: RuntimeQuery,
+    operation: "set-query" | "set-derivations",
   ) {
     this.#publicColumns = capturedColumns;
     this.#publicQuery = capturedQuery;
     this.#runtimeColumns = capturedColumns;
     this.#runtimeQuery = canonicalRuntimeQuery(capturedQuery);
+    this.#operation = operation;
     this.#byId = new Map(
       this.#runtimeColumns.map((column) => [column.id, column]),
     );
@@ -1309,7 +1314,7 @@ class CompiledQueryPlan<TColumns>
           "accessor-failed",
           `Column ${column.id} accessor failed.`,
           {
-            operation: "set-query",
+            operation: this.#operation,
             rowId: input.rowId,
             columnId: column.id,
             cause,
@@ -1397,7 +1402,7 @@ class CompiledQueryPlan<TColumns>
         throw new CompiledQueryComparatorError(
           "A compiled row comparator failed.",
           [left.rowId, right.rowId],
-          { columnId: ordering.columnId, cause },
+          { columnId: ordering.columnId, cause, operation: this.#operation },
         );
       }
     }
@@ -1422,6 +1427,7 @@ class CompiledQueryPlan<TColumns>
           columnId: ordering.columnId,
           cause,
           groupValues: [left.value, right.value],
+          operation: this.#operation,
         },
       );
     }
@@ -1442,5 +1448,9 @@ export function compileQuery<const TColumns>(
   )
     return previous;
 
-  return new CompiledQueryPlan(captured.columns, captured.query);
+  return new CompiledQueryPlan(
+    captured.columns,
+    captured.query,
+    input.operation ?? "set-query",
+  );
 }

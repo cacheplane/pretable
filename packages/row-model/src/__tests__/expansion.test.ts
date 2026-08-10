@@ -279,7 +279,7 @@ describe("group expansion policies", () => {
     expect(transition.requestedDerivations[2]?.aggregate).toBe("avg");
   });
 
-  test("attributes derivation rebuild failures to set-derivations and rolls back", () => {
+  test("attributes derivation rebuild failures to set-derivations and rolls back", async () => {
     const grouped = model();
     const before = grouped.getState();
     const failing = [
@@ -296,7 +296,7 @@ describe("group expansion policies", () => {
       columns[2],
     ] as const;
 
-    expect(() => grouped.setDerivations(failing)).toThrowError(
+    await expect(grouped.setDerivations(failing).finished).rejects.toEqual(
       expect.objectContaining({
         code: "accessor-failed",
         operation: "set-derivations",
@@ -307,7 +307,7 @@ describe("group expansion policies", () => {
         }),
       }),
     );
-    expect(grouped.getState()).toBe(before);
+    expect(grouped.getState().snapshot).toBe(before.snapshot);
 
     const comparatorFailure = [
       {
@@ -319,7 +319,9 @@ describe("group expansion policies", () => {
       columns[1],
       columns[2],
     ] as const;
-    expect(() => grouped.setDerivations(comparatorFailure)).toThrowError(
+    await expect(
+      grouped.setDerivations(comparatorFailure).finished,
+    ).rejects.toEqual(
       expect.objectContaining({
         code: "comparator-failed",
         operation: "set-derivations",
@@ -330,7 +332,7 @@ describe("group expansion policies", () => {
         }),
       }),
     );
-    expect(grouped.getState()).toBe(before);
+    expect(grouped.getState().snapshot).toBe(before.snapshot);
 
     const aggregateFailure = [
       columns[0],
@@ -348,7 +350,9 @@ describe("group expansion policies", () => {
         },
       },
     ] as const;
-    expect(() => grouped.setDerivations(aggregateFailure)).toThrowError(
+    await expect(
+      grouped.setDerivations(aggregateFailure).finished,
+    ).rejects.toEqual(
       expect.objectContaining({
         code: "aggregator-failed",
         operation: "set-derivations",
@@ -360,8 +364,8 @@ describe("group expansion policies", () => {
         }),
       }),
     );
-    expect(grouped.getState()).toBe(before);
-    expect(grouped.setDerivations(columns).id).toBe(1);
+    expect(grouped.getState().snapshot).toBe(before.snapshot);
+    expect(grouped.setDerivations(columns).id).toBe(4);
   });
 
   test("guards expansion and derivation commands after disposal", () => {

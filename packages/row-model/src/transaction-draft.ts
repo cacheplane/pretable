@@ -60,6 +60,8 @@ export interface TransactionDraftResult<
   readonly issues: readonly PretableMutationIssue<TRowId>[];
   readonly diagnostics: readonly PretableRowIntegrityDiagnostic<TRowId>[];
   readonly operations: readonly PretableChangeOperation<TRowId>[];
+  /** Canonical rows the cooperative transition candidate must replay. */
+  readonly affectedRowIds: readonly TRowId[];
   readonly effective: boolean;
 }
 
@@ -871,6 +873,7 @@ export function applyFlatTransactionDraft<
         issues: Object.freeze(issues),
         diagnostics: Object.freeze([]),
         operations: Object.freeze([]),
+        affectedRowIds: Object.freeze([]),
         effective: false,
       };
     }
@@ -1038,6 +1041,10 @@ export function applyFlatTransactionDraft<
       issues: Object.freeze(issues),
       diagnostics: Object.freeze(diagnostics),
       operations: groupedOperations ?? Object.freeze(operations),
+      affectedRowIds: Object.freeze([
+        ...effectiveRemoves,
+        ...prepared.map((record) => record.rowId),
+      ]),
       effective: true,
     };
   } catch (error) {
@@ -1164,6 +1171,7 @@ export function replaceFlatRowsDraft<
       issues: Object.freeze([]),
       diagnostics: Object.freeze(diagnostics),
       operations: Object.freeze([]),
+      affectedRowIds: Object.freeze([]),
       effective: false,
       sameReferenceMutation: true,
     };
@@ -1226,6 +1234,7 @@ export function replaceFlatRowsDraft<
       issues: Object.freeze([]),
       diagnostics: Object.freeze(diagnostics),
       operations: Object.freeze([]),
+      affectedRowIds: Object.freeze([]),
       effective: false,
       sameReferenceMutation,
     };
@@ -1331,6 +1340,10 @@ export function replaceFlatRowsDraft<
     issues: Object.freeze([]),
     diagnostics: Object.freeze(diagnostics),
     operations: Object.freeze([]),
+    affectedRowIds: Object.freeze([
+      ...removedRecords.map((record) => record.rowId),
+      ...changedRecords.map((record) => record.rowId),
+    ]),
     effective: true,
     sameReferenceMutation,
   };

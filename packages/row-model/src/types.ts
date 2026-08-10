@@ -204,7 +204,7 @@ export interface PretableQueryTransition<TColumns> {
 
 export interface PretableDerivationTransition<TColumns> {
   readonly id: number;
-  readonly requestedDerivations: PretableDerivationsFor<TColumns>;
+  readonly requestedDerivations: Readonly<PretableDerivationsFor<TColumns>>;
   readonly finished: Promise<number>;
   cancel(): void;
 }

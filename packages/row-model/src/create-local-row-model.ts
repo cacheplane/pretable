@@ -1,4 +1,11 @@
-import { compileQuery } from "./compiled-query";
+import { compileQuery, type CompiledQuery } from "./compiled-query";
+import {
+  createCooperativeTransitionCandidate,
+  createCooperativeTransitionRuntime,
+  runCooperativeTransitionSlice,
+  type CooperativeTransitionCandidate,
+  type CooperativeTransitionScheduler,
+} from "./cooperative-transition";
 import {
   createChangeJournal,
   getChangeJournalDiagnosticsForTesting,
@@ -16,6 +23,8 @@ import {
   findPretableReentrantMutationError,
   PretableReentrantMutationError,
   PretableRowModelError,
+  PretableTransitionCancelledError,
+  type PretableTransitionCancellationReason,
   type PretableRowModelOperation,
 } from "./errors";
 import type { ExpansionRoot, RevisionRoot } from "./internal-types";
@@ -25,7 +34,7 @@ import {
   setGroupOverride,
 } from "./group-index";
 import { createPersistentMap } from "./persistent/persistent-map";
-import { buildRowStore, rebuildRowStoreForQuery } from "./row-store";
+import { buildRowStore } from "./row-store";
 import type {
   PretableRowIntegrityDiagnostic,
   PretableRowIntegrityDiagnosticSink,
@@ -68,6 +77,12 @@ interface CreateLocalRowModelBaseOptions<
   readonly aggregateFilteredRows?: boolean;
   /** Overrides the bounded consumer journal size for diagnostics and tests. */
   readonly changeJournalCapacity?: number;
+  /** Internal deterministic scheduler injection for cooperative rebuilds. */
+  readonly transitionScheduler?: CooperativeTransitionScheduler;
+  /** Internal deterministic monotonic clock injection for cooperative rebuilds. */
+  readonly transitionClock?: () => number;
+  /** Maximum cooperative work-slice duration; checked after every row. */
+  readonly transitionBudgetMs?: number;
   readonly onDiagnostic?: (
     diagnostic: PretableRowIntegrityDiagnostic<TRowId>,
   ) => void;
@@ -119,6 +134,21 @@ type RuntimeCreateLocalRowModelOptions<
 > = CreateLocalRowModelBaseOptions<TColumns, TRowId> & {
   readonly getRowId?: (row: RowForColumns<TColumns>) => TRowId;
 };
+
+interface ActiveTransition<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+> {
+  readonly id: number;
+  readonly operation: "set-query" | "set-derivations";
+  readonly queryPlan: CompiledQuery<TColumns>;
+  readonly candidate: CooperativeTransitionCandidate<TRow, TRowId, TColumns>;
+  readonly finished: Promise<number>;
+  readonly resolve: (revision: number) => void;
+  readonly reject: (error: unknown) => void;
+  cancelScheduled: (() => void) | undefined;
+}
 
 class PretableNotYetImplementedError extends PretableRowModelError {
   readonly name = "PretableNotYetImplementedError";
@@ -427,10 +457,16 @@ export function createLocalRowModel<
   let activeMutation: PretableRowModelOperation | undefined;
   let nextSourceOrder = initialStore.records.length;
   let nextTransitionId = 1;
+  let activeTransition: ActiveTransition<TRow, TRowId, TColumns> | undefined;
   const listeners = new Set<() => void>();
   const changeJournal = createChangeJournal<TRowId>(
     options.changeJournalCapacity,
   );
+  const transitionRuntime = createCooperativeTransitionRuntime({
+    scheduler: options.transitionScheduler,
+    now: options.transitionClock,
+    budgetMs: options.transitionBudgetMs,
+  });
 
   const assertCommandAllowed = (operation: PretableRowModelOperation): void => {
     if (activeMutation !== undefined) {
@@ -458,10 +494,24 @@ export function createLocalRowModel<
     assertCommandAllowed(operation);
     throw new PretableNotYetImplementedError(operation);
   };
-  const commit = (next: RevisionRoot<TRow, TRowId, TColumns>): void => {
+  const rebuildingStatus = (
+    transition: ActiveTransition<TRow, TRowId, TColumns>,
+  ) =>
+    Object.freeze({
+      kind: "rebuilding" as const,
+      transitionId: transition.id,
+      completedRows: transition.candidate.completedRows,
+      totalRows: transition.candidate.totalRows,
+    });
+  const commit = (
+    next: RevisionRoot<TRow, TRowId, TColumns>,
+    status = activeTransition === undefined
+      ? READY
+      : rebuildingStatus(activeTransition),
+  ): void => {
     root = next;
     snapshot = createFlatSnapshot(root);
-    state = Object.freeze({ snapshot, status: READY });
+    state = Object.freeze({ snapshot, status });
   };
   const notify = (): void => {
     for (const listener of Array.from(listeners)) {
@@ -471,6 +521,165 @@ export function createLocalRowModel<
         // One consumer must not prevent the remaining subscribers from waking.
       }
     }
+  };
+  const transitionError = (
+    error: unknown,
+    operation: "set-query" | "set-derivations",
+  ): PretableRowModelError => {
+    const remapped = remapOperationError(error, operation);
+    return remapped instanceof PretableRowModelError
+      ? remapped
+      : new PretableRowModelError(
+          "derivation-failed",
+          `The ${operation} transition failed.`,
+          { operation, cause: remapped },
+        );
+  };
+  const cancelActiveTransition = (
+    reason: PretableTransitionCancellationReason,
+  ): ActiveTransition<TRow, TRowId, TColumns> | undefined => {
+    const transition = activeTransition;
+    if (transition === undefined) return undefined;
+    activeTransition = undefined;
+    transition.cancelScheduled?.();
+    transition.cancelScheduled = undefined;
+    transition.candidate.release();
+    transition.reject(
+      new PretableTransitionCancelledError(transition.id, reason),
+    );
+    return transition;
+  };
+  const failTransition = (
+    transition: ActiveTransition<TRow, TRowId, TColumns>,
+    error: unknown,
+  ): void => {
+    if (activeTransition !== transition) return;
+    activeTransition = undefined;
+    transition.cancelScheduled?.();
+    transition.cancelScheduled = undefined;
+    transition.candidate.release();
+    const typed =
+      findPretableReentrantMutationError(error) ??
+      transitionError(error, transition.operation);
+    state = Object.freeze({
+      snapshot,
+      status: Object.freeze({
+        kind: "error" as const,
+        transitionId: transition.id,
+        error: typed,
+      }),
+    });
+    transition.reject(typed);
+  };
+  const scheduleTransition = (
+    transition: ActiveTransition<TRow, TRowId, TColumns>,
+  ): void => {
+    transition.cancelScheduled = transitionRuntime.scheduler.schedule(() => {
+      if (disposed || activeTransition !== transition) return;
+      let changed = false;
+      try {
+        changed = guarded(transition.operation, () => {
+          transition.cancelScheduled = undefined;
+          return runTransitionSlice(transition);
+        });
+      } catch (error) {
+        failTransition(transition, error);
+        changed = true;
+      }
+      if (changed) notify();
+    });
+  };
+  const runTransitionSlice = (
+    transition: ActiveTransition<TRow, TRowId, TColumns>,
+  ): boolean => {
+    if (activeTransition !== transition || disposed) return false;
+    try {
+      const complete = runCooperativeTransitionSlice(transitionRuntime, () =>
+        transition.candidate.step(),
+      );
+      if (activeTransition !== transition || disposed) return false;
+      if (!complete) {
+        state = Object.freeze({
+          snapshot,
+          status: rebuildingStatus(transition),
+        });
+        scheduleTransition(transition);
+        return true;
+      }
+
+      const previousRevision = root.revision;
+      const revision = previousRevision + 1;
+      const committedRoot = transition.candidate.finish(revision);
+      activeTransition = undefined;
+      transition.cancelScheduled?.();
+      transition.cancelScheduled = undefined;
+      queryPlan = transition.queryPlan;
+      query = transition.queryPlan.query;
+      derivations = transition.queryPlan.derivations;
+      commit(committedRoot, READY);
+      changeJournal.appendBarrier(previousRevision, revision);
+      transition.candidate.release();
+      transition.resolve(revision);
+      return true;
+    } catch (error) {
+      failTransition(transition, error);
+      return true;
+    }
+  };
+  const startTransition = (
+    id: number,
+    operation: "set-query" | "set-derivations",
+    nextPlan: CompiledQuery<TColumns>,
+  ): ActiveTransition<TRow, TRowId, TColumns> => {
+    cancelActiveTransition("superseded");
+    let resolve!: (revision: number) => void;
+    let reject!: (error: unknown) => void;
+    const finished = new Promise<number>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    const transition: ActiveTransition<TRow, TRowId, TColumns> = {
+      id,
+      operation,
+      queryPlan: nextPlan,
+      candidate: createCooperativeTransitionCandidate({
+        captured: root,
+        queryPlan: nextPlan,
+        aggregateFilteredRows,
+        operation,
+      }),
+      finished,
+      resolve,
+      reject,
+      cancelScheduled: undefined,
+    };
+    activeTransition = transition;
+    state = Object.freeze({ snapshot, status: rebuildingStatus(transition) });
+    runTransitionSlice(transition);
+    return transition;
+  };
+  const appendTransitionDelta = (
+    target: RevisionRoot<TRow, TRowId, TColumns>,
+    affectedRowIds: readonly TRowId[],
+  ): void => {
+    activeTransition?.candidate.append(
+      Object.freeze({
+        target,
+        affectedRowIds: Object.freeze([...affectedRowIds]),
+      }),
+    );
+  };
+  const cancelTransitionHandle = (
+    id: number,
+    operation: "set-query" | "set-derivations",
+  ): void => {
+    const cancelled = guarded(operation, () => {
+      if (activeTransition?.id !== id) return false;
+      cancelActiveTransition("cancelled");
+      state = Object.freeze({ snapshot, status: READY });
+      return true;
+    });
+    if (cancelled) notify();
   };
   const applyExpansionDefault = (
     operation: "set-expansion-default" | "expand-all" | "collapse-all",
@@ -517,18 +726,18 @@ export function createLocalRowModel<
           }),
         });
         const revision = previousRoot.revision + 1;
-        commit(
-          Object.freeze({
-            ...previousRoot,
-            revision,
-            parentRevision: previousRoot.revision,
-            visible:
-              groups === undefined
-                ? previousRoot.visible
-                : attachGroupIndex(previousRoot.visible.rows, groups),
-            expansion,
-          }),
-        );
+        const committedRoot = Object.freeze({
+          ...previousRoot,
+          revision,
+          parentRevision: previousRoot.revision,
+          visible:
+            groups === undefined
+              ? previousRoot.visible
+              : attachGroupIndex(previousRoot.visible.rows, groups),
+          expansion,
+        });
+        appendTransitionDelta(committedRoot, []);
+        commit(committedRoot);
         changeJournal.appendBarrier(previousRoot.revision, revision);
         return {
           result: mutationResult<TRowId>(previousRoot.revision, revision),
@@ -611,6 +820,7 @@ export function createLocalRowModel<
           );
           queryPlan = nextPlan;
           nextSourceOrder = drafted.nextSourceOrder;
+          appendTransitionDelta(committedRoot, drafted.affectedRowIds);
           commit(committedRoot);
           changeJournal.appendBarrier(previousRevision, committedRoot.revision);
           return {
@@ -657,6 +867,7 @@ export function createLocalRowModel<
             cause: Object.freeze({ kind: "set-rows" as const }),
           });
         nextSourceOrder = drafted.nextSourceOrder;
+        appendTransitionDelta(committedRoot, drafted.affectedRowIds);
         commit(committedRoot);
         changeJournal.appendChanges(
           previousRoot.revision,
@@ -674,75 +885,32 @@ export function createLocalRowModel<
     ): PretableQueryTransition<TColumns> {
       const prepared = guarded("set-query", () => {
         const id = nextTransitionId++;
-        const previousRoot = root;
         const nextPlan = compileQuery({
           derivations,
           query: nextQuery,
           previous: queryPlan,
+          operation: "set-query",
         });
         if (nextPlan === queryPlan) {
+          const superseded = cancelActiveTransition("superseded") !== undefined;
+          if (superseded) state = Object.freeze({ snapshot, status: READY });
           return {
             transition: Object.freeze({
               id,
               requestedQuery: queryPlan.query,
-              finished: Promise.resolve(previousRoot.revision),
-              cancel: () => assertCommandAllowed("set-query"),
+              finished: Promise.resolve(root.revision),
+              cancel: () => cancelTransitionHandle(id, "set-query"),
             }),
-            notify: false,
+            notify: superseded,
           };
         }
-        let store: ReturnType<
-          typeof rebuildRowStoreForQuery<TRow, TRowId, TColumns>
-        >;
-        try {
-          store = rebuildRowStoreForQuery(
-            previousRoot.rows,
-            previousRoot.sourceOrder,
-            nextPlan,
-          );
-        } catch (error) {
-          if (
-            error instanceof PretableRowModelError &&
-            error.operation !== "set-query"
-          ) {
-            throw new PretableRowModelError(error.code, error.message, {
-              operation: "set-query",
-              rowId: error.rowId,
-              columnId: error.columnId,
-              cause: error.cause,
-            });
-          }
-          throw error;
-        }
-        const revision = previousRoot.revision + 1;
-        const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
-          Object.freeze({
-            revision,
-            parentRevision: previousRoot.revision,
-            rows: store.rows,
-            sourceOrder: store.sourceOrder,
-            visible: createVisibleIndex(
-              store.records,
-              nextPlan,
-              aggregateFilteredRows,
-              previousRoot.expansion.overrides,
-              "set-query",
-              getGroupIndex(previousRoot.visible),
-            ),
-            queryPlan: nextPlan,
-            expansion: previousRoot.expansion,
-            cause: Object.freeze({ kind: "set-rows" as const }),
-          });
-        queryPlan = nextPlan;
-        query = nextPlan.query;
-        commit(committedRoot);
-        changeJournal.appendBarrier(previousRoot.revision, revision);
+        const active = startTransition(id, "set-query", nextPlan);
         return {
           transition: Object.freeze({
             id,
             requestedQuery: nextPlan.query,
-            finished: Promise.resolve(revision),
-            cancel: () => assertCommandAllowed("set-query"),
+            finished: active.finished,
+            cancel: () => cancelTransitionHandle(id, "set-query"),
           }),
           notify: true,
         };
@@ -755,60 +923,34 @@ export function createLocalRowModel<
     ): PretableDerivationTransition<TColumns> {
       try {
         const prepared = guarded("set-derivations", () => {
-          const id = nextTransitionId;
-          const previousRoot = root;
+          const id = nextTransitionId++;
           const nextPlan = compileQuery({
             derivations: nextDerivations,
             query,
             previous: queryPlan,
+            operation: "set-derivations",
           });
           if (nextPlan === queryPlan) {
-            nextTransitionId += 1;
+            const superseded =
+              cancelActiveTransition("superseded") !== undefined;
+            if (superseded) state = Object.freeze({ snapshot, status: READY });
             return {
               transition: Object.freeze({
                 id,
                 requestedDerivations: queryPlan.derivations,
-                finished: Promise.resolve(previousRoot.revision),
-                cancel: () => assertCommandAllowed("set-derivations"),
+                finished: Promise.resolve(root.revision),
+                cancel: () => cancelTransitionHandle(id, "set-derivations"),
               }),
-              notify: false,
+              notify: superseded,
             };
           }
-          const store = rebuildRowStoreForQuery(
-            previousRoot.rows,
-            previousRoot.sourceOrder,
-            nextPlan,
-          );
-          const revision = previousRoot.revision + 1;
-          const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
-            Object.freeze({
-              revision,
-              parentRevision: previousRoot.revision,
-              rows: store.rows,
-              sourceOrder: store.sourceOrder,
-              visible: createVisibleIndex(
-                store.records,
-                nextPlan,
-                aggregateFilteredRows,
-                previousRoot.expansion.overrides,
-                "set-derivations",
-                getGroupIndex(previousRoot.visible),
-              ),
-              queryPlan: nextPlan,
-              expansion: previousRoot.expansion,
-              cause: Object.freeze({ kind: "set-rows" as const }),
-            });
-          queryPlan = nextPlan;
-          derivations = nextPlan.derivations;
-          commit(committedRoot);
-          changeJournal.appendBarrier(previousRoot.revision, revision);
-          nextTransitionId += 1;
+          const active = startTransition(id, "set-derivations", nextPlan);
           return {
             transition: Object.freeze({
               id,
               requestedDerivations: nextPlan.derivations,
-              finished: Promise.resolve(revision),
-              cancel: () => assertCommandAllowed("set-derivations"),
+              finished: active.finished,
+              cancel: () => cancelTransitionHandle(id, "set-derivations"),
             }),
             notify: true,
           };
@@ -888,6 +1030,7 @@ export function createLocalRowModel<
             nextSnapshot,
             groupId,
           );
+          appendTransitionDelta(committedRoot, []);
           commit(committedRoot);
           changeJournal.appendChanges(
             previousRoot.revision,
@@ -934,6 +1077,7 @@ export function createLocalRowModel<
       }
       if (disposed) return;
       const current = guarded("dispose", () => {
+        cancelActiveTransition("disposed");
         changeJournal.clear();
         disposed = true;
         state = Object.freeze({ snapshot, status: DISPOSED });

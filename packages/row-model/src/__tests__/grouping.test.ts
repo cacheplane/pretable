@@ -495,7 +495,7 @@ describe("incremental grouped row model", () => {
     ["query transition", "set-query"],
   ] as const)(
     "wraps a hostile Proxy group key during %s",
-    (scenario, operation) => {
+    async (scenario, operation) => {
       interface HostileKeyRow {
         id: number;
         key: unknown;
@@ -552,7 +552,10 @@ describe("incremental grouped row model", () => {
 
       let caught: unknown;
       try {
-        action();
+        const result = action();
+        if (scenario === "query transition") {
+          await (result as { readonly finished: Promise<number> }).finished;
+        }
       } catch (error) {
         caught = error;
       }
@@ -565,8 +568,16 @@ describe("incremental grouped row model", () => {
       expect((caught as { readonly value?: unknown }).value).toBe(key);
       expect((caught as Error).cause).toBe(trap);
       if (scenario !== "construction") {
-        expect(listener).not.toHaveBeenCalled();
-        expect(getState?.()).toBe(before);
+        if (scenario === "query transition") {
+          expect(listener).toHaveBeenCalledTimes(1);
+          expect(getState?.()).toMatchObject({
+            snapshot: (before as { readonly snapshot: unknown }).snapshot,
+            status: { kind: "error" },
+          });
+        } else {
+          expect(listener).not.toHaveBeenCalled();
+          expect(getState?.()).toBe(before);
+        }
       }
     },
   );
@@ -742,7 +753,7 @@ describe("incremental grouped row model", () => {
     }
   });
 
-  test("wraps finalize failures and preserves the exact grouped revision", () => {
+  test("wraps finalize failures and preserves the exact grouped revision", async () => {
     let armed = false;
     const fragile: PretableAggregator<Holding, number, number, number> = {
       init: () => 0,
@@ -803,13 +814,13 @@ describe("incremental grouped row model", () => {
     );
     expect(model.getState()).toBe(before);
 
-    expect(() =>
+    await expect(
       model.setQuery({
         filters: [],
         sort: [{ columnId: "quantity", direction: "desc" }],
         rowGroups: [{ columnId: "sector" }],
-      }),
-    ).toThrowError(
+      }).finished,
+    ).rejects.toEqual(
       expect.objectContaining({
         code: "aggregator-failed",
         operation: "set-query",
@@ -818,7 +829,8 @@ describe("incremental grouped row model", () => {
         groupValues: ["Tech/Growth"],
       }),
     );
-    expect(model.getState()).toBe(before);
+    expect(model.getState().snapshot).toBe(before.snapshot);
+    expect(model.getState().status).toMatchObject({ kind: "error" });
   });
 
   test("wraps an initial grouped finalize failure with construction context", () => {
