@@ -51,6 +51,9 @@
     font-size: var(--pretable-font-size-header);
     font-weight: 500;
     color: var(--pretable-text-header);
+    /* Header cells are <button>s, so without this reset the UA button fill
+       paints in any app that doesn't ship a CSS reset — both of ours import
+       Tailwind Preflight, which is why this went unnoticed. */
     background: transparent;
     border: 0;
     border-right: var(--pretable-rule-width, 1px) solid
