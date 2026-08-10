@@ -648,6 +648,11 @@ interface PretableSurfaceMessages {
    *  replacement: "Focused row is no longer in the results; moved to a
    *  nearby row." */
   focusedRowRemovedAnnouncement?: () => string;
+  /** Announced on entering `stale` — the AT channel for the desired/fulfilled
+   *  mismatch (the data-phase attribute and any dimming are visual only, so
+   *  without this a screen-reader user has no signal that the visible rows
+   *  answer the previous query). Default "Updating results…". */
+  staleAnnouncement?: () => string;
   /** Announced when navigation is refused at the last loaded row while more
    *  matching rows exist: "End of loaded rows. 5,032 more available." */
   moreRowsBoundaryAnnouncement?: (args: { loadedCount: number; total?: number }) => string;
@@ -743,7 +748,7 @@ scheduler; one channel per event, never double-spoken):
 | `loading-more` → `idle` | Pretable live region, `resultsAnnouncement` with `added` | "Loaded 200 more. 400 of 5,432 loaded." — the cumulative count is what the user navigates by |
 | `refreshing` → `idle` | silent | a 2 s poll must not produce a metronome; a *changed* row set or total still announces via `resultsAnnouncement` |
 | → `error` | whoever renders the failure UI | the channel rule is structural: Pretable's `dataErrorAnnouncement` fires only when Pretable renders the failure (error block or status strip, i.e. `phase === "error"`); a consumer that shows its own `role="alert"` banner keeps the phase out of `error` (Dawn's pattern for refresh/load-more failures, §6.4) — so double-speak is impossible by construction |
-| → `stale` | Pretable, "Updating results…" | at most once per settling burst: announced on entering `stale`, deduped (message equality through the last-wins scheduler) until the burst settles |
+| → `stale` | Pretable live region, `staleAnnouncement` | at most once per settling burst: announced on entering `stale`, deduped (message equality through the last-wins scheduler) until the burst settles. This is the *only* AT-facing stale signal — the data-phase attribute and consumer dimming are visual |
 | focus repaired after row removal | Pretable, `focusedRowRemovedAnnouncement` | only for data-driven replacements, not user actions |
 | navigation refused at loaded boundary | Pretable, `moreRowsBoundaryAnnouncement` | once per boundary arrival |
 | select-all / copy | existing announcements | gain `scope` so "All rows selected" can never be said about a partial window |
@@ -936,9 +941,20 @@ runs at the Inspector HTTP boundary (400 with `{error}` naming the offending
 field/op/value) and defensively inside both stores (throw). Explicit failures
 for: unknown fields, unknown ops, unknown sort fields or directions, malformed
 values (non-finite numbers, bad day strings, non-ISO instants), empty value
-lists, oversized inputs, and malformed/mismatched cursors. Bounds: `limit`
-1..1000 (default 50); ≤ 1 filter per field, ≤ 8 filters total; ≤ 3 `orderBy`
-entries; string values ≤ 1 kB; cursor ≤ 4 kB. Field and order mappings are
+lists, oversized inputs, and malformed/mismatched cursors. Bounds: ≤ 1 filter
+per field, ≤ 8 filters total; ≤ 3 `orderBy` entries; string values ≤ 1 kB;
+cursor ≤ 4 kB.
+
+**The `limit` ceiling (1..1000, default 50) is enforced at the HTTP route
+only — not in the stores.** Correction to an earlier draft of this section,
+found during planning: `gatherRecords` in `packages/cli/src/lib/memory/distill.ts:379`
+legitimately browses with `limit: MAX_SCAN_RECORDS` (10 000) and then does
+offset arithmetic against `page.total` to seek the oldest rows for
+consolidation. A store-side clamp would silently truncate that scan and
+corrupt distillation with no error. `validateBrowseQuery(q, { maxLimit })`
+therefore enforces a ceiling only where one is supplied; the stores keep
+their existing ≥ 0 integer clamp. Conformance pins both halves: the route
+rejects `limit=5000`, and an in-process caller may exceed 1000. Field and order mappings are
 whitelisted tables — user input never becomes SQL identifiers or fragments
 (all values are bound parameters; all column names come from the whitelist).
 
@@ -1555,7 +1571,7 @@ approval, not aspirations.
 |---|---|---|
 | Target dataset size (D1 validated) | 100 000 records (design headroom demonstrated to 1M on the default order) | measured §5.5 |
 | Default window / page size | 200 records | current Inspector fetch size |
-| Maximum request `limit` | 1 000 (route- and store-clamped) | closes the unbounded-limit hole |
+| Maximum request `limit` | 1 000, **route-enforced only** (in-process callers like distillation's 10 000-row scan are exempt — §5.3) | closes the unbounded-limit hole on the network boundary without breaking consolidation |
 | Resident-record cap (client) | **1 000 records (5 pages) — deliberately equal to the max request limit**, so a single head refresh always covers the whole resident span and the convergence guarantee stays arithmetic (§6.3); load-more disables at cap with an explanatory label | ≈ 2 MB at ~2 kB/record; EXT-PERF-01 owns growth beyond |
 | Client memory | grid-attributable heap ≤ 32 MB at the resident cap during steady polling (rows + heights cache + React/DOM overhead) | measured via heap snapshot in the bench lane |
 | Request concurrency | 1 browse request in flight per view + 1 stats poll | single-flight design §6.1 |
