@@ -263,19 +263,19 @@
      stays visible at the trailing edge where a reader expects it.
      Group cells are excluded: they own the twisty indent. */
   :where(
-    [data-pretable-cell][data-pretable-align="end"]:not(
+    [data-pretable-cell][data-pretable-column-align="end"]:not(
         [data-pretable-group-cell]
       ),
-    [data-pretable-header-cell][data-pretable-align="end"]
+    [data-pretable-header-cell][data-pretable-column-align="end"]
   ) {
     justify-content: safe flex-end;
   }
 
   :where(
-    [data-pretable-cell][data-pretable-align="center"]:not(
+    [data-pretable-cell][data-pretable-column-align="center"]:not(
         [data-pretable-group-cell]
       ),
-    [data-pretable-header-cell][data-pretable-align="center"]
+    [data-pretable-header-cell][data-pretable-column-align="center"]
   ) {
     justify-content: safe center;
   }
@@ -284,8 +284,8 @@
      common height. Deliberately NOT a font-family switch — one family
      throughout; the numerals do the aligning. */
   :where(
-    [data-pretable-cell][data-pretable-type="number"],
-    [data-pretable-cell][data-pretable-type="date"]
+    [data-pretable-cell][data-pretable-column-type="number"],
+    [data-pretable-cell][data-pretable-column-type="date"]
   ) {
     font-variant-numeric: tabular-nums lining-nums;
   }

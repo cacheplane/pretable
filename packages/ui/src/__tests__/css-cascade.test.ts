@@ -197,7 +197,7 @@ describe("grid.css cascade contract", () => {
     // rather than overflowing the start edge.
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const rule = css.match(
-      /:where\(\s*\[data-pretable-cell\]\[data-pretable-align="end"\][\s\S]*?\{([\s\S]*?)\}/,
+      /:where\(\s*\[data-pretable-cell\]\[data-pretable-column-align="end"\][\s\S]*?\{([\s\S]*?)\}/,
     )?.[1];
     expect(rule, "no align=end rule found").toBeDefined();
     expect(rule).toMatch(/justify-content:\s*safe flex-end/);

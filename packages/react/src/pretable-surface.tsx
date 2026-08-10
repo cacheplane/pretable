@@ -2759,8 +2759,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               data-pretable-header-cell=""
               data-pretable-column-id={column.id}
               data-pretable-pinned={plannedCol.pinned}
-              data-pretable-type={column.type}
-              data-pretable-align={resolveColumnAlign(column)}
+              data-pretable-column-type={column.type}
+              data-pretable-column-align={resolveColumnAlign(column)}
               key={column.id}
               role="columnheader"
               onClick={(event) => {
@@ -3419,8 +3419,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     data-pretable-pinned={plannedCol.pinned}
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
-                    data-pretable-type={column.type}
-                    data-pretable-align={resolveColumnAlign(column)}
+                    data-pretable-column-type={column.type}
+                    data-pretable-column-align={resolveColumnAlign(column)}
                     // A data row's cell in the group column. It carries no
                     // value — it is the hook the stylesheet indents leaf
                     // content by one twisty-width so it lines up with sibling

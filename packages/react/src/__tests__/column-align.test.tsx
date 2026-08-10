@@ -54,25 +54,31 @@ describe("rendered alignment attributes", () => {
     const numericCell = container.querySelector(
       '[data-pretable-cell][data-pretable-column-id="amount"]',
     );
-    expect(numericCell?.getAttribute("data-pretable-type")).toBe("number");
-    expect(numericCell?.getAttribute("data-pretable-align")).toBe("end");
+    expect(numericCell?.getAttribute("data-pretable-column-type")).toBe(
+      "number",
+    );
+    expect(numericCell?.getAttribute("data-pretable-column-align")).toBe("end");
 
     const textCell = container.querySelector(
       '[data-pretable-cell][data-pretable-column-id="name"]',
     );
-    expect(textCell?.getAttribute("data-pretable-type")).toBe("text");
-    expect(textCell?.getAttribute("data-pretable-align")).toBeNull();
+    expect(textCell?.getAttribute("data-pretable-column-type")).toBe("text");
+    expect(textCell?.getAttribute("data-pretable-column-align")).toBeNull();
 
     const numericHeader = container.querySelector(
       '[data-pretable-header-cell][data-pretable-column-id="amount"]',
     );
-    expect(numericHeader?.getAttribute("data-pretable-type")).toBe("number");
-    expect(numericHeader?.getAttribute("data-pretable-align")).toBe("end");
+    expect(numericHeader?.getAttribute("data-pretable-column-type")).toBe(
+      "number",
+    );
+    expect(numericHeader?.getAttribute("data-pretable-column-align")).toBe(
+      "end",
+    );
 
     const textHeader = container.querySelector(
       '[data-pretable-header-cell][data-pretable-column-id="name"]',
     );
-    expect(textHeader?.getAttribute("data-pretable-type")).toBe("text");
-    expect(textHeader?.getAttribute("data-pretable-align")).toBeNull();
+    expect(textHeader?.getAttribute("data-pretable-column-type")).toBe("text");
+    expect(textHeader?.getAttribute("data-pretable-column-align")).toBeNull();
   });
 });
