@@ -6,6 +6,7 @@ import {
   type PretableGrid,
   type PretableGridOptions,
   type PretableGridSnapshot,
+  type PretableGroupColumnOptions,
   type PretableGroupRow,
   type PretableRow,
   type PretableSelectionState,
@@ -151,6 +152,22 @@ export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
   rows: TRow[];
   getRowId?: PretableGridOptions<TRow>["getRowId"];
+  /**
+   * Configure the derived group column. Notably `pinned: "left"` seats the tree
+   * column ahead of the left-pinned data columns; unpinned it leads the
+   * SCROLLING region, which puts it after them.
+   *
+   * Create-time configuration, like {@link UsePretableOptions.autosize}:
+   * changing it rebuilds the grid, so keep it constant. The object itself may
+   * be inline — only its fields are depended on.
+   */
+  groupColumn?: PretableGroupColumnOptions;
+  /** Drop the grouped columns from the data area while grouping. Default `true`. */
+  hideGroupedColumns?: boolean;
+  /** Fold group aggregates over rows the active filter hides. Default `false`. */
+  aggregateFilteredRows?: boolean;
+  /** Expanded state for groups with no explicit decision. Default `true`. */
+  groupsDefaultExpanded?: boolean;
   viewportHeight: number;
   viewportWidth?: number;
   overscan?: number;
@@ -225,6 +242,10 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   columns,
   rows,
   getRowId,
+  groupColumn,
+  hideGroupedColumns,
+  aggregateFilteredRows,
+  groupsDefaultExpanded,
   viewportHeight,
   viewportWidth,
   overscan = 6,
@@ -245,15 +266,49 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   ).current;
   /* eslint-enable react-hooks/refs */
 
+  // The four grouping options have no engine setter — they are read at
+  // construction — so they belong in the deps below alongside `autosize`.
+  // Depend on `groupColumn`'s primitive FIELDS rather than the object, the way
+  // the surface already does for `rowSelectionColumn`: consumers write
+  // `groupColumn={{ pinned: "left" }}` inline, and a new object identity every
+  // render would rebuild the grid on every parent update, discarding sort,
+  // filters, selection, focus and expansion.
+  const groupColumnHeader = groupColumn?.header;
+  const groupColumnWidthPx = groupColumn?.widthPx;
+  const groupColumnPinned = groupColumn?.pinned;
+
   // Create the grid once. Both `rows` and `columns` are reconciled in place
   // (grid.setRows / grid.mergeColumnsFromProps, below) rather than by recreating
   // it, so sort, filters, selection, focus, column layout, and an in-flight edit
   // survive high-frequency row updates (streaming) — and survive an inline
   // `columns={[...]}`, which is a new identity on every render.
   const grid = useMemo(
-    () => createGrid({ columns, rows, getRowId: stableGetRowId, autosize }),
+    () =>
+      createGrid({
+        columns,
+        rows,
+        getRowId: stableGetRowId,
+        autosize,
+        groupColumn: {
+          header: groupColumnHeader,
+          widthPx: groupColumnWidthPx,
+          pinned: groupColumnPinned,
+        },
+        hideGroupedColumns,
+        aggregateFilteredRows,
+        groupsDefaultExpanded,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above
-    [autosize, stableGetRowId],
+    [
+      autosize,
+      stableGetRowId,
+      groupColumnHeader,
+      groupColumnWidthPx,
+      groupColumnPinned,
+      hideGroupedColumns,
+      aggregateFilteredRows,
+      groupsDefaultExpanded,
+    ],
   );
 
   // Reconcile streamed row updates into the existing grid (instead of recreating

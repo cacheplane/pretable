@@ -25,6 +25,7 @@ import type {
   PretableGrid,
   PretableGridOptions,
   PretableGridSnapshot,
+  PretableGroupColumnOptions,
   PretableRow,
   PretableSelectionState,
   PretableSortEntry,
@@ -506,6 +507,33 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    */
   groupPanel?: { enabled: boolean; emptyMessage?: string };
   /**
+   * Configure the derived group column — the synthetic column carrying the
+   * label, twisty and child count. Notably `pinned: "left"` seats the tree
+   * column ahead of the left-pinned data columns; unpinned it leads the
+   * SCROLLING region, which draws it after them.
+   *
+   * Create-time configuration, like {@link PretableSurfaceProps.autosize}:
+   * changing it rebuilds the grid. Passing it inline is fine — only its fields
+   * are depended on.
+   */
+  groupColumn?: PretableGroupColumnOptions;
+  /**
+   * Drop the grouped columns from the data area while grouping is active.
+   * Default `true`. Create-time configuration.
+   */
+  hideGroupedColumns?: boolean;
+  /**
+   * Fold group aggregates over rows the active filter hides. Default `false`,
+   * so a total always equals the rows visible beneath it. Create-time
+   * configuration.
+   */
+  aggregateFilteredRows?: boolean;
+  /**
+   * Expanded state for groups with no explicit expand/collapse decision.
+   * Default `true`. Create-time configuration.
+   */
+  groupsDefaultExpanded?: boolean;
+  /**
    * Called after the panel or the column menu mutates the grouping. Receives
    * the engine's full ordered list (index = grouping level; `[]` = ungrouped).
    * Use to mirror grouping state externally (e.g. controlled
@@ -762,6 +790,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   onTelemetryChange,
   onFiltersChange,
   groupPanel,
+  groupColumn,
+  hideGroupedColumns,
+  aggregateFilteredRows,
+  groupsDefaultExpanded,
   onRowGroupsChange,
   renderBodyCell,
   renderHeaderCell,
@@ -950,6 +982,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     autosize,
     columns: effectiveColumns,
     getRowId,
+    groupColumn,
+    hideGroupedColumns,
+    aggregateFilteredRows,
+    groupsDefaultExpanded,
     state: state ?? undefined,
     measuredHeights,
     overscan,
