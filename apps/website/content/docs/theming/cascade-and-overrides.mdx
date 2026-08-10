@@ -109,18 +109,28 @@ follow `--pretable-text-header` and `--pretable-rule`.
 
 Pretable emits a stable set of `data-pretable-*` attributes you can target with CSS:
 
-| Element                                                                                   | Attributes                                                                                                                                                                                                                                                                |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Root `[data-pretable-scroll-viewport]`                                                    | `data-pretable-hydrated` (`"false"` in server-rendered HTML, `"true"` once React has hydrated — see [Knowing when a server-rendered grid is interactive](/docs/grid#knowing-when-a-server-rendered-grid-is-interactive))                                                  |
-| Row `[data-pretable-row]`                                                                 | `data-pretable-row-id`, `data-pretable-row-index`, `data-pretable-selected`, `data-pretable-focused`                                                                                                                                                                      |
-| Body cell `[data-pretable-cell]`                                                          | `data-pretable-column-id`, `data-pretable-selected`, `data-pretable-focused`, `data-pretable-pinned` (`"left"` \| `"right"`), `data-pretable-wrap`                                                                                                                        |
-| Header cell `[data-pretable-header-cell]`                                                 | `data-pretable-column-id` (user-defined columns; the row-select column's header omits this), `data-pretable-pinned` (`"left"` \| `"right"`)                                                                                                                               |
-| Row-select column `[data-pretable-row-select-cell]` / `[data-pretable-row-select-header]` | The synthetic checkbox column. It matches the generic cell and header-cell selectors too, and is the first match for both — exclude it with `:not([data-pretable-row-select-cell])`, not with `[data-pretable-column-id]` (its cells carry one; only its header does not) |
-| Header overlays `[data-pretable-header-overlays]`                                         | `data-pretable-column-id`. A zero-width box anchored on the column's trailing edge; the resize strip and filter funnel hang off it, so it is the element to target to move both together                                                                                  |
-| Resize strip `[data-pretable-resize-handle]`                                              | `data-pretable-column-id`, `data-pretable-dragging` (always present; `"true"` while a resize is in progress, else `"false"`)                                                                                                                                              |
-| Filter funnel `[data-pretable-filter-funnel]`                                             | `data-pretable-column-id`, `data-pretable-filter-active` (always present; `"true"` when that column has a filter, else `"false"`). Its wrapper is `[data-pretable-filter-funnel-slot]`                                                                                    |
+| Element                                                                                   | Attributes                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Root `[data-pretable-scroll-viewport]`                                                    | `data-pretable-hydrated` (`"false"` in server-rendered HTML, `"true"` once React has hydrated — see [Knowing when a server-rendered grid is interactive](/docs/grid#knowing-when-a-server-rendered-grid-is-interactive))                                                                                                                                                |
+| Row `[data-pretable-row]`                                                                 | `data-pretable-row-id`, `data-pretable-row-index`, `data-pretable-selected`, `data-pretable-focused`                                                                                                                                                                                                                                                                    |
+| Body cell `[data-pretable-cell]`                                                          | `data-pretable-column-id`, `data-pretable-selected`, `data-pretable-focused`, `data-pretable-pinned` (`"left"` \| `"right"`), `data-pretable-wrap`, `data-pretable-column-type` (the column's `type`; absent when the column declares none), `data-pretable-column-align` (`"start"` \| `"center"` \| `"end"`; **absent** for the default start alignment — see below)  |
+| Header cell `[data-pretable-header-cell]`                                                 | `data-pretable-column-id` (user-defined columns; the row-select column's header omits this), `data-pretable-pinned` (`"left"` \| `"right"`), `data-pretable-column-type` and `data-pretable-column-align` (same values as the body cell, so a column's header and its cells align together)                                                                             |
+| Group-row cell `[data-pretable-cell]` inside `[data-pretable-group-row]`                  | `data-pretable-column-id`, `data-pretable-focused`, `data-pretable-pinned`, plus `data-pretable-column-type` and `data-pretable-column-align` on the aggregate cells, so aggregates line up with the data beneath them. The cell holding the twisty and label also carries `data-pretable-group-cell` and is excluded from the alignment rules — it owns its own indent |
+| Row-select column `[data-pretable-row-select-cell]` / `[data-pretable-row-select-header]` | The synthetic checkbox column. It matches the generic cell and header-cell selectors too, and is the first match for both — exclude it with `:not([data-pretable-row-select-cell])`, not with `[data-pretable-column-id]` (its cells carry one; only its header does not)                                                                                               |
+| Header overlays `[data-pretable-header-overlays]`                                         | `data-pretable-column-id`. A zero-width box anchored on the column's trailing edge; the resize strip and filter funnel hang off it, so it is the element to target to move both together                                                                                                                                                                                |
+| Resize strip `[data-pretable-resize-handle]`                                              | `data-pretable-column-id`, `data-pretable-dragging` (always present; `"true"` while a resize is in progress, else `"false"`)                                                                                                                                                                                                                                            |
+| Filter funnel `[data-pretable-filter-funnel]`                                             | `data-pretable-column-id`, `data-pretable-filter-active` (always present; `"true"` when that column has a filter, else `"false"`). Its wrapper is `[data-pretable-filter-funnel-slot]`                                                                                                                                                                                  |
 
-For example, style one column (header and body) and the selected cells in another:
+`data-pretable-column-align` is written only when a column resolves to something
+other than the default: `"end"` for `type: "number"` columns, or whatever the
+column sets on `align` explicitly. Start-aligned columns — the overwhelming
+majority — carry **no attribute at all**, so target the default by absence.
+A `[data-pretable-column-align="start"]` rule matches only the columns that
+opted into `align: "start"` by hand, and silently misses every column that is
+start-aligned because nothing said otherwise.
+
+For example, style one column (header and body), the selected cells in another,
+and the start-aligned cells by absence:
 
 ```css
 [data-pretable-column-id="revenue"] {
@@ -129,6 +139,10 @@ For example, style one column (header and body) and the selected cells in anothe
 [data-pretable-cell][data-pretable-selected="true"] {
   background: #1d4ed8;
   color: white;
+}
+/* Every start-aligned column — not [data-pretable-column-align="start"] */
+[data-pretable-cell]:not([data-pretable-column-align]) {
+  padding-inline-start: 12px;
 }
 ```
 
