@@ -3,6 +3,7 @@ import type { AutosizeOptions } from "@pretable-internal/layout-core";
 import {
   createSourceRows,
   deriveVisibleRows,
+  type DeriveVisibleRowsResult,
   type SourceRow,
 } from "./derived-rows";
 import { isFilterActive } from "./evaluate-filter";
@@ -202,11 +203,19 @@ export function createGridCore<TRow extends PretableRow>(
    */
   const pinnedWidthColumnIds = new Set<string>();
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
-  let cachedFilteredCount = 0;
-  /** Last supplied `resultMeta.total`; only consulted under external filter authority. */
+  /**
+   * Result metadata supplied from outside, consulted only under external filter
+   * authority. Nothing writes either binding yet, so that arm always falls back
+   * to `{ kind: "unknown" }` and `datasetKey` stays null.
+   */
   const suppliedTotal: PretableMatchingTotal | null = null;
   const datasetKey: string | null = null;
-  let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
+  /**
+   * The visible model and the pre-grouping count behind it. Held as one slot
+   * because the count describes that exact flattening: caching them separately
+   * would let a future edit refresh one without the other.
+   */
+  let cachedDerivation: DeriveVisibleRowsResult<TRow> | null = null;
   let cachedDerivedSort: readonly PretableSortEntry[] | null = null;
   let cachedDerivedFilters: Readonly<Record<string, ColumnFilter>> | null =
     null;
@@ -1097,7 +1106,7 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       if (groupingSemanticsChanged) {
-        cachedVisibleRows = null;
+        cachedDerivation = null;
         reconcileFocusAfterVisibleModelChange(before);
       }
 
@@ -1179,7 +1188,7 @@ export function createGridCore<TRow extends PretableRow>(
         }
       }
 
-      cachedVisibleRows = null;
+      cachedDerivation = null;
       reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
@@ -1245,7 +1254,7 @@ export function createGridCore<TRow extends PretableRow>(
         };
       }
 
-      cachedVisibleRows = null;
+      cachedDerivation = null;
       reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
@@ -1776,7 +1785,7 @@ export function createGridCore<TRow extends PretableRow>(
     // authority the derivation cannot see those, so a sort click or filter
     // keystroke must not force a content-identical re-derivation.
     const derivedIsFresh =
-      cachedVisibleRows !== null &&
+      cachedDerivation !== null &&
       cachedDerivedSort === derivedSort &&
       cachedDerivedFilters === derivedFilters &&
       cachedDerivedRowGroups === rowGroups &&
@@ -1784,13 +1793,7 @@ export function createGridCore<TRow extends PretableRow>(
       cachedDerivedDefaultExpanded === groupsDefaultExpanded &&
       cachedDerivedAggregateFiltered === aggregateFilteredRows;
 
-    let visibleRows: PretableVisibleRow<TRow>[];
-    let filteredCount: number;
-
-    if (derivedIsFresh) {
-      visibleRows = cachedVisibleRows!;
-      filteredCount = cachedFilteredCount;
-    } else {
+    if (!derivedIsFresh) {
       const derived = deriveVisibleRows({
         columns: options.columns,
         filters: derivedFilters,
@@ -1801,12 +1804,13 @@ export function createGridCore<TRow extends PretableRow>(
         groupsDefaultExpanded,
         aggregateFilteredRows,
       });
-      visibleRows = preserveAggregateIdentity(derived.rows);
-      filteredCount = derived.filteredCount;
+      cachedDerivation = {
+        rows: preserveAggregateIdentity(derived.rows),
+        filteredCount: derived.filteredCount,
+      };
     }
 
-    cachedVisibleRows = visibleRows;
-    cachedFilteredCount = filteredCount;
+    const { rows: visibleRows, filteredCount } = cachedDerivation!;
     cachedDerivedSort = derivedSort;
     cachedDerivedFilters = derivedFilters;
     cachedDerivedRowGroups = rowGroups;
