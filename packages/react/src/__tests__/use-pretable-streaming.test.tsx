@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { usePretable } from "../use-pretable";
 import type { PretableColumn } from "../types";
-import type { PretableDataRow, PretableVisibleRow } from "@pretable/core";
+import type {
+  PretableDataRow,
+  PretableProcessingAuthority,
+  PretableResultMeta,
+  PretableVisibleRow,
+} from "@pretable/core";
 
 type Row = {
   id: string;
@@ -13,6 +18,16 @@ type Row = {
 
 const columns: PretableColumn<Row>[] = [
   { id: "name", header: "Name", value: (row) => row.name },
+];
+
+const rowsA: Row[] = [
+  { id: "a", name: "A" },
+  { id: "b", name: "B" },
+];
+
+const rowsB: Row[] = [
+  { id: "a", name: "A2" },
+  { id: "b", name: "B2" },
 ];
 
 /**
@@ -82,5 +97,99 @@ describe("usePretable streaming lifecycle", () => {
 
     expect(result.current.grid).toBe(grid);
     expect(result.current.snapshot.selection.ranges.length).toBe(1);
+  });
+
+  it("does not recreate the grid when processing is an inline object literal", () => {
+    const { result, rerender } = renderHook(
+      ({ rows }: { rows: Row[] }) =>
+        usePretable<Row>({
+          columns,
+          rows,
+          getRowId: (row) => row.id,
+          viewportHeight: 300,
+          // Fresh object identity every render, the way a consumer writes it.
+          processing: { filter: "external", sort: "external" },
+        }),
+      { initialProps: { rows: rowsA } },
+    );
+
+    const grid = result.current.grid;
+    rerender({ rows: rowsB });
+
+    expect(result.current.grid).toBe(grid);
+  });
+
+  it("routes a meta-only change through setResultMeta and keeps the rows array", () => {
+    const { result, rerender } = renderHook(
+      ({ rows, total }: { rows: Row[]; total: number }) =>
+        usePretable<Row>({
+          columns,
+          rows,
+          getRowId: (row) => row.id,
+          viewportHeight: 300,
+          processing: { filter: "external" },
+          resultMeta: { total: { kind: "exact", count: total } },
+        }),
+      { initialProps: { rows: rowsA, total: 100 } },
+    );
+
+    expect(result.current.snapshot.matchingTotal).toEqual({
+      kind: "exact",
+      count: 100,
+    });
+    const visibleRows = result.current.snapshot.visibleRows;
+
+    rerender({ rows: rowsA, total: 101 });
+
+    expect(result.current.snapshot.matchingTotal).toEqual({
+      kind: "exact",
+      count: 101,
+    });
+    expect(result.current.telemetry.matchingTotal).toEqual({
+      kind: "exact",
+      count: 101,
+    });
+    // The engine caches its derivation and drops that cache on setRows, so a
+    // surviving array identity is what distinguishes the setResultMeta path
+    // from a rows replacement carrying the same rows.
+    expect(result.current.snapshot.visibleRows).toBe(visibleRows);
+  });
+
+  it("re-applies resultMeta to a grid rebuilt by a processing change", () => {
+    // Stable identity, the way a consumer that memoizes its meta would pass it:
+    // nothing about the meta changes, only the create-time authority does.
+    const resultMeta: PretableResultMeta = {
+      total: { kind: "exact", count: 101 },
+    };
+    const { result, rerender } = renderHook(
+      ({ sort }: { sort: PretableProcessingAuthority | undefined }) =>
+        usePretable<Row>({
+          columns,
+          rows: rowsA,
+          getRowId: (row) => row.id,
+          viewportHeight: 300,
+          processing: { filter: "external", sort },
+          resultMeta,
+        }),
+      {
+        initialProps: {
+          sort: undefined as PretableProcessingAuthority | undefined,
+        },
+      },
+    );
+
+    const grid = result.current.grid;
+    expect(result.current.snapshot.matchingTotal).toEqual({
+      kind: "exact",
+      count: 101,
+    });
+
+    rerender({ sort: "external" });
+
+    expect(result.current.grid).not.toBe(grid);
+    expect(result.current.snapshot.matchingTotal).toEqual({
+      kind: "exact",
+      count: 101,
+    });
   });
 });

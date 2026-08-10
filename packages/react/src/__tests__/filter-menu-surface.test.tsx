@@ -10,6 +10,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
+import { resetDevWarnings } from "../dev-warn";
 import type { ColumnFilter } from "@pretable/core";
 import type { PretableColumn } from "../types";
 
@@ -420,5 +421,106 @@ describe("PretableSurface — built-in filter funnel", () => {
       view.container.querySelectorAll('[data-pretable-selected="true"]'),
     ).toHaveLength(1);
     expect(cell).toHaveAttribute("data-pretable-selected", "true");
+  });
+
+  it("column.filterOperators prunes the funnel's operator select", () => {
+    const view = renderSurface({
+      columns: [
+        {
+          id: "title",
+          header: "Title",
+          widthPx: 200,
+          type: "text",
+          filterOperators: ["contains", "startsWith"],
+        },
+      ],
+    });
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+
+    const select = view.getByLabelText("Filter operator");
+    expect(
+      [...select.querySelectorAll("option")].map((o) =>
+        o.getAttribute("value"),
+      ),
+    ).toEqual(["contains", "startsWith"]);
+  });
+
+  it("seeds the unfiltered draft with a permitted operator", async () => {
+    // A draft seeded from the unpruned set names an operator the menu never
+    // offered. The <select> hides that — with no matching <option> it falls
+    // back to displaying the first one — so the committed filter is the only
+    // honest witness: the menu would show "equals" and apply "contains".
+    vi.useFakeTimers();
+    const onFiltersChange = vi.fn();
+    const view = renderSurface({
+      columns: [
+        {
+          id: "title",
+          header: "Title",
+          widthPx: 200,
+          type: "text",
+          filterOperators: ["equals"],
+        },
+      ],
+      onFiltersChange,
+    });
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+
+    const dialog = view.getByRole("dialog", { name: "Filter Title" });
+    act(() => {
+      fireEvent.change(within(dialog).getByLabelText("Filter value"), {
+        target: { value: "alpha crash" },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    const lastFilters = onFiltersChange.mock.lastCall?.[0] as Record<
+      string,
+      ColumnFilter
+    >;
+    expect(lastFilters.title?.operator).toBe("equals");
+  });
+
+  it("keeps an applied operator the allow-list excludes selectable", () => {
+    // External filter authority can apply an operator its own allow-list
+    // omits. Pruning it would leave the select naming "contains" while
+    // "isEmpty" is what filters, and "contains" would be unreachable — the
+    // select already displays it, so choosing it fires no change event.
+    const view = renderSurface({
+      columns: [
+        {
+          id: "title",
+          header: "Title",
+          widthPx: 200,
+          type: "text",
+          filterOperators: ["contains", "startsWith"],
+        },
+      ],
+      state: { filters: { title: { operator: "isEmpty" } as ColumnFilter } },
+    });
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+
+    const select = view.getByLabelText("Filter operator") as HTMLSelectElement;
+    expect(
+      [...select.querySelectorAll("option")].map((o) =>
+        o.getAttribute("value"),
+      ),
+    ).toEqual(["contains", "startsWith", "isEmpty"]);
+    expect(select.value).toBe("isEmpty");
+  });
+
+  it("tells the option resolver who owns filtering", () => {
+    // `severity` is an enum with no `options`, so opening its menu takes the
+    // distinct-value fallback. Only the surface knows the authority that makes
+    // that fallback a lie.
+    resetDevWarnings();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const view = renderSurface({ processing: { filter: "external" } });
+    fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('Column "severity"');
   });
 });

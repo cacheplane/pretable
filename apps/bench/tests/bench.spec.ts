@@ -201,7 +201,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
         expect.arrayContaining([
           expect.stringMatching(/^internal telemetry rendered rows: \d+$/),
           expect.stringMatching(/^internal telemetry visible rows: \d+$/),
-          expect.stringMatching(/^internal telemetry total rows: \d+$/),
+          expect.stringMatching(/^internal telemetry loaded rows: \d+$/),
           expect.stringMatching(/^internal telemetry planned height: \d+$/),
           expect.stringMatching(/^internal telemetry viewport range: \d+-\d+$/),
           expect.stringMatching(/^internal telemetry selected row: .+$/),

@@ -3,6 +3,7 @@ import type { AutosizeOptions } from "@pretable-internal/layout-core";
 import {
   createSourceRows,
   deriveVisibleRows,
+  type DeriveVisibleRowsResult,
   type SourceRow,
 } from "./derived-rows";
 import { isFilterActive } from "./evaluate-filter";
@@ -21,7 +22,10 @@ import type {
   PretableFocusDirection,
   PretableFocusState,
   PretableMoveFocusOptions,
+  PretableProcessingAuthority,
   PretableGridOptions,
+  PretableMatchingTotal,
+  PretableResultMeta,
   PretableRow,
   PretableVisibleRow,
   PretableSelectionState,
@@ -32,8 +36,27 @@ import type {
   PretableTransaction,
   PretableViewportState,
 } from "./types";
+import { warnOnce } from "./dev-warn";
 
 const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
+
+/**
+ * Substituted into the derivation when an operation's authority is external.
+ *
+ * Module-level because `getSnapshot` keys its derivation cache on the
+ * substituted value by identity — a fresh empty literal per call would re-derive
+ * on every snapshot. Being process-wide singletons, they are also readonly: one
+ * stray write would reach every grid in the process.
+ */
+const NO_FILTERS: Readonly<Record<string, ColumnFilter>> = {};
+const NO_SORT: readonly PretableSortEntry[] = [];
+
+const SUPPLIED_TOTAL_WARN_KEY = "supplied-total-under-engine-filter";
+const SUPPLIED_TOTAL_WARN_MESSAGE =
+  '[pretable] resultMeta.total was supplied while filter authority is "engine". ' +
+  "The engine computes the matching total locally from its own filter pass, so " +
+  "the supplied value is ignored — the two cannot be reconciled. Pass " +
+  'processing: { filter: "external" } if an upstream processor owns filtering.';
 
 /**
  * Group rows: focus targets, never selection or edit targets.
@@ -172,6 +195,13 @@ export function createGridCore<TRow extends PretableRow>(
     inputOptions.columns,
   ).map((c) => ({ ...c }));
   let sourceRows = createSourceRows(options);
+  // Read once: `processing` is construction-time by contract, and `options` is
+  // reassigned throughout (setRows, autosize, column mutators), so re-reading
+  // it per snapshot would only invite an accidental mid-life flip.
+  const filterAuthority: PretableProcessingAuthority =
+    options.processing?.filter ?? "engine";
+  const sortAuthority: PretableProcessingAuthority =
+    options.processing?.sort ?? "engine";
   const sourceRowIndex = new Map<string, SourceRow<TRow>>(
     sourceRows.map((entry) => [entry.id, entry]),
   );
@@ -182,9 +212,22 @@ export function createGridCore<TRow extends PretableRow>(
    */
   const pinnedWidthColumnIds = new Set<string>();
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
-  let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
-  let cachedDerivedSort: PretableSortEntry[] | null = null;
-  let cachedDerivedFilters: Record<string, ColumnFilter> | null = null;
+  /**
+   * Result metadata supplied from outside. `suppliedTotal` is consulted only
+   * under external filter authority; under engine authority the count comes
+   * from the local filter pass, so a supplied one is refused rather than stored.
+   */
+  let suppliedTotal: PretableMatchingTotal | null = null;
+  let datasetKey: string | null = null;
+  /**
+   * The visible model and the pre-grouping count behind it. Held as one slot
+   * because the count describes that exact flattening: caching them separately
+   * would let a future edit refresh one without the other.
+   */
+  let cachedDerivation: DeriveVisibleRowsResult<TRow> | null = null;
+  let cachedDerivedSort: readonly PretableSortEntry[] | null = null;
+  let cachedDerivedFilters: Readonly<Record<string, ColumnFilter>> | null =
+    null;
   // Grouping inputs are cache keys too — without them a collapse or a level
   // change would keep serving the previous flattening.
   let cachedDerivedRowGroups: string[] | null = null;
@@ -248,6 +291,59 @@ export function createGridCore<TRow extends PretableRow>(
     height: 0,
     width: 0,
   };
+
+  /**
+   * A key that REPLACES an existing one. The first key is an assignment:
+   * nothing loaded before it was answering a different question. A non-string
+   * key is not a supplied key, and this has to agree with `applyResultMeta` on
+   * that — a disagreement would either clear state for a key that never landed
+   * or land one without clearing.
+   */
+  function isDatasetPivot(next: PretableResultMeta["datasetKey"]): boolean {
+    return (
+      typeof next === "string" && datasetKey !== null && next !== datasetKey
+    );
+  }
+
+  /**
+   * The dataset-pivot clear bundle. A different `datasetKey` means the loaded
+   * records answer a different question, so nothing keyed to the old answer
+   * survives — including `suppliedTotal`, which counts the old result set and
+   * would otherwise be reported against the new one until a fresh count lands.
+   *
+   * Clearing focus is also what suppresses the clamped-index focus fallback:
+   * `reconcileFocusAfterVisibleModelChange` is a no-op on null focus, and
+   * across a pivot that fallback is a guess rather than a repair — position i
+   * in the old query's result says nothing about position i in a different
+   * query's window.
+   */
+  function clearForDatasetChange(): void {
+    selection = { ranges: [], anchor: null };
+    focus = { rowId: null, columnId: null };
+    groupExpansionOverrides = new Set<string>();
+    editing = null;
+    suppliedTotal = null;
+  }
+
+  /** Store the parts of `meta` the current authority can honor. */
+  function applyResultMeta(meta: PretableResultMeta | undefined): void {
+    if (!meta) {
+      return;
+    }
+    if (typeof meta.datasetKey === "string") {
+      datasetKey = meta.datasetKey;
+    }
+    if (meta.total !== undefined) {
+      if (filterAuthority === "external") {
+        // Copied because a polling consumer reasonably reuses one meta object
+        // across ticks: aliasing would let a later mutation write engine state
+        // behind the store's back, with no emit to tell anyone.
+        suppliedTotal = { ...meta.total };
+      } else {
+        warnOnce(SUPPLIED_TOTAL_WARN_KEY, SUPPLIED_TOTAL_WARN_MESSAGE);
+      }
+    }
+  }
 
   const store = {
     get options() {
@@ -1072,7 +1168,7 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       if (groupingSemanticsChanged) {
-        cachedVisibleRows = null;
+        cachedDerivation = null;
         reconcileFocusAfterVisibleModelChange(before);
       }
 
@@ -1154,11 +1250,17 @@ export function createGridCore<TRow extends PretableRow>(
         }
       }
 
-      cachedVisibleRows = null;
+      cachedDerivation = null;
       reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
-    setRows(nextRows: TRow[]) {
+    setRows(nextRows: TRow[], meta?: PretableResultMeta) {
+      if (isDatasetPivot(meta?.datasetKey)) {
+        clearForDatasetChange();
+      }
+
+      applyResultMeta(meta);
+
       const before = captureVisibleRowsForFocusReconciliation();
       options = { ...options, rows: nextRows };
       sourceRows = createSourceRows(options);
@@ -1220,8 +1322,44 @@ export function createGridCore<TRow extends PretableRow>(
         };
       }
 
-      cachedVisibleRows = null;
+      cachedDerivation = null;
       reconcileFocusAfterVisibleModelChange(before);
+      emit();
+    },
+    setResultMeta(meta: PretableResultMeta) {
+      const pivot = isDatasetPivot(meta.datasetKey);
+      // Mirrors `applyResultMeta`: only a string is an identity. `??` would let
+      // a non-string from an untyped consumer past `isDatasetPivot`'s guard and
+      // into a `string | null` slot, consuming the pivot without clearing.
+      const nextKey =
+        typeof meta.datasetKey === "string" ? meta.datasetKey : datasetKey;
+      // Carrying `suppliedTotal` forward is what makes a total-less call a
+      // no-op. Across a pivot that same carry would re-land the old count
+      // right after `clearForDatasetChange` dropped it.
+      const nextTotal =
+        meta.total !== undefined && filterAuthority === "external"
+          ? { ...meta.total }
+          : pivot
+            ? null
+            : suppliedTotal;
+
+      if (meta.total !== undefined && filterAuthority !== "external") {
+        warnOnce(SUPPLIED_TOTAL_WARN_KEY, SUPPLIED_TOTAL_WARN_MESSAGE);
+      }
+
+      if (
+        nextKey === datasetKey &&
+        matchingTotalsEqual(nextTotal, suppliedTotal)
+      ) {
+        return;
+      }
+
+      if (pivot) {
+        clearForDatasetChange();
+      }
+
+      datasetKey = nextKey;
+      suppliedTotal = nextTotal;
       emit();
     },
     setRowGroups(columnIds: readonly string[]) {
@@ -1736,33 +1874,49 @@ export function createGridCore<TRow extends PretableRow>(
     }
 
     const aggregateFilteredRows = options.aggregateFilteredRows ?? false;
+    // External filter authority: the records arrived already filtered upstream,
+    // so applying the displayed filters here would filter the same predicate
+    // twice. The state is still displayed — see `snapshot.filters` — it is
+    // simply not applied.
+    const derivedFilters =
+      filterAuthority === "external" ? NO_FILTERS : filters;
+    // External sort authority: the model order is the order the records were
+    // supplied in. Grouping stays the engine's — `sortSiblings` finds no entry
+    // in an empty sort and orders group headers by key ascending — so it is the
+    // order of rows *within* a group that is the upstream processor's.
+    const derivedSort = sortAuthority === "external" ? NO_SORT : sort;
+    // Keyed on the substituted inputs, not on `sort`/`filters`: under external
+    // authority the derivation cannot see those, so a sort click or filter
+    // keystroke must not force a content-identical re-derivation.
     const derivedIsFresh =
-      cachedVisibleRows !== null &&
-      cachedDerivedSort === sort &&
-      cachedDerivedFilters === filters &&
+      cachedDerivation !== null &&
+      cachedDerivedSort === derivedSort &&
+      cachedDerivedFilters === derivedFilters &&
       cachedDerivedRowGroups === rowGroups &&
       cachedDerivedOverrides === groupExpansionOverrides &&
       cachedDerivedDefaultExpanded === groupsDefaultExpanded &&
       cachedDerivedAggregateFiltered === aggregateFilteredRows;
 
-    const visibleRows = derivedIsFresh
-      ? cachedVisibleRows!
-      : preserveAggregateIdentity(
-          deriveVisibleRows({
-            columns: options.columns,
-            filters,
-            rows: sourceRows,
-            sort,
-            rowGroups,
-            groupExpansionOverrides,
-            groupsDefaultExpanded,
-            aggregateFilteredRows,
-          }),
-        );
+    if (!derivedIsFresh) {
+      const derived = deriveVisibleRows({
+        columns: options.columns,
+        filters: derivedFilters,
+        rows: sourceRows,
+        sort: derivedSort,
+        rowGroups,
+        groupExpansionOverrides,
+        groupsDefaultExpanded,
+        aggregateFilteredRows,
+      });
+      cachedDerivation = {
+        rows: preserveAggregateIdentity(derived.rows),
+        filteredCount: derived.filteredCount,
+      };
+    }
 
-    cachedVisibleRows = visibleRows;
-    cachedDerivedSort = sort;
-    cachedDerivedFilters = filters;
+    const { rows: visibleRows, filteredCount } = cachedDerivation!;
+    cachedDerivedSort = derivedSort;
+    cachedDerivedFilters = derivedFilters;
     cachedDerivedRowGroups = rowGroups;
     cachedDerivedOverrides = groupExpansionOverrides;
     cachedDerivedDefaultExpanded = groupsDefaultExpanded;
@@ -1777,7 +1931,14 @@ export function createGridCore<TRow extends PretableRow>(
         anchor: selection.anchor ? { ...selection.anchor } : null,
       },
       focus,
-      totalRowCount: sourceRows.length,
+      loadedRowCount: sourceRows.length,
+      matchingTotal:
+        filterAuthority === "external"
+          ? suppliedTotal
+            ? { ...suppliedTotal }
+            : { kind: "unknown" }
+          : { kind: "exact", count: filteredCount },
+      datasetKey,
       visibleRows,
       visibleRange: {
         start: 0,
@@ -2068,4 +2229,29 @@ function filtersEqual(
   }
 
   return true;
+}
+
+function matchingTotalsEqual(
+  a: PretableMatchingTotal | null,
+  b: PretableMatchingTotal | null,
+): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (a === null || b === null) {
+    return false;
+  }
+
+  // Split on the discriminant so both operands narrow, rather than comparing
+  // `a.kind !== b.kind` once and then reaching for a field TypeScript cannot
+  // see: if the union gains a variant, the counted branch below stops
+  // compiling instead of silently comparing the wrong thing.
+  if (a.kind === "unknown" || b.kind === "unknown") {
+    return (
+      a.kind === "unknown" && b.kind === "unknown" && a.atLeast === b.atLeast
+    );
+  }
+
+  return a.kind === b.kind && a.count === b.count;
 }

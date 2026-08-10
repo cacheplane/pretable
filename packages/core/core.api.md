@@ -56,6 +56,7 @@ export interface PretableAggregateFormatInput<TRow extends PretableRow = Pretabl
     column: PretableColumn<TRow>;
     // (undocumented)
     group: PretableGroupRow;
+    scope: "all" | "loaded";
     // (undocumented)
     value: unknown;
 }
@@ -99,6 +100,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
     // (undocumented)
     filterable?: boolean;
+    filterOperators?: FilterOperator[];
     flex?: number;
     // (undocumented)
     format?: (input: PretableFormatInput<TRow>) => string;
@@ -228,7 +230,6 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     collapseAll(): void;
     // (undocumented)
     commitEditSucceeded(): void;
-    // (undocumented)
     distinctColumnValues(columnId: string): string[];
     expandAll(): void;
     // (undocumented)
@@ -272,8 +273,9 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     setFocus(addr: PretableCellAddress | null): void;
     setGroupExpanded(groupId: string, expanded: boolean): void;
+    setResultMeta(meta: PretableResultMeta): void;
     setRowGroups(columnIds: readonly string[]): void;
-    setRows(rows: TRow[]): void;
+    setRows(rows: TRow[], meta?: PretableResultMeta): void;
     // (undocumented)
     setSelectAllVisible(checked: boolean): void;
     // (undocumented)
@@ -301,12 +303,14 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;
     hideGroupedColumns?: boolean;
+    processing?: PretableProcessingOptions;
     // (undocumented)
     rows: TRow[];
 }
 
 // @public
 export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
+    datasetKey: string | null;
     // (undocumented)
     editing: PretableEditState | null;
     // (undocumented)
@@ -315,13 +319,13 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     focus: PretableFocusState;
     groupExpansionOverrides: ReadonlySet<string>;
     groupsDefaultExpanded: boolean;
+    loadedRowCount: number;
+    matchingTotal: PretableMatchingTotal;
     rowGroups: string[];
     // (undocumented)
     selection: PretableSelectionState;
     // (undocumented)
     sort: PretableSortEntry[];
-    // (undocumented)
-    totalRowCount: number;
     // (undocumented)
     viewport: PretableViewportState;
     // (undocumented)
@@ -350,6 +354,18 @@ export interface PretableGroupRow {
 }
 
 // @public
+export type PretableMatchingTotal = {
+    kind: "exact";
+    count: number;
+} | {
+    kind: "estimate";
+    count: number;
+} | {
+    kind: "unknown";
+    atLeast?: number;
+};
+
+// @public
 export interface PretableMoveFocusOptions {
     // (undocumented)
     byPage?: boolean;
@@ -357,6 +373,21 @@ export interface PretableMoveFocusOptions {
     extend?: boolean;
     // (undocumented)
     jumpToEdge?: boolean;
+}
+
+// @public
+export type PretableProcessingAuthority = "engine" | "external";
+
+// @public
+export interface PretableProcessingOptions {
+    filter?: PretableProcessingAuthority;
+    sort?: PretableProcessingAuthority;
+}
+
+// @public
+export interface PretableResultMeta {
+    datasetKey?: string;
+    total?: PretableMatchingTotal;
 }
 
 // @public

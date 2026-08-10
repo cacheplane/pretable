@@ -26,6 +26,9 @@ import type {
   PretableGridOptions,
   PretableGridSnapshot,
   PretableGroupColumnOptions,
+  PretableMatchingTotal,
+  PretableProcessingOptions,
+  PretableResultMeta,
   PretableRow,
   PretableSelectionState,
   PretableSortEntry,
@@ -146,6 +149,8 @@ import {
   resolveCellValue,
 } from "./rendering";
 import {
+  getBodyStateOverlayStyle,
+  getDataStateWrapperStyle,
   getGroupPanelWrapperStyle,
   getHeaderCellStyle,
   getHeaderOverlayAnchorStyle,
@@ -198,6 +203,16 @@ import {
   type RejectedPasteCell,
 } from "./paste";
 import { parseDraftForType } from "./editors/type-parsing";
+import {
+  resolveAriaRowCount,
+  resolveDataScope,
+  warnOnEngineSortOverPartialWindow,
+} from "./data-scope";
+import {
+  resolveBodyStateKind,
+  type PretableBodyStateKind,
+  type PretableDataState,
+} from "./data-state";
 
 async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -245,14 +260,29 @@ export interface RowSelectionColumnConfig {
  * @public
  */
 export interface PretableSurfaceMessages {
+  /**
+   * `aria-label` for the header select-all checkbox. `scope: "loaded"` means
+   * the checkbox targets a window onto a larger population.
+   *
+   * @experimental
+   */
+  selectAllLabel?: (args: { scope: "all" | "loaded" }) => string;
   selectAllAnnouncement?: (args: {
     rowCount: number;
     columnCount: number;
     isAll: boolean;
+    /** @experimental */
+    scope: "all" | "loaded";
+    /** @experimental */
+    loadedCount: number;
+    /** @experimental — exact matching total, when one is known. */
+    total?: number;
   }) => string;
   copyAnnouncement?: (args: {
     rowCount: number;
     columnCount: number;
+    /** @experimental — a copy of 200-of-10,432 is not an unscoped copy. */
+    scope: "all" | "loaded";
   }) => string;
   copyFailedAnnouncement?: () => string;
   /**
@@ -298,15 +328,116 @@ export interface PretableSurfaceMessages {
     label: string;
     childCount: number;
   }) => string;
+  /**
+   * Group-header child count. `scope: "loaded"` marks partial-window grouping —
+   * a count of loaded children that makes no claim about the population.
+   *
+   * @experimental
+   */
+  groupChildCountLabel?: (args: {
+    childCount: number;
+    scope: "all" | "loaded";
+  }) => string;
+  /**
+   * Body copy for the empty block, which covers both a query that matched
+   * nothing server-side and a local filter that matched nothing. Filtered vs
+   * unfiltered wording is the consumer's call.
+   *
+   * @experimental
+   */
+  emptyStateMessage?: () => string;
+  /**
+   * Body copy for the loading block.
+   *
+   * @experimental
+   */
+  loadingStateMessage?: () => string;
+  /**
+   * Announced — and rendered as the error block's copy — when Pretable owns
+   * the failure UI.
+   *
+   * @experimental
+   */
+  dataErrorAnnouncement?: (args: { message?: string }) => string;
+
+  /**
+   * Announced when loading / stale / loading-more resolves to idle — the honest
+   * count moment, and the filter-result announcement Pretable never had.
+   * `added` is present only for a tail extension.
+   *
+   * `loaded` counts the loaded records that MATCH; under engine filter
+   * authority that is the post-filter count, not every record held, so it can
+   * never exceed `total`. `scope: "all"` means those records are the whole
+   * matching population and `total` restates `loaded` — say one number.
+   *
+   * @experimental
+   */
+  resultsAnnouncement?: (args: {
+    loaded: number;
+    total: PretableMatchingTotal;
+    added?: number;
+    scope: "all" | "loaded";
+  }) => string;
+
+  /**
+   * Announced on entering `stale`. The `data-pretable-data-phase` attribute
+   * and any consumer dimming are visual only, so this is the sole AT-facing
+   * signal that the visible rows answer the previous query (design §4.5,
+   * D1-UX-02) — best-effort, not guaranteed: a query that resolves inside the
+   * announcement debounce is superseded by its own result, which is the
+   * better sentence anyway.
+   *
+   * @experimental
+   */
+  staleAnnouncement?: () => string;
+
+  /**
+   * Announced when a data-driven rows replacement dropped the focused row and
+   * the engine moved focus to a survivor — never for a user action, never for
+   * a consumer-authored controlled focus move, never for a dataset change (the
+   * results announcement covers that transition), and never when nothing
+   * survived for focus to move to.
+   *
+   * @experimental
+   */
+  focusedRowRemovedAnnouncement?: () => string;
+
+  /**
+   * Announced when navigation reaches the last loaded row while the loaded
+   * records are only a window onto the matching population. Once per boundary
+   * arrival, not once per keypress. `total` is absent unless the population is
+   * known exactly, so an estimate is never subtracted into a difference.
+   *
+   * @experimental
+   */
+  moreRowsBoundaryAnnouncement?: (args: {
+    loadedCount: number;
+    total?: number;
+  }) => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
-  selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
+  selectAllLabel: ({ scope }) =>
+    scope === "loaded" ? "Select all loaded rows" : "Select all rows",
+  // `rowCount` counts the data rows the selection covers, `loadedCount` the
+  // records the grid holds; a collapsed group parts them. The loaded branch
+  // therefore quotes both instead of calling the smaller number "all".
+  selectAllAnnouncement: ({
+    rowCount,
+    columnCount,
+    isAll,
+    scope,
+    loadedCount,
+  }) =>
     isAll
-      ? "All rows selected"
+      ? scope === "loaded"
+        ? `${rowCount} of ${loadedCount} loaded rows selected`
+        : "All rows selected"
       : `${rowCount} rows × ${columnCount} columns selected`,
-  copyAnnouncement: ({ rowCount, columnCount }) =>
-    `${rowCount} rows × ${columnCount} columns copied`,
+  copyAnnouncement: ({ rowCount, columnCount, scope }) =>
+    scope === "loaded"
+      ? `${rowCount} loaded rows × ${columnCount} columns copied`
+      : `${rowCount} rows × ${columnCount} columns copied`,
   copyFailedAnnouncement: () => "Copy failed",
   pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) => {
     const base =
@@ -323,7 +454,40 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
     `${label} expanded, ${childCount} rows`,
   groupCollapsedAnnouncement: ({ label, childCount }) =>
     `${label} collapsed, ${childCount} rows`,
+  // The parentheses belong to the message, not the JSX, so a replacement can
+  // drop them.
+  groupChildCountLabel: ({ childCount, scope }) =>
+    scope === "loaded" ? `(${childCount} loaded)` : `(${childCount})`,
+  emptyStateMessage: () => "No results",
+  loadingStateMessage: () => "Loading…",
+  dataErrorAnnouncement: ({ message }) =>
+    message ? `Could not load results. ${message}` : "Could not load results",
+  resultsAnnouncement: ({ loaded, total, added, scope }) => {
+    const population =
+      scope === "all"
+        ? `${loaded}`
+        : total.kind === "exact"
+          ? `${loaded} of ${total.count}`
+          : total.kind === "estimate"
+            ? `${loaded} of about ${total.count}`
+            : total.atLeast !== undefined
+              ? `${loaded} of more than ${total.atLeast}`
+              : `${loaded}`;
+    return added === undefined
+      ? `Showing ${population}`
+      : `Loaded ${added} more. ${population} loaded.`;
+  },
+  staleAnnouncement: () => "Updating results…",
+  focusedRowRemovedAnnouncement: () =>
+    "Focused row is no longer in the results; moved to a nearby row.",
+  moreRowsBoundaryAnnouncement: ({ loadedCount, total }) =>
+    total === undefined
+      ? `End of loaded rows. ${loadedCount} loaded.`
+      : `End of loaded rows. ${total - loadedCount} more available.`,
 };
+
+/** Priority order for the single live-region slot: error > user > lifecycle. */
+type AnnouncementSource = "user" | "lifecycle" | "error";
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
 
@@ -470,6 +634,58 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * render; when a slice is undefined the engine owns it (uncontrolled).
    */
   state?: PretableSurfaceState | null;
+  /**
+   * Who applies filtering and sorting to the loaded records.
+   *
+   * Create-time configuration, like {@link PretableSurfaceProps.autosize}:
+   * changing it rebuilds the grid, discarding selection, focus, measured
+   * heights, column layout and any in-flight edit. Passing it inline is fine —
+   * only its fields are depended on.
+   *
+   * @experimental
+   */
+  processing?: PretableProcessingOptions;
+  /**
+   * Matching total + dataset identity for the loaded records. Unlike
+   * {@link PretableSurfaceProps.processing} this is live: a new total is
+   * applied on every change, and passing it inline is fine.
+   *
+   * @experimental
+   */
+  resultMeta?: PretableResultMeta;
+  /**
+   * Pass-through to the grid element, e.g. to associate a stale-results notice
+   * rendered outside the grid.
+   *
+   * @experimental
+   */
+  ariaDescribedBy?: string;
+  /**
+   * Presentation lifecycle of the loaded records. No default — omit it and the
+   * lifecycle presentation is entirely off.
+   *
+   * @experimental
+   */
+  dataState?: PretableDataState;
+  /**
+   * Override the built-in body-state blocks (loading / empty / error, and the
+   * error strip that renders above intact rows). Return value replaces the
+   * built-in content; the wrapper element and its data attribute stay.
+   *
+   * @experimental
+   */
+  renderBodyState?: (input: {
+    /**
+     * Which block is being rendered. A retry control belongs in
+     * `error-strip` but not in a full-bleed `error`, and re-deriving that
+     * from the counts is the library's job, not the consumer's.
+     */
+    kind: PretableBodyStateKind;
+    phase: PretableDataState["phase"];
+    errorMessage?: string;
+    loadedRowCount: number;
+    matchingTotal: PretableMatchingTotal;
+  }) => ReactNode;
   overscan?: number;
   /**
    * Called when the user activates a row — a plain click on it, or Enter/Space
@@ -781,6 +997,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   getRowId,
   getRowProps,
   state,
+  processing,
+  resultMeta,
+  ariaDescribedBy,
+  dataState,
+  renderBodyState,
   overscan = 6,
   onGridReady,
   onRowActivate,
@@ -904,20 +1125,45 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const [liveMessage, setLiveMessage] = useState<string>("");
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingAnnouncementRef = useRef<string | null>(null);
+  const pendingAnnouncementSourceRef = useRef<AnnouncementSource>("user");
 
-  const scheduleAnnouncement = useCallback((message: string) => {
-    pendingAnnouncementRef.current = message;
-    if (announceTimerRef.current !== null) {
-      clearTimeout(announceTimerRef.current);
-    }
-    announceTimerRef.current = setTimeout(() => {
-      if (pendingAnnouncementRef.current !== null) {
-        setLiveMessage(pendingAnnouncementRef.current);
-        pendingAnnouncementRef.current = null;
+  /**
+   * One slot, trailing edge, last wins — but only between equals. A data
+   * lifecycle transition arrives on its own schedule, so a poll resolving
+   * inside the window must not replace the confirmation of the keystroke the
+   * user just pressed; the user has no way to ask for it again. Two lifecycle
+   * messages still supersede each other, so a resolution overrides its own
+   * "Updating results…".
+   *
+   * `"error"` outranks both. A load failure is the one lifecycle event with no
+   * other assistive-technology channel — the phase is then held, so a dropped
+   * message is never retried — and losing it to a pending copy confirmation
+   * would leave a screen-reader user believing the grid still holds a result.
+   */
+  const scheduleAnnouncement = useCallback(
+    (message: string, source: AnnouncementSource = "user") => {
+      if (
+        source === "lifecycle" &&
+        pendingAnnouncementRef.current !== null &&
+        pendingAnnouncementSourceRef.current === "user"
+      ) {
+        return;
       }
-      announceTimerRef.current = null;
-    }, ANNOUNCE_DEBOUNCE_MS);
-  }, []);
+      pendingAnnouncementRef.current = message;
+      pendingAnnouncementSourceRef.current = source;
+      if (announceTimerRef.current !== null) {
+        clearTimeout(announceTimerRef.current);
+      }
+      announceTimerRef.current = setTimeout(() => {
+        if (pendingAnnouncementRef.current !== null) {
+          setLiveMessage(pendingAnnouncementRef.current);
+          pendingAnnouncementRef.current = null;
+        }
+        announceTimerRef.current = null;
+      }, ANNOUNCE_DEBOUNCE_MS);
+    },
+    [],
+  );
 
   useEffect(() => {
     return () => {
@@ -929,6 +1175,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
   const effectiveMessages = useMemo(
     () => ({
+      selectAllLabel:
+        messages?.selectAllLabel ?? defaultMessages.selectAllLabel,
       selectAllAnnouncement:
         messages?.selectAllAnnouncement ??
         defaultMessages.selectAllAnnouncement,
@@ -948,6 +1196,25 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       groupCollapsedAnnouncement:
         messages?.groupCollapsedAnnouncement ??
         defaultMessages.groupCollapsedAnnouncement,
+      groupChildCountLabel:
+        messages?.groupChildCountLabel ?? defaultMessages.groupChildCountLabel,
+      emptyStateMessage:
+        messages?.emptyStateMessage ?? defaultMessages.emptyStateMessage,
+      loadingStateMessage:
+        messages?.loadingStateMessage ?? defaultMessages.loadingStateMessage,
+      dataErrorAnnouncement:
+        messages?.dataErrorAnnouncement ??
+        defaultMessages.dataErrorAnnouncement,
+      resultsAnnouncement:
+        messages?.resultsAnnouncement ?? defaultMessages.resultsAnnouncement,
+      staleAnnouncement:
+        messages?.staleAnnouncement ?? defaultMessages.staleAnnouncement,
+      focusedRowRemovedAnnouncement:
+        messages?.focusedRowRemovedAnnouncement ??
+        defaultMessages.focusedRowRemovedAnnouncement,
+      moreRowsBoundaryAnnouncement:
+        messages?.moreRowsBoundaryAnnouncement ??
+        defaultMessages.moreRowsBoundaryAnnouncement,
     }),
     [messages],
   );
@@ -1017,6 +1284,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     aggregateFilteredRows,
     groupsDefaultExpanded,
     state: state ?? undefined,
+    processing,
+    resultMeta,
     measuredHeights,
     overscan,
     rows,
@@ -1037,6 +1306,205 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     normalizedControlledFocusForFollow?.columnId;
   const bodyEntryTabbable = focusedRowId === null && focusedColumnId === null;
   const isGrouped = snapshot.rowGroups.length > 0;
+  const dataHonestyInput = {
+    visibleRowCount: snapshot.visibleRows.length,
+    isGrouped,
+    loadedRowCount: snapshot.loadedRowCount,
+    matchingTotal: snapshot.matchingTotal,
+  };
+  // `resultMeta` reaches the engine in a layout effect, so the first committed
+  // render under external filter authority has no total yet and publishes `-1`.
+  // That is the honest answer, not a flash to repair: reading the total from
+  // props here would pair a prop-supplied count with a snapshot the engine has
+  // not rebuilt for that authority yet.
+  const ariaRowCount = resolveAriaRowCount(dataHonestyInput, processing);
+  // Labels render from the committed snapshot. Announcements instead re-derive
+  // scope from the snapshot they are reporting on, so the scope word and the
+  // counts in one sentence are always the same observation.
+  const dataScope = resolveDataScope(dataHonestyInput, processing);
+  // Keyed on the rows the body RENDERS, not on the records the engine holds:
+  // an engine-filtered grid with loaded records and no matches is "no results".
+  const bodyStateKind =
+    dataState === undefined
+      ? null
+      : resolveBodyStateKind(dataState.phase, snapshot.visibleRows.length);
+  // Latched, never unlatched. Dropping the wrapper again would change the
+  // viewport's DOM depth, and React re-creates the node one level down: the
+  // scroll offset, DOM focus and every ref inside the grid go with it. A
+  // surface that is never handed the prop still gets no wrapper (D1-GRID-04).
+  const [bodyStateWrapped, setBodyStateWrapped] = useState(
+    dataState !== undefined,
+  );
+  if (dataState !== undefined && !bodyStateWrapped) {
+    setBodyStateWrapped(true);
+  }
+
+  const errorMessage =
+    dataState !== undefined && dataState.phase === "error"
+      ? dataState.message
+      : undefined;
+
+  // Phase transitions, one announcement each. Deliberately keyed on the phase
+  // VALUE, not on `dataState` identity: an inline `dataState={{phase:"idle"}}`
+  // literal is a new object every render and must not re-announce.
+  const previousPhaseRef = useRef<PretableDataState["phase"] | undefined>(
+    undefined,
+  );
+  const previousErrorMessageRef = useRef<string | undefined>(undefined);
+  const loadedBeforeLoadMoreRef = useRef(0);
+  const refreshBaselineRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const phase = dataState?.phase;
+    const previousPhase = previousPhaseRef.current;
+    const previousErrorMessage = previousErrorMessageRef.current;
+    previousPhaseRef.current = phase;
+    previousErrorMessageRef.current = errorMessage;
+
+    if (phase === undefined) {
+      return;
+    }
+
+    // A refined message under a held `error` phase is a new fact, not a
+    // repeat: the de-dup rule is what would be SAID, not the phase alone.
+    if (
+      phase === previousPhase &&
+      !(phase === "error" && errorMessage !== previousErrorMessage)
+    ) {
+      return;
+    }
+
+    // Counts come from the engine at effect time, never from the render
+    // closure. A phase flip and the rows it describes arrive in one commit,
+    // and `usePretable` ingests those rows in a LAYOUT effect — so when this
+    // passive effect runs the engine already holds them while `snapshot` is
+    // still the pre-ingest value. Announcing the closure's numbers reports the
+    // previous page's counts, and the corrected commit that follows carries an
+    // unchanged phase, which the guard above drops.
+    const live = grid.getSnapshot();
+    const scope = resolveDataScope(live, processing);
+    // Under engine filter authority `loadedRowCount` counts every record held,
+    // including the ones the filter excluded, while `matchingTotal` is already
+    // post-filter: pairing the two says "Showing 10 of 1", and says "10" about
+    // a body rendering the "no results" block. The matching count is the one
+    // number that describes what the user is looking at in both authorities.
+    const loaded =
+      processing?.filter !== "external" && live.matchingTotal.kind === "exact"
+        ? live.matchingTotal.count
+        : live.loadedRowCount;
+    const resultsMessage = (added?: number) =>
+      effectiveMessages.resultsAnnouncement({
+        loaded,
+        total: live.matchingTotal,
+        added,
+        scope,
+      });
+
+    if (phase === "loading-more") {
+      // Remember the baseline so the resolution can report the delta.
+      loadedBeforeLoadMoreRef.current = loaded;
+      return;
+    }
+
+    if (phase === "refreshing") {
+      // Remember what the poll started with, so its resolution can tell a
+      // changed result from a metronome tick.
+      refreshBaselineRef.current = resultsMessage();
+      return;
+    }
+
+    if (phase === "stale") {
+      // The desired query has moved ahead of the fulfilled rows. Announced
+      // once on entry (the phase-value guard above makes repeats impossible
+      // within a settling burst); the resolution's resultsAnnouncement
+      // supersedes it through the last-wins scheduler.
+      scheduleAnnouncement(effectiveMessages.staleAnnouncement(), "lifecycle");
+      return;
+    }
+
+    if (phase === "error") {
+      // Structural single-channel rule: Pretable announces the failure only
+      // because Pretable is the one rendering it (error block or status strip).
+      // A consumer showing its own role="alert" banner keeps the phase out of
+      // "error", so double-speak is impossible by construction.
+      scheduleAnnouncement(
+        effectiveMessages.dataErrorAnnouncement({ message: errorMessage }),
+        "error",
+      );
+      return;
+    }
+
+    if (phase !== "idle") {
+      return;
+    }
+
+    // The very first commit is not a transition anyone asked to hear about.
+    if (previousPhase === undefined) {
+      return;
+    }
+
+    // A tail that SHRANK is not a tail extension — the records were replaced
+    // under the request — so it reports the population instead of a negative
+    // delta. Zero stays a delta: "loaded 0 more" is how the end of the data
+    // announces itself.
+    const delta = loaded - loadedBeforeLoadMoreRef.current;
+    const message = resultsMessage(
+      previousPhase === "loading-more" && delta >= 0 ? delta : undefined,
+    );
+
+    // A 2 s poll must not produce a metronome: a resolved refresh speaks only
+    // when what it would say has changed. Row churn under identical counts is
+    // deliberately silent — repeating the same sentence IS the metronome.
+    if (
+      previousPhase === "refreshing" &&
+      message === refreshBaselineRef.current
+    ) {
+      return;
+    }
+
+    scheduleAnnouncement(message, "lifecycle");
+  }, [
+    dataState,
+    effectiveMessages,
+    errorMessage,
+    grid,
+    processing,
+    scheduleAnnouncement,
+  ]);
+
+  const bodyStateBlock =
+    dataState === undefined || bodyStateKind === null ? null : (
+      <div
+        data-pretable-body-state={bodyStateKind}
+        // No live-region role. The surface already owns one permanent polite
+        // region, and a second one carrying the same sentence is spoken twice
+        // — while a region inserted together with its text is unreliably
+        // announced at all. The failure reaches assistive technology through
+        // `dataErrorAnnouncement` on the shared region.
+        style={
+          bodyStateKind === "error-strip"
+            ? undefined
+            : getBodyStateOverlayStyle(groupPanelHeight + headerHeight)
+        }
+      >
+        {renderBodyState
+          ? renderBodyState({
+              kind: bodyStateKind,
+              phase: dataState.phase,
+              errorMessage,
+              loadedRowCount: snapshot.loadedRowCount,
+              matchingTotal: snapshot.matchingTotal,
+            })
+          : bodyStateKind === "loading"
+            ? effectiveMessages.loadingStateMessage()
+            : bodyStateKind === "empty"
+              ? effectiveMessages.emptyStateMessage()
+              : effectiveMessages.dataErrorAnnouncement({
+                  message: errorMessage,
+                })}
+      </div>
+    );
+  warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
   // then report what the engine actually holds. Reading the list back rather
   // than echoing the argument matters — `sanitizeRowGroups` drops unknown and
@@ -1132,6 +1600,182 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       return definition ? [definition] : [];
     });
   }, [drawnColumns, effectiveColumns]);
+
+  // Declared AFTER `usePretable` on purpose: layout effects run in declaration
+  // order within a component, so this fires after the hook's own `setRows` and
+  // controlled-state effects in the same commit. `grid.getSnapshot()` is
+  // therefore post-replacement while the DOM still shows the old rows — which
+  // is what makes the `document.activeElement` read below meaningful.
+  //
+  // No dependency array, deliberately: these refs have to sample EVERY commit.
+  // A replacement that lands in a commit the effect skipped would compare
+  // against a stale address and read as a removal.
+  const focusRowIdBeforeRowsRef = useRef<string | null>(null);
+  const datasetKeyBeforeRowsRef = useRef<string | null>(null);
+  const controlledFocusRowIdBeforeRowsRef = useRef<string | null | undefined>(
+    undefined,
+  );
+  const rowsSeenRef = useRef(rows);
+  const focusRepairToAnnounceRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const after = grid.getSnapshot();
+    const previousFocusRowId = focusRowIdBeforeRowsRef.current;
+    const previousDatasetKey = datasetKeyBeforeRowsRef.current;
+    const previousControlledFocusRowId =
+      controlledFocusRowIdBeforeRowsRef.current;
+    // A pivot does not need a rows replacement to reach the engine: a consumer
+    // that mints the new key before its rows land goes through
+    // `setResultMeta`, which clears focus with the `rows` identity untouched.
+    const datasetPivoted =
+      previousDatasetKey !== null && after.datasetKey !== previousDatasetKey;
+
+    datasetKeyBeforeRowsRef.current = after.datasetKey;
+    controlledFocusRowIdBeforeRowsRef.current = controlledFocusFollowRowId;
+
+    if (rowsSeenRef.current === rows && !datasetPivoted) {
+      focusRowIdBeforeRowsRef.current = after.focus.rowId;
+      return;
+    }
+
+    rowsSeenRef.current = rows;
+
+    const focusWasInsideGrid =
+      viewportRef.current !== null &&
+      document.activeElement !== null &&
+      viewportRef.current.contains(document.activeElement);
+
+    if (datasetPivoted) {
+      // The engine already cleared focus for the new dataset.
+      if (focusWasInsideGrid) {
+        // The row the user SEES first, group row or data row alike — the same
+        // address a Tab into the body resolves to.
+        const firstRow = after.visibleRows[0];
+        const firstColumn = columnsInVisualOrder.find(
+          (column) => column.id !== ROW_SELECT_COLUMN_ID,
+        );
+        if (firstRow && firstColumn) {
+          grid.setFocus({ rowId: firstRow.id, columnId: firstColumn.id });
+        } else {
+          viewportRef.current?.focus();
+        }
+      }
+
+      // A different question: the old scroll offset means nothing against the
+      // new answer.
+      if (viewportRef.current) {
+        viewportRef.current.scrollTop = 0;
+      }
+      // Re-read: `setFocus` above ran against `after`, so that snapshot is no
+      // longer the engine's current one.
+      const settled = grid.getSnapshot();
+      grid.setViewport({ ...settled.viewport, scrollTop: 0 });
+
+      focusRowIdBeforeRowsRef.current = settled.focus.rowId;
+      return;
+    }
+
+    focusRowIdBeforeRowsRef.current = after.focus.rowId;
+
+    if (
+      previousFocusRowId === null ||
+      after.focus.rowId === previousFocusRowId
+    ) {
+      return;
+    }
+
+    // The consumer moved its own controlled address in this same commit —
+    // `usePretable` reapplies it after the engine's repair — so the engine's
+    // repair is moot and the move is the app's to narrate, not Pretable's.
+    if (
+      controlledFocusFollowRowId !== undefined &&
+      controlledFocusFollowRowId !== previousControlledFocusRowId
+    ) {
+      return;
+    }
+
+    // Both moves below are lifecycle presentation, and `dataState` is the only
+    // opt-in there is (§10.1). Every streaming consumer on 0.0.11 replaces
+    // `rows` without asking for any of this, so a grid that was never handed
+    // the prop must keep replacing rows exactly as mutely and as hands-off as
+    // it did before the slice existed.
+    if (dataState === undefined) {
+      return;
+    }
+
+    if (after.focus.rowId === null) {
+      // Nothing survived the replacement, so there is no nearby row to have
+      // moved to and the repair sentence would be false. Keep the keyboard user
+      // inside the grid instead of dropping them on <body>.
+      if (focusWasInsideGrid) {
+        viewportRef.current?.focus();
+      }
+      return;
+    }
+
+    focusRepairToAnnounceRef.current = true;
+  });
+
+  // Scheduled from a passive effect rather than the layout effect above,
+  // because passive effects run in declaration order and this one is declared
+  // after the phase-transition effect: both messages are "lifecycle", so that
+  // order is the whole of the last-wins contest between them. An unrequested
+  // cursor move wins it — it is the one fact the user cannot recover from the
+  // status strip or from the next transition.
+  useEffect(() => {
+    if (!focusRepairToAnnounceRef.current) return;
+    focusRepairToAnnounceRef.current = false;
+    scheduleAnnouncement(
+      effectiveMessages.focusedRowRemovedAnnouncement(),
+      "lifecycle",
+    );
+  });
+
+  // The boundary an announcement has already been spent on: the focused row
+  // AND the window it sat at the end of. The row id alone cannot tell "still
+  // sitting there" from "the same id at the end of records just replaced
+  // beneath it", and only the second is a fresh boundary.
+  const announcedBoundaryRef = useRef<{
+    rowId: string | null;
+    rows: readonly TRow[];
+  } | null>(null);
+
+  // Re-arm once focus has left, so a second arrival announces again while
+  // sitting there does not. Compared rather than cleared outright: this also
+  // runs on the commit that follows the announcement itself, and an
+  // unconditional reset would disarm the latch before the very keypress it
+  // exists to swallow. A replacement under a stationary cursor needs no reset —
+  // the recorded window no longer matches the current one.
+  useEffect(() => {
+    if (snapshot.focus.rowId !== announcedBoundaryRef.current?.rowId) {
+      announcedBoundaryRef.current = null;
+    }
+  }, [snapshot.focus.rowId]);
+
+  const announceLoadedBoundary = useCallback(() => {
+    const snap = grid.getSnapshot();
+    // The same partial-window rule every count label routes through, rather
+    // than a fourth hand-rolled copy of it: when the loaded records are the
+    // whole population the end of them is not a boundary to report.
+    if (resolveDataScope(snap, processing) === "all") {
+      return;
+    }
+    const announced = announcedBoundaryRef.current;
+    if (announced?.rowId === snap.focus.rowId && announced.rows === rows) {
+      return;
+    }
+    announcedBoundaryRef.current = { rowId: snap.focus.rowId, rows };
+    const total = snap.matchingTotal;
+    scheduleAnnouncement(
+      effectiveMessages.moreRowsBoundaryAnnouncement({
+        loadedCount: snap.loadedRowCount,
+        // An estimate or a floor cannot be subtracted into "N more available".
+        // Withholding it is what routes the message to its no-population
+        // wording instead of quoting a difference nobody can stand behind.
+        total: total.kind === "exact" ? total.count : undefined,
+      }),
+    );
+  }, [effectiveMessages, grid, processing, rows, scheduleAnnouncement]);
 
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the
   // closures it captures would otherwise go stale across renders. Keep refs to
@@ -2284,9 +2928,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const scrollViewport = (
     <div
       aria-colcount={drawnColumns.length}
+      aria-describedby={ariaDescribedBy}
       aria-label={ariaLabel}
       aria-multiselectable="true"
-      aria-rowcount={snapshot.visibleRows.length + 1}
+      aria-rowcount={ariaRowCount}
+      data-pretable-data-phase={dataState?.phase}
       data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
@@ -2414,6 +3060,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             // changes which columns fall inside the range.
             columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
+            // Re-derived from `snap`, the same observation the rows and ranges
+            // above come from — the committed render's scope can describe an
+            // older one.
+            scope: resolveDataScope(snap, processing),
           };
           const payload = onCopy ? onCopy(args) : serializeRanges(args);
           if (payload) {
@@ -2430,6 +3080,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   effectiveMessages.copyAnnouncement({
                     rowCount: extent.rowCount,
                     columnCount: extent.columnCount,
+                    scope: resolveDataScope(snap, processing),
                   }),
                 );
               })
@@ -2531,6 +3182,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           columns: columnsInVisualOrder,
           grid,
           onGroupExpansionMutation: mutateGroupExpansion,
+          onLoadedBoundaryReached: announceLoadedBoundary,
           onRowActivate,
           onSelectedRowIdChange,
           selectFocusedRowOnArrowKey,
@@ -2551,6 +3203,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 rowCount: extent.rowCount,
                 columnCount: extent.columnCount,
                 isAll: extent.isAll,
+                scope: resolveDataScope(after, processing),
+                loadedCount: after.loadedRowCount,
+                total:
+                  after.matchingTotal.kind === "exact"
+                    ? after.matchingTotal.count
+                    : undefined,
               }),
             );
           }
@@ -2675,7 +3333,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 {showHeaderCheckbox ? (
                   <button
                     aria-checked={headerCheckState}
-                    aria-label="Select all rows"
+                    aria-label={effectiveMessages.selectAllLabel({
+                      scope: dataScope,
+                    })}
                     data-pretable-row-select-all="true"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -2700,6 +3360,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             rowCount: extent.rowCount,
                             columnCount: extent.columnCount,
                             isAll: extent.isAll,
+                            scope: resolveDataScope(after, processing),
+                            loadedCount: after.loadedRowCount,
+                            total:
+                              after.matchingTotal.kind === "exact"
+                                ? after.matchingTotal.count
+                                : undefined,
                           }),
                         );
                       }
@@ -3299,6 +3965,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
             return (
               <GroupRow
+                childCountLabel={effectiveMessages.groupChildCountLabel}
                 columns={renderSnapshot.columns}
                 columnsById={columnsById}
                 expanded={isGroupExpanded(snapshot, group.id)}
@@ -3327,6 +3994,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 }}
                 registerCell={registerCell}
                 rowIndex={renderRow.rowIndex}
+                scope={dataScope}
                 top={renderRow.top}
                 viewportWidth={viewportWidth}
               />
@@ -3787,8 +4455,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               (c) => c.id === filterOpenState.columnId,
             );
             if (!col) return null;
-            const options = resolveColumnOptions(col, () =>
-              grid.distinctColumnValues(filterOpenState.columnId),
+            const options = resolveColumnOptions(
+              col,
+              () => grid.distinctColumnValues(filterOpenState.columnId),
+              processing,
             );
             return (
               <FilterMenu
@@ -3796,6 +4466,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 columnId={filterOpenState.columnId}
                 label={col.header ?? filterOpenState.columnId}
                 type={col.type ?? "text"}
+                filterOperators={col.filterOperators}
                 options={options}
                 initialFilter={
                   snapshot.filters[filterOpenState.columnId] ?? null
@@ -3858,12 +4529,36 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         )
       : null;
 
+  // The block cannot live inside the viewport: that element carries
+  // role="grid"/"treegrid", whose children must be rows and rowgroups. It gets
+  // a wrapper, and a surface that never receives `dataState` never gets one.
+  //
+  // The three slots are fixed positions, not a filtered list: React keys these
+  // children by index, so a `null` placeholder is what keeps `content` in the
+  // same slot as the strip comes and goes.
+  const withBodyState = (content: ReactNode): ReactNode =>
+    !bodyStateWrapped ? (
+      content
+    ) : (
+      <div
+        data-pretable-data-phase={dataState?.phase}
+        data-pretable-data-state-wrapper=""
+        style={getDataStateWrapperStyle()}
+      >
+        {bodyStateKind === "error-strip" ? bodyStateBlock : null}
+        {content}
+        {bodyStateKind !== null && bodyStateKind !== "error-strip"
+          ? bodyStateBlock
+          : null}
+      </div>
+    );
+
   // Without the panel the surface IS the scroll viewport — no wrapper, so a
   // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
   if (!groupPanelEnabled) {
     return (
       <>
-        {scrollViewport}
+        {withBodyState(scrollViewport)}
         {liveRegion}
       </>
     );
@@ -3876,24 +4571,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // content, which would scroll the panel sideways with the data.
   return (
     <>
-      <div
-        data-pretable-group-panel-wrapper=""
-        style={getGroupPanelWrapperStyle(viewportHeight)}
-      >
-        <GroupPanel
-          containerRef={groupPanelRef}
-          // Only a header drag reports in from out here; the panel's own chip
-          // drag tracks its insertion index internally.
-          dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
-          emptyMessage={groupPanel?.emptyMessage}
-          focusManagedExternally
-          height={groupPanelHeight}
-          labelForColumn={labelForColumn}
-          onChange={applyRowGroups}
-          rowGroups={snapshot.rowGroups}
-        />
-        {scrollViewport}
-      </div>
+      {withBodyState(
+        <div
+          data-pretable-group-panel-wrapper=""
+          style={getGroupPanelWrapperStyle(viewportHeight)}
+        >
+          <GroupPanel
+            containerRef={groupPanelRef}
+            // Only a header drag reports in from out here; the panel's own chip
+            // drag tracks its insertion index internally.
+            dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
+            emptyMessage={groupPanel?.emptyMessage}
+            focusManagedExternally
+            height={groupPanelHeight}
+            labelForColumn={labelForColumn}
+            onChange={applyRowGroups}
+            rowGroups={snapshot.rowGroups}
+          />
+          {scrollViewport}
+        </div>,
+      )}
       {liveRegion}
     </>
   );
@@ -4411,6 +5108,8 @@ interface SurfaceKeyDownContext<TRow extends PretableRow> {
   columns: PretableColumn<TRow>[];
   grid: PretableGrid<TRow>;
   onGroupExpansionMutation: (groupId: string, mutation: () => void) => void;
+  /** Called when an end-ward move leaves focus on the last row of the model. */
+  onLoadedBoundaryReached?: () => void;
   onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   selectFocusedRowOnArrowKey: boolean;
@@ -4426,6 +5125,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     columns: allColumns,
     grid,
     onGroupExpansionMutation,
+    onLoadedBoundaryReached,
     onRowActivate,
     onSelectedRowIdChange,
     selectFocusedRowOnArrowKey,
@@ -4447,6 +5147,19 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   const rows = snapshot.visibleRows;
   const firstColumn = columns[0];
   const lastColumn = columns[columns.length - 1];
+
+  // Call after any end-ward move — an arrow, a page, a jump to the end. Whether
+  // the move was refused or merely landed there is not a distinction worth
+  // drawing: both leave the user at the end of a window they cannot tell from
+  // the end of the data, and the caller's latch is what keeps one arrival to
+  // one announcement. Detecting it here rather than in the engine keeps the
+  // engine ignorant of what "more" means.
+  const noteLoadedBoundary = () => {
+    const lastRow = rows[rows.length - 1];
+    if (!onLoadedBoundaryReached || !lastRow) return;
+    if (grid.getSnapshot().focus.rowId !== lastRow.id) return;
+    onLoadedBoundaryReached();
+  };
 
   // Expand/collapse, per the ARIA APG treegrid model. It comes first because
   // Left/Right/Enter/Space mean something different on a group row than they do
@@ -4513,6 +5226,10 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       jumpToEdge: cmd,
     });
 
+    if (direction === "down") {
+      noteLoadedBoundary();
+    }
+
     // Snap off the synthetic row-select column if we landed there.
     const after = grid.getSnapshot();
     if (after.focus.columnId === ROW_SELECT_COLUMN_ID && firstColumn) {
@@ -4561,6 +5278,9 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       const lastRow = rows[rows.length - 1];
       if (!lastRow) return false;
       grid.setFocus({ rowId: lastRow.id, columnId: lastColumn.id });
+      // Bare End is a move along the row; only the jump reaches for the end of
+      // the rows, so only the jump can arrive at their boundary.
+      noteLoadedBoundary();
     } else if (focus.rowId) {
       grid.setFocus({ rowId: focus.rowId, columnId: lastColumn.id });
     } else {
@@ -4625,6 +5345,10 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       }
     } else {
       grid.setFocus(addr);
+    }
+
+    if (key === "PageDown") {
+      noteLoadedBoundary();
     }
     return true;
   }

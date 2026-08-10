@@ -60,7 +60,7 @@ export interface BuildGroupedRowsArgs<TRow extends PretableRow> {
   columns: PretableColumn<TRow>[];
   /** Grouping columns, outermost first. Unknown ids are ignored. */
   rowGroups: string[];
-  sort: PretableSortEntry[];
+  sort: readonly PretableSortEntry[];
   /**
    * Group ids whose expanded state differs from `defaultExpanded` (the engine
    * calls the same thing `groupsDefaultExpanded`).
@@ -304,7 +304,7 @@ function isExpanded<TRow extends PretableRow>(
 function sortSiblings<TRow extends PretableRow>(
   nodes: GroupNode<TRow>[],
   column: PretableColumn<TRow> | undefined,
-  sort: PretableSortEntry[],
+  sort: readonly PretableSortEntry[],
 ): void {
   if (nodes.length < 2) return;
 

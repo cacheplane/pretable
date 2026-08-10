@@ -49,10 +49,17 @@ export function createPretableTelemetryNotes(
     return [];
   }
 
+  // Note keys must keep the "internal telemetry " prefix: scripts/bench-matrix.mjs
+  // uses it (DIAGNOSTIC_NOTE_KEY_PREFIX) to exclude these from the policy-drift
+  // signal. "loaded rows" — not "total rows" — because loadedRowCount counts the
+  // records the grid holds, which under server-side processing is a window over a
+  // larger matching population; a label saying "total" would mis-describe it.
+  // Archived runsets under status/milestones/ keep the old key verbatim; nothing
+  // compares live runs against them, so the rename costs no comparability.
   return [
     `internal telemetry rendered rows: ${telemetry.renderedRowCount}`,
     `internal telemetry visible rows: ${telemetry.visibleRowCount}`,
-    `internal telemetry total rows: ${telemetry.totalRowCount}`,
+    `internal telemetry loaded rows: ${telemetry.loadedRowCount}`,
     `internal telemetry planned height: ${telemetry.totalHeight}`,
     `internal telemetry viewport range: ${telemetry.visibleRowRange.start}-${telemetry.visibleRowRange.end}`,
     `internal telemetry selected row: ${telemetry.selectedRowId ?? "none"}`,

@@ -92,7 +92,8 @@ describe("bench runtime", () => {
         rowModelRowCount: 750,
         renderedRowCount: 8,
         selectedRowId: "evt-dev-0001",
-        totalRowCount: 750,
+        loadedRowCount: 750,
+        matchingTotal: { kind: "exact", count: 750 },
         totalHeight: 59010,
         visibleRowCount: 6,
         visibleRowRange: {
@@ -103,7 +104,7 @@ describe("bench runtime", () => {
     ).toEqual([
       "internal telemetry rendered rows: 8",
       "internal telemetry visible rows: 6",
-      "internal telemetry total rows: 750",
+      "internal telemetry loaded rows: 750",
       "internal telemetry planned height: 59010",
       "internal telemetry viewport range: 0-6",
       "internal telemetry selected row: evt-dev-0001",
@@ -121,7 +122,8 @@ describe("bench runtime", () => {
           rowModelRowCount: 187,
           renderedRowCount: 7,
           selectedRowId: "evt-002",
-          totalRowCount: 750,
+          loadedRowCount: 750,
+          matchingTotal: { kind: "exact", count: 750 },
           totalHeight: 24115,
           visibleRowCount: 3,
           visibleRowRange: {

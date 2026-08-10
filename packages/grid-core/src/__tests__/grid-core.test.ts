@@ -205,7 +205,7 @@ describe("grid-core", () => {
     expect(longCol.widthPx).toBeDefined();
     expect(longCol.widthPx!).toBeGreaterThan(shortCol.widthPx!);
     expect(fixedCol.widthPx).toBe(200);
-    expect(grid.getSnapshot().totalRowCount).toBe(2);
+    expect(grid.getSnapshot().loadedRowCount).toBe(2);
   });
 
   test("declarative autosize accepts custom options", () => {
@@ -291,7 +291,7 @@ describe("grid-core", () => {
 
     const snapshot = grid.getSnapshot();
 
-    expect(snapshot.totalRowCount).toBe(4);
+    expect(snapshot.loadedRowCount).toBe(4);
     expect(snapshot.visibleRows.map((r) => r.id)).toContain("d");
   });
 
@@ -328,7 +328,7 @@ describe("grid-core", () => {
 
     const snapshot = grid.getSnapshot();
 
-    expect(snapshot.totalRowCount).toBe(2);
+    expect(snapshot.loadedRowCount).toBe(2);
     expect(snapshot.visibleRows.map((r) => r.id)).not.toContain("b");
   });
 
@@ -347,7 +347,7 @@ describe("grid-core", () => {
 
     const snapshot = grid.getSnapshot();
 
-    expect(snapshot.totalRowCount).toBe(3);
+    expect(snapshot.loadedRowCount).toBe(3);
     expect(snapshot.visibleRows.map((r) => r.id)).toEqual(
       expect.arrayContaining(["a", "b", "d"]),
     );
@@ -391,7 +391,7 @@ describe("grid-core", () => {
 
     const snapshot = grid.getSnapshot();
 
-    expect(snapshot.totalRowCount).toBe(3);
+    expect(snapshot.loadedRowCount).toBe(3);
   });
 
   test("applyTransaction silently skips remove for nonexistent row", () => {
@@ -405,7 +405,7 @@ describe("grid-core", () => {
 
     const snapshot = grid.getSnapshot();
 
-    expect(snapshot.totalRowCount).toBe(3);
+    expect(snapshot.loadedRowCount).toBe(3);
   });
 
   test("applyTransaction throws when getRowId is not provided", () => {

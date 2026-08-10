@@ -180,7 +180,7 @@ type PretableRow = Record<string, unknown>;
 interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
-  totalRowCount: number;
+  loadedRowCount: number;
   sort: PretableSortEntry[];
   filters: Record<string, ColumnFilter>;
   selection: PretableSelectionState;

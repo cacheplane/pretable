@@ -40,9 +40,9 @@ const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
 What you get back:
 
 - **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `replaceSort(entries)`, `setColumnFilter(columnId, filter)`, `clearFilters()`, `replaceFilters(map)`, `distinctColumnValues(columnId)`, `setSelection(state)`, `selectAll()`, `clearSelection()`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `toggleRowSelection(id)`, `setSelectAllVisible(checked)`, `setFocus({rowId, columnId} | null)`, `moveFocus(direction, options?)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
-- **`snapshot`** — current state. Shape: `{viewport, sort, filters, selection, focus, totalRowCount, visibleRows, visibleRange}`.
+- **`snapshot`** — current state. Shape: `{viewport, sort, filters, selection, focus, loadedRowCount, visibleRows, visibleRange}`.
 - **`renderSnapshot`** — what to render right now. Shape: `{columns: PlannedColumn[], rows: PretableRenderRow[], nodeCount, totalHeight, totalWidth, pinnedLeftWidth, pinnedRightWidth, rowMetrics}`. Each `PretableRenderRow` has `{id, row, rowIndex, top, height}`. `rowMetrics` reaches rows outside the rendered window (`rowCount`, `getHeight`, `getOffsetForIndex`, `getTotalHeight`), which is what scroll-into-view needs.
-- **`telemetry`** — `{focusedRowId, rowModelRowCount, renderedRowCount, selectedRowId, totalRowCount, ...}`.
+- **`telemetry`** — `{focusedRowId, rowModelRowCount, renderedRowCount, selectedRowId, loadedRowCount, ...}`.
 
 See [API reference](/docs/grid/api-reference) for the full type signatures.
 

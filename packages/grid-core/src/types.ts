@@ -119,6 +119,14 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   /** Number-editor increment for ArrowUp/Down and steppers. Default 1. */
   step?: number;
   filterable?: boolean;
+  /**
+   * Restrict the filter menu to the operators the processor can honor. Omitted
+   * = the full per-type set (today's behavior). Load-bearing under external
+   * filter authority: an unpruned menu offers operators the server will ignore.
+   *
+   * @experimental
+   */
+  filterOperators?: FilterOperator[];
   type?: ColumnType;
   /**
    * Horizontal alignment of this column's cells and header label. Defaults to
@@ -190,6 +198,46 @@ export interface PretableAggregateFormatInput<
   value: unknown;
   column: PretableColumn<TRow>;
   group: PretableGroupRow;
+  /**
+   * `"loaded"` when the aggregate folded a window onto a larger population, so
+   * a sum over 200 loaded rows is never presentable as a population sum. Local
+   * mode always passes `"all"`.
+   *
+   * @experimental
+   */
+  scope: "all" | "loaded";
+}
+
+/**
+ * Who applies an operation to the loaded records: the engine's derivation
+ * pipeline, or an external processor upstream of `setRows` (a server, a worker,
+ * a wasm index — the engine does not know or care).
+ *
+ * @experimental
+ * @public
+ */
+export type PretableProcessingAuthority = "engine" | "external";
+
+/**
+ * Per-operation processing authority. Construction-time: flipping authority is
+ * a dataset pivot, so it takes a new grid rather than a mutator.
+ *
+ * @experimental
+ * @public
+ */
+export interface PretableProcessingOptions {
+  /**
+   * `"external"`: filter state is displayed (funnel indicators, menu contents,
+   * `snapshot.filters`) but never applied to the loaded records. Default
+   * `"engine"`.
+   */
+  filter?: PretableProcessingAuthority;
+  /**
+   * `"external"`: sort state is displayed (header arrows, priority badges,
+   * `snapshot.sort`) but the model order is the supplied record order. Default
+   * `"engine"`.
+   */
+  sort?: PretableProcessingAuthority;
 }
 
 /**
@@ -202,6 +250,14 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
   rows: TRow[];
   getRowId?: (row: TRow, index: number) => string;
   autosize?: boolean | AutosizeOptions;
+  // processing authority:
+  /**
+   * Who applies filtering and sorting to the loaded records. Construction-time
+   * only.
+   *
+   * @experimental
+   */
+  processing?: PretableProcessingOptions;
   // row grouping (v1):
   /**
    * Fold group aggregates over rows the active filter hides. Default `false`,
@@ -403,6 +459,48 @@ export type PretableAggregateSpec =
   "sum" | "avg" | "min" | "max" | "count" | PretableAggregator;
 
 /**
+ * How many records match the fulfilled query — loaded or not. Three kinds
+ * because real backends have three answers: SQL gives an exact count,
+ * sampling engines give an estimate, and Elasticsearch gives
+ * `{ relation: "gte", value: 10000 }`.
+ *
+ * @experimental
+ * @public
+ */
+export type PretableMatchingTotal =
+  | { kind: "exact"; count: number }
+  | { kind: "estimate"; count: number }
+  | { kind: "unknown"; atLeast?: number };
+
+/**
+ * Metadata about the result set the loaded records came from. Supplied
+ * alongside `setRows`, or on its own via `setResultMeta`.
+ *
+ * **Contiguous-from-head contract.** The loaded records must be a prefix of the
+ * result set in result order. That is what makes loaded model index `i` equal
+ * dataset position `i`, which is what lets the renderer publish global
+ * `aria-rowindex` values. Windowed or noncontiguous loading is not
+ * representable here and downgrades the ARIA counts.
+ *
+ * @experimental
+ * @public
+ */
+export interface PretableResultMeta {
+  /** Matching total for the result set the loaded records came from. */
+  total?: PretableMatchingTotal;
+  /**
+   * Dataset identity. When this key CHANGES between calls the loaded records
+   * answer a different question: the engine clears selection, focus,
+   * group-expansion overrides, any in-flight edit, and the previously supplied
+   * `total` — pass the new one alongside the key, or the grid reports `unknown`
+   * until it arrives. A stable (or omitted) key preserves all of them — the
+   * existing streaming guarantees. The first key supplied is an assignment,
+   * not a change.
+   */
+  datasetKey?: string;
+}
+
+/**
  * Read-only state observed via `PretableGrid.getSnapshot`.
  *
  * @public
@@ -413,7 +511,23 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   filters: Record<string, ColumnFilter>;
   selection: PretableSelectionState;
   focus: PretableFocusState;
-  totalRowCount: number;
+  /** Count of loaded source records — not the matching population. */
+  loadedRowCount: number;
+  /**
+   * Engine filter authority: computed locally and always exact (post-filter,
+   * pre-grouping). External filter authority: the last supplied
+   * `resultMeta.total`, else `{ kind: "unknown" }`.
+   *
+   * @experimental
+   */
+  matchingTotal: PretableMatchingTotal;
+  /**
+   * The last supplied dataset identity; `null` before any. Local mode never
+   * changes it.
+   *
+   * @experimental
+   */
+  datasetKey: string | null;
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
   editing: PretableEditState | null;
@@ -464,7 +578,13 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   setViewport(viewport: PretableViewportState): void;
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
   applyTransaction(transaction: PretableTransaction<TRow>): void;
-  setRows(rows: TRow[]): void;
+  setRows(rows: TRow[], meta?: PretableResultMeta): void;
+  /**
+   * Update result metadata without a rows replacement.
+   *
+   * @experimental
+   */
+  setResultMeta(meta: PretableResultMeta): void;
 
   // row grouping (v1):
   /** Replace the grouping levels, outermost first. `[]` ungroups. */

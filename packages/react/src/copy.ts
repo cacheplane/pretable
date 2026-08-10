@@ -58,6 +58,14 @@ export interface SerializeRangesArgs<TRow extends PretableRow> {
   visibleRows: readonly PretableVisibleRow<TRow>[];
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
+  /**
+   * Aggregate scope for copied group rows. Defaults to `"all"` so a manual
+   * caller that does not know about partial windows cannot accidentally
+   * mislabel a full local copy.
+   *
+   * @experimental
+   */
+  scope?: "all" | "loaded";
 }
 
 /**
@@ -282,7 +290,7 @@ export function serializeRanges<TRow extends PretableRow>(
           } else if (
             Object.prototype.hasOwnProperty.call(row.aggregates, col.id)
           ) {
-            text = formatAggregateValue(col, row);
+            text = formatAggregateValue(col, row, args.scope ?? "all");
           } else {
             text = "";
           }

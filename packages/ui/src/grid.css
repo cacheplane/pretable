@@ -890,4 +890,50 @@
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
   }
+
+  /* Data-lifecycle body states. Austere by design: no spinner opinion and no
+     animation — a consumer who wants one supplies `renderBodyState`.
+     The boxes themselves are positioned from inline layout math (the overlay's
+     top inset is the resolved header + panel height, which CSS cannot derive). */
+  :where([data-pretable-body-state]) {
+    box-sizing: border-box;
+    padding: calc(var(--pretable-cell-padding-y) * 4)
+      var(--pretable-cell-padding-x);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-dim);
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    text-align: center;
+  }
+
+  /* Failures read left-aligned like prose, and in the theme's error color. */
+  :where([data-pretable-body-state="error"]),
+  :where([data-pretable-body-state="error-strip"]) {
+    color: var(--pretable-text-error);
+    text-align: start;
+  }
+
+  /* The strip is a card stacked on top of the box below it, so it carries that
+     box's border and rounds only its own top. `border-bottom: 0` is what stops
+     the seam being drawn twice. */
+  :where([data-pretable-body-state="error-strip"]) {
+    border: 1px solid var(--pretable-rule-strong);
+    border-bottom: 0;
+    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+  }
+
+  /* …and the box below squares the two corners that now meet in the middle,
+     the same rule the group panel needs one level up. With the panel enabled
+     the strip stacks on the panel, which is then the box that squares. */
+  :where(
+    [data-pretable-body-state="error-strip"] + [data-pretable-scroll-viewport]
+  ),
+  :where(
+    [data-pretable-body-state="error-strip"]
+      + [data-pretable-group-panel-wrapper]
+      [data-pretable-group-panel]
+  ) {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
 }
