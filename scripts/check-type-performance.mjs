@@ -13,6 +13,16 @@ const defaultBudgetsPath = path.join(
   "performance",
   "budgets.json",
 );
+const expectedFixtures = Object.freeze([
+  Object.freeze({
+    label: "columns-100",
+    tsconfig: "type-tests/performance/tsconfig.100.json",
+  }),
+  Object.freeze({
+    label: "columns-500",
+    tsconfig: "type-tests/performance/tsconfig.500.json",
+  }),
+]);
 
 function readSingleMetric(output, name) {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -49,15 +59,23 @@ function parseMemoryKiB(value) {
   if (!match) malformedMetric("Memory used", value);
   const amount = Number(match[1]);
   const unit = match[2].toUpperCase();
-  const multiplier =
+  const bytesPerUnit =
     unit === "B"
-      ? 1 / 1024
+      ? 1
       : unit === "K" || unit === "KB" || unit === "KIB"
-        ? 1
-        : unit === "M" || unit === "MB" || unit === "MIB"
+        ? unit === "KIB"
           ? 1024
-          : 1024 * 1024;
-  const memoryKiB = Math.ceil(amount * multiplier);
+          : 1000
+        : unit === "M" || unit === "MB" || unit === "MIB"
+          ? unit === "MIB"
+            ? 1024 * 1024
+            : 1000 * 1000
+          : unit === "GIB"
+            ? 1024 * 1024 * 1024
+            : 1000 * 1000 * 1000;
+  // TypeScript 6 reports bare K as Math.round(bytes / 1000). Preserve that
+  // decimal meaning, then round upward into one canonical integer KiB value.
+  const memoryKiB = Math.ceil((amount * bytesPerUnit) / 1024);
   if (!Number.isSafeInteger(memoryKiB) || memoryKiB < 0) {
     malformedMetric("Memory used", value);
   }
@@ -102,6 +120,146 @@ function validateBudget(label, budget) {
       `${label} budget metrics maxInstantiations and maxMemoryKiB must be positive integers.`,
     );
   }
+}
+
+function normalizeRepoRelativePath(value, label) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`${label} fixture config must be a repo-relative path.`);
+  }
+  const slashPath = value.replaceAll("\\", "/");
+  if (path.posix.isAbsolute(slashPath) || /^[A-Za-z]:\//.test(slashPath)) {
+    throw new Error(`${label} fixture config must be a repo-relative path.`);
+  }
+  const normalized = path.posix.normalize(slashPath);
+  if (normalized === ".." || normalized.startsWith("../")) {
+    throw new Error(`${label} fixture config must stay inside the repository.`);
+  }
+  return normalized;
+}
+
+export function validateFixtureMapping(fixtures) {
+  if (!Array.isArray(fixtures)) {
+    throw new Error("Type performance fixture mapping must be an array.");
+  }
+  const normalized = fixtures.map((fixture, index) => {
+    if (!fixture || typeof fixture.label !== "string") {
+      throw new Error(
+        `Type performance fixture mapping entry ${index} is malformed.`,
+      );
+    }
+    return {
+      label: fixture.label,
+      tsconfig: normalizeRepoRelativePath(fixture.tsconfig, fixture.label),
+    };
+  });
+  const labelCounts = new Map();
+  const targetCounts = new Map();
+  for (const fixture of normalized) {
+    labelCounts.set(fixture.label, (labelCounts.get(fixture.label) ?? 0) + 1);
+    targetCounts.set(
+      fixture.tsconfig,
+      (targetCounts.get(fixture.tsconfig) ?? 0) + 1,
+    );
+  }
+  const duplicateLabel = [...labelCounts].find(([, count]) => count > 1)?.[0];
+  if (duplicateLabel) {
+    throw new Error(
+      `Type performance fixture mapping has duplicate label ${duplicateLabel}.`,
+    );
+  }
+  const duplicateTarget = [...targetCounts].find(([, count]) => count > 1)?.[0];
+  if (duplicateTarget) {
+    throw new Error(
+      `Type performance fixture mapping has duplicate fixture config target ${duplicateTarget}.`,
+    );
+  }
+  const expectedLabels = new Set(expectedFixtures.map(({ label }) => label));
+  const actualLabels = new Set(normalized.map(({ label }) => label));
+  const missing = [...expectedLabels].filter(
+    (label) => !actualLabels.has(label),
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `Type performance fixture mapping is missing ${missing.join(", ")}.`,
+    );
+  }
+  const unexpected = [...actualLabels].filter(
+    (label) => !expectedLabels.has(label),
+  );
+  if (unexpected.length > 0) {
+    throw new Error(
+      `Type performance fixture mapping has unexpected ${unexpected.join(", ")}.`,
+    );
+  }
+  const byLabel = new Map(
+    normalized.map((fixture) => [fixture.label, fixture.tsconfig]),
+  );
+  for (const expected of expectedFixtures) {
+    const actualTarget = byLabel.get(expected.label);
+    if (actualTarget !== expected.tsconfig) {
+      throw new Error(
+        `${expected.label} fixture must map to ${expected.tsconfig}; received ${actualTarget}.`,
+      );
+    }
+  }
+  return expectedFixtures.map((fixture) => ({ ...fixture }));
+}
+
+export function validateTypePerformanceBudgets(budgets) {
+  if (!budgets || typeof budgets !== "object" || Array.isArray(budgets)) {
+    throw new Error("Type performance budgets must be an object.");
+  }
+  const expectedLabels = expectedFixtures.map(({ label }) => label);
+  const actualLabels = Object.keys(budgets);
+  const missing = expectedLabels.filter((label) => !(label in budgets));
+  if (missing.length > 0) {
+    throw new Error(
+      `Type performance budgets are missing ${missing.join(", ")}.`,
+    );
+  }
+  const unexpected = actualLabels.filter(
+    (label) => !expectedLabels.includes(label),
+  );
+  if (unexpected.length > 0) {
+    throw new Error(
+      `Type performance budgets have unexpected ${unexpected.join(", ")}.`,
+    );
+  }
+  for (const label of expectedLabels) {
+    const budget = budgets[label];
+    validateBudget(label, budget);
+    if (Object.hasOwn(budget, "tsconfig")) {
+      throw new Error(
+        `${label} budget must not define tsconfig; fixture paths are immutable.`,
+      );
+    }
+    const unexpectedFields = Object.keys(budget).filter(
+      (field) =>
+        field !== "maxInstantiations" &&
+        field !== "maxMemoryKiB" &&
+        field !== "calibration",
+    );
+    if (unexpectedFields.length > 0) {
+      throw new Error(
+        `${label} budget has unexpected fields ${unexpectedFields.join(", ")}.`,
+      );
+    }
+  }
+  return budgets;
+}
+
+export function resolveTypePerformanceConfiguration() {
+  const fixtures = validateFixtureMapping(expectedFixtures).map(
+    ({ label, tsconfig }) => ({
+      configPath: path.join(workspaceDirectory, ...tsconfig.split("/")),
+      label,
+    }),
+  );
+  return {
+    budgetsPath: defaultBudgetsPath,
+    fixtures,
+    workspaceDirectory,
+  };
 }
 
 function formatInteger(value) {
@@ -169,25 +327,18 @@ async function runTypeScript(configPath) {
   }
 }
 
-export async function runTypePerformanceChecks({
-  budgetsPath = defaultBudgetsPath,
-} = {}) {
-  const parsed = JSON.parse(await readFile(budgetsPath, "utf8"));
+export async function runTypePerformanceChecks({ budgetsPath } = {}) {
+  const configuration = resolveTypePerformanceConfiguration();
+  const selectedBudgetsPath = budgetsPath ?? configuration.budgetsPath;
+  const parsed = JSON.parse(await readFile(selectedBudgetsPath, "utf8"));
   if (!parsed || typeof parsed.fixtures !== "object" || !parsed.fixtures) {
     throw new Error("Type performance budgets must define a fixtures object.");
   }
-  const entries = Object.entries(parsed.fixtures);
-  if (entries.length === 0) {
-    throw new Error(
-      "Type performance budgets must define at least one fixture.",
-    );
-  }
+  const budgets = validateTypePerformanceBudgets(parsed.fixtures);
   const results = [];
-  for (const [label, budget] of entries) {
-    if (typeof budget.tsconfig !== "string" || budget.tsconfig.length === 0) {
-      throw new Error(`${label} budget must define a tsconfig path.`);
-    }
-    const diagnostics = await runTypeScript(budget.tsconfig);
+  for (const { configPath, label } of configuration.fixtures) {
+    const budget = budgets[label];
+    const diagnostics = await runTypeScript(configPath);
     const result = checkTypePerformanceBudget({ budget, diagnostics, label });
     console.log(result.summary);
     results.push(result);
