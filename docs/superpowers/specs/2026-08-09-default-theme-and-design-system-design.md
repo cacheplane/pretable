@@ -30,6 +30,24 @@ a quiet header, elevation instead of borders — is not reachable from the curre
    rests on one hairline and the rail needs the extra air to read as chrome rather than as a first
    data row. Density tiers 44 / 52 / 60 satisfy the strict-growth guard.
 
+_Added 2026-08-10, after reviewing the running site:_
+
+5. **Ship a first-party stroked icon set.** There is no icon set today — there are three
+   incompatible rendering systems. Two _filled_ SVGs (the funnel and the ⋮), both authored on a 16
+   grid and rendered at 11px so every edge lands on a fractional pixel; four Unicode text glyphs
+   (`▲`/`▼` sort, `▾` twisty, `✓` checkbox and boolean cell) which re-render in whatever font the
+   theme picked, so their size, weight and baseline change between Excel's Aptos and Material's
+   Roboto and across platforms; and a CSS `radial-gradient` for the chip grip dots. Nothing can give
+   them a shared stroke weight or optical size. Replace all of it with ~8 inline SVG glyphs on one
+   16px grid: 1.5px stroke, rounded caps and joins, `currentColor`, sized from a token. **No icon
+   library dependency** — that remains rejected on bundle, licensing and tree-shaking grounds.
+6. **The container edge becomes a hairline plus real elevation**, not a drawn frame. Today it is
+   `1px solid var(--pretable-rule-strong)` with no shadow, which under Material resolves to
+   `rgb(121,121,121)` — a mid-grey box around the hero grid. Excel keeps its frame and sets
+   `--pretable-shadow-card: none`.
+7. **The homepage visual pass lands inside SP2**, not as a separate quick PR, so the demo changes
+   once, coherently, rather than twice.
+
 ## Verified current state
 
 Every claim below was confirmed against the tree at `e7fcc97`.
@@ -136,6 +154,51 @@ stale `dist/` silently strips exports.
   theme can suppress an inline `none`. The fix is to pick one mechanism — drop the inline
   `outline: "none"` so `:237` governs both, or drop `:237` and let the inset shadow govern both —
   not to add a third.
+
+#### SP2b — the first-party icon set
+
+Roughly eight glyphs, all inline SVG on one 16px grid, 1.5px stroke, rounded caps and joins,
+`fill: none`, `stroke: currentColor`, sized from `--pretable-icon-size` (default 14px). No
+dependency; one small module in `@pretable/react`.
+
+Glyphs needed, replacing what is there now: **funnel** (currently a filled SVG), **⋮ overflow**
+(filled circles — keep circles, they are correct at this size, but move onto the shared grid),
+**chevron** for the group twisty (replaces the Unicode `▾`, and the existing CSS rotation still
+works), **sort ascending/descending** (replaces `▲`/`▼`), **check** (replaces `✓` in both the
+row-select checkbox and the boolean cell), **close/×** for the chip remove, and **grip** for the
+chip handle (replaces the `radial-gradient`).
+
+Two behavioural changes ride along, both visible on the running site:
+
+- The reveal rule is keyed on `[data-pretable-header-row]:hover`, so hovering any single header
+  lights every funnel in the grid at once. The original comment explains why a `~` selector
+  over-matched — but since SP1, header cells and their overlay slots both carry
+  `data-pretable-column-id`, so per-column scoping is now reachable. Fix it or record why not.
+- Sort indicators currently render beside every sortable label. The reference shows an affordance
+  only on the actively sorted column; the rest stay quiet until hover.
+
+Accessibility: every glyph stays `aria-hidden`, because each already sits inside a button with an
+`aria-label` or beside `aria-sort`. Do not add titles that would double-announce.
+
+#### SP2c — the homepage visual pass
+
+Apply the system to the hero once the tokens exist, in this order. Measured on the running site:
+of 153 rendered cells, **zero** carry alignment, because the hero's numeric columns never declare a
+type.
+
+1. Add `type: "number"` to `qty`, `last`, `mktValue`, `dayPnl`, `weight` in
+   `apps/website/app/components/heroGrid/positionColumns.tsx`. This is the single largest
+   readability change on the page and needs no new tokens.
+2. Set `--pretable-rule-vertical: transparent` for the site — reachable since SP1.
+3. Quiet the header: ~12.5px, muted, unfilled.
+4. Un-grey the pinned Symbol column via `--pretable-bg-pinned` plus the seam shadow. **Verified by
+   live CSS injection:** with the header white, the pinned column currently reads as a grey stripe,
+   because it borrows `--pretable-bg-header`. This is the clearest argument for the surface split.
+5. Container edge to hairline plus `--pretable-shadow-card`.
+
+Leave alone: the `Day P&L` two-line value-over-delta stack already does the reference's metric
+pattern well, and the `trim`/`watch`/`hold` pills are the reference's badge pattern hand-rolled in
+app CSS — they are the natural first SP4 primitive, not an SP2 edit.
 
 ### SP3 — `pretable.css` and the docs sweep
 
