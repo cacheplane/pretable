@@ -1,0 +1,218 @@
+{
+  "generatedAt": "2026-08-10T23:00:00.000Z",
+  "title": "Grouping under streaming — churn separated from grouping",
+  "supersedesFollowUp": "status/milestones/2026-08-10-grouping-bench-baseline.json followUps[1]: \"group-updates streams patches into the grouping column, so group count churns from 4 to ~100 during the run. A churn-free variant would separate 'grouping under streaming' from 'grouping-key churn under streaming'.\"",
+  "adapterId": "pretable",
+  "browserName": "chromium",
+  "profile": "default",
+  "scope": {
+    "comparative": false,
+    "note": "Absolute numbers and a regression tripwire, not a competitive claim — same reason as the baseline: row grouping is AG Grid Enterprise and MUI X Premium, and TanStack Table ships no row-grouping row model. validateSupportedP0aRequest rejects all four grouping scripts for every non-pretable adapter.",
+    "actedOn": "Nothing. This run measures; it does not fix. The regression it isolates belongs on its own branch with its own spec — a fix landed beside its own benchmark is how a benchmark stops being trustworthy."
+  },
+  "question": {
+    "asked": "Does row grouping belong in the streaming homepage hero? ROADMAP.md Now: \"Finish grouping adoption with committed benchmark evidence.\"",
+    "whyTheBaselineCouldNotAnswerIt": "The baseline's `group-updates` streams patches into whichever column its generator picks, including the grouping level. Group count went 4 -> ~100 over a 3 s run, so its 34.7 ms p95 conflated grouping under streaming (rows update, membership stable — the realistic case, and what a hero would do: group by sector, and sector does not change when a price ticks) with grouping-KEY CHURN under streaming (rows constantly re-pathing, the tree rebuilt with a different shape each tick — pathological).",
+    "answer": "Churn was not the cause. Separating them changed nothing, so the hero decision is unblocked in the negative: at 20,000 rows grouping under realistic streaming misses the 60 Hz budget on its own."
+  },
+  "whatWasAdded": {
+    "script": "group-updates-stable-keys",
+    "additive": "Purely. It shares the plan builder, the pre-window grouping setup and the metric contract with `group-updates`, and differs in exactly one respect: measureBenchUpdatesRun now takes `excludeColumnIds`, and this variant passes the grouping level (col_5). The option defaults to [], so `updates` and `group-updates` draw from the pool they always have. That is why this is a new script rather than a change to the existing generator — changing the generator would have broken comparability with `updates`, which is the reason the baseline gave for not adding it.",
+    "verifiedChurnFree": "`group rows before streaming: 4` / `group rows after streaming: 4` in all 14 stable-keys runs, against `4 -> 90..117` across the 14 `group-updates` runs. The notes are in the run artifacts, so a reader can tell the variants apart from the artifact alone.",
+    "knownAsymmetry": "Dropping one of S5's 30 columns lifts every survivor's share from 1/30 to 1/29, so the single wrapped column goes from 3.33% to 3.45% of patches — a ~0.1 percentage-point shift in wrapped-cell hit rate. It cannot account for an effect of the size measured here, and restricting the pool further (say to one fixed column) would be a much larger departure from `updates`. Documented at the source in apps/bench/src/interaction-plan.ts.",
+    "tracing": "measureBenchUpdatesRun now emits pretable.streaming.start/.end, and scripts/analyze-cdp.mjs takes --window=streaming. Streaming runs have no interaction marks, so --window=interaction silently falls back to the full trace — which for a 20,000-row S5 run is dominated by initial mount and does not answer the question."
+  },
+  "environment": {
+    "machine": "10-core Apple Silicon laptop running several worktrees concurrently; two other agents were active",
+    "loadAverage1mDuringHypothesisRuns": "170 to 241",
+    "loadAverage1mDuringTargetRuns": "39 to 78",
+    "caveat": "Load fell by roughly 4x mid-session, between the 3,000-row matrix (22:15-22:22Z) and the 20,000-row matrix (22:27-22:31Z). The two SCALES are therefore not comparable to each other, and none of these figures is comparable to the baseline's committed numbers. Every verdict below rests only on scripts measured against each other inside one matrix invocation.",
+    "sameSessionControlMethod": "Unlike the baseline, which ran one matrix invocation per (script, scale), each matrix invocation here interleaves all three scripts within every repeat — bench-matrix orders repeats outermost and scripts innermost. So `updates`, `group-updates` and `group-updates-stable-keys` are sampled minute by minute from the same load, not in three consecutive blocks."
+  },
+  "streaming": {
+    "scenarioId": "S5",
+    "updateRatePerSec": 1000,
+    "durationMs": 3000,
+    "batchIntervalMs": 50,
+    "batchesPerRun": 60,
+    "rows": [
+      {
+        "scale": "hypothesis",
+        "rowCount": 3000,
+        "matrixInvocation": "single, interleaved, n=7 per script, 2026-08-10T22:15:00Z..22:22:40Z",
+        "samples": [
+          {
+            "scriptName": "updates",
+            "n": 7,
+            "role": "same-session control",
+            "scrollFrameP95MsMedian": 10.0,
+            "scrollFrameP95MsSd": 0.1,
+            "frameMaxMsMedian": 15.9,
+            "frameBudgetOverrunsMedian": 0,
+            "frameBudgetOverrunsSd": 0.8,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0
+          },
+          {
+            "scriptName": "group-updates",
+            "n": 7,
+            "scrollFrameP95MsMedian": 9.9,
+            "scrollFrameP95MsSd": 0.1,
+            "frameMaxMsMedian": 10.4,
+            "frameBudgetOverrunsMedian": 0,
+            "frameBudgetOverrunsSd": 0.4,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0,
+            "groupRowsBeforeStreaming": 4,
+            "groupRowsAfterStreaming": "90 to 117"
+          },
+          {
+            "scriptName": "group-updates-stable-keys",
+            "n": 7,
+            "scrollFrameP95MsMedian": 10.0,
+            "scrollFrameP95MsSd": 0.2,
+            "frameMaxMsMedian": 10.4,
+            "frameBudgetOverrunsMedian": 0,
+            "frameBudgetOverrunsSd": 0.5,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0,
+            "groupRowsBeforeStreaming": 4,
+            "groupRowsAfterStreaming": 4
+          }
+        ],
+        "verdict": "At 3,000 rows all three are indistinguishable — p95 9.9 / 10.0 / 10.0 ms against sd 0.1-0.2, zero overruns each. Grouping is free at this scale whether keys churn or not. This reproduces the baseline's 3,000-row reading under a different load."
+      },
+      {
+        "scale": "target",
+        "rowCount": 20000,
+        "matrixInvocation": "single, interleaved, n=7 per script, 2026-08-10T22:27:43Z..22:30:58Z",
+        "samples": [
+          {
+            "scriptName": "updates",
+            "n": 7,
+            "role": "same-session control",
+            "scrollFrameP95MsMedian": 9.9,
+            "scrollFrameP95MsSd": 0.1,
+            "frameMaxMsMedian": 18.1,
+            "frameBudgetOverrunsMedian": 3,
+            "frameBudgetOverrunsSd": 1.0,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0
+          },
+          {
+            "scriptName": "group-updates",
+            "n": 7,
+            "scrollFrameP95MsMedian": 32.3,
+            "scrollFrameP95MsSd": 3.7,
+            "frameMaxMsMedian": 41.8,
+            "frameBudgetOverrunsMedian": 59,
+            "frameBudgetOverrunsSd": 0.5,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0,
+            "groupRowsBeforeStreaming": 4,
+            "groupRowsAfterStreaming": "97 to 113"
+          },
+          {
+            "scriptName": "group-updates-stable-keys",
+            "n": 7,
+            "scrollFrameP95MsMedian": 33.0,
+            "scrollFrameP95MsSd": 2.6,
+            "frameMaxMsMedian": 42.0,
+            "frameBudgetOverrunsMedian": 59,
+            "frameBudgetOverrunsSd": 0.0,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0,
+            "groupRowsBeforeStreaming": 4,
+            "groupRowsAfterStreaming": 4
+          }
+        ],
+        "verdict": "Removing key churn changed nothing. p95 33.0 vs 32.3 ms (sd 2.6 and 3.7); overruns 59 vs 59, with the churn-free variant's sd at 0.0. Against the same-session `updates` control at 9.9 ms / 3 overruns that is 3.3x frame time and ~20x overruns — attributable to grouping itself, not to the confound. 33 ms p95 is ~30 fps: the 60 Hz budget is missed for the whole run."
+      }
+    ],
+    "structuralReading": "frame_budget_overruns_count sits at 59-60 for both grouped variants in every one of the 14 target runs, and the run applies exactly 60 batches (3,000 ms / 50 ms). One blown frame per streamed batch. Ungrouped `updates` blows 3. The cost is not a tail event; it is the per-batch cost of the grouped derive."
+  },
+  "verdict": {
+    "heroDecision": "UNBLOCKED, and the answer is no at 20,000 rows. Grouping under realistic streaming — rows updating, group membership fixed — misses the 60 Hz budget by itself. Key churn is not the cause and is not the limitation to document; it is close to free on top of a cost that is already there. At 3,000 rows grouping is free, so a grouped streaming hero is defensible at hero-sized data and not at 20,000 rows.",
+    "isChurnADocumentedLimitation": "No. That framing was the hypothesis and the measurement rejects it. Churn adds nothing measurable (32.3 vs 33.0 ms p95, both 59 overruns), because the engine already pays a full rebuild per batch whether or not the tree's shape changed.",
+    "regression": "Real, and pre-existing — not introduced by the baseline, this branch, or the confound. Reported, not fixed."
+  },
+  "traceFindings": {
+    "method": "PLAYWRIGHT_PERF_TRACE=1 CDP trace sliced with scripts/analyze-cdp.mjs --window=streaming (the new marks), resolved through the bench bundle sourcemap, which lands on packages/{core,react}/dist/index.mjs. n=3 traced runs per script, S5 target (20,000 rows), interleaved, 2026-08-10T22:38Z. Frame figures reproduced under tracing: stable-keys p95 34.3 ms / 60 overruns, updates 10.0 ms / 5.",
+    "windowMs": 3000,
+    "busyTimeShare": {
+      "updates": "32% busy, 68% idle",
+      "groupUpdatesStableKeys": "70% busy, 30% idle",
+      "idlePercentPerTracedRun": {
+        "updates": [68.0],
+        "groupUpdatesStableKeys": [30.3, 32.3, 32.9]
+      }
+    },
+    "selfTimeMsInWindow": {
+      "note": "Median-ish figures from the first traced run of each script; the grouped ratios held across all three (accumulate 422.8 / 371.0 / 388.3, buildTree 262.7 / 262.8 / 278.7, createDomRenderSnapshot 268.2 / 256.5 / 244.1, getEstimatedRowHeightSignature 217.6 / 213.9 / 197.9).",
+      "core_accumulate": { "updates": 0, "grouped": 422.8 },
+      "core_buildTree": { "updates": 0, "grouped": 262.7 },
+      "core_stringifyGroupValue": { "updates": 0, "grouped": 91.7 },
+      "core_buildGroupedRows": { "updates": 6.6, "grouped": 82.5 },
+      "core_readCellValue": { "updates": 0, "grouped": 22.1 },
+      "core_flatten": { "updates": 0, "grouped": 18.8 },
+      "core_isAggregatableNumber": { "updates": 0, "grouped": 12.1 },
+      "core_applyTransaction": { "updates": 15.2, "grouped": 14.2 },
+      "react_createDomRenderSnapshot": { "updates": 185.7, "grouped": 268.2 },
+      "react_rowHeightsMapCallback": { "updates": 103.6, "grouped": 177.5 },
+      "react_getEstimatedRowHeightSignature": {
+        "updates": 84.8,
+        "grouped": 217.6
+      },
+      "react_wrapFilterCallback": { "updates": 157.3, "grouped": 41.6 },
+      "react_estimateRowHeight": { "updates": 68.1, "grouped": 77.3 }
+    },
+    "readings": [
+      "The extra busy time is ~1,127 ms over the 3,000 ms window. It splits roughly 82% engine / 16% React: the grouping pipeline adds ~923 ms of self time (accumulate 422.8, buildTree 262.7, stringifyGroupValue 91.7, buildGroupedRows 82.5, readCellValue 22.1, flatten 18.8, isAggregatableNumber 12.1, plus small helpers), while React's row-height re-estimation adds ~183 ms net.",
+      "Divided by the run's 60 batches: accumulate ~7.0 ms and buildTree ~4.4 ms PER BATCH, on top of everything else. The engine re-derives the entire 20,000-row grouping tree on every streamed batch — there is no incremental path, so any row change invalidates the derived cache and re-runs sortRows -> buildTree -> accumulate -> flatten over all rows. That is the mechanism behind one blown frame per batch.",
+      "Consistent with an O(total rows) per-batch derive: at 3,000 rows the same pipeline costs ~1 ms per batch and disappears into the frame budget, which is why grouping is free at the hypothesis scale and not at target. Consistent with, not proven by, these two scales.",
+      "flatten is 18.8 ms against buildTree+accumulate's ~685 ms — the same ~1:35 ratio the baseline found for the expand toggle, from a different direction.",
+      "SHAPE DIFFERS FROM THE EXPAND-TOGGLE FINDING, contra expectation. The group-expand CDP split had React row-height re-estimation at ~58-60% of the window and engine redundancy at ~13%. Under streaming the proportions invert: engine ~82% of the added cost, React ~16%. The same two React functions are hot (createDomRenderSnapshot -> getEstimatedRowHeightSignature) and they do get more expensive when grouped, but they are not where a streaming fix would go. Anyone sizing a fix for both windows should treat them as two different problems.",
+      "One counter-intuitive line: the wrap-filter callback inside getEstimatedRowHeightSignature is CHEAPER when grouped (157.3 -> 41.6 ms) while its caller is dearer (84.8 -> 217.6 ms). Plausibly group rows displacing data rows in the viewport, plus inlining differences between the two builds' hot paths. The row-height subtotal is the figure to quote, not either line alone."
+    ]
+  },
+  "gates": {
+    "note": "No gate was weakened, relaxed, or renamed. The 60 Hz miss below is a measurement, not a loosened threshold.",
+    "sixtyHz": "MISSED by both grouped variants at 20,000 rows (p95 32.3 / 33.0 ms, 59 overruns of 60 batches). PASSED by all three scripts at 3,000 rows and by ungrouped `updates` at both scales.",
+    "zeroGap": "PASSED. streaming_cls 0 in all 42 matrix runs; scroll_position_drift_px 0 in all 42.",
+    "interactionContinuity": "PASSED. visible_row_count_drift 0 in 40 of 42 runs; the two 1s were both ungrouped `updates` at target, i.e. not a grouping effect. long_tasks_count 0 in all 42.",
+    "existingScriptsUnchanged": "Verified by A/B rather than assumed — see controls below."
+  },
+  "controls": {
+    "updates_S5_target_marksAB": {
+      "claim": "The pretable.streaming.start/.end marks added for --window=streaming do not move `updates`.",
+      "beforeMarks": {
+        "n": 7,
+        "frameP95Median": 9.9,
+        "frameMaxMedian": 18.1,
+        "overrunsMedian": 3
+      },
+      "afterMarks": {
+        "n": 5,
+        "frameP95Median": 10.0,
+        "frameMaxMedian": 17.8,
+        "overrunsMedian": 2
+      },
+      "verdict": "unchanged (p95 9.9 vs 10.0 against sd 0.1-0.2; overruns 3 vs 2 against sd 0.7-1.0). Both measured in this session; the after-marks run is untraced, so tracing overhead is not in it."
+    },
+    "updates_S5_bothScales": {
+      "claim": "`group-updates-stable-keys` shares measureBenchUpdatesRun with `updates`, so `updates` is the control that proves the shared path did not shift.",
+      "verdict": "`updates` ran n=7 inside each matrix invocation, interleaved with the two grouped scripts. Its p95 was 10.0 (hypothesis) and 9.9 (target) with sd 0.1 — flat across both, and no run was excluded."
+    }
+  },
+  "reruns": [
+    "A dev-scale smoke run of `group-updates-stable-keys` preceded the reported matrices, to confirm the exclusion actually holds group count at 4 before spending measurement time. Not reported as data.",
+    "`updates` at S5 target was run twice: n=7 inside the target matrix (before the streaming marks existed) and n=5 afterwards for the marks A/B above. Both are reported; neither replaced the other.",
+    "No reported figure is a re-run of a discarded one. Every headline number is the n=7 median from a single interleaved matrix invocation per scale, and no run was dropped from any median. The traced n=3 sets are reported separately and are never mixed into the untraced medians."
+  ],
+  "followUps": [
+    "Grouping re-derives the whole tree on every streamed batch. The engine has no incremental grouping/aggregation path; ROADMAP.md already lists \"PMS analytics: incremental grouping/aggregation\" under Later, and this is the first measurement that prices it. Own branch, own spec.",
+    "Grouping in the streaming hero is defensible at 3,000 rows and not at 20,000. If the hero wants both grouping and 20,000 rows, the incremental derive above is the prerequisite.",
+    "The scale between 3,000 and 20,000 rows where grouped streaming crosses the 60 Hz budget is unmeasured. S5 has no scale between them; a sweep would need a new scale entry rather than a new script.",
+    "The expand-toggle window and the streaming window have different cost shapes (React-dominated vs engine-dominated). A fix aimed at one should not be assumed to help the other."
+  ]
+}
