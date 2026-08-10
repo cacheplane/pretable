@@ -1,5 +1,5 @@
 import type {
-  ColumnDescriptorOf,
+  ColumnIdOf,
   ColumnValueOf,
   PretableAggregatesFor,
   PretableDerivationsFor,
@@ -11,14 +11,17 @@ import type { PretableRowModelError } from "./errors";
 declare const groupIdBrand: unique symbol;
 declare const rowModelDescriptor: unique symbol;
 
+/** @public */
 export type PretableGroupId = string & {
   readonly [groupIdBrand]: "PretableGroupId";
 };
 
+/** @public */
 export type PretableVisibleRowRef<TRowId extends PretableRowId> =
   | { readonly kind: "data"; readonly rowId: TRowId }
   | { readonly kind: "group"; readonly groupId: PretableGroupId };
 
+/** @public */
 export interface PretableDataRow<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -30,43 +33,40 @@ export interface PretableDataRow<
   readonly depth: number;
 }
 
-type PretableGroupRowFor<TDescriptor, TColumns> = TDescriptor extends {
-  readonly id: infer TColumnId extends string;
-  readonly value: infer TValue;
-}
-  ? {
-      readonly kind: "group";
-      readonly groupId: PretableGroupId;
-      readonly depth: number;
-      readonly columnId: TColumnId;
-      readonly value: TValue;
-      readonly childCount: number;
-      readonly aggregates: PretableAggregatesFor<TColumns>;
-      readonly expanded: boolean;
-    }
-  : never;
+/** @public */
+export type PretableGroupRow<TColumns> = {
+  readonly [TColumnId in ColumnIdOf<TColumns>]: {
+    readonly kind: "group";
+    readonly groupId: PretableGroupId;
+    readonly depth: number;
+    readonly columnId: TColumnId;
+    readonly value: ColumnValueOf<TColumns, TColumnId>;
+    readonly childCount: number;
+    readonly aggregates: PretableAggregatesFor<TColumns>;
+    readonly expanded: boolean;
+  };
+}[ColumnIdOf<TColumns>];
 
-export type PretableGroupRow<TColumns> = PretableGroupRowFor<
-  ColumnDescriptorOf<TColumns>,
-  TColumns
->;
-
+/** @public */
 export type PretableVisibleRow<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
 > = PretableDataRow<TRow, TRowId> | PretableGroupRow<TColumns>;
 
+/** @public */
 export type PretableExpansionDefault =
   | { readonly kind: "collapsed" }
   | { readonly kind: "expanded" }
   | { readonly kind: "through-depth"; readonly depth: number };
 
+/** @public */
 export interface PretableExpansionState {
   readonly default: PretableExpansionDefault;
   readonly overrideCount: number;
 }
 
+/** @public */
 export interface PretableRowModelSnapshot<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -128,6 +128,7 @@ export interface PretableRowModelSnapshot<
   readonly expansion: Readonly<PretableExpansionState>;
 }
 
+/** @public */
 export type PretableRowModelStatus =
   | { readonly kind: "ready" }
   | {
@@ -143,6 +144,7 @@ export type PretableRowModelStatus =
     }
   | { readonly kind: "disposed" };
 
+/** @public */
 export interface PretableRowModelState<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -152,6 +154,7 @@ export interface PretableRowModelState<
   readonly status: PretableRowModelStatus;
 }
 
+/** @public */
 export interface PretableRowUpdate<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -169,6 +172,7 @@ export interface PretableRowUpdate<
   readonly changes: Partial<TRow>;
 }
 
+/** @public */
 export interface PretableTransaction<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -178,11 +182,13 @@ export interface PretableTransaction<
   readonly remove?: readonly TRowId[];
 }
 
+/** @public */
 export type PretableMutationIssue<TRowId extends PretableRowId> =
   | { readonly code: "unknown-update-id"; readonly rowId: TRowId }
   | { readonly code: "unknown-remove-id"; readonly rowId: TRowId }
   | { readonly code: "unknown-group-id"; readonly groupId: PretableGroupId };
 
+/** @public */
 export interface PretableMutationResult<TRowId extends PretableRowId> {
   readonly previousRevision: number;
   readonly revision: number;
@@ -194,6 +200,7 @@ export interface PretableMutationResult<TRowId extends PretableRowId> {
   readonly issues: readonly PretableMutationIssue<TRowId>[];
 }
 
+/** @public */
 export interface PretableQueryTransition<TColumns> {
   readonly id: number;
   readonly requestedQuery: Readonly<PretableQueryFor<TColumns>>;
@@ -201,6 +208,7 @@ export interface PretableQueryTransition<TColumns> {
   cancel(): void;
 }
 
+/** @public */
 export interface PretableDerivationTransition<TColumns> {
   readonly id: number;
   readonly requestedDerivations: Readonly<PretableDerivationsFor<TColumns>>;
@@ -208,9 +216,11 @@ export interface PretableDerivationTransition<TColumns> {
   cancel(): void;
 }
 
+/** @public */
 export type PretableVisibleRowField =
   "row" | "depth" | "expanded" | "childCount" | "aggregates";
 
+/** @public */
 export type PretableChangeOperation<TRowId extends PretableRowId> =
   | {
       readonly kind: "insert";
@@ -235,6 +245,7 @@ export type PretableChangeOperation<TRowId extends PretableRowId> =
       readonly fields: readonly PretableVisibleRowField[];
     };
 
+/** @public */
 export interface PretableChangeSet<TRowId extends PretableRowId> {
   /** The snapshot revision to which the first operation applies. */
   readonly previousRevision: number;
@@ -248,6 +259,7 @@ export interface PretableChangeSet<TRowId extends PretableRowId> {
   readonly operations: readonly PretableChangeOperation<TRowId>[];
 }
 
+/** @public */
 export type PretableChangeSequence<TRowId extends PretableRowId> =
   | {
       readonly kind: "changes";
@@ -261,6 +273,7 @@ export type PretableChangeSequence<TRowId extends PretableRowId> =
       readonly reason: "unknown-revision" | "journal-evicted" | "bulk-replace";
     };
 
+/** @public */
 export interface PretableDistinctValueOptions {
   readonly search?: string;
   readonly start?: number;
@@ -272,6 +285,7 @@ export interface PretableDistinctValueOptions {
   readonly blankOrder?: "first" | "last";
 }
 
+/** @public */
 export interface PretableDistinctValueResult<TValue> {
   readonly values: readonly {
     /** Numeric zero uses SameValueZero identity and is returned as positive zero. */
@@ -283,30 +297,33 @@ export interface PretableDistinctValueResult<TValue> {
   readonly rowModelRevision: number;
 }
 
+/** @public */
 export interface PretableDistinctValueQuery<TValue> {
   readonly status: "pending" | "ready" | "error" | "cancelled";
   readonly finished: Promise<PretableDistinctValueResult<TValue>>;
   cancel(): void;
 }
 
-type PretableDistinctScalar =
-  string | number | bigint | boolean | Date | null | undefined;
+/**
+ * Column IDs whose complete inferred value type has stable local identity.
+ * @public
+ */
+export type PretableDistinctColumnIdOf<TColumns> =
+  TColumns extends readonly (infer TColumn)[]
+    ? TColumn extends {
+        readonly id: infer TColumnId extends string;
+        readonly accessor: (...args: never[]) => infer TValue;
+      }
+      ? [TValue] extends [
+          string | number | bigint | boolean | Date | null | undefined,
+        ]
+        ? TColumnId
+        : never
+      : never
+    : never;
 
-type PretableDistinctDescriptor<TDescriptor> = TDescriptor extends {
-  readonly id: string;
-  readonly value: infer TValue;
-}
-  ? [TValue] extends [PretableDistinctScalar]
-    ? TDescriptor
-    : never
-  : never;
-
-/** Column IDs whose complete inferred value type has stable local identity. */
-export type PretableDistinctColumnIdOf<TColumns> = PretableDistinctDescriptor<
-  ColumnDescriptorOf<TColumns>
->["id"];
-
-export interface PretableRowModelCarrier<
+/** @public */
+export interface PretableRowModel<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
@@ -316,13 +333,6 @@ export interface PretableRowModelCarrier<
     readonly rowId: TRowId;
     readonly columns: TColumns;
   };
-}
-
-export interface PretableRowModel<
-  TRow extends object,
-  TRowId extends PretableRowId,
-  TColumns,
-> extends PretableRowModelCarrier<TRow, TRowId, TColumns> {
   getState(): PretableRowModelState<TRow, TRowId, TColumns>;
   /**
    * Returns the immutable original schema/presentation tuple supplied when
@@ -372,17 +382,27 @@ export interface PretableRowModel<
   dispose(): void;
 }
 
-export type RowOf<TModel> =
-  TModel extends PretableRowModelCarrier<infer TRow, PretableRowId, unknown>
-    ? TRow
-    : never;
+/** @public */
+export type RowOf<TModel> = TModel extends {
+  readonly [rowModelDescriptor]: {
+    readonly row: infer TRow extends object;
+  };
+}
+  ? TRow
+  : never;
 
-export type RowIdOf<TModel> =
-  TModel extends PretableRowModelCarrier<object, infer TRowId, unknown>
-    ? TRowId
-    : never;
+/** @public */
+export type RowIdOf<TModel> = TModel extends {
+  readonly [rowModelDescriptor]: {
+    readonly rowId: infer TRowId extends PretableRowId;
+  };
+}
+  ? TRowId
+  : never;
 
-export type ColumnsOf<TModel> =
-  TModel extends PretableRowModelCarrier<object, PretableRowId, infer TColumns>
-    ? TColumns
-    : never;
+/** @public */
+export type ColumnsOf<TModel> = TModel extends {
+  readonly [rowModelDescriptor]: { readonly columns: infer TColumns };
+}
+  ? TColumns
+  : never;

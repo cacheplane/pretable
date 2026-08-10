@@ -1,5 +1,6 @@
 import type { PretableGroupKey, PretableRowId } from "./column-types";
 
+/** @public */
 export type PretableRowModelOperation =
   | "set-rows"
   | "apply-transaction"
@@ -13,6 +14,7 @@ export type PretableRowModelOperation =
   | "distinct-values"
   | "dispose";
 
+/** @public */
 export type PretableRowModelErrorCode =
   | "disposed-model"
   | "duplicate-row-id"
@@ -27,6 +29,7 @@ export type PretableRowModelErrorCode =
   | "aggregator-failed"
   | "derivation-failed";
 
+/** @public */
 export interface PretableRowModelErrorContext {
   readonly operation: PretableRowModelOperation;
   readonly rowId?: PretableRowId;
@@ -34,6 +37,7 @@ export interface PretableRowModelErrorContext {
   readonly cause?: unknown;
 }
 
+/** @public */
 export class PretableRowModelError extends Error {
   readonly name: string = "PretableRowModelError";
   readonly code: PretableRowModelErrorCode;
@@ -54,6 +58,7 @@ export class PretableRowModelError extends Error {
   }
 }
 
+/** @public */
 export class PretableDisposedModelError extends PretableRowModelError {
   readonly name: string = "PretableDisposedModelError";
 
@@ -62,6 +67,7 @@ export class PretableDisposedModelError extends PretableRowModelError {
   }
 }
 
+/** @public */
 export class PretableReentrantMutationError extends PretableRowModelError {
   readonly name = "PretableReentrantMutationError";
 
@@ -92,6 +98,7 @@ export function findPretableReentrantMutationError(
   return undefined;
 }
 
+/** @public */
 export class PretableRowIdentityChangeError extends PretableRowModelError {
   readonly name = "PretableRowIdentityChangeError";
 
@@ -108,6 +115,7 @@ export class PretableRowIdentityChangeError extends PretableRowModelError {
   }
 }
 
+/** @public */
 export class PretableUnsupportedRowUpdateError extends PretableRowModelError {
   readonly name = "PretableUnsupportedRowUpdateError";
 
@@ -120,6 +128,7 @@ export class PretableUnsupportedRowUpdateError extends PretableRowModelError {
   }
 }
 
+/** @public */
 export class PretableInvalidGroupKeyError extends PretableRowModelError {
   readonly name = "PretableInvalidGroupKeyError";
 
@@ -161,9 +170,11 @@ export function isPretableGroupKey(value: unknown): value is PretableGroupKey {
   }
 }
 
+/** @public */
 export type PretableTransitionCancellationReason =
   "cancelled" | "superseded" | "disposed";
 
+/** @public */
 export class PretableTransitionCancelledError extends Error {
   readonly name = "PretableTransitionCancelledError";
 

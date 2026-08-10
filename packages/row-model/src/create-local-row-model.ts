@@ -182,6 +182,7 @@ export function getLocalRowModelChangeJournalDiagnosticsForTesting(
   return getChangeJournalDiagnosticsForTesting(journal);
 }
 
+/** @public */
 export type CreateLocalRowModelOptions<
   TColumns,
   TRowId extends PretableRowId,
@@ -203,6 +204,7 @@ type DefaultRowId<TColumns> =
     ? TRowId
     : never;
 
+/** @public */
 export type CreateLocalRowModelWithDefaultIdOptions<TColumns> =
   RowForColumns<TColumns> extends { readonly id: PretableRowId }
     ? CreateLocalRowModelBaseOptions<TColumns, DefaultRowId<TColumns>> & {
@@ -459,16 +461,21 @@ function expansionChangeOperations<
   return Object.freeze(operations);
 }
 
-/** Creates the persistent, framework-independent local row model. */
+/**
+ * Creates the persistent, framework-independent local row model.
+ * @public
+ */
 export function createLocalRowModel<const TColumns extends readonly unknown[]>(
   options: CreateLocalRowModelWithDefaultIdOptions<TColumns>,
 ): PretableRowModel<RowForColumns<TColumns>, DefaultRowId<TColumns>, TColumns>;
+/** @public */
 export function createLocalRowModel<
   const TColumns extends readonly unknown[],
   const TRowId extends PretableRowId,
 >(
   options: CreateLocalRowModelOptions<TColumns, TRowId>,
 ): PretableRowModel<RowForColumns<TColumns>, TRowId, TColumns>;
+/** @public */
 export function createLocalRowModel<
   const TColumns extends readonly unknown[],
   const TRowId extends PretableRowId,
