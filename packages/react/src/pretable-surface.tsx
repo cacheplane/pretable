@@ -162,6 +162,10 @@ import { GroupRow } from "./group-row";
 import { GroupPanel } from "./group-panel/GroupPanel";
 import { hitTestGroupPanel } from "./group-panel/group-panel-hit-test";
 import {
+  type GroupPanelAutoscroll,
+  createGroupPanelAutoscroll,
+} from "./group-panel/group-panel-scroll";
+import {
   insertGroupLevel,
   removeGroupLevel,
 } from "./group-panel/group-panel-model";
@@ -870,6 +874,31 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     ghostHeight: number;
     ghostHeader: string;
   } | null>(null);
+  /**
+   * Lets a header drag reach a grouping level that is scrolled out of the
+   * panel. The panel's own chip drag holds a second instance — they are
+   * separate gestures that can never run at once, and sharing one would mean
+   * hoisting per-gesture state out of both components.
+   *
+   * The callback refreshes only `groupInsertIndex`: `dropIndex` is a function of
+   * the pointer against the *grid's* scrollport, which scrolling the panel does
+   * not move.
+   */
+  const groupPanelAutoscrollRef = useRef<GroupPanelAutoscroll | null>(null);
+  groupPanelAutoscrollRef.current ??= createGroupPanelAutoscroll(
+    (clientX, clientY) => {
+      setReorderDrag((prev) =>
+        prev
+          ? {
+              ...prev,
+              groupInsertIndex:
+                hitTestGroupPanel(groupPanelRef.current, clientX, clientY)
+                  ?.insertIndex ?? null,
+            }
+          : null,
+      );
+    },
+  );
   const [viewportWidth, setViewportWidth] = useState(0);
   const [liveMessage, setLiveMessage] = useState<string>("");
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1994,7 +2023,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         : columnMenuButtonNodesRef.current.get(request.intent.columnId);
 
     if (requestedNode?.isConnected) {
-      requestedNode.focus();
+      // A chip lives in a strip that scrolls sideways, and `GroupPanel`'s own
+      // `onFocus` reveals it there. Letting the browser scroll instead would
+      // walk every scrollable ancestor up to the document, so restoring focus
+      // to a chip could scroll the whole page to show a 100px strip. A column
+      // menu button is not in that strip and keeps the native behaviour.
+      requestedNode.focus(
+        request.intent.target === "chip" ? { preventScroll: true } : undefined,
+      );
       return;
     }
 
@@ -2266,6 +2302,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         ) {
           reorderStateRef.current = null;
           setReorderDrag(null);
+          groupPanelAutoscrollRef.current?.stop();
           event.preventDefault();
           return;
         }
@@ -2861,6 +2898,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                               event.clientY,
                             );
                       const groupInsertIndex = panelHit?.insertIndex ?? null;
+                      // Near an edge of a panel that has more levels than fit,
+                      // this walks the strip along so they can all be dropped
+                      // between. It no-ops unless the pointer is inside the
+                      // panel's rect, so a plain header reorder never triggers
+                      // it.
+                      groupPanelAutoscrollRef.current?.update(
+                        groupPanelRef.current,
+                        event.clientX,
+                        event.clientY,
+                      );
 
                       if (!drag.dragging) {
                         if (dist < REORDER_THRESHOLD_PX) return;
@@ -2962,10 +3009,12 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                       }
                       reorderStateRef.current = null;
                       setReorderDrag(null);
+                      groupPanelAutoscrollRef.current?.stop();
                     },
                     onPointerCancel: () => {
                       reorderStateRef.current = null;
                       setReorderDrag(null);
+                      groupPanelAutoscrollRef.current?.stop();
                     },
                   }
                 : {})}
