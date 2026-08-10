@@ -834,7 +834,9 @@ export function createGridCore<TRow extends PretableRow>(
         nextColumns[clampedTo] = { ...moved, pinned: nextPinned };
       }
 
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       options = { ...options, columns: nextColumns };
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     setColumnOrder(ids: readonly string[]) {
@@ -887,7 +889,9 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       options = { ...options, columns: nextColumns };
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     setColumnPinned(columnId: string, pinned: "left" | "right" | null) {
@@ -945,7 +949,9 @@ export function createGridCore<TRow extends PretableRow>(
       };
       nextColumns.splice(insertAt, 0, nextColumn);
 
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       options = { ...options, columns: nextColumns };
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     autosizeColumn(columnId: string, autosizeOptions?: AutosizeOptions) {
@@ -1008,7 +1014,11 @@ export function createGridCore<TRow extends PretableRow>(
         }
       }
 
+      // Restoring the original layout is a reorder and a re-pin at once, so it
+      // corrupts ranges exactly the way `moveColumn` does.
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       options = { ...options, columns: next };
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]) {
@@ -1370,11 +1380,34 @@ export function createGridCore<TRow extends PretableRow>(
    * its own range and appends a second one, and `copy.ts` degrades a range with
    * one unresolvable endpoint to a single column.
    *
-   * A range whose endpoints were the pre-change first/last is re-encoded onto
-   * the post-change first/last, preserving the row span and the drag
-   * orientation. Anything else keeps its columns if they survive and is dropped
-   * if they do not. Returns whether the selection actually changed, so callers
-   * that emit conditionally can include it.
+   * The same corruption happens with no grouping involved at all, because a
+   * range does not need to LOSE a column to break — it only needs the columns
+   * BETWEEN its endpoints to change. On `a,b,c`, `moveColumn("c", 0)` draws
+   * `c,a,b` while the range still reads `a…c`, which now resolves to the
+   * two-column span `(c,a)` and reports the row as indeterminate. So every
+   * reordering and pinning path reconciles too, not just the paths that change
+   * membership.
+   *
+   * Two rules, in order:
+   *
+   * 1. A range whose endpoints were the pre-change first/last is re-encoded
+   *    onto the post-change first/last, preserving the row span and the drag
+   *    orientation. Its endpoints were positional ("the whole row"), not two
+   *    columns the user picked, so they follow the position. This has to come
+   *    first: rule 2 would pin a full-row range to the old columns and leave a
+   *    newly added one (the synthetic group column) outside it.
+   * 2. Otherwise the range means the specific columns it covered, so those are
+   *    what is preserved: the pre-change members that still exist are re-encoded
+   *    onto their new extremes. That is exact whenever they are still adjacent,
+   *    including when they moved together or when one of them was hidden. When
+   *    a reorder has split them the range is DROPPED rather than stretched over
+   *    the intruder — a selection that quietly grows is the same silent-wrong-
+   *    answer bug this function exists to fix (`copy` would emit a column the
+   *    user never selected, and a two-cell range would report the row fully
+   *    selected), whereas a dropped range is visible and re-selectable.
+   *
+   * Returns whether the selection actually changed, so callers that emit
+   * conditionally can include it.
    */
   function reconcileSelectionAfterColumnModelChange(
     before: readonly PretableColumn<TRow>[] | null,
@@ -1401,6 +1434,8 @@ export function createGridCore<TRow extends PretableRow>(
     }
 
     const surviving = new Set(after.map((column) => column.id));
+    const beforeIndex = new Map(before.map((column, i) => [column.id, i]));
+    const afterIndex = new Map(after.map((column, i) => [column.id, i]));
     const anchor = selection.anchor;
     let anchorColumnId: string | null = anchor ? anchor.columnId : null;
     let anchorRemapped = false;
@@ -1451,15 +1486,67 @@ export function createGridCore<TRow extends PretableRow>(
         continue;
       }
 
+      const beforeStart = beforeIndex.get(range.startColumnId);
+      const beforeEnd = beforeIndex.get(range.endColumnId);
+
+      if (beforeStart === undefined || beforeEnd === undefined) {
+        // An endpoint that was not part of the pre-change model has no members
+        // to preserve — it can only be kept as-is or dropped.
+        if (
+          surviving.has(range.startColumnId) &&
+          surviving.has(range.endColumnId)
+        ) {
+          ranges.push(range);
+          continue;
+        }
+
+        changed = true;
+        continue;
+      }
+
+      const lo = Math.min(beforeStart, beforeEnd);
+      const hi = Math.max(beforeStart, beforeEnd);
+      let memberLo = Infinity;
+      let memberHi = -Infinity;
+      let memberCount = 0;
+
+      for (let i = lo; i <= hi; i += 1) {
+        const nextIndex = afterIndex.get(before[i]!.id);
+
+        if (nextIndex === undefined) {
+          continue;
+        }
+
+        memberLo = Math.min(memberLo, nextIndex);
+        memberHi = Math.max(memberHi, nextIndex);
+        memberCount += 1;
+      }
+
+      // Every member gone, or the survivors no longer sit next to each other:
+      // no contiguous range covers exactly them, so there is nothing honest to
+      // re-encode onto.
+      if (memberCount === 0 || memberHi - memberLo + 1 !== memberCount) {
+        changed = true;
+        continue;
+      }
+
+      const forward = beforeStart <= beforeEnd;
+      const startColumnId = after[forward ? memberLo : memberHi]!.id;
+      const endColumnId = after[forward ? memberHi : memberLo]!.id;
+
       if (
-        surviving.has(range.startColumnId) &&
-        surviving.has(range.endColumnId)
+        startColumnId === range.startColumnId &&
+        endColumnId === range.endColumnId
       ) {
         ranges.push(range);
         continue;
       }
 
+      // The anchor is remapped by identity below when its own column survives,
+      // which is the right answer here: unlike a full-row bound, a partial
+      // range's anchor names a column the user actually clicked.
       changed = true;
+      ranges.push({ ...range, startColumnId, endColumnId });
     }
 
     let nextAnchor = anchor;
