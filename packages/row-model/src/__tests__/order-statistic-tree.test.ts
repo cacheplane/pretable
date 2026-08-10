@@ -181,7 +181,7 @@ describe("OrderStatisticTree", () => {
   });
 
   test("stays AVL-balanced when comparator order is correlated with IDs", () => {
-    const size = 20_000;
+    const size = 100_000;
     let tree = createTree();
     const expected: Item[] = [];
     for (let id = 0; id < size; id += 1) {
