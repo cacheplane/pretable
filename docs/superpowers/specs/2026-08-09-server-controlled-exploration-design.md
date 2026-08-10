@@ -799,8 +799,13 @@ export interface BrowseSortEntry {
 }
 
 export type BrowseFilter =
-  | { readonly field: "status" | "kind";
-      readonly op: "in" | "notIn"; readonly values: readonly string[] }
+  // Split per field, NOT `field: "status" | "kind"` with `values: string[]` —
+  // a shared arm would make `{field:"status", values:["actve"]}` compile, a
+  // check the existing `BrowseQuery.status` shorthand already gives us.
+  | { readonly field: "status";
+      readonly op: "in" | "notIn"; readonly values: readonly MemoryStatus[] }
+  | { readonly field: "kind";
+      readonly op: "in" | "notIn"; readonly values: readonly MemoryKind[] }
   | { readonly field: "content";
       readonly op: "contains" | "notContains" | "equals" | "notEquals"
                  | "startsWith" | "endsWith";

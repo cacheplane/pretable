@@ -10,6 +10,16 @@
 
 ---
 
+> **Line anchors in this plan are approximate — locate by symbol, not by number.**
+> `origin/main` moved during execution (pretable picked up #264, which added
+> ~300 lines to `create-grid-core.ts`), and it will move again — Brian runs
+> concurrent sessions. Drift is non-uniform, so no global offset corrects it.
+> Every `file:line` below was accurate at authoring time; treat it as a hint and
+> confirm by searching for the quoted symbol or code. If a cited line holds
+> something unrelated, that is drift, not a missing prerequisite — do not "fix"
+> the repo to match the plan.
+
+
 ## Read before you start
 
 You are working in the pretable monorepo. Six facts that will otherwise cost you an hour:
