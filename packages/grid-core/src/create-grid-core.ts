@@ -293,18 +293,36 @@ export function createGridCore<TRow extends PretableRow>(
   };
 
   /**
+   * A key that REPLACES an existing one. The first key is an assignment:
+   * nothing loaded before it was answering a different question. A non-string
+   * key is not a supplied key, and this has to agree with `applyResultMeta` on
+   * that — a disagreement would either clear state for a key that never landed
+   * or land one without clearing.
+   */
+  function isDatasetPivot(next: PretableResultMeta["datasetKey"]): boolean {
+    return (
+      typeof next === "string" && datasetKey !== null && next !== datasetKey
+    );
+  }
+
+  /**
    * The dataset-pivot clear bundle. A different `datasetKey` means the loaded
    * records answer a different question, so nothing keyed to the old answer
-   * survives — including the aggregate-identity cache, whose group ids are
-   * path-derived and would otherwise hand back a previous query's objects.
+   * survives — including `suppliedTotal`, which counts the old result set and
+   * would otherwise be reported against the new one until a fresh count lands.
+   *
+   * Clearing focus is also what suppresses the clamped-index focus fallback:
+   * `reconcileFocusAfterVisibleModelChange` is a no-op on null focus, and
+   * across a pivot that fallback is a guess rather than a repair — position i
+   * in the old query's result says nothing about position i in a different
+   * query's window.
    */
   function clearForDatasetChange(): void {
     selection = { ranges: [], anchor: null };
     focus = { rowId: null, columnId: null };
     groupExpansionOverrides = new Set<string>();
     editing = null;
-    previousAggregates = new Map();
-    cachedDerivation = null;
+    suppliedTotal = null;
   }
 
   /** Store the parts of `meta` the current authority can honor. */
@@ -312,7 +330,7 @@ export function createGridCore<TRow extends PretableRow>(
     if (!meta) {
       return;
     }
-    if (meta.datasetKey !== undefined) {
+    if (typeof meta.datasetKey === "string") {
       datasetKey = meta.datasetKey;
     }
     if (meta.total !== undefined) {
@@ -1237,24 +1255,13 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     setRows(nextRows: TRow[], meta?: PretableResultMeta) {
-      const datasetChanged =
-        meta?.datasetKey !== undefined &&
-        datasetKey !== null &&
-        meta.datasetKey !== datasetKey;
-
-      if (datasetChanged) {
+      if (isDatasetPivot(meta?.datasetKey)) {
         clearForDatasetChange();
       }
 
       applyResultMeta(meta);
 
-      // `null` disables focus reconciliation entirely. Across an identity
-      // change the clamped-index fallback is not a repair, it is a guess:
-      // position i in the old query's result says nothing about position i in
-      // a different query's window.
-      const before = datasetChanged
-        ? null
-        : captureVisibleRowsForFocusReconciliation();
+      const before = captureVisibleRowsForFocusReconciliation();
       options = { ...options, rows: nextRows };
       sourceRows = createSourceRows(options);
       sourceRowIndex.clear();
@@ -1320,11 +1327,17 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     setResultMeta(meta: PretableResultMeta) {
+      const pivot = isDatasetPivot(meta.datasetKey);
       const nextKey = meta.datasetKey ?? datasetKey;
+      // Carrying `suppliedTotal` forward is what makes a total-less call a
+      // no-op. Across a pivot that same carry would re-land the old count
+      // right after `clearForDatasetChange` dropped it.
       const nextTotal =
         meta.total !== undefined && filterAuthority === "external"
           ? { ...meta.total }
-          : suppliedTotal;
+          : pivot
+            ? null
+            : suppliedTotal;
 
       if (meta.total !== undefined && filterAuthority !== "external") {
         warnOnce(SUPPLIED_TOTAL_WARN_KEY, SUPPLIED_TOTAL_WARN_MESSAGE);
@@ -1337,7 +1350,7 @@ export function createGridCore<TRow extends PretableRow>(
         return;
       }
 
-      if (nextKey !== datasetKey && datasetKey !== null) {
+      if (pivot) {
         clearForDatasetChange();
       }
 

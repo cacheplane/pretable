@@ -475,9 +475,11 @@ export interface PretableResultMeta {
   /**
    * Dataset identity. When this key CHANGES between calls the loaded records
    * answer a different question: the engine clears selection, focus,
-   * group-expansion overrides and any in-flight edit. A stable (or omitted) key
-   * preserves all of them — the existing streaming guarantees. The first key
-   * supplied is an assignment, not a change.
+   * group-expansion overrides, any in-flight edit, and the previously supplied
+   * `total` — pass the new one alongside the key, or the grid reports `unknown`
+   * until it arrives. A stable (or omitted) key preserves all of them — the
+   * existing streaming guarantees. The first key supplied is an assignment,
+   * not a change.
    */
   datasetKey?: string;
 }

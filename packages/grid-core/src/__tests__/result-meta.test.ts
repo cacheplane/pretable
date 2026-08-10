@@ -1,7 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 
 import { resetDevWarnings } from "../warn-once";
-import { createGridCore, type PretableProcessingOptions } from "../index";
+import {
+  createGridCore,
+  type PretableProcessingOptions,
+  type PretableResultMeta,
+} from "../index";
 
 type Row = { id: string; name: string; score: number };
 
@@ -261,6 +265,7 @@ describe("datasetKey", () => {
     expect(snap.selection.ranges).toHaveLength(1);
     expect(snap.focus).toEqual({ rowId: "a", columnId: "name" });
     expect(snap.editing).not.toBeNull();
+    expect(snap.matchingTotal).toEqual({ kind: "exact", count: 3 });
   });
 
   test("a changed key clears selection, focus and edit", () => {
@@ -274,10 +279,26 @@ describe("datasetKey", () => {
   });
 
   test("a changed key suppresses the clamped-index focus fallback", () => {
-    const grid = externalGrid();
-    // "a" survives the replacement, so same-key reconciliation would keep it.
-    grid.setRows(rows, { datasetKey: "q2" });
-    expect(grid.getSnapshot().focus.rowId).toBeNull();
+    // Focus is on "a" at index 0 and "a" is gone from the replacement, so the
+    // clamped-index fallback is the only thing that could produce a focus.
+    const replacement = [
+      { id: "x", name: "Xu", score: 5 },
+      { id: "y", name: "Yi", score: 6 },
+    ];
+
+    const sameKey = externalGrid();
+    sameKey.setRows(replacement, { datasetKey: "q1" });
+    expect(sameKey.getSnapshot().focus).toEqual({
+      rowId: "x",
+      columnId: "name",
+    });
+
+    const pivoted = externalGrid();
+    pivoted.setRows(replacement, { datasetKey: "q2" });
+    expect(pivoted.getSnapshot().focus).toEqual({
+      rowId: null,
+      columnId: null,
+    });
   });
 
   test("a changed key clears group-expansion overrides", () => {
@@ -299,5 +320,60 @@ describe("datasetKey", () => {
     const snap = grid.getSnapshot();
     expect(snap.selection.ranges).toEqual([]);
     expect(snap.datasetKey).toBe("q2");
+  });
+
+  test("a changed key drops the previous query's matchingTotal", () => {
+    const grid = externalGrid();
+    grid.setRows([rows[0]!], { datasetKey: "q2" });
+    expect(grid.getSnapshot().matchingTotal).toEqual({ kind: "unknown" });
+  });
+
+  test("setResultMeta drops the previous query's matchingTotal too", () => {
+    const grid = externalGrid();
+    grid.setResultMeta({ datasetKey: "q2" });
+    expect(grid.getSnapshot().matchingTotal).toEqual({ kind: "unknown" });
+  });
+
+  test("a total supplied with the changed key survives the clear", () => {
+    const grid = externalGrid();
+    grid.setRows(rows, {
+      datasetKey: "q2",
+      total: { kind: "exact", count: 9 },
+    });
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "exact",
+      count: 9,
+    });
+    grid.setResultMeta({
+      datasetKey: "q3",
+      total: { kind: "unknown", atLeast: 40 },
+    });
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "unknown",
+      atLeast: 40,
+    });
+  });
+
+  test("a changed key clears interaction state under engine authority", () => {
+    const grid = makeGrid();
+    grid.setRows(rows, { datasetKey: "q1" });
+    grid.toggleRowSelection("a");
+    grid.setFocus({ rowId: "a", columnId: "name" });
+    grid.setRows(rows, { datasetKey: "q2" });
+    const snap = grid.getSnapshot();
+    expect(snap.selection.ranges).toEqual([]);
+    expect(snap.focus).toEqual({ rowId: null, columnId: null });
+  });
+
+  test("a non-string key is neither an assignment nor a pivot", () => {
+    const grid = externalGrid();
+    grid.setRows(rows, {
+      datasetKey: null,
+    } as unknown as PretableResultMeta);
+    expect(grid.getSnapshot().datasetKey).toBe("q1");
+
+    grid.toggleRowSelection("a");
+    grid.setRows(rows, { datasetKey: "q2" });
+    expect(grid.getSnapshot().selection.ranges).toEqual([]);
   });
 });
