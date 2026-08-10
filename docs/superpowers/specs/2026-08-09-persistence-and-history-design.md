@@ -247,6 +247,9 @@ interface GridCommand {
 }
 ```
 
+The conceptual envelope keeps `baseRevision` optional for local mode;
+provider-backed submissions require it.
+
 The command controller records an inverse against the state on which the
 command was based.
 
@@ -298,15 +301,23 @@ Providers return a typed result:
 - forbidden;
 - revision conflict with current revision and retry guidance;
 - transient failure known not to have been accepted; or
-- outcome-unknown failure that requires command-status lookup or
-  resynchronization.
+- outcome-unknown failure that requires command-status lookup and, where
+  needed, resynchronization.
 
-In provider mode, `commandId` is an idempotency key. For a documented retention
-horizon, the provider deduplicates accepted submissions: a repeat submission
-with the same payload returns the original accepted result, while a payload
-mismatch for a reused ID is rejected. When a response is lost and acceptance is
-uncertain, the client queries by command ID or resynchronizes revision before
-retrying; it never blindly resubmits the operation as a new command.
+In provider mode, `commandId` is an idempotency key. Before applying a command,
+the provider atomically reserves its ID with a payload identity or digest, so
+exactly one submission can execute. For a documented reservation/result
+retention horizon, identical concurrent or repeated submissions observe
+in-progress status or the stored terminal accepted result; a payload mismatch
+for a reused ID is rejected. All retries in that horizon reuse the identical
+command ID and payload.
+
+When a response is lost and acceptance is uncertain, command-status lookup is
+primary. Resynchronizing revision may restore the client state but does not by
+itself prove non-acceptance. After the retention horizon expires, retry is
+prohibited unless authoritative command status or application/provider
+reconciliation proves that specific command was not accepted; the uncertain
+operation is never issued under a new command ID.
 
 Pessimistic mode applies and records only after acceptance. Optimistic mode
 applies immediately and retains the inverse, but does not expose the command as
