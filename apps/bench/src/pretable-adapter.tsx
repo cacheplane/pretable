@@ -29,6 +29,40 @@ function isCellRendererScript(s: string): s is CellRendererFlavor {
   );
 }
 
+function isGroupingScript(s: string) {
+  return s === "group" || s === "group-expand" || s === "group-updates";
+}
+
+/**
+ * Attach a built-in aggregator to every numeric column for the row-grouping
+ * scripts.
+ *
+ * Without at least one aggregated column `buildGroupedRows` skips `accumulate`
+ * entirely, so the grouping pipeline the bench claims to measure would be
+ * missing a stage — and `group-expand`'s whole point is costing the stages
+ * that re-run when only `flatten`'s input changed.
+ *
+ * The spec is the string `"avg"`, never a closure: `mergeColumnsFromProps`
+ * treats a fresh function identity on an aggregated column as a semantic
+ * change while grouping is active, which would emit once per parent render.
+ */
+function applyGroupAggregates<TRow extends PretableRow>(
+  columns: readonly PretableColumn<TRow>[],
+  sampleRow: TRow | undefined,
+): PretableColumn<TRow>[] {
+  if (!sampleRow) {
+    return [...columns];
+  }
+
+  const sample = sampleRow as Record<string, unknown>;
+
+  return columns.map((column) =>
+    typeof sample[column.id] === "number"
+      ? { ...column, aggregate: "avg" as const }
+      : column,
+  );
+}
+
 // Hoisted to module scope so every column shares the same function reference.
 // Per-column closures would give V8's call-site IC a different function per
 // cell column → polymorphic / megamorphic, no inlining. One shared fn → mono.
@@ -138,16 +172,19 @@ export function PretableAdapter({
     () => [...dataset.columns],
     [dataset.columns],
   );
-  const surfaceColumns = useMemo<PretableColumn<ScenarioRow>[]>(
-    () =>
-      applyCellRendererFlavor<ScenarioRow>(
-        baseColumns,
-        scriptName !== undefined && isCellRendererScript(scriptName)
-          ? scriptName
-          : null,
-      ),
-    [baseColumns, scriptName],
-  );
+  const sampleRow = dataset.rows[0];
+  const surfaceColumns = useMemo<PretableColumn<ScenarioRow>[]>(() => {
+    const withRenderers = applyCellRendererFlavor<ScenarioRow>(
+      baseColumns,
+      scriptName !== undefined && isCellRendererScript(scriptName)
+        ? scriptName
+        : null,
+    );
+
+    return scriptName !== undefined && isGroupingScript(scriptName)
+      ? applyGroupAggregates<ScenarioRow>(withRenderers, sampleRow)
+      : withRenderers;
+  }, [baseColumns, sampleRow, scriptName]);
   const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
   const autosize = dataset.scenario.autosize_all_columns === true;
 
@@ -195,6 +232,19 @@ export function PretableAdapter({
   const datasetRowCountRef = useRef(dataset.rows.length);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   datasetRowCountRef.current = dataset.rows.length;
+
+  // Memoized so the controlled-state object keeps a stable identity across
+  // renders. `usePretable`'s controlled-state layout effect lists `state` in
+  // its deps, so a fresh object every render re-runs the whole reassert pass
+  // (replaceSort / replaceFilters / setRowGroups / setSelection / focus) on
+  // every commit. Every mutator is change-guarded, so the pass is a no-op
+  // either way — but under `group-updates`, where commits arrive at streaming
+  // rate, "a no-op per commit" is exactly the kind of harness overhead that
+  // would be misread as the cost of grouping.
+  const surfaceState = useMemo(
+    () => planToState(interactionPlan, surfaceColumns),
+    [interactionPlan, surfaceColumns],
+  );
 
   const handleTelemetryChange = useCallback((telemetry: PretableTelemetry) => {
     onTelemetryChangeRef.current?.(telemetry);
@@ -253,7 +303,7 @@ export function PretableAdapter({
         autosize={autosize}
         columns={surfaceColumns}
         getRowId={getScenarioRowId}
-        state={planToState(interactionPlan, surfaceColumns)}
+        state={surfaceState}
         onGridReady={handleGridReady}
         onTelemetryChange={handleTelemetryChange}
         overscan={4}
@@ -301,6 +351,7 @@ function planToState(
   return {
     filters: plan.filters,
     focus,
+    rowGroups: plan.rowGroups,
     selection,
     sort: plan.sort,
   };

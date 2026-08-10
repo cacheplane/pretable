@@ -68,7 +68,10 @@ export type BenchScriptName =
   | "select-all"
   | "scroll-with-format"
   | "scroll-with-render"
-  | "scroll-with-heavy-render";
+  | "scroll-with-heavy-render"
+  | "group"
+  | "group-expand"
+  | "group-updates";
 
 export interface BenchViewport {
   width: number;
@@ -225,6 +228,9 @@ export const benchScriptNames: readonly BenchScriptName[] = [
   "scroll-with-format",
   "scroll-with-render",
   "scroll-with-heavy-render",
+  "group",
+  "group-expand",
+  "group-updates",
 ];
 
 export function validateSupportedP0aRequest(
@@ -277,6 +283,14 @@ export function validateSupportedP0aRequest(
     "scroll-with-render",
     "scroll-with-heavy-render",
   ];
+  // Row-grouping family. `group` applies a grouping to an ungrouped grid and
+  // `group-expand` toggles one group's expansion on an already-grouped one, so
+  // both run through measureBenchInteractionRun; `group-updates` streams row
+  // updates into a grouped grid and runs through measureBenchUpdatesRun.
+  //
+  // All three are pretable-only — see the adapter gate below.
+  const groupingInteractionScripts = ["group", "group-expand"];
+  const groupingScripts = [...groupingInteractionScripts, "group-updates"];
   const supportedScripts = [
     "initial",
     "scroll",
@@ -285,6 +299,7 @@ export function validateSupportedP0aRequest(
     ...interactionScripts,
     ...selectionNavScripts,
     ...cellRendererScripts,
+    ...groupingScripts,
   ];
 
   if (!supportedScripts.includes(request.scriptName)) {
@@ -360,6 +375,41 @@ export function validateSupportedP0aRequest(
       return {
         ok: false,
         reason: `Unsupported scenario for ${request.scriptName}: ${request.scenarioId} (S2 only)`,
+      };
+    }
+  }
+
+  if (groupingScripts.includes(request.scriptName)) {
+    // Row grouping is AG Grid Enterprise and MUI X Premium; TanStack Table
+    // ships no row-grouping row model of its own. This repo uses only the
+    // free tiers, so there is nothing to compare against and these numbers
+    // are ABSOLUTE + a regression tripwire, never a competitive claim.
+    if (request.adapterId !== "pretable") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (row grouping is AG Grid Enterprise / MUI X Premium and absent from TanStack Table; pretable-only, not a comparative claim)`,
+      };
+    }
+  }
+
+  if (groupingInteractionScripts.includes(request.scriptName)) {
+    // Same scenarios as the other interaction scripts, so `group` reads
+    // against `sort` / `filter-metadata` on identical data.
+    if (!["S2", "S7"].includes(request.scenarioId)) {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for grouping interaction script ${request.scriptName}: ${request.scenarioId} (S2/S7 only)`,
+      };
+    }
+  }
+
+  if (request.scriptName === "group-updates") {
+    // Mirrors `updates`: S5 is the streaming-updates scenario, and holding
+    // the scenario fixed is what makes group-updates readable against it.
+    if (request.scenarioId !== "S5") {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for group-updates script: ${request.scenarioId} (S5 only)`,
       };
     }
   }
@@ -571,7 +621,11 @@ function assertRequiredMetrics(
     status === "completed" &&
     (scriptName === "sort" ||
       scriptName === "filter-metadata" ||
-      scriptName === "filter-text")
+      scriptName === "filter-text" ||
+      // `group` and `group-expand` run the same measurement shape, so they
+      // owe the same metrics — that is what makes them readable side by side.
+      scriptName === "group" ||
+      scriptName === "group-expand")
   ) {
     for (const metricId of [
       "interaction_latency_ms",
@@ -582,6 +636,27 @@ function assertRequiredMetrics(
       "result_row_count",
       "selected_row_preserved",
       "focused_row_preserved",
+    ] satisfies readonly BenchMetricId[]) {
+      if (metrics[metricId] === undefined) {
+        throw new Error(`Missing required metric: ${metricId}`);
+      }
+    }
+  }
+
+  // `group-updates` runs through measureBenchUpdatesRun, which always emits
+  // the streaming set. (`updates` itself has no entry here — a pre-existing
+  // gap left alone so this change cannot shift an existing script's result.)
+  if (status === "completed" && scriptName === "group-updates") {
+    for (const metricId of [
+      "scroll_frame_p95_ms",
+      "long_tasks_count",
+      "long_tasks_ms",
+      "streaming_cls",
+      "frame_max_ms",
+      "frame_budget_overruns_count",
+      "long_tasks_max_ms",
+      "scroll_position_drift_px",
+      "visible_row_count_drift",
     ] satisfies readonly BenchMetricId[]) {
       if (metrics[metricId] === undefined) {
         throw new Error(`Missing required metric: ${metricId}`);

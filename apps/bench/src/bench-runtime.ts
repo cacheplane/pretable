@@ -79,13 +79,20 @@ export function createBenchInteractionStateFromTelemetry(
   };
 }
 
+export type BenchInteractionMode =
+  "sort" | "filter-metadata" | "filter-text" | "group" | "group-expand";
+
 export function getMaxInteractionFrames(
   maxSettleFrames: number,
-  mode: "sort" | "filter-metadata" | "filter-text",
+  mode: BenchInteractionMode,
 ) {
   const baseline = Math.max(maxSettleFrames + 12, 48);
 
-  return mode === "filter-text" ? Math.max(baseline, 96) : baseline;
+  // Wrapped-text filtering and row grouping both re-derive the whole visible
+  // model and then re-measure wrapped rows, so they need the wider budget.
+  return mode === "filter-text" || mode === "group" || mode === "group-expand"
+    ? Math.max(baseline, 96)
+    : baseline;
 }
 
 export function detectBrowserVersion(userAgent: string): string {
@@ -152,7 +159,17 @@ const scrollRuntimeProfiles: Record<
   },
   pretable: {
     viewportSelector: "[data-pretable-scroll-viewport]",
-    rowSelector: "[data-pretable-row]",
+    // Group rows are marked `data-pretable-group-row`, NOT `data-pretable-row`
+    // (see packages/react/src/group-row.tsx), so a data-row-only selector
+    // treats every group header as a hole: `detectBlankGapFrame` reports a
+    // blank gap, `sampleVisibleRows` drops it from the settle signature, and
+    // `rendered_rows_peak` undercounts. Both kinds carry
+    // `data-pretable-row-id` / `-index` and `data-pretable-cell` children, so
+    // the union works everywhere the profile is read.
+    //
+    // This is a no-op for every ungrouped run: with no group rows in the DOM
+    // the union matches exactly the same node list as before.
+    rowSelector: "[data-pretable-row], [data-pretable-group-row]",
     cellSelector: "[data-pretable-cell]",
     rowIdAttribute: "data-pretable-row-id",
     rowIndexAttribute: "data-pretable-row-index",
@@ -376,7 +393,7 @@ export function measurePretableScrollRun(
 export async function measureBenchInteractionRun(
   root: HTMLElement,
   adapterId: BenchQueryState["adapterId"],
-  mode: "sort" | "filter-metadata" | "filter-text",
+  mode: BenchInteractionMode,
   interactionPlan: {
     focusedRowId: string | null;
     resultRowCount: number;

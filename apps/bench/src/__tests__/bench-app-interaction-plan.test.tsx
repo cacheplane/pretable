@@ -31,4 +31,21 @@ describe("BenchApp interaction planning", () => {
       interactionPlan: null,
     });
   });
+
+  test("does not pre-apply the grouping before a group run starts", () => {
+    // `group` measures the grouping being applied, so the grid must still be
+    // ungrouped when the run begins. (`group-expand` is the opposite — see
+    // bench-app.test.tsx.)
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S2&scale=dev&script=group"
+        browserVersion="123.0"
+      />,
+    );
+
+    expect(pretableAdapterSpy).toHaveBeenCalled();
+    expect(pretableAdapterSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+      interactionPlan: null,
+    });
+  });
 });

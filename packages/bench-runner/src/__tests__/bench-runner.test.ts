@@ -74,6 +74,9 @@ describe("bench-runner contract", () => {
       "scroll-with-format",
       "scroll-with-render",
       "scroll-with-heavy-render",
+      "group",
+      "group-expand",
+      "group-updates",
     ]);
   });
 
@@ -267,6 +270,108 @@ describe("bench-runner contract", () => {
       });
     }
 
+    // Row-grouping scripts: accepted for pretable on their own scenarios.
+    for (const scenarioId of ["S2", "S7"] as const) {
+      for (const scriptName of ["group", "group-expand"] as const) {
+        expect(
+          validateSupportedP0aRequest({
+            ...baseRequest,
+            adapterId: "pretable",
+            scenarioId,
+            scriptName,
+          }),
+        ).toEqual({ ok: true });
+      }
+    }
+
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "pretable",
+        scenarioId: "S5",
+        scriptName: "group-updates",
+      }),
+    ).toEqual({ ok: true });
+
+    // ...and rejected, with a reason, for every other adapter. Row grouping
+    // is AG Grid Enterprise / MUI X Premium and absent from TanStack, so
+    // these numbers are absolute, never comparative.
+    for (const adapterId of ["ag-grid", "tanstack", "mui"] as const) {
+      for (const scriptName of ["group", "group-expand"] as const) {
+        expect(
+          validateSupportedP0aRequest({
+            ...baseRequest,
+            adapterId,
+            scenarioId: "S2",
+            scriptName,
+          }),
+        ).toEqual({
+          ok: false,
+          reason: expect.stringContaining("adapter"),
+        });
+      }
+
+      expect(
+        validateSupportedP0aRequest({
+          ...baseRequest,
+          adapterId,
+          scenarioId: "S5",
+          scriptName: "group-updates",
+        }),
+      ).toEqual({
+        ok: false,
+        reason: expect.stringContaining("adapter"),
+      });
+    }
+
+    // The adapter gate fires ahead of the scenario gate, so a comparator gets
+    // told the real reason rather than a scenario red herring.
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "ag-grid",
+        scenarioId: "S1",
+        scriptName: "group",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("adapter"),
+    });
+
+    // group / group-expand are S2/S7-only; group-updates is S5-only.
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S5",
+        scriptName: "group",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S1",
+        scriptName: "group-expand",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S2",
+        scriptName: "group-updates",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
@@ -438,6 +543,91 @@ describe("bench-runner contract", () => {
         },
       }),
     ).toThrow(/finite/);
+  });
+
+  test("holds the row-grouping scripts to their measurement shape's metrics", () => {
+    const groupingInteractionMetrics = {
+      interaction_latency_ms: 14,
+      settle_duration_ms: 16,
+      post_interaction_blank_gap_frames: 0,
+      post_interaction_anchor_shift_px: 0,
+      post_interaction_row_height_error_p95_px: 0,
+      result_row_count: 754,
+      selected_row_preserved: 1,
+      focused_row_preserved: 1,
+      dom_nodes_peak: 900,
+    };
+
+    for (const scriptName of ["group", "group-expand"] as const) {
+      const request = {
+        ...baseRequest,
+        scenarioId: "S2" as const,
+        scriptName,
+      };
+
+      expect(
+        createBenchRunSummary({
+          request,
+          status: "completed",
+          timestamp: "2026-08-10T13:00:00.000Z",
+          tracePath: `status/traces/pretable-s2-default-${scriptName}.trace.zip`,
+          metrics: groupingInteractionMetrics,
+        }),
+      ).toMatchObject({ status: "completed", scriptName });
+
+      // Same shape as sort / filter-metadata: every interaction metric is
+      // required, so a silently missing one cannot pass as a result.
+      expect(() =>
+        createBenchRunSummary({
+          request,
+          status: "completed",
+          timestamp: "2026-08-10T13:00:00.000Z",
+          tracePath: `status/traces/pretable-s2-default-${scriptName}.trace.zip`,
+          metrics: {
+            ...groupingInteractionMetrics,
+            interaction_latency_ms: undefined,
+          },
+        }),
+      ).toThrow(/interaction_latency_ms/);
+    }
+
+    const groupUpdatesRequest = {
+      ...baseRequest,
+      scenarioId: "S5" as const,
+      scriptName: "group-updates" as const,
+    };
+    const groupUpdatesMetrics = {
+      scroll_frame_p95_ms: 8.4,
+      long_tasks_count: 2,
+      long_tasks_ms: 90,
+      streaming_cls: 0,
+      frame_max_ms: 21,
+      frame_budget_overruns_count: 3,
+      long_tasks_max_ms: 60,
+      scroll_position_drift_px: 0,
+      visible_row_count_drift: 0,
+      dom_nodes_peak: 900,
+    };
+
+    expect(
+      createBenchRunSummary({
+        request: groupUpdatesRequest,
+        status: "completed",
+        timestamp: "2026-08-10T13:00:00.000Z",
+        tracePath: "status/traces/pretable-s5-default-group-updates.trace.zip",
+        metrics: groupUpdatesMetrics,
+      }),
+    ).toMatchObject({ status: "completed", scriptName: "group-updates" });
+
+    expect(() =>
+      createBenchRunSummary({
+        request: groupUpdatesRequest,
+        status: "completed",
+        timestamp: "2026-08-10T13:00:00.000Z",
+        tracePath: "status/traces/pretable-s5-default-group-updates.trace.zip",
+        metrics: { ...groupUpdatesMetrics, streaming_cls: undefined },
+      }),
+    ).toThrow(/streaming_cls/);
   });
 
   test("serializes failed runs and aggregates dashboard entries deterministically", () => {

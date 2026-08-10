@@ -190,4 +190,24 @@ describe("parseBenchQuery", () => {
       });
     }
   });
+
+  test("accepts the row-grouping scripts", () => {
+    for (const script of ["group", "group-expand"]) {
+      expect(
+        parseBenchQuery(`?scenario=S2&scale=hypothesis&script=${script}`),
+      ).toMatchObject({
+        scenarioId: "S2",
+        scale: "hypothesis",
+        scriptName: script,
+      });
+    }
+
+    expect(
+      parseBenchQuery("?scenario=S5&scale=hypothesis&script=group-updates"),
+    ).toMatchObject({
+      scenarioId: "S5",
+      scale: "hypothesis",
+      scriptName: "group-updates",
+    });
+  });
 });

@@ -231,4 +231,112 @@ describe("BenchApp", () => {
     // gets a closure (see bench-app.tsx).
     expect(interactionSpy.mock.calls[0]?.[4]).toBeUndefined();
   });
+
+  test("groups the grid BEFORE the group-expand measurement window opens", async () => {
+    // The whole point of group-expand is that only the expansion toggle sits
+    // inside the measured window. If applying the grouping landed inside it,
+    // the recompute would swamp the toggle and the script would measure
+    // nothing — so assert the grouped row model is already painted at the
+    // moment measureBenchInteractionRun is entered.
+    let groupRowsAtCallTime = -1;
+    let modeAtCallTime: string | null = null;
+
+    vi.spyOn(benchRuntime, "measureBenchInteractionRun").mockImplementation(
+      async (_root, _adapterId, mode) => {
+        modeAtCallTime = mode;
+        groupRowsAtCallTime = document.querySelectorAll(
+          "[data-pretable-group-row]",
+        ).length;
+
+        return {
+          status: "completed",
+          notes: [`interaction mode: ${mode}`],
+          metrics: {
+            interaction_latency_ms: 9,
+            settle_duration_ms: 8,
+            post_interaction_blank_gap_frames: 0,
+            post_interaction_anchor_shift_px: 0,
+            post_interaction_row_height_error_p95_px: 0,
+            result_row_count: 40,
+            selected_row_preserved: 1,
+            focused_row_preserved: 1,
+            dom_nodes_peak: 400,
+            rendered_rows_peak: 11,
+            rendered_cells_peak: 440,
+          },
+        };
+      },
+    );
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S2&scale=smoke&script=group-expand&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          adapterId: "pretable",
+          scenarioId: "S2",
+          scriptName: "group-expand",
+        });
+      },
+      { timeout: 15_000 },
+    );
+
+    expect(modeAtCallTime).toBe("group-expand");
+    // Row virtualization means only the group rows inside the viewport are in
+    // the DOM, so this is "at least one", not "all four".
+    expect(groupRowsAtCallTime).toBeGreaterThan(0);
+  }, 20_000);
+
+  test("runs the group script through the interaction probe with the grouping applied by the trigger", async () => {
+    const interactionSpy = vi
+      .spyOn(benchRuntime, "measureBenchInteractionRun")
+      .mockResolvedValueOnce({
+        status: "completed",
+        notes: ["interaction mode: group"],
+        metrics: {
+          interaction_latency_ms: 21,
+          settle_duration_ms: 17,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          result_row_count: 124,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 400,
+          rendered_rows_peak: 11,
+          rendered_cells_peak: 440,
+        },
+      });
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S2&scale=smoke&script=group&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          scriptName: "group",
+        });
+      },
+      { timeout: 15_000 },
+    );
+
+    expect(interactionSpy).toHaveBeenCalledTimes(1);
+    expect(interactionSpy.mock.calls[0]?.[2]).toBe("group");
+    // Unlike group-expand, the grouping IS the measured interaction here, so
+    // it must ride in on the plan the trigger applies.
+    expect(interactionSpy.mock.calls[0]?.[3]).toMatchObject({
+      rowGroups: ["col_5"],
+    });
+  }, 20_000);
 });
