@@ -118,7 +118,11 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   const interactionScript =
     scriptName === "sort" ||
     scriptName === "filter-metadata" ||
-    scriptName === "filter-text";
+    scriptName === "filter-text" ||
+    // Row grouping runs the same measurement shape, so it owes the same
+    // metrics and notes (see measureBenchInteractionRun).
+    scriptName === "group" ||
+    scriptName === "group-expand";
 
   const cwd = process.cwd();
   const summaryPath = path.join(

@@ -39,6 +39,7 @@ function filterPlan(
     probeColumnId: Object.keys(filters)[0] ?? "",
     resultRowCount: 0,
     rows: [],
+    rowGroups: [],
     selectedRowId: null,
     sort: [],
   };

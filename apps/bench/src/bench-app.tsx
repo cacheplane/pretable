@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { PretableGrid } from "@pretable/react";
+import type { PretableGrid, PretableGroupRow } from "@pretable/react";
 import type { PretableTelemetry } from "@pretable/react";
 
 import {
@@ -134,6 +134,74 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     pretableTelemetryRef.current = null;
   }, [search]);
 
+  /**
+   * Wait for the grouped row model to exist and stop changing, then hand back
+   * the first group row.
+   *
+   * `flatten` emits siblings in sorted order, so "first group row in
+   * `visibleRows`" is the sorted-first group — which is what the
+   * `group-expand` plan predicts when it picks a probe row from a *different*
+   * group.
+   *
+   * Used only by the two scripts that must be grouped BEFORE their
+   * measurement window opens (`group-expand`, `group-updates`).
+   */
+  async function waitForGroupedRowModel(
+    maxFrames = 120,
+  ): Promise<PretableGroupRow | null> {
+    let previousRowCount = -1;
+    let stableFrames = 0;
+
+    for (let frame = 0; frame < maxFrames; frame += 1) {
+      await waitForNextAnimationFrame();
+      const grid = pretableGridRef.current;
+
+      if (!grid) {
+        // No pretable grid was ever published (only pretable reaches here, so
+        // in practice this is a test double). Give it a few frames, then stop
+        // rather than burning the whole budget.
+        if (frame >= 12) {
+          return null;
+        }
+        continue;
+      }
+
+      const { visibleRows } = grid.getSnapshot();
+      const firstGroupRow = visibleRows.find((row) => row.kind === "group");
+
+      if (!firstGroupRow) {
+        previousRowCount = -1;
+        stableFrames = 0;
+        continue;
+      }
+
+      if (visibleRows.length === previousRowCount) {
+        stableFrames += 1;
+
+        if (stableFrames >= 3) {
+          return firstGroupRow;
+        }
+      } else {
+        previousRowCount = visibleRows.length;
+        stableFrames = 0;
+      }
+    }
+
+    return (
+      pretableGridRef.current
+        ?.getSnapshot()
+        .visibleRows.find((row) => row.kind === "group") ?? null
+    );
+  }
+
+  function countGroupRows() {
+    const snapshot = pretableGridRef.current?.getSnapshot();
+
+    return (
+      snapshot?.visibleRows.filter((row) => row.kind === "group").length ?? 0
+    );
+  }
+
   async function executeRun(scriptName: BenchQueryState["scriptName"]) {
     const nextQuery = {
       ...query,
@@ -202,10 +270,18 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               query.adapterId,
             )
           : null;
+      // Extra notes for the row-grouping scripts: which levels were applied,
+      // how many groups the model actually produced, and (for group-expand)
+      // which group the measured toggle collapsed.
+      const groupingNotes: string[] = [];
+
       const interactionRun =
         scriptName === "sort" ||
         scriptName === "filter-metadata" ||
-        scriptName === "filter-text"
+        scriptName === "filter-text" ||
+        // `group` applies the grouping INSIDE the window — that is the thing
+        // being measured — so it takes the ordinary interaction path.
+        scriptName === "group"
           ? await (() => {
               const nextInteractionPlan = createBenchInteractionPlan(
                 dataset,
@@ -239,7 +315,74 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 },
               );
             })()
-          : null;
+          : scriptName === "group-expand"
+            ? await (async () => {
+                const nextInteractionPlan = createBenchInteractionPlan(
+                  dataset,
+                  scriptName,
+                );
+
+                if (!nextInteractionPlan) {
+                  return null;
+                }
+
+                // SETUP — outside the measurement window. Apply the grouping
+                // and let the model settle. If this landed inside the window
+                // its recompute would swamp the toggle and the script would
+                // measure nothing.
+                setInteractionPlanOverride({
+                  plan: nextInteractionPlan,
+                  search,
+                });
+                const firstGroupRow = await waitForGroupedRowModel();
+                const grid = pretableGridRef.current;
+
+                if (!firstGroupRow || !grid) {
+                  return {
+                    status: "partial" as const,
+                    notes: [
+                      `interaction mode: ${scriptName}`,
+                      "grouped row model unavailable before the measurement window",
+                    ],
+                    metrics: {
+                      dom_nodes_peak:
+                        viewportRef.current?.querySelectorAll("*").length ?? 0,
+                    },
+                  };
+                }
+
+                groupingNotes.push(
+                  `grouping levels: ${nextInteractionPlan.rowGroups.join(", ")}`,
+                  `group rows before toggle: ${countGroupRows()}`,
+                  `collapsed group id: ${firstGroupRow.id}`,
+                  `collapsed group child count: ${firstGroupRow.childCount}`,
+                );
+
+                // MEASURED — one `setGroupExpanded`, the same call the twisty
+                // click funnels through, and nothing else.
+                return measureBenchInteractionRun(
+                  viewportRef.current ?? document.body,
+                  query.adapterId,
+                  scriptName,
+                  nextInteractionPlan,
+                  () =>
+                    createBenchInteractionStateFromTelemetry(
+                      pretableTelemetryRef.current,
+                      dataset.rows.length,
+                    ),
+                  () => {
+                    grid.setGroupExpanded(firstGroupRow.id, false);
+                  },
+                );
+              })()
+            : null;
+
+      if (scriptName === "group" && interactionRun) {
+        groupingNotes.push(
+          `grouping levels: ${createBenchInteractionPlan(dataset, scriptName)?.rowGroups.join(", ") ?? ""}`,
+          `group rows after grouping: ${countGroupRows()}`,
+        );
+      }
 
       const keySequenceRun =
         scriptName === "select-range-extend"
@@ -290,13 +433,37 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             )
           : null;
 
+      const isUpdatesScript =
+        scriptName === "updates" || scriptName === "group-updates";
+
+      // SETUP for group-updates — outside the streaming window. The grid has
+      // to be grouped (and its aggregates configured, which the adapter does
+      // off `scriptName`) before the first patch lands, otherwise the run
+      // measures the grouping being applied rather than streaming into a
+      // grouped grid.
+      if (scriptName === "group-updates") {
+        const groupUpdatesPlan = createBenchInteractionPlan(
+          dataset,
+          scriptName,
+        );
+
+        if (groupUpdatesPlan) {
+          setInteractionPlanOverride({ plan: groupUpdatesPlan, search });
+          await waitForGroupedRowModel();
+          groupingNotes.push(
+            `grouping levels: ${groupUpdatesPlan.rowGroups.join(", ")}`,
+            `group rows before streaming: ${countGroupRows()}`,
+          );
+        }
+      }
+
       // Wait up to ~1s for the current adapter to publish its update API.
       // AG Grid in particular fires onGridReady asynchronously a few RAFs
       // after mount, so kicking off the updates script in the very next
       // frame after setRunKey would race past it and leave updateApiRef
       // null (no metrics get collected).
       let updatesApi = updateApiRef.current;
-      if (scriptName === "updates" && !updatesApi) {
+      if (isUpdatesScript && !updatesApi) {
         for (let i = 0; i < 60 && !updateApiRef.current; i++) {
           await waitForNextAnimationFrame();
         }
@@ -304,7 +471,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       }
 
       const updatesRun =
-        scriptName === "updates" && updatesApi
+        isUpdatesScript && updatesApi
           ? await measureBenchUpdatesRun(
               viewportRef.current ?? document.body,
               query.adapterId,
@@ -313,6 +480,17 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               { updateRatePerSec: query.updateRatePerSec },
             )
           : null;
+
+      if (scriptName === "group-updates" && updatesRun) {
+        // The patch generator picks a random column per patch, including the
+        // grouping level, so streamed values can mint brand-new group keys.
+        // That churn is deliberately left in — changing the generator would
+        // break comparability with `updates` — but it has to be reported.
+        groupingNotes.push(
+          `group rows after streaming: ${countGroupRows()}`,
+          "note: patched columns include the grouping level, so group churn is part of this measurement",
+        );
+      }
 
       const nextResult =
         (scriptName === "scroll" ||
@@ -346,7 +524,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 ],
                 metrics: keySequenceRun.metrics,
               })
-            : scriptName === "updates" && updatesRun
+            : isUpdatesScript && updatesRun
               ? createBenchRunSummary({
                   request,
                   status: updatesRun.status,
@@ -354,6 +532,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                   tracePath,
                   notes: [
                     ...updatesRun.notes,
+                    ...groupingNotes,
                     ...createPretableTelemetryNotes(
                       pretableTelemetryRef.current,
                     ),
@@ -382,6 +561,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                       tracePath,
                       notes: [
                         ...interactionRun.notes,
+                        ...groupingNotes,
                         ...createPretableTelemetryNotes(
                           pretableTelemetryRef.current,
                         ),
