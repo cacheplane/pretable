@@ -197,6 +197,56 @@ the CLI dev runtime server, internal, in a different process.
 
 ---
 
+## 1.3 Baseline correction (2026-08-09, post-approval)
+
+Two Dawn PRs landed between the §1 audit and design approval. **No decision in
+this document changes**; the starting point does. Corrections to §1.2:
+
+- **`BrowseQuery.status`/`kind` are no longer single-valued.** #432
+  (`fc0ec4f1`) widened both to `T | readonly T[]`, implemented `IN (…)` /
+  `= ANY($n::text[])` in both stores, added five conformance tests (including
+  the contract that an **empty set matches nothing**), and encodes over HTTP
+  as a repeated param with whole-request 400 on any bad value. §5.1's
+  multi-value requirement is therefore **already satisfied** for these two
+  fields, and `normalizeSetFilter` (packages/memory/src/browse-filter.ts) is
+  the extension seam for the rest.
+- **Two Inspector columns now declare filter metadata.** #434 (`ff73de5a`)
+  gives `status` and `kind` `type: "enum"` + `options` + `filterable: true`,
+  and sets `filterable: false` on the other four *because the server cannot
+  express them yet* — the four controls were deleted rather than left
+  dishonest. Filter state is now controlled and lifted to `ListPage`.
+- **The double-application hazard is live but currently neutralized by
+  accident, not by design.** Dawn re-encodes every funnel selection as
+  `isAnyOf` over the same resolved set already sent to the server, so
+  Pretable's local pass is an idempotent no-op
+  (packages/inspector/src/components/memory/column-filters.ts:47-53). This
+  works only while every pushed-down filter is set-shaped and equality-based;
+  it breaks for `contains`, ranges, and dates, and it already leaks in one
+  place — between a filter tick and its response, the new predicate is
+  applied locally to the *old* page. This is direct field evidence for
+  `D1-GRID-01`.
+- **Sort is now the largest honesty gap in the Inspector.** #434 fixed the
+  lie for filters and left it standing for sort: no column sets
+  `sortable: false` and no sort state is controlled, so all six columns sort
+  the loaded 200 rows while presenting as a sort of the dataset.
+- **Partial-window counts already cost a shipped feature.** The unmerged
+  grouping branch now gates grouping on `page.records.length >= page.total`
+  ("group only when the page is the whole answer") — the only place in Dawn
+  that reads `total`, used to *withhold* a feature because there was no
+  honest way to show partial counts. §9.4's loaded-scope labeling is what
+  replaces that gate.
+- Two items to absorb: `packages/core/src/capabilities/types.ts:78-79` still
+  mirrors the **scalar** `status`/`kind` and is silently out of sync (no
+  parity test exists — §5.7 must add one); and Dawn pins `@pretable/*` at
+  `0.0.8` while `0.0.10` is published (the delta is an SSR density-hydration
+  fix that matters for a server-rendered grid).
+
+Slice scoping consequences: slice 2 shrinks (multi-value done), slice 4
+shrinks (two columns typed), and both grow one task each (core-mirror parity,
+Pretable version bump). §13's order is unchanged.
+
+---
+
 ## 2. Design summary (read this first)
 
 **Recommendation: a B-core hybrid.** Pretable gains a minimal, transport-neutral
