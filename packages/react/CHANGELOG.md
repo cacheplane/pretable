@@ -1,5 +1,15 @@
 # @pretable/react
 
+## 0.0.14
+
+### Patch Changes
+
+- Document both required React 19 peer dependencies in the package README. ([#271](https://github.com/cacheplane/pretable/pull/271))
+
+- Updated dependencies []:
+  - @pretable/core@0.0.14
+  - @pretable/ui@0.0.14
+
 ## 0.0.13
 
 ### Patch Changes
