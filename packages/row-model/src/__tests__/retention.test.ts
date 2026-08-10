@@ -44,6 +44,78 @@ function tickingClock() {
 }
 
 describe("instrumented local row-model retention", () => {
+  test("tracks only validated model snapshots and their exact revision roots", () => {
+    const first = createInstrumentedLocalRowModel({
+      rows: [{ id: 0, team: "red", score: 0, label: "initial" }],
+      columns,
+    });
+    const foreign = createInstrumentedLocalRowModel({
+      rows: [{ id: 0, team: "blue", score: 0, label: "foreign" }],
+      columns,
+    });
+
+    expect(() =>
+      first.diagnostics.retainSnapshot(
+        {} as ReturnType<typeof first.model.getState>["snapshot"],
+      ),
+    ).toThrow(TypeError);
+    expect(() =>
+      first.diagnostics.retainSnapshot(foreign.model.getState().snapshot),
+    ).toThrow(TypeError);
+
+    const snapshots = [first.model.getState().snapshot];
+    for (let revision = 1; revision < 6; revision += 1) {
+      first.model.applyTransaction({
+        update: [{ id: 0, changes: { label: `revision-${revision}` } }],
+      });
+      snapshots.push(first.model.getState().snapshot);
+    }
+    const releases = snapshots.map((snapshot) =>
+      first.diagnostics.retainSnapshot(snapshot),
+    );
+    const duplicateRelease = first.diagnostics.retainSnapshot(snapshots[0]!);
+    first.model.applyTransaction({
+      update: [{ id: 0, changes: { label: "unretained-current" } }],
+    });
+
+    expect(first.diagnostics.read().retention).toMatchObject({
+      liveRevisionRootCount: 7,
+      explicitlyRetainedSnapshotCount: 6,
+    });
+    releases[0]!();
+    releases[0]!();
+    expect(first.diagnostics.read().retention).toMatchObject({
+      liveRevisionRootCount: 7,
+      explicitlyRetainedSnapshotCount: 6,
+    });
+    duplicateRelease();
+    duplicateRelease();
+    expect(first.diagnostics.read().retention).toMatchObject({
+      liveRevisionRootCount: 6,
+      explicitlyRetainedSnapshotCount: 5,
+    });
+    releases.slice(1).forEach((release) => release());
+    expect(first.diagnostics.read().retention).toMatchObject({
+      liveRevisionRootCount: 1,
+      explicitlyRetainedSnapshotCount: 0,
+    });
+
+    const disposedRelease = first.diagnostics.retainSnapshot(
+      first.model.getState().snapshot,
+    );
+    first.model.dispose();
+    expect(first.diagnostics.read().retention).toMatchObject({
+      liveRevisionRootCount: 1,
+      explicitlyRetainedSnapshotCount: 1,
+    });
+    disposedRelease();
+    expect(first.diagnostics.read().retention).toMatchObject({
+      liveRevisionRootCount: 1,
+      explicitlyRetainedSnapshotCount: 0,
+    });
+    foreign.model.dispose();
+  });
+
   test("retains only the current root, explicit snapshots, and bounded journal", () => {
     const instrumented = createInstrumentedLocalRowModel({
       rows: Array.from({ length: 100 }, (_, id) => ({
@@ -79,16 +151,17 @@ describe("instrumented local row-model retention", () => {
     }
 
     expect(instrumented.diagnostics.read().retention).toMatchObject({
-      liveRevisionRootCount: 1,
+      liveRevisionRootCount: 3,
       explicitlyRetainedSnapshotCount: 2,
       consumerJournalEntryCount: 8,
       transitionCandidateRootCount: 0,
       transitionDeltaRootCount: 0,
     });
     releases.forEach((release) => release());
-    expect(
-      instrumented.diagnostics.read().retention.explicitlyRetainedSnapshotCount,
-    ).toBe(0);
+    expect(instrumented.diagnostics.read().retention).toMatchObject({
+      liveRevisionRootCount: 1,
+      explicitlyRetainedSnapshotCount: 0,
+    });
   });
 
   test("releases cancelled transitions, distinct work, and scheduled callbacks", async () => {
@@ -130,6 +203,11 @@ describe("instrumented local row-model retention", () => {
       search: "row-1",
       limit: 1,
     });
+    expect(instrumented.diagnostics.read().retention).toMatchObject({
+      liveRevisionRootCount: 1,
+      distinctProjectionRootCount: 1,
+      transitionCandidateRootCount: 0,
+    });
     cancelledProjection.cancel();
     await expect(cancelledProjection.finished).rejects.toBeDefined();
     scheduler.flushAll();
@@ -163,6 +241,14 @@ describe("instrumented local row-model retention", () => {
       instrumented.model.applyTransaction({
         update: [{ id: attempt, changes: { score: 1_000 + attempt } }],
       });
+      if (attempt === 0) {
+        expect(instrumented.diagnostics.read().retention).toMatchObject({
+          liveRevisionRootCount: 1,
+          transitionCandidateRootCount: 1,
+          transitionDeltaRootCount: 1,
+          distinctProjectionRootCount: 0,
+        });
+      }
       transition.cancel();
       await expect(transition.finished).rejects.toMatchObject({
         reason: "cancelled",

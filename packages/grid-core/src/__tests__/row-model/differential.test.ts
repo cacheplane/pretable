@@ -20,14 +20,18 @@ import {
   operationArbitrary,
   scenarioArbitrary,
   transitionScenarioArbitrary,
+  type DifferentialDerivations,
   type DifferentialOperation,
   type DifferentialQuery,
   type DifferentialRow,
+  type DifferentialRowId,
 } from "./arbitraries";
-import { runLegacyOracle, type LegacyOracleRow } from "./oracle";
+import { runLegacyOracle } from "./oracle";
 
 const SEQUENTIAL_SEED = 0x5eed_1301;
+const SEQUENTIAL_EXTRA_SEEDS = [0x5eed_1311, 0x5eed_1312] as const;
 const TRANSITION_SEED = 0x5eed_1303;
+const TRANSITION_EXTRA_SEEDS = [0x5eed_1313, 0x5eed_1314] as const;
 const helper = createColumnHelper<DifferentialRow>();
 const modelColumns = [
   helper.accessor("sector", { type: "text" }),
@@ -43,7 +47,7 @@ const legacyColumns: readonly PretableColumn<DifferentialRow>[] = [
 ];
 
 interface ReferenceState {
-  rows: Map<string, { row: DifferentialRow; sourceOrder: number }>;
+  rows: Map<DifferentialRowId, { row: DifferentialRow; sourceOrder: number }>;
   nextSourceOrder: number;
   query: DifferentialQuery;
   expansion: {
@@ -53,12 +57,13 @@ interface ReferenceState {
   revision: number;
   notifications: number;
   aggregateFilteredRows: boolean;
+  derivations: DifferentialDerivations;
 }
 
 function uniqueRows(
   rows: readonly DifferentialRow[],
 ): readonly DifferentialRow[] {
-  const seen = new Set<string>();
+  const seen = new Set<DifferentialRowId>();
   return rows.filter((row) => {
     if (seen.has(row.id)) return false;
     seen.add(row.id);
@@ -68,61 +73,231 @@ function uniqueRows(
 
 function modelQuery(query: DifferentialQuery) {
   return {
-    filters:
-      query.minimum === undefined
-        ? []
-        : [
-            {
-              columnId: "quantity" as const,
-              operator: "gte" as const,
-              value: query.minimum,
-            },
-          ],
-    sort:
-      query.direction === undefined
-        ? []
-        : [
-            {
-              columnId: "quantity" as const,
-              direction: query.direction,
-            },
-          ],
-    rowGroups: query.groups.map((columnId) => ({
-      columnId,
-      direction: "asc" as const,
-    })),
+    filters: query.filters,
+    sort: query.sort,
+    rowGroups: query.rowGroups,
   };
 }
 
+const CUSTOM_TOTAL_AGGREGATOR = Object.freeze({
+  init: () => 0,
+  accumulate: (accumulator: number, value: number) => accumulator + value + 1,
+  merge: (left: number, right: number) => left + right,
+  finalize: (accumulator: number): number | null => accumulator,
+});
+const ABSOLUTE_QUANTITY_ACCESSOR = (row: DifferentialRow) =>
+  Math.abs(row.quantity);
+const REVERSE_SECTOR_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
+const REVERSE_SECTOR_COMPARATOR = (left: string, right: string) =>
+  REVERSE_SECTOR_COLLATOR.compare(right, left);
+
+const MODEL_DERIVATIONS = {
+  sum: modelColumns,
+  avg: [
+    modelColumns[0],
+    modelColumns[1],
+    { ...modelColumns[2], aggregate: "avg" as const },
+    modelColumns[3],
+  ],
+  "custom-total": [
+    modelColumns[0],
+    modelColumns[1],
+    { ...modelColumns[2], aggregate: CUSTOM_TOTAL_AGGREGATOR },
+    modelColumns[3],
+  ],
+  "absolute-quantity": [
+    modelColumns[0],
+    modelColumns[1],
+    {
+      ...modelColumns[2],
+      accessor: ABSOLUTE_QUANTITY_ACCESSOR,
+      value: ABSOLUTE_QUANTITY_ACCESSOR,
+    },
+    modelColumns[3],
+  ],
+  "reverse-sector": [
+    {
+      ...modelColumns[0],
+      compare: REVERSE_SECTOR_COMPARATOR,
+    },
+    modelColumns[1],
+    modelColumns[2],
+    modelColumns[3],
+  ],
+} as const;
+
+function modelDerivations(mode: DifferentialDerivations) {
+  return MODEL_DERIVATIONS[mode];
+}
+
+function derivationChangeAffectsQuery(
+  previous: DifferentialDerivations,
+  next: DifferentialDerivations,
+  query: DifferentialQuery,
+): boolean {
+  const sectorOrdered = [...query.sort, ...query.rowGroups].some(
+    (entry) => entry.columnId === "sector",
+  );
+  const aggregateKind = (mode: DifferentialDerivations) =>
+    mode === "avg" ? "avg" : mode === "custom-total" ? "custom" : "sum";
+  return (
+    (previous === "absolute-quantity") !== (next === "absolute-quantity") ||
+    (sectorOrdered &&
+      (previous === "reverse-sector") !== (next === "reverse-sector")) ||
+    aggregateKind(previous) !== aggregateKind(next)
+  );
+}
+
+function legacyColumnsFor(mode: DifferentialDerivations) {
+  const columns = [
+    legacyColumns[0],
+    legacyColumns[1],
+    {
+      ...legacyColumns[2],
+      aggregate:
+        mode === "custom-total"
+          ? CUSTOM_TOTAL_AGGREGATOR
+          : mode === "avg"
+            ? "avg"
+            : "sum",
+    },
+    legacyColumns[3],
+  ] as PretableColumn<DifferentialRow>[];
+  if (mode === "absolute-quantity") {
+    columns[2] = {
+      ...columns[2],
+      aggregate: "sum",
+      value: ABSOLUTE_QUANTITY_ACCESSOR,
+    };
+  } else if (mode === "reverse-sector") {
+    columns[2] = { ...columns[2], aggregate: "sum" };
+  }
+  return columns;
+}
+
+function oracleRowId(id: DifferentialRowId): string {
+  return `${typeof id === "number" ? "n" : "s"}:${String(id)}`;
+}
+
 function legacyRows(state: ReferenceState, fullyExpanded = false) {
+  const originalIds = new Map<string, DifferentialRowId>();
   const rows: SourceRow<DifferentialRow>[] = [...state.rows.values()]
     .sort((left, right) => left.sourceOrder - right.sourceOrder)
-    .map(({ row, sourceOrder }) => ({
-      id: row.id,
-      row,
-      sourceIndex: sourceOrder,
-    }));
-  const filters: Record<string, ColumnFilter> =
-    state.query.minimum === undefined
-      ? {}
-      : {
-          quantity: { operator: "gte", value: state.query.minimum },
-        };
-  const sort: PretableSortEntry[] =
-    state.query.direction === undefined
-      ? []
-      : [{ columnId: "quantity", direction: state.query.direction }];
-  return runLegacyOracle({
-    columns: [...legacyColumns],
+    .map(({ row, sourceOrder }) => {
+      const id = oracleRowId(row.id);
+      originalIds.set(id, row.id);
+      return { id, row, sourceIndex: sourceOrder };
+    });
+  const columns = legacyColumnsFor(state.derivations);
+  const filters: Record<string, ColumnFilter> = {};
+
+  // The frozen projector stores one filter per column. Duplicate lightweight
+  // adapter columns preserve the new engine's ordered AND semantics, including
+  // multiple filters on the same real column, without changing the oracle.
+  state.query.filters.forEach((filter, index) => {
+    const source = columns.find((column) => column.id === filter.columnId);
+    if (source === undefined) throw new Error("oracle adapter lost a column");
+    const id = `__filter__${index}`;
+    columns.push({
+      ...source,
+      id,
+      aggregate: undefined,
+      value: (row) =>
+        source.value === undefined ? row[source.id] : source.value(row),
+    });
+    if ("value" in filter && filter.value === "") {
+      // Legacy treats blank operands as inactive. Generated cells are all
+      // non-blank, so operand-free predicates retain the compiled query's
+      // actual empty-needle truth table without narrowing the generator.
+      filters[id] = {
+        operator:
+          filter.operator === "equals" || filter.operator === "notContains"
+            ? "isEmpty"
+            : "isNotEmpty",
+      };
+    } else {
+      filters[id] =
+        "value" in filter
+          ? { operator: filter.operator, value: filter.value }
+          : { operator: filter.operator };
+    }
+  });
+
+  // A legacy group takes its direction from the first sort on that column.
+  // Putting independently directed groups first changes only sibling-group
+  // order: all such keys are constant inside an innermost leaf group.
+  const sort: PretableSortEntry[] = [
+    ...state.query.rowGroups.map(({ columnId, direction }) => ({
+      columnId,
+      direction:
+        state.derivations === "reverse-sector" && columnId === "sector"
+          ? direction === "asc"
+            ? ("desc" as const)
+            : ("asc" as const)
+          : direction,
+    })),
+  ];
+  state.query.sort.forEach(({ columnId, direction, nulls }, index) => {
+    const source = columns.find((column) => column.id === columnId);
+    if (source === undefined)
+      throw new Error("oracle adapter lost a sort column");
+    const nullRankId = `__null_sort__${index}`;
+    columns.push({
+      ...source,
+      id: nullRankId,
+      aggregate: undefined,
+      value: (row) => {
+        const value =
+          source.value === undefined ? row[source.id] : source.value(row);
+        const isNull =
+          value === null ||
+          value === undefined ||
+          (typeof value === "number" && Number.isNaN(value));
+        return isNull
+          ? (nulls ?? "last") === "first"
+            ? 0
+            : 1
+          : (nulls ?? "last") === "first"
+            ? 1
+            : 0;
+      },
+    });
+    sort.push({ columnId: nullRankId, direction: "asc" });
+    sort.push({
+      columnId,
+      direction:
+        state.derivations === "reverse-sector" && columnId === "sector"
+          ? direction === "asc"
+            ? "desc"
+            : "asc"
+          : direction,
+    });
+  });
+  const expected = runLegacyOracle({
+    columns,
     rows,
     filters,
     sort,
-    rowGroups: [...state.query.groups],
+    rowGroups: state.query.rowGroups.map(({ columnId }) => columnId),
     aggregateFilteredRows: state.aggregateFilteredRows,
     expansion: fullyExpanded
       ? { default: { kind: "expanded" } }
       : state.expansion,
   });
+  return expected.map((row) =>
+    row.kind === "data"
+      ? {
+          ...row,
+          ref: {
+            kind: "data" as const,
+            rowId: originalIds.get(row.ref.rowId),
+          },
+        }
+      : row,
+  );
 }
 
 function normalizedIncremental(
@@ -153,11 +328,13 @@ function incrementalRows(model: ReturnType<typeof createModel>) {
   return snapshot.range(0, snapshot.visibleRowCount);
 }
 
-function refOf(row: LegacyOracleRow<DifferentialRow>) {
-  return row.ref as PretableVisibleRowRef<string>;
+function refOf(row: ReturnType<typeof legacyRows>[number]) {
+  return row.ref as PretableVisibleRowRef<DifferentialRowId>;
 }
 
-function groupAncestors(rows: readonly LegacyOracleRow<DifferentialRow>[]) {
+function groupAncestors(
+  rows: readonly ReturnType<typeof legacyRows>[number][],
+) {
   const ancestors = new Map<string, readonly PretableGroupId[]>();
   const stack: PretableGroupId[] = [];
   for (const row of rows) {
@@ -171,8 +348,10 @@ function groupAncestors(rows: readonly LegacyOracleRow<DifferentialRow>[]) {
 function assertSnapshot(
   model: ReturnType<typeof createModel>,
   state: ReferenceState,
+  status: "ready" | "rebuilding" = "ready",
 ): void {
   const snapshot = model.getState().snapshot;
+  expect(model.getState().status.kind).toBe(status);
   const expected = legacyRows(state);
   const actual = incrementalRows(model).map(normalizedIncremental);
   expect(actual).toEqual(expected);
@@ -204,6 +383,18 @@ function assertSnapshot(
   expected.forEach((row, index) => {
     expect(snapshot.indexOf(refOf(row))).toBe(index);
   });
+  const absentData = { kind: "data" as const, rowId: "__absent__" };
+  const absentGroup = {
+    kind: "group" as const,
+    groupId: "__group__:sector=s:Missing" as PretableGroupId,
+  };
+  expect(snapshot.indexOf(absentData)).toBe(-1);
+  expect(snapshot.indexOf(absentGroup)).toBe(-1);
+  expect(snapshot.previousDataRow(absentData)).toBeUndefined();
+  expect(snapshot.nextDataRow(absentData)).toBeUndefined();
+  expect(snapshot.parentGroupOf(absentData)).toBeUndefined();
+  expect(snapshot.nearestVisibleRef(absentData)).toBeUndefined();
+  expect(snapshot.nearestVisibleRef(absentGroup)).toBeUndefined();
   expectedData.forEach((row, index) => {
     expect(snapshot.dataRowAt(index)).toMatchObject({ rowId: row.ref.rowId });
   });
@@ -236,6 +427,16 @@ function assertSnapshot(
   const full = legacyRows(state, true);
   const fullAncestors = groupAncestors(full);
   for (const row of full) {
+    if (row.kind === "group") {
+      const override = state.expansion.overrides.get(row.ref.groupId);
+      const defaultExpanded =
+        state.expansion.default.kind === "expanded" ||
+        (state.expansion.default.kind === "through-depth" &&
+          row.depth <= state.expansion.default.depth);
+      expect(snapshot.isGroupExpanded(row.ref.groupId)).toBe(
+        override ?? defaultExpanded,
+      );
+    }
     if (visibleRefs.has(JSON.stringify(row.ref))) continue;
     const nearest = [...(fullAncestors.get(JSON.stringify(row.ref)) ?? [])]
       .reverse()
@@ -252,13 +453,20 @@ function createModel(
   rows: readonly DifferentialRow[],
   query: DifferentialQuery,
   aggregateFilteredRows = false,
+  derivations: DifferentialDerivations = "sum",
+  scheduler?: ManualScheduler,
 ) {
+  let tick = 0;
   return createLocalRowModel({
     rows,
     columns: modelColumns,
+    derivations: modelDerivations(derivations),
     initialExpansion: { kind: "expanded" },
     query: modelQuery(query),
     aggregateFilteredRows,
+    transitionScheduler: scheduler,
+    transitionClock: scheduler === undefined ? undefined : () => tick++,
+    transitionBudgetMs: scheduler === undefined ? undefined : 1,
   });
 }
 
@@ -278,6 +486,33 @@ class ManualScheduler {
     if (entry === undefined) return false;
     if (!entry.cancelled) entry.task();
     return true;
+  }
+}
+
+function flushTransitionPrefixes(
+  model: ReturnType<typeof createModel>,
+  state: ReferenceState,
+  scheduler: ManualScheduler | undefined,
+): void {
+  if (scheduler === undefined) return;
+  while (scheduler.entries.length > 0) {
+    const before = model.getState();
+    const oldRevision = before.snapshot.revision;
+    const oldRows = before.snapshot.range(0, before.snapshot.visibleRowCount);
+    scheduler.flushOne();
+    const after = model.getState();
+    if (after !== before) state.notifications += 1;
+    expect(before.snapshot.range(0, before.snapshot.visibleRowCount)).toEqual(
+      oldRows,
+    );
+    if (after.status.kind === "rebuilding") {
+      expect(after.snapshot).toBe(before.snapshot);
+      expect(after.snapshot.revision).toBe(oldRevision);
+      assertSnapshot(model, state, "rebuilding");
+    } else {
+      expect(after.status.kind).toBe("ready");
+      expect(after.snapshot.revision).toBe(oldRevision + 1);
+    }
   }
 }
 
@@ -312,6 +547,7 @@ async function applyOperation(
   model: ReturnType<typeof createModel>,
   state: ReferenceState,
   operation: DifferentialOperation,
+  scheduler?: ManualScheduler,
 ): Promise<void> {
   const before = model.getState();
   switch (operation.kind) {
@@ -434,12 +670,117 @@ async function applyOperation(
       const changed =
         JSON.stringify(state.query) !== JSON.stringify(operation.query);
       const transition = model.setQuery(modelQuery(operation.query));
+      if (model.getState() !== before) state.notifications += 1;
+      flushTransitionPrefixes(model, state, scheduler);
       const revision = await transition.finished;
       if (changed) {
         state.query = operation.query;
-        expectedMutation(state, true);
+        state.revision += 1;
       }
       expect(revision).toBe(state.revision);
+      return;
+    }
+    case "setDerivations": {
+      const changed = state.derivations !== operation.derivations;
+      const rebuild =
+        changed &&
+        derivationChangeAffectsQuery(
+          state.derivations,
+          operation.derivations,
+          state.query,
+        );
+      const transition = model.setDerivations(
+        modelDerivations(operation.derivations),
+      );
+      if (model.getState() !== before) state.notifications += 1;
+      flushTransitionPrefixes(model, state, scheduler);
+      const revision = await transition.finished;
+      if (changed) {
+        state.derivations = operation.derivations;
+        if (rebuild) state.revision += 1;
+      }
+      expect(revision).toBe(state.revision);
+      return;
+    }
+    case "invalidQuery": {
+      const invalid =
+        operation.fault === "operator"
+          ? {
+              filters: [{ columnId: "quantity", operator: "wat", value: 0 }],
+              sort: [],
+              rowGroups: [],
+            }
+          : operation.fault === "column"
+            ? {
+                filters: [],
+                sort: [{ columnId: "missing", direction: "asc" }],
+                rowGroups: [],
+              }
+            : {
+                filters: [],
+                sort: [{ columnId: "quantity", direction: "sideways" }],
+                rowGroups: [],
+              };
+      expect(() => model.setQuery(invalid as never)).toThrow(
+        expect.objectContaining({
+          code: "invalid-query",
+        }),
+      );
+      expect(model.getState()).toBe(before);
+      return;
+    }
+    case "duplicateTransaction": {
+      const duplicateId = `__duplicate__:${typeof operation.id}:${String(operation.id)}`;
+      const row = {
+        id: duplicateId,
+        sector: "S0",
+        analyst: "Ada",
+        quantity: 0,
+        label: "duplicate",
+      };
+      const transaction =
+        operation.duplicate === "add"
+          ? { add: [row, { ...row }] }
+          : operation.duplicate === "update"
+            ? {
+                update: [
+                  { id: duplicateId, changes: { quantity: 1 } },
+                  { id: duplicateId, changes: { quantity: 2 } },
+                ],
+              }
+            : operation.duplicate === "remove"
+              ? { remove: [duplicateId, duplicateId] }
+              : { add: [row], remove: [duplicateId] };
+      if (
+        operation.duplicate === "update" ||
+        operation.duplicate === "remove"
+      ) {
+        const result = model.applyTransaction(transaction);
+        expect(result).toMatchObject(
+          expectedMutation(state, false, { ignored: 1 }),
+        );
+        expect(result.issues).toEqual([
+          {
+            code:
+              operation.duplicate === "update"
+                ? "unknown-update-id"
+                : "unknown-remove-id",
+            rowId: duplicateId,
+          },
+        ]);
+        expect(model.getState()).toBe(before);
+        return;
+      }
+      expect(() => model.applyTransaction(transaction)).toThrow(
+        expect.objectContaining({
+          code:
+            operation.duplicate === "add"
+              ? "duplicate-row-id"
+              : "transaction-conflict",
+          operation: "apply-transaction",
+        }),
+      );
+      expect(model.getState()).toBe(before);
       return;
     }
     case "toggleGroup": {
@@ -502,67 +843,185 @@ async function applyOperation(
 }
 
 describe("incremental row model differential properties", () => {
-  test("keeps approved legacy differences explicit and closed", () => {
-    expect(APPROVED_INTENTIONAL_DIFFERENCES).toEqual([
-      "collapsed-default-expansion",
-      "typed-null-and-nan-ordering",
-      "independent-group-direction",
-      "strict-correlated-query-validation",
-      "multiple-filters-per-column",
-      "date-signed-zero-and-object-group-identity",
-      "exact-numeric-aggregation",
-      "number-row-ids",
-      "structured-transaction-results",
-      "monotonic-transaction-source-tokens",
-      "custom-derivation-replacement",
-    ]);
+  test("the fixed replay domain covers the compatibility boundaries", () => {
+    const samples = fc.sample(scenarioArbitrary, {
+      seed: 0x5eed_1310,
+      numRuns: 250,
+    }) as readonly {
+      rows: readonly DifferentialRow[];
+      query: {
+        filters?: readonly { columnId: string }[];
+        sort?: readonly {
+          columnId: string;
+          nulls?: "first" | "last";
+        }[];
+        rowGroups?: readonly { direction?: string }[];
+      };
+      operations: readonly { kind: string; derivations?: string }[];
+    }[];
+    const operations = samples.flatMap((sample) => sample.operations);
+
+    expect(
+      samples.some((sample) =>
+        sample.rows.some((row) => typeof row.id === "number"),
+      ),
+    ).toBe(true);
+    expect(
+      samples.some((sample) => {
+        const filters = sample.query.filters ?? [];
+        return filters.some(
+          (filter, index) =>
+            filters.findIndex(
+              (candidate) => candidate.columnId === filter.columnId,
+            ) !== index,
+        );
+      }),
+    ).toBe(true);
+    expect(samples.some((sample) => (sample.query.sort?.length ?? 0) > 1)).toBe(
+      true,
+    );
+    expect(
+      samples.some(
+        (sample) =>
+          sample.rows.some((row) => row.label === null) &&
+          (sample.query.sort ?? []).some(
+            (entry) => entry.columnId === "label" && entry.nulls !== undefined,
+          ),
+      ),
+    ).toBe(true);
+    expect(
+      samples.some((sample) =>
+        (sample.query.rowGroups ?? []).some(
+          (group) => group.direction === "desc",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      operations.some((operation) => operation.kind === "setDerivations"),
+    ).toBe(true);
+    expect(
+      operations.some(
+        (operation) => operation.derivations === "absolute-quantity",
+      ),
+    ).toBe(true);
+    expect(
+      operations.some(
+        (operation) => operation.derivations === "reverse-sector",
+      ),
+    ).toBe(true);
+    expect(
+      operations.some((operation) => operation.kind === "invalidQuery"),
+    ).toBe(true);
+    expect(
+      operations.some((operation) => operation.kind === "duplicateTransaction"),
+    ).toBe(true);
   });
 
-  test(`matches every sequential prefix (seed ${SEQUENTIAL_SEED})`, async () => {
-    await fc.assert(
-      fc.asyncProperty(scenarioArbitrary, async (scenario) => {
-        const initialRows = uniqueRows(scenario.rows);
-        const model = createModel(
-          initialRows,
-          scenario.query,
-          scenario.aggregateFilteredRows,
-        );
+  test("keeps approved legacy differences explicit and closed", () => {
+    expect(APPROVED_INTENTIONAL_DIFFERENCES).toEqual([]);
+  });
+
+  test("makes absolute null placement operative in the retained oracle", () => {
+    const rows = [
+      {
+        id: "null-label",
+        sector: "S0",
+        analyst: "Ada",
+        quantity: 1,
+        label: null,
+      },
+      {
+        id: "value-label",
+        sector: "S0",
+        analyst: "Ada",
+        quantity: 2,
+        label: "value",
+      },
+    ] as unknown as readonly DifferentialRow[];
+    for (const direction of ["asc", "desc"] as const) {
+      for (const nulls of ["first", "last"] as const) {
+        const query: DifferentialQuery = {
+          filters: [],
+          sort: [{ columnId: "label", direction, nulls }],
+          rowGroups: [],
+        };
+        const model = createModel(rows, query);
         const state: ReferenceState = {
           rows: new Map(
-            initialRows.map((row, sourceOrder) => [
-              row.id,
-              { row, sourceOrder },
-            ]),
+            rows.map((row, sourceOrder) => [row.id, { row, sourceOrder }]),
           ),
-          nextSourceOrder: initialRows.length,
-          query: scenario.query,
+          nextSourceOrder: rows.length,
+          query,
           expansion: {
             default: { kind: "expanded" },
             overrides: new Map(),
           },
           revision: 0,
           notifications: 0,
-          aggregateFilteredRows: scenario.aggregateFilteredRows,
+          aggregateFilteredRows: false,
+          derivations: "sum",
         };
-        let notifications = 0;
-        model.subscribe(() => {
-          notifications += 1;
-        });
         assertSnapshot(model, state);
-        for (const operation of scenario.operations) {
-          const captured = model.getState().snapshot;
-          const capturedRows = captured.range(0, captured.visibleRowCount);
-          await applyOperation(model, state, operation);
-          expect(notifications).toBe(state.notifications);
-          expect(captured.range(0, captured.visibleRowCount)).toEqual(
-            capturedRows,
-          );
-          assertSnapshot(model, state);
-        }
         model.dispose();
-      }),
-      { seed: SEQUENTIAL_SEED, numRuns: 60, verbose: true },
-    );
+      }
+    }
+  });
+
+  test(`matches every sequential prefix (seed ${SEQUENTIAL_SEED})`, async () => {
+    for (const seed of [SEQUENTIAL_SEED, ...SEQUENTIAL_EXTRA_SEEDS]) {
+      await fc.assert(
+        fc.asyncProperty(scenarioArbitrary, async (scenario) => {
+          const initialRows = uniqueRows(scenario.rows);
+          const scheduler = new ManualScheduler();
+          const model = createModel(
+            initialRows,
+            scenario.query,
+            scenario.aggregateFilteredRows,
+            "sum",
+            scheduler,
+          );
+          const state: ReferenceState = {
+            rows: new Map(
+              initialRows.map((row, sourceOrder) => [
+                row.id,
+                { row, sourceOrder },
+              ]),
+            ),
+            nextSourceOrder: initialRows.length,
+            query: scenario.query,
+            expansion: {
+              default: { kind: "expanded" },
+              overrides: new Map(),
+            },
+            revision: 0,
+            notifications: 0,
+            aggregateFilteredRows: scenario.aggregateFilteredRows,
+            derivations: "sum",
+          };
+          let notifications = 0;
+          model.subscribe(() => {
+            notifications += 1;
+          });
+          assertSnapshot(model, state);
+          for (const operation of scenario.operations) {
+            const captured = model.getState().snapshot;
+            const capturedRows = captured.range(0, captured.visibleRowCount);
+            await applyOperation(model, state, operation, scheduler);
+            expect(notifications).toBe(state.notifications);
+            expect(captured.range(0, captured.visibleRowCount)).toEqual(
+              capturedRows,
+            );
+            assertSnapshot(model, state);
+          }
+          model.dispose();
+        }),
+        {
+          seed,
+          numRuns: seed === SEQUENTIAL_SEED ? 60 : 25,
+          verbose: 2,
+        },
+      );
+    }
   }, 60_000);
 
   test("preserves the legacy undefined representative for a blank group", () => {
@@ -605,90 +1064,251 @@ describe("incremental row model differential properties", () => {
     });
   });
 
+  test("rolls back accessor, comparator, and custom aggregate replacement failures", async () => {
+    const rows = [
+      {
+        id: 1,
+        sector: "S0",
+        analyst: "Ada",
+        quantity: 1,
+        label: "one",
+      },
+      {
+        id: "r2",
+        sector: "S/1",
+        analyst: "Bob/Two",
+        quantity: 2,
+        label: "two",
+      },
+    ] as const;
+    const query: DifferentialQuery = {
+      filters: [],
+      sort: [{ columnId: "sector", direction: "asc" }],
+      rowGroups: [{ columnId: "sector", direction: "asc" }],
+    };
+    const failures = [
+      {
+        code: "accessor-failed",
+        columns: [
+          {
+            ...modelColumns[0],
+            accessor: (): string => {
+              throw new Error("replacement accessor exploded");
+            },
+            value: (): string => {
+              throw new Error("replacement accessor exploded");
+            },
+          },
+          modelColumns[1],
+          modelColumns[2],
+          modelColumns[3],
+        ],
+      },
+      {
+        code: "comparator-failed",
+        columns: [
+          {
+            ...modelColumns[0],
+            compare: (): number => {
+              throw new Error("replacement comparator exploded");
+            },
+          },
+          modelColumns[1],
+          modelColumns[2],
+          modelColumns[3],
+        ],
+      },
+      {
+        code: "aggregator-failed",
+        columns: [
+          modelColumns[0],
+          modelColumns[1],
+          {
+            ...modelColumns[2],
+            aggregate: {
+              init: () => 0,
+              accumulate: (accumulator: number, value: number) =>
+                accumulator + value,
+              merge: (left: number, right: number) => left + right,
+              finalize: (): number | null => {
+                throw new Error("replacement aggregate exploded");
+              },
+            },
+          },
+          modelColumns[3],
+        ],
+      },
+    ] as const;
+
+    for (const failure of failures) {
+      const model = createModel(rows, query);
+      const before = model.getState();
+      let notifications = 0;
+      model.subscribe(() => {
+        notifications += 1;
+      });
+      const transition = model.setDerivations(failure.columns as never);
+      await expect(transition.finished).rejects.toMatchObject({
+        code: failure.code,
+        operation: "set-derivations",
+        columnId: failure.code === "aggregator-failed" ? "quantity" : "sector",
+        cause: expect.objectContaining({
+          message: expect.stringContaining("exploded"),
+        }),
+      });
+      expect(model.getState().snapshot).toBe(before.snapshot);
+      expect(model.getState().snapshot.revision).toBe(0);
+      expect(model.getState().status).toMatchObject({ kind: "error" });
+      expect(notifications).toBe(1);
+      model.dispose();
+    }
+  });
+
   test(`catches up concurrent mutations after supersession (seed ${TRANSITION_SEED})`, async () => {
     const emptyQuery: DifferentialQuery = {
-      minimum: undefined,
-      direction: undefined,
-      groups: [],
+      filters: [],
+      sort: [],
+      rowGroups: [],
     };
-    await fc.assert(
-      fc.asyncProperty(transitionScenarioArbitrary, async (scenario) => {
-        fc.pre(JSON.stringify(scenario.first) !== JSON.stringify(emptyQuery));
-        fc.pre(JSON.stringify(scenario.second) !== JSON.stringify(emptyQuery));
-        fc.pre(
-          JSON.stringify(scenario.first) !== JSON.stringify(scenario.second),
-        );
-        const rows = uniqueRows(scenario.rows);
-        const scheduler = new ManualScheduler();
-        let tick = 0;
-        const model = createLocalRowModel({
-          rows,
-          columns: modelColumns,
-          initialExpansion: { kind: "expanded" },
-          query: modelQuery(emptyQuery),
-          transitionScheduler: scheduler,
-          transitionClock: () => tick++,
-          transitionBudgetMs: 1,
-        });
-        const state: ReferenceState = {
-          rows: new Map(
-            rows.map((row, sourceOrder) => [row.id, { row, sourceOrder }]),
-          ),
-          nextSourceOrder: rows.length,
-          query: emptyQuery,
-          expansion: {
-            default: { kind: "expanded" },
-            overrides: new Map(),
-          },
-          revision: 0,
-          notifications: 0,
-          aggregateFilteredRows: false,
-        };
-        let notifications = 0;
-        model.subscribe(() => {
-          notifications += 1;
-        });
-
-        const first = model.setQuery(modelQuery(scenario.first));
-        expect(model.getState().status).toMatchObject({ kind: "rebuilding" });
-        expect(model.getState().snapshot.revision).toBe(0);
-        expect(notifications).toBe(1);
-        state.notifications = notifications;
-        for (const update of scenario.updates) {
-          if (update.kind === "update") {
-            await applyOperation(model, state, update);
-            expect(notifications).toBe(state.notifications);
-            assertSnapshot(model, state);
-          }
-        }
-
-        const second = model.setQuery(modelQuery(scenario.second));
-        await expect(first.finished).rejects.toMatchObject({
-          reason: "superseded",
-        });
-        expect(model.getState().snapshot.query).toEqual(modelQuery(emptyQuery));
-        expect(notifications).toBe(state.notifications + 1);
-        state.notifications = notifications;
-
-        while (scheduler.entries.length > 0) {
-          const previousState = model.getState();
-          const previousNotifications = notifications;
-          scheduler.flushOne();
-          expect(notifications - previousNotifications).toBe(
-            model.getState() === previousState ? 0 : 1,
+    for (const seed of [TRANSITION_SEED, ...TRANSITION_EXTRA_SEEDS]) {
+      await fc.assert(
+        fc.asyncProperty(transitionScenarioArbitrary, async (scenario) => {
+          fc.pre(JSON.stringify(scenario.first) !== JSON.stringify(emptyQuery));
+          fc.pre(
+            JSON.stringify(scenario.second) !== JSON.stringify(emptyQuery),
           );
-        }
-        const revision = await second.finished;
-        state.query = scenario.second;
-        state.revision += 1;
-        state.notifications = notifications;
-        expect(revision).toBe(state.revision);
-        assertSnapshot(model, state);
-        model.dispose();
-      }),
-      { seed: TRANSITION_SEED, numRuns: 30, verbose: true },
-    );
-  }, 30_000);
+          fc.pre(
+            JSON.stringify(scenario.first) !== JSON.stringify(scenario.second),
+          );
+          const rows = uniqueRows(scenario.rows);
+          const scheduler = new ManualScheduler();
+          let tick = 0;
+          const model = createLocalRowModel({
+            rows,
+            columns: modelColumns,
+            initialExpansion: { kind: "expanded" },
+            query: modelQuery(emptyQuery),
+            transitionScheduler: scheduler,
+            transitionClock: () => tick++,
+            transitionBudgetMs: 1,
+          });
+          const state: ReferenceState = {
+            rows: new Map(
+              rows.map((row, sourceOrder) => [row.id, { row, sourceOrder }]),
+            ),
+            nextSourceOrder: rows.length,
+            query: emptyQuery,
+            expansion: {
+              default: { kind: "expanded" },
+              overrides: new Map(),
+            },
+            revision: 0,
+            notifications: 0,
+            aggregateFilteredRows: false,
+            derivations: "sum",
+          };
+          let notifications = 0;
+          model.subscribe(() => {
+            notifications += 1;
+          });
+
+          let active: { readonly finished: Promise<number> } = model.setQuery(
+            modelQuery(scenario.first),
+          );
+          expect(model.getState().status).toMatchObject({ kind: "rebuilding" });
+          expect(model.getState().snapshot.revision).toBe(0);
+          expect(notifications).toBe(1);
+          state.notifications = notifications;
+          for (const update of scenario.updates) {
+            if (update.kind === "update") {
+              await applyOperation(model, state, update);
+              expect(notifications).toBe(state.notifications);
+              assertSnapshot(model, state, "rebuilding");
+            }
+          }
+
+          for (const operation of scenario.concurrent) {
+            if (
+              operation.kind === "setQuery" ||
+              operation.kind === "setDerivations"
+            ) {
+              const previousState = model.getState();
+              const previousNotifications = notifications;
+              const superseded = active;
+              active =
+                operation.kind === "setQuery"
+                  ? model.setQuery(modelQuery(operation.query))
+                  : model.setDerivations(
+                      modelDerivations(operation.derivations),
+                    );
+              void superseded.finished.catch(() => undefined);
+              expect(notifications - previousNotifications).toBe(
+                model.getState() === previousState ? 0 : 1,
+              );
+              if (
+                operation.kind === "setDerivations" &&
+                model.getState().status.kind === "ready"
+              ) {
+                state.derivations = operation.derivations;
+              }
+              state.notifications = notifications;
+            } else {
+              await applyOperation(model, state, operation);
+              expect(notifications).toBe(state.notifications);
+            }
+            assertSnapshot(
+              model,
+              state,
+              model.getState().status.kind === "rebuilding"
+                ? "rebuilding"
+                : "ready",
+            );
+          }
+
+          const second = model.setQuery(modelQuery(scenario.second));
+          void active.finished.catch(() => undefined);
+          expect(model.getState().snapshot.query).toEqual(
+            modelQuery(emptyQuery),
+          );
+          expect(notifications).toBe(state.notifications + 1);
+          state.notifications = notifications;
+
+          while (scheduler.entries.length > 0) {
+            const previousState = model.getState();
+            const previousNotifications = notifications;
+            const previousSnapshot = previousState.snapshot;
+            const previousRevision = previousSnapshot.revision;
+            scheduler.flushOne();
+            expect(notifications - previousNotifications).toBe(
+              model.getState() === previousState ? 0 : 1,
+            );
+            expect(previousState.snapshot).toBe(previousSnapshot);
+            if (model.getState().status.kind === "rebuilding") {
+              expect(model.getState().snapshot).toBe(previousSnapshot);
+              expect(model.getState().snapshot.revision).toBe(previousRevision);
+              assertSnapshot(model, state, "rebuilding");
+            } else {
+              expect(model.getState().snapshot.revision).toBe(
+                previousRevision + 1,
+              );
+            }
+          }
+          const revision = await second.finished;
+          state.query = scenario.second;
+          state.revision += 1;
+          state.notifications = notifications;
+          expect(revision).toBe(state.revision);
+          assertSnapshot(model, state);
+          model.dispose();
+        }),
+        {
+          seed,
+          numRuns: seed === TRANSITION_SEED ? 30 : 15,
+          verbose: 2,
+        },
+      );
+    }
+  }, 60_000);
 
   test("prints deterministic replay data for arbitrary operation shrinking", () => {
     fc.assert(

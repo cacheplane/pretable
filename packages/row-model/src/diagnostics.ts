@@ -15,6 +15,10 @@ export interface LocalRowModelWorkDiagnostics {
   readonly rowsEvaluated: number;
   readonly hamtNodesCopied: number;
   readonly orderNodesCopied: number;
+  /**
+   * Immutable logical group nodes rebuilt on changed paths plus each immutable
+   * node allocated by the measured group-order AVL, including rotations.
+   */
   readonly groupNodesCopied: number;
   readonly aggregateMerges: number;
   readonly transitionRows: number;
@@ -42,6 +46,11 @@ export interface LocalRowModelDiagnosticSnapshot {
 export interface LocalRowModelDiagnostics {
   read(): LocalRowModelDiagnosticSnapshot;
   resetWork(): void;
+  /**
+   * Explicitly includes this model's validated immutable snapshot root in the
+   * ownership graph until the returned idempotent handle is released. Arbitrary
+   * external JavaScript references cannot be observed and are not counted.
+   */
   retainSnapshot(
     snapshot: PretableRowModelSnapshot<object, PretableRowId, unknown>,
   ): () => void;
@@ -57,8 +66,15 @@ export interface LocalRowModelInstrumentation {
   readonly work: Record<CounterName, number> & {
     schedulerSliceDurations: number[];
   };
-  readonly retainedSnapshots: Set<object>;
+  /** Snapshots created by this exact model, mapped to their immutable root. */
+  readonly snapshotRoots: WeakMap<object, object>;
+  /** Explicit diagnostic handles. External references are intentionally opaque. */
+  readonly retainedSnapshots: Map<
+    object,
+    { readonly root: object; handleCount: number }
+  >;
   readonly scheduledCallbacks: Set<object>;
+  currentRevisionRoot: object | undefined;
   model: object | undefined;
 }
 
@@ -74,8 +90,10 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       snapshotOutputRowsRead: 0,
       schedulerSliceDurations: [],
     },
-    retainedSnapshots: new Set(),
+    snapshotRoots: new WeakMap(),
+    retainedSnapshots: new Map(),
     scheduledCallbacks: new Set(),
+    currentRevisionRoot: undefined,
     model: undefined,
   };
 }
@@ -111,6 +129,11 @@ function diagnosticHandle(
         candidate === undefined
           ? undefined
           : getCooperativeTransitionCandidateDiagnosticsForTesting(candidate);
+      const liveRevisionRoots = new Set<object>();
+      if (instrumentation.currentRevisionRoot !== undefined)
+        liveRevisionRoots.add(instrumentation.currentRevisionRoot);
+      for (const retained of instrumentation.retainedSnapshots.values())
+        liveRevisionRoots.add(retained.root);
       return Object.freeze({
         work: Object.freeze({
           ...instrumentation.work,
@@ -119,7 +142,7 @@ function diagnosticHandle(
           ]),
         }),
         retention: Object.freeze({
-          liveRevisionRootCount: 1,
+          liveRevisionRootCount: liveRevisionRoots.size,
           explicitlyRetainedSnapshotCount:
             instrumentation.retainedSnapshots.size,
           consumerJournalEntryCount: journal.entryCount,
@@ -136,12 +159,30 @@ function diagnosticHandle(
     },
     resetWork: () => resetWork(instrumentation),
     retainSnapshot(snapshot: object) {
-      instrumentation.retainedSnapshots.add(snapshot);
+      const root = instrumentation.snapshotRoots.get(snapshot);
+      if (root === undefined) {
+        throw new TypeError(
+          "Diagnostics can retain only snapshots created by this model.",
+        );
+      }
+      const existing = instrumentation.retainedSnapshots.get(snapshot);
+      if (existing === undefined) {
+        instrumentation.retainedSnapshots.set(snapshot, {
+          root,
+          handleCount: 1,
+        });
+      } else {
+        existing.handleCount += 1;
+      }
       let retained = true;
       return () => {
         if (!retained) return;
         retained = false;
-        instrumentation.retainedSnapshots.delete(snapshot);
+        const current = instrumentation.retainedSnapshots.get(snapshot);
+        if (current === undefined) return;
+        current.handleCount -= 1;
+        if (current.handleCount === 0)
+          instrumentation.retainedSnapshots.delete(snapshot);
       };
     },
   });

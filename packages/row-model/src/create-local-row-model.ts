@@ -80,7 +80,7 @@ function createSnapshot<
     if (value !== undefined) instrumentation.work.snapshotOutputRowsRead += 1;
     return value;
   };
-  return Object.freeze({
+  const instrumentedSnapshot = Object.freeze({
     ...snapshot,
     rowAt: (index: number) => count(snapshot.rowAt(index)),
     range: (start: number, end: number) => {
@@ -96,6 +96,9 @@ function createSnapshot<
     previousDataRow: (ref: PretableVisibleRowRef<TRowId>) =>
       count(snapshot.previousDataRow(ref)),
   });
+  instrumentation.snapshotRoots.set(instrumentedSnapshot, root);
+  instrumentation.currentRevisionRoot = root;
+  return instrumentedSnapshot;
 }
 
 interface CreateLocalRowModelBaseOptions<
@@ -1195,6 +1198,8 @@ export function createLocalRowModel<
         changeJournal.clear();
         disposed = true;
         state = Object.freeze({ snapshot, status: DISPOSED });
+        if (instrumentation !== undefined)
+          instrumentation.currentRevisionRoot = root;
         const captured = Array.from(listeners);
         listeners.clear();
         return captured;

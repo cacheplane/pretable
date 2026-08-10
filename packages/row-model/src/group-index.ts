@@ -419,7 +419,9 @@ function measuredNode<
   entry: GroupNode<TRow, TRowId, TColumns>,
   left: MeasuredNode<TRow, TRowId, TColumns> | null,
   right: MeasuredNode<TRow, TRowId, TColumns> | null,
+  instrumentation?: LocalRowModelInstrumentation,
 ): MeasuredNode<TRow, TRowId, TColumns> {
+  if (instrumentation !== undefined) instrumentation.work.groupNodesCopied += 1;
   return Object.freeze({
     entry,
     left,
@@ -439,6 +441,7 @@ function measuredBalance<
   TColumns,
 >(
   node: MeasuredNode<TRow, TRowId, TColumns>,
+  instrumentation?: LocalRowModelInstrumentation,
 ): MeasuredNode<TRow, TRowId, TColumns> {
   const factor = measuredHeight(node.left) - measuredHeight(node.right);
   if (factor > 1) {
@@ -447,14 +450,16 @@ function measuredBalance<
       const pivot = left.right!;
       left = measuredNode(
         pivot.entry,
-        measuredNode(left.entry, left.left, pivot.left),
+        measuredNode(left.entry, left.left, pivot.left, instrumentation),
         pivot.right,
+        instrumentation,
       );
     }
     return measuredNode(
       left.entry,
       left.left,
-      measuredNode(node.entry, left.right, node.right),
+      measuredNode(node.entry, left.right, node.right, instrumentation),
+      instrumentation,
     );
   }
   if (factor < -1) {
@@ -464,16 +469,18 @@ function measuredBalance<
       right = measuredNode(
         pivot.entry,
         pivot.left,
-        measuredNode(right.entry, pivot.right, right.right),
+        measuredNode(right.entry, pivot.right, right.right, instrumentation),
+        instrumentation,
       );
     }
     return measuredNode(
       right.entry,
-      measuredNode(node.entry, node.left, right.left),
+      measuredNode(node.entry, node.left, right.left, instrumentation),
       right.right,
+      instrumentation,
     );
   }
-  return measuredNode(node.entry, node.left, node.right);
+  return measuredNode(node.entry, node.left, node.right, instrumentation);
 }
 
 function compareGroupIds(
@@ -497,6 +504,7 @@ class PersistentMeasuredGroupTree<
     left: GroupNode<TRow, TRowId, TColumns>,
     right: GroupNode<TRow, TRowId, TColumns>,
   ) => number;
+  readonly #instrumentation: LocalRowModelInstrumentation | undefined;
 
   constructor(
     root: MeasuredNode<TRow, TRowId, TColumns> | null,
@@ -505,10 +513,12 @@ class PersistentMeasuredGroupTree<
       left: GroupNode<TRow, TRowId, TColumns>,
       right: GroupNode<TRow, TRowId, TColumns>,
     ) => number,
+    instrumentation?: LocalRowModelInstrumentation,
   ) {
     this.#root = root;
     this.#byId = byId;
     this.#compare = compare;
+    this.#instrumentation = instrumentation;
   }
 
   get size(): number {
@@ -516,6 +526,17 @@ class PersistentMeasuredGroupTree<
   }
   get measure(): PolicyCounts {
     return this.#root?.measure ?? EMPTY_COUNTS;
+  }
+  withInstrumentation(
+    instrumentation: LocalRowModelInstrumentation | undefined,
+  ): MeasuredGroupTree<TRow, TRowId, TColumns> {
+    if (instrumentation === this.#instrumentation) return this;
+    return new PersistentMeasuredGroupTree(
+      this.#root,
+      instrumentPersistentMap(this.#byId, instrumentation),
+      this.#compare,
+      instrumentation,
+    );
   }
   get(groupId: PretableGroupId) {
     return this.#byId.get(groupId);
@@ -537,14 +558,27 @@ class PersistentMeasuredGroupTree<
     root: MeasuredNode<TRow, TRowId, TColumns> | null,
     entry: GroupNode<TRow, TRowId, TColumns>,
   ): MeasuredNode<TRow, TRowId, TColumns> {
-    if (root === null) return measuredNode(entry, null, null);
+    if (root === null)
+      return measuredNode(entry, null, null, this.#instrumentation);
     const comparison = this.#compareEntries(entry, root.entry);
     return comparison < 0
       ? measuredBalance(
-          measuredNode(root.entry, this.#insert(root.left, entry), root.right),
+          measuredNode(
+            root.entry,
+            this.#insert(root.left, entry),
+            root.right,
+            this.#instrumentation,
+          ),
+          this.#instrumentation,
         )
       : measuredBalance(
-          measuredNode(root.entry, root.left, this.#insert(root.right, entry)),
+          measuredNode(
+            root.entry,
+            root.left,
+            this.#insert(root.right, entry),
+            this.#instrumentation,
+          ),
+          this.#instrumentation,
         );
   }
 
@@ -558,7 +592,10 @@ class PersistentMeasuredGroupTree<
     const [minimum, left] = this.#extractMinimum(root.left);
     return [
       minimum,
-      measuredBalance(measuredNode(root.entry, left, root.right)),
+      measuredBalance(
+        measuredNode(root.entry, left, root.right, this.#instrumentation),
+        this.#instrumentation,
+      ),
     ];
   }
 
@@ -570,16 +607,31 @@ class PersistentMeasuredGroupTree<
     const comparison = this.#compareEntries(entry, root.entry);
     if (comparison < 0)
       return measuredBalance(
-        measuredNode(root.entry, this.#remove(root.left, entry), root.right),
+        measuredNode(
+          root.entry,
+          this.#remove(root.left, entry),
+          root.right,
+          this.#instrumentation,
+        ),
+        this.#instrumentation,
       );
     if (comparison > 0)
       return measuredBalance(
-        measuredNode(root.entry, root.left, this.#remove(root.right, entry)),
+        measuredNode(
+          root.entry,
+          root.left,
+          this.#remove(root.right, entry),
+          this.#instrumentation,
+        ),
+        this.#instrumentation,
       );
     if (root.left === null) return root.right;
     if (root.right === null) return root.left;
     const [minimum, right] = this.#extractMinimum(root.right);
-    return measuredBalance(measuredNode(minimum.entry, root.left, right));
+    return measuredBalance(
+      measuredNode(minimum.entry, root.left, right, this.#instrumentation),
+      this.#instrumentation,
+    );
   }
 
   insertOrReplace(
@@ -593,6 +645,7 @@ class PersistentMeasuredGroupTree<
       this.#insert(without, entry),
       this.#byId.set(entry.groupId, entry),
       this.#compare,
+      this.#instrumentation,
     );
   }
 
@@ -603,6 +656,7 @@ class PersistentMeasuredGroupTree<
       this.#remove(this.#root, previous),
       this.#byId.delete(groupId),
       this.#compare,
+      this.#instrumentation,
     );
   }
 
@@ -756,6 +810,19 @@ class PersistentMeasuredGroupTree<
   }
 }
 
+function instrumentMeasuredGroupTree<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  tree: MeasuredGroupTree<TRow, TRowId, TColumns>,
+  instrumentation: LocalRowModelInstrumentation | undefined,
+): MeasuredGroupTree<TRow, TRowId, TColumns> {
+  return tree instanceof PersistentMeasuredGroupTree
+    ? tree.withInstrumentation(instrumentation)
+    : tree;
+}
+
 function effectiveExpanded<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -795,12 +862,17 @@ function createChildTree<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
->(queryPlan: CompiledQuery<TColumns>, level: number) {
+>(
+  queryPlan: CompiledQuery<TColumns>,
+  level: number,
+  instrumentation?: LocalRowModelInstrumentation,
+) {
   return new PersistentMeasuredGroupTree<TRow, TRowId, TColumns>(
     null,
-    createPersistentMap(),
+    instrumentPersistentMap(createPersistentMap(), instrumentation),
     (left, right) =>
       queryPlan.compareGroupKeys(level, left.path[level]!, right.path[level]!),
+    instrumentation,
   );
 }
 
@@ -1228,9 +1300,15 @@ function mutatePath<
         createPersistentMap<string, GroupNode<TRow, TRowId, TColumns>>(),
       context.instrumentation,
     );
-    let children =
+    let children = instrumentMeasuredGroupTree(
       previous?.children ??
-      createChildTree<TRow, TRowId, TColumns>(context.queryPlan, depth + 1);
+        createChildTree<TRow, TRowId, TColumns>(
+          context.queryPlan,
+          depth + 1,
+          context.instrumentation,
+        ),
+      context.instrumentation,
+    );
     let leaves = instrumentOrderStatisticTree(
       previous?.leaves ??
         createLeafTree<TRow, TRowId, TColumns>(context.queryPlan),
@@ -1356,7 +1434,7 @@ export function createGroupIndex<
   >();
   const state: MutationState<TRow, TRowId, TColumns> = {
     rootsByKey,
-    roots: createChildTree(queryPlan, 0),
+    roots: createChildTree(queryPlan, 0, instrumentation),
     groups: createPersistentMap(),
     rowParents: createPersistentMap(),
   };
@@ -1392,7 +1470,7 @@ export function updateGroupIndex<
 ): GroupIndexRoot<TRow, TRowId, TColumns> {
   const state: MutationState<TRow, TRowId, TColumns> = {
     rootsByKey: instrumentPersistentMap(previous.rootsByKey, instrumentation),
-    roots: previous.roots,
+    roots: instrumentMeasuredGroupTree(previous.roots, instrumentation),
     groups: instrumentPersistentMap(previous.groups, instrumentation),
     rowParents: instrumentPersistentMap(previous.rowParents, instrumentation),
   };
@@ -1438,7 +1516,7 @@ export function setGroupOverride<
     operation,
     instrumentation: groupIndexInstrumentation.get(root),
   };
-  let groups = root.groups;
+  let groups = instrumentPersistentMap(root.groups, context.instrumentation);
   const representativeRowId = (
     node: GroupNode<TRow, TRowId, TColumns>,
   ): TRowId | undefined => {
@@ -1454,8 +1532,14 @@ export function setGroupOverride<
     depth: number,
     node: GroupNode<TRow, TRowId, TColumns>,
   ): GroupNode<TRow, TRowId, TColumns> => {
-    let childrenByKey = node.childrenByKey;
-    let children = node.children;
+    let childrenByKey = instrumentPersistentMap(
+      node.childrenByKey,
+      context.instrumentation,
+    );
+    let children = instrumentMeasuredGroupTree(
+      node.children,
+      context.instrumentation,
+    );
     if (depth < target.depth) {
       const key = target.pathKeys[depth + 1]!;
       const oldChild = childrenByKey.get(key)!;
@@ -1483,12 +1567,15 @@ export function setGroupOverride<
   const rootKey = target.pathKeys[0]!;
   const oldTop = root.rootsByKey.get(rootKey)!;
   const nextTop = replace(0, oldTop);
-  let roots = root.roots;
+  let roots = instrumentMeasuredGroupTree(root.roots, context.instrumentation);
   if (oldTop.filteredCount) roots = roots.remove(oldTop.groupId);
   if (nextTop.filteredCount) roots = roots.insertOrReplace(nextTop);
   const nextRoot = Object.freeze({
     ...root,
-    rootsByKey: root.rootsByKey.set(rootKey, nextTop),
+    rootsByKey: instrumentPersistentMap(
+      root.rootsByKey,
+      context.instrumentation,
+    ).set(rootKey, nextTop),
     roots,
     groups,
     counts: roots.measure,
