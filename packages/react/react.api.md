@@ -648,6 +648,8 @@ export interface PretableSurfaceMessages {
 // @public
 export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     // (undocumented)
+    aggregateFilteredRows?: boolean;
+    // (undocumented)
     ariaLabel: string;
     // (undocumented)
     autosize?: boolean | AutosizeOptions;
@@ -681,10 +683,16 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     //
     // (undocumented)
     getRowProps?: (input: PretableSurfaceRowAttributesInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
+    // (undocumented)
+    groupColumn?: PretableGroupColumnOptions;
     groupPanel?: {
         enabled: boolean;
         emptyMessage?: string;
     };
+    // (undocumented)
+    groupsDefaultExpanded?: boolean;
+    // (undocumented)
+    hideGroupedColumns?: boolean;
     messages?: PretableSurfaceMessages;
     onCellEdit?: (payload: {
         rowId: string;
@@ -831,11 +839,19 @@ export function usePretable<TRow extends PretableRow = PretableRow>(input: UsePr
 // @public
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
     // (undocumented)
+    aggregateFilteredRows?: boolean;
+    // (undocumented)
     autosize?: boolean | AutosizeOptions;
     // (undocumented)
     columns: PretableColumn<TRow>[];
     // (undocumented)
     getRowId?: PretableGridOptions<TRow>["getRowId"];
+    // (undocumented)
+    groupColumn?: PretableGroupColumnOptions;
+    // (undocumented)
+    groupsDefaultExpanded?: boolean;
+    // (undocumented)
+    hideGroupedColumns?: boolean;
     // (undocumented)
     measuredHeights?: Record<string, number>;
     // (undocumented)
@@ -871,7 +887,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:806:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:814:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
