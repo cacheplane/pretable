@@ -11,6 +11,11 @@ import {
 import { getGroupPanelStyle } from "../styles";
 import { hitTestGroupPanel } from "./group-panel-hit-test";
 import {
+  type GroupPanelAutoscroll,
+  createGroupPanelAutoscroll,
+  revealChipInPanel,
+} from "./group-panel-scroll";
+import {
   DEFAULT_GROUP_PANEL_EMPTY_MESSAGE,
   composeChipAccessibleName,
   insertGroupLevel,
@@ -105,7 +110,11 @@ export function GroupPanel({
     // React reorders keyed children by re-inserting the DOM nodes, and
     // detaching a focused element drops focus to the body. Without this the
     // first Shift+Arrow would work and the second would go nowhere.
-    chipNodes.current.get(columnId)?.focus();
+    //
+    // `preventScroll` because the chip's own `onFocus` reveals it inside the
+    // strip; letting the browser do it would also scroll every other ancestor,
+    // up to the document. See `group-panel-scroll`.
+    chipNodes.current.get(columnId)?.focus({ preventScroll: true });
   });
 
   // The panel container. It is the one element in the strip that survives a
@@ -142,6 +151,29 @@ export function GroupPanel({
     dragging: boolean;
     insertIndex: number | null;
   } | null>(null);
+  /**
+   * Moves the strip when a drag rests near either edge, so a drop position that
+   * is currently scrolled out is still reachable.
+   *
+   * The callback re-runs the hit test on each step because the pointer does not
+   * move during an autoscroll — no further `pointermove` arrives, and without
+   * this the drop indicator would sit still while the chips slid under it. It
+   * reads `chipDragRef`, never `chipDrag`, for the same staleness reason the
+   * document listeners do.
+   */
+  const autoscrollRef = useRef<GroupPanelAutoscroll | null>(null);
+  autoscrollRef.current ??= createGroupPanelAutoscroll((clientX, clientY) => {
+    const drag = chipDragRef.current;
+    if (!drag || !drag.dragging) return;
+    const hit = hitTestGroupPanel(panelRef.current, clientX, clientY);
+    drag.insertIndex = hit?.insertIndex ?? null;
+    setChipDrag({
+      columnId: drag.columnId,
+      dragging: true,
+      insertIndex: drag.insertIndex,
+    });
+  });
+
   // Read by the document listeners, which subscribe once per gesture and must
   // not go stale on the props they commit against.
   const commitRef = useRef({ rowGroups, onChange });
@@ -158,6 +190,7 @@ export function GroupPanel({
       const drag = chipDragRef.current;
       chipDragRef.current = null;
       setChipDrag(null);
+      autoscrollRef.current?.stop();
       if (!drag) return;
       try {
         panelRef.current?.releasePointerCapture(drag.pointerId);
@@ -190,6 +223,11 @@ export function GroupPanel({
         dragging: true,
         insertIndex: drag.insertIndex,
       });
+      autoscrollRef.current?.update(
+        panelRef.current,
+        event.clientX,
+        event.clientY,
+      );
     };
 
     const onUp = (event: PointerEvent) => {
@@ -228,6 +266,8 @@ export function GroupPanel({
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", end);
       document.removeEventListener("keydown", onKeyDown);
+      // Covers unmount mid-gesture, where `end` never runs.
+      autoscrollRef.current?.stop();
     };
   }, [gestureArmed]);
 
@@ -239,7 +279,9 @@ export function GroupPanel({
   const focusChip = (columnId: string | undefined, index: number) => {
     if (columnId === undefined) return;
     setActiveIndex(index);
-    chipNodes.current.get(columnId)?.focus();
+    // `preventScroll`, then reveal via the chip's own `onFocus` — see the
+    // refocus effect above.
+    chipNodes.current.get(columnId)?.focus({ preventScroll: true });
   };
 
   // `role="listbox"` with zero options fails axe (and tells a screen-reader
@@ -311,7 +353,14 @@ export function GroupPanel({
               ? { "data-pretable-chip-dragging": "" }
               : {})}
             key={columnId}
-            onFocus={() => setActiveIndex(index)}
+            // The single place a focused chip is brought into view, so it
+            // covers every route focus can arrive by: the arrow keys, the
+            // refocus effect after a reorder, Tab, and the surface restoring
+            // focus once controlled `rowGroups` have settled.
+            onFocus={(event) => {
+              setActiveIndex(index);
+              revealChipInPanel(panelRef.current, event.currentTarget);
+            }}
             // pointerdown is the ONLY pointer event bound to a chip. Everything
             // after it lives on the document, and the capture is taken on the
             // panel container — a chip is re-inserted as the insertion index
