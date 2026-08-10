@@ -326,7 +326,8 @@ undoable until acceptance.
 Validation and authorization rejection roll back optimistic changes. Revision
 conflicts roll back or resynchronize before retry. Failures known not to have
 been accepted follow an explicit retry policy; outcome-unknown failures use the
-status or resynchronization path above and never disappear silently.
+command-status lookup and any needed resynchronization under the constraints
+above and never disappear silently.
 
 Commands are atomic by default. Partial application requires an explicitly
 non-atomic command and per-operation results.
