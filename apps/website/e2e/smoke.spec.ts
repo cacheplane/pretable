@@ -7,6 +7,7 @@ import {
   openDrawer,
   openFilterMenu,
   scrollViewportTo,
+  waitForDocsReady,
   waitForGridReady,
   waitForStablePosition,
 } from "./helpers";
@@ -27,7 +28,10 @@ test("publishes the App Router favicon metadata", async ({ page, request }) => {
   const directResponse = await request.get("/favicon.ico");
   await expectIconResponse(directResponse);
 
-  await page.goto("/docs", { waitUntil: "domcontentloaded" });
+  const docsResponse = await page.goto("/docs", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(docsResponse?.status()).toBe(200);
   const iconLink = page
     .locator('head link[rel~="icon"][href*="/favicon.ico"]')
     .first();
@@ -36,6 +40,7 @@ test("publishes the App Router favicon metadata", async ({ page, request }) => {
   const iconHref = await iconLink.getAttribute("href");
   if (!iconHref) throw new Error("Expected a favicon metadata href");
   await expectIconResponse(await request.get(iconHref));
+  await waitForDocsReady(page);
   expect(errors).toEqual([]);
 });
 
