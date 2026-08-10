@@ -20,7 +20,12 @@
 
 ## Deliberately NOT doing
 
-- **The `background-image` "wash" for hover/selection.** The spec proposed it so state composes over surface. Dropped: the surface rules all use the `background` shorthand, which resets `background-image: none`, so it would need five more rewrites to work at all — and its one unique benefit, zebra composing with pinned, is unreachable either way because zebra and pinned are both surface fills competing for one slot. Reordering surface-then-state (Task 2) achieves the visible outcome with none of that risk.
+- ~~**The `background-image` "wash" for hover/selection.**~~ **REVERSED DURING IMPLEMENTATION — the wash shipped, and Task 2 is why.** The original reasoning was that the surface rules use the `background` shorthand, which resets `background-image: none`, so the wash would need five more rewrites. That inverted the moment Task 2 moved hover _after_ the pinned rules: the shorthand reset now happens upstream in the pinned rule, so a `background-image` declared on hover survives and composes over it. One line, no rewrites.
+
+  It also turned out to be **required**, not optional. `--pretable-bg-hover` is a translucent state layer in both themes — Excel sets it to `transparent` outright — so hover winning on pinned cells made them lose their opaque fill, and pinned cells are `position: sticky; z-index: 1` with unpinned columns scrolling underneath. Verified in a browser: the scrolled-under column printed straight through the hovered pinned cell. Task 2 alone traded one bug for a worse one. `--pretable-selection-bg` is a translucent `color-mix` too, so the selection fill had the identical defect and got the same treatment.
+
+  The surface rules keep the `background` shorthand deliberately — that reset is now load-bearing.
+
 - **Changing Excel's or Material's appearance.** They are compatibility skins. Every new token defaults to today's resolved value.
 - **The container edge value change.** `--pretable-shadow-card` is introduced here and set to `none` in both shipped themes; `pretable.css` uses it in SP3.
 
