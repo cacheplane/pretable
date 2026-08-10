@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { resetDevWarnings } from "../warn-once";
+import { resetDevWarnings } from "../dev-warn";
 import {
   createGridCore,
   type PretableProcessingOptions,

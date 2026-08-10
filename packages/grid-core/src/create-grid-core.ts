@@ -36,7 +36,7 @@ import type {
   PretableTransaction,
   PretableViewportState,
 } from "./types";
-import { warnOnce } from "./warn-once";
+import { warnOnce } from "./dev-warn";
 
 const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 

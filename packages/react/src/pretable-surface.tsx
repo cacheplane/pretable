@@ -1694,6 +1694,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       return;
     }
 
+    // Both moves below are lifecycle presentation, and `dataState` is the only
+    // opt-in there is (§10.1). Every streaming consumer on 0.0.11 replaces
+    // `rows` without asking for any of this, so a grid that was never handed
+    // the prop must keep replacing rows exactly as mutely and as hands-off as
+    // it did before the slice existed.
+    if (dataState === undefined) {
+      return;
+    }
+
     if (after.focus.rowId === null) {
       // Nothing survived the replacement, so there is no nearby row to have
       // moved to and the repair sentence would be false. Keep the keyboard user

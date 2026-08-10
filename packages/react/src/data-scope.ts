@@ -51,8 +51,25 @@ export function resolveAriaRowCount(
   // Detected violations of the contiguous-from-head contract: a count the
   // attribute cannot express (`aria-rowcount` is an integer, and core copies
   // the supplied `count` verbatim), or more records loaded than the population
-  // claims. Downgrade rather than lie.
-  if (!Number.isInteger(total.count) || total.count < input.loadedRowCount) {
+  // claims. Downgrade rather than lie — and say so, because a silent downgrade
+  // leaves a consumer whose window really is noncontiguous with nothing to
+  // notice: the attribute it reads is a plausible number either way.
+  if (!Number.isInteger(total.count)) {
+    warnOnce(
+      "result-meta-total-not-an-integer",
+      "[pretable] resultMeta.total.count is not an integer, so it cannot be " +
+        "published as aria-rowcount. Reporting the loaded-model count instead.",
+    );
+    return loadedModelCount;
+  }
+  if (total.count < input.loadedRowCount) {
+    warnOnce(
+      "result-meta-total-below-loaded",
+      "[pretable] resultMeta.total claims fewer matching records than are " +
+        "loaded, so the loaded records cannot be a contiguous prefix of the " +
+        "result set (see PretableResultMeta). Reporting the loaded-model " +
+        "count instead.",
+    );
     return loadedModelCount;
   }
 

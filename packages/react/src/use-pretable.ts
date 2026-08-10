@@ -144,6 +144,13 @@ export interface PretableTelemetry {
 export interface PretableSurfaceState {
   filters?: Record<string, ColumnFilter>;
   focus?: PretableFocusState;
+  /**
+   * Re-asserted on every engine snapshot, with one exception: a
+   * `resultMeta.datasetKey` pivot clears selection, and a value unchanged
+   * across that pivot is not re-applied — it describes the previous query's
+   * result set. Supply a selection minted for the new dataset to take control
+   * again.
+   */
   selection?: PretableSelectionState;
   sort?: PretableSortEntry[];
   /** Grouping columns, outermost first; `[]` ungroups. */
@@ -243,6 +250,26 @@ function focusStatesEqual(
   right: PretableFocusState,
 ): boolean {
   return left.rowId === right.rowId && left.columnId === right.columnId;
+}
+
+function selectionStatesEqual(
+  left: PretableSelectionState,
+  right: PretableSelectionState,
+): boolean {
+  if (left === right) return true;
+  if (left.anchor?.rowId !== right.anchor?.rowId) return false;
+  if (left.anchor?.columnId !== right.anchor?.columnId) return false;
+  if (left.ranges.length !== right.ranges.length) return false;
+  return left.ranges.every((range, index) => {
+    const other = right.ranges[index];
+    return (
+      other !== undefined &&
+      range.startRowId === other.startRowId &&
+      range.endRowId === other.endRowId &&
+      range.startColumnId === other.startColumnId &&
+      range.endColumnId === other.endColumnId
+    );
+  });
 }
 
 /**
@@ -428,7 +455,55 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   // mutator self-guards against equal values (no emit when unchanged), so the
   // effect converges — the re-assert after our own emit is a no-op — and never
   // loops.
+  // A controlled selection is a claim about one result set. When
+  // `resultMeta.datasetKey` moves, the engine clears selection because the
+  // loaded records now answer a different question, and the re-assert below
+  // would undo that clear with addresses minted against the old answer. The
+  // clear wins: a selection the consumer has NOT changed across the pivot is
+  // the previous query's, and stays cleared until the consumer supplies one it
+  // computed for the new dataset. That is the only signal available — an
+  // engine-internal clear fires no `onSelectionChange`.
+  //
+  // Cost of the rule, accepted: a consumer that genuinely wants the identical
+  // selection under the new dataset cannot say so on the pivot render, because
+  // that is indistinguishable from a consumer that has not noticed the pivot.
+  // It says so on any later render instead.
+  //
+  // Compared by VALUE, not identity: an inline `state={{ selection: … }}`
+  // literal is a fresh object every render and would otherwise release the
+  // latch on the render right after the pivot — including the re-render the
+  // pivot's own emit triggers.
+  const seenDatasetKeyRef = useRef<{
+    grid: PretableGrid<TRow>;
+    key: string | null;
+  } | null>(null);
+  const previousControlledSelectionRef = useRef<
+    PretableSelectionState | undefined
+  >(undefined);
+  const selectionClearedAtPivotRef = useRef<PretableSelectionState | null>(
+    null,
+  );
+
   useLayoutEffect(() => {
+    // Sampled ahead of the `state` guard: a grid that gains controlled state
+    // only later must not read its first sample as a pivot. Read live, not from
+    // `snapshot` — the rows effect above is declared earlier, so on the pivot
+    // commit it has already applied the new key while this closure's snapshot
+    // is still the pre-ingest one.
+    const seen = seenDatasetKeyRef.current;
+    const liveDatasetKey = grid.getSnapshot().datasetKey;
+    const pivoted =
+      seen !== null &&
+      seen.grid === grid &&
+      seen.key !== null &&
+      seen.key !== liveDatasetKey;
+    seenDatasetKeyRef.current = { grid, key: liveDatasetKey };
+    const previousControlledSelection = previousControlledSelectionRef.current;
+    previousControlledSelectionRef.current = state?.selection;
+    if (pivoted) {
+      selectionClearedAtPivotRef.current = previousControlledSelection ?? null;
+    }
+
     if (!state) {
       return;
     }
@@ -486,7 +561,14 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     }
 
     if (state.selection !== undefined) {
-      grid.setSelection(state.selection);
+      const clearedAtPivot = selectionClearedAtPivotRef.current;
+      if (
+        clearedAtPivot === null ||
+        !selectionStatesEqual(state.selection, clearedAtPivot)
+      ) {
+        selectionClearedAtPivotRef.current = null;
+        grid.setSelection(state.selection);
+      }
     }
 
     if (state.focus !== undefined) {

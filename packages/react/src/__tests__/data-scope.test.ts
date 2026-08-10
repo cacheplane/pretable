@@ -10,6 +10,20 @@ import { resetDevWarnings } from "../dev-warn";
 
 const EXTERNAL = { filter: "external", sort: "external" } as const;
 
+// Hoisted to the file: the honesty rules warn from inside `resolveAriaRowCount`
+// too, so the downgrade cases in the first describe would otherwise print to a
+// real console and carry their once-per-process latch into later tests.
+let warn: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  resetDevWarnings();
+  warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  warn.mockRestore();
+});
+
 function input(overrides: Partial<DataHonestyInput> = {}): DataHonestyInput {
   return {
     visibleRowCount: 2,
@@ -154,18 +168,63 @@ describe("resolveDataScope", () => {
   });
 });
 
+/**
+ * The design pairs the production downgrade with a dev assertion: silently
+ * reporting loaded-model counts leaves a consumer whose window really is
+ * noncontiguous with no way to notice.
+ */
+describe("contiguous-from-head violations", () => {
+  it("warns when the total claims fewer records than are loaded", () => {
+    resolveAriaRowCount(
+      input({ matchingTotal: { kind: "exact", count: 1 } }),
+      EXTERNAL,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      "fewer matching records than are loaded",
+    );
+  });
+
+  it("warns when the count cannot be published as an integer", () => {
+    resolveAriaRowCount(
+      input({ matchingTotal: { kind: "exact", count: 100.5 } }),
+      EXTERNAL,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("not an integer");
+  });
+
+  it("warns once across repeated renders", () => {
+    const undercount = input({ matchingTotal: { kind: "exact", count: 1 } });
+    resolveAriaRowCount(undercount, EXTERNAL);
+    resolveAriaRowCount(undercount, EXTERNAL);
+    resolveAriaRowCount(undercount, EXTERNAL);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays silent for a total that is merely unknown", () => {
+    resolveAriaRowCount(
+      input({ matchingTotal: { kind: "unknown" } }),
+      EXTERNAL,
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("stays silent when the population is honest", () => {
+    resolveAriaRowCount(input(), EXTERNAL);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("stays silent in local mode, where no total was ever supplied", () => {
+    resolveAriaRowCount(
+      input({ matchingTotal: { kind: "exact", count: 1 } }),
+      undefined,
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe("warnOnEngineSortOverPartialWindow", () => {
-  let warn: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    resetDevWarnings();
-    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    warn.mockRestore();
-  });
-
   it("warns when engine sort folds a partial window", () => {
     warnOnEngineSortOverPartialWindow(input(), {
       filter: "external",

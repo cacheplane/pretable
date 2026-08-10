@@ -23,6 +23,8 @@ type Row = { id: string; name: string };
 const columns = [{ id: "name", header: "Name", widthPx: 120 }];
 const page1: Row[] = [{ id: "a", name: "Ada" }];
 const page2: Row[] = [...page1, { id: "b", name: "Bob" }];
+/** Three rows so that "moved down one" and "arrived at the end" can differ. */
+const page3: Row[] = [...page2, { id: "c", name: "Cyd" }];
 /** One "Ada" among nine non-matches, so an engine filter parts the two counts. */
 const tenRows: Row[] = [
   ...page1,
@@ -345,10 +347,14 @@ describe("data-driven focus reconciliation", () => {
   const REPAIRED =
     "Focused row is no longer in the results; moved to a nearby row.";
 
+  // `dataState` is the opt-in for the whole lifecycle presentation, focus
+  // repair included, and a remote consumer supplies it from its first render.
+  // Defaulted here so every silence assertion below is about the rule under
+  // test rather than about the prop being absent.
   function FocusHarness({
     rows,
     datasetKey,
-    dataState,
+    dataState = { phase: "idle" },
     focus,
     messages,
     rowGroups,
@@ -634,6 +640,26 @@ describe("loaded-boundary announcement", () => {
     expect(liveRegionText(view)).toBe(
       "End of loaded rows. 5430 more available.",
     );
+  });
+
+  it("says nothing when ArrowDown lands in the middle of the window", () => {
+    // A two-row fixture cannot tell "moved down" from "arrived at the end":
+    // every downward move in one is also an arrival. Three rows separate them,
+    // so this is the case that holds `noteLoadedBoundary` to checking WHERE
+    // focus landed rather than which key was pressed.
+    const view = render(
+      <Harness
+        rows={page3}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+      />,
+    );
+    const firstCell = focusCell(view, "a");
+    act(() => {
+      fireEvent.keyDown(firstCell, { key: "ArrowDown" });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("");
   });
 
   it("says nothing at the boundary when everything is loaded", () => {

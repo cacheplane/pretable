@@ -230,7 +230,6 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     collapseAll(): void;
     // (undocumented)
     commitEditSucceeded(): void;
-    // (undocumented)
     distinctColumnValues(columnId: string): string[];
     expandAll(): void;
     // (undocumented)

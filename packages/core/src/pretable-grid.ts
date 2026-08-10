@@ -52,6 +52,14 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
   setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   clearFilters(): void;
   replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
+  /**
+   * The distinct values a column takes across the LOADED records — never a
+   * claim about the matching population. Under external filter authority the
+   * loaded records are a window onto the result set, so this list can omit
+   * values the user would need to filter for; declare `column.options` to give
+   * an enum filter its full universe. The surface dev-warns when a funnel menu
+   * falls back to this list in that mode.
+   */
   distinctColumnValues(columnId: string): string[];
 
   // selection

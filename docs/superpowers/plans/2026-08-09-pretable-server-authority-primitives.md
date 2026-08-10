@@ -3354,3 +3354,58 @@ read this first.
   factual error — `headless/state-model.mdx` presenting the snapshot shape as a
   closed table without `matchingTotal` and `datasetKey` — is fixed. The rest is
   a follow-up to file before the branch merges.
+  **Owed, and not yet filed anywhere:** that follow-up is a docs-site task, not
+  a code one, and closing the review findings did not create it. Whoever opens
+  the PR files it. Scope: one page (or section) covering the five props above,
+  the loaded-vs-population count vocabulary, and the contiguous-from-head
+  contract a consumer has to honor to get global `aria-rowindex`.
+
+- **The error strip ships without the `role="status"` the design named** (§4.4,
+  amended in place). No body-state block carries a live-region role: the
+  surface already owns one permanent polite region, a second one repeating the
+  same sentence is spoken twice, and a region inserted together with its text
+  is announced unreliably anyway. The failure reaches assistive technology
+  through `dataErrorAnnouncement` on the shared region — which is what §4.5's
+  single-channel rule asks for. Not a bug; do not "restore" the role.
+
+- **The focus-repair path had to be gated on `dataState` after the fact.** As
+  first built, a `rows` replacement that dropped the focused row spoke
+  `focusedRowRemovedAnnouncement`, and one that emptied the grid pulled DOM
+  focus to the viewport — in PURE LOCAL MODE, for every streaming consumer that
+  never opted into anything (§10.1). Both are now behind
+  `dataState !== undefined` and pinned as asserted silence in
+  `packages/react/src/__tests__/local-mode-baseline.test.tsx`. Two tests in
+  `lifecycle-announcements.test.tsx` were exercising the repair without the
+  opt-in; their harness now defaults `dataState` to `{ phase: "idle" }`, which
+  is what a remote consumer supplies from its first render anyway.
+  That baseline file consequently took a fourth modifying commit, adding a
+  second top-level `describe` rather than bare `it`s. Still additive, still
+  never loosened.
+
+- **The `datasetKey` pivot clear now outranks a controlled `state.selection`,**
+  resolving the carry-forward recorded above. `use-pretable.ts` suppresses the
+  re-assert of a controlled selection whose VALUE is unchanged across the
+  pivot; the consumer takes control again by supplying a selection minted for
+  the new dataset. "Wins for the commit" alone is not implementable: the
+  engine's own pivot emit forces a re-render, whose controlled-state pass would
+  immediately re-assert the stale value. Value comparison rather than object
+  identity for the same reason — an inline `state={{ selection: … }}` literal
+  is a fresh object on that very re-render. Accepted cost, documented on
+  `PretableSurfaceState.selection`: a consumer that genuinely wants the
+  identical selection under the new dataset cannot say so on the pivot render,
+  because that is indistinguishable from one that has not noticed the pivot.
+
+- **§12.1's callback-loop tests (D1-GRID-09) were never written by any task.**
+  Now in `packages/react/src/__tests__/controlled-state-authority.test.tsx`,
+  alongside the pivot-vs-controlled-selection pins. They passed on first run:
+  the requirement held, it was simply unpinned.
+
+- **`resolveAriaRowCount`'s contiguity downgrade now dev-warns.** §4.5 promised
+  a dev assertion alongside the production downgrade and only the downgrade
+  shipped, which left a consumer with a genuinely noncontiguous window nothing
+  to notice — the attribute reads as a plausible number either way. Two keys,
+  because the branch had two causes: a non-integer `count`, and a total below
+  the loaded count.
+
+- **`packages/grid-core/src/warn-once.ts` is now `dev-warn.ts`,** matching its
+  React twin (`packages/react/src/dev-warn.ts`), as this plan specified.

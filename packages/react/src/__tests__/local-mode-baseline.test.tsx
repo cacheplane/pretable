@@ -1,7 +1,13 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import * as React from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PretableSurfaceState } from "../use-pretable";
 import { PretableSurface } from "../pretable-surface";
@@ -112,5 +118,82 @@ describe("local mode baseline (surface)", () => {
     expect(
       screen.getByRole("checkbox", { name: "Select all rows" }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The `rows` prop moving is not an opt-in: every streaming consumer on 0.0.11
+ * replaces it, and none of them asked for the data lifecycle. `dataState` is
+ * the opt-in, so with it absent a replacement must stay as mute and as
+ * hands-off as it was before this slice existed (design §10.1).
+ */
+describe("local mode baseline (rows replaced under a focused cell)", () => {
+  const ANNOUNCE_DEBOUNCE_MS = 500;
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function renderRows(next: Row[]) {
+    return render(
+      <PretableSurface<Row>
+        ariaLabel="People"
+        columns={columns}
+        rows={next}
+        getRowId={(row) => row.id}
+        viewportHeight={400}
+      />,
+    );
+  }
+
+  function rerenderRows(view: ReturnType<typeof render>, next: Row[]) {
+    view.rerender(
+      <PretableSurface<Row>
+        ariaLabel="People"
+        columns={columns}
+        rows={next}
+        getRowId={(row) => row.id}
+        viewportHeight={400}
+      />,
+    );
+  }
+
+  /** The live region is portaled to the body; `baseElement` still holds it. */
+  function liveRegionText(view: ReturnType<typeof render>): string {
+    return (
+      view.baseElement.querySelector("[data-pretable-live-region]")
+        ?.textContent ?? ""
+    );
+  }
+
+  function focusCell(view: ReturnType<typeof render>, rowId: string): void {
+    const cell = view.container.querySelector<HTMLElement>(
+      `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="name"]`,
+    );
+    if (!cell) throw new Error(`no rendered cell for row ${rowId}`);
+    act(() => {
+      cell.focus();
+      fireEvent.click(cell);
+    });
+  }
+
+  it("says nothing when the replacement drops the focused row", () => {
+    const view = renderRows(rows);
+    focusCell(view, "b");
+    rerenderRows(view, [rows[0]!]);
+    act(() => {
+      vi.advanceTimersByTime(ANNOUNCE_DEBOUNCE_MS);
+    });
+    expect(liveRegionText(view)).toBe("");
+  });
+
+  it("does not pull DOM focus to the viewport when the replacement empties the grid", () => {
+    const view = renderRows(rows);
+    focusCell(view, "b");
+    rerenderRows(view, []);
+    const viewport = view.container.querySelector(
+      "[data-pretable-scroll-viewport]",
+    );
+    expect(viewport).not.toBeNull();
+    expect(viewport).not.toHaveFocus();
   });
 });
