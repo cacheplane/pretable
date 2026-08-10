@@ -29,6 +29,9 @@ These four packages release together under one aligned version.
 Packages named `@pretable-internal/*` are repo-local implementation details.
 Do not build application code against them.
 
+See the [roadmap](./ROADMAP.md) for current priorities and the financial-grade
+product direction.
+
 ## Install
 
 ```bash
@@ -125,6 +128,7 @@ streaming hypotheses remain directional rather than fully satisfied.
 ## Repository Layout
 
 ```text
+ROADMAP.md                 Current product priorities and sequencing
 apps/bench                 Benchmark lab and browser test target
 apps/website               Documentation and marketing site
 packages/core              Public framework-agnostic grid primitives
