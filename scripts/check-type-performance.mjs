@@ -1,10 +1,13 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const execFileAsync = promisify(execFile);
+const require = createRequire(import.meta.url);
+const typescriptCliPath = require.resolve("typescript/bin/tsc");
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = path.dirname(scriptDirectory);
 const defaultBudgetsPath = path.join(
@@ -262,6 +265,21 @@ export function resolveTypePerformanceConfiguration() {
   };
 }
 
+export function createTypeScriptInvocation(configPath) {
+  return {
+    args: [
+      typescriptCliPath,
+      "-p",
+      configPath,
+      "--noEmit",
+      "--extendedDiagnostics",
+      "--pretty",
+      "false",
+    ],
+    executable: process.execPath,
+  };
+}
+
 function formatInteger(value) {
   return value.toLocaleString("en-US");
 }
@@ -298,19 +316,11 @@ export function checkTypePerformanceBudget({ budget, diagnostics, label }) {
 }
 
 async function runTypeScript(configPath) {
+  const invocation = createTypeScriptInvocation(configPath);
   try {
     const { stdout, stderr } = await execFileAsync(
-      "pnpm",
-      [
-        "exec",
-        "tsc",
-        "-p",
-        configPath,
-        "--noEmit",
-        "--extendedDiagnostics",
-        "--pretty",
-        "false",
-      ],
+      invocation.executable,
+      invocation.args,
       {
         cwd: workspaceDirectory,
         encoding: "utf8",

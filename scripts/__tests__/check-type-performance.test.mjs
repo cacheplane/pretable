@@ -1,16 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import {
   checkTypePerformanceBudget,
+  createTypeScriptInvocation,
   parseExtendedDiagnostics,
   resolveTypePerformanceConfiguration,
   validateFixtureMapping,
   validateTypePerformanceBudgets,
 } from "../check-type-performance.mjs";
+
+const require = createRequire(import.meta.url);
 
 const diagnostics = ({
   checkTime = "1.25s",
@@ -23,6 +27,36 @@ Memory used:                   ${memory}
 Check time:                    ${checkTime}
 Total time:                    2.00s
 `;
+
+test("invokes the installed TypeScript CLI directly through Node", async () => {
+  const configPath = "/tmp/config with spaces; $(not-a-shell).json";
+  const invocation = createTypeScriptInvocation(configPath);
+  const typescriptDirectory = path.dirname(
+    require.resolve("typescript/package.json"),
+  );
+  const cliPath = invocation.args[0];
+
+  assert.equal(invocation.executable, process.execPath);
+  assert.equal(path.isAbsolute(cliPath), true);
+  await access(cliPath);
+  const relativeCliPath = path.relative(typescriptDirectory, cliPath);
+  assert.equal(path.isAbsolute(relativeCliPath), false);
+  assert.doesNotMatch(relativeCliPath, /^\.\.(?:[/\\]|$)/);
+  assert.deepEqual(invocation.args, [
+    cliPath,
+    "-p",
+    configPath,
+    "--noEmit",
+    "--extendedDiagnostics",
+    "--pretty",
+    "false",
+  ]);
+  assert.equal(invocation.shell, undefined);
+  assert.equal(
+    invocation.args.some((argument) => /^(?:pnpm|pnpm\.cmd)$/i.test(argument)),
+    false,
+  );
+});
 
 test("parses deterministic metrics and normalizes memory to KiB", () => {
   assert.deepEqual(parseExtendedDiagnostics(diagnostics()), {
