@@ -11,7 +11,7 @@ Under [row grouping](/docs/grid/grouping), group header rows are focus targets b
 
 ## Selection model
 
-Engine selection state is two slices:
+Engine selection state is two slices. These types live in `@pretable/core`, the engine package `@pretable/react` is built on — `@pretable/react` re-exports most engine types but not these, so import them from `@pretable/core` directly:
 
 ```ts
 interface PretableSelectionState {
@@ -92,7 +92,8 @@ By default `<PretableSurface>` owns the selection slice — the engine maintains
 
 ```tsx
 import { useState } from "react";
-import { PretableSurface, type PretableSelectionState } from "@pretable/react";
+import { PretableSurface } from "@pretable/react";
+import type { PretableSelectionState } from "@pretable/core";
 
 const initialSelection: PretableSelectionState = { ranges: [], anchor: null };
 
@@ -121,11 +122,8 @@ Cell-range selection + checkbox column + controlled state, in one piece:
 
 ```tsx
 import { useState } from "react";
-import {
-  PretableSurface,
-  type PretableColumn,
-  type PretableSelectionState,
-} from "@pretable/react";
+import { PretableSurface, type PretableColumn } from "@pretable/react";
+import type { PretableSelectionState } from "@pretable/core";
 
 interface Row extends Record<string, unknown> {
   id: string;

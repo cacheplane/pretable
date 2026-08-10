@@ -532,18 +532,13 @@ Useful for instrumentation (frame budget tracking, visible-row counts, focus sur
 
 ```ts
 function usePretable<TRow>(opts: UsePretableOptions<TRow>): PretableModel<TRow>;
-
-function useResolvedHeights(
-  rowHeightProp?: number,
-  headerHeightProp?: number,
-): { rowHeight: number; headerHeight: number };
-
-function measureRenderedRowHeight(node: HTMLElement): number;
 ```
+
+`usePretable` is the only hook `@pretable/react` exports. Density values as numbers come from `getDensityHeights` in `@pretable/ui` — see [Density helpers](/docs/grid/density-helpers).
 
 ## Where to go next
 
 - [Row grouping](/docs/grid/grouping) — `rowGroup`, `aggregate`, `formatAggregate`, and the grouping actions in context.
 - [Custom rendering](/docs/grid/custom-rendering) — uses every type listed above in a runnable example.
-- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights` deeper dive.
+- [Density helpers](/docs/grid/density-helpers) — `getDensityHeights` deeper dive.
 - [Theming Overview](/docs/theming) — the `[data-pretable-*]` attribute contract that pairs with this engine.

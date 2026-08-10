@@ -96,7 +96,7 @@ export function SystemThemeProvider({
 
 Material's `[data-theme="dark"]` block overrides color tokens (cell background, text, accent, gridlines) without touching density tokens. Material's `[data-density="spacious"]` block overrides density tokens without touching colors. Both apply.
 
-The engine's `useResolvedHeights` hook (in `@pretable/react`) listens for either attribute change via `MutationObserver` and re-renders the grid with new heights when density flips. No additional wiring needed.
+The engine listens for either attribute change on `<html>` via `MutationObserver` and re-renders the grid with new heights when density flips. No additional wiring needed.
 
 ## SSR considerations
 
