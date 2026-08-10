@@ -9,7 +9,11 @@ export {
   type AggregateTreeLeaf,
   type BuiltinAggregateTreeOptions,
   type BuiltinAggregatorName,
+  type CountAggregateTreeOptions,
   type CustomAggregateTreeOptions,
+  type InferredCustomAggregateTreeOptions,
+  type NumericBuiltinAggregateTreeOptions,
+  type NumericBuiltinAggregatorName,
   type TransientAggregateTree,
 } from "./persistent/aggregate-tree";
 export {

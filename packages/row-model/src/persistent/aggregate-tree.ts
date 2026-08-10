@@ -10,6 +10,7 @@ import {
 const DEVELOPMENT = process.env.NODE_ENV !== "production";
 
 export type AggregateTreeId = OrderStatisticTreeId;
+export type NumericBuiltinAggregatorName = "sum" | "avg" | "min" | "max";
 export type BuiltinAggregatorName = "sum" | "avg" | "min" | "max" | "count";
 
 export interface AggregateTreeLeaf<
@@ -102,23 +103,97 @@ export interface CustomAggregateTreeOptions<
   readonly lawValidator?: AggregatorLawValidator;
 }
 
-export interface BuiltinAggregateTreeOptions<
+interface AggregateTreeOptionsBase<
   TId extends AggregateTreeId,
   TRow extends object,
   TValue,
   TDependency,
 > {
   readonly columnId: string;
-  readonly aggregator: BuiltinAggregatorName;
   readonly compare?: (
     left: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
     right: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ) => number;
 }
 
+export interface NumericBuiltinAggregateTreeOptions<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+> extends AggregateTreeOptionsBase<TId, TRow, TValue, TDependency> {
+  readonly aggregator: NumericBuiltinAggregatorName;
+}
+
+export interface CountAggregateTreeOptions<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+> extends AggregateTreeOptionsBase<TId, TRow, TValue, TDependency> {
+  readonly aggregator: "count";
+}
+
+export type BuiltinAggregateTreeOptions<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+> =
+  | CountAggregateTreeOptions<TId, TRow, TValue, TDependency>
+  | ([NonNullable<TValue>] extends [number]
+      ? NumericBuiltinAggregateTreeOptions<TId, TRow, TValue, TDependency>
+      : never);
+
+type AnyPretableAggregator = PretableAggregator<never, never, never, unknown>;
+
+type AggregatorParts<TAggregator> =
+  TAggregator extends PretableAggregator<
+    infer TRow,
+    infer TValue,
+    infer TAccumulator,
+    infer TOutput
+  >
+    ? readonly [TRow, TValue, TAccumulator, TOutput]
+    : never;
+
+type AggregatorRow<TAggregator> = AggregatorParts<TAggregator>[0];
+type AggregatorValue<TAggregator> = AggregatorParts<TAggregator>[1];
+type AggregatorAccumulator<TAggregator> = AggregatorParts<TAggregator>[2];
+type AggregatorOutput<TAggregator> = AggregatorParts<TAggregator>[3];
+
+export interface InferredCustomAggregateTreeOptions<
+  TAggregator extends AnyPretableAggregator,
+  TId extends AggregateTreeId = AggregateTreeId,
+  TDependency = unknown,
+> {
+  readonly columnId: string;
+  readonly aggregator: TAggregator;
+  readonly compare?: (
+    left: AggregateTreeLeaf<
+      TId,
+      AggregatorRow<TAggregator>,
+      AggregatorValue<TAggregator>,
+      TDependency
+    >,
+    right: AggregateTreeLeaf<
+      TId,
+      AggregatorRow<TAggregator>,
+      AggregatorValue<TAggregator>,
+      TDependency
+    >,
+  ) => number;
+  readonly snapshotAccumulator?: (
+    accumulator: AggregatorAccumulator<TAggregator>,
+  ) => AggregatorAccumulator<TAggregator>;
+  readonly lawValidator?: AggregatorLawValidator;
+}
+
 interface SumAccumulator {
-  readonly sum: number;
+  readonly finiteUnits: bigint;
   readonly count: number;
+  readonly positiveInfinity: boolean;
+  readonly negativeInfinity: boolean;
 }
 
 interface ExtremumAccumulator {
@@ -136,19 +211,139 @@ function aggregatableNumber(value: unknown): value is number {
   return typeof value === "number" && !Number.isNaN(value);
 }
 
+const FRACTION_BITS = 52n;
+const FRACTION_MASK = (1n << FRACTION_BITS) - 1n;
+const IMPLICIT_BIT = 1n << FRACTION_BITS;
+const SIGN_BIT = 1n << 63n;
+const MAX_FINITE_UNITS = ((1n << 53n) - 1n) << 2045n;
+const OVERFLOW_THRESHOLD_UNITS = MAX_FINITE_UNITS + (1n << 2044n);
+
+function finiteNumberUnits(value: number): bigint {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, value);
+  const bits = view.getBigUint64(0);
+  const negative = (bits & SIGN_BIT) !== 0n;
+  const exponent = Number((bits >> FRACTION_BITS) & 0x7ffn);
+  const fraction = bits & FRACTION_MASK;
+  const magnitude =
+    exponent === 0
+      ? fraction
+      : (IMPLICIT_BIT + fraction) << BigInt(exponent - 1);
+  return negative ? -magnitude : magnitude;
+}
+
+function roundDivideEven(numerator: bigint, denominator: bigint): bigint {
+  const quotient = numerator / denominator;
+  const remainder = numerator % denominator;
+  const comparison = remainder * 2n - denominator;
+  return comparison > 0n || (comparison === 0n && (quotient & 1n) === 1n)
+    ? quotient + 1n
+    : quotient;
+}
+
+function bitLength(value: bigint): number {
+  return value.toString(2).length;
+}
+
+function floorLog2Ratio(numerator: bigint, denominator: bigint): number {
+  let exponent = bitLength(numerator) - bitLength(denominator);
+  const belowCandidate =
+    exponent >= 0
+      ? numerator < denominator << BigInt(exponent)
+      : numerator << BigInt(-exponent) < denominator;
+  if (belowCandidate) exponent -= 1;
+  return exponent;
+}
+
+function numberFromBits(bits: bigint): number {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setBigUint64(0, bits);
+  return view.getFloat64(0);
+}
+
+/** Rounds an exact `(units / divisor) * 2^-1074` rational once to binary64. */
+function roundedUnits(units: bigint, divisor = 1n): number {
+  if (units === 0n) return 0;
+  const negative = units < 0n;
+  const magnitude = negative ? -units : units;
+  if (magnitude >= OVERFLOW_THRESHOLD_UNITS * divisor) {
+    return negative ? -Infinity : Infinity;
+  }
+
+  const exponent = floorLog2Ratio(magnitude, divisor);
+  let shift = Math.max(0, exponent - 52);
+  let significand = roundDivideEven(magnitude, divisor << BigInt(shift));
+  if (significand >= 1n << 53n) {
+    significand >>= 1n;
+    shift += 1;
+  }
+
+  const sign = negative ? SIGN_BIT : 0n;
+  if (significand < IMPLICIT_BIT) {
+    return numberFromBits(sign | significand);
+  }
+  const exponentBits = BigInt(shift + 1);
+  return numberFromBits(
+    sign | (exponentBits << FRACTION_BITS) | (significand - IMPLICIT_BIT),
+  );
+}
+
+function emptySumAccumulator(): SumAccumulator {
+  return {
+    finiteUnits: 0n,
+    count: 0,
+    positiveInfinity: false,
+    negativeInfinity: false,
+  };
+}
+
+function accumulateSum(
+  accumulator: SumAccumulator,
+  value: unknown,
+): SumAccumulator {
+  if (!aggregatableNumber(value)) return accumulator;
+  return {
+    finiteUnits: Number.isFinite(value)
+      ? accumulator.finiteUnits + finiteNumberUnits(value)
+      : accumulator.finiteUnits,
+    count: accumulator.count + 1,
+    positiveInfinity: accumulator.positiveInfinity || value === Infinity,
+    negativeInfinity: accumulator.negativeInfinity || value === -Infinity,
+  };
+}
+
+function mergeSums(
+  left: SumAccumulator,
+  right: SumAccumulator,
+): SumAccumulator {
+  return {
+    finiteUnits: left.finiteUnits + right.finiteUnits,
+    count: left.count + right.count,
+    positiveInfinity: left.positiveInfinity || right.positiveInfinity,
+    negativeInfinity: left.negativeInfinity || right.negativeInfinity,
+  };
+}
+
+function finalizedSum(
+  accumulator: SumAccumulator,
+  average: boolean,
+): number | null {
+  if (accumulator.count === 0) return null;
+  if (accumulator.positiveInfinity && accumulator.negativeInfinity) return NaN;
+  if (accumulator.positiveInfinity) return Infinity;
+  if (accumulator.negativeInfinity) return -Infinity;
+  return roundedUnits(
+    accumulator.finiteUnits,
+    average ? BigInt(accumulator.count) : 1n,
+  );
+}
+
 const sum: PretableAggregator<object, unknown, SumAccumulator, number | null> =
   {
-    init: () => ({ sum: 0, count: 0 }),
-    accumulate: (accumulator, value) =>
-      aggregatableNumber(value)
-        ? { sum: accumulator.sum + value, count: accumulator.count + 1 }
-        : accumulator,
-    merge: (left, right) => ({
-      sum: left.sum + right.sum,
-      count: left.count + right.count,
-    }),
-    finalize: (accumulator) =>
-      accumulator.count === 0 ? null : accumulator.sum,
+    init: emptySumAccumulator,
+    accumulate: accumulateSum,
+    merge: mergeSums,
+    finalize: (accumulator) => finalizedSum(accumulator, false),
   };
 
 const avg: PretableAggregator<object, unknown, SumAccumulator, number | null> =
@@ -156,8 +351,7 @@ const avg: PretableAggregator<object, unknown, SumAccumulator, number | null> =
     init: sum.init,
     accumulate: sum.accumulate,
     merge: sum.merge,
-    finalize: (accumulator) =>
-      accumulator.count === 0 ? null : accumulator.sum / accumulator.count,
+    finalize: (accumulator) => finalizedSum(accumulator, true),
   };
 
 function extremum(kind: "min" | "max") {
@@ -219,7 +413,13 @@ const count: PretableAggregator<
     accumulator.count === 0 ? null : accumulator.count,
 };
 
-/** Pure, persistent-safe built-in monoids matching the legacy grid semantics. */
+/**
+ * Pure, persistent-safe built-in monoids. Numeric admission, empty output, and
+ * ordered extrema match the legacy grid. Sum and average intentionally use an
+ * exact binary64 superaccumulator so cached merges are genuinely associative;
+ * they round only once when finalized rather than reproducing history-dependent
+ * floating-point folds.
+ */
 export const aggregateTreeBuiltinAggregators = Object.freeze({
   sum,
   avg,
@@ -420,6 +620,7 @@ class PersistentAggregateTree<
       this.#context.lawValidator?.observe({
         aggregator: this.#context.aggregator,
         columnId: this.#context.columnId,
+        leafId: leaf.id,
         row: leaf.row,
         value: leaf.value,
       });
@@ -503,12 +704,16 @@ class TransientAggregateTreeImpl<
     leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ): this {
     const previous = this.#tree.get(leaf.id);
-    if (previous !== undefined && sameLeaf(previous, leaf)) return this;
+    if (previous !== undefined && sameLeaf(previous, leaf)) {
+      this.#tree.insertOrReplace(previous);
+      return this;
+    }
     this.#tree.insertOrReplace(normalizedLeaf(leaf));
     if (this.#context.custom) {
       this.#context.lawValidator?.observe({
         aggregator: this.#context.aggregator,
         columnId: this.#context.columnId,
+        leafId: leaf.id,
         row: leaf.row,
         value: leaf.value,
       });
@@ -555,11 +760,32 @@ class TransientAggregateTreeImpl<
 export function createAggregateTree<
   TId extends AggregateTreeId,
   TRow extends object,
+  TValue extends number | null | undefined,
+  TDependency = unknown,
+>(
+  options: NumericBuiltinAggregateTreeOptions<TId, TRow, TValue, TDependency>,
+): AggregateTree<TId, TRow, TValue, TDependency, number | null>;
+export function createAggregateTree<
+  TId extends AggregateTreeId,
+  TRow extends object,
   TValue,
   TDependency = unknown,
 >(
-  options: BuiltinAggregateTreeOptions<TId, TRow, TValue, TDependency>,
+  options: CountAggregateTreeOptions<TId, TRow, TValue, TDependency>,
 ): AggregateTree<TId, TRow, TValue, TDependency, number | null>;
+export function createAggregateTree<
+  const TAggregator extends AnyPretableAggregator,
+  TId extends AggregateTreeId = AggregateTreeId,
+  TDependency = unknown,
+>(
+  options: InferredCustomAggregateTreeOptions<TAggregator, TId, TDependency>,
+): AggregateTree<
+  TId,
+  AggregatorRow<TAggregator>,
+  AggregatorValue<TAggregator>,
+  TDependency,
+  AggregatorOutput<TAggregator>
+>;
 export function createAggregateTree<
   TId extends AggregateTreeId,
   TRow extends object,

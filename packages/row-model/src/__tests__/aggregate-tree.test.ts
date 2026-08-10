@@ -10,20 +10,119 @@ interface Row {
   readonly name: string;
 }
 
-function leaf(
+interface TypedRow {
+  readonly amount: number;
+  readonly label: string;
+}
+
+function exerciseAggregateTreeTypes(): void {
+  const typedAggregator: PretableAggregator<
+    TypedRow,
+    number,
+    { readonly total: number },
+    { readonly total: number }
+  > = {
+    init: () => ({ total: 0 }),
+    accumulate: (accumulator, value) => ({
+      total: accumulator.total + value,
+    }),
+    merge: (left, right) => ({ total: left.total + right.total }),
+    finalize: (accumulator) => accumulator,
+  };
+  const inferred = createAggregateTree({
+    columnId: "amount",
+    aggregator: typedAggregator,
+    snapshotAccumulator: (accumulator) => ({ total: accumulator.total }),
+  });
+  const inferredOutput: { readonly total: number } = inferred.finalize();
+  void inferredOutput;
+  // @ts-expect-error custom aggregator output stays inferred
+  const wrongOutput: string = inferred.finalize();
+  void wrongOutput;
+  inferred.insertOrReplace({
+    id: "ok",
+    row: { amount: 1, label: "one" },
+    value: 1,
+    dependency: null,
+  });
+  inferred.insertOrReplace({
+    id: "bad-row",
+    // @ts-expect-error custom aggregator row input stays inferred
+    row: { amount: 1 },
+    value: 1,
+    dependency: null,
+  });
+  inferred.insertOrReplace({
+    id: "bad-value",
+    row: { amount: 1, label: "one" },
+    // @ts-expect-error custom aggregator value input stays inferred
+    value: "1",
+    dependency: null,
+  });
+
+  createAggregateTree<string, TypedRow, number | null, number>({
+    columnId: "amount",
+    aggregator: "sum",
+  });
+  createAggregateTree<string, TypedRow, string, number>({
+    columnId: "label",
+    aggregator: "count",
+  });
+  createAggregateTree<string, TypedRow, string, number>({
+    columnId: "label",
+    // @ts-expect-error numeric built-ins reject non-numeric TValue
+    aggregator: "avg",
+  });
+}
+void exerciseAggregateTreeTypes;
+
+function leaf<TValue>(
   id: string | number,
-  value: unknown,
+  value: TValue,
   dependency = Number(id),
-): AggregateTreeLeaf<string | number, Row, unknown, number> {
+): AggregateTreeLeaf<string | number, Row, TValue, number> {
   return { id, row: { name: String(id) }, value, dependency };
 }
 
-function builtinTree(name: "sum" | "avg" | "min" | "max" | "count") {
-  return createAggregateTree<string | number, Row, unknown, number>({
-    columnId: "amount",
-    aggregator: name,
-    compare: (left, right) => left.dependency - right.dependency,
-  });
+function permutations<T>(values: readonly T[]): readonly (readonly T[])[] {
+  if (values.length <= 1) return [values];
+  return values.flatMap((value, index) =>
+    permutations([...values.slice(0, index), ...values.slice(index + 1)]).map(
+      (rest) => [value, ...rest],
+    ),
+  );
+}
+
+type NumericBuiltinName = "sum" | "avg" | "min" | "max";
+type NumericValue = number | null | undefined;
+
+function builtinTree(
+  name: NumericBuiltinName,
+): AggregateTree<string | number, Row, NumericValue, number, number | null>;
+function builtinTree(
+  name: "count",
+): AggregateTree<string | number, Row, unknown, number, number | null>;
+function builtinTree(
+  name: NumericBuiltinName | "count",
+):
+  | AggregateTree<string | number, Row, NumericValue, number, number | null>
+  | AggregateTree<string | number, Row, unknown, number, number | null>;
+function builtinTree(name: NumericBuiltinName | "count") {
+  const compare = (
+    left: AggregateTreeLeaf<string | number, Row, unknown, number>,
+    right: AggregateTreeLeaf<string | number, Row, unknown, number>,
+  ) => left.dependency - right.dependency;
+  return name === "count"
+    ? createAggregateTree<string | number, Row, unknown, number>({
+        columnId: "amount",
+        aggregator: "count",
+        compare,
+      })
+    : createAggregateTree<string | number, Row, NumericValue, number>({
+        columnId: "amount",
+        aggregator: name,
+        compare,
+      });
 }
 
 describe("AggregateTree", () => {
@@ -63,8 +162,11 @@ describe("AggregateTree", () => {
     };
 
     values.forEach((value, index) => {
-      for (const name of Object.keys(trees) as (keyof typeof trees)[]) {
-        trees[name] = trees[name].insertOrReplace(leaf(index, value, index));
+      trees.count = trees.count.insertOrReplace(leaf(index, value, index));
+      for (const name of ["sum", "avg", "min", "max"] as const) {
+        trees[name] = trees[name].insertOrReplace(
+          leaf(index, value as NumericValue, index),
+        );
       }
     });
 
@@ -95,6 +197,54 @@ describe("AggregateTree", () => {
 
     expect(Object.is(minimum.finalize(), +0)).toBe(true);
     expect(Object.is(maximum.finalize(), -0)).toBe(true);
+  });
+
+  test("makes exact sum and average independent of AVL history", () => {
+    const values = [1e20, 0, -1e20, -1e-20] as const;
+    const insertionOrders = permutations([0, 1, 2, 3] as const);
+
+    for (const insertionOrder of insertionOrders) {
+      let sum = builtinTree("sum");
+      let average = builtinTree("avg");
+      for (const index of insertionOrder) {
+        const entry = leaf(index, values[index], index);
+        sum = sum.insertOrReplace(entry);
+        average = average.insertOrReplace(entry);
+      }
+      expect(sum.finalize()).toBe(-1e-20);
+      expect(average.finalize()).toBe(-2.5e-21);
+    }
+  });
+
+  test("rounds exact cancellation, subnormals, zero, and infinities", () => {
+    const aggregate = (
+      name: "sum" | "avg",
+      values: readonly number[],
+    ): number | null => {
+      let tree = builtinTree(name);
+      values.forEach((value, index) => {
+        tree = tree.insertOrReplace(leaf(index, value, index));
+      });
+      return tree.finalize();
+    };
+
+    expect(
+      aggregate("sum", [Number.MIN_VALUE, Number.MIN_VALUE, -Number.MIN_VALUE]),
+    ).toBe(Number.MIN_VALUE);
+    expect(Object.is(aggregate("sum", [-0, -0]), +0)).toBe(true);
+    expect(aggregate("sum", [Infinity, 1])).toBe(Infinity);
+    expect(aggregate("avg", [-Infinity, 1])).toBe(-Infinity);
+    expect(aggregate("sum", [Infinity, -Infinity])).toBeNaN();
+    expect(aggregate("avg", [Infinity, -Infinity])).toBeNaN();
+    expect(Object.is(aggregate("avg", [Number.MIN_VALUE, 0]), +0)).toBe(true);
+    expect(Object.is(aggregate("avg", [-Number.MIN_VALUE, 0]), -0)).toBe(true);
+    expect(aggregate("avg", [Number.MIN_VALUE, Number.MIN_VALUE, 0])).toBe(
+      Number.MIN_VALUE,
+    );
+    expect(aggregate("sum", [Number.MAX_VALUE, 2 ** 969])).toBe(
+      Number.MAX_VALUE,
+    );
+    expect(aggregate("sum", [Number.MAX_VALUE, 2 ** 970])).toBe(Infinity);
   });
 
   test("supports ordered custom monoids", () => {
@@ -363,12 +513,14 @@ describe("AggregateTree", () => {
   test("supports transient batches without changing the source root", () => {
     const source = builtinTree("sum").insertOrReplace(leaf("1", 2, 1));
     const draft = source.asTransient();
-    draft.insertOrReplace(leaf("2", 3, 2)).remove("1");
+    const second = leaf("2", 3, 2);
+    draft.insertOrReplace(second).remove("1");
     const frozen = draft.freeze();
 
     expect(source.finalize()).toBe(2);
     expect(frozen.finalize()).toBe(3);
     expect(draft.freeze()).toBe(frozen);
+    expect(() => draft.insertOrReplace(second)).toThrow(/frozen/i);
     expect(() => draft.remove("2")).toThrow(/frozen/i);
   });
 });

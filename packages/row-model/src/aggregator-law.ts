@@ -20,6 +20,7 @@ export interface AggregatorLawObservation<
 > {
   readonly aggregator: PretableAggregator<TRow, TValue, TAccumulator, TOutput>;
   readonly columnId: string;
+  readonly leafId: string | number;
   readonly row: TRow;
   readonly value: TValue;
 }
@@ -36,6 +37,7 @@ export interface AggregatorLawValidatorOptions {
 }
 
 interface RepresentativeLeaf {
+  readonly id: string | number;
   readonly row: object;
   readonly value: unknown;
 }
@@ -43,6 +45,10 @@ interface RepresentativeLeaf {
 interface ValidationState {
   readonly samples: RepresentativeLeaf[];
   warned: boolean;
+}
+
+function sameLeafId(left: string | number, right: string | number): boolean {
+  return left === right || (left !== left && right !== right);
 }
 
 interface EqualityContext {
@@ -77,6 +83,23 @@ function equalBytes(left: ArrayBufferView, right: ArrayBufferView): boolean {
   return leftBytes.every((value, index) => value === rightBytes[index]);
 }
 
+function boxedPrimitiveValue(value: object): unknown {
+  switch (Object.prototype.toString.call(value)) {
+    case "[object Boolean]":
+      return Boolean.prototype.valueOf.call(value);
+    case "[object Number]":
+      return Number.prototype.valueOf.call(value);
+    case "[object String]":
+      return String.prototype.valueOf.call(value);
+    case "[object BigInt]":
+      return BigInt.prototype.valueOf.call(value);
+    case "[object Symbol]":
+      return Symbol.prototype.valueOf.call(value);
+    default:
+      return undefined;
+  }
+}
+
 function structuredEqual(
   left: unknown,
   right: unknown,
@@ -99,6 +122,12 @@ function structuredEqual(
   if (Object.getPrototypeOf(left) !== Object.getPrototypeOf(right))
     return false;
 
+  const leftBoxed = boxedPrimitiveValue(left);
+  const rightBoxed = boxedPrimitiveValue(right);
+  if (leftBoxed !== undefined || rightBoxed !== undefined) {
+    return Object.is(leftBoxed, rightBoxed);
+  }
+
   if (left instanceof Date && right instanceof Date) {
     return Object.is(left.getTime(), right.getTime());
   }
@@ -110,6 +139,13 @@ function structuredEqual(
     );
   }
   if (left instanceof ArrayBuffer && right instanceof ArrayBuffer) {
+    return equalBytes(new Uint8Array(left), new Uint8Array(right));
+  }
+  if (
+    typeof SharedArrayBuffer !== "undefined" &&
+    left instanceof SharedArrayBuffer &&
+    right instanceof SharedArrayBuffer
+  ) {
     return equalBytes(new Uint8Array(left), new Uint8Array(right));
   }
   if (ArrayBuffer.isView(left) && ArrayBuffer.isView(right)) {
@@ -244,10 +280,24 @@ export function createAggregatorLawValidator(
         state = { samples: [], warned: false };
         columns.set(observation.columnId, state);
       }
-      if (state.warned || state.samples.length >= MAX_REPRESENTATIVE_LEAVES) {
-        return;
+      if (state.warned) return;
+      const existingIndex = state.samples.findIndex((sample) =>
+        sameLeafId(sample.id, observation.leafId),
+      );
+      if (existingIndex >= 0) {
+        state.samples[existingIndex] = {
+          id: observation.leafId,
+          row: observation.row,
+          value: observation.value,
+        };
+      } else {
+        if (state.samples.length >= MAX_REPRESENTATIVE_LEAVES) return;
+        state.samples.push({
+          id: observation.leafId,
+          row: observation.row,
+          value: observation.value,
+        });
       }
-      state.samples.push({ row: observation.row, value: observation.value });
       if (state.samples.length < 2) return;
 
       const aggregator =

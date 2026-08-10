@@ -66,6 +66,24 @@ describe("aggregator law validation", () => {
     ).toBe(false);
   });
 
+  test("compares boxed primitives and shared buffers by value", () => {
+    expect(defaultAggregatorOutputEquality(Object(3), Object(3))).toBe(true);
+    expect(defaultAggregatorOutputEquality(Object(3), Object(4))).toBe(false);
+    expect(defaultAggregatorOutputEquality(Object(false), Object(true))).toBe(
+      false,
+    );
+    expect(defaultAggregatorOutputEquality(Object(3n), Object(4n))).toBe(false);
+
+    const left = new SharedArrayBuffer(2);
+    const equal = new SharedArrayBuffer(2);
+    const different = new SharedArrayBuffer(2);
+    new Uint8Array(left).set([1, 2]);
+    new Uint8Array(equal).set([1, 2]);
+    new Uint8Array(different).set([1, 3]);
+    expect(defaultAggregatorOutputEquality(left, equal)).toBe(true);
+    expect(defaultAggregatorOutputEquality(left, different)).toBe(false);
+  });
+
   test("compares cyclic Map and Set outputs safely", () => {
     const leftMap = new Map<string, unknown>();
     const leftSet = new Set<unknown>();
@@ -237,6 +255,55 @@ describe("aggregator law validation", () => {
     expect(accumulateCalls - callsAfterEight).toBe(1);
   });
 
+  test("updates representative samples by leaf ID before applying the cap", () => {
+    const diagnostics: AggregatorLawDiagnostic[] = [];
+    const invalid: PretableAggregator<
+      Row,
+      number,
+      number[],
+      readonly number[]
+    > = {
+      init: () => [],
+      accumulate: (accumulator, value) => [...accumulator, value],
+      merge: (left) => left,
+      finalize: (accumulator) => accumulator,
+    };
+    const validator = createAggregatorLawValidator({
+      sink: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    const representativeRow = { id: 1 };
+    let tree = createAggregateTree({
+      columnId: "quantity",
+      aggregator: invalid,
+      lawValidator: validator,
+    }).insertOrReplace({
+      id: 1,
+      row: representativeRow,
+      value: 1,
+      dependency: 0,
+    });
+    for (let dependency = 1; dependency <= 10; dependency += 1) {
+      tree = tree.insertOrReplace({
+        id: 1,
+        row: representativeRow,
+        value: 1,
+        dependency,
+      });
+    }
+    tree = tree.insertOrReplace({
+      id: 2,
+      row: { id: 2 },
+      value: 2,
+      dependency: 11,
+    });
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({
+      columnId: "quantity",
+      sampleSize: 2,
+    });
+  });
+
   test("has no active sampling path in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.resetModules();
@@ -265,6 +332,7 @@ describe("aggregator law validation", () => {
     validator.observe({
       aggregator: invalid,
       columnId: "quantity",
+      leafId: 1,
       row: { id: 1 },
       value: 1,
     });
