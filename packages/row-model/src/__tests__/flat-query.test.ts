@@ -68,8 +68,9 @@ describe("incremental flat queries", () => {
 
   test("display-only changes evaluate active dependencies once without moving rank", () => {
     const score = vi.fn((row: Row) => row.score);
+    const compare = vi.fn((left: number, right: number) => left - right);
     const columns = [
-      helper.accessor("score", score, { type: "number" }),
+      helper.accessor("score", score, { type: "number", compare }),
       helper.accessor("label", { type: "text" }),
     ] as const;
     const model = createLocalRowModel({
@@ -85,10 +86,12 @@ describe("incremental flat queries", () => {
       },
     });
     score.mockClear();
+    compare.mockClear();
 
     model.applyTransaction({ update: [{ id: 1, changes: { label: "ONE" } }] });
 
     expect(score).toHaveBeenCalledTimes(1);
+    expect(compare).not.toHaveBeenCalled();
     expect(model.getState().snapshot.indexOf({ kind: "data", rowId: 1 })).toBe(
       0,
     );

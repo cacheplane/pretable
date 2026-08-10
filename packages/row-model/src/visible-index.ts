@@ -67,6 +67,12 @@ export function createFlatSnapshot<
   root: RevisionRoot<TRow, TRowId, TColumns>,
 ): PretableRowModelSnapshot<TRow, TRowId, TColumns> {
   const visible = root.visible.rows;
+  const publicRowAt = (index: number) => {
+    const ordered = visible.entryAt(index);
+    return ordered === undefined
+      ? undefined
+      : root.rows.get(ordered.rowId)?.publicRow;
+  };
   const lookupRank = (
     ref: PretableVisibleRowRef<TRowId>,
   ): number | undefined =>
@@ -76,26 +82,25 @@ export function createFlatSnapshot<
     sourceRowCount: root.rows.size,
     visibleRowCount: visible.size,
     visibleDataRowCount: visible.size,
-    rowAt: (index: number) => visible.entryAt(index)?.publicRow,
+    rowAt: publicRowAt,
     range: (start: number, end: number) =>
       Object.freeze(
-        visible.range(start, end).map((record) => record.publicRow),
+        visible
+          .range(start, end)
+          .map((record) => root.rows.get(record.rowId)?.publicRow)
+          .filter((row): row is NonNullable<typeof row> => row !== undefined),
       ),
     indexOf: (ref: PretableVisibleRowRef<TRowId>) => lookupRank(ref) ?? -1,
-    dataRowAt: (index: number) => visible.entryAt(index)?.publicRow,
-    firstDataRow: () => visible.entryAt(0)?.publicRow,
-    lastDataRow: () => visible.entryAt(visible.size - 1)?.publicRow,
+    dataRowAt: publicRowAt,
+    firstDataRow: () => publicRowAt(0),
+    lastDataRow: () => publicRowAt(visible.size - 1),
     nextDataRow: (ref: PretableVisibleRowRef<TRowId>) => {
       const rank = lookupRank(ref);
-      return rank === undefined
-        ? undefined
-        : visible.entryAt(rank + 1)?.publicRow;
+      return rank === undefined ? undefined : publicRowAt(rank + 1);
     },
     previousDataRow: (ref: PretableVisibleRowRef<TRowId>) => {
       const rank = lookupRank(ref);
-      return rank === undefined
-        ? undefined
-        : visible.entryAt(rank - 1)?.publicRow;
+      return rank === undefined ? undefined : publicRowAt(rank - 1);
     },
     parentGroupOf: () => undefined,
     nearestVisibleRef: (ref: PretableVisibleRowRef<TRowId>) => {

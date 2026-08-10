@@ -68,6 +68,21 @@ class TransactionExecutionError extends PretableRowModelError {
   }
 }
 
+class TransactionValidationError extends PretableRowModelError {
+  readonly name = "TransactionValidationError";
+
+  constructor(
+    readonly path: string,
+    message: string,
+    cause?: unknown,
+  ) {
+    super("derivation-failed", message, {
+      operation: "apply-transaction",
+      cause,
+    });
+  }
+}
+
 function remap(error: unknown): never {
   if (
     error instanceof PretableRowModelError &&
@@ -95,68 +110,128 @@ function fail(
   });
 }
 
-function captureList<T>(
-  value: readonly T[] | undefined,
-  name: string,
-): readonly T[] {
-  if (value === undefined) return [];
+function invalid(path: string, message: string, cause?: unknown): never {
+  throw new TransactionValidationError(path, message, cause);
+}
+
+function readProperty(source: object, key: PropertyKey, path: string): unknown {
   try {
-    return Array.from(value);
+    return Reflect.get(source, key);
   } catch (cause) {
-    return fail(
-      "derivation-failed",
-      `The transaction ${name} list could not be read safely.`,
-      undefined,
+    return invalid(
+      path,
+      `The value at ${path} could not be read safely.`,
       cause,
     );
   }
 }
 
-function captureId<TRow extends object, TRowId extends PretableRowId>(
-  row: TRow,
-  getRowId: (row: TRow) => TRowId,
-): TRowId {
+function captureDenseList(value: unknown, path: string): readonly unknown[] {
+  if (value === undefined) return Object.freeze([]);
   try {
-    const id = getRowId(row);
-    if (typeof id !== "string" && typeof id !== "number")
-      throw new TypeError("Row IDs must be strings or numbers.");
-    return id;
+    if (!Array.isArray(value))
+      return invalid(path, `${path} must be an array.`);
+    const length = value.length;
+    const captured: unknown[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const entryPath = `${path}[${index}]`;
+      if (!Object.hasOwn(value, index)) {
+        return invalid(entryPath, `${path} must be a dense array.`);
+      }
+      captured.push(readProperty(value, index, entryPath));
+    }
+    return Object.freeze(captured);
   } catch (cause) {
-    return fail(
-      "derivation-failed",
-      "The row ID accessor failed.",
-      undefined,
-      cause,
-    );
+    if (cause instanceof PretableRowModelError) throw cause;
+    return invalid(path, `${path} could not be captured safely.`, cause);
+  }
+}
+
+function validRowId(value: unknown): value is PretableRowId {
+  return typeof value === "string" || typeof value === "number";
+}
+
+interface CapturedPatchProperty {
+  readonly key: PropertyKey;
+  readonly value: unknown;
+}
+
+type CapturedPatch = readonly CapturedPatchProperty[];
+
+/** Patches use enumerable own data properties, including symbol keys. */
+function capturePatch(value: unknown, path: string): CapturedPatch {
+  if (value === null || typeof value !== "object") {
+    return invalid(path, `${path} must be an object.`);
+  }
+  try {
+    const captured: CapturedPatchProperty[] = [];
+    for (const key of Reflect.ownKeys(value)) {
+      const keyPath =
+        typeof key === "symbol" ? `${path}[${String(key)}]` : `${path}.${key}`;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor === undefined)
+        return invalid(keyPath, `The property at ${keyPath} disappeared.`);
+      if (!descriptor.enumerable) continue;
+      if (!("value" in descriptor)) {
+        return invalid(
+          keyPath,
+          `The patch property at ${keyPath} must be a data property.`,
+        );
+      }
+      captured.push(Object.freeze({ key, value: descriptor.value }));
+    }
+    return Object.freeze(captured);
+  } catch (cause) {
+    if (cause instanceof PretableRowModelError) throw cause;
+    return invalid(path, `${path} could not be captured safely.`, cause);
   }
 }
 
 function mergeChanges<TRow extends object, TRowId extends PretableRowId>(
   previous: TRow,
-  changesList: readonly Partial<TRow>[],
+  patches: readonly CapturedPatch[],
   rowId: TRowId,
 ): { readonly row: TRow; readonly changed: boolean } {
   try {
-    let changed = false;
-    const row = Object.assign({}, previous) as TRow;
-    for (const changes of changesList) {
-      if (changes === null || typeof changes !== "object") {
-        return fail(
-          "derivation-failed",
-          "A transaction update must provide an object of changes.",
-          rowId,
-        );
-      }
-      for (const key of Reflect.ownKeys(changes)) {
-        const descriptor = Object.getOwnPropertyDescriptor(changes, key);
-        if (descriptor?.enumerable !== true) continue;
-        const value = (changes as Record<PropertyKey, unknown>)[key];
-        if (!Object.is((row as Record<PropertyKey, unknown>)[key], value))
-          changed = true;
-        (row as Record<PropertyKey, unknown>)[key] = value;
+    const prototype = Object.getPrototypeOf(previous);
+    const row = Object.create(prototype) as TRow;
+    for (const key of Reflect.ownKeys(previous)) {
+      const descriptor = Object.getOwnPropertyDescriptor(previous, key);
+      if (descriptor === undefined)
+        throw new TypeError("A row property disappeared.");
+      Object.defineProperty(row, key, {
+        ...descriptor,
+        configurable: true,
+        ...("value" in descriptor ? { writable: true } : {}),
+      });
+    }
+    const originals = new Map<PropertyKey, PropertyDescriptor | undefined>();
+    for (const patch of patches) {
+      for (const property of patch) {
+        if (!originals.has(property.key)) {
+          originals.set(
+            property.key,
+            Object.getOwnPropertyDescriptor(previous, property.key),
+          );
+        }
+        Object.defineProperty(row, property.key, {
+          value: property.value,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
       }
     }
-    return { row: changed ? Object.freeze(row) : row, changed };
+    const changed = Array.from(originals, ([key, descriptor]) => {
+      const final = Object.getOwnPropertyDescriptor(row, key)!;
+      return (
+        descriptor === undefined ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true ||
+        !Object.is(descriptor.value, final.value)
+      );
+    }).some(Boolean);
+    return { row: changed ? Object.freeze(row) : previous, changed };
   } catch (cause) {
     return fail(
       "derivation-failed",
@@ -205,6 +280,62 @@ function createRecord<
   };
 }
 
+function sameKeyValues(
+  left: readonly { readonly columnId: string; readonly value: unknown }[],
+  right: readonly { readonly columnId: string; readonly value: unknown }[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (entry, index) =>
+        entry.columnId === right[index]?.columnId &&
+        Object.is(entry.value, right[index]?.value),
+    )
+  );
+}
+
+function sameFlatOrder<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  previous: RowRecord<TRow, TRowId, TColumns>,
+  next: RowRecord<TRow, TRowId, TColumns>,
+): boolean {
+  return (
+    previous.sourceOrder === next.sourceOrder &&
+    previous.metadata.filterPasses === next.metadata.filterPasses &&
+    sameKeyValues(previous.metadata.sortKeys, next.metadata.sortKeys)
+  );
+}
+
+function rebaseSourceOrder<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  metadata: RowRecord<TRow, TRowId, TColumns>["metadata"],
+  sourceOrder: number,
+): RowRecord<TRow, TRowId, TColumns>["metadata"] {
+  const aggregateLeaves = metadata.aggregateLeaves.map((leaf) => {
+    const dependency = Object.freeze({
+      ...leaf.allLeaf.dependency,
+      sourceOrder,
+    });
+    const allLeaf = Object.freeze({ ...leaf.allLeaf, dependency });
+    return Object.freeze({
+      ...leaf,
+      allLeaf,
+      filteredLeaf: leaf.filteredLeaf === undefined ? undefined : allLeaf,
+    });
+  });
+  return Object.freeze({
+    ...metadata,
+    sourceOrder,
+    aggregateLeaves: Object.freeze(aggregateLeaves),
+  }) as RowRecord<TRow, TRowId, TColumns>["metadata"];
+}
+
 /** Validates and prepares a complete transaction before acquiring transient roots. */
 export function applyFlatTransactionDraft<
   TRow extends object,
@@ -214,13 +345,77 @@ export function applyFlatTransactionDraft<
   input: TransactionDraftInput<TRow, TRowId, TColumns>,
 ): TransactionDraftResult<TRow, TRowId, TColumns> {
   try {
-    const adds = captureList(input.transaction.add, "add");
-    const updates = captureList(input.transaction.update, "update");
-    const removes = captureList(input.transaction.remove, "remove");
+    const transaction = input.transaction as unknown;
+    if (transaction === null || typeof transaction !== "object") {
+      return invalid("transaction", "The transaction must be an object.");
+    }
+    const rawAdds = readProperty(transaction, "add", "transaction.add");
+    const rawUpdates = readProperty(
+      transaction,
+      "update",
+      "transaction.update",
+    );
+    const rawRemoves = readProperty(
+      transaction,
+      "remove",
+      "transaction.remove",
+    );
+    const adds = captureDenseList(
+      rawAdds,
+      "transaction.add",
+    ) as readonly TRow[];
+    const updateEntries = captureDenseList(rawUpdates, "transaction.update");
+    const removes = captureDenseList(rawRemoves, "transaction.remove");
+
+    const capturedUpdates: {
+      readonly rowId: TRowId;
+      readonly patch: CapturedPatch;
+    }[] = [];
+    for (let index = 0; index < updateEntries.length; index += 1) {
+      const entry = updateEntries[index];
+      const path = `transaction.update[${index}]`;
+      if (entry === null || typeof entry !== "object") {
+        return invalid(path, `${path} must be an object.`);
+      }
+      const rawId = readProperty(entry, "id", `${path}.id`);
+      if (!validRowId(rawId)) {
+        return invalid(`${path}.id`, `${path}.id must be a string or number.`);
+      }
+      const changes = readProperty(entry, "changes", `${path}.changes`);
+      capturedUpdates.push({
+        rowId: rawId as TRowId,
+        patch: capturePatch(changes, `${path}.changes`),
+      });
+    }
+    const capturedRemoves: TRowId[] = [];
+    for (let index = 0; index < removes.length; index += 1) {
+      const rowId = removes[index];
+      const path = `transaction.remove[${index}]`;
+      if (!validRowId(rowId)) {
+        return invalid(path, `${path} must be a string or number.`);
+      }
+      capturedRemoves.push(rowId as TRowId);
+    }
 
     const addById = new Map<TRowId, TRow>();
-    for (const row of adds) {
-      const rowId = captureId(row, input.getRowId);
+    for (let index = 0; index < adds.length; index += 1) {
+      const row = adds[index]!;
+      let rowId: TRowId;
+      try {
+        rowId = input.getRowId(row);
+      } catch (cause) {
+        return invalid(
+          `transaction.add[${index}]`,
+          "The row ID accessor failed.",
+          cause,
+        );
+      }
+      if (!validRowId(rowId)) {
+        return invalid(
+          `transaction.add[${index}]`,
+          "The row ID accessor must return a string or number.",
+        );
+      }
       if (addById.has(rowId))
         fail(
           "duplicate-row-id",
@@ -229,27 +424,14 @@ export function applyFlatTransactionDraft<
         );
       addById.set(rowId, row);
     }
-    const updateById = new Map<TRowId, Partial<TRow>[]>();
-    for (const update of updates) {
-      let rowId: TRowId;
-      let changes: Partial<TRow>;
-      try {
-        rowId = update.id;
-        changes = update.changes;
-      } catch (cause) {
-        return fail(
-          "derivation-failed",
-          "A transaction update could not be read safely.",
-          undefined,
-          cause,
-        );
-      }
-      const list = updateById.get(rowId);
-      if (list === undefined) updateById.set(rowId, [changes]);
-      else list.push(changes);
+    const updateById = new Map<TRowId, CapturedPatch[]>();
+    for (const update of capturedUpdates) {
+      const list = updateById.get(update.rowId);
+      if (list === undefined) updateById.set(update.rowId, [update.patch]);
+      else list.push(update.patch);
     }
     const removeIds = new Set<TRowId>();
-    for (const rowId of removes) removeIds.add(rowId);
+    for (const rowId of capturedRemoves) removeIds.add(rowId);
     for (const rowId of addById.keys()) {
       if (updateById.has(rowId) || removeIds.has(rowId))
         fail(
@@ -355,11 +537,25 @@ export function applyFlatTransactionDraft<
 
     const rowDraft = input.root.rows.asTransient();
     const sourceDraft = input.root.sourceOrder.asTransient();
-    const visibleDraft = input.root.visible.rows.asTransient();
+    const visibleNeedsChange =
+      effectiveRemoves.some(
+        (rowId) => input.root.rows.get(rowId)?.metadata.filterPasses === true,
+      ) ||
+      prepared.some((record) => {
+        const previous = input.root.rows.get(record.rowId);
+        return (
+          (previous?.metadata.filterPasses === true ||
+            record.metadata.filterPasses) &&
+          (previous === undefined || !sameFlatOrder(previous, record))
+        );
+      });
+    const visibleDraft = visibleNeedsChange
+      ? input.root.visible.rows.asTransient()
+      : undefined;
     for (const rowId of effectiveRemoves) {
       rowDraft.delete(rowId);
       sourceDraft.remove(rowId);
-      visibleDraft.remove(rowId);
+      visibleDraft?.remove(rowId);
     }
     for (const record of prepared) {
       const previous = input.root.rows.get(record.rowId);
@@ -371,13 +567,17 @@ export function applyFlatTransactionDraft<
             sourceOrder: record.sourceOrder,
           }),
         );
-      if (record.metadata.filterPasses) visibleDraft.insertOrReplace(record);
-      else visibleDraft.remove(record.rowId);
+      if (previous !== undefined && sameFlatOrder(previous, record)) continue;
+      if (previous?.metadata.filterPasses) visibleDraft?.remove(record.rowId);
+      if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
     }
     return {
       rows: rowDraft.freeze(),
       sourceOrder: sourceDraft.freeze(),
-      visible: Object.freeze({ rows: visibleDraft.freeze() }),
+      visible:
+        visibleDraft === undefined
+          ? input.root.visible
+          : Object.freeze({ rows: visibleDraft.freeze() }),
       nextSourceOrder,
       added: addById.size,
       updated: prepared.length - addById.size,
@@ -448,6 +648,7 @@ export function replaceFlatRowsDraft<
     readonly rowId: TRowId;
     readonly sourceOrder: number;
     readonly integrity: RowRecord<TRow, TRowId, TColumns>["integrity"];
+    readonly cachedMetadata?: RowRecord<TRow, TRowId, TColumns>["metadata"];
   }[] = [];
   const changedRecords: RowRecord<TRow, TRowId, TColumns>[] = [];
   const diagnostics: PretableRowIntegrityDiagnostic<TRowId>[] = [];
@@ -483,6 +684,10 @@ export function replaceFlatRowsDraft<
       rowId,
       sourceOrder,
       integrity: inspection.integrity,
+      cachedMetadata:
+        sameReference && !inspection.sameReferenceMutation
+          ? previous?.metadata
+          : undefined,
     });
     if (previous === undefined) added += 1;
     else updated += 1;
@@ -514,11 +719,14 @@ export function replaceFlatRowsDraft<
     const { row, rowId, sourceOrder } = candidate;
     let metadata: RowRecord<TRow, TRowId, TColumns>["metadata"];
     try {
-      metadata = input.queryPlan.evaluate({
-        rowId,
-        row: row as never,
-        sourceOrder,
-      }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
+      metadata =
+        candidate.cachedMetadata === undefined
+          ? (input.queryPlan.evaluate({
+              rowId,
+              row: row as never,
+              sourceOrder,
+            }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"])
+          : rebaseSourceOrder(candidate.cachedMetadata, sourceOrder);
     } catch (error) {
       if (
         error instanceof PretableRowModelError &&
@@ -570,11 +778,27 @@ export function replaceFlatRowsDraft<
 
   const rowDraft = input.root.rows.asTransient();
   const sourceDraft = input.root.sourceOrder.asTransient();
+  const orderChangedRecords = changedRecords.filter((record) => {
+    const previous = input.root.rows.get(record.rowId);
+    return previous === undefined || !sameFlatOrder(previous, record);
+  });
   const affectedVisibleIds = new Set<TRowId>(
-    changedRecords.map((record) => record.rowId),
+    orderChangedRecords
+      .filter((record) => {
+        const previous = input.root.rows.get(record.rowId);
+        return (
+          previous?.metadata.filterPasses === true ||
+          record.metadata.filterPasses
+        );
+      })
+      .map((record) => record.rowId),
   );
   for (const [rowId] of input.root.rows.entries()) {
-    if (!seen.has(rowId)) affectedVisibleIds.add(rowId);
+    if (
+      !seen.has(rowId) &&
+      input.root.rows.get(rowId)?.metadata.filterPasses === true
+    )
+      affectedVisibleIds.add(rowId);
   }
   let hasUnaffectedVisible = false;
   for (const record of input.root.visible.rows.entries()) {
@@ -583,38 +807,50 @@ export function replaceFlatRowsDraft<
       break;
     }
   }
-  const visibleDraft = (
-    hasUnaffectedVisible
-      ? input.root.visible.rows
-      : createFlatVisibleTree<TRow, TRowId, TColumns>(
-          input.queryPlan.compareRows as unknown as (
-            left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-            right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-          ) => number,
-        )
-  ).asTransient();
+  const visibleDraft =
+    affectedVisibleIds.size === 0
+      ? undefined
+      : (hasUnaffectedVisible
+          ? input.root.visible.rows
+          : createFlatVisibleTree<TRow, TRowId, TColumns>(
+              input.queryPlan.compareRows as unknown as (
+                left: RowRecord<TRow, TRowId, TColumns>["metadata"],
+                right: RowRecord<TRow, TRowId, TColumns>["metadata"],
+              ) => number,
+            )
+        ).asTransient();
   for (const [rowId] of input.root.rows.entries()) {
     if (seen.has(rowId)) continue;
     rowDraft.delete(rowId);
     sourceDraft.remove(rowId);
-    if (hasUnaffectedVisible) visibleDraft.remove(rowId);
+    if (hasUnaffectedVisible) visibleDraft?.remove(rowId);
   }
   if (hasUnaffectedVisible) {
-    for (const record of changedRecords) {
-      visibleDraft.remove(record.rowId);
+    for (const record of orderChangedRecords) {
+      if (input.root.rows.get(record.rowId)?.metadata.filterPasses) {
+        visibleDraft?.remove(record.rowId);
+      }
     }
   }
   for (const record of changedRecords) {
     rowDraft.set(record.rowId, record);
-    sourceDraft.insertOrReplace(
-      Object.freeze({ rowId: record.rowId, sourceOrder: record.sourceOrder }),
-    );
-    if (record.metadata.filterPasses) visibleDraft.insertOrReplace(record);
+    const previous = input.root.rows.get(record.rowId);
+    if (previous === undefined || previous.sourceOrder !== record.sourceOrder) {
+      sourceDraft.insertOrReplace(
+        Object.freeze({ rowId: record.rowId, sourceOrder: record.sourceOrder }),
+      );
+    }
+  }
+  for (const record of orderChangedRecords) {
+    if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
   }
   return {
     rows: rowDraft.freeze(),
     sourceOrder: sourceDraft.freeze(),
-    visible: Object.freeze({ rows: visibleDraft.freeze() }),
+    visible:
+      visibleDraft === undefined
+        ? input.root.visible
+        : Object.freeze({ rows: visibleDraft.freeze() }),
     nextSourceOrder: Math.max(input.nextSourceOrder, captured.length),
     added,
     updated,

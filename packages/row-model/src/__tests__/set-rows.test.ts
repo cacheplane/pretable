@@ -60,6 +60,33 @@ describe("setRows incremental replacement", () => {
     ]);
   });
 
+  test("reorders same references by source tie without reevaluating dependencies", () => {
+    const value = vi.fn((row: Row) => row.value);
+    const columns = [
+      helper.accessor("value", value, { type: "number" }),
+    ] as const;
+    const one = { id: 1, value: 0, label: "one" };
+    const two = { id: 2, value: 0, label: "two" };
+    const model = createLocalRowModel({
+      rows: [one, two],
+      columns,
+      query: {
+        filters: [{ columnId: "value", operator: "gte", value: 0 }],
+        sort: [{ columnId: "value", direction: "asc" }],
+        rowGroups: [],
+      },
+    });
+    value.mockClear();
+
+    model.setRows([two, one]);
+
+    expect(value).not.toHaveBeenCalled();
+    expect(model.getState().snapshot.range(0, 2)).toMatchObject([
+      { rowId: 2, sourceIndex: 0 },
+      { rowId: 1, sourceIndex: 1 },
+    ]);
+  });
+
   test("reevaluates each row once when same-reference mutation invalidates the plan cache", () => {
     const value = vi.fn((row: Row) => row.value);
     const columns = [
