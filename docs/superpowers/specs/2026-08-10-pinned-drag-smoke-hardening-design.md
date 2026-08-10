@@ -1,6 +1,6 @@
 # Pinned-column drag smoke hardening design
 
-**Date:** 2026-08-10  
+**Date:** 2026-08-10
 **Status:** Approved
 **Scope:** Website end-to-end test only
 
