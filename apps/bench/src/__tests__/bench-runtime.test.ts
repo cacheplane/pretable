@@ -93,6 +93,7 @@ describe("bench runtime", () => {
         renderedRowCount: 8,
         selectedRowId: "evt-dev-0001",
         loadedRowCount: 750,
+        matchingTotal: { kind: "exact", count: 750 },
         totalHeight: 59010,
         visibleRowCount: 6,
         visibleRowRange: {
@@ -122,6 +123,7 @@ describe("bench runtime", () => {
           renderedRowCount: 7,
           selectedRowId: "evt-002",
           loadedRowCount: 750,
+          matchingTotal: { kind: "exact", count: 750 },
           totalHeight: 24115,
           visibleRowCount: 3,
           visibleRowRange: {

@@ -8,6 +8,9 @@ import {
   type PretableGridSnapshot,
   type PretableGroupColumnOptions,
   type PretableGroupRow,
+  type PretableMatchingTotal,
+  type PretableProcessingOptions,
+  type PretableResultMeta,
   type PretableRow,
   type PretableSelectionState,
   type PretableSortEntry,
@@ -117,6 +120,13 @@ export interface PretableTelemetry {
   selectedRowId: string | null;
   /** Count of loaded source records — not the matching population. */
   loadedRowCount: number;
+  /**
+   * How many records match the fulfilled query — loaded or not. Equal to the
+   * exact post-filter count in local mode.
+   *
+   * @experimental
+   */
+  matchingTotal: PretableMatchingTotal;
   totalHeight: number;
   visibleRowCount: number;
   visibleRowRange: {
@@ -150,6 +160,20 @@ export interface PretableSurfaceState {
  */
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
   autosize?: boolean | AutosizeOptions;
+  /**
+   * Who applies filtering and sorting. Forwarded to `createGrid`. Participates
+   * in the grid memo as its two scalar fields, never as object identity.
+   *
+   * @experimental
+   */
+  processing?: PretableProcessingOptions;
+  /**
+   * Matching total + dataset identity for the loaded records. Applied through
+   * `setRows` when `rows` also changed, otherwise through `setResultMeta`.
+   *
+   * @experimental
+   */
+  resultMeta?: PretableResultMeta;
   columns: PretableColumn<TRow>[];
   rows: TRow[];
   getRowId?: PretableGridOptions<TRow>["getRowId"];
@@ -240,6 +264,8 @@ function focusStatesEqual(
  */
 export function usePretable<TRow extends PretableRow = PretableRow>({
   autosize,
+  processing,
+  resultMeta,
   columns,
   rows,
   getRowId,
@@ -278,6 +304,13 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   const groupColumnWidthPx = groupColumn?.widthPx;
   const groupColumnPinned = groupColumn?.pinned;
 
+  // Object identity is deliberately not a dependency: an inline
+  // `processing={{ filter: "external" }}` literal is a new object every render
+  // and must not rebuild the grid (which would destroy selection, focus,
+  // measured heights and any in-flight edit on every keystroke).
+  const processingFilter = processing?.filter;
+  const processingSort = processing?.sort;
+
   // Create the grid once. Both `rows` and `columns` are reconciled in place
   // (grid.setRows / grid.mergeColumnsFromProps, below) rather than by recreating
   // it, so sort, filters, selection, focus, column layout, and an in-flight edit
@@ -290,6 +323,10 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
         rows,
         getRowId: stableGetRowId,
         autosize,
+        processing:
+          processingFilter === undefined && processingSort === undefined
+            ? undefined
+            : { filter: processingFilter, sort: processingSort },
         groupColumn: {
           header: groupColumnHeader,
           widthPx: groupColumnWidthPx,
@@ -299,10 +336,12 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
         aggregateFilteredRows,
         groupsDefaultExpanded,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above; processing participates as its scalar fields
     [
       autosize,
       stableGetRowId,
+      processingFilter,
+      processingSort,
       groupColumnHeader,
       groupColumnWidthPx,
       groupColumnPinned,
@@ -317,12 +356,27 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   // frame — rather than during render, which would emit to the external store
   // mid-render and trip React's "update during render" guard.
   const lastRowsRef = useRef(rows);
+  // Starts `undefined` rather than `resultMeta` so an initial meta reaches the
+  // grid: `createGrid` takes no meta, and the rows branch below never fires on
+  // the first commit.
+  const lastResultMetaRef = useRef<PretableResultMeta | undefined>(undefined);
   useLayoutEffect(() => {
-    if (lastRowsRef.current !== rows) {
-      lastRowsRef.current = rows;
-      grid.setRows(rows);
+    const rowsChanged = lastRowsRef.current !== rows;
+    const metaChanged = lastResultMetaRef.current !== resultMeta;
+    lastRowsRef.current = rows;
+    lastResultMetaRef.current = resultMeta;
+
+    if (rowsChanged) {
+      // One call, one emit: rows and their total can never render torn.
+      grid.setRows(rows, resultMeta);
+      return;
     }
-  }, [grid, rows]);
+
+    if (metaChanged && resultMeta) {
+      // A refined total with the same rows — no rows-identity churn needed.
+      grid.setResultMeta(resultMeta);
+    }
+  }, [grid, resultMeta, rows]);
 
   // Merge on every identity change, not only when the set of ids changes: a
   // column's header, width, or accessor can change while the ids stay put.
@@ -524,6 +578,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
       renderedRowCount: renderSnapshot.rows.length,
       selectedRowId: snapshot.selection.ranges[0]?.startRowId ?? null,
       loadedRowCount: snapshot.loadedRowCount,
+      matchingTotal: snapshot.matchingTotal,
       totalHeight: renderSnapshot.totalHeight,
       visibleRowCount: viewportRows.length,
       visibleRowRange:
@@ -544,6 +599,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     snapshot.visibleRows.length,
     snapshot.selection.ranges,
     snapshot.loadedRowCount,
+    snapshot.matchingTotal,
     snapshot.viewport.height,
     snapshot.viewport.scrollTop,
     viewportHeight,

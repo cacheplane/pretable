@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { renderHook } from "@testing-library/react";
+import { render, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { usePretable } from "../use-pretable";
@@ -13,6 +13,16 @@ type Row = {
 
 const columns: PretableColumn<Row>[] = [
   { id: "name", header: "Name", value: (row) => row.name },
+];
+
+const rowsA: Row[] = [
+  { id: "a", name: "A" },
+  { id: "b", name: "B" },
+];
+
+const rowsB: Row[] = [
+  { id: "a", name: "A2" },
+  { id: "b", name: "B2" },
 ];
 
 /**
@@ -82,5 +92,49 @@ describe("usePretable streaming lifecycle", () => {
 
     expect(result.current.grid).toBe(grid);
     expect(result.current.snapshot.selection.ranges.length).toBe(1);
+  });
+
+  it("does not recreate the grid when processing is an inline object literal", () => {
+    const seen: unknown[] = [];
+    function Harness({ rows }: { rows: Row[] }) {
+      const model = usePretable<Row>({
+        columns,
+        rows,
+        getRowId: (row) => row.id,
+        viewportHeight: 300,
+        processing: { filter: "external", sort: "external" },
+      });
+      seen.push(model.grid);
+      return null;
+    }
+    const view = render(<Harness rows={rowsA} />);
+    view.rerender(<Harness rows={rowsB} />);
+    expect(new Set(seen).size).toBe(1);
+  });
+
+  it("routes a meta-only change through setResultMeta and keeps the rows array", () => {
+    function Harness({ rows, total }: { rows: Row[]; total: number }) {
+      const model = usePretable<Row>({
+        columns,
+        rows,
+        getRowId: (row) => row.id,
+        viewportHeight: 300,
+        processing: { filter: "external" },
+        resultMeta: { total: { kind: "exact", count: total } },
+      });
+      return (
+        <div
+          data-total={JSON.stringify(model.snapshot.matchingTotal)}
+          data-loaded={model.telemetry.loadedRowCount}
+        />
+      );
+    }
+    const view = render(<Harness rows={rowsA} total={100} />);
+    view.rerender(<Harness rows={rowsA} total={101} />);
+    const node = view.container.firstElementChild!;
+    expect(node.getAttribute("data-total")).toBe(
+      JSON.stringify({ kind: "exact", count: 101 }),
+    );
+    expect(node.getAttribute("data-loaded")).toBe(String(rowsA.length));
   });
 });

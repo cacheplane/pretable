@@ -26,6 +26,8 @@ import type {
   PretableGridOptions,
   PretableGridSnapshot,
   PretableGroupColumnOptions,
+  PretableProcessingOptions,
+  PretableResultMeta,
   PretableRow,
   PretableSelectionState,
   PretableSortEntry,
@@ -470,6 +472,26 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * render; when a slice is undefined the engine owns it (uncontrolled).
    */
   state?: PretableSurfaceState | null;
+  /**
+   * Who applies filtering and sorting to the loaded records. Construction-time:
+   * changing it after mount does rebuild the grid.
+   *
+   * @experimental
+   */
+  processing?: PretableProcessingOptions;
+  /**
+   * Matching total + dataset identity for the loaded records.
+   *
+   * @experimental
+   */
+  resultMeta?: PretableResultMeta;
+  /**
+   * Pass-through to the grid element, e.g. to associate a stale-results notice
+   * rendered outside the grid.
+   *
+   * @experimental
+   */
+  ariaDescribedBy?: string;
   overscan?: number;
   /**
    * Called when the user activates a row — a plain click on it, or Enter/Space
@@ -781,6 +803,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   getRowId,
   getRowProps,
   state,
+  processing,
+  resultMeta,
+  ariaDescribedBy,
   overscan = 6,
   onGridReady,
   onRowActivate,
@@ -1017,6 +1042,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     aggregateFilteredRows,
     groupsDefaultExpanded,
     state: state ?? undefined,
+    processing,
+    resultMeta,
     measuredHeights,
     overscan,
     rows,
@@ -2284,6 +2311,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const scrollViewport = (
     <div
       aria-colcount={drawnColumns.length}
+      aria-describedby={ariaDescribedBy}
       aria-label={ariaLabel}
       aria-multiselectable="true"
       aria-rowcount={snapshot.visibleRows.length + 1}
