@@ -131,6 +131,39 @@ export interface CompileQueryInput<TColumns> {
   readonly previous?: CompiledQuery<TColumns>;
 }
 
+export class CompiledQueryValidationError extends TypeError {
+  readonly name = "CompiledQueryValidationError";
+  readonly code = "invalid-query";
+
+  constructor(
+    readonly detail: string,
+    readonly path: string,
+    readonly columnId?: string,
+  ) {
+    super(`Invalid compiled query at ${path}: ${detail}`);
+  }
+}
+
+export class CompiledQueryComparatorError extends PretableRowModelError {
+  readonly name = "CompiledQueryComparatorError";
+
+  constructor(
+    message: string,
+    readonly rowIds: readonly PretableRowId[] | undefined,
+    context: {
+      readonly columnId: string;
+      readonly cause: unknown;
+    },
+  ) {
+    super("comparator-failed", message, {
+      operation: "set-query",
+      rowId: rowIds?.[0],
+      columnId: context.columnId,
+      cause: context.cause,
+    });
+  }
+}
+
 type RuntimeAggregator = {
   readonly init: () => object | string | number | bigint | boolean | null;
   readonly accumulate: (
@@ -243,47 +276,58 @@ function runtimeQuery<TColumns>(
   return query as unknown as RuntimeQuery;
 }
 
-function fail(message: string): never {
-  throw new TypeError(`Invalid compiled query: ${message}`);
+function fail(message: string, path = "query", columnId?: string): never {
+  throw new CompiledQueryValidationError(message, path, columnId);
 }
 
 function validateDerivations(columns: readonly RuntimeColumn[]): void {
   const ids = new Set<string>();
-  for (const column of columns) {
+  for (let index = 0; index < columns.length; index += 1) {
+    const column = columns[index];
+    const path = `derivations[${index}]`;
     if (!column || typeof column !== "object")
-      fail("a derivation is not an object");
+      fail("a derivation is not an object", path);
     if (typeof column.id !== "string" || column.id.length === 0)
-      fail("a derivation has no column ID");
-    if (ids.has(column.id)) fail(`duplicate derivation column ID ${column.id}`);
+      fail("a derivation has no column ID", `${path}.id`);
+    if (ids.has(column.id))
+      fail(
+        `duplicate derivation column ID ${column.id}`,
+        `${path}.id`,
+        column.id,
+      );
     ids.add(column.id);
     if (!COLUMN_TYPES.has(column.type))
-      fail(`column ${column.id} has invalid type ${column.type}`);
+      fail(`column has invalid type ${column.type}`, `${path}.type`, column.id);
     if (
       typeof column.accessor !== "function" ||
       typeof column.value !== "function"
     ) {
-      fail(`column ${column.id} has no accessor`);
+      fail("column has no accessor", `${path}.accessor`, column.id);
     }
     if (column.compare !== undefined && typeof column.compare !== "function") {
-      fail(`column ${column.id} has an invalid comparator`);
+      fail("column has an invalid comparator", `${path}.compare`, column.id);
     }
-    validateAggregate(column);
+    validateAggregate(column, `${path}.aggregate`);
   }
 }
 
-function validateAggregate(column: RuntimeColumn): void {
+function validateAggregate(column: RuntimeColumn, path: string): void {
   const aggregate = column.aggregate;
   if (aggregate === undefined) return;
   if (typeof aggregate === "string") {
     if (!BUILTIN_AGGREGATES.has(aggregate))
-      fail(`column ${column.id} has unknown aggregate ${aggregate}`);
+      fail(`unknown aggregate ${aggregate}`, path, column.id);
     if (NUMERIC_AGGREGATES.has(aggregate) && column.type !== "number") {
-      fail(`column ${column.id} cannot use numeric aggregate ${aggregate}`);
+      fail(
+        `numeric aggregate ${aggregate} requires a number column`,
+        path,
+        column.id,
+      );
     }
     return;
   }
   if (!aggregate || typeof aggregate !== "object")
-    fail(`column ${column.id} has an invalid aggregate`);
+    fail("aggregate must be a built-in name or object", path, column.id);
   for (const operation of [
     "init",
     "accumulate",
@@ -291,7 +335,7 @@ function validateAggregate(column: RuntimeColumn): void {
     "finalize",
   ] as const) {
     if (typeof aggregate[operation] !== "function")
-      fail(`column ${column.id} aggregate has no ${operation}`);
+      fail(`aggregate has no ${operation}`, `${path}.${operation}`, column.id);
   }
 }
 
@@ -301,7 +345,7 @@ function resolveColumn(
   area: string,
 ): RuntimeColumn {
   const column = columns.get(columnId);
-  if (!column) fail(`${area} references unknown column ${columnId}`);
+  if (!column) fail(`references unknown column ${columnId}`, area, columnId);
   return column;
 }
 
@@ -309,43 +353,105 @@ function validateOrdering(
   entry: RuntimeOrdering,
   columns: ReadonlyMap<string, RuntimeColumn>,
   area: "sort" | "rowGroups",
+  index: number,
 ): void {
+  const path = `query.${area}[${index}]`;
   if (!entry || typeof entry !== "object")
-    fail(`${area} entry is not an object`);
-  resolveColumn(columns, entry.columnId, area);
+    fail(`${area} entry is not an object`, path);
+  resolveColumn(columns, entry.columnId, `${path}.columnId`);
   const direction = entry.direction ?? "asc";
   if (direction !== "asc" && direction !== "desc")
-    fail(`${area} has invalid direction ${direction}`);
+    fail(`invalid direction ${direction}`, `${path}.direction`, entry.columnId);
   if (
     entry.nulls !== undefined &&
     entry.nulls !== "first" &&
     entry.nulls !== "last"
   ) {
-    fail(`${area} has invalid null placement ${entry.nulls}`);
+    fail(
+      `invalid null placement ${entry.nulls}`,
+      `${path}.nulls`,
+      entry.columnId,
+    );
   }
 }
 
 function validateFilter(
   filter: RuntimeFilter,
   columns: ReadonlyMap<string, RuntimeColumn>,
+  index: number,
 ): void {
+  const path = `query.filters[${index}]`;
   if (!filter || typeof filter !== "object")
-    fail("filter entry is not an object");
-  const column = resolveColumn(columns, filter.columnId, "filter");
+    fail("filter entry is not an object", path);
+  const column = resolveColumn(columns, filter.columnId, `${path}.columnId`);
   const operators =
     FILTER_OPERATORS[column.type as keyof typeof FILTER_OPERATORS];
   if (!operators?.has(filter.operator))
-    fail(`column ${filter.columnId} cannot use operator ${filter.operator}`);
+    fail(
+      `column cannot use operator ${filter.operator}`,
+      `${path}.operator`,
+      filter.columnId,
+    );
   if (filter.operator === "isEmpty" || filter.operator === "isNotEmpty") return;
   if (filter.value === undefined || filter.value === null)
-    fail(`filter ${filter.columnId} is missing its operand`);
-  if (filter.operator === "between" || filter.operator === "dateBetween") {
-    if (!Array.isArray(filter.value) || filter.value.length !== 2)
-      fail(`filter ${filter.columnId} requires a two-value range`);
+    fail("filter is missing its operand", `${path}.value`, filter.columnId);
+  validateFilterOperand(column, filter, `${path}.value`);
+}
+
+function validateFilterOperand(
+  column: RuntimeColumn,
+  filter: RuntimeFilter,
+  path: string,
+): void {
+  const value = filter.value;
+  if (column.type === "number") {
+    const values = filter.operator === "between" ? value : [value];
+    if (
+      !Array.isArray(values) ||
+      (filter.operator === "between" && values.length !== 2) ||
+      values.some((entry) => typeof entry !== "number" || Number.isNaN(entry))
+    ) {
+      fail(
+        filter.operator === "between"
+          ? "number range must contain exactly two non-NaN numbers"
+          : "number operand must be a non-NaN number",
+        path,
+        column.id,
+      );
+    }
+    return;
   }
-  if (filter.operator === "isAnyOf" || filter.operator === "isNoneOf") {
-    if (!Array.isArray(filter.value))
-      fail(`filter ${filter.columnId} requires a value list`);
+  if (column.type === "date") {
+    const values = filter.operator === "dateBetween" ? value : [value];
+    if (
+      !Array.isArray(values) ||
+      (filter.operator === "dateBetween" && values.length !== 2) ||
+      values.some((entry) => Number.isNaN(toDayMs(entry)))
+    ) {
+      fail(
+        filter.operator === "dateBetween"
+          ? "date range must contain exactly two valid ISO dates, Dates, or epoch values"
+          : "date operand must be a valid ISO date, Date, or epoch value",
+        path,
+        column.id,
+      );
+    }
+    return;
+  }
+  if (column.type === "text") {
+    if (typeof value !== "string")
+      fail("text operand must be a string", path, column.id);
+    return;
+  }
+  if (!Array.isArray(value))
+    fail("selection operand must be an array", path, column.id);
+  const expected = column.type === "boolean" ? "boolean" : "string";
+  if (value.some((entry) => typeof entry !== expected)) {
+    fail(
+      `${column.type} selection must contain only ${expected} values`,
+      path,
+      column.id,
+    );
   }
 }
 
@@ -362,10 +468,12 @@ function validateQuery(
     fail("filters, sort, and rowGroups must be arrays");
   }
   const byId = new Map(columns.map((column) => [column.id, column]));
-  query.filters.forEach((filter) => validateFilter(filter, byId));
-  query.sort.forEach((entry) => validateOrdering(entry, byId, "sort"));
-  query.rowGroups.forEach((entry) =>
-    validateOrdering(entry, byId, "rowGroups"),
+  query.filters.forEach((filter, index) => validateFilter(filter, byId, index));
+  query.sort.forEach((entry, index) =>
+    validateOrdering(entry, byId, "sort", index),
+  );
+  query.rowGroups.forEach((entry, index) =>
+    validateOrdering(entry, byId, "rowGroups", index),
   );
 }
 
@@ -379,6 +487,17 @@ function semanticValueEqual(left: unknown, right: unknown): boolean {
   }
   if (left instanceof Date && right instanceof Date)
     return Object.is(left.getTime(), right.getTime());
+  if (isPlainObject(left) && isPlainObject(right)) {
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every(
+        (key, index) =>
+          key === rightKeys[index] && semanticValueEqual(left[key], right[key]),
+      )
+    );
+  }
   return false;
 }
 
@@ -395,18 +514,30 @@ function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
         (entry.nulls ?? "last") === (b[index].nulls ?? "last"),
     );
   return (
-    left.filters.length === right.filters.length &&
-    left.filters.every((filter, index) => {
-      const other = right.filters[index];
-      return (
-        filter.columnId === other.columnId &&
-        filter.operator === other.operator &&
-        semanticValueEqual(filter.value, other.value)
-      );
-    }) &&
+    filtersEqual(left.filters, right.filters) &&
     orderingEqual(left.sort, right.sort) &&
     orderingEqual(left.rowGroups, right.rowGroups)
   );
+}
+
+function filtersEqual(
+  left: readonly RuntimeFilter[],
+  right: readonly RuntimeFilter[],
+): boolean {
+  if (left.length !== right.length) return false;
+  const used = new Set<number>();
+  return left.every((filter) => {
+    const index = right.findIndex(
+      (candidate, candidateIndex) =>
+        !used.has(candidateIndex) &&
+        filter.columnId === candidate.columnId &&
+        filter.operator === candidate.operator &&
+        semanticValueEqual(filter.value, candidate.value),
+    );
+    if (index < 0) return false;
+    used.add(index);
+    return true;
+  });
 }
 
 function derivationsEqualForPlan(
@@ -430,7 +561,7 @@ function derivationsEqualForPlan(
   return left.every((column, index) => {
     const other = right[index];
     if (column.id !== other.id || column.type !== other.type) return false;
-    if (column.aggregate !== other.aggregate) return false;
+    if (!semanticValueEqual(column.aggregate, other.aggregate)) return false;
     if (column.aggregate !== undefined) accessorIds.add(column.id);
     if (accessorIds.has(column.id) && column.accessor !== other.accessor)
       return false;
@@ -440,15 +571,182 @@ function derivationsEqualForPlan(
   });
 }
 
-function snapshotQuery(query: RuntimeQuery): RuntimeQuery {
-  return {
-    filters: query.filters.map((filter) => ({
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function cloneOwnedValue(
+  value: unknown,
+  path: string,
+  seen: WeakSet<object>,
+): unknown {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    typeof value === "function"
+  ) {
+    return value;
+  }
+  if (typeof value === "symbol")
+    fail("symbols are not supported in compiled inputs", path);
+  if (value instanceof Date) return immutableDate(value.getTime());
+  if (typeof value !== "object") fail("unsupported compiled input value", path);
+  if (seen.has(value)) fail("cyclic values are not supported", path);
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return Object.freeze(
+        value.map((entry, index) =>
+          cloneOwnedValue(entry, `${path}[${index}]`, seen),
+        ),
+      );
+    }
+    if (!isPlainObject(value)) {
+      fail(
+        "only Date, arrays, and plain objects are supported in compiled inputs",
+        path,
+      );
+    }
+    const clone: Record<string, unknown> = {};
+    for (const key of Object.keys(value)) {
+      clone[key] = cloneOwnedValue(value[key], `${path}.${key}`, seen);
+    }
+    return Object.freeze(clone);
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function immutableDate(timestamp: number): Date {
+  const date = new Date(timestamp);
+  const proxy = new Proxy(date, {
+    get(target, property) {
+      if (typeof property === "string" && property.startsWith("set")) {
+        return () => {
+          throw new TypeError("Compiled query Date snapshots are immutable.");
+        };
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+    set() {
+      throw new TypeError("Compiled query Date snapshots are immutable.");
+    },
+  });
+  return Object.freeze(proxy);
+}
+
+function snapshotColumns(
+  columns: readonly RuntimeColumn[],
+  path: string,
+): readonly RuntimeColumn[] {
+  return Object.freeze(
+    columns.map((column, index) => {
+      const aggregate =
+        column.aggregate === undefined || typeof column.aggregate === "string"
+          ? column.aggregate
+          : snapshotAggregator(
+              column.aggregate,
+              `${path}[${index}].aggregate`,
+              column.id,
+            );
+      return Object.freeze({ ...column, aggregate });
+    }),
+  );
+}
+
+function snapshotAggregator(
+  aggregator: RuntimeAggregator,
+  path: string,
+  columnId: string,
+): RuntimeAggregator {
+  const source = aggregator as unknown as Record<string, unknown>;
+  const clone: Record<string, unknown> = {};
+  const callbacks = new Set(["init", "accumulate", "merge", "finalize"]);
+  try {
+    if (Object.getOwnPropertySymbols(aggregator).length > 0) {
+      fail("symbol-keyed aggregate options are not supported", path, columnId);
+    }
+    for (const key of Object.keys(aggregator)) {
+      if (!callbacks.has(key)) {
+        clone[key] = cloneOwnedValue(
+          source[key],
+          `${path}.${key}`,
+          new WeakSet(),
+        );
+      }
+    }
+  } catch (error) {
+    if (
+      error instanceof CompiledQueryValidationError &&
+      error.columnId === undefined
+    ) {
+      throw new CompiledQueryValidationError(
+        error.detail,
+        error.path,
+        columnId,
+      );
+    }
+    throw error;
+  }
+  clone.init = aggregator.init;
+  clone.accumulate = aggregator.accumulate;
+  clone.merge = aggregator.merge;
+  clone.finalize = aggregator.finalize;
+  return Object.freeze(clone) as unknown as RuntimeAggregator;
+}
+
+function snapshotQuery(
+  query: RuntimeQuery,
+  path: string,
+  canonicalFilters = false,
+): RuntimeQuery {
+  const filters = query.filters.map((filter, index) =>
+    Object.freeze({
       ...filter,
-      value: Array.isArray(filter.value) ? [...filter.value] : filter.value,
-    })),
-    sort: query.sort.map((entry) => ({ ...entry })),
-    rowGroups: query.rowGroups.map((entry) => ({ ...entry })),
-  };
+      value: cloneOwnedValue(
+        filter.value,
+        `${path}.filters[${index}].value`,
+        new WeakSet(),
+      ),
+    }),
+  );
+  if (canonicalFilters) filters.sort(compareFilterDescriptors);
+  return Object.freeze({
+    filters: Object.freeze(filters),
+    sort: Object.freeze(query.sort.map((entry) => Object.freeze({ ...entry }))),
+    rowGroups: Object.freeze(
+      query.rowGroups.map((entry) => Object.freeze({ ...entry })),
+    ),
+  });
+}
+
+function compareFilterDescriptors(
+  left: RuntimeFilter,
+  right: RuntimeFilter,
+): number {
+  return filterDescriptorKey(left).localeCompare(filterDescriptorKey(right));
+}
+
+function filterDescriptorKey(filter: RuntimeFilter): string {
+  return `${filter.columnId}\u0000${filter.operator}\u0000${filterValueKey(filter.value)}`;
+}
+
+function filterValueKey(value: unknown): string {
+  if (value instanceof Date) return `date:${value.getTime()}`;
+  if (Array.isArray(value))
+    return `array:[${value.map(filterValueKey).join(",")}]`;
+  if (typeof value === "number") {
+    if (Object.is(value, -0)) return "number:-0";
+    return `number:${String(value)}`;
+  }
+  return `${typeof value}:${String(value)}`;
 }
 
 function isEmptyValue(value: unknown): boolean {
@@ -467,12 +765,51 @@ function booleanValue(value: unknown): boolean {
   return Boolean(value);
 }
 
-function dateValue(value: unknown): number {
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === "number")
-    return Number.isFinite(value) ? value : Number.NaN;
-  if (typeof value !== "string" || value.trim() === "") return Number.NaN;
-  return Date.parse(value);
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATETIME_RE =
+  /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
+const GREGORIAN_400Y_MS = 146_097 * 86_400_000;
+
+function utcMs(year: number, month: number, day: number): number {
+  return year >= 0 && year < 100
+    ? Date.UTC(year + 400, month, day) - GREGORIAN_400Y_MS
+    : Date.UTC(year, month, day);
+}
+
+function utcDayOf(value: number): number {
+  const date = new Date(value);
+  const year = date.getUTCFullYear();
+  if (Number.isNaN(date.getTime()) || year < 0 || year > 9999)
+    return Number.NaN;
+  date.setUTCHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function isoDayMs(value: string): number {
+  if (!ISO_DATE_RE.test(value)) return Number.NaN;
+  const [year, month, day] = value.split("-").map(Number);
+  const result = utcMs(year, month - 1, day);
+  const roundTrip = new Date(result);
+  return roundTrip.getUTCFullYear() === year &&
+    roundTrip.getUTCMonth() === month - 1 &&
+    roundTrip.getUTCDate() === day
+    ? result
+    : Number.NaN;
+}
+
+/** Deterministic UTC calendar-day policy shared with the frozen legacy oracle. */
+function toDayMs(value: unknown): number {
+  if (value instanceof Date) return utcDayOf(value.getTime());
+  if (typeof value === "number") return utcDayOf(value);
+  if (typeof value !== "string") return Number.NaN;
+  const trimmed = value.trim();
+  const dateOnly = isoDayMs(trimmed);
+  if (!Number.isNaN(dateOnly)) return dateOnly;
+  const parts = ISO_DATETIME_RE.exec(trimmed);
+  if (!parts || Number.isNaN(isoDayMs(parts[1]))) return Number.NaN;
+  return parts[2]
+    ? utcDayOf(Date.parse(trimmed.replace(" ", "T")))
+    : isoDayMs(parts[1]);
 }
 
 function evaluateFilter(
@@ -502,12 +839,12 @@ function evaluateFilter(
       return value <= operand;
     }
     case "date": {
-      const cell = dateValue(value);
+      const cell = toDayMs(value);
       if (Number.isNaN(cell)) return false;
       if (filter.operator === "dateBetween") {
         const range = operand as readonly unknown[];
-        const a = dateValue(range[0]);
-        const b = dateValue(range[1]);
+        const a = toDayMs(range[0]);
+        const b = toDayMs(range[1]);
         return (
           !Number.isNaN(a) &&
           !Number.isNaN(b) &&
@@ -515,18 +852,20 @@ function evaluateFilter(
           cell <= Math.max(a, b)
         );
       }
-      const other = dateValue(operand);
+      const other = toDayMs(operand);
       if (Number.isNaN(other)) return false;
       if (filter.operator === "on") return cell === other;
       return filter.operator === "before" ? cell < other : cell > other;
     }
     case "enum": {
+      if ((operand as readonly unknown[]).length === 0) return true;
       const included = (operand as readonly unknown[])
         .map(String)
         .includes(String(value));
       return filter.operator === "isAnyOf" ? included : !included;
     }
     case "boolean": {
+      if ((operand as readonly unknown[]).length === 0) return true;
       const included = (operand as readonly unknown[])
         .map(booleanValue)
         .includes(booleanValue(value));
@@ -585,6 +924,8 @@ function compareValues(
 class CompiledQueryPlan<TColumns>
   implements CompiledQuery<TColumns>, InternalCompiledQuery
 {
+  readonly derivations: PretableDerivationsFor<TColumns>;
+  readonly query: PretableQueryFor<TColumns>;
   readonly activeColumnIds: readonly ColumnIdOf<TColumns>[];
   readonly #runtimeColumns: readonly RuntimeColumn[];
   readonly #runtimeQuery: RuntimeQuery;
@@ -606,13 +947,24 @@ class CompiledQueryPlan<TColumns>
   };
 
   constructor(
-    readonly derivations: PretableDerivationsFor<TColumns>,
-    readonly query: PretableQueryFor<TColumns>,
+    derivations: PretableDerivationsFor<TColumns>,
+    query: PretableQueryFor<TColumns>,
   ) {
-    this.#runtimeColumns = runtimeColumns(derivations).map((column) => ({
-      ...column,
-    }));
-    this.#runtimeQuery = snapshotQuery(runtimeQuery(query));
+    const sourceColumns = runtimeColumns(derivations);
+    const sourceQuery = runtimeQuery(query);
+    this.derivations = snapshotColumns(
+      sourceColumns,
+      "derivations",
+    ) as unknown as PretableDerivationsFor<TColumns>;
+    this.query = snapshotQuery(
+      sourceQuery,
+      "query",
+    ) as unknown as PretableQueryFor<TColumns>;
+    this.#runtimeColumns = snapshotColumns(
+      sourceColumns,
+      "internal.derivations",
+    );
+    this.#runtimeQuery = snapshotQuery(sourceQuery, "internal.query", true);
     this.#byId = new Map(
       this.#runtimeColumns.map((column) => [column.id, column]),
     );
@@ -734,10 +1086,10 @@ class CompiledQueryPlan<TColumns>
     left: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
     right: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
   ): number => {
-    try {
-      for (let index = 0; index < this.#runtimeQuery.sort.length; index += 1) {
-        const ordering = this.#runtimeQuery.sort[index];
-        const column = this.#byId.get(ordering.columnId)!;
+    for (let index = 0; index < this.#runtimeQuery.sort.length; index += 1) {
+      const ordering = this.#runtimeQuery.sort[index];
+      const column = this.#byId.get(ordering.columnId)!;
+      try {
         const result = compareValues(
           left.sortKeys[index]?.value,
           right.sortKeys[index]?.value,
@@ -745,18 +1097,15 @@ class CompiledQueryPlan<TColumns>
           ordering,
         );
         if (result !== 0) return result;
+      } catch (cause) {
+        throw new CompiledQueryComparatorError(
+          "A compiled row comparator failed.",
+          [left.rowId, right.rowId],
+          { columnId: ordering.columnId, cause },
+        );
       }
-      return left.sourceOrder - right.sourceOrder;
-    } catch (cause) {
-      throw new PretableRowModelError(
-        "comparator-failed",
-        "A compiled row comparator failed.",
-        {
-          operation: "set-query",
-          cause,
-        },
-      );
     }
+    return left.sourceOrder - right.sourceOrder;
   };
 
   compareGroupKeys(
@@ -770,14 +1119,10 @@ class CompiledQueryPlan<TColumns>
     try {
       return compareValues(left.value, right.value, column, ordering);
     } catch (cause) {
-      throw new PretableRowModelError(
-        "comparator-failed",
+      throw new CompiledQueryComparatorError(
         "A compiled group comparator failed.",
-        {
-          operation: "set-query",
-          columnId: ordering.columnId,
-          cause,
-        },
+        undefined,
+        { columnId: ordering.columnId, cause },
       );
     }
   }
@@ -790,10 +1135,14 @@ export function compileQuery<const TColumns>(
   const query = runtimeQuery(input.query);
   validateDerivations(columns);
   validateQuery(query, columns);
+  const semanticColumns = snapshotColumns(columns, "derivations");
+  const semanticQuery = snapshotQuery(query, "query");
 
   const previous = input.previous as
     (CompiledQuery<TColumns> & Partial<InternalCompiledQuery>) | undefined;
-  if (previous?.[internals]?.semanticallyMatches(columns, query))
+  if (
+    previous?.[internals]?.semanticallyMatches(semanticColumns, semanticQuery)
+  )
     return input.previous!;
 
   return new CompiledQueryPlan(input.derivations, input.query);

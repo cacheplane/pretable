@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  CompiledQueryComparatorError,
+  CompiledQueryValidationError,
   compileQuery,
   createColumnHelper,
   type CompiledAggregateLeaf,
@@ -132,7 +134,7 @@ describe("compileQuery", () => {
       rowGroups: [{ columnId: "sector", direction: "asc" }],
       sort: [{ columnId: "label", direction: "asc", nulls: "last" }],
     });
-    const first = compileQuery({ derivations: columns, query });
+    const first = compileQuery<typeof columns>({ derivations: columns, query });
     const equivalent = compileQuery({
       derivations: [...columns],
       query: {
@@ -428,5 +430,251 @@ describe("compileQuery", () => {
         },
       } as never),
     ).not.toThrow();
+  });
+
+  test("owns immutable query/derivation snapshots without cloning domain rows", () => {
+    const { columns } = setup();
+    const aggregateOption = { label: "stable" };
+    const mutableAggregate = { ...totalLabel, option: aggregateOption };
+    const mutableColumns = [
+      columns[0],
+      columns[1],
+      { ...columns[2], aggregate: mutableAggregate },
+      columns[3],
+    ] as const;
+    const operand = [1, 3];
+    const inputQuery = {
+      filters: [{ columnId: "quantity", operator: "between", value: operand }],
+      rowGroups: [],
+      sort: [],
+    } as never;
+    const plan = compileQuery<typeof mutableColumns>({
+      derivations: mutableColumns,
+      query: inputQuery,
+    });
+    const row: Holding = {
+      id: 1,
+      sector: "Tech",
+      quantity: 2,
+      label: "x",
+      ignored: "",
+    };
+    const metadata = plan.evaluate({ rowId: 1, row, sourceOrder: 0 });
+
+    operand[0] = 100;
+    aggregateOption.label = "mutated";
+    (
+      mutableAggregate as unknown as {
+        finalize: (value: readonly string[]) => string;
+      }
+    ).finalize = () => "mutated";
+
+    expect(plan.query).not.toBe(inputQuery);
+    expect(plan.derivations).not.toBe(mutableColumns);
+    expect(Object.isFrozen(plan.query)).toBe(true);
+    expect(Object.isFrozen(plan.query.filters)).toBe(true);
+    expect(Object.isFrozen(plan.derivations)).toBe(true);
+    expect(metadata.filterPasses).toBe(true);
+    expect(metadata.row).toBe(row);
+    expect(metadata.aggregateLeaves[0].allLeaf.row).toBe(row);
+    const label = metadata.aggregateLeaves.find(
+      (leaf) => leaf.columnId === "label",
+    );
+    if (label?.columnId !== "label") throw new Error("missing label leaf");
+    expect(label.aggregate.finalize(["a", "b"])).toBe("a|b");
+    const capturedAggregate = label.aggregate as typeof mutableAggregate;
+    expect(capturedAggregate.option).toEqual({ label: "stable" });
+    expect(Object.isFrozen(capturedAggregate.option)).toBe(true);
+    expect(label.aggregate).not.toBe(mutableAggregate);
+    expect(Object.isFrozen(label.aggregate)).toBe(true);
+  });
+
+  test("detaches Date operands from input and exposed snapshots", () => {
+    interface DatedRow {
+      id: number;
+      asOf: Date;
+    }
+    const column = createColumnHelper<DatedRow>();
+    const columns = [column.accessor("asOf", { type: "date" })] as const;
+    const operand = new Date("2026-08-06T00:00:00Z");
+    const query = {
+      filters: [{ columnId: "asOf", operator: "on", value: operand }],
+      rowGroups: [],
+      sort: [],
+    } as const satisfies PretableQueryFor<typeof columns>;
+    const plan = compileQuery<typeof columns>({ derivations: columns, query });
+    const exposedFilter = plan.query.filters[0];
+    if (!("value" in exposedFilter)) throw new Error("missing date operand");
+    const exposed = exposedFilter.value as Date;
+
+    operand.setUTCDate(7);
+    expect(() => exposed.setUTCDate(8)).toThrow(TypeError);
+
+    expect(
+      plan.evaluate({
+        rowId: 1,
+        sourceOrder: 0,
+        row: { id: 1, asOf: new Date("2026-08-06T18:00:00Z") },
+      }).filterPasses,
+    ).toBe(true);
+    expect(exposed).not.toBe(operand);
+    expect(exposed.getUTCDate()).toBe(6);
+  });
+
+  test("treats conjunctive filter order and equivalent aggregator wrappers semantically", () => {
+    const { columns } = setup();
+    const query = queryFor<typeof columns>({
+      filters: [
+        { columnId: "quantity", operator: "gte", value: 10 },
+        { columnId: "sector", operator: "contains", value: "tech" },
+      ],
+      rowGroups: [],
+      sort: [],
+    });
+    const first = compileQuery<typeof columns>({ derivations: columns, query });
+    const equivalentColumns = [
+      columns[0],
+      columns[1],
+      { ...columns[2], aggregate: { ...totalLabel } },
+      columns[3],
+    ] as const;
+
+    const equivalent = compileQuery({
+      derivations: equivalentColumns,
+      query: {
+        ...query,
+        filters: [query.filters[1], query.filters[0]],
+      },
+      previous: first,
+    });
+
+    expect(equivalent).toBe(first);
+  });
+
+  test("invalidates semantic reuse when an active Date operand mutates", () => {
+    interface DatedRow {
+      id: number;
+      asOf: Date;
+    }
+    const column = createColumnHelper<DatedRow>();
+    const columns = [column.accessor("asOf", { type: "date" })] as const;
+    const operand = new Date("2026-08-06T00:00:00Z");
+    const query = {
+      filters: [{ columnId: "asOf", operator: "on", value: operand }],
+      rowGroups: [],
+      sort: [],
+    } as const satisfies PretableQueryFor<typeof columns>;
+    const first = compileQuery<typeof columns>({ derivations: columns, query });
+
+    operand.setUTCDate(7);
+
+    expect(
+      compileQuery<typeof columns>({
+        derivations: columns,
+        query,
+        previous: first,
+      }),
+    ).not.toBe(first);
+  });
+
+  test.each([
+    ["number string", "number", "gte", "2"],
+    ["number NaN", "number", "gte", Number.NaN],
+    ["number range member", "number", "between", [1, "2"]],
+    ["text number", "text", "contains", 2],
+    ["date loose string", "date", "on", "08/06/2026"],
+    ["enum non-string member", "enum", "isAnyOf", [1]],
+    ["boolean string member", "boolean", "isAnyOf", ["true"]],
+  ])(
+    "rejects runtime operand/type mismatches with structured context: %s",
+    (_label, type, operator, value) => {
+      const column = createColumnHelper<{ id: number; value: string }>();
+      const columns = [
+        column.accessor("value", { type: type as never }),
+      ] as const;
+      let caught: unknown;
+      try {
+        compileQuery({
+          derivations: columns,
+          query: {
+            filters: [{ columnId: "value", operator, value }],
+            rowGroups: [],
+            sort: [],
+          },
+        } as never);
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(CompiledQueryValidationError);
+      expect(caught).toMatchObject({
+        code: "invalid-query",
+        columnId: "value",
+        path: "query.filters[0].value",
+      });
+    },
+  );
+
+  test("rejects cyclic and unsupported operands explicitly", () => {
+    const { columns } = setup();
+    const cycle: unknown[] = [];
+    cycle.push(cycle);
+
+    expect(() =>
+      compileQuery({
+        derivations: columns,
+        query: {
+          filters: [{ columnId: "sector", operator: "contains", value: cycle }],
+          rowGroups: [],
+          sort: [],
+        },
+      } as never),
+    ).toThrow(CompiledQueryValidationError);
+  });
+
+  test("reports comparator column and both row IDs without reevaluating accessors", () => {
+    const calls = vi.fn((row: { id: number; value: number }) => row.value);
+    const column = createColumnHelper<{ id: number; value: number }>();
+    const columns = [
+      column.accessor("value", calls, {
+        type: "number",
+        compare: () => {
+          throw new Error("broken compare");
+        },
+      }),
+    ] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: {
+        filters: [],
+        rowGroups: [],
+        sort: [{ columnId: "value", direction: "asc" }],
+      },
+    });
+    const left = plan.evaluate({
+      rowId: 11,
+      sourceOrder: 0,
+      row: { id: 11, value: 1 },
+    });
+    const right = plan.evaluate({
+      rowId: 22,
+      sourceOrder: 1,
+      row: { id: 22, value: 2 },
+    });
+    let caught: unknown;
+    try {
+      plan.compareRows(left, right);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(CompiledQueryComparatorError);
+    expect(caught).toMatchObject({
+      code: "comparator-failed",
+      columnId: "value",
+      rowId: 11,
+      rowIds: [11, 22],
+    });
+    expect(calls).toHaveBeenCalledTimes(2);
   });
 });
