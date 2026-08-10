@@ -182,6 +182,17 @@ function oracleRowId(id: DifferentialRowId): string {
   return `${typeof id === "number" ? "n" : "s"}:${String(id)}`;
 }
 
+function matchesEmptyTextNeedle(value: unknown, operator: string): boolean {
+  const cell = String(value ?? "").toLocaleLowerCase();
+  if (operator === "contains") return cell.includes("");
+  if (operator === "notContains") return !cell.includes("");
+  if (operator === "startsWith") return cell.startsWith("");
+  if (operator === "endsWith") return cell.endsWith("");
+  if (operator === "equals") return cell === "";
+  if (operator === "notEquals") return cell !== "";
+  throw new Error(`Unsupported empty text filter operator ${operator}.`);
+}
+
 function legacyRows(state: ReferenceState, fullyExpanded = false) {
   const originalIds = new Map<string, DifferentialRowId>();
   const rows: SourceRow<DifferentialRow>[] = [...state.rows.values()]
@@ -201,23 +212,26 @@ function legacyRows(state: ReferenceState, fullyExpanded = false) {
     const source = columns.find((column) => column.id === filter.columnId);
     if (source === undefined) throw new Error("oracle adapter lost a column");
     const id = `__filter__${index}`;
+    const emptyTextNeedle = "value" in filter && filter.value === "";
     columns.push({
       ...source,
       id,
       aggregate: undefined,
-      value: (row) =>
-        source.value === undefined ? row[source.id] : source.value(row),
+      value: (row) => {
+        const value =
+          source.value === undefined ? row[source.id] : source.value(row);
+        return emptyTextNeedle
+          ? matchesEmptyTextNeedle(value, filter.operator)
+            ? "__match__"
+            : "__miss__"
+          : value;
+      },
     });
-    if ("value" in filter && filter.value === "") {
-      // Legacy treats blank operands as inactive. Generated cells are all
-      // non-blank, so operand-free predicates retain the compiled query's
-      // actual empty-needle truth table without narrowing the generator.
-      filters[id] = {
-        operator:
-          filter.operator === "equals" || filter.operator === "notContains"
-            ? "isEmpty"
-            : "isNotEmpty",
-      };
+    if (emptyTextNeedle) {
+      // The frozen projector treats a blank operand as inactive. Feed it a
+      // non-blank match sentinel computed from the incremental engine's exact
+      // String(value ?? "") empty-needle truth table instead.
+      filters[id] = { operator: "equals", value: "__match__" };
     } else {
       filters[id] =
         "value" in filter
@@ -965,6 +979,82 @@ describe("incremental row model differential properties", () => {
         model.dispose();
       }
     }
+  });
+
+  test("preserves the empty text needle truth table for single and repeated filters", () => {
+    const operators = [
+      "contains",
+      "notContains",
+      "startsWith",
+      "endsWith",
+      "equals",
+      "notEquals",
+    ] as const;
+    const rows = [
+      {
+        id: "null-label",
+        sector: "S0",
+        analyst: "Ada",
+        quantity: 1,
+        label: null,
+      },
+      {
+        id: "empty-label",
+        sector: "S0",
+        analyst: "Ada",
+        quantity: 2,
+        label: "",
+      },
+      {
+        id: "value-label",
+        sector: "S0",
+        analyst: "Ada",
+        quantity: 3,
+        label: "value",
+      },
+    ] as const;
+    const cases = operators.flatMap((operator) => [
+      [{ columnId: "label" as const, operator, value: "" }],
+      [
+        { columnId: "label" as const, operator, value: "" },
+        {
+          columnId: "label" as const,
+          operator: "contains" as const,
+          value: "",
+        },
+      ],
+    ]);
+
+    fc.assert(
+      fc.property(fc.constant(cases), (forcedCases) => {
+        for (const filters of forcedCases) {
+          const query: DifferentialQuery = {
+            filters,
+            sort: [],
+            rowGroups: [],
+          };
+          const model = createModel(rows, query);
+          const state: ReferenceState = {
+            rows: new Map(
+              rows.map((row, sourceOrder) => [row.id, { row, sourceOrder }]),
+            ),
+            nextSourceOrder: rows.length,
+            query,
+            expansion: {
+              default: { kind: "expanded" },
+              overrides: new Map(),
+            },
+            revision: 0,
+            notifications: 0,
+            aggregateFilteredRows: false,
+            derivations: "sum",
+          };
+          assertSnapshot(model, state);
+          model.dispose();
+        }
+      }),
+      { seed: 0x5eed_1315, numRuns: 1, verbose: 2 },
+    );
   });
 
   test(`matches every sequential prefix (seed ${SEQUENTIAL_SEED})`, async () => {

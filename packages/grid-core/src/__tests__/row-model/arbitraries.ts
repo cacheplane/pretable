@@ -114,7 +114,7 @@ const rowArbitrary: fc.Arbitrary<DifferentialRow> = fc.record({
   sector: fc.constantFrom("S0", "S/1", "S%2", "S=3"),
   analyst: fc.constantFrom("Ada", "Bob/Two", "Cy=Three"),
   quantity: fc.integer({ min: -20, max: 50 }),
-  label: fc.constantFrom(null, "item 1", "Item 2", "item 10", "z"),
+  label: fc.constantFrom(null, "", "item 1", "Item 2", "item 10", "z"),
 });
 
 const textFilterArbitrary: fc.Arbitrary<DifferentialFilter> = fc
@@ -225,7 +225,7 @@ const updateArbitrary: fc.Arbitrary<DifferentialOperation> = fc
         sector: fc.constantFrom("S0", "S/1", "S%2", "S=3"),
         analyst: fc.constantFrom("Ada", "Bob/Two", "Cy=Three"),
         quantity: fc.integer({ min: -20, max: 50 }),
-        label: fc.constantFrom(null, "item 1", "Item 2", "item 10", "z"),
+        label: fc.constantFrom(null, "", "item 1", "Item 2", "item 10", "z"),
       },
       { requiredKeys: [] },
     ),
