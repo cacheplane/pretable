@@ -74,6 +74,19 @@ describe("grid.css cascade contract", () => {
     expect(rule).toMatch(/color:\s*var\(--pretable-text-header\)/);
   });
 
+  test("header cells reset the UA button background", () => {
+    // Header cells are <button> (pretable-surface.tsx). Without this reset the
+    // UA ButtonFace fill paints, and the grid only looks right in apps that
+    // happen to ship a reset — both of ours import Tailwind Preflight, which is
+    // why this went unnoticed. Every other button in the file resets explicitly.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\[data-pretable-header-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
+    expect(rule).toMatch(/background:\s*transparent/);
+  });
+
   test("grid.css styles the enum combobox listbox", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]\)/);

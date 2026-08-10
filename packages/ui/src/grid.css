@@ -51,6 +51,7 @@
     font-size: var(--pretable-font-size-header);
     font-weight: 500;
     color: var(--pretable-text-header);
+    background: transparent;
     border: 0;
     border-right: var(--pretable-rule-width) solid var(--pretable-rule-vertical);
     box-sizing: border-box;
