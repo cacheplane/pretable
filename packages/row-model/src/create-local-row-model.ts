@@ -357,6 +357,74 @@ export function createLocalRowModel<
       }
     }
   };
+  const applyExpansionDefault = (
+    operation: "set-expansion-default" | "expand-all" | "collapse-all",
+    policy: PretableExpansionDefault,
+    expansionOptions?: { readonly preserveOverrides?: boolean },
+  ): PretableMutationResult<TRowId> => {
+    try {
+      const prepared = guarded(operation, () => {
+        const previousRoot = root;
+        const nextPolicy = Object.freeze({
+          ...policy,
+        }) as PretableExpansionDefault;
+        const preserve = expansionOptions?.preserveOverrides === true;
+        const samePolicy =
+          JSON.stringify(previousRoot.expansion.default) ===
+          JSON.stringify(nextPolicy);
+        if (
+          samePolicy &&
+          (preserve || previousRoot.expansion.overrides.size === 0)
+        ) {
+          return {
+            result: mutationResult<TRowId>(
+              previousRoot.revision,
+              previousRoot.revision,
+            ),
+            notify: false,
+          };
+        }
+        let groups = getGroupIndex(previousRoot.visible);
+        if (!preserve && groups !== undefined) {
+          for (const [groupId] of previousRoot.expansion.overrides.entries()) {
+            groups = setGroupOverride(groups, groupId, undefined, operation);
+          }
+        }
+        const overrides = preserve
+          ? previousRoot.expansion.overrides
+          : createPersistentMap<PretableGroupId, boolean>();
+        const expansion = Object.freeze({
+          default: nextPolicy,
+          overrides,
+          state: Object.freeze({
+            default: nextPolicy,
+            overrideCount: overrides.size,
+          }),
+        });
+        const revision = previousRoot.revision + 1;
+        commit(
+          Object.freeze({
+            ...previousRoot,
+            revision,
+            parentRevision: previousRoot.revision,
+            visible:
+              groups === undefined
+                ? previousRoot.visible
+                : attachGroupIndex(previousRoot.visible.rows, groups),
+            expansion,
+          }),
+        );
+        return {
+          result: mutationResult<TRowId>(previousRoot.revision, revision),
+          notify: true,
+        };
+      });
+      if (prepared.notify) notify();
+      return prepared.result;
+    } catch (error) {
+      throw remapOperationError(error, operation);
+    }
+  };
 
   const model = {
     getState: () => state,
@@ -628,145 +696,99 @@ export function createLocalRowModel<
       }
     },
     setGroupExpanded(groupId: PretableGroupId, expanded: boolean) {
-      const prepared = guarded("set-group-expanded", () => {
-        const previousRoot = root;
-        const groups = getGroupIndex(previousRoot.visible);
-        const group = groups?.groups.get(groupId);
-        if (
-          groups === undefined ||
-          group === undefined ||
-          group.filteredCount === 0
-        ) {
-          return {
-            result: mutationResult(
-              previousRoot.revision,
-              previousRoot.revision,
-              { ignored: 1 },
-              [Object.freeze({ code: "unknown-group-id" as const, groupId })],
-            ),
-            notify: false,
-          };
-        }
-        const defaultExpanded =
-          previousRoot.expansion.default.kind === "expanded" ||
-          (previousRoot.expansion.default.kind === "through-depth" &&
-            group.depth <= previousRoot.expansion.default.depth);
-        const override = expanded === defaultExpanded ? undefined : expanded;
-        const current = previousRoot.expansion.overrides.get(groupId);
-        const exists = previousRoot.expansion.overrides.has(groupId);
-        if (
-          (override === undefined && !exists) ||
-          (override !== undefined && exists && current === override)
-        ) {
-          return {
-            result: mutationResult(
-              previousRoot.revision,
-              previousRoot.revision,
-            ),
-            notify: false,
-          };
-        }
-        const overrides =
-          override === undefined
-            ? previousRoot.expansion.overrides.delete(groupId)
-            : previousRoot.expansion.overrides.set(groupId, override);
-        const nextGroups = setGroupOverride(groups, groupId, override);
-        const expansion = Object.freeze({
-          default: previousRoot.expansion.default,
-          overrides,
-          state: Object.freeze({
+      try {
+        const prepared = guarded("set-group-expanded", () => {
+          const previousRoot = root;
+          const groups = getGroupIndex(previousRoot.visible);
+          const group = groups?.groups.get(groupId);
+          if (
+            groups === undefined ||
+            group === undefined ||
+            group.filteredCount === 0
+          ) {
+            return {
+              result: mutationResult(
+                previousRoot.revision,
+                previousRoot.revision,
+                { ignored: 1 },
+                [Object.freeze({ code: "unknown-group-id" as const, groupId })],
+              ),
+              notify: false,
+            };
+          }
+          const defaultExpanded =
+            previousRoot.expansion.default.kind === "expanded" ||
+            (previousRoot.expansion.default.kind === "through-depth" &&
+              group.depth <= previousRoot.expansion.default.depth);
+          const override = expanded === defaultExpanded ? undefined : expanded;
+          const current = previousRoot.expansion.overrides.get(groupId);
+          const exists = previousRoot.expansion.overrides.has(groupId);
+          if (
+            (override === undefined && !exists) ||
+            (override !== undefined && exists && current === override)
+          ) {
+            return {
+              result: mutationResult(
+                previousRoot.revision,
+                previousRoot.revision,
+              ),
+              notify: false,
+            };
+          }
+          const overrides =
+            override === undefined
+              ? previousRoot.expansion.overrides.delete(groupId)
+              : previousRoot.expansion.overrides.set(groupId, override);
+          const nextGroups = setGroupOverride(
+            groups,
+            groupId,
+            override,
+            "set-group-expanded",
+          );
+          const expansion = Object.freeze({
             default: previousRoot.expansion.default,
-            overrideCount: overrides.size,
-          }),
+            overrides,
+            state: Object.freeze({
+              default: previousRoot.expansion.default,
+              overrideCount: overrides.size,
+            }),
+          });
+          const revision = previousRoot.revision + 1;
+          commit(
+            Object.freeze({
+              ...previousRoot,
+              revision,
+              parentRevision: previousRoot.revision,
+              visible: attachGroupIndex(previousRoot.visible.rows, nextGroups),
+              expansion,
+            }),
+          );
+          return {
+            result: mutationResult(previousRoot.revision, revision),
+            notify: true,
+          };
         });
-        const revision = previousRoot.revision + 1;
-        commit(
-          Object.freeze({
-            ...previousRoot,
-            revision,
-            parentRevision: previousRoot.revision,
-            visible: attachGroupIndex(previousRoot.visible.rows, nextGroups),
-            expansion,
-          }),
-        );
-        return {
-          result: mutationResult(previousRoot.revision, revision),
-          notify: true,
-        };
-      });
-      if (prepared.notify) notify();
-      return prepared.result;
+        if (prepared.notify) notify();
+        return prepared.result;
+      } catch (error) {
+        throw remapOperationError(error, "set-group-expanded");
+      }
     },
     setExpansionDefault(
       policy: PretableExpansionDefault,
       expansionOptions?: { readonly preserveOverrides?: boolean },
     ) {
-      const prepared = guarded("set-expansion-default", () => {
-        const previousRoot = root;
-        const nextPolicy = Object.freeze({
-          ...policy,
-        }) as PretableExpansionDefault;
-        const preserve = expansionOptions?.preserveOverrides === true;
-        const samePolicy =
-          JSON.stringify(previousRoot.expansion.default) ===
-          JSON.stringify(nextPolicy);
-        if (
-          samePolicy &&
-          (preserve || previousRoot.expansion.overrides.size === 0)
-        ) {
-          return {
-            result: mutationResult(
-              previousRoot.revision,
-              previousRoot.revision,
-            ),
-            notify: false,
-          };
-        }
-        let groups = getGroupIndex(previousRoot.visible);
-        if (!preserve && groups !== undefined) {
-          for (const [groupId] of previousRoot.expansion.overrides.entries()) {
-            groups = setGroupOverride(groups, groupId, undefined);
-          }
-        }
-        const overrides = preserve
-          ? previousRoot.expansion.overrides
-          : createPersistentMap<PretableGroupId, boolean>();
-        const expansion = Object.freeze({
-          default: nextPolicy,
-          overrides,
-          state: Object.freeze({
-            default: nextPolicy,
-            overrideCount: overrides.size,
-          }),
-        });
-        const revision = previousRoot.revision + 1;
-        commit(
-          Object.freeze({
-            ...previousRoot,
-            revision,
-            parentRevision: previousRoot.revision,
-            visible:
-              groups === undefined
-                ? previousRoot.visible
-                : attachGroupIndex(previousRoot.visible.rows, groups),
-            expansion,
-          }),
-        );
-        return {
-          result: mutationResult(previousRoot.revision, revision),
-          notify: true,
-        };
-      });
-      if (prepared.notify) notify();
-      return prepared.result;
+      return applyExpansionDefault(
+        "set-expansion-default",
+        policy,
+        expansionOptions,
+      );
     },
     expandAll() {
-      assertCommandAllowed("expand-all");
-      return model.setExpansionDefault({ kind: "expanded" });
+      return applyExpansionDefault("expand-all", { kind: "expanded" });
     },
     collapseAll() {
-      assertCommandAllowed("collapse-all");
-      return model.setExpansionDefault({ kind: "collapsed" });
+      return applyExpansionDefault("collapse-all", { kind: "collapsed" });
     },
     changesSince() {
       return unavailable("changes-since");

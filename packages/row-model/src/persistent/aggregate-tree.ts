@@ -38,6 +38,8 @@ export interface AggregateTree<
   TOutput,
 > {
   readonly size: number;
+  /** Returns the first ID in aggregate order without creating another index. */
+  firstId(): TId | undefined;
   insertOrReplace(
     leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ): AggregateTree<TId, TRow, TValue, TDependency, TOutput>;
@@ -65,6 +67,8 @@ export interface TransientAggregateTree<
   TOutput,
 > {
   readonly size: number;
+  /** Returns the first ID in aggregate order without creating another index. */
+  firstId(): TId | undefined;
   insertOrReplace(
     leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ): this;
@@ -609,6 +613,10 @@ class PersistentAggregateTree<
     return this.#tree.size;
   }
 
+  firstId(): TId | undefined {
+    return this.#tree.entryAt(0)?.id;
+  }
+
   insertOrReplace(
     leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ): AggregateTree<TId, TRow, TValue, TDependency, TOutput> {
@@ -698,6 +706,10 @@ class TransientAggregateTreeImpl<
 
   get size(): number {
     return this.#tree.size;
+  }
+
+  firstId(): TId | undefined {
+    return this.#tree.entryAt(0)?.id;
   }
 
   insertOrReplace(

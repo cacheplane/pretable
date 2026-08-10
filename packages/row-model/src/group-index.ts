@@ -896,7 +896,7 @@ class GroupAggregatorError extends PretableRowModelError {
 
   constructor(
     operation: PretableRowModelOperation,
-    rowId: PretableRowId,
+    rowId: PretableRowId | undefined,
     columnId: string,
     groupId: PretableGroupId,
     groupValues: readonly unknown[],
@@ -917,7 +917,7 @@ function aggregateRecord(
   allPopulation: boolean,
   previous: Readonly<Record<string, unknown>> | undefined,
   operation: PretableRowModelOperation,
-  rowId: PretableRowId,
+  rowId: PretableRowId | undefined,
   groupId: PretableGroupId,
   groupValues: readonly unknown[],
 ): Readonly<Record<string, unknown>> {
@@ -991,7 +991,7 @@ function finishNode<
     "aggregates" | "publicCollapsed" | "publicExpanded" | "counts"
   >,
   context: FinishContext<TRow, TRowId, TColumns>,
-  triggerRowId: TRowId,
+  triggerRowId: TRowId | undefined,
 ): GroupNode<TRow, TRowId, TColumns> {
   const previous = context.reusable.get(node.groupId);
   const aggregates = aggregateRecord(
@@ -1227,7 +1227,7 @@ export function createGroupIndex<
   let root = rootFromState(state, context);
   for (const [groupId, expanded] of overrides.entries()) {
     if (root.groups.has(groupId))
-      root = setGroupOverride(root, groupId, expanded);
+      root = setGroupOverride(root, groupId, expanded, operation);
   }
   return root;
 }
@@ -1263,7 +1263,7 @@ export function updateGroupIndex<
     for (const [groupId, expanded] of overrides.entries()) {
       const group = root.groups.get(groupId);
       if (group !== undefined && group.override !== expanded) {
-        root = setGroupOverride(root, groupId, expanded);
+        root = setGroupOverride(root, groupId, expanded, operation);
       }
     }
   }
@@ -1278,6 +1278,7 @@ export function setGroupOverride<
   root: GroupIndexRoot<TRow, TRowId, TColumns>,
   groupId: PretableGroupId,
   override: boolean | undefined,
+  operation: PretableRowModelOperation = "set-group-expanded",
 ): GroupIndexRoot<TRow, TRowId, TColumns> {
   const target = root.groups.get(groupId);
   if (target === undefined || target.override === override) return root;
@@ -1286,14 +1287,19 @@ export function setGroupOverride<
     levelCount: root.levelCount,
     aggregateFilteredRows: root.aggregateFilteredRows,
     reusable: root.groups,
-    operation: "set-group-expanded",
+    operation,
   };
   let groups = root.groups;
   const representativeRowId = (
     node: GroupNode<TRow, TRowId, TColumns>,
-  ): TRowId => {
-    if (node.children.size === 0) return node.leaves.entryAt(0)!.rowId;
-    return representativeRowId(node.children.entries().next().value!);
+  ): TRowId | undefined => {
+    const child = node.childrenByKey.entries().next().value?.[1];
+    if (child !== undefined) return representativeRowId(child);
+    for (const tree of node.aggregateRoots.all.values()) {
+      const rowId = tree.firstId();
+      if (rowId !== undefined) return rowId as TRowId;
+    }
+    return undefined;
   };
   const replace = (
     depth: number,
@@ -1328,12 +1334,15 @@ export function setGroupOverride<
   const rootKey = target.pathKeys[0]!;
   const oldTop = root.rootsByKey.get(rootKey)!;
   const nextTop = replace(0, oldTop);
+  let roots = root.roots;
+  if (oldTop.filteredCount) roots = roots.remove(oldTop.groupId);
+  if (nextTop.filteredCount) roots = roots.insertOrReplace(nextTop);
   return Object.freeze({
     ...root,
     rootsByKey: root.rootsByKey.set(rootKey, nextTop),
-    roots: root.roots.remove(oldTop.groupId).insertOrReplace(nextTop),
+    roots,
     groups,
-    counts: root.roots.remove(oldTop.groupId).insertOrReplace(nextTop).measure,
+    counts: roots.measure,
   });
 }
 

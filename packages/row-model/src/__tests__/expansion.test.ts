@@ -5,6 +5,13 @@ import {
   createLocalRowModel,
   type PretableGroupId,
 } from "../index";
+import type { PretableRowModelOperation } from "../errors";
+import {
+  setGroupOverride,
+  type GroupIndexRoot,
+  type GroupNode,
+} from "../group-index";
+import { createPersistentMap } from "../persistent/persistent-map";
 
 interface Row {
   id: number;
@@ -106,6 +113,54 @@ describe("group expansion policies", () => {
     expect(grouped.getState().snapshot.isGroupExpanded(north)).toBe(true);
     grouped.setExpansionDefault({ kind: "collapsed" });
     expect(grouped.getState().snapshot.expansion.overrideCount).toBe(0);
+  });
+
+  test("retains a sparse override while its last all-population group row is filtered out", async () => {
+    const grouped = createLocalRowModel({
+      rows: [{ id: 1, region: "West", team: "A", score: 1 }],
+      columns,
+      query: {
+        filters: [{ columnId: "score", operator: "gte", value: 1 }],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      },
+    });
+    const teamA = "__group__:team=s:A" as PretableGroupId;
+    grouped.setGroupExpanded(teamA, true);
+
+    expect(
+      grouped.applyTransaction({
+        update: [{ id: 1, changes: { score: 0 } }],
+      }),
+    ).toMatchObject({ previousRevision: 1, revision: 2, updated: 1 });
+    expect(grouped.getState().snapshot.range(0, 10)).toEqual([]);
+    expect(grouped.getState().snapshot.expansion.overrideCount).toBe(1);
+
+    const transition = grouped.setQuery({
+      filters: [{ columnId: "score", operator: "gte", value: 1 }],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [{ columnId: "team" }],
+    });
+    await expect(transition.finished).resolves.toBe(3);
+    expect(grouped.getState().snapshot.range(0, 10)).toEqual([]);
+    expect(grouped.getState().snapshot.expansion.overrideCount).toBe(1);
+
+    expect(grouped.setExpansionDefault({ kind: "collapsed" })).toMatchObject({
+      previousRevision: 3,
+      revision: 4,
+    });
+    expect(grouped.getState().snapshot.expansion.overrideCount).toBe(0);
+
+    grouped.applyTransaction({
+      update: [{ id: 1, changes: { score: 2 } }],
+    });
+    expect(grouped.getState().snapshot.range(0, 10)).toEqual([
+      expect.objectContaining({
+        kind: "group",
+        groupId: teamA,
+        expanded: false,
+      }),
+    ]);
   });
 
   test("expandAll and collapseAll replace policy roots without enumerating groups", () => {
@@ -284,4 +339,99 @@ describe("group expansion policies", () => {
       }),
     );
   });
+});
+
+function failingOverrideRoot(): {
+  readonly root: GroupIndexRoot<Row, number, typeof columns>;
+  readonly groupId: PretableGroupId;
+} {
+  const groupId = "__group__:team=s:A" as PretableGroupId;
+  const aggregateTree = {
+    size: 1,
+    firstId: () => 1,
+    finalize: () => {
+      throw new Error("override finalize exploded");
+    },
+  };
+  const node = {
+    groupId,
+    path: Object.freeze([{ columnId: "team", value: "A" }]),
+    pathKeys: Object.freeze(["s:A"]),
+    depth: 0,
+    columnId: "team",
+    value: "A",
+    key: "s:A",
+    parentGroupId: undefined,
+    override: undefined,
+    childrenByKey: createPersistentMap(),
+    children: { size: 0 },
+    leaves: { size: 1, entryAt: () => ({ rowId: 1 }) },
+    filteredCount: 1,
+    allCount: 1,
+    aggregateRoots: {
+      all: new Map([["score", aggregateTree]]),
+      filtered: new Map([["score", aggregateTree]]),
+    },
+    aggregates: Object.freeze({ score: 1 }),
+    publicCollapsed: Object.freeze({}),
+    publicExpanded: Object.freeze({}),
+    counts: Object.freeze({}),
+  } as unknown as GroupNode<Row, number, typeof columns>;
+  return {
+    groupId,
+    root: {
+      levelCount: 1,
+      queryPlan: {},
+      aggregateFilteredRows: false,
+      rootsByKey: createPersistentMap<string, typeof node>().set("s:A", node),
+      roots: {},
+      groups: createPersistentMap<PretableGroupId, typeof node>().set(
+        groupId,
+        node,
+      ),
+      rowParents: createPersistentMap<number, PretableGroupId>().set(
+        1,
+        groupId,
+      ),
+      counts: {},
+    } as unknown as GroupIndexRoot<Row, number, typeof columns>,
+  };
+}
+
+describe("expansion error attribution", () => {
+  test.each([
+    "set-group-expanded",
+    "set-expansion-default",
+    "expand-all",
+    "collapse-all",
+    "set-rows",
+    "apply-transaction",
+    "set-query",
+    "set-derivations",
+  ] satisfies readonly PretableRowModelOperation[])(
+    "preserves the initiating %s operation when a retained override finalizer fails",
+    (operation) => {
+      const { root, groupId } = failingOverrideRoot();
+      const apply = setGroupOverride as unknown as (
+        current: typeof root,
+        id: PretableGroupId,
+        expanded: boolean,
+        initiatingOperation: PretableRowModelOperation,
+      ) => typeof root;
+
+      expect(() => apply(root, groupId, true, operation)).toThrowError(
+        expect.objectContaining({
+          code: "aggregator-failed",
+          operation,
+          rowId: 1,
+          columnId: "score",
+          groupId,
+          groupValues: ["A"],
+          cause: expect.objectContaining({
+            message: "override finalize exploded",
+          }),
+        }),
+      );
+    },
+  );
 });
