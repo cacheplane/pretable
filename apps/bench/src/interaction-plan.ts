@@ -211,16 +211,23 @@ export function createBenchInteractionPlan(
     };
   }
 
-  if (scriptName === "group-updates") {
-    // Streaming script: no selection or focus probe, so the measured window
+  if (
+    scriptName === "group-updates" ||
+    scriptName === "group-updates-stable-keys"
+  ) {
+    // Streaming scripts: no selection or focus probe, so the measured window
     // holds nothing but the update stream (`updates` runs with no controlled
-    // state at all, and this keeps the two comparable).
+    // state at all, and this keeps the three comparable).
+    //
+    // The two variants describe the SAME pre-window state and differ only in
+    // which columns the patch generator may write — see
+    // `benchUpdatesExcludedColumnIds` below.
     const rows = dataset.rows;
 
     return {
       focusedRowId: null,
       filters: {},
-      mode: "group-updates",
+      mode: scriptName,
       probeColumnId: GROUP_COLUMN_ID,
       resultRowCount: rows.length + countGroupKeys(rows, GROUP_COLUMN_ID),
       rows,
@@ -231,6 +238,35 @@ export function createBenchInteractionPlan(
   }
 
   return null;
+}
+
+/**
+ * Columns the streaming patch generator must NOT write, per script.
+ *
+ * `updates` and `group-updates` return `[]` — their generator is byte-identical
+ * and picks uniformly from every column, which is what makes them comparable.
+ * Because `group-updates` groups on `col_5`, that uniform pick lands on the
+ * grouping level about 1 patch in 30 on S5, minting new group keys: the group
+ * count observed in the 2026-08-10 baseline went 4 → ~100 over a 3 s run. The
+ * measurement therefore conflates two different things — grouping under
+ * streaming, and grouping-KEY CHURN under streaming.
+ *
+ * `group-updates-stable-keys` excludes the grouping level and nothing else, so
+ * rows update but never re-path between groups. That is the realistic case (a
+ * price ticks; its sector does not) and the one the streaming-hero decision
+ * actually needs.
+ *
+ * Known and deliberate asymmetry: removing one of S5's 30 columns from the pool
+ * lifts every surviving column's share from 1/30 to 1/29, including the single
+ * wrapped column (3.33% → 3.45% of patches). That is a ~0.1 percentage-point
+ * shift in wrapped-cell hit rate and cannot account for effects of the size
+ * being measured here. Restricting the pool further — say, to one fixed column
+ * — would be a much larger departure from `updates`.
+ */
+export function benchUpdatesExcludedColumnIds(
+  scriptName: BenchQueryState["scriptName"],
+): readonly string[] {
+  return scriptName === "group-updates-stable-keys" ? [GROUP_COLUMN_ID] : [];
 }
 
 /** Distinct values of `columnId`, ordered the way `flatten` emits siblings. */

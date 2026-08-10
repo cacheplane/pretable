@@ -36,7 +36,10 @@ import {
   publishBenchResult,
 } from "./bench-runtime";
 import { AgGridAdapter } from "./ag-grid-adapter";
-import { createBenchInteractionPlan } from "./interaction-plan";
+import {
+  benchUpdatesExcludedColumnIds,
+  createBenchInteractionPlan,
+} from "./interaction-plan";
 import { MuiAdapter } from "./mui-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
@@ -143,8 +146,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
    * `group-expand` plan predicts when it picks a probe row from a *different*
    * group.
    *
-   * Used only by the two scripts that must be grouped BEFORE their
-   * measurement window opens (`group-expand`, `group-updates`).
+   * Used only by the scripts that must be grouped BEFORE their measurement
+   * window opens (`group-expand`, `group-updates`,
+   * `group-updates-stable-keys`).
    */
   async function waitForGroupedRowModel(
     maxFrames = 120,
@@ -433,15 +437,18 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             )
           : null;
 
+      const isGroupedUpdatesScript =
+        scriptName === "group-updates" ||
+        scriptName === "group-updates-stable-keys";
       const isUpdatesScript =
-        scriptName === "updates" || scriptName === "group-updates";
+        scriptName === "updates" || isGroupedUpdatesScript;
 
-      // SETUP for group-updates — outside the streaming window. The grid has
-      // to be grouped (and its aggregates configured, which the adapter does
-      // off `scriptName`) before the first patch lands, otherwise the run
-      // measures the grouping being applied rather than streaming into a
-      // grouped grid.
-      if (scriptName === "group-updates") {
+      // SETUP for the grouped streaming scripts — outside the streaming
+      // window. The grid has to be grouped (and its aggregates configured,
+      // which the adapter does off `scriptName`) before the first patch lands,
+      // otherwise the run measures the grouping being applied rather than
+      // streaming into a grouped grid.
+      if (isGroupedUpdatesScript) {
         const groupUpdatesPlan = createBenchInteractionPlan(
           dataset,
           scriptName,
@@ -477,18 +484,29 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               query.adapterId,
               updatesApi,
               dataset,
-              { updateRatePerSec: query.updateRatePerSec },
+              {
+                updateRatePerSec: query.updateRatePerSec,
+                excludeColumnIds: benchUpdatesExcludedColumnIds(scriptName),
+              },
             )
           : null;
 
-      if (scriptName === "group-updates" && updatesRun) {
-        // The patch generator picks a random column per patch, including the
-        // grouping level, so streamed values can mint brand-new group keys.
-        // That churn is deliberately left in — changing the generator would
-        // break comparability with `updates` — but it has to be reported.
+      if (isGroupedUpdatesScript && updatesRun) {
+        // `group-updates`: the patch generator picks a random column per
+        // patch, including the grouping level, so streamed values mint
+        // brand-new group keys. That churn is deliberately left in — changing
+        // the generator would break comparability with `updates` — but it has
+        // to be reported.
+        //
+        // `group-updates-stable-keys`: the grouping level is excluded from the
+        // pool, so the group count below must come back equal to the
+        // pre-streaming one. The two notes together are what let a reader tell
+        // the variants apart from the artifact alone.
         groupingNotes.push(
           `group rows after streaming: ${countGroupRows()}`,
-          "note: patched columns include the grouping level, so group churn is part of this measurement",
+          scriptName === "group-updates"
+            ? "note: patched columns include the grouping level, so group churn is part of this measurement"
+            : "note: the grouping level is excluded from the patch pool, so group membership is stable and this measures grouping under streaming without key churn",
         );
       }
 

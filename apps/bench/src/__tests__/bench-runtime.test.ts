@@ -13,9 +13,11 @@ import {
   measureBenchInteractionRun,
   measureBenchKeySequenceRun,
   measureBenchScrollRun,
+  measureBenchUpdatesRun,
   measurePretableScrollRun,
   publishBenchResult,
 } from "../bench-runtime";
+import { benchUpdatesExcludedColumnIds } from "../interaction-plan";
 import type { BenchQueryState } from "../bench-types";
 
 describe("bench runtime", () => {
@@ -1184,6 +1186,98 @@ describe("bench runtime", () => {
       result.notes.some((n) => n.includes("no autosize callback registered")),
     ).toBe(true);
   });
+
+  // The churn-free streaming variant rests entirely on this: patches must
+  // never land on the grouping level, or group membership moves mid-run and
+  // the measurement is back to conflating grouping with key churn. The
+  // default must stay unfiltered, because that is what `updates` and
+  // `group-updates` measure and their comparability depends on it.
+  test("measureBenchUpdatesRun writes every column by default and honours excludeColumnIds", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="0">
+            <div data-pretable-cell="">row 0</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    expect(root).toBeTruthy();
+
+    // An earlier test in this file installs a SYNCHRONOUS rAF stub and leaves
+    // it in place; measureBenchUpdatesRun re-arms rAF from inside its own
+    // callback, so that stub recurses until the stack blows. Give this test a
+    // real, deferred rAF and put the previous one back afterwards.
+    const previousRaf = globalThis.requestAnimationFrame;
+    const previousCancelRaf = globalThis.cancelAnimationFrame;
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) =>
+        setTimeout(() => callback(performance.now()), 16) as unknown as number,
+    });
+    Object.defineProperty(globalThis, "cancelAnimationFrame", {
+      configurable: true,
+      value: (handle: number) => clearTimeout(handle),
+    });
+
+    const dataset = {
+      rows: [
+        { id: "r0", col_4: "a", col_5: "owner-a", col_6: "b" },
+        { id: "r1", col_4: "a", col_5: "owner-b", col_6: "b" },
+      ],
+      columns: [{ id: "col_4" }, { id: "col_5" }, { id: "col_6" }],
+    };
+
+    const collectKeys = async (excludeColumnIds: readonly string[]) => {
+      const written = new Set<string>();
+      const result = await measureBenchUpdatesRun(
+        root!,
+        "pretable",
+        (patches) => {
+          for (const patch of patches) {
+            for (const key of Object.keys(patch)) {
+              if (key !== "id") written.add(key);
+            }
+          }
+        },
+        dataset,
+        { excludeColumnIds },
+      );
+
+      expect(result.status).toBe("completed");
+      return [...written].sort();
+    };
+
+    try {
+      // `updates` and `group-updates` both pass `[]`, so both keep writing
+      // every column — including the grouping level.
+      expect(benchUpdatesExcludedColumnIds("updates")).toEqual([]);
+      expect(benchUpdatesExcludedColumnIds("group-updates")).toEqual([]);
+      expect(await collectKeys([])).toEqual(["col_4", "col_5", "col_6"]);
+
+      // `group-updates-stable-keys` excludes the grouping level and nothing
+      // else.
+      expect(
+        benchUpdatesExcludedColumnIds("group-updates-stable-keys"),
+      ).toEqual(["col_5"]);
+      expect(
+        await collectKeys(
+          benchUpdatesExcludedColumnIds("group-updates-stable-keys"),
+        ),
+      ).toEqual(["col_4", "col_6"]);
+    } finally {
+      Object.defineProperty(globalThis, "requestAnimationFrame", {
+        configurable: true,
+        value: previousRaf,
+      });
+      Object.defineProperty(globalThis, "cancelAnimationFrame", {
+        configurable: true,
+        value: previousCancelRaf,
+      });
+    }
+  }, 30_000);
 });
 
 function createRect(input: { top: number; bottom: number }): DOMRect {

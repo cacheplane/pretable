@@ -30,7 +30,12 @@ function isCellRendererScript(s: string): s is CellRendererFlavor {
 }
 
 function isGroupingScript(s: string) {
-  return s === "group" || s === "group-expand" || s === "group-updates";
+  return (
+    s === "group" ||
+    s === "group-expand" ||
+    s === "group-updates" ||
+    s === "group-updates-stable-keys"
+  );
 }
 
 /**
