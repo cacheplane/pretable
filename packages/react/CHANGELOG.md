@@ -1,5 +1,15 @@
 # @pretable/react
 
+## 0.0.10
+
+### Patch Changes
+
+- Prevent populated server-rendered grids from triggering React hydration recovery when CSS theme heights differ from package fallbacks. ([#261](https://github.com/cacheplane/pretable/pull/261))
+
+- Updated dependencies []:
+  - @pretable/core@0.0.10
+  - @pretable/ui@0.0.10
+
 ## 0.0.9
 
 ### Patch Changes
