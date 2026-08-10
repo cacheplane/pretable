@@ -1,6 +1,7 @@
 # Pretable
 
 [![CI](https://github.com/cacheplane/pretable/actions/workflows/ci.yml/badge.svg)](https://github.com/cacheplane/pretable/actions/workflows/ci.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14015/badge)](https://www.bestpractices.dev/projects/14015)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](./LICENSE)
 
 Pretable is a React data grid for teams rendering live, high-signal data: a
