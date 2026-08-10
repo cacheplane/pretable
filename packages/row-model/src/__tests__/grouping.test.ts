@@ -485,6 +485,7 @@ describe("incremental grouped row model", () => {
       expect.objectContaining({
         code: "aggregator-failed",
         operation: "apply-transaction",
+        rowId: "a",
         columnId: "quantity",
         groupValues: ["Tech/Growth"],
         cause: expect.objectContaining({ message: "finalize exploded" }),
@@ -502,6 +503,7 @@ describe("incremental grouped row model", () => {
       expect.objectContaining({
         code: "aggregator-failed",
         operation: "set-rows",
+        rowId: "a",
         columnId: "quantity",
         groupValues: ["Tech/Growth"],
       }),
@@ -518,6 +520,7 @@ describe("incremental grouped row model", () => {
       expect.objectContaining({
         code: "aggregator-failed",
         operation: "set-query",
+        rowId: "a",
         columnId: "quantity",
         groupValues: ["Tech/Growth"],
       }),
@@ -553,6 +556,7 @@ describe("incremental grouped row model", () => {
       expect.objectContaining({
         code: "aggregator-failed",
         operation: "set-rows",
+        rowId: "a",
         columnId: "quantity",
         groupValues: ["Tech/Growth"],
         cause: expect.objectContaining({

@@ -236,6 +236,7 @@ describe("group expansion policies", () => {
       expect.objectContaining({
         code: "aggregator-failed",
         operation: "set-derivations",
+        rowId: 1,
         columnId: "score",
         groupValues: expect.any(Array),
         cause: expect.objectContaining({

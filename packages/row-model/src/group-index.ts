@@ -896,6 +896,7 @@ class GroupAggregatorError extends PretableRowModelError {
 
   constructor(
     operation: PretableRowModelOperation,
+    rowId: PretableRowId,
     columnId: string,
     groupId: PretableGroupId,
     groupValues: readonly unknown[],
@@ -904,7 +905,7 @@ class GroupAggregatorError extends PretableRowModelError {
     super(
       "aggregator-failed",
       `Finalizing the aggregate for column ${columnId} failed in group ${groupId}.`,
-      { operation, columnId, cause },
+      { operation, rowId, columnId, cause },
     );
     this.groupId = groupId;
     this.groupValues = Object.freeze([...groupValues]);
@@ -916,6 +917,7 @@ function aggregateRecord(
   allPopulation: boolean,
   previous: Readonly<Record<string, unknown>> | undefined,
   operation: PretableRowModelOperation,
+  rowId: PretableRowId,
   groupId: PretableGroupId,
   groupValues: readonly unknown[],
 ): Readonly<Record<string, unknown>> {
@@ -930,6 +932,7 @@ function aggregateRecord(
       if (cause instanceof PretableRowModelError) throw cause;
       throw new GroupAggregatorError(
         operation,
+        rowId,
         columnId,
         groupId,
         groupValues,
@@ -988,6 +991,7 @@ function finishNode<
     "aggregates" | "publicCollapsed" | "publicExpanded" | "counts"
   >,
   context: FinishContext<TRow, TRowId, TColumns>,
+  triggerRowId: TRowId,
 ): GroupNode<TRow, TRowId, TColumns> {
   const previous = context.reusable.get(node.groupId);
   const aggregates = aggregateRecord(
@@ -995,6 +999,7 @@ function finishNode<
     context.aggregateFilteredRows,
     previous?.aggregates,
     context.operation,
+    triggerRowId,
     node.groupId,
     node.path.map((entry) => entry.value),
   );
@@ -1148,6 +1153,7 @@ function mutatePath<
         aggregateRoots,
       },
       context,
+      record.rowId,
     );
     state.groups = state.groups.set(groupId, next);
     return next;
@@ -1283,6 +1289,12 @@ export function setGroupOverride<
     operation: "set-group-expanded",
   };
   let groups = root.groups;
+  const representativeRowId = (
+    node: GroupNode<TRow, TRowId, TColumns>,
+  ): TRowId => {
+    if (node.children.size === 0) return node.leaves.entryAt(0)!.rowId;
+    return representativeRowId(node.children.entries().next().value!);
+  };
   const replace = (
     depth: number,
     node: GroupNode<TRow, TRowId, TColumns>,
@@ -1305,6 +1317,10 @@ export function setGroupOverride<
         children,
       },
       context,
+      // Expansion does not change aggregate roots. If a custom lazy finalizer
+      // is nevertheless invoked, use the first ordered descendant as the
+      // deterministic representative for complete error context.
+      representativeRowId(node),
     );
     groups = groups.set(next.groupId, next);
     return next;
