@@ -1,5 +1,38 @@
 # @pretable/react
 
+## 0.0.11
+
+### Patch Changes
+
+- Reconcile the selection when the drawn column model changes, so grouping or ([#264](https://github.com/cacheplane/pretable/pull/264))
+  ungrouping no longer drops full-row selections, double-toggles a row, or copies
+  a single column instead of the whole row.
+
+- Give the header row the pixel it shares with the group panel. The panel and the ([#264](https://github.com/cacheplane/pretable/pull/264))
+  scroll viewport abut exactly, so the panel's bottom edge is the header's top
+  edge — and the panel's hit test claimed it. Dropping a dragged header on the
+  header's first row of pixels grouped by that column instead of reordering it.
+  The panel's rect is now half-open on its right and bottom edges.
+
+- Stop invalidating the derived rows for a re-created `value` closure on a grid ([#264](https://github.com/cacheplane/pretable/pull/264))
+  that is not grouped by that column. An inline `columns={[…]}` array no longer
+  emits — and no longer destroys `visibleRows` identity — on every parent update.
+
+- Reconcile the selection when a column is reordered, pinned, or the layout is ([#264](https://github.com/cacheplane/pretable/pull/264))
+  reset. A range does not need to lose a column to break — it only needs the
+  columns between its endpoints to change — so dragging a header used to leave a
+  selected row half-checked and make Cmd+C copy the wrong columns, with no
+  grouping involved at all.
+
+- Accept `groupColumn`, `hideGroupedColumns`, `aggregateFilteredRows` and ([#264](https://github.com/cacheplane/pretable/pull/264))
+  `groupsDefaultExpanded` on `usePretable` and `<PretableSurface>`, and re-export
+  `PretableGroupColumnOptions`. `groupColumn={{ pinned: "left" }}` is now
+  reachable from React, which is the only way to seat the tree column ahead of
+  left-pinned data columns.
+- Updated dependencies [[`6131d84`](https://github.com/cacheplane/pretable/commit/6131d8441b58560dd4c0c8e9d102c524bb25d602), [`6131d84`](https://github.com/cacheplane/pretable/commit/6131d8441b58560dd4c0c8e9d102c524bb25d602), [`6131d84`](https://github.com/cacheplane/pretable/commit/6131d8441b58560dd4c0c8e9d102c524bb25d602)]:
+  - @pretable/core@0.0.11
+  - @pretable/ui@0.0.11
+
 ## 0.0.10
 
 ### Patch Changes
