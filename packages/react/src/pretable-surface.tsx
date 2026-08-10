@@ -392,9 +392,11 @@ export interface PretableSurfaceMessages {
   staleAnnouncement?: () => string;
 
   /**
-   * Announced only when focus reconciliation's id lookup misses during a
-   * data-driven rows replacement — never for a user action, and never for a
-   * dataset change (the results announcement covers that transition).
+   * Announced when a data-driven rows replacement dropped the focused row and
+   * the engine moved focus to a survivor — never for a user action, never for
+   * a consumer-authored controlled focus move, never for a dataset change (the
+   * results announcement covers that transition), and never when nothing
+   * survived for focus to move to.
    *
    * @experimental
    */
@@ -1572,50 +1574,60 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   }, [drawnColumns, effectiveColumns]);
 
   // Declared AFTER `usePretable` on purpose: layout effects run in declaration
-  // order within a component, so this fires after the hook's own `setRows`
-  // effect in the same commit. `grid.getSnapshot()` is therefore
-  // post-replacement while the DOM still shows the old rows — which is what
-  // makes the `document.activeElement` read below meaningful.
+  // order within a component, so this fires after the hook's own `setRows` and
+  // controlled-state effects in the same commit. `grid.getSnapshot()` is
+  // therefore post-replacement while the DOM still shows the old rows — which
+  // is what makes the `document.activeElement` read below meaningful.
+  //
+  // No dependency array, deliberately: these refs have to sample EVERY commit.
+  // A replacement that lands in a commit the effect skipped would compare
+  // against a stale address and read as a removal.
   const focusRowIdBeforeRowsRef = useRef<string | null>(null);
   const datasetKeyBeforeRowsRef = useRef<string | null>(null);
+  const controlledFocusRowIdBeforeRowsRef = useRef<string | null | undefined>(
+    undefined,
+  );
   const rowsSeenRef = useRef(rows);
+  const focusRepairToAnnounceRef = useRef(false);
 
   useLayoutEffect(() => {
     const after = grid.getSnapshot();
     const previousFocusRowId = focusRowIdBeforeRowsRef.current;
     const previousDatasetKey = datasetKeyBeforeRowsRef.current;
+    const previousControlledFocusRowId =
+      controlledFocusRowIdBeforeRowsRef.current;
     // A pivot does not need a rows replacement to reach the engine: a consumer
     // that mints the new key before its rows land goes through
     // `setResultMeta`, which clears focus with the `rows` identity untouched.
     const datasetPivoted =
       previousDatasetKey !== null && after.datasetKey !== previousDatasetKey;
 
+    datasetKeyBeforeRowsRef.current = after.datasetKey;
+    controlledFocusRowIdBeforeRowsRef.current = controlledFocusFollowRowId;
+
     if (rowsSeenRef.current === rows && !datasetPivoted) {
       focusRowIdBeforeRowsRef.current = after.focus.rowId;
-      datasetKeyBeforeRowsRef.current = after.datasetKey;
       return;
     }
 
+    rowsSeenRef.current = rows;
+
     const focusWasInsideGrid =
-      typeof document !== "undefined" &&
       viewportRef.current !== null &&
       document.activeElement !== null &&
       viewportRef.current.contains(document.activeElement);
 
-    rowsSeenRef.current = rows;
-    datasetKeyBeforeRowsRef.current = after.datasetKey;
-
     if (datasetPivoted) {
-      // The engine already cleared focus. Put it somewhere deterministic rather
-      // than letting DOM focus fall to <body> — but only if the user was
-      // actually inside the grid; nothing gets grabbed otherwise.
+      // The engine already cleared focus for the new dataset.
       if (focusWasInsideGrid) {
-        const firstDataRow = after.visibleRows.find(isDataRow);
+        // The row the user SEES first, group row or data row alike — the same
+        // address a Tab into the body resolves to.
+        const firstRow = after.visibleRows[0];
         const firstColumn = columnsInVisualOrder.find(
           (column) => column.id !== ROW_SELECT_COLUMN_ID,
         );
-        if (firstDataRow && firstColumn) {
-          grid.setFocus({ rowId: firstDataRow.id, columnId: firstColumn.id });
+        if (firstRow && firstColumn) {
+          grid.setFocus({ rowId: firstRow.id, columnId: firstColumn.id });
         } else {
           viewportRef.current?.focus();
         }
@@ -1626,20 +1638,60 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       if (viewportRef.current) {
         viewportRef.current.scrollTop = 0;
       }
-      grid.setViewport({ ...after.viewport, scrollTop: 0 });
+      // Re-read: `setFocus` above ran against `after`, so that snapshot is no
+      // longer the engine's current one.
+      const settled = grid.getSnapshot();
+      grid.setViewport({ ...settled.viewport, scrollTop: 0 });
 
-      focusRowIdBeforeRowsRef.current = grid.getSnapshot().focus.rowId;
+      focusRowIdBeforeRowsRef.current = settled.focus.rowId;
       return;
     }
 
     focusRowIdBeforeRowsRef.current = after.focus.rowId;
 
     if (
-      previousFocusRowId !== null &&
-      after.focus.rowId !== previousFocusRowId
+      previousFocusRowId === null ||
+      after.focus.rowId === previousFocusRowId
     ) {
-      scheduleAnnouncement(effectiveMessages.focusedRowRemovedAnnouncement());
+      return;
     }
+
+    // The consumer moved its own controlled address in this same commit —
+    // `usePretable` reapplies it after the engine's repair — so the engine's
+    // repair is moot and the move is the app's to narrate, not Pretable's.
+    if (
+      controlledFocusFollowRowId !== undefined &&
+      controlledFocusFollowRowId !== previousControlledFocusRowId
+    ) {
+      return;
+    }
+
+    if (after.focus.rowId === null) {
+      // Nothing survived the replacement, so there is no nearby row to have
+      // moved to and the repair sentence would be false. Keep the keyboard user
+      // inside the grid instead of dropping them on <body>.
+      if (focusWasInsideGrid) {
+        viewportRef.current?.focus();
+      }
+      return;
+    }
+
+    focusRepairToAnnounceRef.current = true;
+  });
+
+  // Scheduled from a passive effect rather than the layout effect above,
+  // because passive effects run in declaration order and this one is declared
+  // after the phase-transition effect: both messages are "lifecycle", so that
+  // order is the whole of the last-wins contest between them. An unrequested
+  // cursor move wins it — it is the one fact the user cannot recover from the
+  // status strip or from the next transition.
+  useEffect(() => {
+    if (!focusRepairToAnnounceRef.current) return;
+    focusRepairToAnnounceRef.current = false;
+    scheduleAnnouncement(
+      effectiveMessages.focusedRowRemovedAnnouncement(),
+      "lifecycle",
+    );
   });
 
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the

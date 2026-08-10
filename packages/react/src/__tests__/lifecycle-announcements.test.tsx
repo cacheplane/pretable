@@ -342,37 +342,85 @@ describe("lifecycle announcement counts", () => {
 });
 
 describe("data-driven focus reconciliation", () => {
+  const REPAIRED =
+    "Focused row is no longer in the results; moved to a nearby row.";
+
   function FocusHarness({
     rows,
     datasetKey,
+    dataState,
+    focus,
+    messages,
+    rowGroups,
   }: {
     rows: Row[];
     datasetKey: string;
+    dataState?: PretableDataState;
+    focus?: { rowId: string | null; columnId: string | null };
+    messages?: PretableSurfaceMessages;
+    rowGroups?: string[];
   }) {
     return (
-      <PretableSurface<Row>
-        ariaLabel="People"
-        columns={columns}
-        rows={rows}
-        getRowId={(row) => row.id}
-        viewportHeight={400}
-        processing={{ filter: "external", sort: "external" }}
-        resultMeta={{
-          datasetKey,
-          total: { kind: "exact", count: rows.length },
-        }}
-        state={{ focus: undefined }}
-      />
+      <>
+        {/* A focus target the surface does not own, so "the user was outside
+            the grid" is a real place rather than `<body>`. */}
+        <button data-testid="outside" type="button">
+          Outside
+        </button>
+        <PretableSurface<Row>
+          ariaLabel="People"
+          columns={columns}
+          rows={rows}
+          getRowId={(row) => row.id}
+          viewportHeight={400}
+          processing={{ filter: "external", sort: "external" }}
+          resultMeta={{
+            datasetKey,
+            total: { kind: "exact", count: rows.length },
+          }}
+          dataState={dataState}
+          messages={messages}
+          state={{ focus, rowGroups }}
+        />
+      </>
+    );
+  }
+
+  function cellAt(
+    view: ReturnType<typeof render>,
+    rowId: string,
+  ): HTMLElement | null {
+    return view.container.querySelector<HTMLElement>(
+      `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="name"]`,
     );
   }
 
   function focusCell(view: ReturnType<typeof render>, rowId: string): void {
-    const cell = view.container.querySelector<HTMLElement>(
-      `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="name"]`,
-    )!;
+    const cell = cellAt(view, rowId);
+    if (!cell) throw new Error(`no rendered cell for row ${rowId}`);
     act(() => {
       cell.focus();
-      cell.click();
+      fireEvent.click(cell);
+    });
+  }
+
+  function viewportOf(view: ReturnType<typeof render>): HTMLElement {
+    const viewport = view.container.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+    if (!viewport) throw new Error("no scroll viewport rendered");
+    return viewport;
+  }
+
+  /** jsdom runs no layout, so `scrollTop` is inert until it is given storage. */
+  function makeScrollRecording(el: HTMLElement): void {
+    let scrollTop = 0;
+    Object.defineProperty(el, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (next: number) => {
+        scrollTop = next;
+      },
     });
   }
 
@@ -381,9 +429,100 @@ describe("data-driven focus reconciliation", () => {
     focusCell(view, "b");
     view.rerender(<FocusHarness rows={page1} datasetKey="q1" />);
     flushAnnouncement();
-    expect(liveRegionText(view)).toBe(
-      "Focused row is no longer in the results; moved to a nearby row.",
+    expect(liveRegionText(view)).toBe(REPAIRED);
+  });
+
+  it("is silent when the focused row survives a same-key replacement", () => {
+    const view = render(<FocusHarness rows={page2} datasetKey="q1" />);
+    focusCell(view, "b");
+    view.rerender(<FocusHarness rows={[...page2]} datasetKey="q1" />);
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("");
+    expect(cellAt(view, "b")).toHaveAttribute("tabindex", "0");
+  });
+
+  it("is silent when the consumer moves its own controlled focus with the rows", () => {
+    const view = render(
+      <FocusHarness
+        rows={page2}
+        datasetKey="q1"
+        focus={{ rowId: "b", columnId: "name" }}
+      />,
     );
+    view.rerender(
+      <FocusHarness
+        rows={[...page2]}
+        datasetKey="q1"
+        focus={{ rowId: "a", columnId: "name" }}
+      />,
+    );
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("");
+    expect(cellAt(view, "a")).toHaveAttribute("tabindex", "0");
+  });
+
+  it("claims no nearby row when the replacement empties the results", () => {
+    const view = render(<FocusHarness rows={page2} datasetKey="q1" />);
+    focusCell(view, "b");
+    view.rerender(<FocusHarness rows={[]} datasetKey="q1" />);
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("");
+    expect(document.activeElement).toBe(viewportOf(view));
+  });
+
+  it("prefers the repair to the results count in one announcement window", () => {
+    const view = render(
+      <FocusHarness
+        rows={page2}
+        datasetKey="q1"
+        dataState={{ phase: "refreshing" }}
+      />,
+    );
+    focusCell(view, "b");
+    view.rerender(
+      <FocusHarness
+        rows={page1}
+        datasetKey="q1"
+        dataState={{ phase: "idle" }}
+      />,
+    );
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe(REPAIRED);
+  });
+
+  it("never talks over the confirmation of a keystroke the user just pressed", () => {
+    const selectAll: PretableSurfaceMessages = {
+      selectAllAnnouncement: () => "SELECT ALL",
+    };
+    const view = render(
+      <FocusHarness rows={page2} datasetKey="q1" messages={selectAll} />,
+    );
+    focusCell(view, "b");
+    fireEvent.keyDown(viewportOf(view), { key: "a", ctrlKey: true });
+    view.rerender(
+      <FocusHarness rows={page1} datasetKey="q1" messages={selectAll} />,
+    );
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("SELECT ALL");
+  });
+
+  it("announces the results count when that same refresh moves no cursor", () => {
+    const view = render(
+      <FocusHarness
+        rows={page2}
+        datasetKey="q1"
+        dataState={{ phase: "refreshing" }}
+      />,
+    );
+    view.rerender(
+      <FocusHarness
+        rows={page1}
+        datasetKey="q1"
+        dataState={{ phase: "idle" }}
+      />,
+    );
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("Showing 1");
   });
 
   it("moves focus to the first cell of a new dataset and does not announce a repair", () => {
@@ -391,11 +530,52 @@ describe("data-driven focus reconciliation", () => {
     focusCell(view, "b");
     view.rerender(<FocusHarness rows={page2} datasetKey="q2" />);
     flushAnnouncement();
-    expect(liveRegionText(view)).not.toContain("no longer in the results");
+    expect(liveRegionText(view)).toBe("");
+    expect(cellAt(view, "a")).toHaveAttribute("tabindex", "0");
+    expect(document.activeElement).toBe(cellAt(view, "a"));
+  });
+
+  it("takes nothing when the user was outside the grid at the pivot", () => {
+    const view = render(<FocusHarness rows={page2} datasetKey="q1" />);
+    const outside = view.getByTestId("outside");
+    act(() => {
+      outside.focus();
+    });
+    view.rerender(<FocusHarness rows={page2} datasetKey="q2" />);
+    flushAnnouncement();
+    expect(document.activeElement).toBe(outside);
     expect(
-      view.container.querySelector(
-        '[data-pretable-row-id="a"] [data-pretable-column-id="name"]',
-      ),
-    ).toHaveAttribute("tabindex", "0");
+      view.container.querySelector('[data-pretable-cell][tabindex="0"]'),
+    ).toBeNull();
+  });
+
+  it("lands on the first row the user sees, group row included, at the pivot", () => {
+    const grouped = { rows: tenRows, rowGroups: ["name"] };
+    const view = render(<FocusHarness {...grouped} datasetKey="q1" />);
+    const rows = view.container.querySelectorAll("[data-pretable-row-id]");
+    const lastCell = rows[rows.length - 1]?.querySelector<HTMLElement>(
+      '[data-pretable-column-id="__pretable_group__"]',
+    );
+    if (!lastCell) throw new Error("no group-column cell rendered");
+    act(() => {
+      lastCell.focus();
+    });
+
+    view.rerender(<FocusHarness {...grouped} datasetKey="q2" />);
+
+    const firstRow = view.container.querySelector("[data-pretable-row-id]");
+    expect(firstRow).toHaveAttribute("data-pretable-group-row");
+    expect(document.activeElement).toBe(
+      firstRow?.querySelector('[data-pretable-column-id="__pretable_group__"]'),
+    );
+  });
+
+  it("resets the scroll offset at the pivot", () => {
+    const view = render(<FocusHarness rows={page2} datasetKey="q1" />);
+    const viewport = viewportOf(view);
+    makeScrollRecording(viewport);
+    viewport.scrollTop = 240;
+    view.rerender(<FocusHarness rows={page2} datasetKey="q2" />);
+    expect(viewport.scrollTop).toBe(0);
   });
 });
