@@ -359,6 +359,30 @@ export interface PretableSurfaceMessages {
    * @experimental
    */
   dataErrorAnnouncement?: (args: { message?: string }) => string;
+
+  /**
+   * Announced when loading / stale / loading-more resolves to idle — the honest
+   * count moment, and the filter-result announcement Pretable never had.
+   * `added` is present only for a tail extension.
+   *
+   * @experimental
+   */
+  resultsAnnouncement?: (args: {
+    loaded: number;
+    total: PretableMatchingTotal;
+    added?: number;
+  }) => string;
+
+  /**
+   * Announced on entering `stale`. This is the ONLY assistive-technology
+   * signal that the visible rows answer the previous query — the
+   * `data-pretable-data-phase` attribute and any consumer dimming are visual
+   * only, so without this a screen-reader user cannot tell that the controls
+   * and the rows disagree (design §4.5, D1-UX-02).
+   *
+   * @experimental
+   */
+  staleAnnouncement?: () => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -407,6 +431,20 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
   loadingStateMessage: () => "Loading…",
   dataErrorAnnouncement: ({ message }) =>
     message ? `Could not load results. ${message}` : "Could not load results",
+  resultsAnnouncement: ({ loaded, total, added }) => {
+    const population =
+      total.kind === "exact"
+        ? `${loaded} of ${total.count}`
+        : total.kind === "estimate"
+          ? `${loaded} of about ${total.count}`
+          : total.atLeast !== undefined
+            ? `${loaded} of more than ${total.atLeast}`
+            : `${loaded}`;
+    return added === undefined
+      ? `Showing ${population}`
+      : `Loaded ${added} more. ${population} loaded.`;
+  },
+  staleAnnouncement: () => "Updating results…",
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -1100,6 +1138,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       dataErrorAnnouncement:
         messages?.dataErrorAnnouncement ??
         defaultMessages.dataErrorAnnouncement,
+      resultsAnnouncement:
+        messages?.resultsAnnouncement ?? defaultMessages.resultsAnnouncement,
+      staleAnnouncement:
+        messages?.staleAnnouncement ?? defaultMessages.staleAnnouncement,
     }),
     [messages],
   );
@@ -1228,6 +1270,80 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     dataState !== undefined && dataState.phase === "error"
       ? dataState.message
       : undefined;
+
+  // Phase transitions, one announcement each. Deliberately keyed on the phase
+  // VALUE, not on `dataState` identity: an inline `dataState={{phase:"idle"}}`
+  // literal is a new object every render and must not re-announce.
+  const previousPhaseRef = useRef<PretableDataState["phase"] | undefined>(
+    undefined,
+  );
+  const loadedBeforeLoadMoreRef = useRef(0);
+
+  useEffect(() => {
+    const phase = dataState?.phase;
+    const previousPhase = previousPhaseRef.current;
+    previousPhaseRef.current = phase;
+
+    if (phase === undefined || phase === previousPhase) {
+      return;
+    }
+
+    // Counts come from the engine at effect time, never from the render
+    // closure. A phase flip and the rows it describes arrive in one commit,
+    // and `usePretable` ingests those rows in a LAYOUT effect — so when this
+    // passive effect runs the engine already holds them while `snapshot` is
+    // still the pre-ingest value. Announcing the closure's numbers reports the
+    // previous page's counts, and the corrected commit that follows carries an
+    // unchanged phase, which the guard above drops.
+    const live = grid.getSnapshot();
+
+    if (phase === "loading-more") {
+      // Remember the baseline so the resolution can report the delta.
+      loadedBeforeLoadMoreRef.current = live.loadedRowCount;
+      return;
+    }
+
+    if (phase === "stale") {
+      // The desired query has moved ahead of the fulfilled rows. Announced
+      // once on entry (the phase-value guard above makes repeats impossible
+      // within a settling burst); the resolution's resultsAnnouncement
+      // supersedes it through the last-wins scheduler.
+      scheduleAnnouncement(effectiveMessages.staleAnnouncement());
+      return;
+    }
+
+    if (phase === "error") {
+      // Structural single-channel rule: Pretable announces the failure only
+      // because Pretable is the one rendering it (error block or status strip).
+      // A consumer showing its own role="alert" banner keeps the phase out of
+      // "error", so double-speak is impossible by construction.
+      scheduleAnnouncement(
+        effectiveMessages.dataErrorAnnouncement({ message: errorMessage }),
+      );
+      return;
+    }
+
+    if (phase !== "idle") {
+      return;
+    }
+
+    // A 2 s poll must not produce a metronome, and the very first commit is not
+    // a transition anyone asked to hear about.
+    if (previousPhase === undefined || previousPhase === "refreshing") {
+      return;
+    }
+
+    scheduleAnnouncement(
+      effectiveMessages.resultsAnnouncement({
+        loaded: live.loadedRowCount,
+        total: live.matchingTotal,
+        added:
+          previousPhase === "loading-more"
+            ? live.loadedRowCount - loadedBeforeLoadMoreRef.current
+            : undefined,
+      }),
+    );
+  }, [dataState, effectiveMessages, errorMessage, grid, scheduleAnnouncement]);
 
   const bodyStateBlock =
     dataState === undefined || bodyStateKind === null ? null : (
