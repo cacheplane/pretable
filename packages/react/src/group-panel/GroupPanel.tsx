@@ -22,7 +22,7 @@ import {
   moveGroupLevel,
   removeGroupLevel,
 } from "./group-panel-model";
-import { CloseIcon } from "../icons";
+import { CloseIcon, GripIcon } from "../icons";
 
 /** Matches the header reorder drag's threshold, so both grabs feel the same. */
 const CHIP_DRAG_THRESHOLD_PX = 5;
@@ -449,7 +449,7 @@ export function GroupPanel({
             // move within it.
             tabIndex={index === active ? 0 : -1}
           >
-            <span aria-hidden="true" data-pretable-chip-handle="" />
+            <GripIcon data-pretable-chip-handle="" />
             {/* Hidden from the accessibility tree because the option root's
                 own name already contains it — plus the position and the key
                 hints, which no assembled-from-content name could carry. */}

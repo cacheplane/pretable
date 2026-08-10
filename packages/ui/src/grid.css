@@ -628,14 +628,11 @@
     cursor: grabbing;
   }
 
-  /* Grip dots, drawn rather than added to the DOM — the handle is an empty,
-     aria-hidden span so it costs no accessible content. */
+  /* The grip is a GripIcon from the set, so its size comes from
+     --pretable-icon-size via [data-pretable-icon] and only the tint is left
+     here. It used to be a tiled radial-gradient on an empty span, which could
+     not share a weight or an optical size with any other glyph. */
   :where([data-pretable-chip-handle]) {
-    flex: none;
-    width: 5px;
-    height: 12px;
-    background-image: radial-gradient(currentColor 40%, transparent 45%);
-    background-size: 3px 4px;
     color: var(--pretable-text-dim);
   }
 
