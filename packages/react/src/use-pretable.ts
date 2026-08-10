@@ -692,10 +692,21 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   // until this read changes. Ungrouped the two are the same array by identity,
   // so no non-grouping grid re-plans.
   const drawnColumns = grid.getColumns();
+  // Memoized, not spread inline. The copy exists only to widen `readonly
+  // PretableColumn[]` to the mutable array `DomRenderInput` asks for — but the
+  // renderer's wrapped-row-height cache keys its fast path on this array's
+  // IDENTITY (`columnsRef === columns` in `estimateRowHeight`). A fresh copy per
+  // recompute made that check fail every time, so any snapshot-only change — a
+  // group toggle, a scroll, a selection — re-derived the height signature for
+  // every visible row. Stable identity is sound because the engine's column
+  // model is copy-on-write: `setColumnWidth`, autosize, pin, move and reorder
+  // all replace `options.columns` wholesale, which gives `getColumns()` a new
+  // identity and invalidates this memo.
+  const renderColumns = useMemo(() => [...drawnColumns], [drawnColumns]);
   const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
     () =>
       createDomRenderSnapshot({
-        columns: [...drawnColumns],
+        columns: renderColumns,
         snapshot,
         scrollTop: snapshot.viewport.scrollTop,
         scrollLeft: snapshot.viewport.scrollLeft,
@@ -705,7 +716,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
         measuredHeights,
       }),
     [
-      drawnColumns,
+      renderColumns,
       measuredHeights,
       overscan,
       snapshot,

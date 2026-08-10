@@ -2,9 +2,11 @@ import { autosizeColumns } from "@pretable-internal/layout-core";
 import type { AutosizeOptions } from "@pretable-internal/layout-core";
 import {
   assertGetRowId,
+  buildDerivedRowModel,
   createSourceRows,
-  deriveVisibleRows,
+  flattenDerivedRowModel,
   type DeriveVisibleRowsResult,
+  type DerivedRowModel,
   type SourceRow,
 } from "./derived-rows";
 import { isFilterActive } from "./evaluate-filter";
@@ -236,6 +238,19 @@ export function createGridCore<TRow extends PretableRow>(
   let cachedDerivedOverrides: ReadonlySet<string> | null = null;
   let cachedDerivedDefaultExpanded: boolean | null = null;
   let cachedDerivedAggregateFiltered: boolean | null = null;
+  /**
+   * The filter/group/aggregate half of the derivation, cached on a NARROWER key
+   * than `cachedDerivation` — everything above except the two expansion fields.
+   *
+   * That split is the point. Expanding or collapsing a group replaces
+   * `groupExpansionOverrides`, which invalidates `cachedDerivation`; but the
+   * overrides are read only by the flatten, so re-sorting the rows, rebuilding
+   * the tree and re-folding the aggregates produced provably identical state.
+   * At 50,000 rows that redundancy was ~30 ms per toggle against ~1 ms of
+   * flatten. Keyed on the same inputs and cleared at the same three sites as
+   * `cachedDerivation`, so it can never outlive what it was built from.
+   */
+  let cachedRowModel: DerivedRowModel<TRow> | null = null;
   /**
    * The derived render column list, plus the two inputs it is a function of.
    *
@@ -1171,6 +1186,7 @@ export function createGridCore<TRow extends PretableRow>(
 
       if (groupingSemanticsChanged) {
         cachedDerivation = null;
+        cachedRowModel = null;
         reconcileFocusAfterVisibleModelChange(before);
       }
 
@@ -1251,6 +1267,7 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       cachedDerivation = null;
+      cachedRowModel = null;
       reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
@@ -1323,6 +1340,7 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       cachedDerivation = null;
+      cachedRowModel = null;
       reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
@@ -1897,17 +1915,33 @@ export function createGridCore<TRow extends PretableRow>(
       cachedDerivedDefaultExpanded === groupsDefaultExpanded &&
       cachedDerivedAggregateFiltered === aggregateFilteredRows;
 
+    // Same key minus the expansion fields. When only those changed — an
+    // expand/collapse — this stays true and the row model is reused, so the
+    // toggle costs one flatten instead of a whole re-derivation.
+    const rowModelIsFresh =
+      cachedRowModel !== null &&
+      cachedDerivedSort === derivedSort &&
+      cachedDerivedFilters === derivedFilters &&
+      cachedDerivedRowGroups === rowGroups &&
+      cachedDerivedAggregateFiltered === aggregateFilteredRows;
+
     if (!derivedIsFresh) {
-      const derived = deriveVisibleRows({
-        columns: options.columns,
-        filters: derivedFilters,
-        rows: sourceRows,
-        sort: derivedSort,
-        rowGroups,
+      if (!rowModelIsFresh) {
+        cachedRowModel = buildDerivedRowModel({
+          columns: options.columns,
+          filters: derivedFilters,
+          rows: sourceRows,
+          sort: derivedSort,
+          rowGroups,
+          aggregateFilteredRows,
+        });
+      }
+
+      const derived = flattenDerivedRowModel(
+        cachedRowModel!,
         groupExpansionOverrides,
         groupsDefaultExpanded,
-        aggregateFilteredRows,
-      });
+      );
       cachedDerivation = {
         rows: preserveAggregateIdentity(derived.rows),
         filteredCount: derived.filteredCount,

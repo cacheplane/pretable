@@ -6,7 +6,11 @@ import type {
   PretableSortEntry,
 } from "./types";
 import { evaluateFilter, isFilterActive } from "./evaluate-filter";
-import { buildGroupedRows } from "./group-rows";
+import {
+  buildGroupModel,
+  flattenGroupModel,
+  type GroupedRowModel,
+} from "./group-rows";
 import { readCellValue, type SourceRow } from "./row-utils";
 
 export {
@@ -48,21 +52,42 @@ export interface DeriveVisibleRowsResult<TRow extends PretableRow> {
   filteredCount: number;
 }
 
-export function deriveVisibleRows<TRow extends PretableRow>(
-  input: DeriveVisibleRowsInput<TRow>,
-): DeriveVisibleRowsResult<TRow> {
+/**
+ * The half of the pipeline that expansion state cannot reach: `filter → group →
+ * aggregate`. Everything an expand/collapse changes lives in
+ * `flattenDerivedRowModel`, so a caller that holds one of these across toggles
+ * pays only the flatten.
+ *
+ * Note the input type: it is `DeriveVisibleRowsInput` minus the two expansion
+ * fields, which is the type-level statement of that claim — this function
+ * cannot read them because it is not given them.
+ */
+export interface DerivedRowModel<TRow extends PretableRow> {
+  readonly groups: GroupedRowModel<TRow>;
+  /** See `DeriveVisibleRowsResult.filteredCount`. */
+  readonly filteredCount: number;
+}
+
+export type BuildDerivedRowModelInput<TRow extends PretableRow> = Omit<
+  DeriveVisibleRowsInput<TRow>,
+  "groupExpansionOverrides" | "groupsDefaultExpanded"
+>;
+
+export function buildDerivedRowModel<TRow extends PretableRow>(
+  input: BuildDerivedRowModelInput<TRow>,
+): DerivedRowModel<TRow> {
   const resolvedFilters = resolveFilters(input.columns, input.filters);
   const filtered = input.rows.filter((entry) =>
     matchesFilters(entry.row, resolvedFilters),
   );
 
   return {
-    rows: buildGroupedRows<TRow>({
+    groups: buildGroupModel<TRow>({
       rows: filtered,
       // Only worth carrying the pre-filter set when it can actually differ.
       // Equal lengths mean the filter removed nothing, so `filtered` is a copy
       // of `input.rows` in the same order and the two sort identically —
-      // `buildGroupedRows` sorts whichever it folds over, so skipping here does
+      // `buildGroupModel` sorts whichever it folds over, so skipping here does
       // not change the fold order.
       allRows:
         input.aggregateFilteredRows && filtered.length !== input.rows.length
@@ -71,11 +96,34 @@ export function deriveVisibleRows<TRow extends PretableRow>(
       columns: input.columns,
       rowGroups: input.rowGroups ?? [],
       sort: input.sort,
-      groupExpansionOverrides: input.groupExpansionOverrides ?? NO_OVERRIDES,
-      defaultExpanded: input.groupsDefaultExpanded ?? true,
     }),
     filteredCount: filtered.length,
   };
+}
+
+export function flattenDerivedRowModel<TRow extends PretableRow>(
+  model: DerivedRowModel<TRow>,
+  groupExpansionOverrides: ReadonlySet<string> | undefined,
+  groupsDefaultExpanded: boolean | undefined,
+): DeriveVisibleRowsResult<TRow> {
+  return {
+    rows: flattenGroupModel<TRow>(
+      model.groups,
+      groupExpansionOverrides ?? NO_OVERRIDES,
+      groupsDefaultExpanded ?? true,
+    ),
+    filteredCount: model.filteredCount,
+  };
+}
+
+export function deriveVisibleRows<TRow extends PretableRow>(
+  input: DeriveVisibleRowsInput<TRow>,
+): DeriveVisibleRowsResult<TRow> {
+  return flattenDerivedRowModel(
+    buildDerivedRowModel(input),
+    input.groupExpansionOverrides,
+    input.groupsDefaultExpanded,
+  );
 }
 
 interface ResolvedFilter<TRow extends PretableRow> {

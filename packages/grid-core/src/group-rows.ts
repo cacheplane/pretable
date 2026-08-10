@@ -24,6 +24,12 @@ import type {
  * leaves rather than the mean of its child means — the two differ whenever the
  * child groups are of different sizes. `PretableAggregator.merge` exists so a
  * future rollup optimization stays internal, but it is not used here.
+ *
+ * The pipeline is split in two at `order siblings | flatten`, because only the
+ * second half reads expansion state. `buildGroupModel` does the O(rows) work —
+ * sort, tree, aggregates — and depends on nothing an expand/collapse can
+ * change; `flattenGroupModel` walks that model against the override set. A
+ * caller holding the model across toggles (the engine does) pays only the walk.
  */
 
 interface GroupNode<TRow extends PretableRow> {
@@ -35,10 +41,19 @@ interface GroupNode<TRow extends PretableRow> {
   childCount: number;
   /** Non-null for every level except the innermost. */
   children: Map<string, GroupNode<TRow>> | null;
+  /**
+   * `children` in display order. Computed on first flatten that reaches this
+   * node and memoized — sibling order depends only on `sort`, which is a model
+   * input, so it cannot go stale while the model lives. Lazy rather than eager
+   * so a mostly-collapsed tree never pays to order branches nobody opens.
+   */
+  orderedChildren: GroupNode<TRow>[] | null;
   /** Non-null only for the innermost level. */
   rows: SourceRow<TRow>[] | null;
   /** columnId -> in-progress accumulator. */
   accumulators: Map<string, unknown>;
+  /** `accumulators` run through `finalize`, memoized for the same reason. */
+  finalizedAggregates: Record<string, unknown> | null;
 }
 
 interface AggregateColumn<TRow extends PretableRow> {
@@ -75,23 +90,53 @@ export interface BuildGroupedRowsArgs<TRow extends PretableRow> {
   defaultExpanded: boolean;
 }
 
+/**
+ * Everything about the grouped model that expansion state cannot change: the
+ * sorted rows, the group tree, and the folded aggregates.
+ *
+ * Opaque to callers by design — the node shape is private, and holding one
+ * across an expand/collapse is the whole point. It is invalidated by exactly
+ * what `buildGroupModel` reads: rows, columns, `rowGroups`, and `sort`.
+ *
+ * @internal
+ */
+export interface GroupedRowModel<TRow extends PretableRow> {
+  /** Post-filter rows in sort order — the entire model when `levels` is empty. */
+  readonly sorted: SourceRow<TRow>[];
+  /** Resolved grouping columns, outermost first. Empty means "not grouped". */
+  readonly levels: PretableColumn<TRow>[];
+  /** Root groups, keyed. Ordering is applied lazily during flatten. */
+  readonly roots: Map<string, GroupNode<TRow>>;
+  readonly aggregateColumns: AggregateColumn<TRow>[];
+  readonly sort: readonly PretableSortEntry[];
+  /** `roots` in display order, memoized on first flatten. */
+  orderedRoots: GroupNode<TRow>[] | null;
+}
+
+/** Inputs to `buildGroupModel` — `BuildGroupedRowsArgs` minus expansion state. */
+export type BuildGroupModelArgs<TRow extends PretableRow> = Omit<
+  BuildGroupedRowsArgs<TRow>,
+  "groupExpansionOverrides" | "defaultExpanded"
+>;
+
 /** @internal */
-export function buildGroupedRows<TRow extends PretableRow>(
-  args: BuildGroupedRowsArgs<TRow>,
-): PretableVisibleRow<TRow>[] {
+export function buildGroupModel<TRow extends PretableRow>(
+  args: BuildGroupModelArgs<TRow>,
+): GroupedRowModel<TRow> {
   const { rows, allRows, columns, rowGroups, sort } = args;
 
   const sorted = sortRows(rows, columns, sort);
   const levels = resolveLevels(columns, rowGroups);
 
   if (levels.length === 0) {
-    return sorted.map(({ id, row, sourceIndex }) => ({
-      kind: "data" as const,
-      id,
-      row,
-      sourceIndex,
-      depth: 0,
-    }));
+    return {
+      sorted,
+      levels,
+      roots: new Map(),
+      aggregateColumns: [],
+      sort,
+      orderedRoots: null,
+    };
   }
 
   const roots = buildTree(sorted, levels);
@@ -111,9 +156,54 @@ export function buildGroupedRows<TRow extends PretableRow>(
     );
   }
 
+  return { sorted, levels, roots, aggregateColumns, sort, orderedRoots: null };
+}
+
+/** @internal */
+export function flattenGroupModel<TRow extends PretableRow>(
+  model: GroupedRowModel<TRow>,
+  groupExpansionOverrides: ReadonlySet<string>,
+  defaultExpanded: boolean,
+): PretableVisibleRow<TRow>[] {
+  if (model.levels.length === 0) {
+    return model.sorted.map(({ id, row, sourceIndex }) => ({
+      kind: "data" as const,
+      id,
+      row,
+      sourceIndex,
+      depth: 0,
+    }));
+  }
+
+  if (!model.orderedRoots) {
+    model.orderedRoots = orderSiblings(
+      model.roots,
+      model.levels[0],
+      model.sort,
+    );
+  }
+
   const out: PretableVisibleRow<TRow>[] = [];
-  flatten(roots, 0, levels, aggregateColumns, args, out);
+  flatten(
+    model.orderedRoots,
+    0,
+    model,
+    groupExpansionOverrides,
+    defaultExpanded,
+    out,
+  );
   return out;
+}
+
+/** @internal */
+export function buildGroupedRows<TRow extends PretableRow>(
+  args: BuildGroupedRowsArgs<TRow>,
+): PretableVisibleRow<TRow>[] {
+  return flattenGroupModel(
+    buildGroupModel(args),
+    args.groupExpansionOverrides,
+    args.defaultExpanded,
+  );
 }
 
 function resolveLevels<TRow extends PretableRow>(
@@ -176,8 +266,10 @@ function buildTree<TRow extends PretableRow>(
           value,
           childCount: 0,
           children: isLeafLevel ? null : new Map(),
+          orderedChildren: null,
           rows: isLeafLevel ? [] : null,
           accumulators: new Map(),
+          finalizedAggregates: null,
         };
         siblings.set(key, node);
       }
@@ -231,16 +323,13 @@ function accumulate<TRow extends PretableRow>(
 }
 
 function flatten<TRow extends PretableRow>(
-  siblings: Map<string, GroupNode<TRow>>,
+  nodes: GroupNode<TRow>[],
   depth: number,
-  levels: PretableColumn<TRow>[],
-  aggregateColumns: AggregateColumn<TRow>[],
-  args: BuildGroupedRowsArgs<TRow>,
+  model: GroupedRowModel<TRow>,
+  groupExpansionOverrides: ReadonlySet<string>,
+  defaultExpanded: boolean,
   out: PretableVisibleRow<TRow>[],
 ): void {
-  const nodes = [...siblings.values()];
-  sortSiblings(nodes, levels[depth], args.sort);
-
   for (const node of nodes) {
     out.push({
       kind: "group",
@@ -249,13 +338,32 @@ function flatten<TRow extends PretableRow>(
       columnId: node.columnId,
       value: node.value,
       childCount: node.childCount,
-      aggregates: finalizeAggregates(node, aggregateColumns),
+      aggregates: finalizeAggregates(node, model.aggregateColumns),
     });
 
-    if (!isExpanded(node.id, args)) continue;
+    const expanded = groupExpansionOverrides.has(node.id)
+      ? !defaultExpanded
+      : defaultExpanded;
+
+    if (!expanded) continue;
 
     if (node.children) {
-      flatten(node.children, depth + 1, levels, aggregateColumns, args, out);
+      if (!node.orderedChildren) {
+        node.orderedChildren = orderSiblings(
+          node.children,
+          model.levels[depth + 1],
+          model.sort,
+        );
+      }
+
+      flatten(
+        node.orderedChildren,
+        depth + 1,
+        model,
+        groupExpansionOverrides,
+        defaultExpanded,
+        out,
+      );
       continue;
     }
 
@@ -275,6 +383,8 @@ function finalizeAggregates<TRow extends PretableRow>(
   node: GroupNode<TRow>,
   aggregateColumns: AggregateColumn<TRow>[],
 ): Record<string, unknown> {
+  if (node.finalizedAggregates) return node.finalizedAggregates;
+
   const aggregates: Record<string, unknown> = {};
 
   for (const { column, aggregator } of aggregateColumns) {
@@ -284,16 +394,8 @@ function finalizeAggregates<TRow extends PretableRow>(
     );
   }
 
+  node.finalizedAggregates = aggregates;
   return aggregates;
-}
-
-function isExpanded<TRow extends PretableRow>(
-  id: string,
-  args: BuildGroupedRowsArgs<TRow>,
-): boolean {
-  return args.groupExpansionOverrides.has(id)
-    ? !args.defaultExpanded
-    : args.defaultExpanded;
 }
 
 /**
@@ -301,6 +403,16 @@ function isExpanded<TRow extends PretableRow>(
  * sets the direction; otherwise groups ascend. Sorting groups by an *aggregate*
  * is deliberately deferred.
  */
+function orderSiblings<TRow extends PretableRow>(
+  siblings: Map<string, GroupNode<TRow>>,
+  column: PretableColumn<TRow> | undefined,
+  sort: readonly PretableSortEntry[],
+): GroupNode<TRow>[] {
+  const nodes = [...siblings.values()];
+  sortSiblings(nodes, column, sort);
+  return nodes;
+}
+
 function sortSiblings<TRow extends PretableRow>(
   nodes: GroupNode<TRow>[],
   column: PretableColumn<TRow> | undefined,
