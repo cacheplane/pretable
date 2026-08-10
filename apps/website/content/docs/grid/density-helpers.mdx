@@ -41,11 +41,11 @@ If neither argument nor CSS variable resolves to a `<number>px` value, the hook 
 | `--pretable-row-height`    | `32`     |
 | `--pretable-header-height` | `36`     |
 
-These fallbacks match `@pretable/ui`'s density snapshot contract and provide deterministic geometry when CSS cannot be read, including during server rendering and the browser hydration pass.
+These fallbacks match `@pretable/ui`'s density snapshot contract. React intentionally uses explicit prop overrides or these fallbacks for both server rendering and the initial browser hydration render, without consulting CSS even though it is readable in the browser. This keeps the initial geometry identical across both renders.
 
 ### SSR safety
 
-The hook is SSR-safe. During server rendering and the browser hydration pass, it uses explicit prop overrides or deterministic fallbacks so the geometry matches. Immediately after hydration, the client snapshot adopts CSS-resolved values. Later theme or density changes are observed through `MutationObserver`.
+The hook is SSR-safe. The server snapshot uses explicit prop overrides or deterministic fallbacks. The initial browser hydration snapshot uses the same values without consulting CSS. Immediately after hydration, the client snapshot reads and adopts CSS-resolved values. After that, a `MutationObserver` triggers resampling when `<html>`'s `data-density`, `data-theme`, `class`, or `style` attribute changes.
 
 ### Used internally
 
