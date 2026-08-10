@@ -34,6 +34,23 @@ describe("grid.css cascade contract", () => {
     expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
   });
 
+  test("pinned body cells and group rows have their own surface tokens", () => {
+    // They used to borrow --pretable-bg-header, which meant a theme could not
+    // restyle a frozen data column without also restyling the header strip.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const pinnedBody = css.match(
+      /:where\(\[data-pretable-cell\]\[data-pretable-pinned="left"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(pinnedBody, "no left-pinned body rule").toBeDefined();
+    expect(pinnedBody).toMatch(/background:\s*var\(--pretable-bg-pinned\)/);
+
+    const groupRow = css.match(
+      /:where\(\[data-pretable-group-row\] \[data-pretable-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(groupRow, "no group-row rule").toBeDefined();
+    expect(groupRow).toMatch(/background:\s*var\(--pretable-bg-group-row\)/);
+  });
+
   test("header cells reset the button border before drawing the tokenized divider", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const rule = css.match(

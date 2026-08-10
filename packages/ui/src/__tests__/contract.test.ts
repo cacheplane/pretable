@@ -6,6 +6,8 @@ const TOKENS = [
   "pretable-bg-grid",
   "pretable-bg-grid-alt",
   "pretable-bg-header",
+  "pretable-bg-pinned",
+  "pretable-bg-group-row",
   "pretable-bg-toolbar",
   "pretable-bg-tooltip",
   "pretable-text-cell",

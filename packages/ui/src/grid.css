@@ -125,10 +125,11 @@
 
   /* ---- Row grouping ---------------------------------------------------- */
 
-  /* Group headers borrow the header fill so the eye reads them as structure
-     rather than as another record. */
+  /* Group headers take a structural fill so the eye reads them as structure
+     rather than as another record. Its own token, not the header's: a theme
+     must be able to restyle group rows without restyling the header strip. */
   :where([data-pretable-group-row] [data-pretable-cell]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-group-row);
     color: var(--pretable-text-header);
     font-weight: 600;
   }
@@ -199,15 +200,16 @@
     background: var(--pretable-bg-hover);
   }
 
-  /* Pinned cells (sticky left) — reuse header background */
+  /* Pinned cells (sticky left) — an opaque fill so scrolled columns pass
+     underneath, on their own token rather than the header's. */
   :where([data-pretable-cell][data-pretable-pinned="left"]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-pinned);
     z-index: 1;
   }
 
   /* Pinned cells (sticky right) — mirror of the left rule */
   :where([data-pretable-cell][data-pretable-pinned="right"]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-pinned);
     z-index: 1;
   }
 
