@@ -1076,10 +1076,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const isGrouped = snapshot.rowGroups.length > 0;
   const dataHonestyInput = {
     visibleRowCount: snapshot.visibleRows.length,
-    rowGroupCount: snapshot.rowGroups.length,
+    isGrouped,
     loadedRowCount: snapshot.loadedRowCount,
     matchingTotal: snapshot.matchingTotal,
   };
+  // `resultMeta` reaches the engine in a layout effect, so the first committed
+  // render under external filter authority has no total yet and publishes `-1`.
+  // That is the honest answer, not a flash to repair: reading the total from
+  // props here would pair a prop-supplied count with a snapshot the engine has
+  // not rebuilt for that authority yet.
   const ariaRowCount = resolveAriaRowCount(dataHonestyInput, processing);
   warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,

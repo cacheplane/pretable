@@ -8,7 +8,7 @@ import { warnOnce } from "./dev-warn";
 /** The snapshot fields these rules read. Structural so tests can pass literals. */
 export interface DataHonestyInput {
   visibleRowCount: number;
-  rowGroupCount: number;
+  isGrouped: boolean;
   loadedRowCount: number;
   matchingTotal: PretableMatchingTotal;
 }
@@ -36,7 +36,7 @@ export function resolveAriaRowCount(
 
   // Grouping synthesizes header rows and hides the children of collapsed
   // branches: the contiguous mapping is gone.
-  if (input.rowGroupCount > 0) {
+  if (input.isGrouped) {
     return loadedModelCount;
   }
 
@@ -48,9 +48,11 @@ export function resolveAriaRowCount(
     return -1;
   }
 
-  // A detected violation of the contiguous-from-head contract: more records
-  // loaded than the population claims. Downgrade rather than lie.
-  if (total.count < input.loadedRowCount) {
+  // Detected violations of the contiguous-from-head contract: a count the
+  // attribute cannot express (`aria-rowcount` is an integer, and core copies
+  // the supplied `count` verbatim), or more records loaded than the population
+  // claims. Downgrade rather than lie.
+  if (!Number.isInteger(total.count) || total.count < input.loadedRowCount) {
     return loadedModelCount;
   }
 
@@ -62,6 +64,11 @@ export function resolveAriaRowCount(
  * window onto it (`"loaded"`). Every user-facing count label routes through
  * this, so a 200-of-10,432 window can never be described as "all rows". Local
  * mode is always `"all"`.
+ *
+ * A total that undercounts the loaded records reads as `"all"` here while
+ * `resolveAriaRowCount` downgrades for it. Calling a set that already holds
+ * every record the server claims exist "all" overstates nothing; publishing
+ * that same count as the population would.
  */
 export function resolveDataScope(
   input: Pick<DataHonestyInput, "loadedRowCount" | "matchingTotal">,

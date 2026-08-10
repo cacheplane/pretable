@@ -106,11 +106,28 @@ describe("aria-rowcount honesty rules", () => {
   });
 
   it("never sets aria-busy, in any configuration", () => {
-    renderSurface({
-      processing: EXTERNAL,
-      total: { kind: "exact", count: 5432 },
-    });
-    expect(screen.getByRole("grid")).not.toHaveAttribute("aria-busy");
+    const configurations: Parameters<typeof renderSurface>[0][] = [
+      {},
+      { processing: EXTERNAL, total: { kind: "exact", count: 5432 } },
+      { processing: EXTERNAL, total: { kind: "estimate", count: 5000 } },
+      { processing: EXTERNAL, total: { kind: "unknown" } },
+      {
+        processing: { filter: "external", sort: "engine" },
+        total: { kind: "exact", count: 5432 },
+      },
+      {
+        processing: EXTERNAL,
+        total: { kind: "exact", count: 5432 },
+        rowGroups: ["team"],
+      },
+    ];
+    for (const configuration of configurations) {
+      renderSurface(configuration);
+      expect(
+        screen.getByRole(configuration.rowGroups ? "treegrid" : "grid"),
+      ).not.toHaveAttribute("aria-busy");
+      cleanup();
+    }
   });
 
   it("forwards ariaDescribedBy to the grid element", () => {
