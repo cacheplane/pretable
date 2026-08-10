@@ -372,7 +372,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
 - [ ] **Step 5: Commit.**
 
-  `git add packages/row-model/src/persistent/aggregate-tree.ts packages/row-model/src/__tests__/aggregate-tree.test.ts packages/row-model/src/index.ts && git commit -m "feat(row-model): add mergeable aggregate rollups"`
+  `git add packages/row-model/src/persistent/aggregate-tree.ts packages/row-model/src/aggregator-law.ts packages/row-model/src/__tests__/aggregate-tree.test.ts packages/row-model/src/__tests__/aggregator-law.test.ts packages/row-model/src/index.ts && git commit -m "feat(row-model): add mergeable aggregate rollups"`
 
 ## Task 6: Freeze the legacy differential oracle and compile queries
 
@@ -738,6 +738,11 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
   10,000 discarded revisions, repeated transition cancellation, and dictionary
   eviction, assert one live current root (plus explicitly retained snapshots),
   bounded journal/cache counts, and zero cancelled candidates/delta journals.
+  Export an internal-only `createInstrumentedLocalRowModel` from
+  `diagnostics.ts` that returns `{ model, diagnostics }`; normal public factory
+  calls install no counters. The diagnostics handle can read counters and
+  scheduler slice durations and can exercise real transitions/dictionaries
+  only through the model's ordinary commands. Core must not re-export it.
 
 - [ ] **Step 4: Run the complete engine proof.**
 
@@ -749,7 +754,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
 - [ ] **Step 5: Commit.**
 
-  `git add packages/grid-core/package.json packages/grid-core/src/__tests__/row-model packages/row-model/src/diagnostics.ts packages/row-model/src/__tests__/work.test.ts pnpm-lock.yaml && git commit -m "test(row-model): prove semantics and bounded work"`
+  `git add packages/grid-core/package.json packages/grid-core/src/__tests__/row-model packages/row-model/src/diagnostics.ts packages/row-model/src/__tests__/work.test.ts packages/row-model/src/__tests__/retention.test.ts pnpm-lock.yaml && git commit -m "test(row-model): prove semantics and bounded work"`
 
 ## Task 14: Promote the typed public core API
 
@@ -1100,7 +1105,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
   Run:
 
-  `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/indexed-rendering.test.tsx src/__tests__/focus-scroll.test.tsx src/__tests__/group-row-render.test.tsx src/__tests__/copy.test.ts src/__tests__/paste-map.test.ts && pnpm --filter @pretable/stream-adapter test`
+  `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/indexed-rendering.test.tsx src/__tests__/row-change.test.ts src/__tests__/focus-scroll.test.tsx src/__tests__/group-row-render.test.tsx src/__tests__/copy.test.ts src/__tests__/paste-map.test.ts && pnpm --filter @pretable/stream-adapter test`
 
 - [ ] **Step 3: Replace every production `visibleRows` consumer.**
 
@@ -1145,9 +1150,11 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
   Run:
 
-  `rg -n "visibleRows|distinctColumnValues|grid\.applyTransaction|grid\.setRows|grid\.setRowGroups" packages/core/src packages/grid-core/src packages/renderer-dom/src packages/react/src`
+  `rg -n "visibleRows|distinctColumnValues|grid\.applyTransaction|grid\.setRows|grid\.setRowGroups" packages/react/src packages/renderer-dom/src packages/grid-core/src/create-grid-ui-core.ts packages/grid-core/src/indexed-selection.ts packages/grid-core/src/indexed-focus.ts`
 
-  Expected: only temporary oracle/test fixtures or deliberate migration comments.
+  Expected: no occurrence in the migrated production paths. The legacy
+  headless engine is intentionally outside this interim sweep and is deleted in
+  Task 23.
 
 - [ ] **Step 8: Commit.**
 
@@ -1159,6 +1166,8 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
 - Create: `apps/bench/src/update-plan.ts`
 - Create: `apps/bench/src/__tests__/update-plan.test.ts`
+- Create: `apps/bench/src/row-model-diagnostics.ts`
+- Create: `apps/bench/src/__tests__/row-model-diagnostics.test.ts`
 - Create: `scripts/bench-row-model-gate.mjs`
 - Create: `scripts/__tests__/bench-row-model-gate.test.mjs`
 - Modify: `packages/scenario-data/src/index.ts`
@@ -1169,6 +1178,8 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 - Modify: `apps/bench/src/bench-runtime.ts`
 - Modify: `apps/bench/src/pretable-adapter.tsx`
 - Modify: `apps/bench/src/__tests__/pretable-adapter.test.tsx`
+- Modify: `apps/bench/package.json`
+- Modify: `pnpm-lock.yaml`
 - Modify: `apps/bench/tests/bench.spec.ts`
 - Modify: `scripts/bench-matrix.mjs`
 - Modify: `scripts/__tests__/bench-matrix.test.mjs`
@@ -1180,12 +1191,15 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
   seed creates the same row-ID/column schedule for flat and grouped runs,
   `col_1` changes are unique group keys, `col_3` changes are numeric, exactly
   50 patches arrive every 50 ms at 1,000/sec, and grouped mode explicitly uses
-  expanded initial state plus `col_3` sum.
+  expanded initial state plus `col_3` sum. Define a deterministic grouped
+  rebuild phase that reverses a secondary sort while streaming continues; it
+  must preserve row/group counts while exercising candidate catch-up.
 
 - [ ] **Step 2: Write RED gate-script tests.**
 
   Feed fixture summaries for flat/grouped × target/local-max. Reject missing,
-  mismatched, incomplete, or stale summaries. For both grouped summaries
+  mismatched, incomplete, or stale summaries. Every summary must enforce
+  `row_model_commit_p95_ms <= 8`. For both grouped summaries additionally
   enforce:
 
   ```text
@@ -1193,7 +1207,14 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
   long_tasks_count === 0
   scroll_position_drift_px === 0
   visible_row_count_drift === 0
+  rebuild_slice_max_ms <= 8
+  rebuild_stream_commit_count >= 5
+  rebuild_completed === true
   ```
+
+  Reject a grouped result that did not observe model revisions and scroll/input
+  samples while status was `rebuilding`, or whose final deterministic checksum
+  omits any patches accepted during catch-up.
 
 - [ ] **Step 3: Run RED.**
 
@@ -1205,7 +1226,22 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
   `bench:row-model:gate` runs four Playwright jobs serially, passes one seed,
   validates comparable metadata, preserves summaries/traces, and writes a
-  concise milestone report. Raw artifacts remain ignored by repository policy.
+  concise milestone report. Time each synchronous `applyTransaction` boundary
+  in the adapter, and instrument the cooperative scheduler's slice duration in
+  diagnostics builds. During both grouped jobs, start the deterministic query
+  rebuild while the 1,000/sec producer and scrolling/input sampling continue;
+  record commits observed during rebuild, candidate completion, and the final
+  row checksum. Raw artifacts remain ignored by repository policy.
+
+  `row-model-diagnostics.ts` installs a bench-only controller only when the
+  explicit diagnostics query flag is present. It exposes typed methods to read
+  internal retention/work counters, apply the next seeded transaction, start
+  and cancel query candidates, start and cancel distinct dictionaries, and
+  churn journal/cache limits. The Pretable bench adapter directly depends on
+  the internal row-model package and constructs its explicit model through
+  `createInstrumentedLocalRowModel`; React and the stream adapter receive that
+  same structural model instance. The controller never ships through a public
+  package export, and the adapter removes it on unmount.
 
 - [ ] **Step 5: Run harness GREEN without claiming performance yet.**
 
@@ -1215,7 +1251,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
 - [ ] **Step 6: Commit.**
 
-  `git add apps/bench packages/scenario-data scripts package.json && git commit -m "test(bench): add deterministic row-model gate"`
+  `git add apps/bench packages/scenario-data scripts package.json pnpm-lock.yaml && git commit -m "test(bench): add deterministic row-model gate"`
 
 ## Task 22: Pass the hard browser performance gate
 
@@ -1225,6 +1261,8 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 - Create: `status/milestones/2026-08-09-incremental-row-model-gate.json`
 - Create: `scripts/bench-row-model-memory.mjs`
 - Create: `scripts/__tests__/bench-row-model-memory.test.mjs`
+- Modify: `apps/bench/src/row-model-diagnostics.ts` only if trace-driven memory
+  observability requires a smaller controller method
 - Modify: only the smallest engine/layout/render files demonstrated by traces
   and deterministic counters if the first run fails
 
@@ -1239,7 +1277,9 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
   Run: `pnpm bench:row-model:gate -- --project=chromium`
 
   Expected: flat and grouped summaries at 20,000 and 100,000 rows. Both grouped
-  runs pass the four hard assertions. Flat runs are recorded as controls.
+  runs pass the four visual assertions plus the commit-latency, bounded-slice,
+  live-stream catch-up, and completion assertions. Flat runs are recorded as
+  controls and must pass the commit-latency assertion.
 
 - [ ] **Step 3: If any gate fails, stop downstream work and diagnose.**
 
@@ -1259,14 +1299,20 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 - [ ] **Step 5: Run the dedicated retention/memory proof.**
 
   First rerun `packages/row-model/src/__tests__/retention.test.ts` to prove
-  exact internal ownership counts. Then run the production browser under CDP:
+  exact internal ownership counts and run the memory sample parser test:
+
+  `pnpm --filter @pretable-internal/row-model exec vitest run src/__tests__/retention.test.ts && node --test scripts/__tests__/bench-row-model-memory.test.mjs`
+
+  Then run the production browser under CDP with the explicit diagnostics flag:
 
   `node --expose-gc scripts/bench-row-model-memory.mjs`
 
   The script loads grouped `local-max`, warms through 2,000 unpublished old
-  revisions, forces `HeapProfiler.collectGarbage`, and records five further
-  2,000-revision windows. Every window also starts/cancels query candidates,
-  cancels distinct-value builds, and churns past both journal/cache limits.
+  revisions through the bench-only controller, forces
+  `HeapProfiler.collectGarbage`, and records five further 2,000-revision
+  windows. Every window uses that controller to start/cancel real query
+  candidates, cancel real distinct-value builds, and churn past both
+  journal/cache limits before reading the model's internal counters.
   With no captured historical snapshots, assert zero retained candidates/delta
   journals, configured journal/dictionary bounds, final heap growth no greater
   than 16 MiB over the post-warmup baseline, and least-squares retained slope no
@@ -1277,7 +1323,8 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 - [ ] **Step 6: Record the evidence.**
 
   The research note contains commit, machine/browser metadata, seed, commands,
-  artifact paths, all four metric tables, engine work/retention counters, heap
+  artifact paths, all performance metric tables, engine work/retention
+  counters, heap
   samples/slope, and PASS/FAIL. The exact milestone JSON summarizes the four
   browser artifacts and memory gate. Commit no ignored raw traces.
 
@@ -1294,6 +1341,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
   - `packages/grid-core/src/derived-rows.ts`
   - `packages/grid-core/src/group-rows.ts`
   - `packages/grid-core/src/group-expansion.ts`
+  - `packages/grid-core/src/derived-selection.ts`
   - `packages/grid-core/src/__tests__/row-model/oracle.ts`
   - `packages/grid-core/src/__tests__/row-model/arbitraries.ts`
   - `packages/grid-core/src/__tests__/row-model/differential.test.ts`
@@ -1385,7 +1433,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
   Run: `pnpm bench:row-model:gate -- --project=chromium`
 
-  Expected: both grouped scales still pass all four assertions.
+  Expected: both grouped scales still pass the complete performance contract.
 
 - [ ] **Step 8: Run final repository and packaging gates.**
 
@@ -1399,7 +1447,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
   Run:
 
-  `rg -n "visibleRows|distinctColumnValues|grid\.applyTransaction|grid\.setRows|GridLike<|groupsDefaultExpanded|one transaction path" packages apps/website/content apps/website/app`
+  `rg -n "visibleRows|distinctColumnValues|grid\.applyTransaction|grid\.setRows|GridLike<|groupsDefaultExpanded|one transaction path" packages apps/website/content apps/website/app --glob '!**/CHANGELOG.md'`
 
   Expected: no production/API/docs occurrences; historical research and old
   design documents are intentionally outside this sweep.
