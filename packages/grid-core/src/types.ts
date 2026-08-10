@@ -117,6 +117,11 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   step?: number;
   filterable?: boolean;
   type?: ColumnType;
+  /**
+   * Horizontal alignment of this column's cells and header label. Defaults to
+   * `"end"` for `type: "number"` and to the writing direction otherwise.
+   */
+  align?: "start" | "center" | "end";
   options?: ColumnOption[];
   value?: (row: TRow) => unknown;
   format?: (input: PretableFormatInput<TRow>) => string;

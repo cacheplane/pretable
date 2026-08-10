@@ -6,6 +6,7 @@ import {
 } from "@pretable/core";
 import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 
+import { resolveColumnAlign } from "./column-align";
 import { groupLabel } from "./group-model";
 import { formatAggregateValue } from "./rendering";
 import { getPositionedCellStyle, getRowStyle } from "./styles";
@@ -112,6 +113,10 @@ export function GroupRow<TRow extends PretableRow>({
             data-pretable-focused={cellIsFocused ? "true" : "false"}
             data-pretable-group-cell={isGroupCell ? "" : undefined}
             data-pretable-pinned={plannedCol.pinned}
+            data-pretable-type={column?.type}
+            data-pretable-align={
+              column ? resolveColumnAlign(column) : undefined
+            }
             key={plannedCol.id}
             onClick={(event) => onCellClick(plannedCol.id, event)}
             onDoubleClick={(event) => {

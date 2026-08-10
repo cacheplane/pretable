@@ -91,6 +91,7 @@ export interface PretableCellRange {
 // @public
 export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     aggregate?: PretableAggregateSpec;
+    align?: "start" | "center" | "end";
     // (undocumented)
     editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
     // (undocumented)
