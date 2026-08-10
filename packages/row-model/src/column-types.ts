@@ -1,8 +1,6 @@
 /** Expand mapped/intersection types into readable editor hovers. */
 export type Prettify<T> = { [K in keyof T]: T[K] } & {};
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- existential custom aggregate state */
-
 export type PretableRowId = string | number;
 
 export type PretableColumnType =
@@ -14,10 +12,14 @@ export interface PretableAggregator<
   TAccumulator = unknown,
   TOutput = unknown,
 > {
-  init(): TAccumulator;
-  accumulate(accumulator: TAccumulator, value: TValue, row: TRow): TAccumulator;
-  merge(left: TAccumulator, right: TAccumulator): TAccumulator;
-  finalize(accumulator: TAccumulator): TOutput;
+  readonly init: () => TAccumulator;
+  readonly accumulate: (
+    accumulator: TAccumulator,
+    value: TValue,
+    row: TRow,
+  ) => TAccumulator;
+  readonly merge: (left: TAccumulator, right: TAccumulator) => TAccumulator;
+  readonly finalize: (accumulator: TAccumulator) => TOutput;
 }
 
 export type PretableBuiltinAggregate<TValue> =
@@ -27,7 +29,8 @@ export type PretableBuiltinAggregate<TValue> =
       : never);
 
 export type PretableAggregateSpec<TRow extends object, TValue> =
-  PretableBuiltinAggregate<TValue> | PretableAggregator<TRow, TValue, any, any>;
+  | PretableBuiltinAggregate<TValue>
+  | PretableCompatibleAggregator<TRow, TValue, unknown>;
 
 declare const columnDescriptor: unique symbol;
 
@@ -57,7 +60,9 @@ export interface PretableAggregateFormatInput<TValue, TColumn> {
 }
 
 export type AggregateOutputOfSpec<TAggregate> = TAggregate extends {
-  finalize(accumulator: never): infer TOutput;
+  readonly finalize: (
+    accumulator: PretableAggregateAccumulator,
+  ) => infer TOutput;
 }
   ? TOutput
   : TAggregate extends "sum" | "avg" | "min" | "max" | "count"
@@ -113,8 +118,23 @@ type CompatibleColumnType<TValue> =
           ? "text" | "enum" | "date"
           : PretableColumnType;
 
+export interface PretableColumnCallbackContext<
+  TRow extends object,
+  TId extends string,
+  TValue,
+  TType extends PretableColumnType,
+  TAggregate,
+> {
+  readonly id: TId;
+  readonly type: TType;
+  readonly accessor: (row: TRow) => TValue;
+  readonly value: (row: TRow) => TValue;
+  readonly aggregate?: TAggregate;
+}
+
 export type PretableColumnOptions<
   TRow extends object,
+  TId extends string,
   TValue,
   TType extends CompatibleColumnType<TValue>,
   TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined,
@@ -126,13 +146,60 @@ export type PretableColumnOptions<
   readonly format?: (input: {
     readonly value: TValue;
     readonly row: TRow;
+    readonly column: PretableColumnCallbackContext<
+      TRow,
+      TId,
+      TValue,
+      TType,
+      TAggregate
+    >;
   }) => string;
   readonly formatAggregate?: (input: {
     readonly value: AggregateOutputOfSpec<TAggregate>;
+    readonly column: PretableColumnCallbackContext<
+      TRow,
+      TId,
+      TValue,
+      TType,
+      TAggregate
+    >;
   }) => string;
 };
 
+type AccessorValue<TRow extends object, TAccessor> = TAccessor extends (
+  row: TRow,
+) => infer TValue
+  ? TValue
+  : never;
+
 export interface PretableColumnHelper<TRow extends object> {
+  accessor<
+    const TId extends string,
+    const TAccessor,
+    const TType extends CompatibleColumnType<
+      NoInfer<AccessorValue<TRow, TAccessor>>
+    >,
+    const TAggregate extends
+      | PretableAggregateSpec<TRow, NoInfer<AccessorValue<TRow, TAccessor>>>
+      | undefined = undefined,
+  >(
+    id: TId,
+    accessor: TAccessor & ((row: TRow) => unknown),
+    options: PretableColumnOptions<
+      TRow,
+      TId,
+      NoInfer<AccessorValue<TRow, TAccessor>>,
+      TType,
+      TAggregate
+    >,
+  ): PretableColumnDefinition<
+    TRow,
+    TId,
+    AccessorValue<TRow, TAccessor>,
+    TType,
+    TAggregate
+  >;
+
   accessor<
     const TKey extends Extract<keyof TRow, string>,
     const TType extends CompatibleColumnType<TRow[TKey]>,
@@ -140,20 +207,8 @@ export interface PretableColumnHelper<TRow extends object> {
       PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined,
   >(
     key: TKey,
-    options: PretableColumnOptions<TRow, TRow[TKey], TType, TAggregate>,
+    options: PretableColumnOptions<TRow, TKey, TRow[TKey], TType, TAggregate>,
   ): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate>;
-
-  accessor<
-    const TId extends string,
-    TValue,
-    const TType extends CompatibleColumnType<TValue>,
-    const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
-      undefined,
-  >(
-    id: TId,
-    accessor: (row: TRow) => TValue,
-    options: PretableColumnOptions<TRow, TValue, TType, TAggregate>,
-  ): PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>;
 }
 
 export function createColumnHelper<
@@ -164,9 +219,16 @@ export function createColumnHelper<
       id: string,
       accessorOrOptions:
         | ((row: TRow) => unknown)
-        | PretableColumnOptions<TRow, unknown, PretableColumnType, undefined>,
+        | PretableColumnOptions<
+            TRow,
+            string,
+            unknown,
+            PretableColumnType,
+            undefined
+          >,
       maybeOptions?: PretableColumnOptions<
         TRow,
+        string,
         unknown,
         PretableColumnType,
         undefined
@@ -206,10 +268,12 @@ type DescriptorOf<TColumn> =
     ? PretableColumnDescriptor<TRow, TId, TValue, TType, TAggregate>
     : never;
 
-export type ColumnIdOf<TColumns> = DescriptorOf<ColumnUnion<TColumns>>["id"];
+export type ColumnDescriptorOf<TColumns> = DescriptorOf<ColumnUnion<TColumns>>;
+
+export type ColumnIdOf<TColumns> = ColumnDescriptorOf<TColumns>["id"];
 
 export type ColumnValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> =
-  DescriptorOf<ColumnUnion<TColumns>> extends infer TDescriptor
+  ColumnDescriptorOf<TColumns> extends infer TDescriptor
     ? TDescriptor extends {
         readonly id: TColumnId;
         readonly value: infer TValue;
@@ -222,7 +286,7 @@ export type ColumnAggregateValueOf<
   TColumns,
   TColumnId extends ColumnIdOf<TColumns>,
 > =
-  DescriptorOf<ColumnUnion<TColumns>> extends infer TDescriptor
+  ColumnDescriptorOf<TColumns> extends infer TDescriptor
     ? TDescriptor extends {
         readonly id: TColumnId;
         readonly aggregate: infer TAggregate;
@@ -232,7 +296,7 @@ export type ColumnAggregateValueOf<
     : never;
 
 type AggregateDescriptorOf<TColumns> =
-  DescriptorOf<ColumnUnion<TColumns>> extends infer TDescriptor
+  ColumnDescriptorOf<TColumns> extends infer TDescriptor
     ? TDescriptor extends {
         readonly id: string;
         readonly aggregate: infer TAggregate;
@@ -302,11 +366,11 @@ type FilterForDescriptor<TDescriptor> =
     : never;
 
 export type PretableFilterFor<TColumns> = FilterForDescriptor<
-  DescriptorOf<ColumnUnion<TColumns>>
+  ColumnDescriptorOf<TColumns>
 >;
 
 type ColumnReferenceFor<TColumns> =
-  DescriptorOf<ColumnUnion<TColumns>> extends infer TDescriptor
+  ColumnDescriptorOf<TColumns> extends infer TDescriptor
     ? TDescriptor extends { readonly id: infer TId extends string }
       ? { readonly columnId: TId }
       : never
@@ -355,19 +419,17 @@ type CompatibleBuiltinAggregate<TValue, TOutput> =
     : never;
 
 /**
- * Structural existential for a custom accumulator. Row/value/output remain
- * correlated while the private accumulator representation may vary.
+ * The only deliberate type escape in the column contract. A compatible
+ * replacement may choose any private accumulator representation; row input,
+ * cell value, and finalized output remain strictly typed.
  */
-export interface PretableCompatibleAggregator<
+type PretableAggregateAccumulator = any; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+export type PretableCompatibleAggregator<
   TRow extends object,
   TValue,
   TOutput,
-> {
-  init(): unknown;
-  accumulate(accumulator: never, value: TValue, row: TRow): unknown;
-  merge(left: never, right: never): unknown;
-  finalize(accumulator: never): TOutput;
-}
+> = PretableAggregator<TRow, TValue, PretableAggregateAccumulator, TOutput>;
 
 export type PretableCompatibleAggregateSpec<
   TRow extends object,

@@ -7,6 +7,7 @@ import {
   type PretableAggregator,
   type PretableChangeOperation,
   type PretableChangeSequence,
+  type PretableColumnDefinition,
   type PretableDerivationTransition,
   type PretableDerivationsFor,
   type PretableExpansionDefault,
@@ -42,13 +43,40 @@ interface Holding {
 
 const column = createColumnHelper<Holding>();
 const columns = [
-  column.accessor("sector", { type: "text" }),
+  column.accessor("sector", {
+    type: "text",
+    format: ({ value, row, column }) => {
+      const id: "sector" = column.id;
+      return `${id}:${row.id}:${value.toUpperCase()}`;
+    },
+  }),
   column.accessor("quantity", {
     type: "number",
     aggregate: "sum",
-    formatAggregate: ({ value }) => value?.toLocaleString() ?? "",
+    formatAggregate: ({ value, column }) => {
+      const id: "quantity" = column.id;
+      return `${id}:${value?.toLocaleString() ?? ""}`;
+    },
   }),
 ] as const;
+
+const computedColumn = column.accessor(
+  "marketValue",
+  (row) => row.quantity * 10,
+  {
+    type: "number",
+    aggregate: "sum",
+    format: ({ value, row, column }) => {
+      const id: "marketValue" = column.id;
+      return `${id}:${row.sector}:${value.toFixed(2)}`;
+    },
+    formatAggregate: ({ value, column }) => {
+      const id: "marketValue" = column.id;
+      return `${id}:${value?.toFixed(2) ?? ""}`;
+    },
+  },
+);
+void computedColumn;
 
 const totalLabel: PretableAggregator<
   Holding,
@@ -87,6 +115,37 @@ const compatibleAverage: PretableAggregator<
   }),
   finalize: ({ sum, count }) => (count === 0 ? null : sum / count),
 };
+interface NarrowHolding extends Holding {
+  extra: string;
+}
+const narrowerRowAggregate: PretableAggregator<
+  NarrowHolding,
+  number,
+  number,
+  number
+> = {
+  init: () => 0,
+  accumulate: (accumulator, value, row) =>
+    accumulator + value + row.extra.length,
+  merge: (left, right) => left + right,
+  finalize: (accumulator) => accumulator,
+};
+const narrowerValueAggregate: PretableAggregator<Holding, 1, number, number> = {
+  init: () => 0,
+  accumulate: (accumulator, value) => accumulator + value,
+  merge: (left, right) => left + right,
+  finalize: (accumulator) => accumulator,
+};
+column.accessor("quantity", {
+  type: "number",
+  // @ts-expect-error aggregate rows cannot require a narrower row shape
+  aggregate: narrowerRowAggregate,
+});
+column.accessor("quantity", {
+  type: "number",
+  // @ts-expect-error aggregate values cannot require a narrower literal
+  aggregate: narrowerValueAggregate,
+});
 const incompatibleTextAggregate: PretableAggregator<
   Holding,
   string,
@@ -138,9 +197,12 @@ const badAggregateCapability: PretableDerivationsFor<typeof columns> = [
   columns[1],
 ];
 
-const changedValueColumn = column.accessor("quantity", (row) => row.sector, {
-  type: "text",
-});
+const changedValueColumn = null as unknown as PretableColumnDefinition<
+  Holding,
+  "quantity",
+  string,
+  "text"
+>;
 const badValueDerivations: PretableDerivationsFor<typeof columns> = [
   columns[0],
   // @ts-expect-error derivation accessors retain the schema's value type
@@ -179,6 +241,21 @@ void badValueDerivations;
 void badKindDerivations;
 void badOutputDerivations;
 
+function exerciseCompatibleAggregate(
+  derivation: PretableDerivationsFor<typeof columns>[1],
+  row: Holding,
+) {
+  const aggregate = derivation.aggregate;
+  if (typeof aggregate !== "object") return;
+
+  const initial = aggregate.init();
+  const accumulated = aggregate.accumulate(initial, row.quantity, row);
+  const merged = aggregate.merge(initial, accumulated);
+  const output: number | null = aggregate.finalize(merged);
+  return output;
+}
+void exerciseCompatibleAggregate;
+
 const typedGroupAggregates: PretableGroupRow<typeof columns>["aggregates"] = {
   quantity: 42,
 };
@@ -210,6 +287,31 @@ const typedCustomGroupAggregates: PretableGroupRow<
 >["aggregates"] = { quantityLabel: "42" };
 void typedCustomGroupAggregates;
 
+function narrowGroupRow(row: PretableGroupRow<typeof columns>) {
+  const aggregate: number | null = row.aggregates.quantity;
+  if (row.columnId === "sector") {
+    const value: string = row.value;
+    return `${value}:${aggregate ?? ""}`;
+  }
+  const columnId: "quantity" = row.columnId;
+  const value: number = row.value;
+  return `${columnId}:${value}:${aggregate ?? ""}`;
+}
+void narrowGroupRow;
+
+// @ts-expect-error a quantity group cannot carry a string group value
+const impossibleGroupRow: PretableGroupRow<typeof columns> = {
+  kind: "group",
+  groupId: "group:quantity:wrong" as PretableGroupId,
+  depth: 0,
+  columnId: "quantity",
+  value: "wrong",
+  childCount: 1,
+  aggregates: { quantity: 1 },
+  expanded: true,
+};
+void impossibleGroupRow;
+
 type Ids = ColumnIdOf<typeof columns>;
 type _ids = Expect<Equal<Ids, "sector" | "quantity">>;
 
@@ -219,13 +321,20 @@ const query = {
   rowGroups: [{ columnId: "sector", direction: "asc" }],
 } as const satisfies PretableQueryFor<typeof columns>;
 
-const badQuery: PretableQueryFor<typeof columns> = {
+const badOperatorQuery: PretableQueryFor<typeof columns> = {
   // @ts-expect-error number filters cannot use text-only contains
-  filters: [{ columnId: "quantity", operator: "contains", value: "4" }],
+  filters: [{ columnId: "quantity", operator: "contains", value: 4 }],
   sort: [],
   rowGroups: [],
 };
-void badQuery;
+const badValueQuery: PretableQueryFor<typeof columns> = {
+  // @ts-expect-error numeric comparison operators require numeric values
+  filters: [{ columnId: "quantity", operator: "gte", value: "4" }],
+  sort: [],
+  rowGroups: [],
+};
+void badOperatorQuery;
+void badValueQuery;
 
 declare const model: PretableRowModel<Holding, number, typeof columns>;
 type _row = Expect<Equal<RowOf<typeof model>, Holding>>;
@@ -328,6 +437,10 @@ function assertOperationalSignatures(
   state: PretableRowModelState<Holding, number, typeof columns>,
 ) {
   const _columns: typeof columns = rowModel.getColumns();
+  // Derivation replacement changes engine behavior, but presentation fallback
+  // remains the exact original tuple returned by getColumns().
+  rowModel.setDerivations(freshAvgDerivations);
+  const _originalColumnsAfterDerivation: typeof columns = rowModel.getColumns();
   const _currentState: typeof state = rowModel.getState();
   const _mutation: PretableMutationResult<number> =
     rowModel.applyTransaction(transaction);
@@ -388,6 +501,7 @@ function assertOperationalSignatures(
 
   void derivations;
   void _columns;
+  void _originalColumnsAfterDerivation;
   void _currentState;
   void _mutation;
   void _distinctFinished;

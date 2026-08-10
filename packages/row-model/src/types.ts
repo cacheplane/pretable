@@ -1,4 +1,5 @@
 import type {
+  ColumnDescriptorOf,
   ColumnIdOf,
   ColumnValueOf,
   PretableAggregatesFor,
@@ -30,21 +31,31 @@ export interface PretableDataRow<
   readonly depth: number;
 }
 
-export interface PretableGroupRow<TColumns = readonly []> {
-  readonly kind: "group";
-  readonly groupId: PretableGroupId;
-  readonly depth: number;
-  readonly columnId: string;
-  readonly value: unknown;
-  readonly childCount: number;
-  readonly aggregates: PretableAggregatesFor<TColumns>;
-  readonly expanded: boolean;
+type PretableGroupRowFor<TDescriptor, TColumns> = TDescriptor extends {
+  readonly id: infer TColumnId extends string;
+  readonly value: infer TValue;
 }
+  ? {
+      readonly kind: "group";
+      readonly groupId: PretableGroupId;
+      readonly depth: number;
+      readonly columnId: TColumnId;
+      readonly value: TValue;
+      readonly childCount: number;
+      readonly aggregates: PretableAggregatesFor<TColumns>;
+      readonly expanded: boolean;
+    }
+  : never;
+
+export type PretableGroupRow<TColumns> = PretableGroupRowFor<
+  ColumnDescriptorOf<TColumns>,
+  TColumns
+>;
 
 export type PretableVisibleRow<
   TRow extends object,
   TRowId extends PretableRowId,
-  TColumns = readonly [],
+  TColumns,
 > = PretableDataRow<TRow, TRowId> | PretableGroupRow<TColumns>;
 
 export type PretableExpansionDefault =
@@ -68,23 +79,47 @@ export interface PretableRowModelSnapshot<
   readonly visibleDataRowCount: number;
 
   rowAt(index: number): PretableVisibleRow<TRow, TRowId, TColumns> | undefined;
+  /**
+   * Returns the half-open visible-row interval `[start, end)`. Both bounds are
+   * clamped to `[0, visibleRowCount]`.
+   */
   range(
     start: number,
     end: number,
   ): readonly PretableVisibleRow<TRow, TRowId, TColumns>[];
+  /** Returns the visible rank of `ref`, or `-1` when it is absent. */
   indexOf(ref: PretableVisibleRowRef<TRowId>): number;
+  /**
+   * Returns the data row at a data-only rank. Group rows do not consume an
+   * index; an out-of-bounds rank returns `undefined`.
+   */
   dataRowAt(index: number): PretableDataRow<TRow, TRowId> | undefined;
+  /** Returns the first visible data row, or `undefined` when none is visible. */
   firstDataRow(): PretableDataRow<TRow, TRowId> | undefined;
+  /** Returns the last visible data row, or `undefined` when none is visible. */
   lastDataRow(): PretableDataRow<TRow, TRowId> | undefined;
+  /**
+   * Returns the next visible data row after `ref`, skipping group rows, or
+   * `undefined` when `ref` is absent or has no following data row.
+   */
   nextDataRow(
     ref: PretableVisibleRowRef<TRowId>,
   ): PretableDataRow<TRow, TRowId> | undefined;
+  /**
+   * Returns the previous visible data row before `ref`, skipping group rows,
+   * or `undefined` when `ref` is absent or has no preceding data row.
+   */
   previousDataRow(
     ref: PretableVisibleRowRef<TRowId>,
   ): PretableDataRow<TRow, TRowId> | undefined;
+  /** Returns the immediate parent group of `ref`, if it has one. */
   parentGroupOf(
     ref: PretableVisibleRowRef<TRowId>,
   ): PretableGroupRow<TColumns> | undefined;
+  /**
+   * Returns `ref` when visible, otherwise its nearest visible ancestor group;
+   * returns `undefined` when neither the ref nor a visible ancestor is known.
+   */
   nearestVisibleRef(
     ref: PretableVisibleRowRef<TRowId>,
   ): PretableVisibleRowRef<TRowId> | undefined;
@@ -252,6 +287,11 @@ export interface PretableRowModel<
   TColumns,
 > extends PretableRowModelCarrier<TRow, TRowId, TColumns> {
   getState(): PretableRowModelState<TRow, TRowId, TColumns>;
+  /**
+   * Returns the immutable original schema/presentation tuple supplied when
+   * this model was created. `setDerivations` replaces engine behavior only;
+   * it never changes this presentation fallback or its identity.
+   */
   getColumns(): TColumns;
   subscribe(listener: () => void): () => void;
 
