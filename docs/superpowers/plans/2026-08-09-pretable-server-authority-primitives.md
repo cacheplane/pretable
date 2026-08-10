@@ -3288,3 +3288,30 @@ alias — the old name became wrong the moment two totals existed.
 - Load-more and retry controls: consumer chrome outside the grid element (§9.2).
 - Bench `replace`/`append` scripts and budget assertions (slice 5, §12.3).
 - `rowIndexOffset` / windowed noncontiguous arithmetic, remote grouping (`processing.group`), query-aware facets — named EXT seams in §15.
+
+---
+
+## Known deviations from this plan (recorded during execution)
+
+Reviewers found these while executing; they are corrections to the PLAN, not
+open defects in the code. Anyone re-running a task from the text above should
+read this first.
+
+- **Task 4 Step 2's red state is invisible to `vitest run`.** The assertion is
+  a type error, and esbuild strips types without checking them, so vitest
+  reports a vacuous pass. The genuine red state comes from
+  `pnpm --filter @pretable-internal/grid-core typecheck` (TS2353). Any
+  types-only task in this plan has the same property.
+- **Task 4 also had to regenerate `packages/core/core.api.md`**, which its file
+  list omits — adding public exports immediately stales the `api:check` gate.
+- **`pnpm api:check` is RED for the middle of this slice, by design.** Green
+  requires both React exporting the new types (Task 12) *and* both reports
+  regenerated (Task 18). Do not claim it green before then.
+- **Task 8's prose is stale in three places:** it names an "aggregate-identity
+  cache" in the clear bundle (since removed as behaviorally unnecessary), a
+  `cachedVisibleRows` binding that does not exist, and a Step 4 ternary that is
+  dead code. The shipped behavior is correct; the text is not.
+- **Carry-forward for the React tasks:** `use-pretable.ts` re-applies a
+  controlled `state.selection` on every engine snapshot, which would revert the
+  `datasetKey` pivot clear for a controlled consumer. Whichever React task
+  wires controlled state owns this interaction.
