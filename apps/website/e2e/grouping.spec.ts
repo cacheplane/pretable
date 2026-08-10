@@ -42,6 +42,59 @@ async function scrollTo(viewport: Locator, to: number | "bottom") {
   return target;
 }
 
+test("cold SSR hydration adopts theme geometry without recovery", async ({
+  page,
+}) => {
+  const hydrationErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    hydrationErrors.push(error.message);
+  });
+  page.on("console", (message) => {
+    if (
+      /hydrat|server rendered html|Minified React error #(418|419|423|424)/i.test(
+        message.text(),
+      )
+    ) {
+      hydrationErrors.push(message.text());
+    }
+  });
+
+  await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const header = await page
+    .locator("[data-pretable-header-row]")
+    .first()
+    .elementHandle();
+  const groupPanel = await page
+    .locator("[data-pretable-group-panel]")
+    .first()
+    .elementHandle();
+  const viewport = await viewportOf(page).first().elementHandle();
+  if (!header || !groupPanel || !viewport) {
+    throw new Error(
+      "Expected the grouping fixture to render its header, group panel, and viewport",
+    );
+  }
+
+  expect(
+    await header.evaluate((element) =>
+      parseFloat(getComputedStyle(element).height),
+    ),
+  ).toBe(52);
+  expect(
+    await groupPanel.evaluate((element) =>
+      parseFloat(getComputedStyle(element).height),
+    ),
+  ).toBe(44);
+  expect(
+    await viewport.evaluate(
+      (element) => element.querySelectorAll("[data-pretable-row-id]").length,
+    ),
+  ).toBe(13);
+  expect(hydrationErrors).toEqual([]);
+});
+
 test("depth indent is real pixels, not a declaration jsdom cannot resolve", async ({
   page,
 }) => {
