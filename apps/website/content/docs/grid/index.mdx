@@ -14,7 +14,7 @@ Pretable's React engine ships two consumer paths. Pick the one that matches what
 ```tsx
 import { Pretable } from "@pretable/react";
 
-<Pretable rows={rows} columns={columns} />;
+<Pretable rows={rows} columns={columns} getRowId={(row) => row.id} />;
 ```
 
 A 3-prop component that renders a basic grid. Internally it wraps the engine with sensible defaults — label-above-value layout, 320px viewport. Use this when you want a working grid with one import and don't need sort UI, filter UI, selection state in your component tree, or custom cell rendering.
@@ -38,6 +38,7 @@ function MyGrid({ rows, columns }) {
   const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
     columns,
     rows,
+    getRowId: (row) => row.id,
     viewportHeight: 480,
   });
 

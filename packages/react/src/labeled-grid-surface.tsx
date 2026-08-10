@@ -54,7 +54,12 @@ export interface LabeledGridSurfaceProps<
     column: PretableColumn<TRow>;
     sortDirection: PretableSortDirection;
   }) => HTMLAttributes<HTMLButtonElement> | undefined;
-  getRowId?: PretableGridOptions<TRow>["getRowId"];
+  /**
+   * Stable identity for a row, derived from the row's own data. Required — see
+   * {@link PretableGridOptions.getRowId}. There is no positional default at any
+   * pretable entry point.
+   */
+  getRowId: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
   state?: PretableSurfaceProps<TRow>["state"];
   labelClassName?: string;

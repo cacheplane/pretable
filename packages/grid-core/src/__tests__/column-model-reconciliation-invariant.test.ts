@@ -158,11 +158,7 @@ function someRowId(grid: Engine, rnd: Rnd): string {
 function sourceRowIds(grid: Engine): Set<string> {
   const getRowId = grid.options.getRowId;
 
-  return new Set(
-    grid.options.rows.map((row, index) =>
-      getRowId ? getRowId(row, index) : String(index),
-    ),
-  );
+  return new Set(grid.options.rows.map((row) => getRowId(row)));
 }
 
 /**

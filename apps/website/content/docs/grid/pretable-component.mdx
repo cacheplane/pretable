@@ -30,31 +30,31 @@ const rows: Person[] = [
 ];
 
 export function People() {
-  return <Pretable rows={rows} columns={columns} />;
+  return <Pretable rows={rows} columns={columns} getRowId={(r) => r.id} />;
 }
 ```
 
 ## Props
 
-Two are required. The rest are forwarded verbatim to the underlying [`<PretableSurface>`](/docs/grid/pretable-surface#props) — same types, same behavior — so reach for that page for the detail.
+Three are required. The rest are forwarded verbatim to the underlying [`<PretableSurface>`](/docs/grid/pretable-surface#props) — same types, same behavior — so reach for that page for the detail.
 
-| Prop                   | Type                                                        | Required | Description                                                                                              |
-| ---------------------- | ----------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| `columns`              | `PretableColumn<TRow>[]`                                    | yes      | Column definitions. See [API reference](/docs/grid/api-reference#pretablecolumntrow) for the full shape. |
-| `rows`                 | `TRow[]`                                                    | yes      | Row data. Generic over your row type (defaults to `Record<string, unknown>`).                            |
-| `getRowId`             | `(row: TRow, index: number) => string`                      | no       | Custom row key. Defaults to `row.id` if it's a string or number; otherwise the row's index.              |
-| `rowSelectionColumn`   | `RowSelectionColumnConfig`                                  | no       | Turn on the three-state checkbox column. See [Selection](/docs/grid/selection).                          |
-| `onRowSelectionChange` | `(rowIds: string[]) => void`                                | no       | Fired with the full list of selected row ids.                                                            |
-| `onRowActivate`        | `(input: PretableRowActivateInput<TRow>) => void`           | no       | Fired on Enter or double-click over a row.                                                               |
-| `onCellEdit`           | `(payload) => void \| Promise<void>`                        | no       | Commit handler for cell editing. Editing is inert without it. See [Editing](/docs/grid/editing).         |
-| `onCopy`               | `(args) => CopyPayload \| null`                             | no       | Replace the default TSV serializer. See [Clipboard](/docs/grid/clipboard).                               |
-| `copyToClipboard`      | `(payload: CopyPayload) => void \| Promise<void>`           | no       | Replace the clipboard write itself.                                                                      |
-| `copyWithHeaders`      | `boolean`                                                   | no       | Prefix copied output with a header row. Defaults to `false`.                                             |
-| `tabBehavior`          | `"wrap-rows" \| "exit"`                                     | no       | Tab key behavior. See [Keyboard](/docs/grid/keyboard).                                                   |
-| `messages`             | `PretableSurfaceMessages`                                   | no       | Override the `aria-live` announcement strings.                                                           |
-| `onColumnWidthsChange` | `(next: Record<string, number>) => void`                    | no       | Fired on resize drag-end with the full widths map.                                                       |
-| `onColumnOrderChange`  | `(next: readonly string[]) => void`                         | no       | Fired on reorder drag-end with the new column id order.                                                  |
-| `onColumnPinnedChange` | `(next: Record<string, "left" \| "right" \| null>) => void` | no       | Fired when pin state changes, with the full pinned map.                                                  |
+| Prop                   | Type                                                        | Required | Description                                                                                                                                |
+| ---------------------- | ----------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `columns`              | `PretableColumn<TRow>[]`                                    | yes      | Column definitions. See [API reference](/docs/grid/api-reference#pretablecolumntrow) for the full shape.                                   |
+| `rows`                 | `TRow[]`                                                    | yes      | Row data. Generic over your row type (defaults to `Record<string, unknown>`).                                                              |
+| `getRowId`             | `(row: TRow) => string`                                     | yes      | Stable row id derived from the row's own data. There is no positional default — see [Row identity](/docs/grid/api-reference#row-identity). |
+| `rowSelectionColumn`   | `RowSelectionColumnConfig`                                  | no       | Turn on the three-state checkbox column. See [Selection](/docs/grid/selection).                                                            |
+| `onRowSelectionChange` | `(rowIds: string[]) => void`                                | no       | Fired with the full list of selected row ids.                                                                                              |
+| `onRowActivate`        | `(input: PretableRowActivateInput<TRow>) => void`           | no       | Fired on Enter or double-click over a row.                                                                                                 |
+| `onCellEdit`           | `(payload) => void \| Promise<void>`                        | no       | Commit handler for cell editing. Editing is inert without it. See [Editing](/docs/grid/editing).                                           |
+| `onCopy`               | `(args) => CopyPayload \| null`                             | no       | Replace the default TSV serializer. See [Clipboard](/docs/grid/clipboard).                                                                 |
+| `copyToClipboard`      | `(payload: CopyPayload) => void \| Promise<void>`           | no       | Replace the clipboard write itself.                                                                                                        |
+| `copyWithHeaders`      | `boolean`                                                   | no       | Prefix copied output with a header row. Defaults to `false`.                                                                               |
+| `tabBehavior`          | `"wrap-rows" \| "exit"`                                     | no       | Tab key behavior. See [Keyboard](/docs/grid/keyboard).                                                                                     |
+| `messages`             | `PretableSurfaceMessages`                                   | no       | Override the `aria-live` announcement strings.                                                                                             |
+| `onColumnWidthsChange` | `(next: Record<string, number>) => void`                    | no       | Fired on resize drag-end with the full widths map.                                                                                         |
+| `onColumnOrderChange`  | `(next: readonly string[]) => void`                         | no       | Fired on reorder drag-end with the new column id order.                                                                                    |
+| `onColumnPinnedChange` | `(next: Record<string, "left" \| "right" \| null>) => void` | no       | Fired when pin state changes, with the full pinned map.                                                                                    |
 
 There is no `viewportHeight`, no `state`, no telemetry, and no render overrides — that is the whole difference from `<PretableSurface>`.
 

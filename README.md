@@ -81,7 +81,13 @@ const rows: PretableRow[] = [
 ];
 
 export function Queue() {
-  return <Pretable rows={rows} columns={columns} />;
+  return (
+    <Pretable
+      rows={rows}
+      columns={columns}
+      getRowId={(row) => String(row.id)}
+    />
+  );
 }
 ```
 

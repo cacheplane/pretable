@@ -1,6 +1,7 @@
 import { autosizeColumns } from "@pretable-internal/layout-core";
 import type { AutosizeOptions } from "@pretable-internal/layout-core";
 import {
+  assertGetRowId,
   createSourceRows,
   deriveVisibleRows,
   type DeriveVisibleRowsResult,
@@ -178,6 +179,7 @@ function groupColumnsByPin<TRow extends PretableRow>(
 export function createGridCore<TRow extends PretableRow>(
   inputOptions: PretableGridOptions<TRow>,
 ): PretableEngine<TRow> {
+  assertGetRowId(inputOptions);
   const listeners = new Set<() => void>();
   const groupedInput: PretableGridOptions<TRow> = {
     ...inputOptions,
@@ -1189,12 +1191,10 @@ export function createGridCore<TRow extends PretableRow>(
       }
     },
     applyTransaction(transaction: PretableTransaction<TRow>) {
-      if (!options.getRowId) {
-        throw new Error(
-          "applyTransaction requires getRowId on PretableGridOptions",
-        );
-      }
-
+      // No guard here: `getRowId` is required, and `createGridCore` already
+      // rejected an options object that lacks one. A patch is matched by the
+      // id its own fields produce, which is only meaningful because identity
+      // never depends on position.
       const getRowId = options.getRowId;
       const before = captureVisibleRowsForFocusReconciliation();
 
@@ -1213,7 +1213,7 @@ export function createGridCore<TRow extends PretableRow>(
 
       if (transaction.update) {
         for (const patch of transaction.update) {
-          const id = getRowId(patch as TRow, -1);
+          const id = getRowId(patch as TRow);
           const existing = sourceRowIndex.get(id);
 
           if (!existing) {
@@ -1238,7 +1238,7 @@ export function createGridCore<TRow extends PretableRow>(
 
       if (transaction.add) {
         for (const row of transaction.add) {
-          const id = getRowId(row, sourceRows.length);
+          const id = getRowId(row);
           const entry: SourceRow<TRow> = {
             id,
             row,

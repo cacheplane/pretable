@@ -1,7 +1,11 @@
 import { describe, expect, test } from "vitest";
 
 import { createGridCore } from "../index";
-import type { PretableDataRow, PretableVisibleRow } from "../types";
+import type {
+  PretableDataRow,
+  PretableGridOptions,
+  PretableVisibleRow,
+} from "../types";
 
 type DemoRow = {
   id: string;
@@ -408,17 +412,17 @@ describe("grid-core", () => {
     expect(snapshot.loadedRowCount).toBe(3);
   });
 
-  test("applyTransaction throws when getRowId is not provided", () => {
-    const grid = createGridCore({
-      columns: [...columns],
-      rows,
-    });
-
-    expect(() => {
-      grid.applyTransaction({
-        add: [{ id: "d", name: "Delta", status: "open", message: "new" }],
-      });
-    }).toThrow("getRowId");
+  // The guard used to live on applyTransaction, which left every other
+  // id-keyed subsystem — selection, focus, editing — running on positional
+  // ids. It now sits at construction, so nothing downstream can be reached
+  // without a real identity function.
+  test("createGridCore throws when getRowId is not provided", () => {
+    expect(() =>
+      createGridCore({
+        columns: [...columns],
+        rows,
+      } as unknown as PretableGridOptions<DemoRow>),
+    ).toThrow(/^pretable: `getRowId` is required/);
   });
 
   test("applyTransaction added rows are sorted into position by active sort", () => {

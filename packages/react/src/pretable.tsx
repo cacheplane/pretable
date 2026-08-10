@@ -10,7 +10,12 @@ import type { PretableColumn } from "./types";
  */
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
-  getRowId?: PretableGridOptions<TRow>["getRowId"];
+  /**
+   * Stable identity for a row, derived from the row's own data. Required — see
+   * {@link PretableGridOptions.getRowId}. There is no positional default at any
+   * pretable entry point.
+   */
+  getRowId: PretableGridOptions<TRow>["getRowId"];
   rows: TRow[];
   rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
   onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
@@ -36,7 +41,7 @@ const BENCHMARK_VIEWPORT_STYLE = {
 } as const;
 
 /**
- * Drop-in pretable component. Wraps {@link PretableSurface} with internal state — pass `columns` and `rows` and you're done. Reach for `PretableSurface` when you need to control state from the outside.
+ * Drop-in pretable component. Wraps {@link PretableSurface} with internal state — pass `columns`, `rows` and `getRowId` and you're done. Reach for `PretableSurface` when you need to control state from the outside.
  *
  * @public
  */
@@ -57,18 +62,6 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   onColumnPinnedChange,
   onCellEdit,
 }: PretableProps<TRow>) {
-  const resolvedGetRowId =
-    getRowId ??
-    ((row: TRow, index: number) => {
-      const candidate = row.id;
-
-      if (typeof candidate === "string" || typeof candidate === "number") {
-        return String(candidate);
-      }
-
-      return String(index);
-    });
-
   return (
     <section
       aria-label="Pretable React adapter"
@@ -95,7 +88,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
       <PretableSurface
         ariaLabel="Pretable React adapter"
         columns={columns}
-        getRowId={resolvedGetRowId}
+        getRowId={getRowId}
         renderBodyCell={({ column, value }) => (
           <>
             <strong

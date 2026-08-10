@@ -609,7 +609,12 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   getRowClassName?: (
     input: PretableSurfaceRowInput<TRow>,
   ) => string | undefined;
-  getRowId?: PretableGridOptions<TRow>["getRowId"];
+  /**
+   * Stable identity for a row, derived from the row's own data. Required — see
+   * {@link PretableGridOptions.getRowId}. There is no positional default at any
+   * pretable entry point.
+   */
+  getRowId: PretableGridOptions<TRow>["getRowId"];
   getRowProps?: (
     input: PretableSurfaceRowInput<TRow>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;

@@ -12,6 +12,7 @@ import type { PretableGridOptions, PretableRow } from "./types";
  * const grid = createGrid({
  *   columns: [{ id: "name" }, { id: "age" }],
  *   rows: [{ id: "1", name: "Ada", age: 36 }],
+ *   getRowId: (row) => row.id,
  * });
  * grid.setSort("age", "desc");
  * const snapshot = grid.getSnapshot();
