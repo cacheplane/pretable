@@ -20,6 +20,7 @@
   "dependencies": {
     "@pretable-internal/grid-core": "workspace:*",
     "@pretable-internal/layout-core": "workspace:*",
+    "@pretable-internal/row-model": "workspace:*",
     "@pretable-internal/text-core": "workspace:*"
   },
   "scripts": {

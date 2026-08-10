@@ -323,6 +323,9 @@ importers:
       '@pretable-internal/layout-core':
         specifier: workspace:*
         version: link:../layout-core
+      '@pretable-internal/row-model':
+        specifier: workspace:*
+        version: link:../row-model
       '@pretable-internal/text-core':
         specifier: workspace:*
         version: link:../text-core

@@ -6,9 +6,17 @@ import {
 } from "@pretable-internal/layout-core";
 import type { ColumnPlan } from "@pretable-internal/layout-core";
 import type { PretableColumn, PretableRow } from "@pretable-internal/grid-core";
+import type { PretableRowId } from "@pretable-internal/row-model";
 import { layoutPreparedText, prepareText } from "@pretable-internal/text-core";
 
-import type { DomRenderInput, DomRenderSnapshot } from "./types";
+import { groupRenderId } from "./types";
+import type {
+  DomRenderInput,
+  DomRenderSnapshot,
+  DomLayoutColumn,
+  IndexedDomRenderInput,
+  IndexedDomRenderSnapshot,
+} from "./types";
 
 const DEFAULT_ROW_HEIGHT = 44;
 const WRAPPED_COLUMN_WIDTH = 220;
@@ -31,7 +39,35 @@ const estimatedRowHeightCache = new WeakMap<
   }
 >();
 
+export function createDomRenderSnapshot<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  input: IndexedDomRenderInput<TRow, TRowId, TColumns>,
+): IndexedDomRenderSnapshot<TRow, TRowId, TColumns>;
 export function createDomRenderSnapshot<TRow extends PretableRow>(
+  input: DomRenderInput<TRow>,
+): DomRenderSnapshot<TRow>;
+export function createDomRenderSnapshot(
+  input: unknown,
+):
+  | DomRenderSnapshot<PretableRow>
+  | IndexedDomRenderSnapshot<object, PretableRowId, unknown> {
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    "controllerState" in input
+  ) {
+    return createIndexedDomRenderSnapshot(
+      input as IndexedDomRenderInput<object, PretableRowId, unknown>,
+    );
+  }
+  return createLegacyDomRenderSnapshot(input as DomRenderInput<PretableRow>);
+}
+
+/** Explicit compatibility entry retained until the React surface moves in Task 20. */
+export function createLegacyDomRenderSnapshot<TRow extends PretableRow>(
   input: DomRenderInput<TRow>,
 ): DomRenderSnapshot<TRow> {
   const rowHeights = input.snapshot.visibleRows.map((entry) => {
@@ -45,7 +81,7 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
     // estimate at the unwrapped default. Sub-project 2 owns their real chrome.
     return entry.kind === "group"
       ? DEFAULT_ROW_HEIGHT
-      : estimateRowHeight(entry.row, input.columns);
+      : estimateDomRowHeight(entry.row, input.columns);
   });
   const rowMetrics = createRowMetricsIndex(rowHeights);
   const viewportPlan = planViewport({
@@ -145,6 +181,71 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
   };
 }
 
+function createIndexedDomRenderSnapshot<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  input: IndexedDomRenderInput<TRow, TRowId, TColumns>,
+): IndexedDomRenderSnapshot<TRow, TRowId, TColumns> {
+  const state = input.controllerState;
+  const flexWidths = distributeFlexWidths({
+    columns: input.columns.map((column) => ({
+      id: column.id,
+      width: resolveColumnWidth(column),
+      ...(column.widthPx === undefined && column.flex !== undefined
+        ? { flex: column.flex }
+        : {}),
+      ...(column.minWidthPx === undefined
+        ? {}
+        : { minWidthPx: column.minWidthPx }),
+      ...(column.maxWidthPx === undefined
+        ? {}
+        : { maxWidthPx: column.maxWidthPx }),
+    })),
+    viewportWidth: input.viewportWidth ?? Number.POSITIVE_INFINITY,
+  });
+  const columnPlan = planColumns({
+    columns: input.columns.map((column) => ({
+      id: column.id,
+      width: flexWidths[column.id] ?? resolveColumnWidth(column),
+      pinned: column.pinned,
+    })),
+    scrollLeft: input.viewportWidth === undefined ? 0 : (input.scrollLeft ?? 0),
+    viewportWidth: input.viewportWidth ?? Number.POSITIVE_INFINITY,
+    overscan: state.viewport.overscan,
+  });
+  const rows = state.window.map((entry) => {
+    const geometry = {
+      id:
+        entry.ref.kind === "group"
+          ? groupRenderId(entry.ref.groupId)
+          : typeof entry.ref.rowId === "number"
+            ? `data:number:${entry.ref.rowId}`
+            : `data:string:${entry.ref.rowId.length}:${entry.ref.rowId}`,
+      ref: entry.ref,
+      rowIndex: entry.index,
+      top: entry.top,
+      height: entry.height,
+    };
+    return entry.row.kind === "data"
+      ? ({ ...geometry, kind: "data" as const, row: entry.row.row } as const)
+      : ({ ...geometry, kind: "group" as const, group: entry.row } as const);
+  });
+  return Object.freeze({
+    modelRevision: state.observedRevision,
+    modelSnapshot: state.snapshot,
+    rows: Object.freeze(rows),
+    columns: Object.freeze(columnPlan.columns),
+    rowMetrics: state.rowHeights,
+    nodeCount: rows.length * columnPlan.columns.length,
+    totalHeight: state.rowHeights.getTotalHeight(),
+    totalWidth: columnPlan.totalWidth,
+    pinnedLeftWidth: columnPlan.pinnedLeftWidth,
+    pinnedRightWidth: columnPlan.pinnedRightWidth,
+  });
+}
+
 /**
  * Lay out every column, ignoring the virtualization window.
  *
@@ -185,9 +286,9 @@ export function planColumnLayout<TRow extends PretableRow>(
   });
 }
 
-function estimateRowHeight<TRow extends PretableRow>(
+export function estimateDomRowHeight<TRow extends object>(
   row: TRow,
-  columns: PretableColumn<TRow>[],
+  columns: readonly DomLayoutColumn<TRow>[],
 ): number {
   const cached = estimatedRowHeightCache.get(row);
 
@@ -234,9 +335,9 @@ function estimateRowHeight<TRow extends PretableRow>(
   return estimatedHeight;
 }
 
-function getEstimatedRowHeightSignature<TRow extends PretableRow>(
+function getEstimatedRowHeightSignature<TRow extends object>(
   row: TRow,
-  columns: PretableColumn<TRow>[],
+  columns: readonly DomLayoutColumn<TRow>[],
 ) {
   return columns
     .filter((column) => column.wrap)
@@ -248,11 +349,11 @@ function getEstimatedRowHeightSignature<TRow extends PretableRow>(
     .join("|");
 }
 
-function readCellValue<TRow extends PretableRow>(
+function readCellValue<TRow extends object>(
   row: TRow,
-  column: PretableColumn<TRow>,
+  column: DomLayoutColumn<TRow>,
 ): unknown {
-  return column.value ? column.value(row) : row[column.id];
+  return column.value ? column.value(row) : Reflect.get(row, column.id);
 }
 
 /**
@@ -262,8 +363,8 @@ function readCellValue<TRow extends PretableRow>(
  * `planColumnLayout`, so no caller outside this file has to know the fallbacks
  * — which is exactly how a second copy of them would get started.
  */
-function resolveColumnWidth<TRow extends PretableRow>(
-  column: PretableColumn<TRow>,
+function resolveColumnWidth<TRow extends object>(
+  column: DomLayoutColumn<TRow>,
 ): number {
   return (
     column.widthPx ?? (column.wrap ? WRAPPED_COLUMN_WIDTH : FIXED_COLUMN_WIDTH)
