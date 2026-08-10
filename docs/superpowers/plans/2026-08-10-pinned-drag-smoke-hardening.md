@@ -150,10 +150,11 @@ Run:
 ```bash
 pnpm exec prettier --write apps/website/e2e/smoke.spec.ts
 pnpm exec eslint apps/website/e2e/smoke.spec.ts
+git show origin/main:apps/website/e2e/smoke.spec.ts | pnpm exec eslint --stdin --stdin-filename apps/website/e2e/smoke.spec.ts
 git diff --check
 ```
 
-Expected: all commands exit 0 and only the approved test block changes.
+Expected: Prettier and `git diff --check` exit 0 and only the approved test block changes. The direct-file lint and the `origin/main` stdin baseline both exit 1 with the identical sole unchanged `qty` unused diagnostic at line 542; no diagnostic is in the changed hunk. The configured repository CI lint excludes `e2e`, so this direct comparison records that the change added no lint diagnostic.
 
 - [ ] **Step 3: Prove first-miss recovery with a temporary positive control**
 
@@ -256,6 +257,7 @@ Run:
 ```bash
 pnpm --filter @pretable/app-website typecheck
 pnpm exec eslint apps/website/e2e/smoke.spec.ts
+git show origin/main:apps/website/e2e/smoke.spec.ts | pnpm exec eslint --stdin --stdin-filename apps/website/e2e/smoke.spec.ts
 pnpm exec prettier --check apps/website/e2e/smoke.spec.ts docs/superpowers/specs/2026-08-10-pinned-drag-smoke-hardening-design.md docs/superpowers/plans/2026-08-10-pinned-drag-smoke-hardening.md
 git diff --check
 git diff --stat origin/main...HEAD
@@ -264,7 +266,7 @@ git diff --stat
 git diff --name-only
 ```
 
-Expected: all static checks pass. The committed branch diff contains the approved design and implementation plan; the working diff contains only the smoke test. Together they contain no product or public API files and no Changeset.
+Expected: typecheck, Prettier, and diff checks pass. The direct-file lint and the `origin/main` stdin baseline both exit 1 with the identical sole unchanged `qty` unused diagnostic at line 542; no diagnostic is in the changed hunk. The configured repository CI lint excludes `e2e`, so this direct comparison records that the change added no lint diagnostic. The committed branch diff contains the approved design and implementation plan; the working diff contains only the smoke test. Together they contain no product or public API files and no Changeset.
 
 - [ ] **Step 5: Commit only the test implementation**
 
