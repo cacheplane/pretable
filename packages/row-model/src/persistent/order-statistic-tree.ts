@@ -401,6 +401,7 @@ function rankOfNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   let node = root;
   let rank = 0;
   while (node !== null) {
+    if (sameId(id, node.id)) return rank + (node.left?.count ?? 0);
     const comparison = compareEntries(entry, id, node.entry, node.id, context);
     if (comparison < 0) node = node.left;
     else if (comparison > 0) {

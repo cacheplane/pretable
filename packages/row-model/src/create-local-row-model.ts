@@ -1,4 +1,5 @@
 import { compileQuery } from "./compiled-query";
+import { createChangeJournal } from "./change-journal";
 import type {
   ColumnDescriptorOf,
   PretableDerivationsFor,
@@ -26,6 +27,7 @@ import type {
 } from "./row-integrity";
 import type {
   PretableDerivationTransition,
+  PretableChangeOperation,
   PretableDistinctValueQuery,
   PretableExpansionDefault,
   PretableGroupId,
@@ -35,6 +37,8 @@ import type {
   PretableRowModel,
   PretableRowModelState,
   PretableTransaction,
+  PretableVisibleRow,
+  PretableVisibleRowRef,
 } from "./types";
 import { createFlatSnapshot, createVisibleIndex } from "./visible-index";
 import {
@@ -57,6 +61,8 @@ interface CreateLocalRowModelBaseOptions<
    * fixed for the lifetime of the model and defaults to `false`.
    */
   readonly aggregateFilteredRows?: boolean;
+  /** Overrides the bounded consumer journal size for diagnostics and tests. */
+  readonly changeJournalCapacity?: number;
   readonly onDiagnostic?: (
     diagnostic: PretableRowIntegrityDiagnostic<TRowId>,
   ) => void;
@@ -255,6 +261,89 @@ function mutationResult<TRowId extends PretableRowId>(
   });
 }
 
+function visibleRef<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  row: PretableVisibleRow<TRow, TRowId, TColumns>,
+): PretableVisibleRowRef<TRowId> {
+  return row.kind === "data"
+    ? Object.freeze({ kind: "data" as const, rowId: row.rowId })
+    : Object.freeze({ kind: "group" as const, groupId: row.groupId });
+}
+
+function expansionChangeOperations<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  previous: PretableRowModelState<TRow, TRowId, TColumns>["snapshot"],
+  next: PretableRowModelState<TRow, TRowId, TColumns>["snapshot"],
+  groupId: PretableGroupId,
+): readonly PretableChangeOperation<TRowId>[] {
+  const ref = Object.freeze({ kind: "group" as const, groupId });
+  const previousIndex = previous.indexOf(ref);
+  const index = next.indexOf(ref);
+  if (previousIndex < 0 || index < 0) return Object.freeze([]);
+  const previousGroup = previous.rowAt(previousIndex);
+  const nextGroup = next.rowAt(index);
+  if (previousGroup?.kind !== "group" || nextGroup?.kind !== "group") {
+    return Object.freeze([]);
+  }
+  const operations: PretableChangeOperation<TRowId>[] = [];
+  if (previousGroup.expanded !== nextGroup.expanded) {
+    operations.push(
+      Object.freeze({
+        kind: "update" as const,
+        ref,
+        index,
+        fields: Object.freeze(["expanded" as const]),
+      }),
+    );
+  }
+  if (previousGroup.expanded && !nextGroup.expanded) {
+    const descendants: {
+      readonly ref: PretableVisibleRowRef<TRowId>;
+      readonly previousIndex: number;
+    }[] = [];
+    for (
+      let descendantIndex = previousIndex + 1;
+      descendantIndex < previous.visibleRowCount;
+      descendantIndex += 1
+    ) {
+      const row = previous.rowAt(descendantIndex);
+      if (row === undefined || row.depth <= previousGroup.depth) break;
+      descendants.push({
+        ref: visibleRef(row),
+        previousIndex: descendantIndex,
+      });
+    }
+    for (const descendant of descendants.reverse()) {
+      operations.push(
+        Object.freeze({ kind: "remove" as const, ...descendant }),
+      );
+    }
+  } else if (!previousGroup.expanded && nextGroup.expanded) {
+    for (
+      let descendantIndex = index + 1;
+      descendantIndex < next.visibleRowCount;
+      descendantIndex += 1
+    ) {
+      const row = next.rowAt(descendantIndex);
+      if (row === undefined || row.depth <= nextGroup.depth) break;
+      operations.push(
+        Object.freeze({
+          kind: "insert" as const,
+          ref: visibleRef(row),
+          index: descendantIndex,
+        }),
+      );
+    }
+  }
+  return Object.freeze(operations);
+}
+
 /** Creates the persistent, framework-independent local row model. */
 export function createLocalRowModel<const TColumns extends readonly unknown[]>(
   options: CreateLocalRowModelWithDefaultIdOptions<TColumns>,
@@ -322,6 +411,9 @@ export function createLocalRowModel<
   let nextSourceOrder = initialStore.records.length;
   let nextTransitionId = 1;
   const listeners = new Set<() => void>();
+  const changeJournal = createChangeJournal<TRowId>(
+    options.changeJournalCapacity,
+  );
 
   const assertCommandAllowed = (operation: PretableRowModelOperation): void => {
     if (activeMutation !== undefined) {
@@ -420,6 +512,7 @@ export function createLocalRowModel<
             expansion,
           }),
         );
+        changeJournal.appendBarrier(previousRoot.revision, revision);
         return {
           result: mutationResult<TRowId>(previousRoot.revision, revision),
           notify: true,
@@ -502,6 +595,7 @@ export function createLocalRowModel<
           queryPlan = nextPlan;
           nextSourceOrder = drafted.nextSourceOrder;
           commit(committedRoot);
+          changeJournal.appendBarrier(previousRevision, committedRoot.revision);
           return {
             result,
             notify: true,
@@ -547,6 +641,11 @@ export function createLocalRowModel<
           });
         nextSourceOrder = drafted.nextSourceOrder;
         commit(committedRoot);
+        changeJournal.appendChanges(
+          previousRoot.revision,
+          committedRoot.revision,
+          drafted.operations,
+        );
         return { result, notify: true, diagnostics: drafted.diagnostics };
       });
       if (prepared.notify) notify();
@@ -620,6 +719,7 @@ export function createLocalRowModel<
         queryPlan = nextPlan;
         query = nextPlan.query;
         commit(committedRoot);
+        changeJournal.appendBarrier(previousRoot.revision, revision);
         return {
           transition: Object.freeze({
             id,
@@ -684,6 +784,7 @@ export function createLocalRowModel<
           queryPlan = nextPlan;
           derivations = nextPlan.derivations;
           commit(committedRoot);
+          changeJournal.appendBarrier(previousRoot.revision, revision);
           nextTransitionId += 1;
           return {
             transition: Object.freeze({
@@ -756,14 +857,25 @@ export function createLocalRowModel<
             }),
           });
           const revision = previousRoot.revision + 1;
-          commit(
-            Object.freeze({
-              ...previousRoot,
-              revision,
-              parentRevision: previousRoot.revision,
-              visible: attachGroupIndex(previousRoot.visible.rows, nextGroups),
-              expansion,
-            }),
+          const committedRoot = Object.freeze({
+            ...previousRoot,
+            revision,
+            parentRevision: previousRoot.revision,
+            visible: attachGroupIndex(previousRoot.visible.rows, nextGroups),
+            expansion,
+          });
+          const previousSnapshot = snapshot;
+          const nextSnapshot = createFlatSnapshot(committedRoot);
+          const operations = expansionChangeOperations(
+            previousSnapshot,
+            nextSnapshot,
+            groupId,
+          );
+          commit(committedRoot);
+          changeJournal.appendChanges(
+            previousRoot.revision,
+            revision,
+            operations,
           );
           return {
             result: mutationResult(previousRoot.revision, revision),
@@ -792,8 +904,9 @@ export function createLocalRowModel<
     collapseAll() {
       return applyExpansionDefault("collapse-all", { kind: "collapsed" });
     },
-    changesSince() {
-      return unavailable("changes-since");
+    changesSince(revision: number) {
+      assertCommandAllowed("changes-since");
+      return changeJournal.changesSince(revision, root.revision);
     },
     distinctValues(): PretableDistinctValueQuery<never> {
       return unavailable("distinct-values");

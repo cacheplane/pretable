@@ -237,8 +237,15 @@ export type PretableChangeOperation<TRowId extends PretableRowId> =
     };
 
 export interface PretableChangeSet<TRowId extends PretableRowId> {
+  /** The snapshot revision to which the first operation applies. */
   readonly previousRevision: number;
+  /** The atomically published revision produced by the complete operation list. */
   readonly revision: number;
+  /**
+   * Applies sequentially: every index is measured after the preceding
+   * operation in this list. Row data and group fields are read from the
+   * snapshot at `revision`; operations never expose mutable row-model roots.
+   */
   readonly operations: readonly PretableChangeOperation<TRowId>[];
 }
 
@@ -330,6 +337,11 @@ export interface PretableRowModel<
   expandAll(): PretableMutationResult<TRowId>;
   collapseAll(): PretableMutationResult<TRowId>;
 
+  /**
+   * Returns a retained contiguous sequence through the current revision, or a
+   * reset instruction when replay is no longer possible. The current revision
+   * always returns an empty `changes` sequence.
+   */
   changesSince(revision: number): PretableChangeSequence<TRowId>;
   distinctValues<TColumnId extends ColumnIdOf<TColumns>>(
     columnId: TColumnId,

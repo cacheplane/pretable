@@ -1,4 +1,8 @@
 import type { CompiledQuery } from "./compiled-query";
+import {
+  attachChangeOperationDiagnosticsForTesting,
+  getChangeOperationDiagnosticsForTesting,
+} from "./change-journal";
 import type { PretableRowId } from "./column-types";
 import {
   PretableRowIdentityChangeError,
@@ -9,13 +13,20 @@ import type { RevisionRoot, RowRecord } from "./internal-types";
 import {
   attachGroupIndex,
   getGroupIndex,
+  makeGroupId,
   updateGroupIndex,
+  visibleIndexOf,
+  visibleRange,
 } from "./group-index";
 import {
   inspectRowIntegrity,
   type PretableRowIntegrityDiagnostic,
 } from "./row-integrity";
-import type { PretableMutationIssue, PretableTransaction } from "./types";
+import type {
+  PretableChangeOperation,
+  PretableMutationIssue,
+  PretableTransaction,
+} from "./types";
 import type { PretableGroupId } from "./types";
 import { createFlatVisibleTree } from "./visible-index";
 
@@ -47,6 +58,7 @@ export interface TransactionDraftResult<
   readonly ignored: number;
   readonly issues: readonly PretableMutationIssue<TRowId>[];
   readonly diagnostics: readonly PretableRowIntegrityDiagnostic<TRowId>[];
+  readonly operations: readonly PretableChangeOperation<TRowId>[];
   readonly effective: boolean;
 }
 
@@ -57,6 +69,9 @@ export interface RowsReplacementDraftResult<
 > extends TransactionDraftResult<TRow, TRowId, TColumns> {
   readonly sameReferenceMutation: boolean;
 }
+
+export const getTransactionChangeDiagnosticsForTesting =
+  getChangeOperationDiagnosticsForTesting;
 
 class TransactionExecutionError extends PretableRowModelError {
   readonly rowIds: readonly PretableRowId[] | undefined;
@@ -325,6 +340,186 @@ function sameFlatOrder<
   );
 }
 
+function dataRef<TRowId extends PretableRowId>(rowId: TRowId) {
+  return Object.freeze({ kind: "data" as const, rowId });
+}
+
+function groupPathIds<TColumns>(
+  metadata: RowRecord<object, PretableRowId, TColumns>["metadata"],
+): readonly PretableGroupId[] {
+  return Object.freeze(
+    metadata.groupPath.map((_, index) =>
+      makeGroupId(metadata.groupPath.slice(0, index + 1)),
+    ),
+  );
+}
+
+function sameGroupPath<TColumns>(
+  previous: RowRecord<object, PretableRowId, TColumns>["metadata"],
+  next: RowRecord<object, PretableRowId, TColumns>["metadata"],
+): boolean {
+  return sameKeyValues(previous.groupPath, next.groupPath);
+}
+
+function groupedTransactionOperations<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(input: {
+  readonly previous: RevisionRoot<TRow, TRowId, TColumns>;
+  readonly nextVisible: RevisionRoot<TRow, TRowId, TColumns>["visible"];
+  readonly removals: readonly RowRecord<TRow, TRowId, TColumns>[];
+  readonly insertions: readonly RowRecord<TRow, TRowId, TColumns>[];
+}): readonly PretableChangeOperation<TRowId>[] {
+  const oldGroups = getGroupIndex(input.previous.visible);
+  const nextGroups = getGroupIndex(input.nextVisible);
+  if (oldGroups === undefined || nextGroups === undefined)
+    return Object.freeze([]);
+  const policy = input.previous.expansion.default;
+  const affectedGroupIds = new Set<PretableGroupId>();
+  for (const record of [...input.removals, ...input.insertions]) {
+    for (const groupId of groupPathIds(record.metadata as never)) {
+      affectedGroupIds.add(groupId);
+    }
+  }
+
+  type RankedRef = {
+    readonly ref:
+      | ReturnType<typeof dataRef<TRowId>>
+      | {
+          readonly kind: "group";
+          readonly groupId: PretableGroupId;
+        };
+    readonly previousIndex: number;
+    readonly index: number;
+  };
+  const removals: RankedRef[] = [];
+  const insertions: RankedRef[] = [];
+  const updates: PretableChangeOperation<TRowId>[] = [];
+  let visibleRowReads = 0;
+
+  for (const groupId of affectedGroupIds) {
+    const ref = Object.freeze({ kind: "group" as const, groupId });
+    const previousIndex = visibleIndexOf(oldGroups, policy, ref);
+    const index = visibleIndexOf(nextGroups, policy, ref);
+    if (previousIndex >= 0 && index < 0) {
+      removals.push({ ref, previousIndex, index });
+    } else if (previousIndex < 0 && index >= 0) {
+      insertions.push({ ref, previousIndex, index });
+    } else if (previousIndex >= 0 && index >= 0) {
+      const previousRow = visibleRange(
+        oldGroups,
+        policy,
+        previousIndex,
+        previousIndex + 1,
+      )[0];
+      const nextRow = visibleRange(nextGroups, policy, index, index + 1)[0];
+      visibleRowReads += 2;
+      if (previousRow?.kind === "group" && nextRow?.kind === "group") {
+        const fields = [
+          !Object.is(previousRow.aggregates, nextRow.aggregates)
+            ? ("aggregates" as const)
+            : undefined,
+          previousRow.childCount !== nextRow.childCount
+            ? ("childCount" as const)
+            : undefined,
+          previousRow.expanded !== nextRow.expanded
+            ? ("expanded" as const)
+            : undefined,
+          previousRow.depth !== nextRow.depth ? ("depth" as const) : undefined,
+        ].filter(
+          (field): field is NonNullable<typeof field> => field !== undefined,
+        );
+        if (fields.length > 0) {
+          updates.push(
+            Object.freeze({
+              kind: "update" as const,
+              ref,
+              index,
+              fields: Object.freeze(fields),
+            }),
+          );
+        }
+      }
+    }
+  }
+
+  const insertedById = new Map(
+    input.insertions.map((record) => [record.rowId, record]),
+  );
+  const removedById = new Map(
+    input.removals.map((record) => [record.rowId, record]),
+  );
+  for (const rowId of new Set([
+    ...removedById.keys(),
+    ...insertedById.keys(),
+  ])) {
+    const previousRecord = removedById.get(rowId);
+    const nextRecord = insertedById.get(rowId);
+    const ref = dataRef(rowId);
+    const previousIndex = visibleIndexOf(oldGroups, policy, ref);
+    const index = visibleIndexOf(nextGroups, policy, ref);
+    const changedPath =
+      previousRecord !== undefined &&
+      nextRecord !== undefined &&
+      !sameGroupPath(
+        previousRecord.metadata as never,
+        nextRecord.metadata as never,
+      );
+    if (previousIndex >= 0 && (index < 0 || changedPath)) {
+      removals.push({ ref, previousIndex, index });
+    }
+    if (index >= 0 && (previousIndex < 0 || changedPath)) {
+      insertions.push({ ref, previousIndex, index });
+    }
+    if (
+      previousIndex >= 0 &&
+      index >= 0 &&
+      !changedPath &&
+      previousRecord !== undefined &&
+      nextRecord !== undefined
+    ) {
+      const reordered =
+        !sameFlatOrder(previousRecord, nextRecord) && previousIndex !== index;
+      if (reordered) {
+        removals.push({ ref, previousIndex, index });
+        insertions.push({ ref, previousIndex, index });
+      } else if (!Object.is(previousRecord.row, nextRecord.row)) {
+        updates.push(
+          Object.freeze({
+            kind: "update" as const,
+            ref,
+            index,
+            fields: Object.freeze(["row" as const]),
+          }),
+        );
+      }
+    }
+  }
+
+  removals.sort((left, right) => right.previousIndex - left.previousIndex);
+  insertions.sort((left, right) => left.index - right.index);
+  return attachChangeOperationDiagnosticsForTesting(
+    Object.freeze([
+      ...removals.map(({ ref, previousIndex }) =>
+        Object.freeze({ kind: "remove" as const, ref, previousIndex }),
+      ),
+      ...insertions.map(({ ref, index }) =>
+        Object.freeze({ kind: "insert" as const, ref, index }),
+      ),
+      ...updates.sort((left, right) => {
+        const leftIndex = left.kind === "update" ? left.index : 0;
+        const rightIndex = right.kind === "update" ? right.index : 0;
+        return leftIndex - rightIndex;
+      }),
+    ]),
+    {
+      touchedRefs: affectedGroupIds.size + removedById.size + insertedById.size,
+      visibleRowReads,
+    },
+  );
+}
+
 function rebaseSourceOrder<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -580,6 +775,7 @@ export function applyFlatTransactionDraft<
         ignored,
         issues: Object.freeze(issues),
         diagnostics: Object.freeze([]),
+        operations: Object.freeze([]),
         effective: false,
       };
     }
@@ -603,7 +799,22 @@ export function applyFlatTransactionDraft<
     const visibleDraft = visibleNeedsChange
       ? input.root.visible.rows.asTransient()
       : undefined;
+    const operations: PretableChangeOperation<TRowId>[] = [];
+    const ref = (rowId: TRowId) =>
+      Object.freeze({ kind: "data" as const, rowId });
     for (const rowId of effectiveRemoves) {
+      if (previousGroups === undefined) {
+        const previousIndex = visibleDraft?.rankOf(rowId);
+        if (previousIndex !== undefined) {
+          operations.push(
+            Object.freeze({
+              kind: "remove" as const,
+              ref: ref(rowId),
+              previousIndex,
+            }),
+          );
+        }
+      }
       rowDraft.delete(rowId);
       sourceDraft.remove(rowId);
       visibleDraft?.remove(rowId);
@@ -618,9 +829,68 @@ export function applyFlatTransactionDraft<
             sourceOrder: record.sourceOrder,
           }),
         );
+      if (previousGroups === undefined) {
+        if (previous !== undefined && sameFlatOrder(previous, record)) {
+          if (record.metadata.filterPasses) {
+            const index =
+              visibleDraft?.rankOf(record.rowId) ??
+              input.root.visible.rows.rankOf(record.rowId);
+            if (index !== undefined) {
+              operations.push(
+                Object.freeze({
+                  kind: "update" as const,
+                  ref: ref(record.rowId),
+                  index,
+                  fields: Object.freeze(["row" as const]),
+                }),
+              );
+            }
+          }
+          continue;
+        }
+        const previousIndex = previous?.metadata.filterPasses
+          ? visibleDraft?.rankOf(record.rowId)
+          : undefined;
+        if (previous?.metadata.filterPasses) visibleDraft?.remove(record.rowId);
+        if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
+        const index = record.metadata.filterPasses
+          ? visibleDraft?.rankOf(record.rowId)
+          : undefined;
+        if (previousIndex !== undefined && index !== undefined) {
+          operations.push(
+            Object.freeze({
+              kind: "move" as const,
+              ref: ref(record.rowId),
+              previousIndex,
+              index,
+            }),
+            Object.freeze({
+              kind: "update" as const,
+              ref: ref(record.rowId),
+              index,
+              fields: Object.freeze(["row" as const]),
+            }),
+          );
+        } else if (previousIndex !== undefined) {
+          operations.push(
+            Object.freeze({
+              kind: "remove" as const,
+              ref: ref(record.rowId),
+              previousIndex,
+            }),
+          );
+        } else if (index !== undefined) {
+          operations.push(
+            Object.freeze({
+              kind: "insert" as const,
+              ref: ref(record.rowId),
+              index,
+            }),
+          );
+        }
+        continue;
+      }
       if (previous !== undefined && sameFlatOrder(previous, record)) continue;
-      if (previous?.metadata.filterPasses) visibleDraft?.remove(record.rowId);
-      if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
     }
     const frozenRows = rowDraft.freeze();
     const frozenFlatRows = visibleDraft?.freeze();
@@ -639,15 +909,31 @@ export function applyFlatTransactionDraft<
             prepared,
             input.root.expansion.overrides,
           );
+    const visible =
+      grouped !== undefined
+        ? attachGroupIndex(frozenFlatRows ?? input.root.visible.rows, grouped)
+        : visibleDraft === undefined
+          ? input.root.visible
+          : Object.freeze({ rows: frozenFlatRows! });
+    const groupedOperations =
+      grouped === undefined
+        ? undefined
+        : groupedTransactionOperations({
+            previous: input.root,
+            nextVisible: visible,
+            removals: [
+              ...effectiveRemoves.map((rowId) => input.root.rows.get(rowId)!),
+              ...prepared.flatMap((record) => {
+                const old = input.root.rows.get(record.rowId);
+                return old === undefined ? [] : [old];
+              }),
+            ],
+            insertions: prepared,
+          });
     return {
       rows: frozenRows,
       sourceOrder: sourceDraft.freeze(),
-      visible:
-        grouped !== undefined
-          ? attachGroupIndex(frozenFlatRows ?? input.root.visible.rows, grouped)
-          : visibleDraft === undefined
-            ? input.root.visible
-            : Object.freeze({ rows: frozenFlatRows! }),
+      visible,
       nextSourceOrder,
       added: addById.size,
       updated: prepared.length - addById.size,
@@ -656,6 +942,7 @@ export function applyFlatTransactionDraft<
       ignored,
       issues: Object.freeze(issues),
       diagnostics: Object.freeze(diagnostics),
+      operations: groupedOperations ?? Object.freeze(operations),
       effective: true,
     };
   } catch (error) {
@@ -781,6 +1068,7 @@ export function replaceFlatRowsDraft<
       ignored: 0,
       issues: Object.freeze([]),
       diagnostics: Object.freeze(diagnostics),
+      operations: Object.freeze([]),
       effective: false,
       sameReferenceMutation: true,
     };
@@ -842,6 +1130,7 @@ export function replaceFlatRowsDraft<
       ignored: 0,
       issues: Object.freeze([]),
       diagnostics: Object.freeze(diagnostics),
+      operations: Object.freeze([]),
       effective: false,
       sameReferenceMutation,
     };
@@ -946,6 +1235,7 @@ export function replaceFlatRowsDraft<
     ignored: 0,
     issues: Object.freeze([]),
     diagnostics: Object.freeze(diagnostics),
+    operations: Object.freeze([]),
     effective: true,
     sameReferenceMutation,
   };
