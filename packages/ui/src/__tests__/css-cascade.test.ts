@@ -41,7 +41,24 @@ describe("grid.css cascade contract", () => {
     )?.[1];
     expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
     expect(rule).toMatch(
-      /border:\s*0;[\s\S]*border-right:\s*1px solid var\(--pretable-rule\)/,
+      /border:\s*0;[\s\S]*border-right:\s*var\(--pretable-rule-width\) solid var\(--pretable-rule-vertical\)/,
+    );
+  });
+
+  test("the row hairline and the column divider read different tokens", () => {
+    // The whole point of the split: a theme must be able to drop the vertical
+    // cage without also erasing row separation. If both axes resolve to the
+    // same token again, that capability is silently gone.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const cellRule = css.match(
+      /:where\(\[data-pretable-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(cellRule, "no [data-pretable-cell] rule found").toBeDefined();
+    expect(cellRule).toMatch(
+      /border-right:\s*var\(--pretable-rule-width\) solid var\(--pretable-rule-vertical\)/,
+    );
+    expect(cellRule).toMatch(
+      /border-bottom:\s*var\(--pretable-rule-width\) solid var\(--pretable-rule\)/,
     );
   });
 

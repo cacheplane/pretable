@@ -52,7 +52,7 @@
     font-weight: 500;
     color: var(--pretable-text-header);
     border: 0;
-    border-right: 1px solid var(--pretable-rule);
+    border-right: var(--pretable-rule-width) solid var(--pretable-rule-vertical);
     box-sizing: border-box;
   }
 
@@ -90,8 +90,8 @@
     font-size: var(--pretable-font-size-cell);
     color: var(--pretable-text-cell);
     background: var(--pretable-bg-grid);
-    border-right: 1px solid var(--pretable-rule);
-    border-bottom: 1px solid var(--pretable-rule);
+    border-right: var(--pretable-rule-width) solid var(--pretable-rule-vertical);
+    border-bottom: var(--pretable-rule-width) solid var(--pretable-rule);
     /* Cells are absolutely positioned, so a value wider than its column paints
        straight over the next one. Clip at the column edge instead.
        NOTE: the cell is a flex container, and `text-overflow: ellipsis` has no
@@ -207,7 +207,7 @@
     [data-pretable-cell]:not([data-pretable-pinned="right"])
       + [data-pretable-cell][data-pretable-pinned="right"]
   ) {
-    border-left: 1px solid var(--pretable-rule);
+    border-left: var(--pretable-rule-width) solid var(--pretable-rule-vertical);
   }
 
   /* Selection — wins over zebra/hover via source order (they precede it) */
