@@ -5,7 +5,7 @@ import {
   type PretableProcessingAuthority,
   type PretableProcessingOptions,
 } from "../index";
-import type { PretableDataRow } from "../types";
+import type { PretableDataRow, PretableGroupRow } from "../types";
 
 type Row = { id: string; name: string; score: number };
 
@@ -102,5 +102,41 @@ describe("processing authority", () => {
     expect(
       grid.getSnapshot().visibleRows.filter((r) => r.kind === "group"),
     ).toHaveLength(3);
+  });
+
+  // The fixture is supplied in score order 3, 1, 2 — so an assertion of 1, 2, 3
+  // separates "engine orders group headers by key" from "the supplied order is
+  // preserved". External sort authority governs the record order the engine
+  // folds over, not the group structure it synthesizes on top.
+  test("group headers stay in engine key order under external sort authority", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    grid.setRowGroups(["score"]);
+    expect(
+      grid
+        .getSnapshot()
+        .visibleRows.filter((r): r is PretableGroupRow => r.kind === "group")
+        .map((r) => r.value),
+    ).toEqual([1, 2, 3]);
+  });
+
+  test("a sort change under external authority reuses the derived rows", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    const before = grid.getSnapshot().visibleRows;
+    grid.setSort("score", "asc");
+    expect(grid.getSnapshot().visibleRows).toBe(before);
+  });
+
+  test("a filter change under external authority reuses the derived rows", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    const before = grid.getSnapshot().visibleRows;
+    grid.setColumnFilter("name", { operator: "contains", value: "b" });
+    expect(grid.getSnapshot().visibleRows).toBe(before);
+  });
+
+  test("a sort change under engine authority still re-derives", () => {
+    const grid = makeGrid();
+    const before = grid.getSnapshot().visibleRows;
+    grid.setSort("score", "asc");
+    expect(grid.getSnapshot().visibleRows).not.toBe(before);
   });
 });

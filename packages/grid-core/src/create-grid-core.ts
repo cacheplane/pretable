@@ -38,11 +38,14 @@ const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 
 /**
  * Substituted into the derivation when an operation's authority is external.
- * Module-level so the identity is stable and the derivation cache is not
- * invalidated by a fresh empty literal on every snapshot.
+ *
+ * Module-level because `getSnapshot` keys its derivation cache on the
+ * substituted value by identity — a fresh empty literal per call would re-derive
+ * on every snapshot. Being process-wide singletons, they are also readonly: one
+ * stray write would reach every grid in the process.
  */
-const NO_FILTERS: Record<string, ColumnFilter> = {};
-const NO_SORT: PretableSortEntry[] = [];
+const NO_FILTERS: Readonly<Record<string, ColumnFilter>> = {};
+const NO_SORT: readonly PretableSortEntry[] = [];
 
 /**
  * Group rows: focus targets, never selection or edit targets.
@@ -199,8 +202,9 @@ export function createGridCore<TRow extends PretableRow>(
   const pinnedWidthColumnIds = new Set<string>();
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
   let cachedVisibleRows: PretableVisibleRow<TRow>[] | null = null;
-  let cachedDerivedSort: PretableSortEntry[] | null = null;
-  let cachedDerivedFilters: Record<string, ColumnFilter> | null = null;
+  let cachedDerivedSort: readonly PretableSortEntry[] | null = null;
+  let cachedDerivedFilters: Readonly<Record<string, ColumnFilter>> | null =
+    null;
   // Grouping inputs are cache keys too — without them a collapse or a level
   // change would keep serving the previous flattening.
   let cachedDerivedRowGroups: string[] | null = null;
@@ -1752,10 +1756,24 @@ export function createGridCore<TRow extends PretableRow>(
     }
 
     const aggregateFilteredRows = options.aggregateFilteredRows ?? false;
+    // External filter authority: the records arrived already filtered upstream,
+    // so applying the displayed filters here would filter the same predicate
+    // twice. The state is still displayed — see `snapshot.filters` — it is
+    // simply not applied.
+    const derivedFilters =
+      filterAuthority === "external" ? NO_FILTERS : filters;
+    // External sort authority: the model order is the order the records were
+    // supplied in. Grouping stays the engine's — `sortSiblings` finds no entry
+    // in an empty sort and orders group headers by key ascending — so it is the
+    // order of rows *within* a group that is the upstream processor's.
+    const derivedSort = sortAuthority === "external" ? NO_SORT : sort;
+    // Keyed on the substituted inputs, not on `sort`/`filters`: under external
+    // authority the derivation cannot see those, so a sort click or filter
+    // keystroke must not force a content-identical re-derivation.
     const derivedIsFresh =
       cachedVisibleRows !== null &&
-      cachedDerivedSort === sort &&
-      cachedDerivedFilters === filters &&
+      cachedDerivedSort === derivedSort &&
+      cachedDerivedFilters === derivedFilters &&
       cachedDerivedRowGroups === rowGroups &&
       cachedDerivedOverrides === groupExpansionOverrides &&
       cachedDerivedDefaultExpanded === groupsDefaultExpanded &&
@@ -1766,16 +1784,9 @@ export function createGridCore<TRow extends PretableRow>(
       : preserveAggregateIdentity(
           deriveVisibleRows({
             columns: options.columns,
-            // External filter authority: the records arrived already filtered
-            // upstream, so applying the displayed filters here would filter the
-            // same predicate twice. The state is still displayed — see
-            // `snapshot.filters` — it is simply not applied.
-            filters: filterAuthority === "external" ? NO_FILTERS : filters,
+            filters: derivedFilters,
             rows: sourceRows,
-            // External sort authority: the empty-sort path already falls
-            // through to `sourceIndex`, i.e. the order the records were
-            // supplied in, which is exactly the upstream processor's order.
-            sort: sortAuthority === "external" ? NO_SORT : sort,
+            sort: derivedSort,
             rowGroups,
             groupExpansionOverrides,
             groupsDefaultExpanded,
@@ -1784,8 +1795,8 @@ export function createGridCore<TRow extends PretableRow>(
         );
 
     cachedVisibleRows = visibleRows;
-    cachedDerivedSort = sort;
-    cachedDerivedFilters = filters;
+    cachedDerivedSort = derivedSort;
+    cachedDerivedFilters = derivedFilters;
     cachedDerivedRowGroups = rowGroups;
     cachedDerivedOverrides = groupExpansionOverrides;
     cachedDerivedDefaultExpanded = groupsDefaultExpanded;

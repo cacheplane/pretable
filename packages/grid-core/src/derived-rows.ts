@@ -22,9 +22,9 @@ const NO_OVERRIDES: ReadonlySet<string> = new Set<string>();
 /** Input to the full derived-rows pipeline: `filter → group → aggregate → sort → flatten`. */
 export interface DeriveVisibleRowsInput<TRow extends PretableRow> {
   columns: PretableColumn<TRow>[];
-  filters: Record<string, ColumnFilter>;
+  filters: Readonly<Record<string, ColumnFilter>>;
   rows: SourceRow<TRow>[];
-  sort: PretableSortEntry[];
+  sort: readonly PretableSortEntry[];
   /** Grouping columns, outermost first. Omit or pass `[]` for a flat list. */
   rowGroups?: string[];
   /** Group ids whose expanded state differs from `groupsDefaultExpanded`. */
@@ -69,7 +69,7 @@ interface ResolvedFilter<TRow extends PretableRow> {
 
 function resolveFilters<TRow extends PretableRow>(
   columns: PretableColumn<TRow>[],
-  filters: Record<string, ColumnFilter>,
+  filters: Readonly<Record<string, ColumnFilter>>,
 ): ResolvedFilter<TRow>[] {
   const columnMap = new Map(columns.map((c) => [c.id, c]));
   const resolved: ResolvedFilter<TRow>[] = [];

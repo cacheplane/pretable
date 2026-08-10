@@ -46,7 +46,7 @@ type SortKey =
 export function sortRows<TRow extends PretableRow>(
   rows: SourceRow<TRow>[],
   columns: PretableColumn<TRow>[],
-  sort: PretableSortEntry[],
+  sort: readonly PretableSortEntry[],
 ): SourceRow<TRow>[] {
   // Precompute per-entry key arrays once — preserves the single-key perf shape.
   const keys = sort
