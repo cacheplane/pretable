@@ -10,6 +10,12 @@ handoff. It contains no implementation. Every normative requirement ID from the
 handoff is resolved in the traceability table (§16); every EXT requirement is
 either given a designed seam or explicitly deferred.
 
+Companion: `2026-08-09-server-controlled-exploration-competitive-analysis.md`
+tests every decision below against AG Grid v35 (source-audited), MUI X
+DataGrid 9.10.1, TanStack Table 8.21.3, and seven other grids. It overturns
+no decision here; it attaches incumbent evidence to the deferred EXT seams
+and records four non-blocking observations.
+
 ---
 
 ## 1. Verified current-state audit
