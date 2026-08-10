@@ -51,14 +51,27 @@ Three further defects are in scope, each verified:
    exposed because `HeroGrid` and the fixture both `useMemo`. The comment at
    `use-pretable.ts:271-274` still asserts the old, now-false behaviour.
 
-2. **With any left-pinned column, the tree column renders last.**
+2. **With any left-pinned column, the tree column is not the first column.**
    `groupColumnsByPin` seats the synthetic column at the head of _its own pin
    region_ (`create-grid-core.ts:131-153`). Unpinned, that is the head of the
-   array; with left-pinned data columns present it is not. The label, twisty,
-   indentation and `aria-level` land in the right-most scrolling column. The
-   documented escape hatch, `groupColumn.pinned: "left"`, is unreachable from
-   React — `UsePretableOptions` (`use-pretable.ts:149-161`) does not accept it
-   and `usePretable` forwards only `{columns, rows, getRowId, autosize}` to
+   array; with left-pinned data columns present it is the head of the
+   **unpinned** run.
+
+   Corrected during implementation — my original wording here said the tree
+   column lands "last" / "right-most", which is wrong. Measured with columns
+   `name(left), dept, qty` grouped by `dept`, the drawn order is:
+
+   ```
+   name(left), __pretable_group__, qty
+   ```
+
+   So it is the left-most **scrolling** column. The defect is that the tree
+   label, twisty and indentation are not the row's first column and scroll out
+   from under the pinned region — not that they land on the far right.
+
+   The documented escape hatch, `groupColumn.pinned: "left"`, is unreachable
+   from React — `UsePretableOptions` (`use-pretable.ts:149-161`) does not accept
+   it and `usePretable` forwards only `{columns, rows, getRowId, autosize}` to
    `createGrid` (`:254`).
 
 3. **Seven tests pass under a broken implementation.** Listed below.
