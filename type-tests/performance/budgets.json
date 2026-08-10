@@ -1,0 +1,45 @@
+{
+  "_comment": "Budgets are ceil(maximum of two consecutive clean local runs * 1.20). Check time is recorded for visibility and is never gated.",
+  "fixtures": {
+    "columns-100": {
+      "tsconfig": "type-tests/performance/tsconfig.100.json",
+      "maxInstantiations": 33656,
+      "maxMemoryKiB": 65650,
+      "calibration": {
+        "headroomPercent": 20,
+        "runs": [
+          {
+            "instantiations": 28046,
+            "memoryKiB": 54357,
+            "checkTimeSeconds": 0.43
+          },
+          {
+            "instantiations": 28046,
+            "memoryKiB": 54708,
+            "checkTimeSeconds": 0.53
+          }
+        ]
+      }
+    },
+    "columns-500": {
+      "tsconfig": "type-tests/performance/tsconfig.500.json",
+      "maxInstantiations": 151640,
+      "maxMemoryKiB": 112395,
+      "calibration": {
+        "headroomPercent": 20,
+        "runs": [
+          {
+            "instantiations": 126366,
+            "memoryKiB": 93569,
+            "checkTimeSeconds": 1.27
+          },
+          {
+            "instantiations": 126366,
+            "memoryKiB": 93662,
+            "checkTimeSeconds": 1.39
+          }
+        ]
+      }
+    }
+  }
+}

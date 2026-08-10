@@ -29,8 +29,9 @@
     "lint": "pnpm -r lint",
     "lint:packaging": "pnpm --filter @pretable/core lint:packaging && pnpm --filter @pretable/react lint:packaging && pnpm --filter @pretable/stream-adapter lint:packaging && pnpm --filter @pretable/ui lint:packaging",
     "publish:preflight": "node ./scripts/publish-preflight.mjs",
-    "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs scripts/__tests__/publish-preflight.test.mjs scripts/__tests__/publish-public-packages.test.mjs && pnpm -r --filter './packages/*' test && pnpm -r --workspace-concurrency=1 --filter './apps/*' test",
+    "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs scripts/__tests__/check-type-performance.test.mjs scripts/__tests__/publish-preflight.test.mjs scripts/__tests__/publish-public-packages.test.mjs && pnpm -r --filter './packages/*' test && pnpm -r --workspace-concurrency=1 --filter './apps/*' test",
     "typecheck": "pnpm -r --filter './packages/*' typecheck && pnpm -r --workspace-concurrency=1 --filter './apps/*' typecheck",
+    "typecheck:performance": "pnpm --filter @pretable/core build && node ./scripts/check-type-performance.mjs",
     "typecheck:public": "pnpm --filter @pretable/core build && pnpm exec tsc -p type-tests/tsconfig.json --noEmit"
   },
   "devDependencies": {
