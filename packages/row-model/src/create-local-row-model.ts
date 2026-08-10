@@ -27,7 +27,11 @@ import {
   type PretableTransitionCancellationReason,
   type PretableRowModelOperation,
 } from "./errors";
-import type { ExpansionRoot, RevisionRoot } from "./internal-types";
+import type {
+  ExpansionRoot,
+  PretableRevisionCause,
+  RevisionRoot,
+} from "./internal-types";
 import {
   attachGroupIndex,
   getGroupIndex,
@@ -89,6 +93,31 @@ interface CreateLocalRowModelBaseOptions<
 }
 
 const modelChangeJournals = new WeakMap<object, ChangeJournal<PretableRowId>>();
+const modelRevisionCauses = new WeakMap<object, () => PretableRevisionCause>();
+const modelActiveTransitionCandidates = new WeakMap<
+  object,
+  () => object | undefined
+>();
+
+export function getLocalRowModelRevisionCauseForTesting(
+  model: object,
+): PretableRevisionCause {
+  const read = modelRevisionCauses.get(model);
+  if (read === undefined) {
+    throw new TypeError("Diagnostics require a local Pretable row model.");
+  }
+  return read();
+}
+
+export function getLocalRowModelActiveTransitionCandidateForTesting(
+  model: object,
+): object | undefined {
+  const read = modelActiveTransitionCandidates.get(model);
+  if (read === undefined) {
+    throw new TypeError("Diagnostics require a local Pretable row model.");
+  }
+  return read();
+}
 
 export function getLocalRowModelChangeJournalDiagnosticsForTesting(
   model: object,
@@ -142,7 +171,6 @@ interface ActiveTransition<
 > {
   readonly id: number;
   readonly operation: "set-query" | "set-derivations";
-  readonly queryPlan: CompiledQuery<TColumns>;
   readonly candidate: CooperativeTransitionCandidate<TRow, TRowId, TColumns>;
   readonly finished: Promise<number>;
   readonly resolve: (revision: number) => void;
@@ -613,9 +641,9 @@ export function createLocalRowModel<
       activeTransition = undefined;
       transition.cancelScheduled?.();
       transition.cancelScheduled = undefined;
-      queryPlan = transition.queryPlan;
-      query = transition.queryPlan.query;
-      derivations = transition.queryPlan.derivations;
+      queryPlan = committedRoot.queryPlan;
+      query = committedRoot.queryPlan.query;
+      derivations = committedRoot.queryPlan.derivations;
       commit(committedRoot, READY);
       changeJournal.appendBarrier(previousRevision, revision);
       transition.candidate.release();
@@ -641,7 +669,6 @@ export function createLocalRowModel<
     const transition: ActiveTransition<TRow, TRowId, TColumns> = {
       id,
       operation,
-      queryPlan: nextPlan,
       candidate: createCooperativeTransitionCandidate({
         captured: root,
         queryPlan: nextPlan,
@@ -1098,6 +1125,8 @@ export function createLocalRowModel<
   // Construction has no subscribers. Future ingestion diagnostics, if any,
   // are delivered only after the initial immutable state and model exist.
   modelChangeJournals.set(model, changeJournal as ChangeJournal<PretableRowId>);
+  modelRevisionCauses.set(model, () => root.cause);
+  modelActiveTransitionCandidates.set(model, () => activeTransition?.candidate);
   emitDiagnostics(initialStore.diagnostics, diagnosticSink);
   return model as unknown as PretableRowModel<TRow, TRowId, TColumns>;
 }

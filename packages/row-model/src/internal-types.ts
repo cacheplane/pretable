@@ -47,7 +47,10 @@ export interface VisibleIndexRoot<
 }
 
 export type PretableRevisionCause =
-  { readonly kind: "initial" } | { readonly kind: "set-rows" };
+  | { readonly kind: "initial" }
+  | { readonly kind: "set-rows" }
+  | { readonly kind: "set-query" }
+  | { readonly kind: "set-derivations" };
 
 export interface RevisionRoot<
   TRow extends object,

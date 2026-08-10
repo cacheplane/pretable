@@ -7,7 +7,14 @@ import {
   type PretableAggregator,
   type PretableGroupId,
 } from "../index";
-import type { CooperativeTransitionScheduler } from "../cooperative-transition";
+import {
+  getCooperativeTransitionCandidateDiagnosticsForTesting,
+  type CooperativeTransitionScheduler,
+} from "../cooperative-transition";
+import {
+  getLocalRowModelActiveTransitionCandidateForTesting,
+  getLocalRowModelRevisionCauseForTesting,
+} from "../create-local-row-model";
 
 interface Row {
   id: number;
@@ -96,6 +103,105 @@ function createModel(options: {
 }
 
 describe("cooperative query and derivation transitions", () => {
+  test("records the exact query or derivation operation as the atomic revision cause", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createModel({
+      scheduler,
+      clock: tickingClock(),
+      budgetMs: 2,
+    });
+
+    const queryTransition = model.setQuery({
+      filters: [{ columnId: "score", operator: "gte", value: 4 }],
+      sort: [],
+      rowGroups: [],
+    });
+    scheduler.flushAll();
+    await queryTransition.finished;
+    expect(getLocalRowModelRevisionCauseForTesting(model)).toEqual({
+      kind: "set-query",
+    });
+
+    const derivationTransition = model.setDerivations([
+      columns[0],
+      { ...columns[1], aggregate: "avg" as const },
+    ]);
+    scheduler.flushAll();
+    await derivationTransition.finished;
+    expect(getLocalRowModelRevisionCauseForTesting(model)).toEqual({
+      kind: "set-derivations",
+    });
+  });
+
+  test.each([
+    ["cancel", "cancelled"],
+    ["dispose", "disposed"],
+  ] as const)(
+    "%s releases every candidate-held root, plan, index, iterator, and delta reference",
+    async (action, reason) => {
+      const scheduler = new ManualScheduler();
+      const model = createModel({
+        scheduler,
+        clock: tickingClock(),
+        budgetMs: 1,
+      });
+      const transition = model.setQuery({
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      });
+      const rejection = expect(transition.finished).rejects.toMatchObject({
+        reason,
+      });
+      model.applyTransaction({
+        update: [{ id: 11, changes: { score: 111 } }],
+      });
+      const candidate =
+        getLocalRowModelActiveTransitionCandidateForTesting(model);
+      const stale = scheduler.entries[0];
+      expect(candidate).toBeDefined();
+      if (candidate === undefined) return;
+      expect(
+        getCooperativeTransitionCandidateDiagnosticsForTesting(candidate),
+      ).toMatchObject({
+        released: false,
+        hasCapturedRoot: true,
+        hasQueryPlan: true,
+        hasIterator: true,
+        deltaCount: 1,
+        hasRows: true,
+        hasSourceOrder: true,
+        hasExpansion: true,
+        hasFlatRows: true,
+        hasGroups: true,
+      });
+
+      if (action === "cancel") transition.cancel();
+      else model.dispose();
+
+      await rejection;
+      const released = {
+        released: true,
+        hasCapturedRoot: false,
+        hasQueryPlan: false,
+        hasIterator: false,
+        deltaCount: 0,
+        hasRows: false,
+        hasSourceOrder: false,
+        hasExpansion: false,
+        hasFlatRows: false,
+        hasGroups: false,
+      };
+      expect(
+        getCooperativeTransitionCandidateDiagnosticsForTesting(candidate),
+      ).toEqual(released);
+      stale?.task();
+      expect(
+        getCooperativeTransitionCandidateDiagnosticsForTesting(candidate),
+      ).toEqual(released);
+    },
+  );
+
   test("keeps the committed snapshot interactive and reports bounded progress without revisions", async () => {
     const scheduler = new ManualScheduler();
     let evaluations = 0;
