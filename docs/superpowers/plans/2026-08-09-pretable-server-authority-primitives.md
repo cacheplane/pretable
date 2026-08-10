@@ -81,7 +81,7 @@ Design-doc sections that are normative for this plan: §1.3, §4.1–§4.6, §9.
 
 ## Task 1: Rebase onto current origin/main and establish a green baseline
 
-`origin/main` is three commits ahead of this branch (`58796c6` → `a90d1ca`). Brian runs concurrent sessions; re-check `origin/main` between tasks, not only here. **Never `git stash` in a worktree** — the stash stack is shared across worktrees and a parallel session's `pop` can steal your entry. Commit instead.
+This branch has already been rebased onto `e7fcc97` (`chore: version packages (#265)`), so this task is a re-check rather than a first rebase. Do not treat any SHA written in this plan as current: Brian runs concurrent sessions, so `origin/main` moves *while* the plan is being executed. Fetch and compare against `origin/main` between tasks, not only here. **Never `git stash` in a worktree** — the stash stack is shared across worktrees and a parallel session's `pop` can steal your entry. Commit instead.
 
 **Files:** none (git only)
 
@@ -90,7 +90,7 @@ Design-doc sections that are normative for this plan: §1.3, §4.1–§4.6, §9.
 - [ ] **Step 3: Install, in case the rebase moved a lockfile.** Run `pnpm install --frozen-lockfile`. Expect `Done in ...`.
 - [ ] **Step 4: Prove the engine baseline is green.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run`. Expect `Test Files  19 passed (19)` (count may differ after the rebase — record it; no failures).
 - [ ] **Step 5: Prove the React baseline is green.** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom`. Expect all files passing. If 1–2 tests time out, re-run each alone with `-t "<name>"` before believing it — that is the known local load flake.
-- [ ] **Step 6: Record the baseline in the branch.** Run `git -C /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a log --oneline -1` and confirm the parent is `a90d1ca` or newer. No commit needed for this task.
+- [ ] **Step 6: Record the baseline in the branch.** Run `git -C /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a log --oneline -1` and confirm the branch sits on `e7fcc97` or newer. No commit needed for this task.
 
 ---
 
