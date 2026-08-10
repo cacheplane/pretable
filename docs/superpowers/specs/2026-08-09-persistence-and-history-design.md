@@ -2,9 +2,10 @@
 
 **Date:** 2026-08-09
 
-**Status:** approved
+**Status:** planned
 
-**Next step:** written-spec review, then documentation-only implementation planning
+**Implementation plan:**
+[`2026-08-09-persistence-and-history-documentation.md`](../plans/2026-08-09-persistence-and-history-documentation.md)
 
 ## Context
 
