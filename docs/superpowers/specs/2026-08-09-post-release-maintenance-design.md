@@ -57,8 +57,9 @@ not have a `row` property.
 
 Add the conventional favicon, one direct browser regression, and the smallest
 coherent documentation corrections. This fixes every confirmed user-facing
-gap with one documentation-only patch release, without mixing in runtime or
-unrelated build cleanup.
+gap with one maintenance change, without mixing in runtime or unrelated build
+cleanup. Its documentation Changeset joins the repository's pending patch
+queue if that queue is still open when this merges.
 
 ### 2. Fix only the missing asset
 
@@ -109,14 +110,17 @@ Add a focused Playwright assertion to the website smoke coverage:
 3. cold-load a representative route and positively assert that Next.js emitted
    a `link[rel~="icon"]` whose URL resolves to `/favicon.ico` (allowing a cache
    query suffix); and
-4. observe the linked request succeeding, with error listeners installed
-   before navigation so a favicon console or page error also fails the test.
+4. explicitly fetch that emitted link URL and assert the response succeeds,
+   with error listeners installed before navigation so a favicon console or
+   page error also fails the test.
 
 The request assertion must first be observed failing against the current
 branch with the existing `404`. The browser assertion protects the integration
 between the App Router convention and page metadata rather than merely relying
-on browsers' implicit `/favicon.ico` request. It should not duplicate the broad
-visual-validation matrix.
+on browsers' implicit `/favicon.ico` request. Headless browsers do not reliably
+fetch favicon links, so the test must request the emitted URL explicitly rather
+than passively waiting for a page response event. It should not duplicate the
+broad visual-validation matrix.
 
 Run the focused regression in both Chromium and WebKit. The asset itself is
 browser-neutral, but both engines are already part of the website smoke gate
@@ -163,10 +167,21 @@ grouping tutorial.
 
 Add a patch Changeset for `@pretable/react` describing the corrected React 19
 peer-install guidance. The package README is published in the npm tarball, so a
-release is required for npm users to receive the correction. The repository's
-fixed-package policy will schedule the other three public Pretable packages at
-the same patch version; `changeset status` must show only that expected fixed
-group plus any normal private workspace dependents.
+release is required for npm users to receive the correction.
+
+At the time of this design, `origin/main` already has runtime/API patch
+Changesets queued. If they remain unconsumed when this change merges, the
+documentation note joins that release. If release automation consumes them
+first, this note schedules the following patch. In either case, the
+repository's fixed-package policy aligns all four public Pretable packages.
+
+Validate release intent from both perspectives:
+
+- `changeset status --since=origin/main` identifies only this branch's new
+  documentation release intent; and
+- full `changeset status` remains valid when combined with whatever Changesets
+  are then present on main, listing only the configured fixed public group and
+  normal private workspace dependents.
 
 ## Verification
 
@@ -178,15 +193,21 @@ Implementation follows red-green verification:
 4. Run website unit tests, typecheck, lint, and production build.
 5. Run the website browser suite in Chromium and WebKit against the local
    production build.
-6. Run root formatting and diff checks, plus Changesets status against
-   `origin/main` to confirm the intended public fixed-group patch and no
-   unrelated release.
+6. Pack `@pretable/react` to a temporary directory and inspect the README inside
+   the generated tarball, proving both peer requirements will be published.
+7. Run root formatting and diff checks, branch-delta Changesets status against
+   `origin/main`, and full Changesets status for the combined release queue.
 
 Documentation examples should use real exported names from the current package
 source. If the repository has no executable documentation-snippet checker, the
 implementation review will compare the snippets directly with the exported
 types and record that limitation rather than introducing a new docs compiler in
 this maintenance patch.
+
+After the Changeset is consumed and published, verify the live npm tarball's
+README contains the corrected peer guidance. This is a post-publish follow-up,
+not a prerequisite for merging the source pull request; the packed-tarball
+check is the pre-merge proof.
 
 ## Deferred follow-ups
 
@@ -208,16 +229,19 @@ separately with a scope appropriate to its risk.
 
 - `/favicon.ico` returns `200` locally with an icon/image content type and no
   cold-load browser error.
-- A rendered page contains Next.js's favicon metadata link, and that linked
-  request succeeds.
+- A rendered page contains Next.js's favicon metadata link, and an explicit
+  request to that emitted URL succeeds.
 - The favicon is recognizable and visually clean at both 16px and 32px.
-- Root, website, and published React-package install guides state both React 19
-  peer dependencies.
+- Root and website install guides state both React 19 peer dependencies, and
+  the README in a locally packed React-package tarball contains the same text.
 - The README names the real `usePretable` export.
 - Headless visible-row examples and type descriptions accurately represent the
   data/group discriminated union and never read `row` without narrowing.
 - Focused and full website checks pass in Chromium and WebKit.
 - The production website build and static checks pass with only the explicitly
   deferred pre-existing warnings.
-- Changesets reports the expected fixed-group patch release and no unintended
-  public package.
+- Branch-delta Changesets status reports this documentation patch, and full
+  status remains valid alongside main's existing release queue without an
+  unintended public package.
+- Once that patch is published, the live npm tarball receives the same README
+  correction as a separate post-publish check.
