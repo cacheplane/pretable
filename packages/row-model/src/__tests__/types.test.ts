@@ -1,0 +1,263 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { expect, test } from "vitest";
+import {
+  createColumnHelper,
+  type ColumnIdOf,
+  type ColumnsOf,
+  type PretableAggregator,
+  type PretableChangeOperation,
+  type PretableChangeSequence,
+  type PretableDerivationTransition,
+  type PretableDerivationsFor,
+  type PretableExpansionDefault,
+  type PretableGroupId,
+  type PretableMutationIssue,
+  type PretableMutationResult,
+  type PretableQueryFor,
+  type PretableQueryTransition,
+  type PretableRowModel,
+  PretableRowModelError,
+  type PretableRowModelSnapshot,
+  type PretableRowModelState,
+  type PretableRowModelStatus,
+  type PretableTransaction,
+  type PretableVisibleRowRef,
+  type RowIdOf,
+  type RowOf,
+} from "../index";
+
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+    ? true
+    : false;
+type Expect<T extends true> = T;
+
+interface Holding {
+  id: number;
+  sector: string;
+  quantity: number;
+}
+
+const column = createColumnHelper<Holding>();
+const columns = [
+  column.accessor("sector", { type: "text" }),
+  column.accessor("quantity", {
+    type: "number",
+    aggregate: "sum",
+    formatAggregate: ({ value }) => value?.toLocaleString() ?? "",
+  }),
+] as const;
+
+const totalLabel: PretableAggregator<
+  Holding,
+  number,
+  { total: number },
+  string
+> = {
+  init: () => ({ total: 0 }),
+  accumulate: (accumulator, value) => ({
+    total: accumulator.total + value,
+  }),
+  merge: (left, right) => ({ total: left.total + right.total }),
+  finalize: (accumulator) => String(accumulator.total),
+};
+const customAggregateColumn = column.accessor("quantity", {
+  type: "number",
+  aggregate: totalLabel,
+  formatAggregate: ({ value }) => value.toUpperCase(),
+});
+void customAggregateColumn;
+
+type Ids = ColumnIdOf<typeof columns>;
+type _ids = Expect<Equal<Ids, "sector" | "quantity">>;
+
+const query = {
+  filters: [{ columnId: "quantity", operator: "gte", value: 4 }],
+  sort: [{ columnId: "sector", direction: "asc", nulls: "last" }],
+  rowGroups: [{ columnId: "sector", direction: "asc" }],
+} as const satisfies PretableQueryFor<typeof columns>;
+
+const badQuery: PretableQueryFor<typeof columns> = {
+  // @ts-expect-error number filters cannot use text-only contains
+  filters: [{ columnId: "quantity", operator: "contains", value: "4" }],
+  sort: [],
+  rowGroups: [],
+};
+void badQuery;
+
+declare const model: PretableRowModel<Holding, number, typeof columns>;
+type _row = Expect<Equal<RowOf<typeof model>, Holding>>;
+type _rowId = Expect<Equal<RowIdOf<typeof model>, number>>;
+type _columns = Expect<Equal<ColumnsOf<typeof model>, typeof columns>>;
+
+interface OrdinaryRow {
+  id: string;
+  label: string;
+}
+declare const stringIdModel: PretableRowModel<OrdinaryRow, string, readonly []>;
+type _ordinaryInterfaceNeedsNoIndexSignature = Expect<
+  Equal<RowOf<typeof stringIdModel>, OrdinaryRow>
+>;
+type _stringId = Expect<Equal<RowIdOf<typeof stringIdModel>, string>>;
+
+function narrowRef(ref: PretableVisibleRowRef<number>) {
+  if (ref.kind === "data") {
+    const id: number = ref.rowId;
+    return id;
+  }
+  const id: PretableGroupId = ref.groupId;
+  return id;
+}
+void narrowRef;
+
+const statuses: readonly PretableRowModelStatus[] = [
+  { kind: "ready" },
+  { kind: "rebuilding", transitionId: 1, completedRows: 10, totalRows: 20 },
+  {
+    kind: "error",
+    transitionId: 1,
+    error: new PretableRowModelError("derivation-failed", "fixture", {
+      operation: "set-query",
+    }),
+  },
+  { kind: "disposed" },
+];
+void statuses;
+
+const groupId = "group:sector:Energy" as PretableGroupId;
+const issues: readonly PretableMutationIssue<number>[] = [
+  { code: "unknown-update-id", rowId: 1 },
+  { code: "unknown-remove-id", rowId: 2 },
+  { code: "unknown-group-id", groupId },
+];
+const result: PretableMutationResult<number> = {
+  previousRevision: 0,
+  revision: 1,
+  added: 1,
+  updated: 1,
+  removed: 0,
+  unchanged: 0,
+  ignored: 1,
+  issues,
+};
+void result;
+
+const transaction: PretableTransaction<Holding, number> = {
+  add: [{ id: 3, sector: "Energy", quantity: 7 }],
+  update: [{ id: 1, changes: { quantity: 5 } }],
+  remove: [2],
+};
+void transaction;
+
+const expansionPolicies: readonly PretableExpansionDefault[] = [
+  { kind: "collapsed" },
+  { kind: "expanded" },
+  { kind: "through-depth", depth: 2 },
+];
+void expansionPolicies;
+
+const dataRef = { kind: "data", rowId: 1 } as const;
+const groupRef = { kind: "group", groupId } as const;
+const operations: readonly PretableChangeOperation<number>[] = [
+  { kind: "insert", ref: dataRef, index: 0 },
+  { kind: "remove", ref: groupRef, previousIndex: 0 },
+  { kind: "move", ref: dataRef, previousIndex: 1, index: 2 },
+  { kind: "update", ref: groupRef, index: 0, fields: ["aggregates"] },
+];
+void operations;
+const invalidInsert: PretableChangeOperation<number> = {
+  kind: "insert",
+  ref: dataRef,
+  index: 0,
+  // @ts-expect-error insert operations do not carry a previous index
+  previousIndex: 0,
+};
+void invalidInsert;
+
+function assertOperationalSignatures(
+  rowModel: PretableRowModel<Holding, number, typeof columns>,
+  queryTransition: PretableQueryTransition<typeof columns>,
+  derivations: PretableDerivationsFor<typeof columns>,
+  derivationTransition: PretableDerivationTransition<typeof columns>,
+  sequence: PretableChangeSequence<number>,
+  snapshot: PretableRowModelSnapshot<Holding, number, typeof columns>,
+  state: PretableRowModelState<Holding, number, typeof columns>,
+) {
+  const _columns: typeof columns = rowModel.getColumns();
+  const _currentState: typeof state = rowModel.getState();
+  const _mutation: PretableMutationResult<number> =
+    rowModel.applyTransaction(transaction);
+  rowModel.setRows([]);
+  rowModel.setQuery(query);
+  rowModel.setDerivations(derivations);
+  rowModel.setGroupExpanded(groupId, true);
+  rowModel.setExpansionDefault(
+    { kind: "through-depth", depth: 1 },
+    {
+      preserveOverrides: true,
+    },
+  );
+  rowModel.expandAll();
+  rowModel.collapseAll();
+  rowModel.changesSince(0);
+  const _distinctFinished: Promise<unknown> = rowModel.distinctValues(
+    "quantity",
+    { population: "filtered", limit: 20 },
+  ).finished;
+
+  const _requestedQuery: PretableQueryFor<typeof columns> =
+    queryTransition.requestedQuery;
+  const _queryFinished: Promise<number> = queryTransition.finished;
+  queryTransition.cancel();
+
+  const _requestedDerivations: PretableDerivationsFor<typeof columns> =
+    derivationTransition.requestedDerivations;
+
+  if (sequence.kind === "changes") {
+    const _from: number = sequence.fromRevision;
+    void _from;
+  } else {
+    const _reason: "unknown-revision" | "journal-evicted" | "bulk-replace" =
+      sequence.reason;
+    void _reason;
+  }
+
+  const _visibleDataCount: number = snapshot.visibleDataRowCount;
+  snapshot.rowAt(0);
+  snapshot.range(0, 20);
+  snapshot.indexOf(dataRef);
+  snapshot.dataRowAt(0);
+  snapshot.firstDataRow();
+  snapshot.lastDataRow();
+  snapshot.nextDataRow(dataRef);
+  snapshot.previousDataRow(dataRef);
+  snapshot.parentGroupOf(dataRef);
+  snapshot.nearestVisibleRef(dataRef);
+  snapshot.isGroupExpanded(groupId);
+
+  const _stateSnapshot: typeof snapshot = state.snapshot;
+  const _stateStatus: PretableRowModelStatus = state.status;
+
+  const unsubscribe: () => void = rowModel.subscribe(() => undefined);
+  unsubscribe();
+  const disposeResult: void = rowModel.dispose();
+
+  void derivations;
+  void _columns;
+  void _currentState;
+  void _mutation;
+  void _distinctFinished;
+  void _requestedQuery;
+  void _queryFinished;
+  void _requestedDerivations;
+  void _visibleDataCount;
+  void _stateSnapshot;
+  void _stateStatus;
+  void disposeResult;
+}
+void assertOperationalSignatures;
+
+test("the column helper retains runtime column IDs", () => {
+  expect(columns.map((entry) => entry.id)).toEqual(["sector", "quantity"]);
+  expect(query.filters[0]?.columnId).toBe("quantity");
+});

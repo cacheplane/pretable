@@ -34,7 +34,8 @@
   },
   "sideEffects": false,
   "devDependencies": {
-    "@pretable-internal/grid-core": "workspace:*"
+    "@pretable-internal/grid-core": "workspace:*",
+    "@pretable-internal/row-model": "workspace:*"
   },
   "scripts": {
     "api": "api-extractor run --local --config api-extractor.json",

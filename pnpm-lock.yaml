@@ -271,12 +271,18 @@ importers:
       '@pretable-internal/grid-core':
         specifier: workspace:*
         version: link:../grid-core
+      '@pretable-internal/row-model':
+        specifier: workspace:*
+        version: link:../row-model
 
   packages/grid-core:
     dependencies:
       '@pretable-internal/layout-core':
         specifier: workspace:*
         version: link:../layout-core
+      '@pretable-internal/row-model':
+        specifier: workspace:*
+        version: link:../row-model
       '@pretable-internal/text-core':
         specifier: workspace:*
         version: link:../text-core
@@ -316,6 +322,8 @@ importers:
       '@pretable-internal/text-core':
         specifier: workspace:*
         version: link:../text-core
+
+  packages/row-model: {}
 
   packages/scenario-data: {}
 

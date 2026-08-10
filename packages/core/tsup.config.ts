@@ -8,7 +8,7 @@ export default defineConfig({
   outExtension: ({ format }) => ({
     js: format === "cjs" ? ".cjs" : ".mjs",
   }),
-  noExternal: ["@pretable-internal/grid-core"],
+  noExternal: ["@pretable-internal/grid-core", "@pretable-internal/row-model"],
   treeshake: true,
   tsconfig: "tsconfig.build.json",
 });
