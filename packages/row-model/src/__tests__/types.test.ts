@@ -103,6 +103,14 @@ const avgDerivations: PretableDerivationsFor<typeof columns> = [
   columns[0],
   { ...columns[1], aggregate: "avg" },
 ];
+const freshAvgColumn = column.accessor("quantity", {
+  type: "number",
+  aggregate: "avg",
+});
+const freshAvgDerivations: PretableDerivationsFor<typeof columns> = [
+  columns[0],
+  freshAvgColumn,
+];
 const customDerivations: PretableDerivationsFor<typeof columns> = [
   columns[0],
   { ...columns[1], aggregate: compatibleAverage },
@@ -116,8 +124,60 @@ const badDerivations: PretableDerivationsFor<typeof columns> = [
   },
 ];
 void avgDerivations;
+void freshAvgDerivations;
 void customDerivations;
 void badDerivations;
+
+const addedAggregateColumn = column.accessor("sector", {
+  type: "text",
+  aggregate: "count",
+});
+const badAggregateCapability: PretableDerivationsFor<typeof columns> = [
+  // @ts-expect-error a schema without an aggregate cannot add one in-place
+  addedAggregateColumn,
+  columns[1],
+];
+
+const changedValueColumn = column.accessor("quantity", (row) => row.sector, {
+  type: "text",
+});
+const badValueDerivations: PretableDerivationsFor<typeof columns> = [
+  columns[0],
+  // @ts-expect-error derivation accessors retain the schema's value type
+  changedValueColumn,
+];
+
+const changedKindColumn = column.accessor("sector", { type: "enum" });
+const badKindDerivations: PretableDerivationsFor<typeof columns> = [
+  // @ts-expect-error derivation columns retain the schema's declared kind
+  changedKindColumn,
+  columns[1],
+];
+
+const incompatibleOutputAggregate: PretableAggregator<
+  Holding,
+  number,
+  number,
+  string
+> = {
+  init: () => 0,
+  accumulate: (accumulator, value) => accumulator + value,
+  merge: (left, right) => left + right,
+  finalize: String,
+};
+const changedOutputColumn = column.accessor("quantity", {
+  type: "number",
+  aggregate: incompatibleOutputAggregate,
+});
+const badOutputDerivations: PretableDerivationsFor<typeof columns> = [
+  columns[0],
+  // @ts-expect-error replacement aggregates retain the schema's output type
+  changedOutputColumn,
+];
+void badAggregateCapability;
+void badValueDerivations;
+void badKindDerivations;
+void badOutputDerivations;
 
 const typedGroupAggregates: PretableGroupRow<typeof columns>["aggregates"] = {
   quantity: 42,

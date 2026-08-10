@@ -404,7 +404,7 @@ export interface PretableColumnDerivation<
     TId,
     TValue,
     TType,
-    TAggregate
+    PretableCompatibleAggregateSpec<TRow, TValue, TAggregate>
   >;
 }
 
