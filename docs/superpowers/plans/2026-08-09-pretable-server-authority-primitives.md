@@ -3382,6 +3382,27 @@ read this first.
   second top-level `describe` rather than bare `it`s. Still additive, still
   never loosened.
 
+- **The latch covers `state.focus` too, and it always should have.** As first
+  shipped only `state.selection` latched, so a controlled focus held across a
+  pivot was re-asserted onto the new dataset — landing on a row that merely
+  reuses the id, and contradicting the uncontrolled DK-change focus rule that
+  `lifecycle-announcements.test.tsx` pins. The two slices carry the same kind
+  of claim about the same result set; there was no reason for them to differ.
+  Both are now latched by the same rule in `use-pretable.ts`, and
+  `controlled-state-authority.test.tsx` pins focus against the uncontrolled
+  behavior. Design §4.2's DK-change focus rule says so as well.
+  Two edges of the latch were also unspecified and untested. A latch armed
+  while the slice is UNCONTROLLED could never be released — the release lived
+  inside the slice's own block, which an undefined slice never reaches — so a
+  consumer that dropped the slice across the pivot and later re-supplied the
+  same value stayed suppressed forever. Released up front now, for both
+  slices. And a held latch suspends controlled authority over that slice
+  outright rather than merely skipping the re-assert, so a user selection made
+  after the pivot stays put; that is wider than the original note implied, it
+  is the only coherent reading (the stale value is the only thing the
+  re-assert could force back TO), and it is now stated on
+  `PretableSurfaceState` and pinned both ways.
+
 - **The `datasetKey` pivot clear now outranks a controlled `state.selection`,**
   resolving the carry-forward recorded above. `use-pretable.ts` suppresses the
   re-assert of a controlled selection whose VALUE is unchanged across the

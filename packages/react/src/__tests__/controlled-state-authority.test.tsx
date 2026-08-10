@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -58,6 +58,40 @@ function selectedRowIds(view: ReturnType<typeof render>): string[] {
   ).map((node) => node.getAttribute("data-pretable-row-id") ?? "");
 }
 
+function cellAt(
+  view: ReturnType<typeof render>,
+  rowId: string,
+): HTMLElement | null {
+  return view.container.querySelector<HTMLElement>(
+    `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="name"]`,
+  );
+}
+
+/**
+ * The row holding the roving tabstop, i.e. where the engine believes focus is.
+ * Read from the DOM rather than the snapshot so the assertion is about what a
+ * keyboard user would land on next.
+ */
+function focusedRowId(view: ReturnType<typeof render>): string | null {
+  const cell = view.container.querySelector<HTMLElement>(
+    '[data-pretable-cell][tabindex="0"]',
+  );
+  return (
+    cell
+      ?.closest("[data-pretable-row-id]")
+      ?.getAttribute("data-pretable-row-id") ?? null
+  );
+}
+
+function clickCell(view: ReturnType<typeof render>, rowId: string): void {
+  const cell = cellAt(view, rowId);
+  if (!cell) throw new Error(`no rendered cell for row ${rowId}`);
+  act(() => {
+    cell.focus();
+    fireEvent.click(cell);
+  });
+}
+
 function Harness({
   rows,
   resultMeta,
@@ -72,18 +106,25 @@ function Harness({
   onSortChange?: (sort: PretableSortEntry[]) => void;
 }) {
   return (
-    <PretableSurface<Row>
-      ariaLabel="People"
-      columns={columns}
-      rows={rows}
-      getRowId={(row) => row.id}
-      viewportHeight={400}
-      processing={{ filter: "external", sort: "external" }}
-      resultMeta={resultMeta}
-      state={state}
-      onFiltersChange={onFiltersChange}
-      onSortChange={onSortChange}
-    />
+    <>
+      {/* A focus target the surface does not own, so "the user was outside the
+          grid" is a real place rather than `<body>`. */}
+      <button data-testid="outside" type="button">
+        Outside
+      </button>
+      <PretableSurface<Row>
+        ariaLabel="People"
+        columns={columns}
+        rows={rows}
+        getRowId={(row) => row.id}
+        viewportHeight={400}
+        processing={{ filter: "external", sort: "external" }}
+        resultMeta={resultMeta}
+        state={state}
+        onFiltersChange={onFiltersChange}
+        onSortChange={onSortChange}
+      />
+    </>
   );
 }
 
@@ -167,6 +208,138 @@ describe("controlled selection across a dataset pivot", () => {
     );
     view.rerender(<Harness rows={[...q1Rows]} resultMeta={q1} state={state} />);
     expect(selectedRowIds(view)).toEqual(["b"]);
+  });
+
+  it("releases the latch when the slice is uncontrolled at the pivot", () => {
+    // Uncontrolled means there is no re-assert to suppress, so arming against
+    // the value would only mis-suppress the consumer's LATER re-assert of it.
+    const held = selectionOf("b");
+    const view = render(
+      <Harness rows={q1Rows} resultMeta={q1} state={{ selection: held }} />,
+    );
+    expect(selectedRowIds(view)).toEqual(["b"]);
+
+    // The consumer hands the slice back to the engine on the pivot render.
+    view.rerender(<Harness rows={q2Rows} resultMeta={q2} state={{}} />);
+    expect(selectedRowIds(view)).toEqual([]);
+
+    // ...and takes it back later. Supplying a selection AFTER a pivot it has
+    // already seen is a fresh claim about the new dataset, whatever its value.
+    view.rerender(
+      <Harness rows={q2Rows} resultMeta={q2} state={{ selection: held }} />,
+    );
+    expect(selectedRowIds(view)).toEqual(["b"]);
+  });
+
+  it("lets the user select while the latch is held", () => {
+    // The latch suspends controlled authority outright, not just the re-assert
+    // of the pivot-stale value: while it is held the consumer cannot force a
+    // user selection back. Re-asserting is the only thing it could force back
+    // TO, and that value belongs to the previous query.
+    const state: PretableSurfaceState = { selection: selectionOf("b") };
+    const view = render(
+      <Harness rows={q1Rows} resultMeta={q1} state={state} />,
+    );
+    view.rerender(<Harness rows={q2Rows} resultMeta={q2} state={state} />);
+    expect(selectedRowIds(view)).toEqual([]);
+
+    clickCell(view, "d");
+    view.rerender(<Harness rows={q2Rows} resultMeta={q2} state={state} />);
+    expect(selectedRowIds(view)).toEqual(["d"]);
+  });
+
+  it("forces a user selection back when no latch is held", () => {
+    // The contrast that makes the test above a statement about the latch
+    // rather than about controlled selection in general.
+    const state: PretableSurfaceState = { selection: selectionOf("b") };
+    const view = render(
+      <Harness rows={q1Rows} resultMeta={q1} state={state} />,
+    );
+    clickCell(view, "c");
+    expect(selectedRowIds(view)).toEqual(["b"]);
+  });
+});
+
+describe("controlled focus across a dataset pivot", () => {
+  const q1: PretableResultMeta = {
+    datasetKey: "q1",
+    total: { kind: "exact", count: 3 },
+  };
+  const q2: PretableResultMeta = {
+    datasetKey: "q2",
+    total: { kind: "exact", count: 3 },
+  };
+  // `c` is in both datasets, so a focus address minted for q1 still finds a
+  // row to land on in q2. Without the latch that is exactly what happens.
+  const heldFocus = { rowId: "c", columnId: "name" };
+
+  it("keeps the pivot's focus move when the consumer re-asserts the previous query's focus", () => {
+    const state: PretableSurfaceState = { focus: heldFocus };
+    const view = render(
+      <Harness rows={q1Rows} resultMeta={q1} state={state} />,
+    );
+    expect(focusedRowId(view)).toBe("c");
+
+    // Stated rather than relied on: the pivot's focus move is conditional on
+    // the user being in the grid, and asserting the move means putting them
+    // there. The cell is the one the controlled focus already names, so this
+    // changes no engine state on the way in.
+    const held = cellAt(view, "c");
+    act(() => held?.focus());
+
+    view.rerender(<Harness rows={q2Rows} resultMeta={q2} state={state} />);
+    // First row of the new result, matching the uncontrolled behavior pinned
+    // in lifecycle-announcements.test.tsx.
+    expect(focusedRowId(view)).toBe("b");
+  });
+
+  it("takes nothing when the user was outside the grid at the pivot", () => {
+    const state: PretableSurfaceState = { focus: heldFocus };
+    const view = render(
+      <Harness rows={q1Rows} resultMeta={q1} state={state} />,
+    );
+    // Asserting a controlled focus moves DOM focus into the grid, so leaving
+    // the grid is a deliberate act here rather than the starting state.
+    const outside = view.getByTestId("outside");
+    act(() => outside.focus());
+
+    view.rerender(<Harness rows={q2Rows} resultMeta={q2} state={state} />);
+    expect(focusedRowId(view)).toBeNull();
+    expect(document.activeElement).toBe(outside);
+  });
+
+  it("accepts a focus address the consumer mints for the new dataset", () => {
+    const view = render(
+      <Harness rows={q1Rows} resultMeta={q1} state={{ focus: heldFocus }} />,
+    );
+    view.rerender(
+      <Harness
+        rows={q2Rows}
+        resultMeta={q2}
+        state={{ focus: { rowId: "d", columnId: "name" } }}
+      />,
+    );
+    expect(focusedRowId(view)).toBe("d");
+  });
+
+  it("releases the latch when the slice is uncontrolled at the pivot", () => {
+    const view = render(
+      <Harness rows={q1Rows} resultMeta={q1} state={{ focus: heldFocus }} />,
+    );
+    view.rerender(<Harness rows={q2Rows} resultMeta={q2} state={{}} />);
+    view.rerender(
+      <Harness rows={q2Rows} resultMeta={q2} state={{ focus: heldFocus }} />,
+    );
+    expect(focusedRowId(view)).toBe("c");
+  });
+
+  it("re-asserts a controlled focus on an ordinary same-key replacement", () => {
+    const state: PretableSurfaceState = { focus: heldFocus };
+    const view = render(
+      <Harness rows={q1Rows} resultMeta={q1} state={state} />,
+    );
+    view.rerender(<Harness rows={[...q1Rows]} resultMeta={q1} state={state} />);
+    expect(focusedRowId(view)).toBe("c");
   });
 });
 

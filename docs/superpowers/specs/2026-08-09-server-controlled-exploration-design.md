@@ -577,6 +577,12 @@ Derived features under external authority:
   empty; if focus was outside the grid, nothing is grabbed.
   `focusedRowRemovedAnnouncement` does **not** fire on a DK change — the
   results announcement covers that transition.
+  **A controlled `state.focus` does not defeat this**, the same way a
+  controlled `state.selection` does not defeat the selection clear: an address
+  the consumer has not changed across the pivot names a row in the previous
+  query's result, and re-asserting it is how a stale address lands on whatever
+  now happens to carry that id. Both slices latch identically — see the
+  `use-pretable.ts` note for the full rule and its accepted cost.
 
 **Append is `setRows(prev.concat(page))` — no `appendRows` method.**
 Preservation is row-ID-keyed and heights are ID-keyed React state, so a tail

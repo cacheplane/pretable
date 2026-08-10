@@ -143,6 +143,12 @@ export interface PretableTelemetry {
  */
 export interface PretableSurfaceState {
   filters?: Record<string, ColumnFilter>;
+  /**
+   * Re-asserted on every engine snapshot, with the same
+   * `resultMeta.datasetKey` exception as {@link PretableSurfaceState.selection}
+   * — an address minted for the previous query is not re-applied across a
+   * pivot, even when the new dataset happens to contain that row id.
+   */
   focus?: PretableFocusState;
   /**
    * Re-asserted on every engine snapshot, with one exception: a
@@ -150,6 +156,10 @@ export interface PretableSurfaceState {
    * across that pivot is not re-applied — it describes the previous query's
    * result set. Supply a selection minted for the new dataset to take control
    * again.
+   *
+   * Until then this slice is uncontrolled, not merely un-re-asserted: a
+   * selection the user makes after the pivot stays put rather than snapping
+   * back to the held value.
    */
   selection?: PretableSelectionState;
   sort?: PretableSortEntry[];
@@ -455,24 +465,35 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   // mutator self-guards against equal values (no emit when unchanged), so the
   // effect converges — the re-assert after our own emit is a no-op — and never
   // loops.
-  // A controlled selection is a claim about one result set. When
-  // `resultMeta.datasetKey` moves, the engine clears selection because the
-  // loaded records now answer a different question, and the re-assert below
-  // would undo that clear with addresses minted against the old answer. The
-  // clear wins: a selection the consumer has NOT changed across the pivot is
-  // the previous query's, and stays cleared until the consumer supplies one it
+  // A controlled selection or focus is a claim about one result set. When
+  // `resultMeta.datasetKey` moves, the engine clears both because the loaded
+  // records now answer a different question, and the re-asserts below would
+  // undo that clear with addresses minted against the old answer. The clear
+  // wins: a value the consumer has NOT changed across the pivot is the
+  // previous query's, and stays cleared until the consumer supplies one it
   // computed for the new dataset. That is the only signal available — an
-  // engine-internal clear fires no `onSelectionChange`.
+  // engine-internal clear fires no `onSelectionChange`/`onFocusChange`.
+  //
+  // The two slices latch identically on purpose. A stale focus address is the
+  // worse of the two failures if anything: it is where the next keystroke goes
+  // and where the screen reader speaks from, and an overlapping dataset makes
+  // it land on a row that merely happens to reuse the id.
   //
   // Cost of the rule, accepted: a consumer that genuinely wants the identical
-  // selection under the new dataset cannot say so on the pivot render, because
-  // that is indistinguishable from a consumer that has not noticed the pivot.
-  // It says so on any later render instead.
+  // selection or focus under the new dataset cannot say so on the pivot render,
+  // because that is indistinguishable from a consumer that has not noticed the
+  // pivot. It says so on any later render instead.
   //
   // Compared by VALUE, not identity: an inline `state={{ selection: … }}`
   // literal is a fresh object every render and would otherwise release the
   // latch on the render right after the pivot — including the re-render the
   // pivot's own emit triggers.
+  //
+  // While a latch is held it suspends controlled authority over that slice
+  // outright, so a user selection or focus move made after the pivot stays
+  // put. That is wider than "do not re-apply the stale value", and it is the
+  // only coherent reading: the stale value is the only thing the re-assert
+  // could force back TO, and it belongs to the previous query.
   const seenDatasetKeyRef = useRef<{
     grid: PretableGrid<TRow>;
     key: string | null;
@@ -483,6 +504,10 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   const selectionClearedAtPivotRef = useRef<PretableSelectionState | null>(
     null,
   );
+  const previousControlledFocusRef = useRef<PretableFocusState | undefined>(
+    undefined,
+  );
+  const focusClearedAtPivotRef = useRef<PretableFocusState | null>(null);
 
   useLayoutEffect(() => {
     // Sampled ahead of the `state` guard: a grid that gains controlled state
@@ -500,8 +525,22 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
     seenDatasetKeyRef.current = { grid, key: liveDatasetKey };
     const previousControlledSelection = previousControlledSelectionRef.current;
     previousControlledSelectionRef.current = state?.selection;
+    const previousControlledFocus = previousControlledFocusRef.current;
+    previousControlledFocusRef.current = state?.focus;
     if (pivoted) {
       selectionClearedAtPivotRef.current = previousControlledSelection ?? null;
+      focusClearedAtPivotRef.current = previousControlledFocus ?? null;
+    }
+    // An uncontrolled slice has no re-assert to suppress, so a latch armed
+    // against one can only mis-suppress the consumer's LATER re-assert of that
+    // same value — indefinitely, since the release below lives inside the
+    // slice's own block. Released here instead, which an undefined slice (and
+    // an absent `state`, which returns early) would otherwise never reach.
+    if (state?.selection === undefined) {
+      selectionClearedAtPivotRef.current = null;
+    }
+    if (state?.focus === undefined) {
+      focusClearedAtPivotRef.current = null;
     }
 
     if (!state) {
@@ -573,20 +612,29 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
 
     if (state.focus !== undefined) {
       const focus = normalizeControlledFocus(state.focus);
-      const currentSnapshot = grid.getSnapshot();
+      const clearedAtPivot = focusClearedAtPivotRef.current;
+      if (
+        clearedAtPivot === null ||
+        !focusStatesEqual(normalizeControlledFocus(clearedAtPivot), focus)
+      ) {
+        focusClearedAtPivotRef.current = null;
+        const currentSnapshot = grid.getSnapshot();
 
-      // This effect runs for every engine snapshot, including scroll and
-      // viewport updates. Matching focus is the steady-state hot path: keep it
-      // O(1) and enter derived-model membership checks only after divergence.
-      if (!focusStatesEqual(currentSnapshot.focus, focus)) {
-        if (focus.rowId === null || focus.columnId === null) {
-          grid.setFocus(null);
-        } else if (controlledFocusExistsInGrid(grid, currentSnapshot, focus)) {
-          // Row grouping, filtering, and streamed row replacement can repair
-          // the engine focus earlier in this same layout pass. Do not overwrite
-          // that repair with a controlled address that disappeared from the
-          // derived row/column model.
-          grid.setFocus({ rowId: focus.rowId, columnId: focus.columnId });
+        // This effect runs for every engine snapshot, including scroll and
+        // viewport updates. Matching focus is the steady-state hot path: keep it
+        // O(1) and enter derived-model membership checks only after divergence.
+        if (!focusStatesEqual(currentSnapshot.focus, focus)) {
+          if (focus.rowId === null || focus.columnId === null) {
+            grid.setFocus(null);
+          } else if (
+            controlledFocusExistsInGrid(grid, currentSnapshot, focus)
+          ) {
+            // Row grouping, filtering, and streamed row replacement can repair
+            // the engine focus earlier in this same layout pass. Do not
+            // overwrite that repair with a controlled address that disappeared
+            // from the derived row/column model.
+            grid.setFocus({ rowId: focus.rowId, columnId: focus.columnId });
+          }
         }
       }
     }
