@@ -1031,10 +1031,19 @@ export function createGridCore<TRow extends PretableRow>(
       // would read as a change every time.
       const grouped = groupColumnsByPin(merged);
       const layoutChanged = !sameColumnLayout(options.columns, grouped);
-      const groupingSemanticsChanged = !sameColumnGroupingSemantics(
-        options.columns,
-        grouped,
-      );
+      // The derived rows are a function of the column SET always — filters and
+      // sorts resolve their column by id — but of `value`/`aggregate` identity
+      // only while grouping is active, and then only for the columns that feed
+      // the grouped model. Comparing accessors by identity is the only signal
+      // available, and an inline `columns={[…]}` re-creates them every render:
+      // consulting it unconditionally would re-derive and emit on every parent
+      // update of every grid, grouped or not.
+      const columnSetChanged = !sameColumnIds(options.columns, grouped);
+      const groupingAccessorsChanged =
+        rowGroups.length > 0 &&
+        !sameGroupingAccessors(options.columns, grouped, rowGroups);
+      const groupingSemanticsChanged =
+        columnSetChanged || groupingAccessorsChanged;
       const before = groupingSemanticsChanged
         ? captureVisibleRowsForFocusReconciliation()
         : null;
@@ -1741,27 +1750,56 @@ function sameColumnLayout<TRow extends PretableRow>(
 }
 
 /**
- * Compare only the column fields that feed grouped-row derivation.
- *
- * `formatAggregate` is display-only and React renders it from fresh props;
- * `rowGroup` seeds the initial state but does not control it after creation.
- * Keeping both out of this comparison avoids unnecessary engine emissions.
+ * The column set the derived rows resolve against: ids, in order. A changed set
+ * can change filtering, sorting and grouping regardless of whether grouping is
+ * active, so this one is never gated.
  */
-function sameColumnGroupingSemantics<TRow extends PretableRow>(
+function sameColumnIds<TRow extends PretableRow>(
   a: readonly PretableColumn<TRow>[],
   b: readonly PretableColumn<TRow>[],
 ): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
+  return (
+    a.length === b.length && a.every((left, index) => left.id === b[index]!.id)
+  );
+}
+
+/**
+ * Compare the accessors that feed grouped-row derivation, for the columns that
+ * actually feed it: a grouping level's `value`, and any column's `aggregate`.
+ * A `value` closure on an ungrouped, non-aggregated column cannot move the
+ * grouped row model, and it is re-created on every render by the inline-columns
+ * idiom — comparing it would emit for nothing.
+ *
+ * `formatAggregate` is display-only and React renders it from fresh props;
+ * `rowGroup` seeds the initial state but does not control it after creation.
+ * Both stay out of this comparison for the same reason.
+ *
+ * Assumes {@link sameColumnIds} already holds.
+ */
+function sameGroupingAccessors<TRow extends PretableRow>(
+  a: readonly PretableColumn<TRow>[],
+  b: readonly PretableColumn<TRow>[],
+  rowGroups: readonly string[],
+): boolean {
+  const levels = new Set(rowGroups);
 
   return a.every((left, index) => {
-    const right = b[index]!;
-    return (
-      left.id === right.id &&
-      left.value === right.value &&
-      left.aggregate === right.aggregate
-    );
+    const right = b[index];
+
+    if (!right || left.id !== right.id) {
+      return false;
+    }
+
+    const participates =
+      levels.has(left.id) ||
+      left.aggregate !== undefined ||
+      right.aggregate !== undefined;
+
+    if (!participates) {
+      return true;
+    }
+
+    return left.value === right.value && left.aggregate === right.aggregate;
   });
 }
 

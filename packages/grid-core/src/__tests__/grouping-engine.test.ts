@@ -310,6 +310,135 @@ describe("mergeColumnsFromProps grouping semantics", () => {
     expect(emissions).toBe(0);
     unsubscribe();
   });
+
+  test("an UNGROUPED grid ignores re-created value/aggregate closures", () => {
+    // The inline-columns idiom our own docs show: `columns={[{ id: "sector",
+    // value: (row) => row.sector }, …]}` allocates a fresh closure per render.
+    // Nothing about it can move an ungrouped row model, so it must not
+    // invalidate the derived rows or wake a subscriber.
+    const grid = makeGrid([
+      { ...COLUMNS[0]!, value: (row: Holding) => row.sector },
+      COLUMNS[1]!,
+      COLUMNS[2]!,
+    ]);
+    const before = grid.getSnapshot();
+    let emissions = 0;
+    const unsubscribe = grid.subscribe(() => {
+      emissions += 1;
+    });
+
+    for (let i = 0; i < 2; i += 1) {
+      grid.mergeColumnsFromProps([
+        { ...COLUMNS[0]!, value: (row: Holding) => row.sector },
+        COLUMNS[1]!,
+        { ...COLUMNS[2]!, aggregate: "sum" },
+      ]);
+    }
+
+    expect(emissions).toBe(0);
+    expect(grid.getSnapshot()).toBe(before);
+    expect(grid.getSnapshot().visibleRows).toBe(before.visibleRows);
+    unsubscribe();
+  });
+
+  test("removing a filtered column re-derives even while UNGROUPED", () => {
+    // The column SET is not a grouping concern: filters and sorts resolve their
+    // column by id, so dropping one changes the row model whether or not
+    // grouping is active. Gating this on `rowGroups.length > 0` alongside the
+    // accessor comparison would serve the pre-removal rows from cache.
+    const grid = makeGrid();
+    grid.setColumnFilter("analyst", { operator: "equals", value: "Ada" });
+    expect(dataIds(grid.getSnapshot().visibleRows)).toEqual([
+      "h1",
+      "h2",
+      "h3",
+      "h5",
+      "h6",
+    ]);
+
+    grid.mergeColumnsFromProps([COLUMNS[0]!, COLUMNS[2]!]);
+
+    expect(dataIds(grid.getSnapshot().visibleRows)).toHaveLength(8);
+  });
+
+  test("an UNGROUPED grid ignores a re-created custom aggregator", () => {
+    // An `aggregate` object is only ever consulted by the grouped derivation,
+    // so while ungrouped its identity is irrelevant too — even though the
+    // column carrying it does participate once grouping starts.
+    const makeAggregate = () => ({
+      init: () => ({ total: 0 }),
+      accumulate: (acc: { total: number }, value: unknown) => ({
+        total: acc.total + Number(value),
+      }),
+      merge: (a: { total: number }, b: { total: number }) => ({
+        total: a.total + b.total,
+      }),
+      finalize: (acc: { total: number }) => acc.total,
+    });
+    const grid = makeGrid([
+      COLUMNS[0]!,
+      COLUMNS[1]!,
+      { ...COLUMNS[2]!, aggregate: makeAggregate() },
+    ]);
+    const before = grid.getSnapshot();
+    let emissions = 0;
+    const unsubscribe = grid.subscribe(() => {
+      emissions += 1;
+    });
+
+    grid.mergeColumnsFromProps([
+      COLUMNS[0]!,
+      COLUMNS[1]!,
+      { ...COLUMNS[2]!, aggregate: makeAggregate() },
+    ]);
+
+    expect(emissions).toBe(0);
+    expect(grid.getSnapshot()).toBe(before);
+    unsubscribe();
+  });
+
+  test("an ungrouped merge still stores the fresh accessor", () => {
+    const grid = makeGrid();
+
+    grid.mergeColumnsFromProps([
+      { ...COLUMNS[0]!, value: (row: Holding) => row.sector.toUpperCase() },
+      COLUMNS[1]!,
+      COLUMNS[2]!,
+    ]);
+
+    // Quiet is not stale: the definition is stored, so the next grouping —
+    // which is when the accessor starts feeding the row model — uses it.
+    grid.setRowGroups(["sector"]);
+    expect(
+      grid
+        .getSnapshot()
+        .visibleRows.filter((row) => row.kind === "group")
+        .map((row) => row.id),
+    ).toEqual([
+      makeGroupId([{ columnId: "sector", value: "ENERGY" }]),
+      makeGroupId([{ columnId: "sector", value: "TECH" }]),
+    ]);
+  });
+
+  test("a grouped grid ignores a re-created accessor on a column that is neither a level nor aggregated", () => {
+    const grid = makeGrid();
+    grid.setRowGroups(["sector"]);
+    const before = grid.getSnapshot();
+    let emissions = 0;
+    const unsubscribe = grid.subscribe(() => {
+      emissions += 1;
+    });
+
+    grid.mergeColumnsFromProps([
+      COLUMNS[0]!,
+      { ...COLUMNS[1]!, value: (row: Holding) => row.analyst },
+      COLUMNS[2]!,
+    ]);
+
+    expect(emissions).toBe(0);
+    expect(grid.getSnapshot()).toBe(before);
+    unsubscribe();
+  });
 });
 
 describe("expand/collapse", () => {

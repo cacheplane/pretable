@@ -271,7 +271,13 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   // Merge on every identity change, not only when the set of ids changes: a
   // column's header, width, or accessor can change while the ids stay put.
   // mergeColumnsFromProps only wakes subscribers when something observable
-  // moved, so this stays quiet for an inline array that is merely re-created.
+  // moved, so an inline array that is merely re-created stays quiet — with one
+  // exception. Function identity is the only signal a re-created `value` or
+  // `aggregate` gives us, so while grouping is ACTIVE, a fresh closure on a
+  // grouping level (or any aggregated column) reads as a semantic change and
+  // costs one emission per parent update. `useMemo` the columns to avoid it.
+  // Ungrouped grids are unaffected: those accessors cannot move the row model,
+  // so their identity is not consulted at all.
   const lastColumnsRef = useRef(columns);
   useLayoutEffect(() => {
     if (lastColumnsRef.current !== columns) {
