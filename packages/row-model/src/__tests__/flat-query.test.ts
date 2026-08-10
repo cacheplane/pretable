@@ -12,7 +12,7 @@ interface Row {
 const helper = createColumnHelper<Row>();
 
 describe("incremental flat queries", () => {
-  test("guards comparator reentrancy through synchronous setQuery publication", () => {
+  test("guards comparator reentrancy throughout cooperative setQuery publication", async () => {
     let nestedError: unknown;
     let armed = false;
     const columns = [
@@ -46,6 +46,7 @@ describe("incremental flat queries", () => {
       sort: [{ columnId: "score", direction: "asc" }],
       rowGroups: [],
     });
+    await transition.finished;
 
     expect(transition.requestedQuery.sort).toHaveLength(1);
     expect(nestedError).toMatchObject({

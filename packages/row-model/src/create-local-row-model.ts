@@ -85,8 +85,10 @@ interface CreateLocalRowModelBaseOptions<
   readonly transitionScheduler?: CooperativeTransitionScheduler;
   /** Internal deterministic monotonic clock injection for cooperative rebuilds. */
   readonly transitionClock?: () => number;
-  /** Maximum cooperative work-slice duration; checked after every row. */
+  /** Maximum cooperative work-slice duration; checked after every unit. */
   readonly transitionBudgetMs?: number;
+  /** Internal deterministic hard cap for work units when clocks stall. */
+  readonly transitionMaxUnitsPerSlice?: number;
   readonly onDiagnostic?: (
     diagnostic: PretableRowIntegrityDiagnostic<TRowId>,
   ) => void;
@@ -494,6 +496,7 @@ export function createLocalRowModel<
     scheduler: options.transitionScheduler,
     now: options.transitionClock,
     budgetMs: options.transitionBudgetMs,
+    maxUnitsPerSlice: options.transitionMaxUnitsPerSlice,
   });
 
   const assertCommandAllowed = (operation: PretableRowModelOperation): void => {
@@ -666,6 +669,9 @@ export function createLocalRowModel<
       resolve = res;
       reject = rej;
     });
+    // Mark internal lifecycle rejection as observed without changing the
+    // original promise returned to callers or its await/rejection semantics.
+    void finished.catch(() => undefined);
     const transition: ActiveTransition<TRow, TRowId, TColumns> = {
       id,
       operation,

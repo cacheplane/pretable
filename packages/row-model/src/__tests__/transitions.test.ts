@@ -103,6 +103,170 @@ function createModel(options: {
 }
 
 describe("cooperative query and derivation transitions", () => {
+  test("internally observes an unawaited transition rejected by automatic supersession", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createModel({
+      scheduler,
+      clock: tickingClock(),
+      budgetMs: 1,
+    });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      model.setQuery({
+        filters: [{ columnId: "score", operator: "gte", value: 2 }],
+        sort: [],
+        rowGroups: [],
+      });
+      const replacement = model.setDerivations([
+        columns[0],
+        { ...columns[1], aggregate: "avg" as const },
+      ]);
+      scheduler.flushAll();
+      await replacement.finished;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  test("falls back after postTask rejects before running and completes the transition", async () => {
+    const postTaskFailure = new Error("postTask unavailable");
+    const postTask = vi.fn(() => Promise.reject(postTaskFailure));
+    vi.stubGlobal("scheduler", { postTask });
+    let model: ReturnType<typeof createModel> | undefined;
+    try {
+      model = createModel({ clock: tickingClock(), budgetMs: 1 });
+      const transition = model.setQuery({
+        filters: [{ columnId: "score", operator: "gte", value: 2 }],
+        sort: [],
+        rowGroups: [],
+      });
+      const outcome = await Promise.race([
+        transition.finished,
+        new Promise<"timeout">((resolve) =>
+          setTimeout(() => resolve("timeout"), 100),
+        ),
+      ]);
+
+      expect(outcome).toBe(1);
+      expect(postTask).toHaveBeenCalled();
+      expect(model.getState().status).toEqual({ kind: "ready" });
+    } finally {
+      model?.dispose();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("falls through a broken MessageChannel to the timer scheduler", async () => {
+    const postTask = vi.fn(() => Promise.reject(new Error("postTask failed")));
+    vi.stubGlobal("scheduler", { postTask });
+    vi.stubGlobal(
+      "MessageChannel",
+      class BrokenMessageChannel {
+        constructor() {
+          throw new Error("MessageChannel failed");
+        }
+      },
+    );
+    let model: ReturnType<typeof createModel> | undefined;
+    try {
+      model = createModel({ clock: tickingClock(), budgetMs: 1 });
+      const transition = model.setQuery({
+        filters: [{ columnId: "score", operator: "gte", value: 2 }],
+        sort: [],
+        rowGroups: [],
+      });
+      const outcome = await Promise.race([
+        transition.finished,
+        new Promise<"timeout">((resolve) =>
+          setTimeout(() => resolve("timeout"), 100),
+        ),
+      ]);
+
+      expect(outcome).toBe(1);
+      expect(model.getState().status).toEqual({ kind: "ready" });
+    } finally {
+      model?.dispose();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("does not run a postTask fallback after cancellation wins the rejection race", async () => {
+    const postTask = vi.fn(() => Promise.reject(new Error("postTask failed")));
+    vi.stubGlobal("scheduler", { postTask });
+    let evaluations = 0;
+    const cancelColumns = [
+      columns[0],
+      {
+        ...columns[1],
+        accessor: (row: Row) => {
+          evaluations += 1;
+          return row.score;
+        },
+        value: (row: Row) => row.score,
+      },
+    ] as const;
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 100 }, (_, id) => ({
+        id,
+        team: "A",
+        score: id,
+      })),
+      columns,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+    });
+    try {
+      const transition = model.setDerivations(cancelColumns);
+      const rejection = expect(transition.finished).rejects.toMatchObject({
+        reason: "cancelled",
+      });
+      const afterInitialSlice = evaluations;
+
+      transition.cancel();
+
+      await rejection;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(evaluations).toBe(afterInitialSlice);
+      expect(model.getState().status).toEqual({ kind: "ready" });
+    } finally {
+      model.dispose();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("yields after a bounded number of units when the injected clock never advances", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createModel({
+      rows: Array.from({ length: 1_000 }, (_, id) => ({
+        id,
+        team: "A",
+        score: id,
+      })),
+      scheduler,
+      clock: () => 0,
+      budgetMs: 5,
+    });
+
+    const transition = model.setQuery({
+      filters: [{ columnId: "score", operator: "gte", value: 0 }],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+
+    expect(model.getState().status).toMatchObject({
+      kind: "rebuilding",
+      completedRows: 256,
+      totalRows: 1_000,
+    });
+    expect(scheduler.entries).toHaveLength(1);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(1);
+  });
+
   test("records the exact query or derivation operation as the atomic revision cause", async () => {
     const scheduler = new ManualScheduler();
     const model = createModel({
@@ -191,6 +355,10 @@ describe("cooperative query and derivation transitions", () => {
         hasExpansion: false,
         hasFlatRows: false,
         hasGroups: false,
+        deltaSlotCount: 0,
+        processedDeltaCount: 0,
+        retainedDeltaRootCount: 0,
+        overrideReconciliationRemaining: 0,
       };
       expect(
         getCooperativeTransitionCandidateDiagnosticsForTesting(candidate),
@@ -201,6 +369,159 @@ describe("cooperative query and derivation transitions", () => {
       ).toEqual(released);
     },
   );
+
+  test("drops each processed delta root while later journal targets remain queued", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createModel({
+      scheduler,
+      clock: tickingClock(),
+      budgetMs: 1,
+    });
+    const transition = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    const finished = transition.finished.catch((error: unknown) => error);
+    model.applyTransaction({
+      update: [{ id: 1, changes: { score: 101 } }],
+    });
+    model.applyTransaction({
+      update: [{ id: 2, changes: { score: 102 } }],
+    });
+    const candidate =
+      getLocalRowModelActiveTransitionCandidateForTesting(model);
+    expect(candidate).toBeDefined();
+    if (candidate === undefined) return;
+
+    for (let index = 0; index < 13; index += 1) scheduler.flushOne();
+
+    expect(
+      getCooperativeTransitionCandidateDiagnosticsForTesting(candidate),
+    ).toMatchObject({
+      deltaSlotCount: 2,
+      processedDeltaCount: 1,
+      retainedDeltaRootCount: 1,
+    });
+    transition.cancel();
+    await expect(finished).resolves.toMatchObject({ reason: "cancelled" });
+  });
+
+  test("reconciles the latest default and overrides for filtered groups incrementally", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: [
+        { id: 0, team: "A", score: 0 },
+        { id: 1, team: "A", score: 1 },
+        { id: 2, team: "B", score: 2 },
+        { id: 3, team: "B", score: 3 },
+        { id: 4, team: "C", score: 4 },
+      ],
+      columns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      },
+      initialExpansion: { kind: "collapsed" },
+      transitionScheduler: scheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+    });
+    const groupA = "__group__:team=s:A" as PretableGroupId;
+    const groupB = "__group__:team=s:B" as PretableGroupId;
+    const groupC = "__group__:team=s:C" as PretableGroupId;
+    model.setGroupExpanded(groupA, true);
+    model.setGroupExpanded(groupB, true);
+    const transition = model.setQuery({
+      filters: [{ columnId: "score", operator: "lt", value: 2 }],
+      sort: [],
+      rowGroups: [{ columnId: "team" }],
+    });
+
+    model.setExpansionDefault(
+      { kind: "expanded" },
+      { preserveOverrides: true },
+    );
+    model.setGroupExpanded(groupB, false);
+    scheduler.flushAll();
+    await transition.finished;
+
+    const snapshot = model.getState().snapshot;
+    expect(snapshot.expansion.default).toEqual({ kind: "expanded" });
+    expect(snapshot.isGroupExpanded(groupA)).toBe(true);
+    expect(snapshot.isGroupExpanded(groupB)).toBe(false);
+    expect(snapshot.isGroupExpanded(groupC)).toBe(true);
+    expect(snapshot.range(0, 10).map((row) => row.kind)).toEqual([
+      "group",
+      "data",
+      "data",
+    ]);
+  });
+
+  test("keeps 5k grouped overrides inside the permanent per-slice work cap", async () => {
+    interface OverrideRow {
+      id: number;
+      category: string;
+      score: number;
+    }
+    const overrideHelper = createColumnHelper<OverrideRow>();
+    const overrideColumns = [
+      overrideHelper.accessor("category", { type: "text" }),
+      overrideHelper.accessor("score", { type: "number", aggregate: "sum" }),
+    ] as const;
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 5_000 }, (_, id) => ({
+        id,
+        category: `g${id}`,
+        score: id,
+      })),
+      columns: overrideColumns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "category" }],
+      },
+      initialExpansion: { kind: "collapsed" },
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+      transitionBudgetMs: 5,
+    });
+    for (let id = 0; id < 5_000; id += 1) {
+      model.setGroupExpanded(
+        `__group__:category=s:g${id}` as PretableGroupId,
+        true,
+      );
+    }
+    const transition = model.setDerivations([
+      overrideColumns[0],
+      { ...overrideColumns[1], aggregate: "avg" as const },
+    ]);
+    const candidate = getLocalRowModelActiveTransitionCandidateForTesting(
+      model,
+    ) as { readonly completedRows: number } | undefined;
+    expect(candidate).toBeDefined();
+    if (candidate === undefined) return;
+    expect(candidate.completedRows).toBe(256);
+    scheduler.observeWork(() => candidate.completedRows);
+
+    for (let slice = 0; slice < 19; slice += 1) scheduler.flushOne();
+    expect(getLocalRowModelActiveTransitionCandidateForTesting(model)).toBe(
+      candidate,
+    );
+    expect(
+      getCooperativeTransitionCandidateDiagnosticsForTesting(candidate),
+    ).toMatchObject({
+      overrideReconciliationRemaining: 4_880,
+    });
+
+    scheduler.flushAll();
+    await transition.finished;
+
+    expect(scheduler.maxWorkPerTask).toBeLessThanOrEqual(256);
+    expect(model.getState().snapshot.range(0, 10_001)).toHaveLength(10_000);
+  }, 30_000);
 
   test("keeps the committed snapshot interactive and reports bounded progress without revisions", async () => {
     const scheduler = new ManualScheduler();
@@ -637,6 +958,86 @@ describe("cooperative query and derivation transitions", () => {
     });
   });
 
+  test.each([3, 17, 101, 997])(
+    "matches a fresh model after randomized mixed transition catch-up (seed %i)",
+    async (seed) => {
+      const scheduler = new ManualScheduler();
+      let rows = Array.from({ length: 100 }, (_, id) => ({
+        id,
+        team: ["A", "B", "C", "D"][id % 4]!,
+        score: id,
+      }));
+      let expansion: "expanded" | "collapsed" = "collapsed";
+      let randomState = seed;
+      const random = () => {
+        randomState = (Math.imul(randomState, 1_664_525) + 1_013_904_223) >>> 0;
+        return randomState;
+      };
+      const query = {
+        filters: [{ columnId: "score", operator: "gte", value: 10 }],
+        sort: [{ columnId: "score", direction: "desc" }],
+        rowGroups: [{ columnId: "team" }],
+      } as const;
+      const model = createLocalRowModel({
+        rows,
+        columns,
+        initialExpansion: { kind: expansion },
+        transitionScheduler: scheduler,
+        transitionClock: tickingClock(),
+        transitionBudgetMs: 2,
+      });
+      const transition = model.setQuery(query);
+
+      for (let operation = 0; operation < 40; operation += 1) {
+        const choice = random() % 4;
+        if (choice < 2) {
+          const id = random() % rows.length;
+          const score = random() % 200;
+          const team = ["A", "B", "C", "D"][random() % 4]!;
+          model.applyTransaction({
+            update: [{ id, changes: { score, team } }],
+          });
+          rows = rows.map((row) =>
+            row.id === id ? { ...row, score, team } : row,
+          );
+        } else if (choice === 2) {
+          rows = [...rows].reverse();
+          model.setRows(rows);
+        } else {
+          expansion = expansion === "expanded" ? "collapsed" : "expanded";
+          if (expansion === "expanded") model.expandAll();
+          else model.collapseAll();
+        }
+      }
+
+      scheduler.flushAll();
+      await transition.finished;
+      const reference = createLocalRowModel({
+        rows,
+        columns,
+        query,
+        initialExpansion: { kind: expansion },
+      });
+      const summarize = (candidate: typeof model) =>
+        candidate
+          .getState()
+          .snapshot.range(0, Number.MAX_SAFE_INTEGER)
+          .map((row) =>
+            row.kind === "data"
+              ? [row.kind, row.rowId]
+              : [
+                  row.kind,
+                  row.groupId,
+                  row.expanded,
+                  row.childCount,
+                  row.aggregates.score,
+                ],
+          );
+
+      expect(summarize(model)).toEqual(summarize(reference));
+    },
+  );
+
   test("keeps the 100k rebuild sliced and live while a transaction catches up", async () => {
     const scheduler = new ManualScheduler();
     let evaluations = 0;
@@ -680,7 +1081,7 @@ describe("cooperative query and derivation transitions", () => {
 
     expect(model.getState().status).toMatchObject({
       kind: "rebuilding",
-      completedRows: 500,
+      completedRows: 256,
       totalRows: 100_000,
     });
     expect(
@@ -695,7 +1096,7 @@ describe("cooperative query and derivation transitions", () => {
     scheduler.flushAll(1_000);
     await expect(finished).resolves.toBe(2);
 
-    expect(scheduler.maxWorkPerTask).toBeLessThanOrEqual(500);
+    expect(scheduler.maxWorkPerTask).toBeLessThanOrEqual(256);
     expect(
       model.getState().snapshot.indexOf({ kind: "data", rowId: 99_999 }),
     ).toBeGreaterThanOrEqual(0);
