@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { usePretable } from "../use-pretable";
 import type { PretableColumn } from "../types";
-import type { PretableDataRow, PretableVisibleRow } from "@pretable/core";
+import type {
+  PretableDataRow,
+  PretableProcessingAuthority,
+  PretableResultMeta,
+  PretableVisibleRow,
+} from "@pretable/core";
 
 type Row = {
   id: string;
@@ -136,5 +141,43 @@ describe("usePretable streaming lifecycle", () => {
       JSON.stringify({ kind: "exact", count: 101 }),
     );
     expect(node.getAttribute("data-loaded")).toBe(String(rowsA.length));
+  });
+
+  it("re-applies resultMeta to a grid rebuilt by a processing change", () => {
+    // Stable identity, the way a consumer that memoizes its meta would pass it:
+    // nothing about the meta changes, only the create-time authority does.
+    const resultMeta: PretableResultMeta = {
+      total: { kind: "exact", count: 101 },
+    };
+    const { result, rerender } = renderHook(
+      ({ sort }: { sort: PretableProcessingAuthority | undefined }) =>
+        usePretable<Row>({
+          columns,
+          rows: rowsA,
+          getRowId: (row) => row.id,
+          viewportHeight: 300,
+          processing: { filter: "external", sort },
+          resultMeta,
+        }),
+      {
+        initialProps: {
+          sort: undefined as PretableProcessingAuthority | undefined,
+        },
+      },
+    );
+
+    const grid = result.current.grid;
+    expect(result.current.snapshot.matchingTotal).toEqual({
+      kind: "exact",
+      count: 101,
+    });
+
+    rerender({ sort: "external" });
+
+    expect(result.current.grid).not.toBe(grid);
+    expect(result.current.snapshot.matchingTotal).toEqual({
+      kind: "exact",
+      count: 101,
+    });
   });
 });

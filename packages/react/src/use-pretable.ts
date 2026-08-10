@@ -355,16 +355,28 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   // it). Runs in a layout effect — before paint, so there's no visible stale
   // frame — rather than during render, which would emit to the external store
   // mid-render and trip React's "update during render" guard.
+  const lastGridRef = useRef<PretableGrid<TRow> | null>(null);
   const lastRowsRef = useRef(rows);
-  // Starts `undefined` rather than `resultMeta` so an initial meta reaches the
-  // grid: `createGrid` takes no meta, and the rows branch below never fires on
-  // the first commit.
   const lastResultMetaRef = useRef<PretableResultMeta | undefined>(undefined);
   useLayoutEffect(() => {
+    const gridChanged = lastGridRef.current !== grid;
     const rowsChanged = lastRowsRef.current !== rows;
     const metaChanged = lastResultMetaRef.current !== resultMeta;
+    lastGridRef.current = grid;
     lastRowsRef.current = rows;
     lastResultMetaRef.current = resultMeta;
+
+    if (gridChanged) {
+      // `createGrid` takes no meta and these refs outlive the grid, so without
+      // an identity check a rebuilt grid — or the first one — would keep
+      // reporting `{ kind: "unknown" }` until the consumer minted a new meta
+      // object. Rows need no re-push: the memo built this grid from this
+      // render's `rows`.
+      if (resultMeta) {
+        grid.setResultMeta(resultMeta);
+      }
+      return;
+    }
 
     if (rowsChanged) {
       // One call, one emit: rows and their total can never render torn.
