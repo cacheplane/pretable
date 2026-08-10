@@ -308,6 +308,58 @@ describe("AggregateTree", () => {
     expect(branch.finalize()).toEqual([1, 2]);
   });
 
+  test("rejects shared-memory snapshots unless a hook truly detaches them", () => {
+    const sharedBytes: PretableAggregator<Row, number, Uint8Array, Uint8Array> =
+      {
+        init: () => new Uint8Array(new SharedArrayBuffer(1)),
+        accumulate(accumulator, value) {
+          accumulator[0] = (accumulator[0] ?? 0) + value;
+          return accumulator;
+        },
+        merge(left, right) {
+          const merged = new Uint8Array(new SharedArrayBuffer(1));
+          merged[0] = (left[0] ?? 0) + (right[0] ?? 0);
+          return merged;
+        },
+        finalize: (accumulator) => accumulator,
+      };
+    const createSharedTree = (
+      snapshotAccumulator?: (accumulator: Uint8Array) => Uint8Array,
+    ) =>
+      createAggregateTree<string, Row, number, number, Uint8Array, Uint8Array>({
+        columnId: "amount",
+        aggregator: sharedBytes,
+        snapshotAccumulator,
+        compare: (left, right) => left.dependency - right.dependency,
+      }).insertOrReplace({
+        id: "first",
+        row: { name: "first" },
+        value: 1,
+        dependency: 1,
+      });
+
+    expect(() => createSharedTree().finalize()).toThrow(/SharedArrayBuffer/);
+    expect(() =>
+      createSharedTree((accumulator) =>
+        structuredClone(accumulator),
+      ).finalize(),
+    ).toThrow(/SharedArrayBuffer/);
+
+    const original = createSharedTree(
+      (accumulator) => new Uint8Array(accumulator),
+    );
+    const exposed = original.finalize();
+    exposed[0] = 99;
+    const branch = original.insertOrReplace({
+      id: "second",
+      row: { name: "second" },
+      value: 2,
+      dependency: 2,
+    });
+
+    expect(branch.finalize()[0]).toBe(3);
+  });
+
   test("supports transient batches without changing the source root", () => {
     const source = builtinTree("sum").insertOrReplace(leaf("1", 2, 1));
     const draft = source.asTransient();

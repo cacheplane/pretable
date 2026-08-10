@@ -95,7 +95,8 @@ export interface CustomAggregateTreeOptions<
   /**
    * Produces a detached accumulator snapshot for `finalize`. Supply this for
    * class instances or other values that the platform cannot structured-clone.
-   * The callback must be pure and must not return the cached accumulator.
+   * The callback must be pure, must not return the cached accumulator, and
+   * must replace SharedArrayBuffer-backed memory with detached storage.
    */
   readonly snapshotAccumulator?: (accumulator: TAccumulator) => TAccumulator;
   readonly lawValidator?: AggregatorLawValidator;
@@ -274,6 +275,56 @@ function normalizedLeaf<
   });
 }
 
+function containsSharedMemory(
+  value: unknown,
+  seen = new Set<object>(),
+): boolean {
+  if (
+    value === null ||
+    (typeof value !== "object" && typeof value !== "function")
+  ) {
+    return false;
+  }
+  if (
+    typeof SharedArrayBuffer !== "undefined" &&
+    value instanceof SharedArrayBuffer
+  ) {
+    return true;
+  }
+  if (seen.has(value)) return false;
+  seen.add(value);
+
+  if (ArrayBuffer.isView(value) && containsSharedMemory(value.buffer, seen)) {
+    return true;
+  }
+  if (value instanceof Map) {
+    for (const [key, entry] of value) {
+      if (
+        containsSharedMemory(key, seen) ||
+        containsSharedMemory(entry, seen)
+      ) {
+        return true;
+      }
+    }
+  }
+  if (value instanceof Set) {
+    for (const entry of value) {
+      if (containsSharedMemory(entry, seen)) return true;
+    }
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      descriptor !== undefined &&
+      "value" in descriptor &&
+      containsSharedMemory(descriptor.value, seen)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function finalizedValue<TAccumulator, TOutput>(
   accumulator: TAccumulator,
   aggregator: PretableAggregator<object, unknown, TAccumulator, TOutput>,
@@ -308,6 +359,11 @@ function finalizedValue<TAccumulator, TOutput>(
             { cause: error },
           );
         }
+      }
+      if (containsSharedMemory(finalizedAccumulator)) {
+        throw new TypeError(
+          "Finalized accumulator snapshots cannot contain SharedArrayBuffer-backed memory; provide snapshotAccumulator that copies it into detached storage.",
+        );
       }
     }
     cache.output = aggregator.finalize(finalizedAccumulator);
