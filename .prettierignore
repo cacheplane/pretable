@@ -14,9 +14,10 @@ pnpm-lock.yaml
 # api-extractor generates these — prettier would reformat and break api:check
 *.api.md
 
-# Prettier is non-idempotent on this file: it oscillates the indentation of
-# fenced code nested inside `- [ ]` steps, so --write can never satisfy
-# --check. Verified by three consecutive --write passes producing three
-# different files. Planning docs are prose; excluding one is cheaper than
-# restructuring 4k lines around a formatter bug.
-docs/superpowers/plans/2026-08-09-dawn-browse-query-contract.md
+# A plan is the live source of truth for a slice that may still be executing,
+# so a task's `format:write` step must never rewrite it — an executor
+# reformatting the document it is executing races every other slice reading it.
+# Prettier is also non-idempotent on these: it oscillates the indentation of
+# fenced code nested inside `- [ ]` steps, so --write can never satisfy --check.
+# Verified by three consecutive --write passes producing three different files.
+docs/superpowers/plans/

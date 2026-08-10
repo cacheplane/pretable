@@ -3315,3 +3315,42 @@ read this first.
   controlled `state.selection` on every engine snapshot, which would revert the
   `datasetKey` pivot clear for a controlled consumer. Whichever React task
   wires controlled state owns this interaction.
+- **The `totalRowCount` line in the definition of done contradicts Task 18
+  Step 8.** Step 8 mandates changeset text that names the old symbol in its
+  breaking note, so a literally-clean repo-wide grep is unreachable. Two prose
+  hits are correct and stay: `.changeset/server-authority-primitives.md` and
+  the sanctioned-edits comment at the top of
+  `packages/grid-core/src/__tests__/local-mode-baseline.test.ts`. No code use
+  of the old name survives. Read that DoD line as "no code usage".
+- **The baseline files took a third modifying commit, `f863b24`,** beyond the
+  two the DoD allows. It only strengthens: a `gt`-against-`type: "number"`
+  case, `ranges.length === 1` upgraded to an id-identity assertion, a grouping
+  test split so it can observe the property it claims. Both baseline files are
+  also new on this branch, so "unmodified" is relative to Task 1's pin, not to
+  main. Accepted; the DoD's intent is "never loosened", and nothing was.
+- **`@experimental` is deliberate, and it is invisible in the `.api.md`
+  reports.** API Extractor treats `@experimental` as a TSDoc modifier, not one
+  of its four release tags, so it is stripped and every new symbol renders
+  `// @public`. `@beta` was measured, not assumed: tagging
+  `PretableMatchingTotal` `@beta` and regenerating `core.api.md` embeds an
+  `ae-incompatible-release-tags` warning line into the committed report at both
+  `PretableGridSnapshot.matchingTotal` and `PretableResultMeta.total` — "marked
+  as @public, but its signature references PretableMatchingTotal which is
+  marked as @beta". Silencing those requires demoting `PretableGridSnapshot` —
+  the engine's core read type — which is not proportionate to a stability
+  marker. Stability is carried by the TSDoc tag and the changeset instead.
+  A promotion pass should revisit this, knowing the cost.
+- **Do not use `git add -A` in a plan-authored commit step.** These worktrees
+  host concurrent sessions; Task 18's Step 11 ran while another session had an
+  uncommitted edit to a different plan under the same tree, and missed
+  sweeping it into a `chore:` commit only by timing. Use explicit pathspecs.
+- **`docs/superpowers/plans/` is prettier-ignored** (`.prettierignore`). A
+  task's `format:write` step was rewriting the plan it was executing, which is
+  the shared source of truth for slices still in flight. Prettier is also
+  non-idempotent on these documents.
+- **This slice ships no docs-site coverage for the new surface.** No task
+  scoped it: `apps/website/content/docs/` has no page for `processing`,
+  `dataState`, `resultMeta`, `renderBodyState` or `filterOperators`. The one
+  factual error — `headless/state-model.mdx` presenting the snapshot shape as a
+  closed table without `matchingTotal` and `datasetKey` — is fixed. The rest is
+  a follow-up to file before the branch merges.

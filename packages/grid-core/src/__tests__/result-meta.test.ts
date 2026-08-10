@@ -87,14 +87,22 @@ describe("result meta under external filter authority", () => {
     expect(snap.matchingTotal).toEqual({ kind: "exact", count: 4120 });
   });
 
+  // The reconciliation sweep registers `setResultMeta` with
+  // `authors: ["selection", "focus"]`, which is per-method, not per-call — so
+  // the sweep's preservation checks are off for the refinement path too. This
+  // test is the only thing holding it.
   test("setResultMeta refines the total without a rows replacement", () => {
     const grid = makeGrid({ filter: "external" });
     grid.setRows(rows, { total: { kind: "estimate", count: 5000 } });
+    grid.toggleRowSelection("a");
+    grid.setFocus({ rowId: "a", columnId: "name" });
     const rowsBefore = grid.getSnapshot().visibleRows;
     grid.setResultMeta({ total: { kind: "exact", count: 5032 } });
     const snap = grid.getSnapshot();
     expect(snap.matchingTotal).toEqual({ kind: "exact", count: 5032 });
     expect(snap.visibleRows).toEqual(rowsBefore);
+    expect(snap.selection.ranges).toHaveLength(1);
+    expect(snap.focus).toEqual({ rowId: "a", columnId: "name" });
   });
 
   test("setResultMeta with an unchanged total does not emit", () => {

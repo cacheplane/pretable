@@ -32,3 +32,9 @@ lifecycle.
 **Breaking:** `PretableGridSnapshot.totalRowCount` and
 `PretableTelemetry.totalRowCount` are renamed to `loadedRowCount`. There is no
 alias — the old name became wrong the moment two totals existed.
+
+**Also breaking:** four of the new members are required, not optional, so any
+hand-built object of these types stops compiling until it supplies them —
+`matchingTotal` and `datasetKey` on `PretableGridSnapshot`, `matchingTotal` on
+`PretableTelemetry`, and `scope` on `PretableAggregateFormatInput`. Code that
+only reads these types is unaffected.
