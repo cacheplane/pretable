@@ -137,7 +137,8 @@ export function buildRowStore<
     const publicRow =
       previous !== undefined &&
       Object.is(previous.row, row) &&
-      previous.sourceOrder === sourceOrder
+      previous.sourceOrder === sourceOrder &&
+      !inspections[sourceOrder]!.sameReferenceMutation
         ? previous.publicRow
         : Object.freeze({
             kind: "data" as const,

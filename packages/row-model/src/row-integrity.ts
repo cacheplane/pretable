@@ -199,7 +199,7 @@ function fingerprintInspection<TRowId extends PretableRowId>(
           code: "same-reference-row-mutation",
           rowId,
           message:
-            "A row object changed without changing identity; it was reevaluated.",
+            "A row object changed without changing identity; it was reevaluated. Previously captured snapshots may observe that caller-owned mutation through the shared row reference.",
         });
       } catch {
         // Diagnostics must not add a failure mode to row ingestion.

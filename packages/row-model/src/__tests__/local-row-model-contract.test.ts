@@ -329,6 +329,155 @@ describe("createLocalRowModel flat snapshot contract", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  test("returns the outer committed revision when a listener publishes again", () => {
+    const model = createLocalRowModel({ rows: rows(1), columns });
+    const revisions: number[] = [];
+    let nestedResult: ReturnType<typeof model.setRows> | undefined;
+    model.subscribe(() => {
+      revisions.push(model.getState().snapshot.revision);
+      if (model.getState().snapshot.revision === 1) {
+        nestedResult = model.setRows([
+          { id: 0, label: "nested", score: 2 },
+          { id: 1, label: "added", score: 1 },
+        ]);
+      }
+    });
+
+    const outerResult = model.setRows([{ id: 0, label: "outer", score: 1 }]);
+
+    expect(outerResult).toMatchObject({
+      previousRevision: 0,
+      revision: 1,
+      updated: 1,
+      added: 0,
+    });
+    expect(nestedResult).toMatchObject({
+      previousRevision: 1,
+      revision: 2,
+      updated: 1,
+      added: 1,
+    });
+    expect(model.getState().snapshot.revision).toBe(2);
+    expect(revisions).toEqual([1, 2]);
+  });
+
+  test("isolates throwing listeners and honors unsubscription during notification", () => {
+    const model = createLocalRowModel({ rows: rows(1), columns });
+    const selfRemoving = vi.fn();
+    const throwing = vi.fn(() => {
+      throw new Error("listener failed");
+    });
+    const survivor = vi.fn();
+    let unsubscribe: () => void = () => undefined;
+    unsubscribe = model.subscribe(() => {
+      selfRemoving();
+      unsubscribe();
+    });
+    model.subscribe(throwing);
+    model.subscribe(survivor);
+
+    expect(() =>
+      model.setRows([{ id: 0, label: "first", score: 1 }]),
+    ).not.toThrow();
+    expect(() =>
+      model.setRows([{ id: 0, label: "second", score: 2 }]),
+    ).not.toThrow();
+
+    expect(selfRemoving).toHaveBeenCalledTimes(1);
+    expect(throwing).toHaveBeenCalledTimes(2);
+    expect(survivor).toHaveBeenCalledTimes(2);
+  });
+
+  test("remaps setRows accessor failures and rolls back state identity", () => {
+    let fail = false;
+    const accessorFailure = new Error("accessor failed");
+    const helper = createColumnHelper<Row>();
+    const activeColumns = [
+      helper.accessor(
+        "label",
+        (row: Row): string => {
+          if (fail) throw accessorFailure;
+          return row.label;
+        },
+        { type: "text" },
+      ),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: rows(1),
+      columns: activeColumns,
+      query: {
+        filters: [{ columnId: "label", operator: "contains", value: "row" }],
+        sort: [],
+        rowGroups: [],
+      },
+    });
+    const before = model.getState();
+    const listener = vi.fn();
+    model.subscribe(listener);
+    fail = true;
+
+    expect(() =>
+      model.setRows([{ id: 0, label: "changed", score: 0 }]),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "accessor-failed",
+        operation: "set-rows",
+        rowId: 0,
+        columnId: "label",
+        cause: accessorFailure,
+      }),
+    );
+    expect(model.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  test("remaps setRows comparator failures with both row IDs and rolls back", () => {
+    let fail = false;
+    const comparatorFailure = new Error("comparison failed");
+    const helper = createColumnHelper<Row>();
+    const sortedColumns = [
+      helper.accessor("score", (row) => row.score, {
+        type: "number",
+        compare: (left, right) => {
+          if (fail) throw comparatorFailure;
+          return left - right;
+        },
+      }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: [rows(1)[0]!],
+      columns: sortedColumns,
+      query: {
+        filters: [],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [],
+      },
+    });
+    const before = model.getState();
+    const listener = vi.fn();
+    model.subscribe(listener);
+    fail = true;
+
+    let thrown: unknown;
+    try {
+      model.setRows([
+        { id: 0, label: "zero", score: 0 },
+        { id: 1, label: "one", score: 1 },
+      ]);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({
+      code: "comparator-failed",
+      operation: "set-rows",
+      columnId: "score",
+      rowIds: expect.arrayContaining([0, 1]),
+      cause: comparatorFailure,
+    });
+    expect(model.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   test("disposes once, detaches listeners, preserves snapshots, and guards every command", () => {
     const model = createLocalRowModel({
       rows: rows(3),

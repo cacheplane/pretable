@@ -91,6 +91,38 @@ class PretableNotYetImplementedError extends PretableRowModelError {
   }
 }
 
+class PretableSetRowsExecutionError extends PretableRowModelError {
+  readonly name = "PretableSetRowsExecutionError";
+  readonly rowIds: readonly PretableRowId[] | undefined;
+  readonly groupValues: readonly unknown[] | undefined;
+
+  constructor(error: PretableRowModelError) {
+    super(error.code, error.message, {
+      operation: "set-rows",
+      rowId: error.rowId,
+      columnId: error.columnId,
+      cause: error.cause,
+    });
+    const detailed = error as PretableRowModelError & {
+      readonly rowIds?: readonly PretableRowId[];
+      readonly groupValues?: readonly unknown[];
+    };
+    this.rowIds = detailed.rowIds && Object.freeze([...detailed.rowIds]);
+    this.groupValues =
+      detailed.groupValues && Object.freeze([...detailed.groupValues]);
+  }
+}
+
+function remapSetRowsError(error: unknown): unknown {
+  if (
+    error instanceof PretableRowModelError &&
+    error.operation !== "set-rows"
+  ) {
+    return new PretableSetRowsExecutionError(error);
+  }
+  return error;
+}
+
 const READY = Object.freeze({ kind: "ready" as const });
 const DISPOSED = Object.freeze({ kind: "disposed" as const });
 
@@ -275,57 +307,66 @@ export function createLocalRowModel<
     },
     setRows(nextRows: readonly TRow[]): PretableMutationResult<TRowId> {
       assertActive("set-rows");
-      let nextPlan = queryPlan;
-      let store = buildRowStore({
-        rows: nextRows,
-        getRowId,
-        queryPlan: nextPlan,
-        previous: root.rows,
-        onDiagnostic: diagnosticSink,
-      });
-      const classified = classifyReplacement(
-        root,
-        store.records,
-        store.sameReferenceMutationCount,
-      );
-      if (store.sameReferenceMutation) {
-        nextPlan = compileQuery({ derivations, query });
-        store = buildRowStore({
+      try {
+        let nextPlan = queryPlan;
+        let store = buildRowStore({
           rows: nextRows,
           getRowId,
           queryPlan: nextPlan,
           previous: root.rows,
+          onDiagnostic: diagnosticSink,
         });
+        const classified = classifyReplacement(
+          root,
+          store.records,
+          store.sameReferenceMutationCount,
+        );
+        if (store.sameReferenceMutation) {
+          nextPlan = compileQuery({ derivations, query });
+          store = buildRowStore({
+            rows: nextRows,
+            getRowId,
+            queryPlan: nextPlan,
+            previous: root.rows,
+          });
+        }
+        const noOp =
+          classified.added === 0 &&
+          classified.updated === 0 &&
+          classified.removed === 0 &&
+          !store.sameReferenceMutation;
+        if (noOp) {
+          return mutationResult(root.revision, root.revision, classified);
+        }
+        const previousRevision = root.revision;
+        const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
+          Object.freeze({
+            revision: previousRevision + 1,
+            parentRevision: previousRevision,
+            rows: store.rows,
+            sourceOrder: store.sourceOrder,
+            visible: createFlatVisibleIndex(
+              store.records,
+              nextPlan.compareRows as unknown as (
+                left: RowRecord<TRow, TRowId, TColumns>["metadata"],
+                right: RowRecord<TRow, TRowId, TColumns>["metadata"],
+              ) => number,
+            ),
+            queryPlan: nextPlan,
+            expansion: root.expansion,
+            cause: Object.freeze({ kind: "set-rows" as const }),
+          });
+        const result = mutationResult<TRowId>(
+          previousRevision,
+          committedRoot.revision,
+          classified,
+        );
+        queryPlan = nextPlan;
+        publish(committedRoot);
+        return result;
+      } catch (error) {
+        throw remapSetRowsError(error);
       }
-      const noOp =
-        classified.added === 0 &&
-        classified.updated === 0 &&
-        classified.removed === 0 &&
-        !store.sameReferenceMutation;
-      if (noOp) {
-        return mutationResult(root.revision, root.revision, classified);
-      }
-      const previousRevision = root.revision;
-      queryPlan = nextPlan;
-      publish(
-        Object.freeze({
-          revision: previousRevision + 1,
-          parentRevision: previousRevision,
-          rows: store.rows,
-          sourceOrder: store.sourceOrder,
-          visible: createFlatVisibleIndex(
-            store.records,
-            queryPlan.compareRows as unknown as (
-              left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-              right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-            ) => number,
-          ),
-          queryPlan,
-          expansion: root.expansion,
-          cause: Object.freeze({ kind: "set-rows" as const }),
-        }),
-      );
-      return mutationResult(previousRevision, root.revision, classified);
     },
     applyTransaction() {
       return unavailable("apply-transaction");

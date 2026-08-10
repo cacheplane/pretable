@@ -70,6 +70,8 @@ describe("local row integrity", () => {
     expect(model.getState().snapshot.rowAt(0)).toMatchObject({ row });
     expect(Object.isExtensible(target)).toBe(true);
     expect(preventExtensions).toHaveBeenCalledTimes(1);
+    const previousSnapshot = model.getState().snapshot;
+    const previousPublicRow = previousSnapshot.rowAt(0);
 
     target.label = "after";
     expect(model.setRows([row])).toMatchObject({ revision: 1, updated: 1 });
@@ -80,6 +82,13 @@ describe("local row integrity", () => {
         rowId: 1,
       }),
     ]);
+    expect(model.getState().snapshot.rowAt(0)).not.toBe(previousPublicRow);
+    expect(previousSnapshot.rowAt(0)).toBe(previousPublicRow);
+    const capturedVisibleRow = previousSnapshot.rowAt(0);
+    expect(capturedVisibleRow?.kind).toBe("data");
+    if (capturedVisibleRow?.kind === "data") {
+      expect(capturedVisibleRow.row.label).toBe("after");
+    }
   });
 
   test("diagnoses same-reference mutation of a non-extensible row and reevaluates it", () => {
