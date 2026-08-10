@@ -1,5 +1,23 @@
 # @pretable/core
 
+## 0.0.11
+
+### Patch Changes
+
+- Reconcile the selection when the drawn column model changes, so grouping or ([#264](https://github.com/cacheplane/pretable/pull/264))
+  ungrouping no longer drops full-row selections, double-toggles a row, or copies
+  a single column instead of the whole row.
+
+- Stop invalidating the derived rows for a re-created `value` closure on a grid ([#264](https://github.com/cacheplane/pretable/pull/264))
+  that is not grouped by that column. An inline `columns={[…]}` array no longer
+  emits — and no longer destroys `visibleRows` identity — on every parent update.
+
+- Reconcile the selection when a column is reordered, pinned, or the layout is ([#264](https://github.com/cacheplane/pretable/pull/264))
+  reset. A range does not need to lose a column to break — it only needs the
+  columns between its endpoints to change — so dragging a header used to leave a
+  selected row half-checked and make Cmd+C copy the wrong columns, with no
+  grouping involved at all.
+
 ## 0.0.10
 
 ## 0.0.9
