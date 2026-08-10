@@ -1,5 +1,17 @@
 export * from "./column-types";
+export * from "./aggregator-law";
 export * from "./errors";
+export {
+  aggregateTreeBuiltinAggregators,
+  createAggregateTree,
+  type AggregateTree,
+  type AggregateTreeId,
+  type AggregateTreeLeaf,
+  type BuiltinAggregateTreeOptions,
+  type BuiltinAggregatorName,
+  type CustomAggregateTreeOptions,
+  type TransientAggregateTree,
+} from "./persistent/aggregate-tree";
 export {
   createPersistentMap,
   type PersistentMap,

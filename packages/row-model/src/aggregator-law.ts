@@ -1,0 +1,258 @@
+import type { PretableAggregator } from "./column-types";
+
+const MAX_REPRESENTATIVE_LEAVES = 8;
+const DEVELOPMENT = process.env.NODE_ENV !== "production";
+
+export interface AggregatorLawDiagnostic {
+  readonly code: "aggregator-law-violation";
+  readonly law: "sequential-vs-merged-one-row-partitions";
+  readonly columnId: string;
+  readonly sampleSize: number;
+  readonly sequentialOutput: unknown;
+  readonly mergedOutput: unknown;
+}
+
+export interface AggregatorLawObservation<
+  TRow extends object,
+  TValue,
+  TAccumulator,
+  TOutput,
+> {
+  readonly aggregator: PretableAggregator<TRow, TValue, TAccumulator, TOutput>;
+  readonly columnId: string;
+  readonly row: TRow;
+  readonly value: TValue;
+}
+
+export interface AggregatorLawValidator {
+  observe<TRow extends object, TValue, TAccumulator, TOutput>(
+    observation: AggregatorLawObservation<TRow, TValue, TAccumulator, TOutput>,
+  ): void;
+}
+
+export interface AggregatorLawValidatorOptions {
+  readonly sink: (diagnostic: AggregatorLawDiagnostic) => void;
+  readonly equals?: (left: unknown, right: unknown) => boolean;
+}
+
+interface RepresentativeLeaf {
+  readonly row: object;
+  readonly value: unknown;
+}
+
+interface ValidationState {
+  readonly samples: RepresentativeLeaf[];
+  warned: boolean;
+}
+
+function structuredEqual(
+  left: unknown,
+  right: unknown,
+  leftToRight: WeakMap<object, object>,
+  rightToLeft: WeakMap<object, object>,
+): boolean {
+  if (Object.is(left, right)) return true;
+  if (
+    left === null ||
+    right === null ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
+    return false;
+  }
+
+  const knownRight = leftToRight.get(left);
+  if (knownRight !== undefined) return knownRight === right;
+  const knownLeft = rightToLeft.get(right);
+  if (knownLeft !== undefined) return knownLeft === left;
+  if (Object.getPrototypeOf(left) !== Object.getPrototypeOf(right))
+    return false;
+
+  if (left instanceof Date && right instanceof Date) {
+    return Object.is(left.getTime(), right.getTime());
+  }
+
+  leftToRight.set(left, right);
+  rightToLeft.set(right, left);
+
+  if (left instanceof Map && right instanceof Map) {
+    if (left.size !== right.size) return false;
+    const leftEntries = left.entries();
+    const rightEntries = right.entries();
+    for (let index = 0; index < left.size; index += 1) {
+      const leftEntry = leftEntries.next().value as
+        readonly [unknown, unknown] | undefined;
+      const rightEntry = rightEntries.next().value as
+        readonly [unknown, unknown] | undefined;
+      if (
+        leftEntry === undefined ||
+        rightEntry === undefined ||
+        !structuredEqual(
+          leftEntry[0],
+          rightEntry[0],
+          leftToRight,
+          rightToLeft,
+        ) ||
+        !structuredEqual(leftEntry[1], rightEntry[1], leftToRight, rightToLeft)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (left instanceof Set && right instanceof Set) {
+    if (left.size !== right.size) return false;
+    const leftValues = left.values();
+    const rightValues = right.values();
+    for (let index = 0; index < left.size; index += 1) {
+      if (
+        !structuredEqual(
+          leftValues.next().value,
+          rightValues.next().value,
+          leftToRight,
+          rightToLeft,
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const leftKeys = Reflect.ownKeys(left);
+  const rightKeys = Reflect.ownKeys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+
+  for (const key of leftKeys) {
+    if (!Object.prototype.hasOwnProperty.call(right, key)) return false;
+    const leftDescriptor = Object.getOwnPropertyDescriptor(left, key);
+    const rightDescriptor = Object.getOwnPropertyDescriptor(right, key);
+    if (leftDescriptor === undefined || rightDescriptor === undefined)
+      return false;
+    if (
+      leftDescriptor.enumerable !== rightDescriptor.enumerable ||
+      leftDescriptor.configurable !== rightDescriptor.configurable
+    ) {
+      return false;
+    }
+    if ("value" in leftDescriptor && "value" in rightDescriptor) {
+      if (
+        !structuredEqual(
+          leftDescriptor.value,
+          rightDescriptor.value,
+          leftToRight,
+          rightToLeft,
+        )
+      ) {
+        return false;
+      }
+    } else if (
+      leftDescriptor.get !== rightDescriptor.get ||
+      leftDescriptor.set !== rightDescriptor.set
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Compares scalar and common structured finalized outputs by value. */
+export function defaultAggregatorOutputEquality(
+  left: unknown,
+  right: unknown,
+): boolean {
+  return structuredEqual(
+    left,
+    right,
+    new WeakMap<object, object>(),
+    new WeakMap<object, object>(),
+  );
+}
+
+const productionValidator: AggregatorLawValidator = Object.freeze({
+  observe: () => undefined,
+});
+
+/**
+ * Creates development-only validation for the custom aggregator merge law.
+ * Production replacements of `process.env.NODE_ENV` eliminate the sampling
+ * branch, and the runtime fallback is a shared no-op validator.
+ */
+export function createAggregatorLawValidator(
+  options: AggregatorLawValidatorOptions,
+): AggregatorLawValidator {
+  if (!DEVELOPMENT) return productionValidator;
+
+  const states = new WeakMap<object, Map<string, ValidationState>>();
+  const equals = options.equals ?? defaultAggregatorOutputEquality;
+
+  return {
+    observe<TRow extends object, TValue, TAccumulator, TOutput>(
+      observation: AggregatorLawObservation<
+        TRow,
+        TValue,
+        TAccumulator,
+        TOutput
+      >,
+    ): void {
+      const aggregatorObject = observation.aggregator as object;
+      let columns = states.get(aggregatorObject);
+      if (columns === undefined) {
+        columns = new Map<string, ValidationState>();
+        states.set(aggregatorObject, columns);
+      }
+      let state = columns.get(observation.columnId);
+      if (state === undefined) {
+        state = { samples: [], warned: false };
+        columns.set(observation.columnId, state);
+      }
+      if (state.warned || state.samples.length >= MAX_REPRESENTATIVE_LEAVES) {
+        return;
+      }
+      state.samples.push({ row: observation.row, value: observation.value });
+      if (state.samples.length < 2) return;
+
+      const aggregator =
+        observation.aggregator as unknown as PretableAggregator<
+          object,
+          unknown,
+          unknown,
+          unknown
+        >;
+      try {
+        let sequential = aggregator.init();
+        const partitions: unknown[] = [];
+        for (const sample of state.samples) {
+          sequential = aggregator.accumulate(
+            sequential,
+            sample.value,
+            sample.row,
+          );
+          partitions.push(
+            aggregator.accumulate(aggregator.init(), sample.value, sample.row),
+          );
+        }
+        let merged: unknown = partitions[0];
+        for (let index = 1; index < partitions.length; index += 1) {
+          merged = aggregator.merge(merged, partitions[index]!);
+        }
+        const sequentialOutput = aggregator.finalize(sequential);
+        const mergedOutput = aggregator.finalize(merged);
+        if (equals(sequentialOutput, mergedOutput)) return;
+
+        state.warned = true;
+        options.sink({
+          code: "aggregator-law-violation",
+          law: "sequential-vs-merged-one-row-partitions",
+          columnId: observation.columnId,
+          sampleSize: state.samples.length,
+          sequentialOutput,
+          mergedOutput,
+        });
+      } catch {
+        // Development diagnostics must not add a new failure mode to updates.
+      }
+    },
+  };
+}
