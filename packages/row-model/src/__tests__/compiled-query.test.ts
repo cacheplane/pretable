@@ -720,4 +720,357 @@ describe("compileQuery", () => {
     });
     expect(calls).toHaveBeenCalledTimes(2);
   });
+
+  test("captures every caller-owned query, derivation, and aggregator property once", () => {
+    const reads = new Map<string, number>();
+    const counted = (name: string, value: unknown) => ({
+      enumerable: true,
+      get() {
+        reads.set(name, (reads.get(name) ?? 0) + 1);
+        return value;
+      },
+    });
+    const init = () => ({ total: 0 });
+    const accumulate = (accumulator: { total: number }, value: number) => ({
+      total: accumulator.total + value,
+    });
+    const merge = (left: { total: number }, right: { total: number }) => ({
+      total: left.total + right.total,
+    });
+    const finalize = (accumulator: { total: number }) => accumulator.total;
+    const aggregator = Object.defineProperties(
+      {},
+      {
+        init: counted("aggregate.init", init),
+        accumulate: counted("aggregate.accumulate", accumulate),
+        merge: counted("aggregate.merge", merge),
+        finalize: counted("aggregate.finalize", finalize),
+        option: counted("aggregate.option", { precision: 2 }),
+      },
+    );
+    const accessor = (row: { id: number; value: number }) => row.value;
+    const derivation = Object.defineProperties(
+      {},
+      {
+        id: counted("derivation.id", "value"),
+        type: counted("derivation.type", "number"),
+        accessor: counted("derivation.accessor", accessor),
+        value: counted("derivation.value", accessor),
+        compare: counted("derivation.compare", undefined),
+        aggregate: counted("derivation.aggregate", aggregator),
+      },
+    );
+    const filter = Object.defineProperties(
+      {},
+      {
+        columnId: counted("filter.columnId", "value"),
+        operator: counted("filter.operator", "gte"),
+        value: counted("filter.value", 2),
+      },
+    );
+    const query = Object.defineProperties(
+      {},
+      {
+        filters: counted("query.filters", [filter]),
+        sort: counted("query.sort", []),
+        rowGroups: counted("query.rowGroups", []),
+      },
+    );
+    const input = Object.defineProperties(
+      {},
+      {
+        derivations: counted("input.derivations", [derivation]),
+        query: counted("input.query", query),
+        previous: counted("input.previous", undefined),
+      },
+    );
+
+    const plan = compileQuery(input as never);
+    plan.evaluate({ rowId: 1, sourceOrder: 0, row: { id: 1, value: 3 } });
+
+    expect(Object.fromEntries(reads)).toEqual({
+      "input.derivations": 1,
+      "input.query": 1,
+      "input.previous": 1,
+      "derivation.id": 1,
+      "derivation.type": 1,
+      "derivation.accessor": 1,
+      "derivation.value": 1,
+      "derivation.compare": 1,
+      "derivation.aggregate": 1,
+      "aggregate.init": 1,
+      "aggregate.accumulate": 1,
+      "aggregate.merge": 1,
+      "aggregate.finalize": 1,
+      "aggregate.option": 1,
+      "query.filters": 1,
+      "query.sort": 1,
+      "query.rowGroups": 1,
+      "filter.columnId": 1,
+      "filter.operator": 1,
+      "filter.value": 1,
+    });
+  });
+
+  test.each([
+    [
+      "query value",
+      () => {
+        const { columns } = setup();
+        const filter = Object.defineProperties(
+          {},
+          {
+            columnId: { enumerable: true, value: "quantity" },
+            operator: { enumerable: true, value: "gte" },
+            value: {
+              enumerable: true,
+              get() {
+                throw new Error("value getter");
+              },
+            },
+          },
+        );
+        return {
+          input: {
+            derivations: columns,
+            query: { filters: [filter], sort: [], rowGroups: [] },
+          },
+          path: "query.filters[0].value",
+          columnId: "quantity",
+        };
+      },
+    ],
+    [
+      "derivation accessor",
+      () => {
+        const derivation = Object.defineProperties(
+          {},
+          {
+            id: { enumerable: true, value: "value" },
+            type: { enumerable: true, value: "number" },
+            accessor: {
+              enumerable: true,
+              get() {
+                throw new Error("accessor getter");
+              },
+            },
+            value: { enumerable: true, value: () => 1 },
+            compare: { enumerable: true, value: undefined },
+            aggregate: { enumerable: true, value: undefined },
+          },
+        );
+        return {
+          input: {
+            derivations: [derivation],
+            query: { filters: [], sort: [], rowGroups: [] },
+          },
+          path: "derivations[0].accessor",
+          columnId: "value",
+        };
+      },
+    ],
+    [
+      "aggregator callback",
+      () => {
+        const aggregator = Object.defineProperties(
+          {},
+          {
+            init: {
+              enumerable: true,
+              get() {
+                throw new Error("init getter");
+              },
+            },
+            accumulate: { enumerable: true, value: () => 0 },
+            merge: { enumerable: true, value: () => 0 },
+            finalize: { enumerable: true, value: () => 0 },
+          },
+        );
+        return throwingAggregateInput(aggregator, "aggregate.init");
+      },
+    ],
+    [
+      "aggregator option",
+      () => {
+        const aggregator = Object.defineProperties(
+          {
+            init: () => 0,
+            accumulate: () => 0,
+            merge: () => 0,
+            finalize: () => 0,
+          },
+          {
+            option: {
+              enumerable: true,
+              get() {
+                throw new Error("option getter");
+              },
+            },
+          },
+        );
+        return throwingAggregateInput(aggregator, "aggregate.option");
+      },
+    ],
+  ])(
+    "wraps throwing capture getters with structured context: %s",
+    (_label, make) => {
+      const { input, path, columnId } = make();
+      let caught: unknown;
+      try {
+        compileQuery(input as never);
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(CompiledQueryValidationError);
+      expect(caught).toMatchObject({ path, columnId });
+    },
+  );
+
+  test("captures one aggregator object per plan across 100,000 row evaluations", () => {
+    let optionReads = 0;
+    const aggregate = Object.defineProperties(
+      {
+        init: () => 0,
+        accumulate: (accumulator: number, value: number) => accumulator + value,
+        merge: (left: number, right: number) => left + right,
+        finalize: (accumulator: number) => accumulator,
+      },
+      {
+        option: {
+          enumerable: true,
+          get() {
+            optionReads += 1;
+            return { precision: 2 };
+          },
+        },
+      },
+    );
+    const column = createColumnHelper<{ id: number; value: number }>();
+    const columns = [
+      column.accessor("value", {
+        type: "number",
+        aggregate,
+      }),
+    ] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: { filters: [], sort: [], rowGroups: [] },
+    });
+    let captured: object | undefined;
+
+    for (let index = 0; index < 100_000; index += 1) {
+      const metadata = plan.evaluate({
+        rowId: index,
+        sourceOrder: index,
+        row: { id: index, value: index },
+      });
+      const current = metadata.aggregateLeaves[0].aggregate;
+      captured ??= current;
+      expect(current).toBe(captured);
+    }
+
+    expect(optionReads).toBe(1);
+  });
+
+  test("rejects non-number and NaN row comparator results but accepts Infinity", () => {
+    let result: unknown = "invalid";
+    const column = createColumnHelper<{ id: number; value: number }>();
+    const columns = [
+      column.accessor("value", {
+        type: "number",
+        compare: () => result as number,
+      }),
+    ] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: {
+        filters: [],
+        rowGroups: [],
+        sort: [{ columnId: "value", direction: "asc" }],
+      },
+    });
+    const left = plan.evaluate({
+      rowId: 1,
+      sourceOrder: 0,
+      row: { id: 1, value: 1 },
+    });
+    const right = plan.evaluate({
+      rowId: 2,
+      sourceOrder: 1,
+      row: { id: 2, value: 2 },
+    });
+
+    for (const invalid of ["invalid", Number.NaN]) {
+      result = invalid;
+      expect(() => plan.compareRows(left, right)).toThrowError(
+        expect.objectContaining({
+          name: "CompiledQueryComparatorError",
+          columnId: "value",
+          rowIds: [1, 2],
+        }),
+      );
+    }
+    result = Number.POSITIVE_INFINITY;
+    expect(plan.compareRows(left, right)).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  test("includes group values when a custom group comparator returns NaN", () => {
+    const column = createColumnHelper<{ id: number; group: string }>();
+    const columns = [
+      column.accessor("group", {
+        type: "text",
+        compare: () => Number.NaN,
+      }),
+    ] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "group" }],
+      },
+    });
+    const left = plan.evaluate({
+      rowId: 1,
+      sourceOrder: 0,
+      row: { id: 1, group: "a" },
+    });
+    const right = plan.evaluate({
+      rowId: 2,
+      sourceOrder: 1,
+      row: { id: 2, group: "b" },
+    });
+    let caught: unknown;
+    try {
+      plan.compareGroupKeys(0, left.groupPath[0], right.groupPath[0]);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(CompiledQueryComparatorError);
+    expect(caught).toMatchObject({
+      columnId: "group",
+      rowIds: undefined,
+      groupValues: ["a", "b"],
+    });
+  });
 });
+
+function throwingAggregateInput(aggregator: object, suffix: string) {
+  const derivation = {
+    id: "value",
+    type: "number",
+    accessor: () => 1,
+    value: () => 1,
+    compare: undefined,
+    aggregate: aggregator,
+  };
+  return {
+    input: {
+      derivations: [derivation],
+      query: { filters: [], sort: [], rowGroups: [] },
+    },
+    path: `derivations[0].${suffix}`,
+    columnId: "value",
+  };
+}

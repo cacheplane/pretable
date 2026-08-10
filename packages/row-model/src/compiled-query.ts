@@ -108,6 +108,10 @@ export interface CompiledQuery<TColumns> {
   evaluate<TRowId extends PretableRowId>(
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
   ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
+  /**
+   * Custom comparators must return a number other than `NaN`. Positive and
+   * negative infinity are accepted as explicit positive/negative ordering.
+   */
   readonly compareRows: <TRowId extends PretableRowId>(
     left: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
     right: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
@@ -139,13 +143,15 @@ export class CompiledQueryValidationError extends TypeError {
     readonly detail: string,
     readonly path: string,
     readonly columnId?: string,
+    options?: { readonly cause?: unknown },
   ) {
-    super(`Invalid compiled query at ${path}: ${detail}`);
+    super(`Invalid compiled query at ${path}: ${detail}`, options);
   }
 }
 
 export class CompiledQueryComparatorError extends PretableRowModelError {
   readonly name = "CompiledQueryComparatorError";
+  readonly groupValues: readonly unknown[] | undefined;
 
   constructor(
     message: string,
@@ -153,6 +159,7 @@ export class CompiledQueryComparatorError extends PretableRowModelError {
     context: {
       readonly columnId: string;
       readonly cause: unknown;
+      readonly groupValues?: readonly unknown[];
     },
   ) {
     super("comparator-failed", message, {
@@ -161,6 +168,7 @@ export class CompiledQueryComparatorError extends PretableRowModelError {
       columnId: context.columnId,
       cause: context.cause,
     });
+    this.groupValues = context.groupValues;
   }
 }
 
@@ -264,20 +272,197 @@ const BUILTIN_AGGREGATES = new Set(["sum", "avg", "min", "max", "count"]);
 const NUMERIC_AGGREGATES = new Set(["sum", "avg", "min", "max"]);
 const COLUMN_TYPES = new Set(["text", "number", "date", "enum", "boolean"]);
 
-function runtimeColumns<TColumns>(
-  derivations: PretableDerivationsFor<TColumns>,
-): readonly RuntimeColumn[] {
-  return derivations as unknown as readonly RuntimeColumn[];
+interface CapturedCompileInput {
+  readonly columns: readonly RuntimeColumn[];
+  readonly query: RuntimeQuery;
+  readonly previous: object | undefined;
 }
 
-function runtimeQuery<TColumns>(
-  query: PretableQueryFor<TColumns>,
-): RuntimeQuery {
-  return query as unknown as RuntimeQuery;
+function captureCompileInput(input: object): CapturedCompileInput {
+  const rawColumns = captureProperty(input, "derivations", "input.derivations");
+  const rawQuery = captureProperty(input, "query", "input.query");
+  const previous = captureProperty(input, "previous", "input.previous");
+  if (!Array.isArray(rawColumns))
+    fail("derivations must be an array", "input.derivations");
+  if (rawQuery === null || typeof rawQuery !== "object")
+    fail("query must be an object", "input.query");
+  return {
+    columns: captureColumns(rawColumns),
+    query: captureQuery(rawQuery),
+    previous: previous as object | undefined,
+  };
+}
+
+function captureColumns(
+  rawColumns: readonly unknown[],
+): readonly RuntimeColumn[] {
+  return Object.freeze(
+    rawColumns.map((rawColumn, index) => {
+      const path = `derivations[${index}]`;
+      if (rawColumn === null || typeof rawColumn !== "object")
+        fail("a derivation is not an object", path);
+      const id = captureProperty(rawColumn, "id", `${path}.id`);
+      const columnId = typeof id === "string" ? id : undefined;
+      const type = captureProperty(rawColumn, "type", `${path}.type`, columnId);
+      const accessor = captureProperty(
+        rawColumn,
+        "accessor",
+        `${path}.accessor`,
+        columnId,
+      );
+      const value = captureProperty(
+        rawColumn,
+        "value",
+        `${path}.value`,
+        columnId,
+      );
+      const compare = captureProperty(
+        rawColumn,
+        "compare",
+        `${path}.compare`,
+        columnId,
+      );
+      const rawAggregate = captureProperty(
+        rawColumn,
+        "aggregate",
+        `${path}.aggregate`,
+        columnId,
+      );
+      const aggregate =
+        rawAggregate !== null && typeof rawAggregate === "object"
+          ? captureAggregator(rawAggregate, `${path}.aggregate`, columnId)
+          : rawAggregate;
+      return Object.freeze({
+        id,
+        type,
+        accessor,
+        value,
+        compare,
+        aggregate,
+      }) as unknown as RuntimeColumn;
+    }),
+  );
+}
+
+function captureAggregator(
+  source: object,
+  path: string,
+  columnId?: string,
+): RuntimeAggregator {
+  let keys: string[];
+  try {
+    keys = Object.keys(source);
+    if (Object.getOwnPropertySymbols(source).length > 0)
+      fail("symbol-keyed aggregate options are not supported", path, columnId);
+  } catch (cause) {
+    if (cause instanceof CompiledQueryValidationError) throw cause;
+    throw new CompiledQueryValidationError(
+      "aggregate property discovery threw while compiling",
+      path,
+      columnId,
+      { cause },
+    );
+  }
+  const required = ["init", "accumulate", "merge", "finalize"];
+  const allKeys = [...new Set([...keys, ...required])];
+  const clone: Record<string, unknown> = {};
+  for (const key of allKeys) {
+    const captured = captureProperty(source, key, `${path}.${key}`, columnId);
+    clone[key] = required.includes(key)
+      ? captured
+      : cloneOwnedValue(captured, `${path}.${key}`, new WeakSet(), columnId);
+  }
+  return Object.freeze(clone) as unknown as RuntimeAggregator;
+}
+
+function captureQuery(source: object): RuntimeQuery {
+  const rawFilters = captureProperty(source, "filters", "query.filters");
+  const rawSort = captureProperty(source, "sort", "query.sort");
+  const rawRowGroups = captureProperty(source, "rowGroups", "query.rowGroups");
+  if (!Array.isArray(rawFilters))
+    fail("filters must be an array", "query.filters");
+  if (!Array.isArray(rawSort)) fail("sort must be an array", "query.sort");
+  if (!Array.isArray(rawRowGroups))
+    fail("rowGroups must be an array", "query.rowGroups");
+  return Object.freeze({
+    filters: Object.freeze(
+      rawFilters.map((entry, index) => captureFilter(entry, index)),
+    ),
+    sort: Object.freeze(
+      rawSort.map((entry, index) => captureOrdering(entry, "sort", index)),
+    ),
+    rowGroups: Object.freeze(
+      rawRowGroups.map((entry, index) =>
+        captureOrdering(entry, "rowGroups", index),
+      ),
+    ),
+  });
+}
+
+function captureFilter(raw: unknown, index: number): RuntimeFilter {
+  const path = `query.filters[${index}]`;
+  if (raw === null || typeof raw !== "object")
+    fail("filter entry is not an object", path);
+  const columnId = captureProperty(raw, "columnId", `${path}.columnId`);
+  const contextId = typeof columnId === "string" ? columnId : undefined;
+  const operator = captureProperty(
+    raw,
+    "operator",
+    `${path}.operator`,
+    contextId,
+  );
+  const value = captureProperty(raw, "value", `${path}.value`, contextId);
+  return Object.freeze({
+    columnId,
+    operator,
+    value: cloneOwnedValue(value, `${path}.value`, new WeakSet(), contextId),
+  }) as unknown as RuntimeFilter;
+}
+
+function captureOrdering(
+  raw: unknown,
+  area: "sort" | "rowGroups",
+  index: number,
+): RuntimeOrdering {
+  const path = `query.${area}[${index}]`;
+  if (raw === null || typeof raw !== "object")
+    fail(`${area} entry is not an object`, path);
+  const columnId = captureProperty(raw, "columnId", `${path}.columnId`);
+  const contextId = typeof columnId === "string" ? columnId : undefined;
+  const direction = captureProperty(
+    raw,
+    "direction",
+    `${path}.direction`,
+    contextId,
+  );
+  const nulls = captureProperty(raw, "nulls", `${path}.nulls`, contextId);
+  return Object.freeze({
+    columnId,
+    direction,
+    nulls,
+  }) as unknown as RuntimeOrdering;
 }
 
 function fail(message: string, path = "query", columnId?: string): never {
   throw new CompiledQueryValidationError(message, path, columnId);
+}
+
+function captureProperty(
+  source: object,
+  property: PropertyKey,
+  path: string,
+  columnId?: string,
+): unknown {
+  try {
+    return Reflect.get(source, property);
+  } catch (cause) {
+    throw new CompiledQueryValidationError(
+      "property getter threw while compiling",
+      path,
+      columnId,
+      { cause },
+    );
+  }
 }
 
 function validateDerivations(columns: readonly RuntimeColumn[]): void {
@@ -581,6 +766,7 @@ function cloneOwnedValue(
   value: unknown,
   path: string,
   seen: WeakSet<object>,
+  columnId?: string,
 ): unknown {
   if (
     value === null ||
@@ -594,32 +780,58 @@ function cloneOwnedValue(
     return value;
   }
   if (typeof value === "symbol")
-    fail("symbols are not supported in compiled inputs", path);
-  if (value instanceof Date) {
-    const timestamp = readDateTimestamp(value);
-    if (timestamp === undefined) fail("value has an invalid Date brand", path);
+    fail("symbols are not supported in compiled inputs", path, columnId);
+  let dateLike: boolean;
+  try {
+    dateLike = value instanceof Date;
+  } catch (cause) {
+    throw new CompiledQueryValidationError(
+      "value brand check threw while compiling",
+      path,
+      columnId,
+      { cause },
+    );
+  }
+  if (dateLike) {
+    const timestamp = readDateTimestamp(value as Date);
+    if (timestamp === undefined)
+      fail("value has an invalid Date brand", path, columnId);
     return Object.freeze(new Date(timestamp));
   }
-  if (typeof value !== "object") fail("unsupported compiled input value", path);
-  if (seen.has(value)) fail("cyclic values are not supported", path);
+  if (typeof value !== "object")
+    fail("unsupported compiled input value", path, columnId);
+  if (seen.has(value)) fail("cyclic values are not supported", path, columnId);
   seen.add(value);
   try {
     if (Array.isArray(value)) {
-      return Object.freeze(
-        value.map((entry, index) =>
-          cloneOwnedValue(entry, `${path}[${index}]`, seen),
-        ),
-      );
+      const captured: unknown[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        captured.push(
+          cloneOwnedValue(
+            captureProperty(value, index, `${path}[${index}]`, columnId),
+            `${path}[${index}]`,
+            seen,
+            columnId,
+          ),
+        );
+      }
+      return Object.freeze(captured);
     }
     if (!isPlainObject(value)) {
       fail(
         "only Date, arrays, and plain objects are supported in compiled inputs",
         path,
+        columnId,
       );
     }
     const clone: Record<string, unknown> = {};
     for (const key of Object.keys(value)) {
-      clone[key] = cloneOwnedValue(value[key], `${path}.${key}`, seen);
+      clone[key] = cloneOwnedValue(
+        captureProperty(value, key, `${path}.${key}`, columnId),
+        `${path}.${key}`,
+        seen,
+        columnId,
+      );
     }
     return Object.freeze(clone);
   } finally {
@@ -717,6 +929,14 @@ function snapshotQuery(
     rowGroups: Object.freeze(
       query.rowGroups.map((entry) => Object.freeze({ ...entry })),
     ),
+  });
+}
+
+function canonicalRuntimeQuery(query: RuntimeQuery): RuntimeQuery {
+  return Object.freeze({
+    filters: Object.freeze([...query.filters].sort(compareFilterDescriptors)),
+    sort: query.sort,
+    rowGroups: query.rowGroups,
   });
 }
 
@@ -903,17 +1123,22 @@ function compareValues(
   }
   let result: number;
   if (column.compare) {
-    result = column.compare(left as never, right as never);
+    const customResult: unknown = column.compare(left as never, right as never);
+    if (typeof customResult !== "number" || Number.isNaN(customResult)) {
+      throw new TypeError(
+        "Custom comparators must return a number other than NaN.",
+      );
+    }
+    result = customResult;
   } else if (
     column.type === "number" &&
     typeof left === "number" &&
     typeof right === "number"
   ) {
-    result = left - right;
+    result = left === right ? 0 : left < right ? -1 : 1;
   } else {
     result = collator.compare(String(left), String(right));
   }
-  if (Number.isNaN(result)) result = 0;
   return ordering.direction === "desc" ? -result : result;
 }
 
@@ -957,18 +1182,13 @@ class CompiledQueryPlan<TColumns>
   }
 
   constructor(
-    derivations: PretableDerivationsFor<TColumns>,
-    query: PretableQueryFor<TColumns>,
+    capturedColumns: readonly RuntimeColumn[],
+    capturedQuery: RuntimeQuery,
   ) {
-    const sourceColumns = runtimeColumns(derivations);
-    const sourceQuery = runtimeQuery(query);
-    this.#publicColumns = snapshotColumns(sourceColumns, "public.derivations");
-    this.#publicQuery = snapshotQuery(sourceQuery, "public.query");
-    this.#runtimeColumns = snapshotColumns(
-      sourceColumns,
-      "internal.derivations",
-    );
-    this.#runtimeQuery = snapshotQuery(sourceQuery, "internal.query", true);
+    this.#publicColumns = capturedColumns;
+    this.#publicQuery = capturedQuery;
+    this.#runtimeColumns = capturedColumns;
+    this.#runtimeQuery = canonicalRuntimeQuery(capturedQuery);
     this.#byId = new Map(
       this.#runtimeColumns.map((column) => [column.id, column]),
     );
@@ -1063,14 +1283,7 @@ class CompiledQueryPlan<TColumns>
         });
         return Object.freeze({
           columnId: column.id,
-          aggregate:
-            typeof column.aggregate === "object"
-              ? snapshotAggregator(
-                  column.aggregate,
-                  `aggregateLeaves.${column.id}`,
-                  column.id,
-                )
-              : column.aggregate,
+          aggregate: column.aggregate,
           allLeaf,
           filteredLeaf: filterPasses ? allLeaf : undefined,
         });
@@ -1133,7 +1346,11 @@ class CompiledQueryPlan<TColumns>
       throw new CompiledQueryComparatorError(
         "A compiled group comparator failed.",
         undefined,
-        { columnId: ordering.columnId, cause },
+        {
+          columnId: ordering.columnId,
+          cause,
+          groupValues: [left.value, right.value],
+        },
       );
     }
   }
@@ -1142,19 +1359,16 @@ class CompiledQueryPlan<TColumns>
 export function compileQuery<const TColumns>(
   input: CompileQueryInput<TColumns>,
 ): CompiledQuery<TColumns> {
-  const columns = runtimeColumns(input.derivations);
-  const query = runtimeQuery(input.query);
-  validateDerivations(columns);
-  validateQuery(query, columns);
-  const semanticColumns = snapshotColumns(columns, "derivations");
-  const semanticQuery = snapshotQuery(query, "query");
+  const captured = captureCompileInput(input as object);
+  validateDerivations(captured.columns);
+  validateQuery(captured.query, captured.columns);
 
-  const previous = input.previous as
+  const previous = captured.previous as
     (CompiledQuery<TColumns> & Partial<InternalCompiledQuery>) | undefined;
   if (
-    previous?.[internals]?.semanticallyMatches(semanticColumns, semanticQuery)
+    previous?.[internals]?.semanticallyMatches(captured.columns, captured.query)
   )
-    return input.previous!;
+    return previous;
 
-  return new CompiledQueryPlan(input.derivations, input.query);
+  return new CompiledQueryPlan(captured.columns, captured.query);
 }
