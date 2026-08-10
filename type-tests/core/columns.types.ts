@@ -76,6 +76,7 @@ interface NumericEligibilityRow {
   nullOnly: null;
   undefinedOnly: undefined;
   neverOnly: never;
+  unknownOnly: unknown;
   numberOrText: number | string;
 }
 const numericEligibilityColumn = createColumnHelper<NumericEligibilityRow>();
@@ -142,6 +143,25 @@ numericEligibilityColumn.accessor("computedNeverText", (row) => row.neverOnly, {
   type: "text",
   aggregate: "count",
 });
+numericEligibilityColumn.accessor(
+  "computedUnknownNumeric",
+  (row) => row.unknownOnly,
+  {
+    // @ts-expect-error computed unknown values cannot declare a column type
+    type: "number",
+    // @ts-expect-error computed unknown values are not summable
+    aggregate: "sum",
+  },
+);
+numericEligibilityColumn.accessor(
+  "computedUnknownText",
+  (row) => row.unknownOnly,
+  {
+    // @ts-expect-error no column type is legal for an unknown value
+    type: "text",
+    aggregate: "count",
+  },
+);
 
 void (null as unknown as _ColumnIds);
 void (null as unknown as _Quantity);

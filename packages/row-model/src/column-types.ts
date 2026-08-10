@@ -202,45 +202,40 @@ export type PretableColumnOptions<
 export interface PretableColumnHelper<TRow extends object> {
   accessor<
     const TId extends string,
-    const TAccessor,
+    const TAccessor extends (...args: never[]) => unknown,
     const TType extends
-      | PretableColumnTypeFor<
-          NoInfer<
-            TAccessor extends (row: TRow) => infer TValue ? TValue : never
-          >
-        >
-      | (unknown extends TAccessor ? PretableColumnType : never),
+      | (unknown extends NoInfer<TValue>
+          ? never
+          : PretableColumnTypeFor<NoInfer<TValue>>)
+      | ([TValue] extends [typeof columnDescriptor]
+          ? [ReturnType<TAccessor>] extends [never]
+            ? never
+            : PretableColumnType
+          : never),
+    TValue = typeof columnDescriptor,
     const TAggregate extends
-      | PretableAggregateSpec<
-          TRow,
-          NoInfer<
-            TAccessor extends (row: TRow) => infer TValue ? TValue : never
-          >
-        >
-      | (unknown extends TAccessor
-          ? PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max"
+      | PretableAggregateSpec<TRow, NoInfer<TValue>>
+      | ([TValue] extends [typeof columnDescriptor]
+          ? [ReturnType<TAccessor>] extends [never]
+            ? never
+            : PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max"
           : never)
       | undefined = undefined,
   >(
     id: TId,
-    accessor: TAccessor & ((row: TRow) => unknown),
+    accessor: TAccessor & ((row: TRow) => TValue),
     options: {
       readonly type: TType;
       readonly header?: string;
-      readonly compare?: (
-        left: TAccessor extends (row: TRow) => infer TValue ? TValue : never,
-        right: TAccessor extends (row: TRow) => infer TValue ? TValue : never,
-      ) => number;
+      readonly compare?: (left: TValue, right: TValue) => number;
       readonly aggregate?: TAggregate;
       readonly format?: (input: {
-        readonly value: TAccessor extends (row: TRow) => infer TValue
-          ? TValue
-          : never;
+        readonly value: TValue;
         readonly row: TRow;
         readonly column: PretableColumnCallbackContext<
           TRow,
           TId,
-          TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+          TValue,
           TType,
           TAggregate
         >;
@@ -250,7 +245,7 @@ export interface PretableColumnHelper<TRow extends object> {
         readonly column: PretableColumnCallbackContext<
           TRow,
           TId,
-          TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+          TValue,
           TType,
           TAggregate
         >;
@@ -259,7 +254,7 @@ export interface PretableColumnHelper<TRow extends object> {
   ): PretableColumnDefinition<
     TRow,
     TId,
-    TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+    ReturnType<TAccessor>,
     TType,
     TAggregate
   >;

@@ -366,21 +366,21 @@ export interface PretableColumnDerivation<TRow extends object, TId extends strin
 // @public (undocumented)
 export interface PretableColumnHelper<TRow extends object> {
     // (undocumented)
-    accessor<const TId extends string, const TAccessor, const TType extends PretableColumnTypeFor<NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | (unknown extends TAccessor ? PretableColumnType : never), const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | (unknown extends TAccessor ? PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max" : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => unknown), options: {
+    accessor<const TId extends string, const TAccessor extends (...args: never[]) => unknown, const TType extends (unknown extends NoInfer<TValue> ? never : PretableColumnTypeFor<NoInfer<TValue>>) | ([TValue] extends [typeof columnDescriptor] ? [ReturnType<TAccessor>] extends [never] ? never : PretableColumnType : never), TValue = typeof columnDescriptor, const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TValue>> | ([TValue] extends [typeof columnDescriptor] ? [ReturnType<TAccessor>] extends [never] ? never : PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max" : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => TValue), options: {
         readonly type: TType;
         readonly header?: string;
-        readonly compare?: (left: TAccessor extends (row: TRow) => infer TValue ? TValue : never, right: TAccessor extends (row: TRow) => infer TValue ? TValue : never) => number;
+        readonly compare?: (left: TValue, right: TValue) => number;
         readonly aggregate?: TAggregate;
         readonly format?: (input: {
-            readonly value: TAccessor extends (row: TRow) => infer TValue ? TValue : never;
+            readonly value: TValue;
             readonly row: TRow;
-            readonly column: PretableColumnCallbackContext<TRow, TId, TAccessor extends (row: TRow) => infer TValue ? TValue : never, TType, TAggregate>;
+            readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
         }) => string;
         readonly formatAggregate?: (input: {
             readonly value: PretableAggregateOutputOf<TAggregate>;
-            readonly column: PretableColumnCallbackContext<TRow, TId, TAccessor extends (row: TRow) => infer TValue ? TValue : never, TType, TAggregate>;
+            readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
         }) => string;
-    }): PretableColumnDefinition<TRow, TId, TAccessor extends (row: TRow) => infer TValue ? TValue : never, TType, TAggregate>;
+    }): PretableColumnDefinition<TRow, TId, ReturnType<TAccessor>, TType, TAggregate>;
     // (undocumented)
     accessor<const TKey extends Extract<keyof TRow, string>, const TType extends PretableColumnTypeFor<TRow[TKey]>, const TAggregate extends PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined>(key: TKey, options: PretableColumnOptions<TRow, TKey, TRow[TKey], TType, TAggregate>): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate>;
 }
