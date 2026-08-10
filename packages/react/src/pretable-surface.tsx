@@ -1131,9 +1131,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
    * user just pressed; the user has no way to ask for it again. Two lifecycle
    * messages still supersede each other, so a resolution overrides its own
    * "Updating results…".
+   *
+   * `"error"` outranks both. A load failure is the one lifecycle event with no
+   * other assistive-technology channel — the phase is then held, so a dropped
+   * message is never retried — and losing it to a pending copy confirmation
+   * would leave a screen-reader user believing the grid still holds a result.
    */
   const scheduleAnnouncement = useCallback(
-    (message: string, source: "user" | "lifecycle" = "user") => {
+    (message: string, source: "user" | "lifecycle" | "error" = "user") => {
       if (
         source === "lifecycle" &&
         pendingAnnouncementRef.current !== null &&
@@ -1421,7 +1426,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       // "error", so double-speak is impossible by construction.
       scheduleAnnouncement(
         effectiveMessages.dataErrorAnnouncement({ message: errorMessage }),
-        "lifecycle",
+        "error",
       );
       return;
     }

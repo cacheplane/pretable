@@ -823,3 +823,30 @@ describe("loaded-boundary announcement", () => {
     expect(spy.args).toHaveLength(2);
   });
 });
+
+describe("a load failure outranks a pending user announcement", () => {
+  // The error phase is HELD, so a dropped failure message is never retried,
+  // and the live region is the only assistive-technology channel for it —
+  // yielding to a copy confirmation would leave the user believing the grid
+  // still holds a result.
+  it("announces the error even when a user message is already pending", () => {
+    const view = render(
+      <Harness rows={page1} dataState={{ phase: "idle" }} />,
+    );
+    const grid = view.baseElement.querySelector("[role=\"grid\"]");
+    if (!grid) throw new Error("grid not found");
+
+    // Queue a user-sourced announcement into the 500 ms slot, unflushed.
+    fireEvent.keyDown(grid, { key: "a", ctrlKey: true });
+
+    view.rerender(
+      <Harness
+        rows={page1}
+        dataState={{ phase: "error", message: "network down" }}
+      />,
+    );
+    flushAnnouncement();
+
+    expect(liveRegionText(view)).toBe("Could not load results. network down");
+  });
+});
