@@ -749,6 +749,9 @@ describe("compileQuery", () => {
       total: left.total + right.total,
     });
     const finalize = (accumulator: { total: number }) => accumulator.total;
+    const snapshotAccumulator = (accumulator: { total: number }) => ({
+      total: accumulator.total,
+    });
     const aggregator = Object.defineProperties(
       {},
       {
@@ -756,6 +759,10 @@ describe("compileQuery", () => {
         accumulate: counted("aggregate.accumulate", accumulate),
         merge: counted("aggregate.merge", merge),
         finalize: counted("aggregate.finalize", finalize),
+        snapshotAccumulator: counted(
+          "aggregate.snapshotAccumulator",
+          snapshotAccumulator,
+        ),
         option: counted("aggregate.option", { precision: 2 }),
       },
     );
@@ -818,6 +825,7 @@ describe("compileQuery", () => {
       "aggregate.accumulate": 1,
       "aggregate.merge": 1,
       "aggregate.finalize": 1,
+      "aggregate.snapshotAccumulator": 1,
       "aggregate.option": 1,
       "query.filters": 1,
       "query.sort": 1,

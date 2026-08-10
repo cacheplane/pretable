@@ -1,6 +1,8 @@
 import type { CompiledGroupKey, CompiledQuery } from "./compiled-query";
 import type { PretableRowId } from "./column-types";
 import {
+  isPretableGroupKey,
+  PretableInvalidGroupKeyError,
   PretableRowModelError,
   type PretableRowModelOperation,
 } from "./errors";
@@ -92,6 +94,37 @@ interface MeasuredGroupTree<
     groupId: PretableGroupId,
     policy: PretableExpansionDefault,
   ): number | undefined;
+  visitRange(
+    start: number,
+    end: number,
+    policy: PretableExpansionDefault,
+    visitor: (
+      entry: GroupNode<TRow, TRowId, TColumns>,
+      start: number,
+      end: number,
+    ) => void,
+    diagnostics: MutableVisibleRangeDiagnostics,
+  ): void;
+}
+
+interface MutableVisibleRangeDiagnostics {
+  measuredNodeVisits: number;
+}
+
+export interface VisibleRangeDiagnostics {
+  readonly measuredNodeVisits: number;
+}
+
+const visibleRangeDiagnostics = new WeakMap<object, VisibleRangeDiagnostics>();
+
+export function getVisibleRangeDiagnosticsForTesting(
+  range: readonly unknown[],
+): VisibleRangeDiagnostics {
+  const diagnostics = visibleRangeDiagnostics.get(range);
+  if (diagnostics === undefined) {
+    throw new TypeError("Diagnostics require a grouped visible range.");
+  }
+  return diagnostics;
 }
 
 const EMPTY_COUNTS: PolicyCounts = Object.freeze({
@@ -192,8 +225,25 @@ function escape(raw: string): string {
   return raw.replace(/%/g, "%25").replace(/\//g, "%2F").replace(/=/g, "%3D");
 }
 
+interface GroupKeyErrorContext {
+  readonly operation: PretableRowModelOperation;
+  readonly rowId?: PretableRowId;
+  readonly columnId: string;
+}
+
 /** Canonical equality/identity key. Null and undefined intentionally share the legacy blank group. */
-export function encodeGroupValue(value: unknown): string {
+export function encodeGroupValue(
+  value: unknown,
+  context?: GroupKeyErrorContext,
+): string {
+  if (!isPretableGroupKey(value)) {
+    throw new PretableInvalidGroupKeyError(
+      context?.operation ?? "set-query",
+      context?.rowId,
+      context?.columnId ?? "<unknown>",
+      value,
+    );
+  }
   if (value === null || value === undefined) return "~";
   if (typeof value === "string") return `s:${value}`;
   if (typeof value === "number") {
@@ -204,14 +254,26 @@ export function encodeGroupValue(value: unknown): string {
   if (typeof value === "boolean") return `b:${String(value)}`;
   if (typeof value === "bigint") return `i:${String(value)}`;
   if (value instanceof Date) {
-    const time = value.getTime();
+    let time: number;
+    try {
+      time = value.getTime();
+    } catch (cause) {
+      throw new PretableInvalidGroupKeyError(
+        context?.operation ?? "set-query",
+        context?.rowId,
+        context?.columnId ?? "<unknown>",
+        value,
+        cause,
+      );
+    }
     return Number.isNaN(time) ? "d:Invalid" : `d:${String(time)}`;
   }
-  try {
-    return `o:${String(value)}`;
-  } catch {
-    return "o:[unstringifiable]";
-  }
+  throw new PretableInvalidGroupKeyError(
+    context?.operation ?? "set-query",
+    context?.rowId,
+    context?.columnId ?? "<unknown>",
+    value,
+  );
 }
 
 export function makeGroupId<TColumns>(
@@ -636,6 +698,49 @@ class PersistentMeasuredGroupTree<
       }
     }
     return undefined;
+  }
+
+  visitRange(
+    start: number,
+    end: number,
+    policy: PretableExpansionDefault,
+    visitor: (
+      entry: GroupNode<TRow, TRowId, TColumns>,
+      start: number,
+      end: number,
+    ) => void,
+    diagnostics: MutableVisibleRangeDiagnostics,
+  ): void {
+    const size = countForPolicy(this.measure, policy);
+    const from = Math.max(0, Math.min(size, start));
+    const to = Math.max(0, Math.min(size, end));
+    const walk = (
+      node: MeasuredNode<TRow, TRowId, TColumns> | null,
+      offset: number,
+    ): void => {
+      if (node === null || from >= to) return;
+      const subtreeCount = countForPolicy(node.measure, policy);
+      if (to <= offset || from >= offset + subtreeCount) return;
+      diagnostics.measuredNodeVisits += 1;
+
+      const leftCount = countForPolicy(
+        node.left?.measure ?? EMPTY_COUNTS,
+        policy,
+      );
+      const ownStart = offset + leftCount;
+      const ownCount = countForPolicy(node.entry.counts, policy);
+      const ownEnd = ownStart + ownCount;
+      if (from < ownStart) walk(node.left, offset);
+      if (from < ownEnd && to > ownStart) {
+        visitor(
+          node.entry,
+          Math.max(0, from - ownStart),
+          Math.min(ownCount, to - ownStart),
+        );
+      }
+      if (to > ownEnd) walk(node.right, ownEnd);
+    };
+    walk(this.#root, 0);
   }
 }
 
@@ -1081,7 +1186,13 @@ function mutatePath<
   const metadata = record.metadata;
   const path = metadata.groupPath;
   if (path.length === 0) return;
-  const pathKeys = path.map((entry) => encodeGroupValue(entry.value));
+  const pathKeys = path.map((entry) =>
+    encodeGroupValue(entry.value, {
+      operation: context.operation,
+      rowId: record.rowId,
+      columnId: entry.columnId,
+    }),
+  );
 
   const visit = (
     depth: number,
@@ -1456,15 +1567,43 @@ export function visibleRange<
     0,
     Math.min(size, Math.trunc(Number.isNaN(end) ? 0 : end)),
   );
-  if (from >= to) return Object.freeze([]);
-  return Object.freeze(
-    Array.from({ length: to - from }, (_, offset) =>
-      visibleAt(root, policy, from + offset),
-    ).filter(
-      (row): row is PretableVisibleRow<TRow, TRowId, TColumns> =>
-        row !== undefined,
-    ),
+  const diagnostics: MutableVisibleRangeDiagnostics = {
+    measuredNodeVisits: 0,
+  };
+  const result: PretableVisibleRow<TRow, TRowId, TColumns>[] = [];
+  const appendNodeRange = (
+    node: GroupNode<TRow, TRowId, TColumns>,
+    nodeStart: number,
+    nodeEnd: number,
+  ): void => {
+    if (nodeStart >= nodeEnd) return;
+    if (nodeStart === 0) result.push(publicGroup(node, policy));
+    if (!effectiveExpanded(node, policy) || nodeEnd <= 1) return;
+    const descendantsStart = Math.max(0, nodeStart - 1);
+    const descendantsEnd = nodeEnd - 1;
+    if (node.children.size > 0) {
+      node.children.visitRange(
+        descendantsStart,
+        descendantsEnd,
+        policy,
+        appendNodeRange,
+        diagnostics,
+      );
+      return;
+    }
+    for (const record of node.leaves.range(descendantsStart, descendantsEnd)) {
+      result.push(publicData(record, node.depth + 1));
+    }
+  };
+  if (from < to) {
+    root.roots.visitRange(from, to, policy, appendNodeRange, diagnostics);
+  }
+  const frozen = Object.freeze(result);
+  visibleRangeDiagnostics.set(
+    frozen,
+    Object.freeze({ measuredNodeVisits: diagnostics.measuredNodeVisits }),
   );
+  return frozen;
 }
 
 export function isExpanded<
@@ -1477,9 +1616,7 @@ export function isExpanded<
   policy: PretableExpansionDefault,
 ): boolean {
   const node = root.groups.get(groupId);
-  return node === undefined || node.filteredCount === 0
-    ? false
-    : effectiveExpanded(node, policy);
+  return node === undefined ? false : effectiveExpanded(node, policy);
 }
 
 export function visibleIndexOf<

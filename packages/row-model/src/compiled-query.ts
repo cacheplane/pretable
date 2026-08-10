@@ -180,6 +180,9 @@ type RuntimeAggregator = {
   readonly merge: (
     ...args: readonly never[]
   ) => object | string | number | bigint | boolean | null;
+  readonly snapshotAccumulator?: (
+    ...args: readonly never[]
+  ) => object | string | number | bigint | boolean | null;
   readonly finalize: (
     ...args: readonly never[]
   ) => object | string | number | bigint | boolean | null;
@@ -363,7 +366,7 @@ function captureAggregator(
     );
   }
   const required = ["init", "accumulate", "merge", "finalize"];
-  const allKeys = [...new Set([...keys, ...required])];
+  const allKeys = [...new Set([...keys, ...required, "snapshotAccumulator"])];
   const clone: Record<string, unknown> = {};
   for (const key of allKeys) {
     const captured = captureProperty(source, key, `${path}.${key}`, columnId);
@@ -573,6 +576,16 @@ function validateAggregate(column: RuntimeColumn, path: string): void {
   ] as const) {
     if (typeof aggregate[operation] !== "function")
       fail(`aggregate has no ${operation}`, `${path}.${operation}`, column.id);
+  }
+  if (
+    aggregate.snapshotAccumulator !== undefined &&
+    typeof aggregate.snapshotAccumulator !== "function"
+  ) {
+    fail(
+      "aggregate has an invalid snapshotAccumulator",
+      `${path}.snapshotAccumulator`,
+      column.id,
+    );
   }
 }
 
@@ -925,7 +938,13 @@ function snapshotAggregator(
 ): RuntimeAggregator {
   const source = aggregator as unknown as Record<string, unknown>;
   const clone: Record<string, unknown> = {};
-  const callbacks = new Set(["init", "accumulate", "merge", "finalize"]);
+  const callbacks = new Set([
+    "init",
+    "accumulate",
+    "merge",
+    "snapshotAccumulator",
+    "finalize",
+  ]);
   try {
     if (Object.getOwnPropertySymbols(aggregator).length > 0) {
       fail("symbol-keyed aggregate options are not supported", path, columnId);
@@ -955,6 +974,7 @@ function snapshotAggregator(
   clone.init = aggregator.init;
   clone.accumulate = aggregator.accumulate;
   clone.merge = aggregator.merge;
+  clone.snapshotAccumulator = aggregator.snapshotAccumulator;
   clone.finalize = aggregator.finalize;
   return Object.freeze(clone) as unknown as RuntimeAggregator;
 }

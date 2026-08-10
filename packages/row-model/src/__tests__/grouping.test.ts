@@ -6,6 +6,7 @@ import {
   type PretableAggregator,
   type PretableGroupId,
 } from "../index";
+import { getVisibleRangeDiagnosticsForTesting } from "../group-index";
 
 interface Holding {
   id: string;
@@ -254,6 +255,55 @@ describe("incremental grouped row model", () => {
     expect(after?.kind === "group" && after.aggregates.quantity).toBe(output);
   });
 
+  test("uses a custom aggregator's accumulator snapshot automatically", () => {
+    class TotalAccumulator {
+      constructor(readonly total: number) {}
+      label(): string {
+        return `total:${this.total}`;
+      }
+    }
+    const snapshotCalls = vi.fn(
+      (accumulator: TotalAccumulator) =>
+        new TotalAccumulator(accumulator.total),
+    );
+    const classTotal: PretableAggregator<
+      Holding,
+      number,
+      TotalAccumulator,
+      string
+    > = {
+      init: () => new TotalAccumulator(0),
+      accumulate: (accumulator, value) =>
+        new TotalAccumulator(accumulator.total + value),
+      merge: (left, right) => new TotalAccumulator(left.total + right.total),
+      snapshotAccumulator: snapshotCalls,
+      finalize: (accumulator) => accumulator.label(),
+    };
+    const classColumns = [
+      helper.accessor("sector", { type: "text" }),
+      helper.accessor("quantity", {
+        type: "number",
+        aggregate: classTotal,
+      }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows,
+      columns: classColumns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "sector" }],
+      },
+    });
+    const tech = model
+      .getState()
+      .snapshot.range(0, 10)
+      .find((row) => row.kind === "group" && row.value === "Tech/Growth");
+
+    expect(tech?.kind === "group" && tech.aggregates.quantity).toBe("total:30");
+    expect(snapshotCalls).toHaveBeenCalled();
+  });
+
   test("rolls back atomically when a grouped aggregate callback fails", () => {
     let armed = false;
     const fragile: PretableAggregator<Holding, number, number, number> = {
@@ -331,8 +381,9 @@ describe("incremental grouped row model", () => {
     const keyColumns = [
       keyHelper.accessor(
         "key",
-        (row): string | number | boolean | Date | null | undefined =>
-          row.key as string | number | boolean | Date | null | undefined,
+        (row): string | number | bigint | boolean | Date | null | undefined =>
+          row.key as
+            string | number | bigint | boolean | Date | null | undefined,
         {
           type: "number",
           compare: (left, right) => String(left).localeCompare(String(right)),
@@ -348,6 +399,11 @@ describe("incremental grouped row model", () => {
         { id: 5, key: new Date(0) },
         { id: 6, key: null },
         { id: 7, key: undefined },
+        { id: 8, key: -0 },
+        { id: 9, key: 0 },
+        { id: 10, key: Infinity },
+        { id: 11, key: -Infinity },
+        { id: 12, key: 1n },
       ],
       columns: keyColumns,
       query: { filters: [], sort: [], rowGroups: [{ columnId: "key" }] },
@@ -356,12 +412,61 @@ describe("incremental grouped row model", () => {
       .getState()
       .snapshot.range(0, 20)
       .filter((row) => row.kind === "group");
-    expect(groups).toHaveLength(6);
-    expect(new Set(groups.map((row) => row.groupId)).size).toBe(6);
+    expect(groups).toHaveLength(11);
+    expect(new Set(groups.map((row) => row.groupId)).size).toBe(11);
     expect(
       groups.find((row) => row.groupId.endsWith("key=~"))?.childCount,
     ).toBe(2);
+    expect(groups.map((row) => row.groupId)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/key=n:NaN$/),
+        expect.stringMatching(/key=n:-0$/),
+        expect.stringMatching(/key=n:0$/),
+        expect.stringMatching(/key=n:Infinity$/),
+        expect.stringMatching(/key=n:-Infinity$/),
+        expect.stringMatching(/key=i:1$/),
+        expect.stringMatching(/key=d:0$/),
+      ]),
+    );
   });
+
+  test.each([
+    ["object", { label: "same stringification" }],
+    ["symbol", Symbol("unsupported")],
+    ["function", () => "unsupported"],
+  ])(
+    "rejects a runtime-bypassed %s group key before publication",
+    (_label, key) => {
+      interface UnsupportedKeyRow {
+        id: number;
+        key: unknown;
+      }
+      const unsupportedHelper = createColumnHelper<UnsupportedKeyRow>();
+      const unsupportedColumns = [
+        unsupportedHelper.accessor("key", { type: "text" }),
+      ] as const;
+      expect(() =>
+        createLocalRowModel({
+          rows: [{ id: 7, key }],
+          columns: unsupportedColumns,
+          query: {
+            filters: [],
+            sort: [],
+            rowGroups: [{ columnId: "key" }],
+          } as never,
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "invalid-group-key",
+          operation: "set-rows",
+          rowId: 7,
+          columnId: "key",
+          value: key,
+          cause: expect.any(TypeError),
+        }),
+      );
+    },
+  );
 
   test("bounds changed-path and indexed-read comparator work with high cardinality", () => {
     interface LargeRow {
@@ -448,6 +553,91 @@ describe("incremental grouped row model", () => {
     expect(compareGroups.mock.calls.length).toBeLessThan(500);
     expect(model.getState().snapshot.rowAt(20_000)).toBe(untouched);
   }, 60_000);
+
+  test("reads a 50-row window from 100k unique groups with one logarithmic seek", () => {
+    interface LargeRow {
+      id: number;
+      group: number;
+    }
+    const largeHelper = createColumnHelper<LargeRow>();
+    const largeColumns = [
+      largeHelper.accessor("group", { type: "number" }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 100_000 }, (_, id) => ({ id, group: id })),
+      columns: largeColumns,
+      initialExpansion: { kind: "expanded" },
+      query: { filters: [], sort: [], rowGroups: [{ columnId: "group" }] },
+    });
+    const snapshot = model.getState().snapshot;
+    const start = 150_000;
+    const window = snapshot.range(start, start + 50);
+
+    expect(window).toEqual(
+      Array.from({ length: 50 }, (_, offset) => snapshot.rowAt(start + offset)),
+    );
+    expect(window).toHaveLength(50);
+    expect(getVisibleRangeDiagnosticsForTesting(window)).toMatchObject({
+      measuredNodeVisits: expect.any(Number),
+    });
+    expect(
+      getVisibleRangeDiagnosticsForTesting(window).measuredNodeVisits,
+    ).toBeLessThan(100);
+  }, 60_000);
+
+  test("matches indexed rows for randomized nested windows and overrides", () => {
+    interface NestedRow {
+      id: number;
+      region: number;
+      team: number;
+    }
+    const nestedHelper = createColumnHelper<NestedRow>();
+    const nestedColumns = [
+      nestedHelper.accessor("region", { type: "number" }),
+      nestedHelper.accessor("team", { type: "number" }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 1_000 }, (_, id) => ({
+        id,
+        region: id % 19,
+        team: id % 41,
+      })),
+      columns: nestedColumns,
+      initialExpansion: { kind: "through-depth", depth: 0 },
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "region" }, { columnId: "team" }],
+      },
+    });
+    for (const region of [1, 5, 13]) {
+      model.setGroupExpanded(
+        `__group__:region=n:${region}` as PretableGroupId,
+        false,
+      );
+    }
+    let seed = 0x9e37_79b9;
+    const random = () => {
+      seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
+      return seed;
+    };
+    const snapshot = model.getState().snapshot;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const start = (random() % (snapshot.visibleRowCount + 40)) - 20;
+      const length = random() % 80;
+      const expectedStart = Math.max(0, start);
+      const expectedEnd = Math.min(
+        snapshot.visibleRowCount,
+        Math.max(0, start + length),
+      );
+      expect(snapshot.range(start, start + length)).toEqual(
+        Array.from(
+          { length: Math.max(0, expectedEnd - expectedStart) },
+          (_, offset) => snapshot.rowAt(expectedStart + offset),
+        ),
+      );
+    }
+  });
 
   test("wraps finalize failures and preserves the exact grouped revision", () => {
     let armed = false;

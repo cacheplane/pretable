@@ -13,6 +13,7 @@ import {
   type PretableExpansionDefault,
   PretableDisposedModelError,
   type PretableGroupId,
+  type PretableGroupKey,
   type PretableGroupRow,
   type PretableMutationIssue,
   type PretableMutationResult,
@@ -91,6 +92,58 @@ const totalLabel: PretableAggregator<
   merge: (left, right) => ({ total: left.total + right.total }),
   finalize: (accumulator) => String(accumulator.total),
 };
+
+const snapshottedTotal: PretableAggregator<
+  Holding,
+  number,
+  { total: number },
+  string
+> = {
+  init: () => ({ total: 0 }),
+  accumulate: (accumulator, value) => ({
+    total: accumulator.total + value,
+  }),
+  merge: (left, right) => ({ total: left.total + right.total }),
+  snapshotAccumulator: (accumulator) => ({ total: accumulator.total }),
+  finalize: (accumulator) => String(accumulator.total),
+};
+void snapshottedTotal;
+
+const invalidSnapshotInput: PretableAggregator<
+  Holding,
+  number,
+  { total: number },
+  string
+> = {
+  init: () => ({ total: 0 }),
+  accumulate: (accumulator, value) => ({
+    total: accumulator.total + value,
+  }),
+  merge: (left, right) => ({ total: left.total + right.total }),
+  // @ts-expect-error snapshot input is the exact accumulator type
+  snapshotAccumulator: (accumulator: string) => ({
+    total: accumulator.length,
+  }),
+  finalize: (accumulator) => String(accumulator.total),
+};
+void invalidSnapshotInput;
+
+const invalidSnapshotOutput: PretableAggregator<
+  Holding,
+  number,
+  { total: number },
+  string
+> = {
+  init: () => ({ total: 0 }),
+  accumulate: (accumulator, value) => ({
+    total: accumulator.total + value,
+  }),
+  merge: (left, right) => ({ total: left.total + right.total }),
+  // @ts-expect-error snapshot output must preserve the accumulator type
+  snapshotAccumulator: () => "not an accumulator",
+  finalize: (accumulator) => String(accumulator.total),
+};
+void invalidSnapshotOutput;
 const customAggregateColumn = column.accessor("quantity", {
   type: "number",
   aggregate: totalLabel,
@@ -320,6 +373,64 @@ const query = {
   sort: [{ columnId: "sector", direction: "asc", nulls: "last" }],
   rowGroups: [{ columnId: "sector", direction: "asc" }],
 } as const satisfies PretableQueryFor<typeof columns>;
+
+type _groupKeyContract = Expect<
+  Equal<
+    PretableGroupKey,
+    string | number | bigint | boolean | Date | null | undefined
+  >
+>;
+
+interface MixedGroupKeys {
+  id: number;
+  supported: string | null;
+  objectValue: { readonly label: string };
+  symbolValue: symbol;
+  functionValue: () => string;
+  mixedValue: string | { readonly label: string };
+}
+const mixedGroupHelper = createColumnHelper<MixedGroupKeys>();
+const mixedGroupColumns = [
+  mixedGroupHelper.accessor("supported", { type: "text" }),
+  mixedGroupHelper.accessor("objectValue", { type: "text" }),
+  mixedGroupHelper.accessor("symbolValue", { type: "text" }),
+  mixedGroupHelper.accessor("functionValue", { type: "text" }),
+  mixedGroupHelper.accessor("mixedValue", { type: "text" }),
+] as const;
+const validGroupQuery: PretableQueryFor<typeof mixedGroupColumns> = {
+  filters: [],
+  sort: [],
+  rowGroups: [{ columnId: "supported" }],
+};
+const invalidObjectGroupQuery: PretableQueryFor<typeof mixedGroupColumns> = {
+  filters: [],
+  sort: [],
+  // @ts-expect-error object-valued columns cannot be grouped
+  rowGroups: [{ columnId: "objectValue" }],
+};
+const invalidSymbolGroupQuery: PretableQueryFor<typeof mixedGroupColumns> = {
+  filters: [],
+  sort: [],
+  // @ts-expect-error symbol-valued columns cannot be grouped
+  rowGroups: [{ columnId: "symbolValue" }],
+};
+const invalidFunctionGroupQuery: PretableQueryFor<typeof mixedGroupColumns> = {
+  filters: [],
+  sort: [],
+  // @ts-expect-error function-valued columns cannot be grouped
+  rowGroups: [{ columnId: "functionValue" }],
+};
+const invalidMixedGroupQuery: PretableQueryFor<typeof mixedGroupColumns> = {
+  filters: [],
+  sort: [],
+  // @ts-expect-error every member of a group value union must be supported
+  rowGroups: [{ columnId: "mixedValue" }],
+};
+void validGroupQuery;
+void invalidObjectGroupQuery;
+void invalidSymbolGroupQuery;
+void invalidFunctionGroupQuery;
+void invalidMixedGroupQuery;
 
 const badOperatorQuery: PretableQueryFor<typeof columns> = {
   // @ts-expect-error number filters cannot use text-only contains

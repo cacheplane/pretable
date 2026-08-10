@@ -115,6 +115,7 @@ class PretableSetRowsExecutionError extends PretableRowModelError {
   readonly rowIds: readonly PretableRowId[] | undefined;
   readonly groupValues: readonly unknown[] | undefined;
   readonly groupId: PretableGroupId | undefined;
+  readonly value: unknown;
 
   constructor(error: PretableRowModelError) {
     super(error.code, error.message, {
@@ -127,11 +128,13 @@ class PretableSetRowsExecutionError extends PretableRowModelError {
       readonly rowIds?: readonly PretableRowId[];
       readonly groupValues?: readonly unknown[];
       readonly groupId?: PretableGroupId;
+      readonly value?: unknown;
     };
     this.rowIds = detailed.rowIds && Object.freeze([...detailed.rowIds]);
     this.groupValues =
       detailed.groupValues && Object.freeze([...detailed.groupValues]);
     this.groupId = detailed.groupId;
+    this.value = detailed.value;
   }
 }
 
@@ -140,6 +143,7 @@ class PretableOperationExecutionError extends PretableRowModelError {
   readonly rowIds: readonly PretableRowId[] | undefined;
   readonly groupValues: readonly unknown[] | undefined;
   readonly groupId: PretableGroupId | undefined;
+  readonly value: unknown;
 
   constructor(
     error: PretableRowModelError,
@@ -155,11 +159,13 @@ class PretableOperationExecutionError extends PretableRowModelError {
       readonly rowIds?: readonly PretableRowId[];
       readonly groupValues?: readonly unknown[];
       readonly groupId?: PretableGroupId;
+      readonly value?: unknown;
     };
     this.rowIds = detailed.rowIds && Object.freeze([...detailed.rowIds]);
     this.groupValues =
       detailed.groupValues && Object.freeze([...detailed.groupValues]);
     this.groupId = detailed.groupId;
+    this.value = detailed.value;
   }
 }
 
@@ -701,11 +707,7 @@ export function createLocalRowModel<
           const previousRoot = root;
           const groups = getGroupIndex(previousRoot.visible);
           const group = groups?.groups.get(groupId);
-          if (
-            groups === undefined ||
-            group === undefined ||
-            group.filteredCount === 0
-          ) {
+          if (groups === undefined || group === undefined) {
             return {
               result: mutationResult(
                 previousRoot.revision,

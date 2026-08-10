@@ -163,6 +163,67 @@ describe("group expansion policies", () => {
     ]);
   });
 
+  test("updates expansion policy for hidden all-population groups", () => {
+    const grouped = createLocalRowModel({
+      rows: [{ id: 1, region: "West", team: "A", score: 1 }],
+      columns,
+      query: {
+        filters: [{ columnId: "score", operator: "gte", value: 1 }],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      },
+    });
+    const teamA = "__group__:team=s:A" as PretableGroupId;
+    const held = grouped.getState().snapshot.rowAt(0);
+    const listener = vi.fn();
+    grouped.subscribe(listener);
+
+    expect(grouped.setGroupExpanded(teamA, true)).toMatchObject({
+      previousRevision: 0,
+      revision: 1,
+      ignored: 0,
+      issues: [],
+    });
+    grouped.applyTransaction({
+      update: [{ id: 1, changes: { score: 0 } }],
+    });
+    expect(grouped.getState().snapshot.range(0, 10)).toEqual([]);
+    expect(grouped.getState().snapshot.visibleRowCount).toBe(0);
+    expect(grouped.getState().snapshot.isGroupExpanded(teamA)).toBe(true);
+
+    expect(grouped.setGroupExpanded(teamA, false)).toMatchObject({
+      previousRevision: 2,
+      revision: 3,
+      ignored: 0,
+      issues: [],
+    });
+    expect(grouped.getState().snapshot.isGroupExpanded(teamA)).toBe(false);
+    expect(grouped.getState().snapshot.range(0, 10)).toEqual([]);
+    expect(grouped.setGroupExpanded(teamA, true)).toMatchObject({
+      previousRevision: 3,
+      revision: 4,
+    });
+
+    grouped.applyTransaction({
+      update: [{ id: 1, changes: { score: 2 } }],
+    });
+    const visible = grouped.getState().snapshot.range(0, 10);
+    expect(visible).toHaveLength(2);
+    expect(visible[0]).toMatchObject({
+      kind: "group",
+      groupId: teamA,
+      expanded: true,
+    });
+    expect(visible[0]?.kind === "group" && visible[0].groupId).toBe(
+      held?.kind === "group" ? held.groupId : undefined,
+    );
+    expect(visible[1]).toMatchObject({ kind: "data", rowId: 1 });
+    expect(grouped.getState().snapshot.visibleRowCount).toBe(2);
+    expect(grouped.getState().snapshot.visibleDataRowCount).toBe(1);
+    expect(grouped.getState().snapshot.revision).toBe(5);
+    expect(listener).toHaveBeenCalledTimes(5);
+  });
+
   test("expandAll and collapseAll replace policy roots without enumerating groups", () => {
     const grouped = model();
     const listener = vi.fn();

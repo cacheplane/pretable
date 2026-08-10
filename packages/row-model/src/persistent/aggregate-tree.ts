@@ -867,7 +867,7 @@ export function createAggregateTree<
           ).lawValidator
         : undefined,
     snapshotAccumulator: custom
-      ? ((
+      ? (((
           options as CustomAggregateTreeOptions<
             TId,
             TRow,
@@ -876,7 +876,7 @@ export function createAggregateTree<
             TAccumulator,
             TOutput
           >
-        ).snapshotAccumulator as unknown as
+        ).snapshotAccumulator ?? aggregator.snapshotAccumulator) as unknown as
           | ((
               accumulator: TAccumulator | BuiltinAccumulator,
             ) => TAccumulator | BuiltinAccumulator)

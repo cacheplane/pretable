@@ -1,4 +1,4 @@
-import type { PretableRowId } from "./column-types";
+import type { PretableGroupKey, PretableRowId } from "./column-types";
 
 export type PretableRowModelOperation =
   | "set-rows"
@@ -22,6 +22,7 @@ export type PretableRowModelErrorCode =
   | "row-identity-change"
   | "unsupported-row-update"
   | "accessor-failed"
+  | "invalid-group-key"
   | "comparator-failed"
   | "aggregator-failed"
   | "derivation-failed";
@@ -117,6 +118,39 @@ export class PretableUnsupportedRowUpdateError extends PretableRowModelError {
       { operation: "apply-transaction", rowId, cause },
     );
   }
+}
+
+export class PretableInvalidGroupKeyError extends PretableRowModelError {
+  readonly name = "PretableInvalidGroupKeyError";
+
+  constructor(
+    operation: PretableRowModelOperation,
+    rowId: PretableRowId | undefined,
+    columnId: string,
+    readonly value: unknown,
+    cause: unknown = new TypeError(
+      "Group keys must be strings, numbers, bigints, booleans, Dates, null, or undefined.",
+    ),
+  ) {
+    super(
+      "invalid-group-key",
+      `Column ${columnId} produced an unsupported group key.`,
+      { operation, rowId, columnId, cause },
+    );
+  }
+}
+
+/** Runtime complement to the wholly-assignable `PretableRowGroupFor` check. */
+export function isPretableGroupKey(value: unknown): value is PretableGroupKey {
+  return (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "bigint" ||
+    typeof value === "boolean" ||
+    value instanceof Date
+  );
 }
 
 export type PretableTransitionCancellationReason =

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
   createAggregateTree,
   type AggregateTree,
@@ -456,6 +456,35 @@ describe("AggregateTree", () => {
 
     expect(exposed).toEqual([1, 99]);
     expect(branch.finalize()).toEqual([1, 2]);
+  });
+
+  test("prefers an explicit snapshot option over the aggregator default", () => {
+    const aggregatorSnapshot = vi.fn((accumulator: number[]) => [
+      ...accumulator,
+      100,
+    ]);
+    const optionSnapshot = vi.fn((accumulator: number[]) => [...accumulator]);
+    const aggregator: PretableAggregator<Row, number, number[], number[]> = {
+      init: () => [],
+      accumulate: (accumulator, value) => [...accumulator, value],
+      merge: (left, right) => [...left, ...right],
+      snapshotAccumulator: aggregatorSnapshot,
+      finalize: (accumulator) => accumulator,
+    };
+    const tree = createAggregateTree({
+      columnId: "amount",
+      aggregator,
+      snapshotAccumulator: optionSnapshot,
+    }).insertOrReplace({
+      id: "one",
+      row: { name: "one" },
+      value: 1,
+      dependency: undefined,
+    });
+
+    expect(tree.finalize()).toEqual([1]);
+    expect(optionSnapshot).toHaveBeenCalledTimes(1);
+    expect(aggregatorSnapshot).not.toHaveBeenCalled();
   });
 
   test("rejects shared-memory snapshots unless a hook truly detaches them", () => {

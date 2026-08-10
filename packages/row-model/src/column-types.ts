@@ -3,6 +3,10 @@ export type Prettify<T> = { [K in keyof T]: T[K] } & {};
 
 export type PretableRowId = string | number;
 
+/** Values with stable, collision-free local grouping identity. */
+export type PretableGroupKey =
+  string | number | bigint | boolean | Date | null | undefined;
+
 export type PretableColumnType =
   "text" | "number" | "date" | "enum" | "boolean";
 
@@ -19,6 +23,12 @@ export interface PretableAggregator<
     row: TRow,
   ) => TAccumulator;
   readonly merge: (left: TAccumulator, right: TAccumulator) => TAccumulator;
+  /**
+   * Produces a detached accumulator for `finalize`. Required when the
+   * accumulator is a class instance or otherwise cannot be structured-cloned
+   * without losing behavior.
+   */
+  readonly snapshotAccumulator?: (accumulator: TAccumulator) => TAccumulator;
   readonly finalize: (accumulator: TAccumulator) => TOutput;
 }
 
@@ -376,6 +386,18 @@ type ColumnReferenceFor<TColumns> =
       : never
     : never;
 
+type GroupColumnReferenceFor<TColumns> =
+  ColumnDescriptorOf<TColumns> extends infer TDescriptor
+    ? TDescriptor extends {
+        readonly id: infer TId extends string;
+        readonly value: infer TValue;
+      }
+      ? [TValue] extends [PretableGroupKey]
+        ? { readonly columnId: TId }
+        : never
+      : never
+    : never;
+
 export type PretableSortFor<TColumns> = Prettify<
   ColumnReferenceFor<TColumns> & {
     readonly direction: "asc" | "desc";
@@ -384,7 +406,7 @@ export type PretableSortFor<TColumns> = Prettify<
 >;
 
 export type PretableRowGroupFor<TColumns> = Prettify<
-  ColumnReferenceFor<TColumns> & {
+  GroupColumnReferenceFor<TColumns> & {
     readonly direction?: "asc" | "desc";
     readonly nulls?: "first" | "last";
   }
