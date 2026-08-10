@@ -1,5 +1,9 @@
 # Repo Memory
 
+> **Status: Historical through 2026-05-15.** This chronological record is
+> preserved as project history and is not a current backlog. See the canonical
+> [ROADMAP.md](../../ROADMAP.md) for current priorities.
+
 ## 2026-04-12
 
 ### Prototype direction
