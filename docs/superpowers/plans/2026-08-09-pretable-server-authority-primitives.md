@@ -211,7 +211,7 @@ describe("local mode baseline", () => {
 });
 ```
 
-- [ ] **Step 2: Run the engine baseline test and see it pass now.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run src/__tests__/local-mode-baseline.test.ts`. Expect `Tests  7 passed (7)`. If the key-list assertion fails, the current snapshot has drifted from this plan's reading of `create-grid-core.ts:1531-1549` — update the expected list to what the engine actually emits before continuing, and note the drift.
+- [ ] **Step 2: Run the engine baseline test and see it pass now.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run src/__tests__/local-mode-baseline.test.ts`. Expect `Tests  9 passed (9)`. If the key-list assertion fails, the current snapshot has drifted from this plan's reading of `create-grid-core.ts:1531-1549` — update the expected list to what the engine actually emits before continuing, and note the drift.
 - [ ] **Step 3: Write the surface baseline test.** Create `packages/react/src/__tests__/local-mode-baseline.test.tsx`:
 
 ```tsx
@@ -299,7 +299,7 @@ describe("local mode baseline (surface)", () => {
 });
 ```
 
-- [ ] **Step 4: Run the surface baseline test and see it pass now.** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/local-mode-baseline.test.tsx`. Expect `Tests  7 passed (7)`.
+- [ ] **Step 4: Run the surface baseline test and see it pass now.** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/local-mode-baseline.test.tsx`. Expect `Tests  8 passed (8)`.
 - [ ] **Step 5: Commit the net.** Run `git -C /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a add -A && git -C /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a commit -m "test: pin local-mode baseline before server-authority primitives"`.
 
 ---
@@ -456,7 +456,7 @@ export interface PretableProcessingOptions {
 - [ ] **Step 5: Export from grid-core.** In `packages/grid-core/src/index.ts`, add `  PretableProcessingAuthority,` and `  PretableProcessingOptions,` to the alphabetically-ordered `export type { ... } from "./types";` list (between `PretableMoveFocusOptions` and `PretableRow`).
 - [ ] **Step 6: Export from `@pretable/core`.** Add the same two names, in the same alphabetical position, to the `export type { ... }` lists in both `packages/core/src/types.ts` and `packages/core/src/public_api.ts`.
 - [ ] **Step 7: Run the test and see it pass.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run src/__tests__/processing-authority.test.ts`. Expect `Tests  1 passed (1)`.
-- [ ] **Step 8: Confirm the baseline net is untouched.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run src/__tests__/local-mode-baseline.test.ts`. Expect `Tests  7 passed (7)`.
+- [ ] **Step 8: Confirm the baseline net is untouched.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run src/__tests__/local-mode-baseline.test.ts`. Expect `Tests  9 passed (9)`.
 - [ ] **Step 9: Commit.** `git -C /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a add -A && git -C /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a commit -m "feat(core): add PretableProcessingOptions to grid options (inert)"`.
 
 ---
