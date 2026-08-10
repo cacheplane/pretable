@@ -59,6 +59,9 @@ export interface PretableEditState {
 export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 /** @public */
+export type ColumnAlign = "start" | "center" | "end";
+
+/** @public */
 export type FilterOperator =
   | "contains"
   | "notContains"
@@ -121,7 +124,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
    * Horizontal alignment of this column's cells and header label. Defaults to
    * `"end"` for `type: "number"` and to the writing direction otherwise.
    */
-  align?: "start" | "center" | "end";
+  align?: ColumnAlign;
   options?: ColumnOption[];
   value?: (row: TRow) => unknown;
   format?: (input: PretableFormatInput<TRow>) => string;

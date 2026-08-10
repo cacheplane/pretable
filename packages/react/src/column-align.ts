@@ -1,6 +1,4 @@
-import type { ColumnType } from "@pretable/core";
-
-export type ColumnAlign = "start" | "center" | "end";
+import type { ColumnAlign, ColumnType } from "@pretable/core";
 
 /**
  * A column's effective alignment. Numbers align to the trailing edge so digits
