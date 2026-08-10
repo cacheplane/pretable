@@ -703,6 +703,16 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 - Create: `packages/row-model/src/diagnostics.ts`
 - Create: `packages/row-model/src/__tests__/work.test.ts`
 - Create: `packages/row-model/src/__tests__/retention.test.ts`
+- Modify: `packages/row-model/src/persistent/persistent-map.ts`
+- Modify: `packages/row-model/src/persistent/order-statistic-tree.ts`
+- Modify: `packages/row-model/src/persistent/aggregate-tree.ts`
+- Modify: `packages/row-model/src/row-store.ts`
+- Modify: `packages/row-model/src/group-index.ts`
+- Modify: `packages/row-model/src/transaction-draft.ts`
+- Modify: `packages/row-model/src/cooperative-transition.ts`
+- Modify: `packages/row-model/src/distinct-values.ts`
+- Modify: `packages/row-model/src/create-local-row-model.ts`
+- Modify: `packages/row-model/src/index.ts`
 - Modify: `packages/grid-core/package.json`
 - Modify: `pnpm-lock.yaml`
 
@@ -754,7 +764,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
 - [ ] **Step 5: Commit.**
 
-  `git add packages/grid-core/package.json packages/grid-core/src/__tests__/row-model packages/row-model/src/diagnostics.ts packages/row-model/src/__tests__/work.test.ts packages/row-model/src/__tests__/retention.test.ts pnpm-lock.yaml && git commit -m "test(row-model): prove semantics and bounded work"`
+  `git add packages/grid-core/package.json packages/grid-core/src/__tests__/row-model packages/row-model/src pnpm-lock.yaml && git commit -m "test(row-model): prove semantics and bounded work"`
 
 ## Task 14: Promote the typed public core API
 
@@ -1208,13 +1218,15 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
   scroll_position_drift_px === 0
   visible_row_count_drift === 0
   rebuild_slice_max_ms <= 8
-  rebuild_stream_commit_count >= 5
   rebuild_completed === true
+  rebuild_responsive === true
   ```
 
-  Reject a grouped result that did not observe model revisions and scroll/input
-  samples while status was `rebuilding`, or whose final deterministic checksum
-  omits any patches accepted during catch-up.
+  Define `rebuild_responsive` without slowing the engine: it is true when the
+  rebuild completes within one 50 ms producer interval, or when a longer
+  rebuild observes at least one normally scheduled stream commit and at least
+  one scroll/input sample while status is `rebuilding`. In either case, reject
+  a final deterministic checksum that omits any patch accepted during catch-up.
 
 - [ ] **Step 3: Run RED.**
 
@@ -1447,7 +1459,7 @@ accumulators))`; emit one structured diagnostic on mismatch. Production
 
   Run:
 
-  `rg -n "visibleRows|distinctColumnValues|grid\.applyTransaction|grid\.setRows|GridLike<|groupsDefaultExpanded|one transaction path" packages apps/website/content apps/website/app --glob '!**/CHANGELOG.md'`
+  `rg -n "visibleRows|distinctColumnValues|grid\.applyTransaction|grid\.setRows|GridLike<|groupsDefaultExpanded|one transaction path" packages apps/website/content apps/website/app --glob '!**/CHANGELOG.md' --glob '!**/__tests__/**' --glob '!**/*.test.*' --glob '!type-tests/**'`
 
   Expected: no production/API/docs occurrences; historical research and old
   design documents are intentionally outside this sweep.
