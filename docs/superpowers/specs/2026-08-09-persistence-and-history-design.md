@@ -32,7 +32,7 @@ Those primitives are not a persistence or history contract:
 - edits and paste explicitly defer undo, while applications currently own all
   durable mutation behavior.
 
-The repository also lacks a current roadmap. Dated specs and plans preserve
+Before this documentation slice, the repository lacked a current roadmap. Dated specs and plans preserve
 valuable history, but the only explicit roadmap is an April snapshot whose
 projects are already complete. `docs/research/repo-memory.md` stops in May even
 though implementation and design work continued through August.
@@ -88,9 +88,10 @@ plans.
 
 The initial tiers are fixed for this documentation slice:
 
-- **Now — harden and measure:** repair current API/documentation contract drift,
-  finish grouping adoption and option plumbing, and add PMS and financial-
-  planning benchmark profiles.
+- **Now — harden and measure:** close remaining public API/documentation gaps,
+  make stable row identity consistent across entry points, finish grouping
+  adoption with dedicated consumer documentation and committed benchmark
+  evidence, and add PMS and financial-planning benchmark profiles.
 - **Next — describe and manipulate financial views:** add the financial field
   schema, nested headers, view-management surface, saved-view persistence
   (persistence slice 1), and the typed command foundation with bounded local

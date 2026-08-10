@@ -1,6 +1,6 @@
 # Pretable roadmap
 
-Last reviewed: 2026-08-09
+Last reviewed: 2026-08-10
 
 Pretable is a batteries-included React data grid built to be the fastest and
 best grid for demanding, financial-grade applications. The roadmap uses two
@@ -21,11 +21,13 @@ financial planning.
 
 ## Current baseline
 
-The released grid already includes local sorting and typed filtering, selection,
-keyboard navigation, copy and validated bulk paste, typed asynchronous editing,
-column virtualization and layout, row grouping and aggregation, variable-height
-rows, and batched streaming transactions. Package changelogs and generated API
-reports are the source of truth for shipped behavior.
+The aligned public-package baseline is `0.0.14`. The released grid already
+includes local sorting and typed filtering, selection, keyboard navigation,
+copy and validated bulk paste, typed asynchronous editing, column virtualization
+and layout, configurable row grouping and aggregation with an overflow-safe
+group panel, number-column alignment with tabular number/date figures,
+variable-height rows, and batched streaming transactions. Package changelogs
+and generated API reports are the source of truth for shipped behavior.
 
 See the current [core changelog](packages/core/CHANGELOG.md),
 [React changelog](packages/react/CHANGELOG.md),
@@ -35,10 +37,10 @@ See the current [core changelog](packages/core/CHANGELOG.md),
 
 ## Now — harden and measure
 
-- Repair current API/documentation contract drift and make stable row identity
+- Close remaining public API/documentation gaps and make stable row identity
   consistent across entry points.
-- Finish grouping adoption: React option plumbing, public API cleanup, consumer
-  documentation, benchmark coverage, and panel-overflow follow-up.
+- Finish grouping adoption with dedicated consumer documentation and committed
+  benchmark evidence.
 - Add deterministic PMS and financial-planning benchmark profiles without
   weakening existing 60 Hz, zero-gap, and interaction-continuity gates.
 
