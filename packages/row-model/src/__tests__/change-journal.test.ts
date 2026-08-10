@@ -8,7 +8,11 @@ import {
   type PretableGroupId,
   type PretableVisibleRowRef,
 } from "../index";
-import { createChangeJournal } from "../change-journal";
+import {
+  createChangeJournal,
+  getChangeJournalDiagnosticsForTesting,
+} from "../change-journal";
+import { getLocalRowModelChangeJournalDiagnosticsForTesting } from "../create-local-row-model";
 import { getTransactionChangeDiagnosticsForTesting } from "../transaction-draft";
 
 interface Row {
@@ -62,7 +66,10 @@ function applyOperations(
         break;
       }
       case "update":
-        expect(next[operation.index]).toEqual(operation.ref);
+        expect(
+          next[operation.index],
+          JSON.stringify({ operation, operations, current: next }),
+        ).toEqual(operation.ref);
         break;
     }
   }
@@ -222,6 +229,126 @@ describe("bounded revision change journal", () => {
     );
   });
 
+  test("uses current sequential ranks for a grouped remove followed by move and update", () => {
+    const model = createLocalRowModel({
+      rows: [
+        { id: 58, team: "A", score: 0, label: "58" },
+        { id: 35, team: "A", score: 1, label: "35" },
+        { id: 54, team: "A", score: 2, label: "54" },
+      ],
+      columns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [{ columnId: "team" }],
+      },
+    });
+    const before = refs(model);
+
+    model.applyTransaction({
+      remove: [58],
+      update: [{ id: 35, changes: { score: 3, label: "THIRTY FIVE" } }],
+    });
+
+    const sequence = model.changesSince(0);
+    if (sequence.kind !== "changes") throw new Error("expected changes");
+    expect(sequence.changes[0]?.operations).toEqual([
+      { kind: "remove", ref: data(58), previousIndex: 1 },
+      { kind: "move", ref: data(35), previousIndex: 1, index: 2 },
+      {
+        kind: "update",
+        ref: {
+          kind: "group",
+          groupId: "__group__:team=s:A" as PretableGroupId,
+        },
+        index: 0,
+        fields: ["aggregates", "childCount"],
+      },
+      { kind: "update", ref: data(35), index: 2, fields: ["row"] },
+    ]);
+    expect(applyOperations(before, sequence.changes[0]!.operations)).toEqual(
+      refs(model),
+    );
+  });
+
+  test("uses a canonical move plus row update for a simple grouped reorder", () => {
+    const model = groupedModel();
+    const before = refs(model);
+
+    model.applyTransaction({
+      update: [{ id: 1, changes: { score: 4, label: "ONE" } }],
+    });
+
+    const sequence = model.changesSince(0);
+    if (sequence.kind !== "changes") throw new Error("expected changes");
+    expect(sequence.changes[0]?.operations).toContainEqual({
+      kind: "move",
+      ref: data(1),
+      previousIndex: 1,
+      index: 2,
+    });
+    expect(sequence.changes[0]?.operations).toContainEqual({
+      kind: "update",
+      ref: data(1),
+      index: 2,
+      fields: ["row"],
+    });
+    expect(applyOperations(before, sequence.changes[0]!.operations)).toEqual(
+      refs(model),
+    );
+  });
+
+  test("replays one nested batch with removal, move, update, filtering, prune, and creation", () => {
+    const model = createLocalRowModel({
+      rows: [
+        { id: 58, team: "A", score: 0, label: "old" },
+        { id: 35, team: "A", score: 1, label: "move" },
+        { id: 54, team: "B", score: 2, label: "hide" },
+      ],
+      columns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [{ columnId: "score", operator: "gte", value: 0 }],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [{ columnId: "team" }, { columnId: "label" }],
+      },
+    });
+    const before = refs(model);
+
+    model.applyTransaction({
+      remove: [58],
+      update: [
+        { id: 35, changes: { team: "B", label: "moved", score: 3 } },
+        { id: 54, changes: { score: -1 } },
+      ],
+      add: [{ id: 99, team: "C", score: 1, label: "new" }],
+    });
+
+    const sequence = model.changesSince(0);
+    if (sequence.kind !== "changes") throw new Error("expected changes");
+    const operations = sequence.changes[0]!.operations;
+    expect(applyOperations(before, operations)).toEqual(refs(model));
+    expect(operations).toContainEqual(
+      expect.objectContaining({ kind: "move", ref: data(35) }),
+    );
+    expect(operations).toContainEqual({
+      kind: "update",
+      ref: data(35),
+      index: model.getState().snapshot.indexOf(data(35)),
+      fields: ["row"],
+    });
+    expect(operations).toContainEqual(
+      expect.objectContaining({ kind: "remove", ref: data(58) }),
+    );
+    expect(operations).toContainEqual(
+      expect.objectContaining({ kind: "remove", ref: data(54) }),
+    );
+    expect(operations).toContainEqual(
+      expect.objectContaining({ kind: "insert", ref: data(99) }),
+    );
+  });
+
   test("publishes exact descendant removals/inserts and expanded field changes", () => {
     const model = groupedModel();
     const groupId = "__group__:team=s:A" as PretableGroupId;
@@ -333,6 +460,52 @@ describe("bounded revision change journal", () => {
     });
   });
 
+  test("rejects malformed or non-contiguous append pairs without changing retained state", () => {
+    const journal = createChangeJournal<number>(1);
+    journal.appendChanges(0, 1, [{ kind: "insert", ref: data(1), index: 0 }]);
+    const before = journal.changesSince(0, 1);
+
+    for (const [previousRevision, revision] of [
+      [1, 1],
+      [1, 3],
+      [0, 2],
+      [-1, 0],
+      [1.5, 2],
+      [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1],
+    ]) {
+      expect(() =>
+        journal.appendChanges(previousRevision, revision, []),
+      ).toThrow(RangeError);
+    }
+    expect(() => journal.appendBarrier(0, 2)).toThrow(RangeError);
+    expect(journal.changesSince(0, 1)).toEqual(before);
+
+    journal.appendBarrier(1, 2);
+    expect(getChangeJournalDiagnosticsForTesting(journal)).toEqual({
+      capacity: 1,
+      entryCount: 1,
+      latestRevision: 2,
+    });
+  });
+
+  test("tracks continuity independently of eviction and capacity zero", () => {
+    const evicting = createChangeJournal<number>(1);
+    evicting.appendChanges(0, 1, []);
+    evicting.appendChanges(1, 2, []);
+    expect(() => evicting.appendChanges(1, 3, [])).toThrow(RangeError);
+    expect(evicting.changesSince(1, 2)).toMatchObject({ kind: "changes" });
+
+    const zero = createChangeJournal<number>(0);
+    zero.appendChanges(0, 1, []);
+    zero.appendBarrier(1, 2);
+    expect(getChangeJournalDiagnosticsForTesting(zero)).toEqual({
+      capacity: 0,
+      entryCount: 0,
+      latestRevision: 2,
+    });
+    expect(() => zero.appendChanges(1, 3, [])).toThrow(RangeError);
+  });
+
   test("uses bulk barriers for setRows and global query/default-policy replacements", async () => {
     const flat = flatModel();
     flat.applyTransaction({ update: [{ id: 1, changes: { label: "a" } }] });
@@ -430,17 +603,29 @@ describe("bounded revision change journal", () => {
 
   test("leaves final disposed state readable but rejects consumer history commands", () => {
     const model = flatModel();
+    const captured = model.getState().snapshot;
+    model.applyTransaction({ update: [{ id: 1, changes: { label: "held" } }] });
+    expect(
+      getLocalRowModelChangeJournalDiagnosticsForTesting(model),
+    ).toMatchObject({ entryCount: 1 });
     model.dispose();
 
     expect(model.getState().status).toEqual({ kind: "disposed" });
-    expect(model.getState().snapshot.revision).toBe(0);
-    expect(() => model.changesSince(0)).toThrowError(
+    expect(model.getState().snapshot.revision).toBe(1);
+    expect(captured.revision).toBe(0);
+    expect(captured.rowAt(0)).toMatchObject({ row: { label: "one" } });
+    expect(getLocalRowModelChangeJournalDiagnosticsForTesting(model)).toEqual({
+      capacity: 32,
+      entryCount: 0,
+      latestRevision: 1,
+    });
+    expect(() => model.changesSince(1)).toThrowError(
       expect.objectContaining({
         code: "disposed-model",
         operation: "changes-since",
       }),
     );
-    expect(() => model.changesSince(0)).toThrowError(
+    expect(() => model.changesSince(1)).toThrowError(
       PretableDisposedModelError,
     );
   });
@@ -600,7 +785,14 @@ describe("bounded revision change journal", () => {
       if (sequence.kind !== "changes") throw new Error("expected changes");
       expect(sequence.changes).toHaveLength(1);
       replayed = applyOperations(replayed, sequence.changes[0]!.operations);
-      expect(replayed).toEqual(refs(model));
+      expect(
+        replayed,
+        JSON.stringify({
+          batch,
+          operations: sequence.changes[0]!.operations,
+          final: refs(model),
+        }),
+      ).toEqual(refs(model));
       revision = model.getState().snapshot.revision;
     }
   });

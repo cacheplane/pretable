@@ -26,6 +26,7 @@ import type {
   PretableChangeOperation,
   PretableMutationIssue,
   PretableTransaction,
+  PretableVisibleRowRef,
 } from "./types";
 import type { PretableGroupId } from "./types";
 import { createFlatVisibleTree } from "./visible-index";
@@ -354,11 +355,59 @@ function groupPathIds<TColumns>(
   );
 }
 
-function sameGroupPath<TColumns>(
-  previous: RowRecord<object, PretableRowId, TColumns>["metadata"],
-  next: RowRecord<object, PretableRowId, TColumns>["metadata"],
+function sameVisibleRef<TRowId extends PretableRowId>(
+  left: PretableVisibleRowRef<TRowId>,
+  right: PretableVisibleRowRef<TRowId>,
 ): boolean {
-  return sameKeyValues(previous.groupPath, next.groupPath);
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "group") {
+    return right.kind === "group" && left.groupId === right.groupId;
+  }
+  return (
+    right.kind === "data" &&
+    (left.rowId === right.rowId ||
+      (left.rowId !== left.rowId && right.rowId !== right.rowId))
+  );
+}
+
+type StructuralChangeOperation<TRowId extends PretableRowId> = Extract<
+  PretableChangeOperation<TRowId>,
+  { readonly kind: "insert" | "remove" | "move" }
+>;
+
+function rankAfterStructuralOperations<TRowId extends PretableRowId>(
+  ref: PretableVisibleRowRef<TRowId>,
+  previousIndex: number,
+  operations: readonly StructuralChangeOperation<TRowId>[],
+): number {
+  let current = previousIndex;
+  let present = previousIndex >= 0;
+  for (const operation of operations) {
+    if (operation.kind === "remove") {
+      if (sameVisibleRef(ref, operation.ref)) {
+        present = false;
+        current = -1;
+      } else if (present && operation.previousIndex < current) current -= 1;
+      continue;
+    }
+    if (operation.kind === "insert") {
+      if (sameVisibleRef(ref, operation.ref)) {
+        present = true;
+        current = operation.index;
+      } else if (present && operation.index <= current) current += 1;
+      continue;
+    }
+    if (sameVisibleRef(ref, operation.ref)) {
+      present = true;
+      current = operation.index;
+      continue;
+    }
+    if (present) {
+      if (operation.previousIndex < current) current -= 1;
+      if (operation.index <= current) current += 1;
+    }
+  }
+  return present ? current : -1;
 }
 
 function groupedTransactionOperations<
@@ -384,17 +433,12 @@ function groupedTransactionOperations<
   }
 
   type RankedRef = {
-    readonly ref:
-      | ReturnType<typeof dataRef<TRowId>>
-      | {
-          readonly kind: "group";
-          readonly groupId: PretableGroupId;
-        };
+    readonly ref: PretableVisibleRowRef<TRowId>;
     readonly previousIndex: number;
     readonly index: number;
   };
-  const removals: RankedRef[] = [];
-  const insertions: RankedRef[] = [];
+  const candidates: RankedRef[] = [];
+  const rowCandidates: RankedRef[] = [];
   const updates: PretableChangeOperation<TRowId>[] = [];
   let visibleRowReads = 0;
 
@@ -402,11 +446,9 @@ function groupedTransactionOperations<
     const ref = Object.freeze({ kind: "group" as const, groupId });
     const previousIndex = visibleIndexOf(oldGroups, policy, ref);
     const index = visibleIndexOf(nextGroups, policy, ref);
-    if (previousIndex >= 0 && index < 0) {
-      removals.push({ ref, previousIndex, index });
-    } else if (previousIndex < 0 && index >= 0) {
-      insertions.push({ ref, previousIndex, index });
-    } else if (previousIndex >= 0 && index >= 0) {
+    const candidate = { ref, previousIndex, index };
+    candidates.push(candidate);
+    if (previousIndex >= 0 && index >= 0) {
       const previousRow = visibleRange(
         oldGroups,
         policy,
@@ -459,54 +501,107 @@ function groupedTransactionOperations<
     const ref = dataRef(rowId);
     const previousIndex = visibleIndexOf(oldGroups, policy, ref);
     const index = visibleIndexOf(nextGroups, policy, ref);
-    const changedPath =
-      previousRecord !== undefined &&
-      nextRecord !== undefined &&
-      !sameGroupPath(
-        previousRecord.metadata as never,
-        nextRecord.metadata as never,
-      );
-    if (previousIndex >= 0 && (index < 0 || changedPath)) {
-      removals.push({ ref, previousIndex, index });
-    }
-    if (index >= 0 && (previousIndex < 0 || changedPath)) {
-      insertions.push({ ref, previousIndex, index });
-    }
+    const candidate = { ref, previousIndex, index };
+    candidates.push(candidate);
+    rowCandidates.push(candidate);
     if (
       previousIndex >= 0 &&
       index >= 0 &&
-      !changedPath &&
       previousRecord !== undefined &&
-      nextRecord !== undefined
+      nextRecord !== undefined &&
+      !Object.is(previousRecord.row, nextRecord.row)
     ) {
-      const reordered =
-        !sameFlatOrder(previousRecord, nextRecord) && previousIndex !== index;
-      if (reordered) {
-        removals.push({ ref, previousIndex, index });
-        insertions.push({ ref, previousIndex, index });
-      } else if (!Object.is(previousRecord.row, nextRecord.row)) {
-        updates.push(
-          Object.freeze({
-            kind: "update" as const,
-            ref,
-            index,
-            fields: Object.freeze(["row" as const]),
-          }),
-        );
-      }
+      updates.push(
+        Object.freeze({
+          kind: "update" as const,
+          ref,
+          index,
+          fields: Object.freeze(["row" as const]),
+        }),
+      );
     }
   }
 
-  removals.sort((left, right) => right.previousIndex - left.previousIndex);
-  insertions.sort((left, right) => left.index - right.index);
+  const structural: StructuralChangeOperation<TRowId>[] = [];
+  const absent = candidates
+    .filter(({ previousIndex, index }) => previousIndex >= 0 && index < 0)
+    .sort((left, right) => right.previousIndex - left.previousIndex);
+  for (const { ref, previousIndex } of absent) {
+    structural.push(
+      Object.freeze({ kind: "remove" as const, ref, previousIndex }),
+    );
+  }
+  const inserted = candidates
+    .filter(({ previousIndex, index }) => previousIndex < 0 && index >= 0)
+    .sort((left, right) => left.index - right.index);
+  const targets = rowCandidates
+    .filter(({ previousIndex, index }) => previousIndex >= 0 && index >= 0)
+    .map((candidate) => ({
+      ...candidate,
+      workingIndex:
+        candidate.index -
+        inserted.filter(({ index }) => index <= candidate.index).length,
+    }))
+    .sort((left, right) => left.workingIndex - right.workingIndex);
+  const moveToIndex = (
+    { ref, previousIndex }: RankedRef,
+    index: number,
+  ): number => {
+    const currentIndex = rankAfterStructuralOperations(
+      ref,
+      previousIndex,
+      structural,
+    );
+    if (currentIndex !== index) {
+      structural.push(
+        Object.freeze({
+          kind: "move" as const,
+          ref,
+          previousIndex: currentIndex,
+          index,
+        }),
+      );
+    }
+    return currentIndex;
+  };
+  // First place surviving changed rows in the view with future insertions
+  // removed from its coordinate space. This preserves untouched rows and
+  // groups without enumerating them.
+  for (const { ref, previousIndex, workingIndex } of targets) {
+    const currentIndex = rankAfterStructuralOperations(
+      ref,
+      previousIndex,
+      structural,
+    );
+    if (currentIndex > workingIndex) {
+      moveToIndex({ ref, previousIndex, index: workingIndex }, workingIndex);
+    }
+  }
+  for (const target of [...targets].reverse()) {
+    const currentIndex = rankAfterStructuralOperations(
+      target.ref,
+      target.previousIndex,
+      structural,
+    );
+    if (currentIndex < target.workingIndex) {
+      moveToIndex(target, target.workingIndex);
+    }
+  }
+  for (const target of [...targets].reverse()) {
+    moveToIndex(target, target.workingIndex);
+  }
+  for (const { ref, index } of inserted) {
+    structural.push(Object.freeze({ kind: "insert" as const, ref, index }));
+  }
+  const finalRowTargets = rowCandidates
+    .filter(({ index }) => index >= 0)
+    .sort((left, right) => right.index - left.index);
+  for (const target of finalRowTargets) {
+    moveToIndex(target, target.index);
+  }
   return attachChangeOperationDiagnosticsForTesting(
     Object.freeze([
-      ...removals.map(({ ref, previousIndex }) =>
-        Object.freeze({ kind: "remove" as const, ref, previousIndex }),
-      ),
-      ...insertions.map(({ ref, index }) =>
-        Object.freeze({ kind: "insert" as const, ref, index }),
-      ),
+      ...structural,
       ...updates.sort((left, right) => {
         const leftIndex = left.kind === "update" ? left.index : 0;
         const rightIndex = right.kind === "update" ? right.index : 0;
@@ -514,7 +609,7 @@ function groupedTransactionOperations<
       }),
     ]),
     {
-      touchedRefs: affectedGroupIds.size + removedById.size + insertedById.size,
+      touchedRefs: candidates.length,
       visibleRowReads,
     },
   );

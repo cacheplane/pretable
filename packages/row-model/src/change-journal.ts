@@ -13,7 +13,14 @@ export interface ChangeOperationDiagnostics {
   readonly visibleRowReads: number;
 }
 
+export interface ChangeJournalDiagnostics {
+  readonly capacity: number;
+  readonly entryCount: number;
+  readonly latestRevision: number;
+}
+
 const operationDiagnostics = new WeakMap<object, ChangeOperationDiagnostics>();
+const journalDiagnostics = new WeakMap<object, ChangeJournalDiagnostics>();
 
 export function attachChangeOperationDiagnosticsForTesting<
   TOperations extends readonly unknown[],
@@ -33,6 +40,16 @@ export function getChangeOperationDiagnosticsForTesting(
     throw new TypeError(
       "Diagnostics require generated transaction operations.",
     );
+  }
+  return diagnostics;
+}
+
+export function getChangeJournalDiagnosticsForTesting(
+  journal: object,
+): ChangeJournalDiagnostics {
+  const diagnostics = journalDiagnostics.get(journal);
+  if (diagnostics === undefined) {
+    throw new TypeError("Diagnostics require a Pretable change journal.");
   }
   return diagnostics;
 }
@@ -74,6 +91,8 @@ export interface ChangeJournal<TRowId extends PretableRowId> {
     revision: number,
     reason?: ResetReason,
   ): void;
+  /** Releases every retained entry while preserving revision continuity. */
+  clear(): void;
   changesSince(
     fromRevision: number,
     currentRevision: number,
@@ -155,6 +174,35 @@ export function createChangeJournal<TRowId extends PretableRowId>(
     );
   }
   let entries: readonly JournalEntry<TRowId>[] = Object.freeze([]);
+  let latestRevision = 0;
+
+  function publishDiagnostics(): void {
+    journalDiagnostics.set(
+      journal,
+      Object.freeze({
+        capacity,
+        entryCount: entries.length,
+        latestRevision,
+      }),
+    );
+  }
+
+  const assertContiguous = (
+    previousRevision: number,
+    revision: number,
+  ): void => {
+    if (
+      !Number.isSafeInteger(previousRevision) ||
+      !Number.isSafeInteger(revision) ||
+      previousRevision < 0 ||
+      revision !== previousRevision + 1 ||
+      previousRevision !== latestRevision
+    ) {
+      throw new RangeError(
+        "Change journal entries must be safe, non-negative, and contiguous.",
+      );
+    }
+  };
 
   const retain = (entry: JournalEntry<TRowId>): void => {
     if (capacity === 0) {
@@ -172,6 +220,7 @@ export function createChangeJournal<TRowId extends PretableRowId>(
       revision: number,
       operations: readonly PretableChangeOperation<TRowId>[],
     ) {
+      assertContiguous(previousRevision, revision);
       const diagnostics = operationDiagnostics.get(operations);
       const frozenOperations = Object.freeze(
         Array.from(operations, (operation) => freezeOperation(operation)),
@@ -185,12 +234,15 @@ export function createChangeJournal<TRowId extends PretableRowId>(
         operations: frozenOperations,
       });
       retain(Object.freeze({ kind: "changes" as const, changeSet }));
+      latestRevision = revision;
+      publishDiagnostics();
     },
     appendBarrier(
       previousRevision: number,
       revision: number,
       reason: ResetReason = "bulk-replace",
     ) {
+      assertContiguous(previousRevision, revision);
       retain(
         Object.freeze({
           kind: "barrier" as const,
@@ -199,8 +251,19 @@ export function createChangeJournal<TRowId extends PretableRowId>(
           reason,
         }),
       );
+      latestRevision = revision;
+      publishDiagnostics();
+    },
+    clear() {
+      entries = Object.freeze([]);
+      publishDiagnostics();
     },
     changesSince(fromRevision: number, currentRevision: number) {
+      if (currentRevision !== latestRevision) {
+        throw new RangeError(
+          "The supplied current revision does not match the journal.",
+        );
+      }
       if (
         !Number.isSafeInteger(fromRevision) ||
         fromRevision < 0 ||
@@ -238,5 +301,7 @@ export function createChangeJournal<TRowId extends PretableRowId>(
       return changes<TRowId>(fromRevision, currentRevision, changeSets);
     },
   };
-  return Object.freeze(journal);
+  const frozen = Object.freeze(journal);
+  publishDiagnostics();
+  return frozen;
 }

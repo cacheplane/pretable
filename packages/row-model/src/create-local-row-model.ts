@@ -1,5 +1,10 @@
 import { compileQuery } from "./compiled-query";
-import { createChangeJournal } from "./change-journal";
+import {
+  createChangeJournal,
+  getChangeJournalDiagnosticsForTesting,
+  type ChangeJournal,
+  type ChangeJournalDiagnostics,
+} from "./change-journal";
 import type {
   ColumnDescriptorOf,
   PretableDerivationsFor,
@@ -66,6 +71,18 @@ interface CreateLocalRowModelBaseOptions<
   readonly onDiagnostic?: (
     diagnostic: PretableRowIntegrityDiagnostic<TRowId>,
   ) => void;
+}
+
+const modelChangeJournals = new WeakMap<object, ChangeJournal<PretableRowId>>();
+
+export function getLocalRowModelChangeJournalDiagnosticsForTesting(
+  model: object,
+): ChangeJournalDiagnostics {
+  const journal = modelChangeJournals.get(model);
+  if (journal === undefined) {
+    throw new TypeError("Diagnostics require a local Pretable row model.");
+  }
+  return getChangeJournalDiagnosticsForTesting(journal);
 }
 
 export type CreateLocalRowModelOptions<
@@ -917,6 +934,7 @@ export function createLocalRowModel<
       }
       if (disposed) return;
       const current = guarded("dispose", () => {
+        changeJournal.clear();
         disposed = true;
         state = Object.freeze({ snapshot, status: DISPOSED });
         const captured = Array.from(listeners);
@@ -935,6 +953,7 @@ export function createLocalRowModel<
 
   // Construction has no subscribers. Future ingestion diagnostics, if any,
   // are delivered only after the initial immutable state and model exist.
+  modelChangeJournals.set(model, changeJournal as ChangeJournal<PretableRowId>);
   emitDiagnostics(initialStore.diagnostics, diagnosticSink);
   return model as unknown as PretableRowModel<TRow, TRowId, TColumns>;
 }
