@@ -401,4 +401,164 @@ describe("incremental grouped row model", () => {
     model.expandAll();
     expect(compare).not.toHaveBeenCalled();
   });
+
+  test("keeps a one-row authoritative replacement logarithmic at 100k unique groups", () => {
+    interface LargeRow {
+      id: number;
+      group: number;
+      score: number;
+    }
+    const groupAccessor = vi.fn((row: LargeRow) => row.group);
+    const scoreAccessor = vi.fn((row: LargeRow) => row.score);
+    const compareGroups = vi.fn((left: number, right: number) => left - right);
+    const largeHelper = createColumnHelper<LargeRow>();
+    const largeColumns = [
+      largeHelper.accessor("group", groupAccessor, {
+        type: "number",
+        compare: compareGroups,
+      }),
+      largeHelper.accessor("score", scoreAccessor, { type: "number" }),
+    ] as const;
+    const input = Array.from({ length: 100_000 }, (_, id) => ({
+      id,
+      group: id,
+      score: id,
+    }));
+    const model = createLocalRowModel({
+      rows: input,
+      columns: largeColumns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [{ columnId: "group" }],
+      },
+    });
+    const untouched = model.getState().snapshot.rowAt(20_000);
+    groupAccessor.mockClear();
+    scoreAccessor.mockClear();
+    compareGroups.mockClear();
+    const replacement = [...input];
+    replacement[50_000] = { ...replacement[50_000]!, score: -1 };
+
+    model.setRows(replacement);
+
+    expect(groupAccessor).toHaveBeenCalledTimes(1);
+    expect(scoreAccessor).toHaveBeenCalledTimes(1);
+    expect(compareGroups.mock.calls.length).toBeLessThan(500);
+    expect(model.getState().snapshot.rowAt(20_000)).toBe(untouched);
+  }, 60_000);
+
+  test("wraps finalize failures and preserves the exact grouped revision", () => {
+    let armed = false;
+    const fragile: PretableAggregator<Holding, number, number, number> = {
+      init: () => 0,
+      accumulate: (accumulator, value) => accumulator + value,
+      merge: (left, right) => left + right,
+      finalize: (accumulator) => {
+        if (armed) throw new Error("finalize exploded");
+        return accumulator;
+      },
+    };
+    const fragileColumns = [
+      helper.accessor("sector", { type: "text" }),
+      helper.accessor("quantity", { type: "number", aggregate: fragile }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows,
+      columns: fragileColumns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "sector" }],
+      },
+    });
+    const before = model.getState();
+    armed = true;
+
+    expect(() =>
+      model.applyTransaction({
+        update: [{ id: "a", changes: { label: "not-published" } }],
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "aggregator-failed",
+        operation: "apply-transaction",
+        columnId: "quantity",
+        groupValues: ["Tech/Growth"],
+        cause: expect.objectContaining({ message: "finalize exploded" }),
+      }),
+    );
+    expect(model.getState()).toBe(before);
+
+    expect(() =>
+      model.setRows(
+        rows.map((row) =>
+          row.id === "a" ? { ...row, label: "still-not-published" } : row,
+        ),
+      ),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "aggregator-failed",
+        operation: "set-rows",
+        columnId: "quantity",
+        groupValues: ["Tech/Growth"],
+      }),
+    );
+    expect(model.getState()).toBe(before);
+
+    expect(() =>
+      model.setQuery({
+        filters: [],
+        sort: [{ columnId: "quantity", direction: "desc" }],
+        rowGroups: [{ columnId: "sector" }],
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "aggregator-failed",
+        operation: "set-query",
+        columnId: "quantity",
+        groupValues: ["Tech/Growth"],
+      }),
+    );
+    expect(model.getState()).toBe(before);
+  });
+
+  test("wraps an initial grouped finalize failure with construction context", () => {
+    const failing: PretableAggregator<Holding, number, number, number> = {
+      init: () => 0,
+      accumulate: (accumulator, value) => accumulator + value,
+      merge: (left, right) => left + right,
+      finalize: () => {
+        throw new Error("initial finalize exploded");
+      },
+    };
+    const failingColumns = [
+      helper.accessor("sector", { type: "text" }),
+      helper.accessor("quantity", { type: "number", aggregate: failing }),
+    ] as const;
+
+    expect(() =>
+      createLocalRowModel({
+        rows,
+        columns: failingColumns,
+        query: {
+          filters: [],
+          sort: [],
+          rowGroups: [{ columnId: "sector" }],
+        },
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "aggregator-failed",
+        operation: "set-rows",
+        columnId: "quantity",
+        groupValues: ["Tech/Growth"],
+        cause: expect.objectContaining({
+          message: "initial finalize exploded",
+        }),
+      }),
+    );
+  });
 });

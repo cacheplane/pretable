@@ -16,7 +16,8 @@ import {
   type PretableRowIntegrityDiagnostic,
 } from "./row-integrity";
 import type { PretableMutationIssue, PretableTransaction } from "./types";
-import { createFlatVisibleTree, createVisibleIndex } from "./visible-index";
+import type { PretableGroupId } from "./types";
+import { createFlatVisibleTree } from "./visible-index";
 
 interface TransactionDraftInput<
   TRow extends object,
@@ -60,6 +61,7 @@ export interface RowsReplacementDraftResult<
 class TransactionExecutionError extends PretableRowModelError {
   readonly rowIds: readonly PretableRowId[] | undefined;
   readonly groupValues: readonly unknown[] | undefined;
+  readonly groupId: PretableGroupId | undefined;
 
   constructor(error: PretableRowModelError) {
     super(error.code, error.message, {
@@ -71,9 +73,11 @@ class TransactionExecutionError extends PretableRowModelError {
     const detailed = error as PretableRowModelError & {
       readonly rowIds?: readonly PretableRowId[];
       readonly groupValues?: readonly unknown[];
+      readonly groupId?: PretableGroupId;
     };
     this.rowIds = detailed.rowIds;
     this.groupValues = detailed.groupValues;
+    this.groupId = detailed.groupId;
   }
 }
 
@@ -758,10 +762,11 @@ export function replaceFlatRowsDraft<
     if (previous === undefined) added += 1;
     else updated += 1;
   }
-  let removed = 0;
-  for (const [rowId] of input.root.rows.entries()) {
-    if (!seen.has(rowId)) removed += 1;
+  const removedRecords: RowRecord<TRow, TRowId, TColumns>[] = [];
+  for (const [rowId, record] of input.root.rows.entries()) {
+    if (!seen.has(rowId)) removedRecords.push(record);
   }
+  const removed = removedRecords.length;
   const effective = added > 0 || updated > 0 || removed > 0;
   if (sameReferenceMutation && input.acceptSameReferenceMutation !== true) {
     return {
@@ -859,12 +864,8 @@ export function replaceFlatRowsDraft<
       })
       .map((record) => record.rowId),
   );
-  for (const [rowId] of input.root.rows.entries()) {
-    if (
-      !seen.has(rowId) &&
-      input.root.rows.get(rowId)?.metadata.filterPasses === true
-    )
-      affectedVisibleIds.add(rowId);
+  for (const record of removedRecords) {
+    if (record.metadata.filterPasses) affectedVisibleIds.add(record.rowId);
   }
   let hasUnaffectedVisible = false;
   for (const record of input.root.visible.rows.entries()) {
@@ -885,11 +886,10 @@ export function replaceFlatRowsDraft<
               ) => number,
             )
         ).asTransient();
-  for (const [rowId] of input.root.rows.entries()) {
-    if (seen.has(rowId)) continue;
-    rowDraft.delete(rowId);
-    sourceDraft.remove(rowId);
-    if (hasUnaffectedVisible) visibleDraft?.remove(rowId);
+  for (const record of removedRecords) {
+    rowDraft.delete(record.rowId);
+    sourceDraft.remove(record.rowId);
+    if (hasUnaffectedVisible) visibleDraft?.remove(record.rowId);
   }
   if (hasUnaffectedVisible) {
     for (const record of orderChangedRecords) {
@@ -918,13 +918,21 @@ export function replaceFlatRowsDraft<
       ? visibleDraft === undefined
         ? input.root.visible
         : Object.freeze({ rows: visibleDraft.freeze() })
-      : createVisibleIndex(
-          Array.from(frozenRows.entries(), ([, record]) => record),
-          input.queryPlan,
-          previousGroups.aggregateFilteredRows,
-          input.root.expansion.overrides,
-          "set-rows",
-          previousGroups,
+      : attachGroupIndex(
+          input.root.visible.rows,
+          updateGroupIndex(
+            previousGroups,
+            [
+              ...removedRecords,
+              ...changedRecords.flatMap((record) => {
+                const old = input.root.rows.get(record.rowId);
+                return old === undefined ? [] : [old];
+              }),
+            ],
+            changedRecords,
+            input.root.expansion.overrides,
+            "set-rows",
+          ),
         );
   return {
     rows: frozenRows,

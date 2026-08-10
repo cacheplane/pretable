@@ -163,6 +163,90 @@ describe("group expansion policies", () => {
     expect(transition.requestedDerivations[2]?.aggregate).toBe("avg");
   });
 
+  test("attributes derivation rebuild failures to set-derivations and rolls back", () => {
+    const grouped = model();
+    const before = grouped.getState();
+    const failing = [
+      {
+        ...columns[0],
+        accessor: (): string => {
+          throw new Error("replacement accessor exploded");
+        },
+        value: (): string => {
+          throw new Error("replacement accessor exploded");
+        },
+      },
+      columns[1],
+      columns[2],
+    ] as const;
+
+    expect(() => grouped.setDerivations(failing)).toThrowError(
+      expect.objectContaining({
+        code: "accessor-failed",
+        operation: "set-derivations",
+        rowId: 1,
+        columnId: "region",
+        cause: expect.objectContaining({
+          message: "replacement accessor exploded",
+        }),
+      }),
+    );
+    expect(grouped.getState()).toBe(before);
+
+    const comparatorFailure = [
+      {
+        ...columns[0],
+        compare: (): number => {
+          throw new Error("replacement comparator exploded");
+        },
+      },
+      columns[1],
+      columns[2],
+    ] as const;
+    expect(() => grouped.setDerivations(comparatorFailure)).toThrowError(
+      expect.objectContaining({
+        code: "comparator-failed",
+        operation: "set-derivations",
+        columnId: "region",
+        groupValues: expect.any(Array),
+        cause: expect.objectContaining({
+          message: "replacement comparator exploded",
+        }),
+      }),
+    );
+    expect(grouped.getState()).toBe(before);
+
+    const aggregateFailure = [
+      columns[0],
+      columns[1],
+      {
+        ...columns[2],
+        aggregate: {
+          init: () => 0,
+          accumulate: (accumulator: number, value: number) =>
+            accumulator + value,
+          merge: (left: number, right: number) => left + right,
+          finalize: (): number | null => {
+            throw new Error("replacement finalize exploded");
+          },
+        },
+      },
+    ] as const;
+    expect(() => grouped.setDerivations(aggregateFailure)).toThrowError(
+      expect.objectContaining({
+        code: "aggregator-failed",
+        operation: "set-derivations",
+        columnId: "score",
+        groupValues: expect.any(Array),
+        cause: expect.objectContaining({
+          message: "replacement finalize exploded",
+        }),
+      }),
+    );
+    expect(grouped.getState()).toBe(before);
+    expect(grouped.setDerivations(columns).id).toBe(1);
+  });
+
   test("guards expansion and derivation commands after disposal", () => {
     const grouped = model();
     grouped.dispose();

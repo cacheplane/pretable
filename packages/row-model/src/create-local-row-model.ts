@@ -114,6 +114,7 @@ class PretableSetRowsExecutionError extends PretableRowModelError {
   readonly name = "PretableSetRowsExecutionError";
   readonly rowIds: readonly PretableRowId[] | undefined;
   readonly groupValues: readonly unknown[] | undefined;
+  readonly groupId: PretableGroupId | undefined;
 
   constructor(error: PretableRowModelError) {
     super(error.code, error.message, {
@@ -125,11 +126,55 @@ class PretableSetRowsExecutionError extends PretableRowModelError {
     const detailed = error as PretableRowModelError & {
       readonly rowIds?: readonly PretableRowId[];
       readonly groupValues?: readonly unknown[];
+      readonly groupId?: PretableGroupId;
     };
     this.rowIds = detailed.rowIds && Object.freeze([...detailed.rowIds]);
     this.groupValues =
       detailed.groupValues && Object.freeze([...detailed.groupValues]);
+    this.groupId = detailed.groupId;
   }
+}
+
+class PretableOperationExecutionError extends PretableRowModelError {
+  readonly name = "PretableOperationExecutionError";
+  readonly rowIds: readonly PretableRowId[] | undefined;
+  readonly groupValues: readonly unknown[] | undefined;
+  readonly groupId: PretableGroupId | undefined;
+
+  constructor(
+    error: PretableRowModelError,
+    operation: PretableRowModelOperation,
+  ) {
+    super(error.code, error.message, {
+      operation,
+      rowId: error.rowId,
+      columnId: error.columnId,
+      cause: error.cause,
+    });
+    const detailed = error as PretableRowModelError & {
+      readonly rowIds?: readonly PretableRowId[];
+      readonly groupValues?: readonly unknown[];
+      readonly groupId?: PretableGroupId;
+    };
+    this.rowIds = detailed.rowIds && Object.freeze([...detailed.rowIds]);
+    this.groupValues =
+      detailed.groupValues && Object.freeze([...detailed.groupValues]);
+    this.groupId = detailed.groupId;
+  }
+}
+
+function remapOperationError(
+  error: unknown,
+  operation: PretableRowModelOperation,
+): unknown {
+  if (
+    error instanceof PretableRowModelError &&
+    error.code !== "reentrant-mutation" &&
+    error.operation !== operation
+  ) {
+    return new PretableOperationExecutionError(error, operation);
+  }
+  return error;
 }
 
 function remapSetRowsError(error: unknown): unknown {
@@ -517,64 +562,70 @@ export function createLocalRowModel<
     setDerivations(
       nextDerivations: PretableDerivationsFor<TColumns>,
     ): PretableDerivationTransition<TColumns> {
-      const prepared = guarded("set-derivations", () => {
-        const id = nextTransitionId++;
-        const previousRoot = root;
-        const nextPlan = compileQuery({
-          derivations: nextDerivations,
-          query,
-          previous: queryPlan,
-        });
-        if (nextPlan === queryPlan) {
+      try {
+        const prepared = guarded("set-derivations", () => {
+          const id = nextTransitionId;
+          const previousRoot = root;
+          const nextPlan = compileQuery({
+            derivations: nextDerivations,
+            query,
+            previous: queryPlan,
+          });
+          if (nextPlan === queryPlan) {
+            nextTransitionId += 1;
+            return {
+              transition: Object.freeze({
+                id,
+                requestedDerivations: queryPlan.derivations,
+                finished: Promise.resolve(previousRoot.revision),
+                cancel: () => assertCommandAllowed("set-derivations"),
+              }),
+              notify: false,
+            };
+          }
+          const store = rebuildRowStoreForQuery(
+            previousRoot.rows,
+            previousRoot.sourceOrder,
+            nextPlan,
+          );
+          const revision = previousRoot.revision + 1;
+          const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
+            Object.freeze({
+              revision,
+              parentRevision: previousRoot.revision,
+              rows: store.rows,
+              sourceOrder: store.sourceOrder,
+              visible: createVisibleIndex(
+                store.records,
+                nextPlan,
+                aggregateFilteredRows,
+                previousRoot.expansion.overrides,
+                "set-derivations",
+                getGroupIndex(previousRoot.visible),
+              ),
+              queryPlan: nextPlan,
+              expansion: previousRoot.expansion,
+              cause: Object.freeze({ kind: "set-rows" as const }),
+            });
+          queryPlan = nextPlan;
+          derivations = nextPlan.derivations;
+          commit(committedRoot);
+          nextTransitionId += 1;
           return {
             transition: Object.freeze({
               id,
-              requestedDerivations: queryPlan.derivations,
-              finished: Promise.resolve(previousRoot.revision),
+              requestedDerivations: nextPlan.derivations,
+              finished: Promise.resolve(revision),
               cancel: () => assertCommandAllowed("set-derivations"),
             }),
-            notify: false,
+            notify: true,
           };
-        }
-        const store = rebuildRowStoreForQuery(
-          previousRoot.rows,
-          previousRoot.sourceOrder,
-          nextPlan,
-        );
-        const revision = previousRoot.revision + 1;
-        const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
-          Object.freeze({
-            revision,
-            parentRevision: previousRoot.revision,
-            rows: store.rows,
-            sourceOrder: store.sourceOrder,
-            visible: createVisibleIndex(
-              store.records,
-              nextPlan,
-              aggregateFilteredRows,
-              previousRoot.expansion.overrides,
-              "set-derivations",
-              getGroupIndex(previousRoot.visible),
-            ),
-            queryPlan: nextPlan,
-            expansion: previousRoot.expansion,
-            cause: Object.freeze({ kind: "set-rows" as const }),
-          });
-        queryPlan = nextPlan;
-        derivations = nextPlan.derivations;
-        commit(committedRoot);
-        return {
-          transition: Object.freeze({
-            id,
-            requestedDerivations: nextPlan.derivations,
-            finished: Promise.resolve(revision),
-            cancel: () => assertCommandAllowed("set-derivations"),
-          }),
-          notify: true,
-        };
-      });
-      if (prepared.notify) notify();
-      return prepared.transition;
+        });
+        if (prepared.notify) notify();
+        return prepared.transition;
+      } catch (error) {
+        throw remapOperationError(error, "set-derivations");
+      }
     },
     setGroupExpanded(groupId: PretableGroupId, expanded: boolean) {
       const prepared = guarded("set-group-expanded", () => {

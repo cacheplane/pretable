@@ -889,16 +889,53 @@ function structurallyEqual(
   );
 }
 
+class GroupAggregatorError extends PretableRowModelError {
+  readonly name = "GroupAggregatorError";
+  readonly groupId: PretableGroupId;
+  readonly groupValues: readonly unknown[];
+
+  constructor(
+    operation: PretableRowModelOperation,
+    columnId: string,
+    groupId: PretableGroupId,
+    groupValues: readonly unknown[],
+    cause: unknown,
+  ) {
+    super(
+      "aggregator-failed",
+      `Finalizing the aggregate for column ${columnId} failed in group ${groupId}.`,
+      { operation, columnId, cause },
+    );
+    this.groupId = groupId;
+    this.groupValues = Object.freeze([...groupValues]);
+  }
+}
+
 function aggregateRecord(
   roots: AggregateRoots,
   allPopulation: boolean,
   previous: Readonly<Record<string, unknown>> | undefined,
+  operation: PretableRowModelOperation,
+  groupId: PretableGroupId,
+  groupValues: readonly unknown[],
 ): Readonly<Record<string, unknown>> {
   const selected = allPopulation ? roots.all : roots.filtered;
   const values: Record<string, unknown> = {};
   let same = previous !== undefined;
   for (const [columnId, tree] of selected) {
-    const finalized = tree.finalize();
+    let finalized: unknown;
+    try {
+      finalized = tree.finalize();
+    } catch (cause) {
+      if (cause instanceof PretableRowModelError) throw cause;
+      throw new GroupAggregatorError(
+        operation,
+        columnId,
+        groupId,
+        groupValues,
+        cause,
+      );
+    }
     const value = structurallyEqual(previous?.[columnId], finalized)
       ? previous?.[columnId]
       : finalized;
@@ -957,6 +994,9 @@ function finishNode<
     node.aggregateRoots,
     context.aggregateFilteredRows,
     previous?.aggregates,
+    context.operation,
+    node.groupId,
+    node.path.map((entry) => entry.value),
   );
   const descendants =
     node.depth === context.levelCount - 1
