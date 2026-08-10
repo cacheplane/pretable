@@ -14,6 +14,8 @@ import type { PretableColumn } from "./types";
 
 /** @internal */
 export interface GroupRowProps<TRow extends PretableRow> {
+  /** Renders the child count; supplied by the surface from `messages`. */
+  childCountLabel: (childCount: number) => string;
   /** Every planned column, in drawn order — the same list data rows use. */
   columns: readonly PlannedColumn[];
   /** Column definitions by id, including the derived group column. */
@@ -30,6 +32,8 @@ export interface GroupRowProps<TRow extends PretableRow> {
   registerCell: (key: string, node: HTMLDivElement | null) => void;
   /** Index into `snapshot.visibleRows`, as the data-row path uses. */
   rowIndex: number;
+  /** `"loaded"` when the folded rows are a window onto a larger population. */
+  scope: "all" | "loaded";
   top: number;
   viewportWidth: number;
 }
@@ -44,6 +48,7 @@ export interface GroupRowProps<TRow extends PretableRow> {
  * nothing here reintroduces them.
  */
 export function GroupRow<TRow extends PretableRow>({
+  childCountLabel,
   columns,
   columnsById,
   expanded,
@@ -56,6 +61,7 @@ export function GroupRow<TRow extends PretableRow>({
   onToggle,
   registerCell,
   rowIndex,
+  scope,
   top,
   viewportWidth,
 }: GroupRowProps<TRow>) {
@@ -163,10 +169,12 @@ export function GroupRow<TRow extends PretableRow>({
                   </button>
                 ) : null}
                 <span data-pretable-group-label="">{label}</span>
-                <span data-pretable-group-count="">({group.childCount})</span>
+                <span data-pretable-group-count="">
+                  {childCountLabel(group.childCount)}
+                </span>
               </>
             ) : hasAggregate && column ? (
-              formatAggregateValue(column, group)
+              formatAggregateValue(column, group, scope)
             ) : null}
           </div>
         );

@@ -320,6 +320,16 @@ export interface PretableSurfaceMessages {
     label: string;
     childCount: number;
   }) => string;
+  /**
+   * Group-header child count. `scope: "loaded"` marks partial-window grouping —
+   * a count of loaded children that makes no claim about the population.
+   *
+   * @experimental
+   */
+  groupChildCountLabel?: (args: {
+    childCount: number;
+    scope: "all" | "loaded";
+  }) => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -360,6 +370,10 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
     `${label} expanded, ${childCount} rows`,
   groupCollapsedAnnouncement: ({ label, childCount }) =>
     `${label} collapsed, ${childCount} rows`,
+  // The parentheses belong to the message, not the JSX, so a replacement can
+  // drop them.
+  groupChildCountLabel: ({ childCount, scope }) =>
+    scope === "loaded" ? `(${childCount} loaded)` : `(${childCount})`,
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -1016,6 +1030,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       groupCollapsedAnnouncement:
         messages?.groupCollapsedAnnouncement ??
         defaultMessages.groupCollapsedAnnouncement,
+      groupChildCountLabel:
+        messages?.groupChildCountLabel ?? defaultMessages.groupChildCountLabel,
     }),
     [messages],
   );
@@ -1123,6 +1139,10 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // scope from the snapshot they are reporting on, so the scope word and the
   // counts in one sentence are always the same observation.
   const dataScope = resolveDataScope(dataHonestyInput, processing);
+  // Deliberately not `useCallback`: the React Compiler cannot preserve that
+  // memoization here, and `GroupRow` is not memoized, so identity buys nothing.
+  const groupChildCountLabel = (childCount: number) =>
+    effectiveMessages.groupChildCountLabel({ childCount, scope: dataScope });
   warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
   // then report what the engine actually holds. Reading the list back rather
@@ -2502,6 +2522,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             // changes which columns fall inside the range.
             columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
+            scope: dataScope,
           };
           const payload = onCopy ? onCopy(args) : serializeRanges(args);
           if (payload) {
@@ -3402,6 +3423,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
             return (
               <GroupRow
+                childCountLabel={groupChildCountLabel}
                 columns={renderSnapshot.columns}
                 columnsById={columnsById}
                 expanded={isGroupExpanded(snapshot, group.id)}
@@ -3430,6 +3452,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 }}
                 registerCell={registerCell}
                 rowIndex={renderRow.rowIndex}
+                scope={dataScope}
                 top={renderRow.top}
                 viewportWidth={viewportWidth}
               />

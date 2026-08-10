@@ -198,6 +198,14 @@ export interface PretableAggregateFormatInput<
   value: unknown;
   column: PretableColumn<TRow>;
   group: PretableGroupRow;
+  /**
+   * `"loaded"` when the aggregate folded a window onto a larger population, so
+   * a sum over 200 loaded rows is never presentable as a population sum. Local
+   * mode always passes `"all"`.
+   *
+   * @experimental
+   */
+  scope: "all" | "loaded";
 }
 
 /**

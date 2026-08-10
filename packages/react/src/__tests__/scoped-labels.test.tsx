@@ -268,3 +268,70 @@ describe("scoped default announcement text", () => {
     expect(liveRegionText(view)).toBe("2 rows × 1 columns copied");
   });
 });
+
+describe("grouping honesty under a partial window", () => {
+  type GRow = { id: string; team: string; points: number };
+
+  const gRows: GRow[] = [
+    { id: "a", team: "Red", points: 3 },
+    { id: "b", team: "Red", points: 4 },
+  ];
+
+  const gColumns = [
+    { id: "team", header: "Team", widthPx: 120 },
+    {
+      id: "points",
+      header: "Points",
+      widthPx: 120,
+      type: "number" as const,
+      aggregate: "sum" as const,
+      formatAggregate: (input: { value: unknown; scope: "all" | "loaded" }) =>
+        `${String(input.value)} [${input.scope}]`,
+    },
+  ];
+
+  function renderGrouped(external: boolean, total?: number) {
+    return render(
+      <PretableSurface<GRow>
+        ariaLabel="Teams"
+        columns={gColumns}
+        rows={gRows}
+        getRowId={(row) => row.id}
+        viewportHeight={400}
+        state={{ rowGroups: ["team"] }}
+        processing={
+          external ? { filter: "external", sort: "external" } : undefined
+        }
+        resultMeta={
+          total === undefined
+            ? undefined
+            : { total: { kind: "exact", count: total } }
+        }
+      />,
+    );
+  }
+
+  it("renders the bare child count in local mode", () => {
+    const view = renderGrouped(false);
+    expect(
+      view.container.querySelector("[data-pretable-group-count]")?.textContent,
+    ).toBe("(2)");
+  });
+
+  it('marks the child count "loaded" under a partial window', () => {
+    const view = renderGrouped(true, 5432);
+    expect(
+      view.container.querySelector("[data-pretable-group-count]")?.textContent,
+    ).toBe("(2 loaded)");
+  });
+
+  it("passes scope to formatAggregate", () => {
+    const view = renderGrouped(true, 5432);
+    expect(view.container.textContent).toContain("7 [loaded]");
+  });
+
+  it("passes scope all in local mode", () => {
+    const view = renderGrouped(false);
+    expect(view.container.textContent).toContain("7 [all]");
+  });
+});

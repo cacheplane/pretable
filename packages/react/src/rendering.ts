@@ -38,9 +38,10 @@ export function formatCellValue(value: unknown) {
 export function formatAggregateValue<TRow extends PretableRow>(
   column: PretableColumn<TRow>,
   group: PretableGroupRow,
+  scope: "all" | "loaded",
 ): string {
   const value = group.aggregates[column.id];
   return column.formatAggregate
-    ? column.formatAggregate({ value, column, group })
+    ? column.formatAggregate({ value, column, group, scope })
     : formatCellValue(value);
 }

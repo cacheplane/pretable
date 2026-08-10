@@ -509,6 +509,7 @@ describe("a group with no children left", () => {
   const renderChildless = () =>
     render(
       <GroupRow
+        childCountLabel={(childCount) => `(${childCount})`}
         columns={[
           {
             id: GROUP_COLUMN_ID,
@@ -528,6 +529,7 @@ describe("a group with no children left", () => {
         onToggle={() => {}}
         registerCell={() => {}}
         rowIndex={0}
+        scope="all"
         top={0}
         viewportWidth={800}
       />,
