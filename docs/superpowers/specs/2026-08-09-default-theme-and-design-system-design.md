@@ -241,6 +241,60 @@ meter, and two-line entity stack.
   So a two-line stack in a non-wrap column, in a row that _also_ has a wrap column, is measured at
   single-line height and clipped — in browsers only, invisible to jsdom.
 
+### SP5 — Wrapped text and variable-height rows (the wedge)
+
+Added 2026-08-10. Wrapped, variable-height rows are pretable's differentiator, and they have **no
+design treatment at all**: `data-pretable-wrap` is emitted on every cell of a wrapping column and is
+matched by nothing in `grid.css`. Neither the reference designs nor any competitor screenshot can
+supply the answer here, which is exactly why it is worth doing — this is where the theme stops
+imitating and starts having an opinion.
+
+**Three defects gate the design work.**
+
+1. **The row-height floor is theme-blind.** `packages/react/src/row-height.ts:1` hardcodes
+   `MIN_ROW_HEIGHT = 44`, while `pretable-surface.tsx` already resolves `--pretable-row-height`
+   through `useResolvedHeights` in the same component that calls `measureRenderedRowHeight`. Excel's
+   density tiers are 20/24/32px, so under Excel every wrapped row is at least 44px — the wedge
+   silently opts out of Excel's entire density model. Under Material's 40/48/56 the floor is inert.
+   Too aggressive for one shipped theme, dead for the other. **Ships immediately as its own small
+   PR**, ahead of the rest of SP5, because it is self-contained and everything else builds on it.
+   Must be checked against the bench: changing the floor changes row heights under the Excel-themed
+   bench, and `row_height_error_p95_px` is a committed gate.
+2. **The estimator is calibrated against a font nothing ships.**
+   `packages/renderer-dom/src/create-renderer.ts:21` sets `ROW_LINE_HEIGHT = 24` with a comment
+   saying it was calibrated for "Inter Variable at 16px in the bench app" — but the bench ships the
+   Excel theme, Aptos Narrow at 15px. The same comment records that mismatched constants previously
+   failed `row_height_error_p95_px` at 5px. A line-height token cannot be a pure CSS choice; it must
+   move this constant in lockstep. `text-core`'s `layoutPreparedText` already accepts `lineHeightPx`
+   (`layout-text.ts:16`), so the plumbing exists — the calibration is the gate.
+3. **Measurement ignores non-wrap cells** (see SP4 above); it is really a wedge bug.
+
+**The design, deliberately small.**
+
+- **Row-level top alignment.** Rows containing a wrapped cell top-align every cell, so first lines
+  share a baseline. Verified empirically on the running hero: `data-pretable-wrap` is emitted from
+  `column.wrap`, a **column** property, so every cell in a wrapping column carries it regardless of
+  whether that cell's text actually wrapped — all 13 hero rows match. The attribute is therefore
+  static, alignment never flips as content streams, and `:has()` is the clean implementation. A
+  _true_ per-row signal ("this row actually wrapped") is not reachable without new engine output,
+  and that version **would** jitter under streaming — do not add it.
+- **A line-height token scoped to wrap cells only**, around 1.45. Wrapped cells are prose; single-
+  line cells are data, and they want different leading. Scoping to wrap cells also leaves the
+  estimator's non-wrap path untouched, which contains the blast radius of defect 2.
+- **`column.maxLines` is opt-in, uncapped by default.** Showing the full text is the product's
+  pitch; capping by default would hide data on the very demo built to showcase it.
+
+**Deliberately not doing:** no max measure on wide wrap columns — an 85-character line is past
+comfortable reading, but capping it is invisible rather than opt-in, and column width is already the
+consumer's lever. No treatment for empty wrapped cells — a blank cell in a tall row is honest, and
+decorating absence is worse than showing it. No distinct background, border, or inset on wrapped
+cells: it would make the grid read as a form. The differentiation is alignment and leading, nothing
+else.
+
+**A finding that strengthens SP2/SP3.** Vertical gridlines and variable row height fight each other:
+in a 90px row the column dividers become long empty channels of line running through whitespace.
+Dropping the cage matters _more_ for the wedge than for a uniform grid.
+
 ## Explicitly rejected
 
 - **A page-canvas token.** The grid renders a card; the consumer owns the page. Shipping a token the
@@ -270,6 +324,17 @@ for token presence and resolution, `css-cascade.test.ts` for the `@layer` / `:wh
 `apps/bench/tests/cascade-override.spec.ts` for real-browser cascade behavior. SP1 and SP2 both
 touch cascade-sensitive rules, so the Playwright cascade spec is the gate that matters most.
 Contrast ratios in SP3 are asserted numerically, not eyeballed.
+
+Two gates added by other work since this spec was written, both of which bite here:
+
+- **Docs tables are test-pinned to the `.api.md` reports** (#280), fail-closed. Any new docs table
+  SP2 or SP3 adds — the attribute contract table, the token reference rows — must be registered with
+  that guard or the suite breaks. Register it in the same PR that adds the table.
+- **`row_height_error_p95_px` is a committed benchmark gate**, and the bench runs the Excel theme.
+  SP5's row-height floor change moves real row heights under exactly that theme, so it needs bench
+  evidence, not just unit tests. The roadmap's governing principles require this anyway: every major
+  capability gets "an explicit complexity/memory budget, deterministic workload, and committed
+  evidence."
 
 ## Open items
 
