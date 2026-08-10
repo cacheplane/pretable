@@ -1,4 +1,5 @@
 export { createRowMetricsIndex } from "./prefix-sums";
+export { createRowHeightIndex } from "./row-height-index";
 export { planColumns } from "./column-plan";
 export { planViewport } from "./viewport-plan";
 export { autosizeColumns } from "./autosize-columns";
@@ -14,6 +15,7 @@ export type {
   AutosizeOptions,
   AutosizeResult,
   ColumnPlan,
+  CreateRowHeightIndexOptions,
   PretableRowRange,
   PinnedColumnInput,
   PlanColumnsColumnInput,
@@ -24,5 +26,9 @@ export type {
   PlanViewportInput,
   RowMetricsIndex,
   RowMetricsReader,
+  RowHeightAnchor,
+  RowHeightEntry,
+  RowHeightIndex,
+  RowHeightOperation,
   ViewportPlan,
 } from "./types";

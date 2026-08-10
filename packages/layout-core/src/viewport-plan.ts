@@ -7,8 +7,9 @@ import type {
 } from "./types";
 
 export function planViewport(input: PlanViewportInput): ViewportPlan {
-  const totalHeight = input.rowMetrics.getTotalHeight();
-  const rowCount = input.rowMetrics.rowCount;
+  const rowMetrics = input.rowMetrics;
+  const totalHeight = rowMetrics.getTotalHeight();
+  const rowCount = rowMetrics.rowCount;
 
   if (rowCount === 0) {
     return {
@@ -28,13 +29,13 @@ export function planViewport(input: PlanViewportInput): ViewportPlan {
   );
   const visibleStart = Math.min(
     rowCount - 1,
-    input.rowMetrics.getIndexForOffset(clampedScrollTop),
+    rowMetrics.getIndexForOffset(clampedScrollTop),
   );
   const visibleEndExclusive = Math.min(
     rowCount,
     Math.max(
       visibleStart + 1,
-      input.rowMetrics.getIndexForOffset(
+      rowMetrics.getIndexForOffset(
         clampedScrollTop + Math.max(0, input.viewportHeight),
       ) + 1,
     ),
@@ -45,13 +46,16 @@ export function planViewport(input: PlanViewportInput): ViewportPlan {
     visibleEndExclusive + Math.max(0, input.overscan),
   );
   const rows: PlannedRow[] = [];
+  let top = rowMetrics.getOffsetForIndex(start);
 
   for (let index = start; index < end; index += 1) {
+    const height = rowMetrics.getHeight(index);
     rows.push({
       index,
-      top: input.rowMetrics.getOffsetForIndex(index),
-      height: input.rowMetrics.getHeight(index),
+      top,
+      height,
     });
+    top += height;
   }
 
   return {

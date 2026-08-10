@@ -22,13 +22,88 @@ export interface RowMetricsReader {
   readonly rowCount: number;
   getHeight(index: number): number;
   getOffsetForIndex(index: number): number;
+  getIndexForOffset(offset: number): number;
   getTotalHeight(): number;
 }
 
 /** @internal */
 export interface RowMetricsIndex extends RowMetricsReader {
-  getIndexForOffset(offset: number): number;
   updateHeight(index: number, height: number): void;
+}
+
+/** One visible row and its optional unmeasured height estimate. @internal */
+export interface RowHeightEntry<TKey> {
+  readonly key: TKey;
+  readonly estimatedHeight?: number;
+}
+
+/**
+ * A primitive identity must be pure and stable for the index lifetime. It is
+ * intentionally supplied by the owner so recreated discriminated row refs can
+ * share measurements without relying on object identity or serialization.
+ * @internal
+ */
+export interface CreateRowHeightIndexOptions<TKey> {
+  readonly defaultHeight: number;
+  readonly getKey: (key: TKey) => string | number;
+  readonly rows?: readonly RowHeightEntry<TKey>[];
+}
+
+/**
+ * Sequential structural changes expressed against the current intermediate
+ * root. Moves and removals retain measurements by stable identity; updates
+ * invalidate the affected measurement so the estimate is used until the row
+ * is measured again.
+ * @internal
+ */
+export type RowHeightOperation<TKey> =
+  | {
+      readonly kind: "insert";
+      readonly ref: TKey;
+      readonly index: number;
+      readonly estimatedHeight?: number;
+    }
+  | {
+      readonly kind: "remove";
+      readonly ref: TKey;
+      readonly previousIndex: number;
+    }
+  | {
+      readonly kind: "move";
+      readonly ref: TKey;
+      readonly previousIndex: number;
+      readonly index: number;
+    }
+  | {
+      readonly kind: "update";
+      readonly ref: TKey;
+      readonly index: number;
+      readonly estimatedHeight?: number;
+    };
+
+/** A captured pixel position within a stable logical row. @internal */
+export interface RowHeightAnchor<TKey> {
+  readonly ref: TKey;
+  readonly offset: number;
+}
+
+/**
+ * Immutable, persistent row geometry keyed by logical visible-row identity.
+ * `replace` and later inserts reuse retained measurements for equal stable keys,
+ * even when the caller supplies newly allocated key objects.
+ * @internal
+ */
+export interface RowHeightIndex<TKey> extends RowMetricsReader {
+  keyAt(index: number): TKey | undefined;
+  hasMeasurement(ref: TKey): boolean;
+  measure(index: number, ref: TKey, height: number): RowHeightIndex<TKey>;
+  apply(operations: readonly RowHeightOperation<TKey>[]): RowHeightIndex<TKey>;
+  replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey>;
+  captureAnchor(
+    index: number,
+    scrollTop: number,
+  ): RowHeightAnchor<TKey> | undefined;
+  restoreAnchor(anchor: RowHeightAnchor<TKey>, index: number): number;
 }
 
 /** @internal */
@@ -56,7 +131,7 @@ export interface PlanViewportInput {
   scrollTop: number;
   viewportHeight: number;
   overscan: number;
-  rowMetrics: RowMetricsIndex;
+  rowMetrics: RowMetricsReader;
   pinnedLeft?: PinnedColumnInput[];
   pinnedRight?: PinnedColumnInput[];
 }
