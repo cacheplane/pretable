@@ -102,11 +102,7 @@ export function useDensityHeights(): DensityHeights {
     return next;
   }, []);
 
-  return useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    () => SERVER_SNAPSHOT,
-  );
+  return useSyncExternalStore(subscribe, getSnapshot, () => SERVER_SNAPSHOT);
 }
 ```
 

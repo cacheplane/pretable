@@ -71,7 +71,9 @@ const BY_HREF = new Map(PAGES.map((page) => [page.href, page]));
 
 describe("internal docs links", () => {
   test("the corpus was actually found", () => {
-    expect(PAGES.length, `no .mdx pages under ${DOCS_ROOT}`).toBeGreaterThan(10);
+    expect(PAGES.length, `no .mdx pages under ${DOCS_ROOT}`).toBeGreaterThan(
+      10,
+    );
   });
 
   test("every /docs link resolves to a page, and every #anchor to a heading", () => {

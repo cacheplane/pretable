@@ -405,7 +405,9 @@ const PRETABLE_COLUMN: readonly TypeRef[] = [
   { pkg: "core", name: "PretableColumn" },
 ];
 
-const PRETABLE_GRID: readonly TypeRef[] = [{ pkg: "core", name: "PretableGrid" }];
+const PRETABLE_GRID: readonly TypeRef[] = [
+  { pkg: "core", name: "PretableGrid" },
+];
 
 const SURFACE_PROPS: readonly TypeRef[] = [
   { pkg: "react", name: "PretableSurfaceProps" },
@@ -529,7 +531,10 @@ const TABLES: Record<string, TableBinding> = {
   "grid/grouping.mdx#Options": {
     types: SURFACE_PROPS,
     complete: false,
-    partialReason: SLICE_OF("PretableSurfaceProps", "grid/pretable-surface.mdx"),
+    partialReason: SLICE_OF(
+      "PretableSurfaceProps",
+      "grid/pretable-surface.mdx",
+    ),
   },
   "grid/editing.mdx#Custom editors": {
     types: [{ pkg: "react", name: "PretableEditorInput" }],
@@ -567,7 +572,9 @@ describe("docs API surface matches the generated API reports", () => {
   test("the docs corpus is non-empty and the reports are readable", () => {
     // Fail closed: every check below is vacuously true over an empty corpus,
     // and a moved content directory or renamed report would silently pass.
-    expect(PAGES.length, `no .mdx pages under ${DOCS_ROOT}`).toBeGreaterThan(10);
+    expect(PAGES.length, `no .mdx pages under ${DOCS_ROOT}`).toBeGreaterThan(
+      10,
+    );
     expect(
       REPORTED_PACKAGES,
       "no packages/*/*.api.md reports found — has the report layout changed?",

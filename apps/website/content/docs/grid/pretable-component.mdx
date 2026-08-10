@@ -38,23 +38,23 @@ export function People() {
 
 Two are required. The rest are forwarded verbatim to the underlying [`<PretableSurface>`](/docs/grid/pretable-surface#props) — same types, same behavior — so reach for that page for the detail.
 
-| Prop                   | Type                                              | Required | Description                                                                                          |
-| ---------------------- | ------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| `columns`              | `PretableColumn<TRow>[]`                          | yes      | Column definitions. See [API reference](/docs/grid/api-reference#pretablecolumntrow) for the full shape. |
-| `rows`                 | `TRow[]`                                          | yes      | Row data. Generic over your row type (defaults to `Record<string, unknown>`).                        |
-| `getRowId`             | `(row: TRow, index: number) => string`            | no       | Custom row key. Defaults to `row.id` if it's a string or number; otherwise the row's index.          |
-| `rowSelectionColumn`   | `RowSelectionColumnConfig`                        | no       | Turn on the three-state checkbox column. See [Selection](/docs/grid/selection).                      |
-| `onRowSelectionChange` | `(rowIds: string[]) => void`                      | no       | Fired with the full list of selected row ids.                                                        |
-| `onRowActivate`        | `(input: PretableRowActivateInput<TRow>) => void` | no       | Fired on Enter or double-click over a row.                                                           |
-| `onCellEdit`           | `(payload) => void \| Promise<void>`              | no       | Commit handler for cell editing. Editing is inert without it. See [Editing](/docs/grid/editing).     |
-| `onCopy`               | `(args) => CopyPayload \| null`                   | no       | Replace the default TSV serializer. See [Clipboard](/docs/grid/clipboard).                           |
-| `copyToClipboard`      | `(payload: CopyPayload) => void \| Promise<void>` | no       | Replace the clipboard write itself.                                                                  |
-| `copyWithHeaders`      | `boolean`                                         | no       | Prefix copied output with a header row. Defaults to `false`.                                         |
-| `tabBehavior`          | `"wrap-rows" \| "exit"`                           | no       | Tab key behavior. See [Keyboard](/docs/grid/keyboard).                                               |
-| `messages`             | `PretableSurfaceMessages`                         | no       | Override the `aria-live` announcement strings.                                                       |
-| `onColumnWidthsChange` | `(next: Record<string, number>) => void`          | no       | Fired on resize drag-end with the full widths map.                                                   |
-| `onColumnOrderChange`  | `(next: readonly string[]) => void`               | no       | Fired on reorder drag-end with the new column id order.                                              |
-| `onColumnPinnedChange` | `(next: Record<string, "left" \| "right" \| null>) => void` | no | Fired when pin state changes, with the full pinned map.                                            |
+| Prop                   | Type                                                        | Required | Description                                                                                              |
+| ---------------------- | ----------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `columns`              | `PretableColumn<TRow>[]`                                    | yes      | Column definitions. See [API reference](/docs/grid/api-reference#pretablecolumntrow) for the full shape. |
+| `rows`                 | `TRow[]`                                                    | yes      | Row data. Generic over your row type (defaults to `Record<string, unknown>`).                            |
+| `getRowId`             | `(row: TRow, index: number) => string`                      | no       | Custom row key. Defaults to `row.id` if it's a string or number; otherwise the row's index.              |
+| `rowSelectionColumn`   | `RowSelectionColumnConfig`                                  | no       | Turn on the three-state checkbox column. See [Selection](/docs/grid/selection).                          |
+| `onRowSelectionChange` | `(rowIds: string[]) => void`                                | no       | Fired with the full list of selected row ids.                                                            |
+| `onRowActivate`        | `(input: PretableRowActivateInput<TRow>) => void`           | no       | Fired on Enter or double-click over a row.                                                               |
+| `onCellEdit`           | `(payload) => void \| Promise<void>`                        | no       | Commit handler for cell editing. Editing is inert without it. See [Editing](/docs/grid/editing).         |
+| `onCopy`               | `(args) => CopyPayload \| null`                             | no       | Replace the default TSV serializer. See [Clipboard](/docs/grid/clipboard).                               |
+| `copyToClipboard`      | `(payload: CopyPayload) => void \| Promise<void>`           | no       | Replace the clipboard write itself.                                                                      |
+| `copyWithHeaders`      | `boolean`                                                   | no       | Prefix copied output with a header row. Defaults to `false`.                                             |
+| `tabBehavior`          | `"wrap-rows" \| "exit"`                                     | no       | Tab key behavior. See [Keyboard](/docs/grid/keyboard).                                                   |
+| `messages`             | `PretableSurfaceMessages`                                   | no       | Override the `aria-live` announcement strings.                                                           |
+| `onColumnWidthsChange` | `(next: Record<string, number>) => void`                    | no       | Fired on resize drag-end with the full widths map.                                                       |
+| `onColumnOrderChange`  | `(next: readonly string[]) => void`                         | no       | Fired on reorder drag-end with the new column id order.                                                  |
+| `onColumnPinnedChange` | `(next: Record<string, "left" \| "right" \| null>) => void` | no       | Fired when pin state changes, with the full pinned map.                                                  |
 
 There is no `viewportHeight`, no `state`, no telemetry, and no render overrides — that is the whole difference from `<PretableSurface>`.
 
@@ -82,17 +82,18 @@ The grid renders with Excel's surface tones, gridlines, accent. Toggle `data-den
 
 ## Limitations
 
-`<Pretable>` is the simplest possible surface. It is intentionally thin. For:
+`<Pretable>` is intentionally thin. What it does not give you a way to reach:
 
-- **Sort UI** — handle clicks on header buttons to call `grid.setSort(id, direction)`. Use [custom rendering](/docs/grid/custom-rendering).
-- **Filter UI** — render input fields and call `grid.replaceFilters(...)` or `grid.setColumnFilter(id, { operator, value })`.
-- **Selection state in your component tree** — wire `grid.toggleRowSelection(id)` and derive selected rows from `snapshot.selection.ranges` (use `deriveSelectedRows` for the three-state row helper).
-- **Focus / keyboard navigation** — wire `grid.setFocus({ rowId, columnId })` and `grid.moveFocus("up" | "down" | "left" | "right", options?)` to keyboard handlers.
-- **Custom cell components** — replace the default label/value layout. Custom rendering lets you render any React tree per cell.
-- **Pinned columns rendered as sticky** — set `column.pinned: "left" | "right"` and render with the `data-pretable-pinned` attribute.
-- **Per-row measured heights** — provide `measuredHeights: Record<string, number>` to `usePretable`.
+- **A viewport height of your own** — it is hardcoded to 320px.
+- **Filtering** — no filter UI, and no way to get at `grid.setColumnFilter` / `grid.replaceFilters`.
+- **The grid handle** — no `onGridReady`, so nothing imperative: no programmatic sort, focus, transactions, or grouping.
+- **Controlled state** — no `state` prop, so you cannot own the sort, filter, selection, or focus slices from the outside.
+- **Telemetry** — no `onTelemetryChange`.
+- **Custom cell or header components** — the label-above-value layout is fixed.
+- **Row grouping** — no group panel, no `groupColumn`, no `onRowGroupsChange`.
+- **Per-row measured heights** — `measuredHeights` is a `usePretable` option only.
 
-All of the above are available with `usePretable`. The drop-in component just doesn't expose the API surface for it.
+Everything except the last is available on [`<PretableSurface>`](/docs/grid/pretable-surface), which is the same engine with every prop exposed. Drop all the way to [`usePretable`](/docs/grid/custom-rendering) only when you also want to own the rendering.
 
 ## Where to go next
 
