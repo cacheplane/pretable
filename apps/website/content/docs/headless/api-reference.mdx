@@ -177,7 +177,7 @@ type PretableRow = Record<string, unknown>;
 ### `PretableGridSnapshot<TRow>`
 
 ```ts
-interface PretableGridSnapshot<TRow = PretableRow> {
+interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
   visibleRows: PretableVisibleRow<TRow>[];
   visibleRange: PretableRowRange;
   totalRowCount: number;
@@ -193,11 +193,28 @@ See [Snapshot & subscribe](/docs/headless/state-model) for what each field means
 
 ### `PretableVisibleRow<TRow>`
 
+`visibleRows` is a flat, non-windowed list after filtering, sorting, and grouping. Without grouping, it contains only `"data"` entries. Grouping inserts `"group"` headers into the same list. Narrow on `kind` before accessing `row`.
+
 ```ts
-interface PretableVisibleRow<TRow = PretableRow> {
+type PretableVisibleRow<TRow extends PretableRow = PretableRow> =
+  PretableDataRow<TRow> | PretableGroupRow;
+
+interface PretableDataRow<TRow extends PretableRow = PretableRow> {
+  kind: "data";
   id: string;
   row: TRow;
   sourceIndex: number;
+  depth: number;
+}
+
+interface PretableGroupRow {
+  kind: "group";
+  id: string;
+  depth: number;
+  columnId: string;
+  value: unknown;
+  childCount: number;
+  aggregates: Record<string, unknown>;
 }
 ```
 

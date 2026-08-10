@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIResponse } from "@playwright/test";
 
 import {
   columnParts,
@@ -7,9 +7,42 @@ import {
   openDrawer,
   openFilterMenu,
   scrollViewportTo,
+  waitForDocsReady,
   waitForGridReady,
   waitForStablePosition,
 } from "./helpers";
+
+async function expectIconResponse(response: APIResponse) {
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toMatch(/^image\//i);
+  expect((await response.body()).byteLength).toBeGreaterThan(100);
+}
+
+test("publishes the App Router favicon metadata", async ({ page, request }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+  });
+
+  const directResponse = await request.get("/favicon.ico");
+  await expectIconResponse(directResponse);
+
+  const docsResponse = await page.goto("/docs", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(docsResponse?.status()).toBe(200);
+  const iconLink = page
+    .locator('head link[rel~="icon"][href*="/favicon.ico"]')
+    .first();
+  await expect(iconLink).toHaveAttribute("href", /^\/favicon\.ico(?:\?.*)?$/);
+
+  const iconHref = await iconLink.getAttribute("href");
+  if (!iconHref) throw new Error("Expected a favicon metadata href");
+  await expectIconResponse(await request.get(iconHref));
+  await waitForDocsReady(page);
+  expect(errors).toEqual([]);
+});
 
 test("landing renders grid + control bar + drawer handle; drawer opens", async ({
   page,

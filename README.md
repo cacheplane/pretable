@@ -35,7 +35,7 @@ Do not build application code against them.
 npm install @pretable/react @pretable/ui
 ```
 
-Peer dependency: `react ^19.0.0`.
+Peer dependencies: `react ^19.0.0` and `react-dom ^19.0.0`.
 
 Import a theme and the grid skin once in your app entry point:
 
@@ -83,7 +83,7 @@ export function Queue() {
 ```
 
 For lower-level rendering, selection, keyboard navigation, custom cells, and
-measured row heights, use `usePretableModel` from `@pretable/react`.
+measured row heights, use `usePretable` from `@pretable/react`.
 
 ## Why Pretable
 
