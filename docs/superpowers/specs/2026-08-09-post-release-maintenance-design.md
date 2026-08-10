@@ -1,7 +1,7 @@
 # Post-release website maintenance design
 
 Date: 2026-08-09
-Status: proposed for written review
+Status: revised after independent review
 
 ## Goal
 
@@ -10,10 +10,12 @@ Close the small, confirmed gaps found while smoke-testing the `0.0.10` release:
 - serve a branded favicon instead of returning `404` on every cold page load;
 - correct public documentation that no longer matches the published React and
   headless APIs; and
-- protect both corrections with proportionate automated checks.
+- protect the favicon integration with a focused browser regression while
+  validating documentation against the exported source contracts.
 
-This is a website and documentation maintenance change. It does not change a
-published package, runtime grid behavior, or public API.
+This is a website and documentation maintenance change. It updates the README
+shipped with `@pretable/react` but does not change runtime grid behavior, public
+types, or package exports.
 
 ## Confirmed problems
 
@@ -36,13 +38,14 @@ three contracts that the docs currently misstate:
 
 1. `@pretable/react` has peer dependencies on both `react ^19.0.0` and
    `react-dom ^19.0.0`; the root README mentions only React and the website's
-   getting-started page mentions neither prerequisite.
+   getting-started page plus the README shipped inside `@pretable/react`
+   mention neither complete prerequisite set.
 2. The lower-level React hook is `usePretable`; `usePretableModel` is not a
    published export, despite the root README recommending it.
 3. `snapshot.visibleRows` is a discriminated union of data rows and group
    header rows. The headless starter destructures `row` without narrowing, and
-   the headless state model plus React API reference still describe a
-   data-only shape.
+   the headless API reference, headless state model, and React API reference
+   still describe a data-only shape.
 
 The third mismatch is not only imprecise prose: copying the documented
 headless example into a grouped grid fails TypeScript because group entries do
@@ -54,8 +57,8 @@ not have a `row` property.
 
 Add the conventional favicon, one direct browser regression, and the smallest
 coherent documentation corrections. This fixes every confirmed user-facing
-gap without publishing another package version or mixing in unrelated build
-cleanup.
+gap with one documentation-only patch release, without mixing in runtime or
+unrelated build cleanup.
 
 ### 2. Fix only the missing asset
 
@@ -82,14 +85,16 @@ work rather than release blockers.
 Add a square multi-size ICO file at `apps/website/app/favicon.ico`, using a
 simple mark that remains legible at 16px:
 
-- dark cool-slate background (`#0b1120`, the website page surface);
-- lowercase `p` in the primary text color (`#e2e8f0`); and
-- a small period in the live wordmark accent (`#0284c7`).
+- warm cream background (`#fefcf9`, the active website page surface);
+- lowercase `p` in the primary text color (`#0c0a09`); and
+- a small warm-orange dot (`#ea580c`, the active accent).
 
-The mark mirrors the existing `pretable.` wordmark rather than introducing a
-new logo. It has no transparency-dependent detail, fine linework, or text
-beyond the single glyph. The implementation plan will require rendering and
-visually inspecting the actual 16px and 32px outputs before accepting it.
+The compact monogram is derived from the current orange-bullet plus
+`pretable.ai` wordmark used by `NavBar` and `TopControlBar`; it is not based on
+the retired cool-slate palette or the unused `pretable.` navigation component.
+It has no transparency-dependent detail, fine linework, or text beyond the
+single glyph. The implementation plan will require rendering and visually
+inspecting the actual 16px and 32px outputs before accepting it.
 
 Do not add a web manifest, alternate icon formats, hand-authored `<link>` tags,
 or a custom route. The Next.js file convention is sufficient for the current
@@ -101,13 +106,17 @@ Add a focused Playwright assertion to the website smoke coverage:
 
 1. request `/favicon.ico` and assert status `200`;
 2. assert an icon/image content type and a non-empty response body; and
-3. cold-load a representative route with error listeners installed before
-   navigation and assert no failed favicon response or favicon console error.
+3. cold-load a representative route and positively assert that Next.js emitted
+   a `link[rel~="icon"]` whose URL resolves to `/favicon.ico` (allowing a cache
+   query suffix); and
+4. observe the linked request succeeding, with error listeners installed
+   before navigation so a favicon console or page error also fails the test.
 
 The request assertion must first be observed failing against the current
 branch with the existing `404`. The browser assertion protects the integration
-between the App Router convention and page metadata; it should not duplicate
-the broad visual-validation matrix.
+between the App Router convention and page metadata rather than merely relying
+on browsers' implicit `/favicon.ico` request. It should not duplicate the broad
+visual-validation matrix.
 
 Run the focused regression in both Chromium and WebKit. The asset itself is
 browser-neutral, but both engines are already part of the website smoke gate
@@ -125,6 +134,11 @@ names `react@^19` and `react-dom@^19` as peer prerequisites. Keep the primary
 package command focused on `@pretable/react` and `@pretable/ui`; do not imply
 that an existing React application must reinstall its framework packages.
 
+Update `packages/react/README.md`, which is included in the npm tarball, to
+state the same two peer requirements beside its install command. Do not add
+`react` or `react-dom` as production dependencies; they remain peers owned by
+the consuming application.
+
 ### Headless visible-row documentation
 
 Update the starter example to narrow on `visibleRow.kind` before reading
@@ -135,6 +149,7 @@ which render grouping must handle both union members.
 
 Update the corresponding type descriptions in:
 
+- `apps/website/content/docs/headless/api-reference.mdx`;
 - `apps/website/content/docs/headless/state-model.mdx`; and
 - `apps/website/content/docs/grid/api-reference.mdx`.
 
@@ -146,9 +161,12 @@ grouping tutorial.
 
 ### Release record
 
-Do not add a Changeset. The diff changes only the private website, repository
-README, tests, and a static asset; none of the four published packages changes.
-The pull request release-notes section will state that explicitly.
+Add a patch Changeset for `@pretable/react` describing the corrected React 19
+peer-install guidance. The package README is published in the npm tarball, so a
+release is required for npm users to receive the correction. The repository's
+fixed-package policy will schedule the other three public Pretable packages at
+the same patch version; `changeset status` must show only that expected fixed
+group plus any normal private workspace dependents.
 
 ## Verification
 
@@ -161,7 +179,8 @@ Implementation follows red-green verification:
 5. Run the website browser suite in Chromium and WebKit against the local
    production build.
 6. Run root formatting and diff checks, plus Changesets status against
-   `origin/main` to confirm no package bump is scheduled.
+   `origin/main` to confirm the intended public fixed-group patch and no
+   unrelated release.
 
 Documentation examples should use real exported names from the current package
 source. If the repository has no executable documentation-snippet checker, the
@@ -189,12 +208,16 @@ separately with a scope appropriate to its risk.
 
 - `/favicon.ico` returns `200` locally with an icon/image content type and no
   cold-load browser error.
+- A rendered page contains Next.js's favicon metadata link, and that linked
+  request succeeds.
 - The favicon is recognizable and visually clean at both 16px and 32px.
-- Root and website install guidance states both React 19 peer dependencies.
+- Root, website, and published React-package install guides state both React 19
+  peer dependencies.
 - The README names the real `usePretable` export.
 - Headless visible-row examples and type descriptions accurately represent the
   data/group discriminated union and never read `row` without narrowing.
 - Focused and full website checks pass in Chromium and WebKit.
 - The production website build and static checks pass with only the explicitly
   deferred pre-existing warnings.
-- Changesets reports no public package release for this maintenance diff.
+- Changesets reports the expected fixed-group patch release and no unintended
+  public package.
