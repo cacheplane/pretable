@@ -6,7 +6,7 @@
 
 **Architecture:** Add `@pretable-internal/row-model` as the single owner of rows, query state, grouping, aggregation, expansion, revisions, and indexed snapshots. Keep grid-core responsible for UI state, give layout-core a persistent row-height index, and let renderer-dom/React request only the viewport range. Retain the current pure derivation temporarily as a differential oracle, then delete every production `visibleRows` path after the 20,000- and 100,000-row gates pass.
 
-**Tech Stack:** TypeScript 6, pnpm workspaces, Vitest, fast-check, React 19, `useSyncExternalStore`, API Extractor, Playwright, persistent HAMT/treap structures implemented in-repo.
+**Tech Stack:** TypeScript 6, pnpm workspaces, Vitest, fast-check, React 19, `useSyncExternalStore`, API Extractor, Playwright, persistent HAMT/AVL structures implemented in-repo.
 
 ---
 
@@ -111,7 +111,7 @@ migration; no compatibility API or materializing adapter survives Task 23.
 - `packages/row-model/src/persistent/transient.ts` — edit-token draft lifecycle.
 - `packages/row-model/src/persistent/persistent-map.ts` — ID-keyed HAMT.
 - `packages/row-model/src/persistent/order-statistic-tree.ts` — persistent
-  deterministic treap with rank/range and cached measures.
+  deterministic AVL tree with rank/range and cached measures.
 - `packages/row-model/src/persistent/aggregate-tree.ts` — mergeable leaf rollups.
 - `packages/row-model/src/compiled-query.ts` — typed query dependency compiler.
 - `packages/row-model/src/row-store.ts` — canonical persistent row records.
@@ -311,20 +311,25 @@ migration; no compatibility API or materializing adapter survives Task 23.
 
 - [ ] **Step 1: Write failing tree tests.**
 
-  Cover deterministic priorities, comparator order, stable ID tie-breaks,
-  insert/replace/remove, `entryAt`, `rankOf`, bounded `range`, subtree counts,
-  cached generic measures, old-root immutability, and one transient batch.
-  Compare randomized operations with a sorted array oracle.
+  Cover comparator order, stable ID tie-breaks, deterministic AVL rotations and
+  balance, insert/replace/remove, `entryAt`, `rankOf`, bounded `range`, subtree
+  counts, cached generic measures, old-root immutability, one transient batch,
+  poisoned drafts after callback exceptions, and runtime-private diagnostics.
+  Compare randomized operations with a sorted array oracle and gate monotonic,
+  reverse, and comparator-correlated adversarial orders at 100,000 rows.
 
 - [ ] **Step 2: Run RED.**
 
   Run: `pnpm --filter @pretable-internal/row-model exec vitest run src/__tests__/order-statistic-tree.test.ts`
 
-- [ ] **Step 3: Implement a deterministic persistent treap.**
+- [ ] **Step 3: Implement a deterministic persistent AVL tree.**
 
-  Priority derives from the stable ID hash, never `Math.random`. Cache subtree
-  count and a caller-provided associative measure. Draft rotations may mutate
-  edit-token-owned nodes; frozen roots never do.
+  Cache height, subtree count, and a caller-provided associative measure. Use
+  deterministic single/double rotations so all valid comparator orders retain
+  worst-case logarithmic height. Draft rotations may mutate edit-token-owned
+  nodes; frozen roots never do. A comparator/measure exception poisons the draft
+  so partial state cannot be read or frozen. Entries and IDs are immutable;
+  comparators and measures are pure and stable.
 
 - [ ] **Step 4: Run GREEN.**
 
