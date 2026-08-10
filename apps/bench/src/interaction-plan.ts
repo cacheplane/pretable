@@ -168,15 +168,19 @@ export function createBenchInteractionPlan(
     // contains exactly one `grid.setGroupExpanded` — the same call the twisty
     // click makes — which collapses the FIRST group in sibling order.
     //
-    // The probe row is therefore taken from the LAST group, so it survives the
-    // collapse: `reconcileFocusAfterVisibleModelChange({ preferAncestor })`
-    // would otherwise move focus to the ancestor group row and the
-    // preservation metrics would report a collapse artifact rather than a
-    // regression.
+    // The probe row is therefore taken from the SECOND group. It has to be
+    // outside the collapsed one, or `reconcileFocusAfterVisibleModelChange({
+    // preferAncestor })` walks focus up to the ancestor group row and the
+    // preservation metrics report a collapse artifact rather than a
+    // regression. Second rather than last because controlled focus scrolls
+    // itself into view: a probe in the LAST group parks the viewport at the
+    // end of the content, where collapsing 25% of the rows clamps scrollTop
+    // and leaves two rendered rows to settle — a measurement of scroll
+    // clamping, not of the toggle.
     const rows = dataset.rows;
     const keys = sortedGroupKeys(rows, GROUP_COLUMN_ID);
     const collapsedKey = keys[0] ?? null;
-    const survivingKey = keys[keys.length - 1] ?? null;
+    const survivingKey = keys[1] ?? keys[0] ?? null;
     const probeRow =
       survivingKey === null
         ? rows[0]

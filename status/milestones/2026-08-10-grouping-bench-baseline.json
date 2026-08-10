@@ -1,0 +1,274 @@
+{
+  "generatedAt": "2026-08-10T18:40:00.000Z",
+  "title": "Row grouping — first committed benchmark baseline",
+  "discharges": "ROADMAP.md Now: \"Finish grouping adoption with committed benchmark evidence.\"",
+  "adapterId": "pretable",
+  "browserName": "chromium",
+  "profile": "default",
+  "scope": {
+    "comparative": false,
+    "note": "These are ABSOLUTE numbers and a regression tripwire, NOT a competitive claim. Row grouping is AG Grid Enterprise and MUI X Premium, and TanStack Table ships no row-grouping row model, so this repo (free tiers only) has nothing to compare against. validateSupportedP0aRequest rejects the three grouping scripts for every non-pretable adapter with that reason."
+  },
+  "environment": {
+    "machine": "10-core Apple Silicon laptop running several worktrees concurrently",
+    "loadAverage1mDuringRuns": "63 to 249",
+    "caveat": "Wall-clock settle durations are inflated relative to the May 2026 milestones by machine load, which is why every claim below rests on a same-session control (sort / updates measured in the same load window) rather than on a cross-date comparison.",
+    "measuredOn": "Branch tip before rebasing onto main at 71aedb6 (#284, which top-aligns wrapped rows in @pretable/ui/grid.css — CSS the bench imports).",
+    "postRebaseConfirmation": "Headline figures re-measured after the rebase at n=5: group-expand S2 target latency 200.0 ms (reported 208.4), group S2 target settle 383.3 ms (reported 401.4), group-updates S5 target p95 33.9 ms / 60 overruns (reported 34.7 / 59), updates S5 target p95 11.4 ms / 4 overruns (reported 13.2 / 11). Every conclusion holds; the tabled numbers are the pre-rebase n=7 set."
+  },
+  "scenarioAndColumn": {
+    "groupingColumnId": "col_5",
+    "rationale": "packages/scenario-data emits an owner value at every columnIndex % 4 === 1 from a pool of exactly four: owners[(seed + rowIndex + columnIndex) % 4]. col_5 satisfies 5 % 4 === 1 and clears the wrapped prefix in all three scenarios used here (S2/S7 wrap 3 columns, S5 wraps 1), so it is a real four-value key rather than wrapped prose. Deliberately not col_6, which is already the filter-metadata probe.",
+    "cardinalityVerified": "Exactly 4 groups at every scale run (750 / 3,000 / 20,000 / 50,000 rows), confirmed from the run notes (\"group rows before toggle: 4\"). Group count is pinned while rows scale, so these measurements isolate per-row cost from per-group cost.",
+    "aggregates": "Every numeric column carries aggregate: \"avg\" for the grouping scripts (~10 columns on S2, ~7 on S5). Without at least one aggregated column buildGroupedRows skips accumulate entirely and the pipeline under test would be missing a stage."
+  },
+  "interaction": {
+    "scenarioId": "S2",
+    "metricUnits": "ms",
+    "note": "interaction_latency_ms is time-to-first-changed-frame; settle_duration_ms runs from there to a stable model. The two scripts split the same total differently — see redundancyFinding.metricSplit — so `total` is the like-for-like column.",
+    "rows": [
+      {
+        "scale": "dev",
+        "rowCount": 750,
+        "samples": [
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 16.6,
+            "interactionLatencyMsSd": 7.2,
+            "settleDurationMsMedian": 41.6,
+            "settleDurationMsSd": 4.6,
+            "totalMsMedian": 58.2,
+            "resultRowCount": 754
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 8.4,
+            "interactionLatencyMsSd": 3.1,
+            "settleDurationMsMedian": 17.3,
+            "settleDurationMsSd": 4.4,
+            "totalMsMedian": 25.7,
+            "resultRowCount": 567
+          },
+          {
+            "scriptName": "sort",
+            "n": 7,
+            "interactionLatencyMsMedian": 25.0,
+            "interactionLatencyMsSd": 6.2,
+            "settleDurationMsMedian": 33.4,
+            "settleDurationMsSd": 3.2,
+            "totalMsMedian": 58.4,
+            "resultRowCount": 750
+          }
+        ]
+      },
+      {
+        "scale": "hypothesis",
+        "rowCount": 3000,
+        "samples": [
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 16.7,
+            "interactionLatencyMsSd": 9.5,
+            "settleDurationMsMedian": 59.1,
+            "settleDurationMsSd": 8.0,
+            "totalMsMedian": 75.8,
+            "resultRowCount": 3004
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 25.4,
+            "interactionLatencyMsSd": 11.6,
+            "settleDurationMsMedian": 16.8,
+            "settleDurationMsSd": 3.2,
+            "totalMsMedian": 42.2,
+            "resultRowCount": 2254
+          },
+          {
+            "scriptName": "sort",
+            "n": 7,
+            "interactionLatencyMsMedian": 13.6,
+            "interactionLatencyMsSd": 17.3,
+            "settleDurationMsMedian": 58.4,
+            "settleDurationMsSd": 3.8,
+            "totalMsMedian": 72.0,
+            "resultRowCount": 3000
+          }
+        ]
+      },
+      {
+        "scale": "target",
+        "rowCount": 50000,
+        "samples": [
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 23.5,
+            "interactionLatencyMsSd": 8.3,
+            "settleDurationMsMedian": 401.4,
+            "settleDurationMsSd": 12.4,
+            "totalMsMedian": 424.9,
+            "resultRowCount": 50004
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 208.4,
+            "interactionLatencyMsSd": 7.8,
+            "settleDurationMsMedian": 16.8,
+            "settleDurationMsSd": 4.0,
+            "totalMsMedian": 225.2,
+            "resultRowCount": 37504
+          },
+          {
+            "scriptName": "sort",
+            "n": 7,
+            "interactionLatencyMsMedian": 16.3,
+            "interactionLatencyMsSd": 3.7,
+            "settleDurationMsMedian": 533.4,
+            "settleDurationMsSd": 16.7,
+            "totalMsMedian": 549.7,
+            "resultRowCount": 50000
+          }
+        ]
+      }
+    ]
+  },
+  "streaming": {
+    "scenarioId": "S5",
+    "updateRatePerSec": 1000,
+    "durationMs": 3000,
+    "note": "The patch generator is byte-identical to the one `updates` uses, including its random column pick — so streamed values can land on the grouping level and mint new group keys. That churn is left in deliberately (changing the generator would break comparability with `updates`) and is reported as groupRowsAfterStreaming.",
+    "rows": [
+      {
+        "scale": "hypothesis",
+        "rowCount": 3000,
+        "samples": [
+          {
+            "scriptName": "group-updates",
+            "n": 7,
+            "scrollFrameP95MsMedian": 10.1,
+            "scrollFrameP95MsSd": 1.3,
+            "frameMaxMsMedian": 16.6,
+            "frameBudgetOverrunsMedian": 2,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0,
+            "groupRowsBeforeStreaming": 4
+          },
+          {
+            "scriptName": "updates",
+            "n": 7,
+            "scrollFrameP95MsMedian": 10.0,
+            "scrollFrameP95MsSd": 1.5,
+            "frameMaxMsMedian": 16.7,
+            "frameBudgetOverrunsMedian": 2,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0
+          }
+        ],
+        "verdict": "At 3,000 rows grouping is free: every streaming metric is within noise of ungrouped `updates`."
+      },
+      {
+        "scale": "target",
+        "rowCount": 20000,
+        "samples": [
+          {
+            "scriptName": "group-updates",
+            "n": 7,
+            "scrollFrameP95MsMedian": 34.7,
+            "scrollFrameP95MsSd": 0.8,
+            "frameMaxMsMedian": 50.0,
+            "frameBudgetOverrunsMedian": 59,
+            "frameBudgetOverrunsSd": 1.1,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0,
+            "groupRowsBeforeStreaming": 4,
+            "groupRowsAfterStreaming": "98 to 109 (churn from patches landing on the grouping column)"
+          },
+          {
+            "scriptName": "updates",
+            "n": 7,
+            "scrollFrameP95MsMedian": 13.2,
+            "scrollFrameP95MsSd": 2.2,
+            "frameMaxMsMedian": 18.1,
+            "frameBudgetOverrunsMedian": 11,
+            "frameBudgetOverrunsSd": 2.8,
+            "longTasksCountMedian": 0,
+            "streamingClsMedian": 0
+          }
+        ],
+        "verdict": "At 20,000 rows grouping is NOT free: frame p95 goes 13.2 -> 34.7 ms (2.6x) and budget overruns 11 -> 59 (5.4x). 34.7 ms p95 is ~29 fps — the 60 Hz budget is missed for the whole run. sd is 0.8 and 1.1, so this is a signal, not noise. Reported, not acted on: any fix belongs on its own branch with its own spec."
+      }
+    ]
+  },
+  "redundancyFinding": {
+    "claimUnderTest": "setGroupExpanded replaces groupExpansionOverrides, which is a derived-cache key, so the engine re-runs sortRows -> buildTree -> accumulate -> flatten. But the overrides are consumed only by flatten, so the tree and the aggregates are provably invariant under expansion. Expect group-expand to cost roughly what group costs.",
+    "verdict": "CONFIRMED",
+    "evidence": {
+      "totalCostComparison": "group-expand totals 44% (dev), 56% (hypothesis) and 53% (target) of `group`. Same order of magnitude, not \"much cheaper\". The residual is fully accounted for: `group` additionally changes the COLUMN model (hideGroupedColumns drops col_5 and adds the derived tree column) and must therefore re-measure every wrapped row against a changed column set — which is exactly where its 401 ms target settle sits. group-expand changes no columns and pays none of that.",
+      "scaling": "group-expand's time-to-first-frame is 8.4 / 25.4 / 208.4 ms at 750 / 3,000 / 50,000 rows — a ~25x rise for a 67x row rise, i.e. a per-row price of roughly 4 microseconds. Collapsing ONE group of a fixed four is therefore O(total rows), not O(visible rows).",
+      "scalingCaveat": "Scaling alone does not isolate the redundancy: flatten emits one entry per visible row and is itself O(n). The stage breakdown below is what separates them."
+    },
+    "stageBreakdown": {
+      "method": "PLAYWRIGHT_PERF_TRACE=1 CDP trace, sliced with scripts/analyze-cdp.mjs --window=interaction (the trigger-to-first-frame window), resolved through the bench bundle sourcemap. n=3 traced runs, S2 target (50,000 rows).",
+      "windowMsMedian": 222.4,
+      "selfTimeMsMedian": {
+        "react_createDomRenderSnapshot": 60.7,
+        "react_getEstimatedRowHeightSignature": 35.5,
+        "react_rowHeightCallbacks": 33.3,
+        "core_accumulate": 15.3,
+        "core_buildTree": 14.6,
+        "core_flatten": 1.0
+      },
+      "readings": [
+        "buildTree + accumulate cost ~30 ms of self time per toggle; flatten — the ONLY stage that reads groupExpansionOverrides — costs ~1 ms. The toggle spends ~30x longer rebuilding state that cannot have changed than on the one stage whose input did change. Including their helpers (stringifyGroupValue, readCellValue, isAggregatableNumber, the aggregator fold) the redundant work is ~40 ms, or ~40x flatten. The spec's analysis is correct.",
+        "But the engine redundancy is NOT the largest cost. ~133 ms of the 222 ms window (60%) is the React layer re-estimating row heights for all 37,504 visible rows (createDomRenderSnapshot -> getEstimatedRowHeightSignature). Removing the engine redundancy entirely would take a 222 ms toggle to roughly 185 ms, not to 1 ms. Anyone costing a fix should size both.",
+        "Ratios held across all three traced runs (buildTree+accumulate self time 23.7 / 30.6 / 29.9 ms; flatten 1.0 / 1.0 / 1.6 ms)."
+      ]
+    },
+    "metricSplit": "group's interaction_latency_ms is flat across scales (16.6 / 16.7 / 23.5 ms) while group-expand's is not (8.4 / 25.4 / 208.4). That is a harness attribution difference, not a speed difference: `group` is triggered by a React state flip, so the first changed frame can paint before the grouped model commits and the derive lands in settle_duration_ms; `group-expand` calls grid.setGroupExpanded synchronously inside the RAF callback, so the derive blocks that task and lands in the latency. Proof it is attribution: group-expand measures the grouping derive at ~208 ms on 50,000 rows, and `group` runs that same derive plus a column-model change, yet reports 23.5 ms of latency. Compare totals, not latencies. Pre-existing behaviour; not introduced here."
+  },
+  "controls": {
+    "note": "\"Existing scripts must produce unchanged results\" was verified by A/B, not assumed — the same scripts were re-run in the same load window against the pre-change commit a16e951 with apps/bench and packages/bench-runner reverted.",
+    "sort_S2_hypothesis": {
+      "withChange": { "n": 7, "latencyMedian": 13.6, "settleMedian": 58.4 },
+      "baseCommitA16e951": {
+        "n": 7,
+        "latencyMedian": 16.6,
+        "settleMedian": 57.9
+      },
+      "verdict": "unchanged (settle 58.4 vs 57.9; latency medians differ by 3 ms against sd 4-17)"
+    },
+    "updates_S5_target": {
+      "withChange": {
+        "n": 7,
+        "frameP95Median": 13.2,
+        "frameMaxMedian": 18.1,
+        "overrunsMedian": 11
+      },
+      "baseCommitA16e951": {
+        "n": 7,
+        "frameP95Median": 13.3,
+        "frameMaxMedian": 18.1,
+        "overrunsMedian": 9
+      },
+      "verdict": "unchanged (p95 13.2 vs 13.3; overruns 11 vs 9 against sd 2.8-3.8)"
+    }
+  },
+  "harnessCorrections": [
+    "The pretable scroll profile's rowSelector was [data-pretable-row], which group rows do not carry — they are marked data-pretable-group-row (packages/react/src/group-row.tsx). Every group header therefore read as a blank gap in detectBlankGapFrame, dropped out of the settle signature, and was missing from rendered_rows_peak. The selector is now a union of the two. Provably a no-op for ungrouped runs, and the A/B above confirms it.",
+    "The pretable adapter's controlled-state object was rebuilt on every render, and usePretable's controlled-state layout effect lists `state` in its deps, so it re-ran the whole reassert pass per commit. Harmless for a one-shot interaction script, but under group-updates that is one no-op pass per streamed commit and would have been misread as the cost of grouping. It is memoized now."
+  ],
+  "reruns": [
+    "group-expand at S2 dev was re-run after the plan's probe row moved from the last group to the second: a probe in the last group parks the viewport at the end of the content, where collapsing 25% of the rows clamps scrollTop and leaves two rendered rows to settle. Only the post-change runs are reported.",
+    "sort at S2 hypothesis and updates at S5 target were each run twice — once on this branch and once on base commit a16e951 — for the controls above.",
+    "Every reported figure is n=7 medians from a single matrix invocation per (script, scale)."
+  ],
+  "followUps": [
+    "group-updates at S5 target misses the 60 Hz budget (p95 34.7 ms, 59 overruns). Not fixed here by design.",
+    "group-updates streams patches into the grouping column, so group count churns from 4 to ~100 during the run. A churn-free variant would separate \"grouping under streaming\" from \"grouping-key churn under streaming\"; it was not added here because changing the generator would break comparability with `updates`."
+  ]
+}
