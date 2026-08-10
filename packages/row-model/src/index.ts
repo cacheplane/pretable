@@ -1,4 +1,5 @@
 export * from "./column-types";
+export * from "./compiled-query";
 export * from "./aggregator-law";
 export * from "./errors";
 export {
