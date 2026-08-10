@@ -44,6 +44,172 @@ function tickingClock() {
 }
 
 describe("instrumented local row-model retention", () => {
+  test("releases scheduler ownership when schedule delegation throws", async () => {
+    const schedulingFailure = new Error("scheduler delegation exploded");
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: Array.from({ length: 20 }, (_, id) => ({
+        id,
+        team: `team-${id % 2}`,
+        score: id,
+        label: `row-${id}`,
+      })),
+      columns,
+      transitionScheduler: {
+        schedule(): () => void {
+          throw schedulingFailure;
+        },
+      },
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+    });
+
+    const transition = instrumented.model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    await expect(transition.finished).rejects.toMatchObject({
+      code: "derivation-failed",
+      operation: "set-query",
+      cause: schedulingFailure,
+    });
+    expect(instrumented.model.getState()).toMatchObject({
+      snapshot: { revision: 0 },
+      status: { kind: "error" },
+    });
+    expect(instrumented.diagnostics.read().retention).toMatchObject({
+      transitionCandidateRootCount: 0,
+      transitionDeltaRootCount: 0,
+      scheduledCallbackCount: 0,
+    });
+    instrumented.model.dispose();
+  });
+
+  test("releases the token before a delegated cancellation hook throws", () => {
+    const cancellationFailure = new Error("scheduler cancellation exploded");
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: Array.from({ length: 20 }, (_, id) => ({
+        id,
+        team: `team-${id % 2}`,
+        score: id,
+        label: `row-${id}`,
+      })),
+      columns,
+      transitionScheduler: {
+        schedule(): () => void {
+          return () => {
+            throw cancellationFailure;
+          };
+        },
+      },
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+    });
+    const transition = instrumented.model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    expect(
+      instrumented.diagnostics.read().retention.scheduledCallbackCount,
+    ).toBe(1);
+    expect(() => transition.cancel()).toThrow(cancellationFailure);
+    expect(
+      instrumented.diagnostics.read().retention.scheduledCallbackCount,
+    ).toBe(0);
+    instrumented.model.dispose();
+  });
+
+  test("handles synchronous scheduling without crossing model ownership", async () => {
+    const synchronous = createInstrumentedLocalRowModel({
+      rows: Array.from({ length: 20 }, (_, id) => ({
+        id,
+        team: `team-${id % 2}`,
+        score: id,
+        label: `row-${id}`,
+      })),
+      columns,
+      transitionScheduler: {
+        schedule(task): () => void {
+          task();
+          return () => undefined;
+        },
+      },
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+    });
+    const synchronousTransition = synchronous.model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    await expect(synchronousTransition.finished).rejects.toMatchObject({
+      code: "reentrant-mutation",
+      operation: "set-query",
+    });
+    expect(synchronous.diagnostics.read().retention).toMatchObject({
+      transitionCandidateRootCount: 0,
+      scheduledCallbackCount: 0,
+    });
+    expect(synchronous.model.getState()).toMatchObject({
+      snapshot: { revision: 0 },
+      status: { kind: "error" },
+    });
+
+    const firstScheduler = new ManualScheduler();
+    const secondScheduler = new ManualScheduler();
+    const first = createInstrumentedLocalRowModel({
+      rows: Array.from({ length: 20 }, (_, id) => ({
+        id,
+        team: "first",
+        score: id,
+        label: `row-${id}`,
+      })),
+      columns,
+      transitionScheduler: firstScheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+    });
+    const second = createInstrumentedLocalRowModel({
+      rows: Array.from({ length: 20 }, (_, id) => ({
+        id,
+        team: "second",
+        score: id,
+        label: `row-${id}`,
+      })),
+      columns,
+      transitionScheduler: secondScheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+    });
+    const firstTransition = first.model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    const secondTransition = second.model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    expect(first.diagnostics.read().retention.scheduledCallbackCount).toBe(1);
+    expect(second.diagnostics.read().retention.scheduledCallbackCount).toBe(1);
+    firstTransition.cancel();
+    await expect(firstTransition.finished).rejects.toMatchObject({
+      reason: "cancelled",
+    });
+    expect(first.diagnostics.read().retention.scheduledCallbackCount).toBe(0);
+    expect(second.diagnostics.read().retention.scheduledCallbackCount).toBe(1);
+    secondTransition.cancel();
+    await expect(secondTransition.finished).rejects.toMatchObject({
+      reason: "cancelled",
+    });
+    expect(second.diagnostics.read().retention.scheduledCallbackCount).toBe(0);
+    synchronous.model.dispose();
+    first.model.dispose();
+    second.model.dispose();
+  });
+
   test("tracks only validated model snapshots and their exact revision roots", () => {
     const first = createInstrumentedLocalRowModel({
       rows: [{ id: 0, team: "red", score: 0, label: "initial" }],

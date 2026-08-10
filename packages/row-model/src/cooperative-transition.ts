@@ -215,10 +215,16 @@ export function createCooperativeTransitionRuntime(options: {
           schedule(task) {
             const token = {};
             options.instrumentation!.scheduledCallbacks.add(token);
-            const cancel = scheduler.schedule(() => {
+            let cancel: () => void;
+            try {
+              cancel = scheduler.schedule(() => {
+                options.instrumentation!.scheduledCallbacks.delete(token);
+                task();
+              });
+            } catch (error) {
               options.instrumentation!.scheduledCallbacks.delete(token);
-              task();
-            });
+              throw error;
+            }
             return () => {
               options.instrumentation!.scheduledCallbacks.delete(token);
               cancel();
