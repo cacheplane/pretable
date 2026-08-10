@@ -7,6 +7,8 @@ order: 4
 
 Pretable's selection model is **cell-range first** — Excel/Sheets semantics. Row selection is derived from the cell-range state, exposed via a built-in three-state checkbox column. The same engine state powers `<Pretable>`, `<PretableSurface>`, and the `usePretable` hook.
 
+Under [row grouping](/docs/grid/grouping), group header rows are focus targets but are never selectable or editable — `Enter` / `Space` toggles the group instead of selecting it, and arrowing onto one leaves the previously selected row selected.
+
 ## Selection model
 
 Engine selection state is two slices:
@@ -163,4 +165,5 @@ export function SelectionDemo({ rows }: { rows: Row[] }) {
 
 - [Keyboard](/docs/grid/keyboard) — full keyboard contract for navigating and extending the selection.
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
+- [Row grouping](/docs/grid/grouping) — why group rows are focusable but never selectable.
 - [API reference](/docs/grid/api-reference) — complete type signatures.

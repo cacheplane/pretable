@@ -45,7 +45,7 @@ edit.
 Sections, in order:
 
 1. **What grouping does** — the flat `visibleRows` list interleaves group rows
-   with data rows; a synthetic group column is *derived*, carrying the label and
+   with data rows; a synthetic group column is _derived_, carrying the label and
    twisty for every level; grouped columns are hidden from the data area.
 2. **Turning it on** — three ways, and they compose: `rowGroup: true` on a
    column, controlled `state.rowGroups`, or the drag-to-group panel.
@@ -128,7 +128,7 @@ The page must state these; each is real, each was discovered the hard way:
 - **`formatAggregate`, not `format`** — repeated from §4 because it is the one
   that will actually bite someone.
 - **With a left-pinned column, the group column is not the row's first column.**
-  It heads the *unpinned* run, so it scrolls out from under the pinned region.
+  It heads the _unpinned_ run, so it scrolls out from under the pinned region.
   `groupColumn: { pinned: "left" }` is the fix. Document the workaround; the
   underlying seating rule is arguably wrong and is tracked separately.
 

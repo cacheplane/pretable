@@ -27,6 +27,8 @@ type Sort = PretableSortEntry[];
 - **Comparison keys on the values.** When every cell value in a column is a number, the column compares numerically; otherwise values are stringified and compared locale-aware (numeric-aware, case-insensitive).
 - Entries for unknown column ids or `sortable: false` columns are dropped by the engine.
 
+Under [row grouping](/docs/grid/grouping#sorting-under-grouping) the sort is applied to the whole row set first and then bucketed, so rows sort **within** their group; sibling groups order by their key value, ascending unless a sort entry on that level's column says otherwise.
+
 ## Header interactions
 
 **Plain click** cycles a single-column sort: unsorted → `desc` → `asc` → unsorted. It always **replaces** the whole list — clicking a header while a multi-column cascade is active collapses the sort to just that column's next cycle step. (Edge case: if that column was already `asc`, the next step is unsorted, so the whole sort clears.)
@@ -112,4 +114,5 @@ grid.replaceSort([
 
 - [Filtering](/docs/grid/filtering) — the neighboring header interaction; sort applies after filters.
 - [`<PretableSurface>`](/docs/grid/pretable-surface) — the `state` prop and the controlled/uncontrolled pattern.
+- [Row grouping](/docs/grid/grouping#sorting-under-grouping) — how sort and group order interact.
 - [API reference](/docs/grid/api-reference) — `PretableSortEntry`, `setSort`, `replaceSort` signatures.
