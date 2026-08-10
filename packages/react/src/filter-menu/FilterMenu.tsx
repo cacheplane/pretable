@@ -26,6 +26,7 @@ export function FilterMenu({
   label,
   type,
   options,
+  filterOperators,
   initialFilter,
   style,
   onChange,
@@ -35,13 +36,14 @@ export function FilterMenu({
   label: string;
   type: ColumnType;
   options: { value: string; label?: string }[];
+  filterOperators?: FilterOperator[];
   initialFilter: ColumnFilter | null;
   style?: CSSProperties;
   onChange: (columnId: string, filter: ColumnFilter | null) => void;
   onClose: () => void;
 }): JSX.Element {
   const [draft, setDraft] = useState<FilterDraft>(() =>
-    fromColumnFilter(type, initialFilter),
+    fromColumnFilter(type, initialFilter, filterOperators),
   );
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -144,16 +146,16 @@ export function FilterMenu({
   );
 
   const shape = operatorValueShape(draft.operator);
-  const operators = operatorsForType(type);
+  const operators = operatorsForType(type, filterOperators);
   const inputType = type === "date" ? "date" : "text";
   const numericProps =
     type === "number" ? { inputMode: "numeric" as const } : {};
 
   const onClear = useCallback(() => {
     clearTimer();
-    setDraft(defaultDraft(type));
+    setDraft(defaultDraft(type, filterOperators));
     onChange(columnId, null);
-  }, [clearTimer, columnId, type, onChange]);
+  }, [clearTimer, columnId, type, filterOperators, onChange]);
 
   const toggleSelected = useCallback(
     (value: string, checked: boolean) => {

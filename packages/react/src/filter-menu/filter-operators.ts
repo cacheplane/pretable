@@ -5,6 +5,7 @@ import type {
   ColumnType,
   FilterOperator,
 } from "@pretable/core";
+import { warnOnce } from "../dev-warn";
 
 /** Local editing shape for the popover. One field set per value-shape. */
 export interface FilterDraft {
@@ -38,7 +39,10 @@ const DATE_OPS: FilterOperator[] = ["on", "before", "after", "dateBetween"];
 const ENUM_OPS: FilterOperator[] = ["isAnyOf", "isNoneOf"];
 const SHARED_OPS: FilterOperator[] = ["isEmpty", "isNotEmpty"];
 
-export function operatorsForType(type: ColumnType): FilterOperator[] {
+export function operatorsForType(
+  type: ColumnType,
+  allowed?: readonly FilterOperator[],
+): FilterOperator[] {
   const base =
     type === "number"
       ? NUMBER_OPS
@@ -47,7 +51,28 @@ export function operatorsForType(type: ColumnType): FilterOperator[] {
         : type === "enum" || type === "boolean"
           ? ENUM_OPS
           : TEXT_OPS;
-  return [...base, ...SHARED_OPS];
+  const full = [...base, ...SHARED_OPS];
+
+  if (!allowed) {
+    return full;
+  }
+
+  // Intersect rather than take `allowed` verbatim: the menu's order is the
+  // per-type order, and an operator outside the type's set has no value editor.
+  const permitted = new Set(allowed);
+  const pruned = full.filter((op) => permitted.has(op));
+
+  if (pruned.length === 0) {
+    warnOnce(
+      `filter-operators-empty:${type}`,
+      `[pretable] column.filterOperators removed every operator a "${type}" ` +
+        "column can offer. Falling back to the full set — an empty filter menu " +
+        "is not a usable control. Check the operator names against the column type.",
+    );
+    return full;
+  }
+
+  return pruned;
 }
 
 export const OPERATOR_LABELS: Record<FilterOperator, string> = {
@@ -83,8 +108,11 @@ export function operatorValueShape(op: FilterOperator): ValueShape {
   return "single";
 }
 
-export function defaultDraft(type: ColumnType): FilterDraft {
-  const operator = operatorsForType(type)[0]!;
+export function defaultDraft(
+  type: ColumnType,
+  allowed?: readonly FilterOperator[],
+): FilterDraft {
+  const operator = operatorsForType(type, allowed)[0]!;
   if (operatorValueShape(operator) === "set") return { operator, selected: [] };
   if (operatorValueShape(operator) === "range")
     return { operator, min: "", max: "" };
@@ -128,8 +156,9 @@ export function toColumnFilter(
 export function fromColumnFilter(
   type: ColumnType,
   filter: ColumnFilter | null,
+  allowed?: readonly FilterOperator[],
 ): FilterDraft {
-  if (!filter) return defaultDraft(type);
+  if (!filter) return defaultDraft(type, allowed);
   const { operator, value } = filter;
   const shape = operatorValueShape(operator);
   if (shape === "none") return { operator };

@@ -421,4 +421,64 @@ describe("PretableSurface — built-in filter funnel", () => {
     ).toHaveLength(1);
     expect(cell).toHaveAttribute("data-pretable-selected", "true");
   });
+
+  it("column.filterOperators prunes the funnel's operator select", () => {
+    const view = renderSurface({
+      columns: [
+        {
+          id: "title",
+          header: "Title",
+          widthPx: 200,
+          type: "text",
+          filterOperators: ["contains", "startsWith"],
+        },
+      ],
+    });
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+
+    const select = view.getByLabelText("Filter operator");
+    expect(
+      [...select.querySelectorAll("option")].map((o) =>
+        o.getAttribute("value"),
+      ),
+    ).toEqual(["contains", "startsWith"]);
+  });
+
+  it("seeds the unfiltered draft with a permitted operator", async () => {
+    // A draft seeded from the unpruned set names an operator the menu never
+    // offered. The <select> hides that — with no matching <option> it falls
+    // back to displaying the first one — so the committed filter is the only
+    // honest witness: the menu would show "equals" and apply "contains".
+    vi.useFakeTimers();
+    const onFiltersChange = vi.fn();
+    const view = renderSurface({
+      columns: [
+        {
+          id: "title",
+          header: "Title",
+          widthPx: 200,
+          type: "text",
+          filterOperators: ["equals"],
+        },
+      ],
+      onFiltersChange,
+    });
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+
+    const dialog = view.getByRole("dialog", { name: "Filter Title" });
+    act(() => {
+      fireEvent.change(within(dialog).getByLabelText("Filter value"), {
+        target: { value: "alpha crash" },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    const lastFilters = onFiltersChange.mock.lastCall?.[0] as Record<
+      string,
+      ColumnFilter
+    >;
+    expect(lastFilters.title?.operator).toBe("equals");
+  });
 });

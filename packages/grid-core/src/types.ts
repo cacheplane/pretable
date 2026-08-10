@@ -119,6 +119,14 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   /** Number-editor increment for ArrowUp/Down and steppers. Default 1. */
   step?: number;
   filterable?: boolean;
+  /**
+   * Restrict the filter menu to the operators the processor can honor. Omitted
+   * = the full per-type set (today's behavior). Load-bearing under external
+   * filter authority: an unpruned menu offers operators the server will ignore.
+   *
+   * @experimental
+   */
+  filterOperators?: FilterOperator[];
   type?: ColumnType;
   /**
    * Horizontal alignment of this column's cells and header label. Defaults to

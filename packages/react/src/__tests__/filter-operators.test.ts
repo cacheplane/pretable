@@ -10,6 +10,7 @@ import {
   resolveColumnOptions,
   type FilterDraft,
 } from "../filter-menu/filter-operators";
+import { resetDevWarnings } from "../dev-warn";
 
 describe("operatorsForType", () => {
   it("lists the operators for each type incl. shared empties", () => {
@@ -53,6 +54,38 @@ describe("operatorsForType", () => {
     for (const t of ["text", "number", "date", "enum"] as const)
       for (const op of operatorsForType(t))
         expect(OPERATOR_LABELS[op]).toBeTruthy();
+  });
+
+  it("prunes to the declared allow-list, in the per-type order", () => {
+    expect(operatorsForType("text", ["equals", "contains"])).toEqual([
+      "contains",
+      "equals",
+    ]);
+  });
+
+  it("drops isEmpty/isNotEmpty when they are not allowed", () => {
+    expect(operatorsForType("enum", ["isAnyOf", "isNoneOf"])).toEqual([
+      "isAnyOf",
+      "isNoneOf",
+    ]);
+  });
+
+  it("falls back to the full set and warns when the allow-list matches nothing", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    resetDevWarnings();
+    expect(operatorsForType("number", ["isAnyOf"])).toEqual([
+      "equals",
+      "notEquals",
+      "gt",
+      "gte",
+      "lt",
+      "lte",
+      "between",
+      "isEmpty",
+      "isNotEmpty",
+    ]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
 

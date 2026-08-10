@@ -3796,6 +3796,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 columnId={filterOpenState.columnId}
                 label={col.header ?? filterOpenState.columnId}
                 type={col.type ?? "text"}
+                filterOperators={col.filterOperators}
                 options={options}
                 initialFilter={
                   snapshot.filters[filterOpenState.columnId] ?? null
