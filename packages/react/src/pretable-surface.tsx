@@ -517,7 +517,14 @@ const REORDER_THRESHOLD_PX = 5;
  */
 const PASTE_GATE_BATCH_SIZE = 256;
 
-interface PretableSurfaceHeaderCellRenderInput<
+/**
+ * Input passed to {@link PretableSurfaceProps.renderHeaderCell}. Adds the
+ * resolved `label` on top of {@link PretableSurfaceHeaderCellInput}, which a
+ * renderer needs and a class/prop hook does not.
+ *
+ * @public
+ */
+export interface PretableSurfaceHeaderCellRenderInput<
   TRow extends PretableRow = PretableRow,
 > {
   column: PretableColumn<TRow>;
@@ -529,10 +536,6 @@ interface PretableSurfaceHeaderCellRenderInput<
    */
   pinned: "left" | "right" | null;
 }
-
-type PretableSurfaceBodyCellRenderInput<
-  TRow extends PretableRow = PretableRow,
-> = PretableCellRenderInput<TRow>;
 
 /**
  * Input passed to {@link PretableSurfaceProps.onRowActivate}.
@@ -548,7 +551,13 @@ export interface PretableRowActivateInput<
   rowIndex: number;
 }
 
-interface PretableSurfaceRowClassNameInput<
+/**
+ * Input passed to {@link PretableSurfaceProps.getRowClassName} and
+ * {@link PretableSurfaceProps.getRowProps}.
+ *
+ * @public
+ */
+export interface PretableSurfaceRowInput<
   TRow extends PretableRow = PretableRow,
 > {
   isFocused: boolean;
@@ -558,7 +567,13 @@ interface PretableSurfaceRowClassNameInput<
   rowIndex: number;
 }
 
-interface PretableSurfaceHeaderClassNameInput<
+/**
+ * Input passed to {@link PretableSurfaceProps.getHeaderCellClassName} and
+ * {@link PretableSurfaceProps.getHeaderCellProps}.
+ *
+ * @public
+ */
+export interface PretableSurfaceHeaderCellInput<
   TRow extends PretableRow = PretableRow,
 > {
   column: PretableColumn<TRow>;
@@ -568,28 +583,6 @@ interface PretableSurfaceHeaderClassNameInput<
    * `columns` prop. Normalized to `null` when unpinned.
    */
   pinned: "left" | "right" | null;
-}
-
-type PretableSurfaceBodyCellClassNameInput<
-  TRow extends PretableRow = PretableRow,
-> = PretableSurfaceBodyCellRenderInput<TRow>;
-
-type PretableSurfaceHeaderAttributesInput<
-  TRow extends PretableRow = PretableRow,
-> = PretableSurfaceHeaderClassNameInput<TRow>;
-
-type PretableSurfaceBodyAttributesInput<
-  TRow extends PretableRow = PretableRow,
-> = PretableSurfaceBodyCellRenderInput<TRow>;
-
-interface PretableSurfaceRowAttributesInput<
-  TRow extends PretableRow = PretableRow,
-> {
-  isFocused: boolean;
-  isSelected: boolean;
-  row: TRow;
-  rowId: string;
-  rowIndex: number;
 }
 
 /**
@@ -602,23 +595,23 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   autosize?: boolean | AutosizeOptions;
   columns: PretableColumn<TRow>[];
   getBodyCellClassName?: (
-    input: PretableSurfaceBodyCellClassNameInput<TRow>,
+    input: PretableCellRenderInput<TRow>,
   ) => string | undefined;
   getBodyCellProps?: (
-    input: PretableSurfaceBodyAttributesInput<TRow>,
+    input: PretableCellRenderInput<TRow>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   getHeaderCellClassName?: (
-    input: PretableSurfaceHeaderClassNameInput<TRow>,
+    input: PretableSurfaceHeaderCellInput<TRow>,
   ) => string | undefined;
   getHeaderCellProps?: (
-    input: PretableSurfaceHeaderAttributesInput<TRow>,
+    input: PretableSurfaceHeaderCellInput<TRow>,
   ) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowClassName?: (
-    input: PretableSurfaceRowClassNameInput<TRow>,
+    input: PretableSurfaceRowInput<TRow>,
   ) => string | undefined;
   getRowId?: PretableGridOptions<TRow>["getRowId"];
   getRowProps?: (
-    input: PretableSurfaceRowAttributesInput<TRow>,
+    input: PretableSurfaceRowInput<TRow>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   /**
    * @experimental
@@ -769,9 +762,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    */
   onFiltersChange?: (filters: Record<string, ColumnFilter>) => void;
   onGridReady?: (grid: PretableGrid<TRow>) => void;
-  renderBodyCell?: (
-    input: PretableSurfaceBodyCellRenderInput<TRow>,
-  ) => ReactNode;
+  renderBodyCell?: (input: PretableCellRenderInput<TRow>) => ReactNode;
   renderHeaderCell?: (
     input: PretableSurfaceHeaderCellRenderInput<TRow>,
   ) => ReactNode;
@@ -4105,7 +4096,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   rowId: id,
                   rowIndex,
                   value,
-                } satisfies PretableSurfaceBodyCellRenderInput<TRow>;
+                } satisfies PretableCellRenderInput<TRow>;
                 const bodyProps = getBodyCellProps?.(bodyInput) ?? {};
                 const cellEffWidth =
                   dragLiveWidth?.columnId === column.id

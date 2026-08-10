@@ -9,6 +9,18 @@ import { HTMLAttributes } from 'react';
 import * as react from 'react';
 import { ReactNode } from 'react';
 
+// @public
+export interface AutosizeOptions {
+    // (undocumented)
+    averageCharWidth?: number;
+    // (undocumented)
+    cellPaddingPx?: number;
+    // (undocumented)
+    maxWidthPx?: number;
+    // (undocumented)
+    minWidthPx?: number;
+}
+
 // @public (undocumented)
 export type ColumnAlign = "start" | "center" | "end";
 
@@ -57,6 +69,9 @@ export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals"
 export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
 // @beta
+export type InspectionFilterableColumnId = "timestamp" | "severity" | "source" | "message";
+
+// @beta
 export function InspectionGrid(input: InspectionGridProps): react.JSX.Element;
 
 // @beta
@@ -67,8 +82,6 @@ export interface InspectionGridProps {
     copyToClipboard?: PretableSurfaceProps<InspectionRow>["copyToClipboard"];
     // (undocumented)
     copyWithHeaders?: PretableSurfaceProps<InspectionRow>["copyWithHeaders"];
-    // Warning: (ae-forgotten-export) The symbol "InspectionFilterableColumnId" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     filterableColumnIds: readonly InspectionFilterableColumnId[];
     // (undocumented)
@@ -97,8 +110,6 @@ export interface InspectionGridProps {
     rows: InspectionRow[];
     // (undocumented)
     rowSelectionColumn?: PretableSurfaceProps<InspectionRow>["rowSelectionColumn"];
-    // Warning: (ae-forgotten-export) The symbol "InspectionRow" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     state?: PretableSurfaceProps<InspectionRow>["state"];
     // (undocumented)
@@ -106,6 +117,27 @@ export interface InspectionGridProps {
     // (undocumented)
     viewportHeight: number;
 }
+
+// @beta
+export interface InspectionRow extends Record<string, unknown> {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    message: string;
+    // (undocumented)
+    owner: string;
+    // (undocumented)
+    severity: InspectionSeverity;
+    // (undocumented)
+    source: string;
+    // (undocumented)
+    tags: string[];
+    // (undocumented)
+    timestamp: string;
+}
+
+// @beta
+export type InspectionSeverity = "trace" | "info" | "warn" | "error";
 
 // @beta
 export function LabeledGridSurface<TRow extends PretableRow = PretableRow>(input: LabeledGridSurfaceProps<TRow>): react.JSX.Element;
@@ -218,7 +250,32 @@ export interface PastePayload<TRow extends PretableRow = PretableRow> {
 }
 
 // @public
+export interface PlannedColumn {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    index: number;
+    left: number;
+    // (undocumented)
+    pinned?: "left" | "right";
+    right?: number;
+    // (undocumented)
+    width: number;
+}
+
+// @public
 export function Pretable<TRow extends PretableRow = PretableRow>(input: PretableProps<TRow>): react.JSX.Element;
+
+// @public
+export interface PretableAggregateFormatInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    column: PretableBaseColumn<TRow>;
+    // (undocumented)
+    group: PretableGroupRow;
+    scope: "all" | "loaded";
+    // (undocumented)
+    value: unknown;
+}
 
 // @public
 export type PretableAggregateSpec = "sum" | "avg" | "min" | "max" | "count" | PretableAggregator;
@@ -232,7 +289,76 @@ export interface PretableAggregator<TAcc = unknown, TOut = unknown> {
 }
 
 // @public
+export interface PretableBaseColumn<TRow extends PretableRow = PretableRow> {
+    aggregate?: PretableAggregateSpec;
+    align?: ColumnAlign;
+    // (undocumented)
+    editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
+    // (undocumented)
+    filterable?: boolean;
+    filterOperators?: FilterOperator[];
+    flex?: number;
+    // (undocumented)
+    format?: (input: PretableFormatInput<TRow>) => string;
+    formatAggregate?: (input: PretableAggregateFormatInput<TRow>) => string;
+    // (undocumented)
+    formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
+    // (undocumented)
+    header?: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    maxWidthPx?: number;
+    // (undocumented)
+    minWidthPx?: number;
+    // (undocumented)
+    options?: ColumnOption[];
+    // (undocumented)
+    parseEditValue?: (raw: string, input: PretableEditInput<TRow>) => unknown;
+    // (undocumented)
+    pinned?: "left" | "right";
+    // (undocumented)
+    reorderable?: boolean;
+    // (undocumented)
+    resizable?: boolean;
+    rowGroup?: boolean;
+    // (undocumented)
+    sortable?: boolean;
+    step?: number;
+    // (undocumented)
+    type?: ColumnType;
+    // (undocumented)
+    validate?: (value: unknown, input: PretableEditInput<TRow>) => (true | string) | Promise<true | string>;
+    // (undocumented)
+    value?: (row: TRow) => unknown;
+    // (undocumented)
+    widthPx?: number;
+    // (undocumented)
+    wrap?: boolean;
+}
+
+// @public
 export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip";
+
+// @public
+export interface PretableCellAddress {
+    // (undocumented)
+    columnId: string;
+    // (undocumented)
+    rowId: string;
+}
+
+// @public
+export interface PretableCellRange {
+    // (undocumented)
+    endColumnId: string;
+    // (undocumented)
+    endRowId: string;
+    // (undocumented)
+    startColumnId: string;
+    // (undocumented)
+    startRowId: string;
+}
 
 // @public
 export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow> extends PretableFormatInput<TRow> {
@@ -249,10 +375,8 @@ export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow>
     rowIndex: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "PretableColumn_2" needs to be exported by the entry point index.d.ts
-//
 // @public
-export interface PretableColumn<TRow extends PretableRow = PretableRow> extends PretableColumn_2<TRow> {
+export interface PretableColumn<TRow extends PretableRow = PretableRow> extends PretableBaseColumn<TRow> {
     // (undocumented)
     render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
     // (undocumented)
@@ -303,7 +427,7 @@ export type PretableDataState =
 // @public
 export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
     // (undocumented)
-    column: PretableColumn_2<TRow>;
+    column: PretableBaseColumn<TRow>;
     // (undocumented)
     columnId: string;
     // (undocumented)
@@ -354,9 +478,17 @@ export type PretableEditStatus = "checking" | "editing" | "validating" | "saving
 export type PretableFocusDirection = "up" | "down" | "left" | "right";
 
 // @public
+export interface PretableFocusState {
+    // (undocumented)
+    columnId: string | null;
+    // (undocumented)
+    rowId: string | null;
+}
+
+// @public
 export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
     // (undocumented)
-    column: PretableColumn_2<TRow>;
+    column: PretableBaseColumn<TRow>;
     // (undocumented)
     row: TRow;
     // (undocumented)
@@ -365,18 +497,12 @@ export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
 
 // @public
 export interface PretableGrid<TRow extends PretableRow = PretableRow> {
-    // Warning: (ae-forgotten-export) The symbol "PretableCellRange" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     addRange(range: PretableCellRange): void;
-    // Warning: (ae-forgotten-export) The symbol "PretableTransaction" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     applyTransaction(transaction: PretableTransaction<TRow>): void;
     // (undocumented)
     autosizeColumn(columnId: string, options?: AutosizeOptions): void;
-    // Warning: (ae-forgotten-export) The symbol "AutosizeOptions" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     autosizeColumns(options?: AutosizeOptions): void;
     // (undocumented)
@@ -395,11 +521,9 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     commitEditSucceeded(): void;
     distinctColumnValues(columnId: string): string[];
     expandAll(): void;
-    // Warning: (ae-forgotten-export) The symbol "PretableCellAddress" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     extendRangeFromAnchor(addr: PretableCellAddress): void;
-    getColumns(): readonly PretableColumn_2<TRow>[];
+    getColumns(): readonly PretableBaseColumn<TRow>[];
     getSnapshot(): PretableGridSnapshot<TRow>;
     readonly kind: "pretable-grid";
     // (undocumented)
@@ -413,11 +537,9 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     markEditValidating(): void;
     // (undocumented)
-    mergeColumnsFromProps(nextColumns: PretableColumn_2<TRow>[]): void;
+    mergeColumnsFromProps(nextColumns: PretableBaseColumn<TRow>[]): void;
     // (undocumented)
     moveColumn(columnId: string, toIndex: number): void;
-    // Warning: (ae-forgotten-export) The symbol "PretableMoveFocusOptions" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     moveFocus(direction: PretableFocusDirection, options?: PretableMoveFocusOptions): void;
     readonly options: PretableGridOptions<TRow>;
@@ -445,14 +567,10 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
     setRows(rows: TRow[], meta?: PretableResultMeta): void;
     // (undocumented)
     setSelectAllVisible(checked: boolean): void;
-    // Warning: (ae-forgotten-export) The symbol "PretableSelectionState" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     setSelection(state: PretableSelectionState): void;
     // (undocumented)
     setSort(columnId: string | null, direction: PretableSortDirection): void;
-    // Warning: (ae-forgotten-export) The symbol "PretableViewportState" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     setViewport(viewport: PretableViewportState): void;
     subscribe(listener: () => void): () => void;
@@ -467,7 +585,7 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     autosize?: boolean | AutosizeOptions;
     // (undocumented)
-    columns: PretableColumn_2<TRow>[];
+    columns: PretableBaseColumn<TRow>[];
     // (undocumented)
     getRowId?: (row: TRow, index: number) => string;
     groupColumn?: PretableGroupColumnOptions;
@@ -486,8 +604,6 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     editing: PretableEditState | null;
     // (undocumented)
     filters: Record<string, ColumnFilter>;
-    // Warning: (ae-forgotten-export) The symbol "PretableFocusState" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     focus: PretableFocusState;
     groupExpansionOverrides: ReadonlySet<string>;
@@ -501,8 +617,6 @@ export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
     sort: PretableSortEntry[];
     // (undocumented)
     viewport: PretableViewportState;
-    // Warning: (ae-forgotten-export) The symbol "PretableRowRange" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     visibleRange: PretableRowRange;
     // (undocumented)
@@ -563,6 +677,16 @@ export interface PretableModel<TRow extends PretableRow = PretableRow> {
     snapshot: PretableGridSnapshot<TRow>;
     // (undocumented)
     telemetry: PretableTelemetry;
+}
+
+// @public
+export interface PretableMoveFocusOptions {
+    // (undocumented)
+    byPage?: boolean;
+    // (undocumented)
+    extend?: boolean;
+    // (undocumented)
+    jumpToEdge?: boolean;
 }
 
 // @public
@@ -640,15 +764,12 @@ export interface PretableRenderRowGeometry {
 
 // @public
 export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> {
-    // Warning: (ae-forgotten-export) The symbol "PlannedColumn" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     columns: PlannedColumn[];
     // (undocumented)
     nodeCount: number;
     pinnedLeftWidth: number;
     pinnedRightWidth: number;
-    // Warning: (ae-forgotten-export) The symbol "RowMetricsReader" needs to be exported by the entry point index.d.ts
     rowMetrics: RowMetricsReader;
     rows: PretableRenderRow<TRow>[];
     // (undocumented)
@@ -676,6 +797,25 @@ export interface PretableRowActivateInput<TRow extends PretableRow = PretableRow
 }
 
 // @public
+export interface PretableRowRange {
+    // (undocumented)
+    end: number;
+    // (undocumented)
+    start: number;
+}
+
+// @public
+export interface PretableSelectionState {
+    // (undocumented)
+    anchor: PretableCellAddress | null;
+    // (undocumented)
+    ranges: PretableCellRange[];
+}
+
+// @public
+export type PretableSortDirection = "asc" | "desc" | null;
+
+// @public
 export interface PretableSortEntry {
     // (undocumented)
     columnId: string;
@@ -685,6 +825,26 @@ export interface PretableSortEntry {
 
 // @public
 export function PretableSurface<TRow extends PretableRow = PretableRow>(input: PretableSurfaceProps<TRow>): react.JSX.Element;
+
+// @public
+export interface PretableSurfaceHeaderCellInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    column: PretableColumn<TRow>;
+    pinned: "left" | "right" | null;
+    // (undocumented)
+    sortDirection: "asc" | "desc" | null;
+}
+
+// @public
+export interface PretableSurfaceHeaderCellRenderInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    column: PretableColumn<TRow>;
+    // (undocumented)
+    label: string;
+    pinned: "left" | "right" | null;
+    // (undocumented)
+    sortDirection: "asc" | "desc" | null;
+}
 
 // @public
 export interface PretableSurfaceMessages {
@@ -761,32 +921,20 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     copyWithHeaders?: boolean;
     dataState?: PretableDataState;
-    // Warning: (ae-forgotten-export) The symbol "PretableSurfaceBodyCellClassNameInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    getBodyCellClassName?: (input: PretableSurfaceBodyCellClassNameInput<TRow>) => string | undefined;
-    // Warning: (ae-forgotten-export) The symbol "PretableSurfaceBodyAttributesInput" needs to be exported by the entry point index.d.ts
-    //
+    getBodyCellClassName?: (input: PretableCellRenderInput<TRow>) => string | undefined;
     // (undocumented)
-    getBodyCellProps?: (input: PretableSurfaceBodyAttributesInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
-    // Warning: (ae-forgotten-export) The symbol "PretableSurfaceHeaderClassNameInput" needs to be exported by the entry point index.d.ts
-    //
+    getBodyCellProps?: (input: PretableCellRenderInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
     // (undocumented)
-    getHeaderCellClassName?: (input: PretableSurfaceHeaderClassNameInput<TRow>) => string | undefined;
-    // Warning: (ae-forgotten-export) The symbol "PretableSurfaceHeaderAttributesInput" needs to be exported by the entry point index.d.ts
-    //
+    getHeaderCellClassName?: (input: PretableSurfaceHeaderCellInput<TRow>) => string | undefined;
     // (undocumented)
-    getHeaderCellProps?: (input: PretableSurfaceHeaderAttributesInput<TRow>) => HTMLAttributes<HTMLButtonElement> | undefined;
-    // Warning: (ae-forgotten-export) The symbol "PretableSurfaceRowClassNameInput" needs to be exported by the entry point index.d.ts
-    //
+    getHeaderCellProps?: (input: PretableSurfaceHeaderCellInput<TRow>) => HTMLAttributes<HTMLButtonElement> | undefined;
     // (undocumented)
-    getRowClassName?: (input: PretableSurfaceRowClassNameInput<TRow>) => string | undefined;
+    getRowClassName?: (input: PretableSurfaceRowInput<TRow>) => string | undefined;
     // (undocumented)
     getRowId?: PretableGridOptions<TRow>["getRowId"];
-    // Warning: (ae-forgotten-export) The symbol "PretableSurfaceRowAttributesInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    getRowProps?: (input: PretableSurfaceRowAttributesInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
+    getRowProps?: (input: PretableSurfaceRowInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
     groupColumn?: PretableGroupColumnOptions;
     groupPanel?: {
         enabled: boolean;
@@ -827,10 +975,8 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     overscan?: number;
     processing?: PretableProcessingOptions;
-    // Warning: (ae-forgotten-export) The symbol "PretableSurfaceBodyCellRenderInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    renderBodyCell?: (input: PretableSurfaceBodyCellRenderInput<TRow>) => ReactNode;
+    renderBodyCell?: (input: PretableCellRenderInput<TRow>) => ReactNode;
     renderBodyState?: (input: {
         kind: PretableBodyStateKind;
         phase: PretableDataState["phase"];
@@ -838,8 +984,6 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
         loadedRowCount: number;
         matchingTotal: PretableMatchingTotal;
     }) => ReactNode;
-    // Warning: (ae-forgotten-export) The symbol "PretableSurfaceHeaderCellRenderInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     renderHeaderCell?: (input: PretableSurfaceHeaderCellRenderInput<TRow>) => ReactNode;
     resultMeta?: PretableResultMeta;
@@ -855,6 +999,20 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     viewportHeight: number;
     // (undocumented)
     viewportStyle?: CSSProperties;
+}
+
+// @public
+export interface PretableSurfaceRowInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    isFocused: boolean;
+    // (undocumented)
+    isSelected: boolean;
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    rowId: string;
+    // (undocumented)
+    rowIndex: number;
 }
 
 // @public
@@ -898,6 +1056,28 @@ export interface PretableTelemetry {
 }
 
 // @public
+export interface PretableTransaction<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    add?: TRow[];
+    // (undocumented)
+    remove?: string[];
+    // (undocumented)
+    update?: Partial<TRow>[];
+}
+
+// @public
+export interface PretableViewportState {
+    // (undocumented)
+    height: number;
+    // (undocumented)
+    scrollLeft: number;
+    // (undocumented)
+    scrollTop: number;
+    // (undocumented)
+    width: number;
+}
+
+// @public
 export type PretableVisibleRow<TRow extends PretableRow = PretableRow> = PretableDataRow<TRow> | PretableGroupRow;
 
 // @public
@@ -910,6 +1090,18 @@ export interface RejectedPasteCell {
     reason: "not-editable" | "invalid";
     // (undocumented)
     rowId: string;
+}
+
+// @public
+export interface RowMetricsReader {
+    // (undocumented)
+    getHeight(index: number): number;
+    // (undocumented)
+    getOffsetForIndex(index: number): number;
+    // (undocumented)
+    getTotalHeight(): number;
+    // (undocumented)
+    readonly rowCount: number;
 }
 
 // @public
@@ -991,10 +1183,6 @@ export const ɵROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 //
 // @internal
 export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: number): DensityHeights;
-
-// Warnings were encountered during analysis:
-//
-// dist/index.d.ts:1102:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
