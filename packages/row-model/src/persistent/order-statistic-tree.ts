@@ -3,12 +3,22 @@ import type { TransientMap } from "./transient";
 
 export type OrderStatisticTreeId = string | number;
 
+/**
+ * Defines an immutable cached measure over entries in comparator order.
+ * `empty` must be a two-sided identity, `combine` must be associative, and
+ * both callbacks must be pure and stable for the lifetime of the tree.
+ */
 export interface OrderStatisticTreeMeasure<TEntry, TMeasure> {
   readonly empty: TMeasure;
   readonly fromEntry: (entry: TEntry) => TMeasure;
   readonly combine: (left: TMeasure, right: TMeasure) => TMeasure;
 }
 
+/**
+ * Entries and all fields observed by these callbacks must remain immutable
+ * after insertion. `getId` must return a stable ID. `compare` must be a pure,
+ * stable strict weak order; equal comparator values are totalized by ID.
+ */
 export interface OrderStatisticTreeOptions<
   TId extends OrderStatisticTreeId,
   TEntry,
@@ -38,6 +48,10 @@ export interface OrderStatisticTree<
   TEntry,
   TMeasure,
 > extends OrderStatisticTreeReads<TId, TEntry, TMeasure> {
+  /**
+   * Inserts or replaces by stable ID. Passing the identical entry reference is
+   * a no-op because entries are required to remain immutable after insertion.
+   */
   insertOrReplace(entry: TEntry): OrderStatisticTree<TId, TEntry, TMeasure>;
   remove(id: TId): OrderStatisticTree<TId, TEntry, TMeasure>;
   asTransient(): TransientOrderStatisticTree<TId, TEntry, TMeasure>;
@@ -73,14 +87,26 @@ class TreeEditToken {
   }
 }
 
+export class PoisonedTransientOrderStatisticTreeError extends Error {
+  readonly code = "poisoned-transient-order-statistic-tree" as const;
+
+  constructor(cause: unknown) {
+    super(
+      "Cannot use a transient order-statistic tree after a callback failure.",
+      { cause },
+    );
+    this.name = "PoisonedTransientOrderStatisticTreeError";
+  }
+}
+
 interface TreeNode<TId extends OrderStatisticTreeId, TEntry, TMeasure> {
   edit: TreeEditToken | null;
   readonly id: TId;
   entry: TEntry;
-  readonly priority: number;
   ownMeasure: TMeasure;
   measure: TMeasure;
   count: number;
+  height: number;
   left: TreeNode<TId, TEntry, TMeasure> | null;
   right: TreeNode<TId, TEntry, TMeasure> | null;
 }
@@ -90,14 +116,33 @@ interface TreeChange<TId extends OrderStatisticTreeId, TEntry, TMeasure> {
   readonly changed: boolean;
 }
 
-export interface OrderStatisticTreeNodeForTesting<TEntry, TMeasure> {
-  readonly entry: TEntry;
-  readonly priority: number;
-  readonly count: number;
-  readonly measure: TMeasure;
-  readonly left: OrderStatisticTreeNodeForTesting<TEntry, TMeasure> | null;
-  readonly right: OrderStatisticTreeNodeForTesting<TEntry, TMeasure> | null;
+interface ExtractedMinimum<TId extends OrderStatisticTreeId, TEntry, TMeasure> {
+  readonly minimum: TreeNode<TId, TEntry, TMeasure>;
+  readonly node: TreeNode<TId, TEntry, TMeasure> | null;
 }
+
+export interface OrderStatisticTreeNodeDiagnostic<
+  TId extends OrderStatisticTreeId,
+> {
+  readonly id: TId;
+  readonly count: number;
+  readonly height: number;
+  readonly balance: number;
+  readonly left: OrderStatisticTreeNodeDiagnostic<TId> | null;
+  readonly right: OrderStatisticTreeNodeDiagnostic<TId> | null;
+}
+
+export interface OrderStatisticTreeDiagnostics<
+  TId extends OrderStatisticTreeId,
+> {
+  readonly count: number;
+  readonly height: number;
+  readonly balanced: boolean;
+  readonly sharedNodeCount: number;
+  readonly root: OrderStatisticTreeNodeDiagnostic<TId> | null;
+}
+
+const persistentRoots = new WeakMap<object, object | null>();
 
 function sameId(
   left: OrderStatisticTreeId,
@@ -122,25 +167,6 @@ function compareIds(
   return (left as string) < (right as string) ? -1 : 1;
 }
 
-function hashString(value: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function priorityForId(id: OrderStatisticTreeId): number {
-  let hash = hashString(typeof id === "string" ? `s:${id}` : `n:${String(id)}`);
-  hash ^= hash >>> 16;
-  hash = Math.imul(hash, 0x85ebca6b);
-  hash ^= hash >>> 13;
-  hash = Math.imul(hash, 0xc2b2ae35);
-  hash ^= hash >>> 16;
-  return hash >>> 0;
-}
-
 function compareEntries<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   left: TEntry,
   leftId: TId,
@@ -154,16 +180,8 @@ function compareEntries<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   return compareIds(leftId, rightId);
 }
 
-function compareHeapKeys(
-  leftPriority: number,
-  leftId: OrderStatisticTreeId,
-  rightPriority: number,
-  rightId: OrderStatisticTreeId,
-): number {
-  if (leftPriority !== rightPriority) {
-    return leftPriority < rightPriority ? -1 : 1;
-  }
-  return compareIds(leftId, rightId);
+function nodeHeight(node: { readonly height: number } | null): number {
+  return node?.height ?? 0;
 }
 
 function createNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
@@ -177,10 +195,10 @@ function createNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
     edit,
     id,
     entry,
-    priority: priorityForId(id),
     ownMeasure,
     measure: ownMeasure,
     count: 1,
+    height: 1,
     left: null,
     right: null,
   };
@@ -199,6 +217,7 @@ function refreshNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   context: TreeContext<TId, TEntry, TMeasure>,
 ): void {
   node.count = (node.left?.count ?? 0) + 1 + (node.right?.count ?? 0);
+  node.height = 1 + Math.max(nodeHeight(node.left), nodeHeight(node.right));
   const left = node.left?.measure ?? context.measure.empty;
   const right = node.right?.measure ?? context.measure.empty;
   node.measure = context.measure.combine(
@@ -207,15 +226,22 @@ function refreshNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   );
 }
 
+function balanceFactor<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
+  node: TreeNode<TId, TEntry, TMeasure>,
+): number {
+  return nodeHeight(node.left) - nodeHeight(node.right);
+}
+
 function rotateRight<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   root: TreeNode<TId, TEntry, TMeasure>,
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
 ): TreeNode<TId, TEntry, TMeasure> {
-  const pivot = editableNode(root.left!, edit);
-  root.left = pivot.right;
-  refreshNode(root, context);
-  pivot.right = root;
+  const lower = editableNode(root, edit);
+  const pivot = editableNode(lower.left!, edit);
+  lower.left = pivot.right;
+  refreshNode(lower, context);
+  pivot.right = lower;
   refreshNode(pivot, context);
   return pivot;
 }
@@ -225,12 +251,35 @@ function rotateLeft<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
 ): TreeNode<TId, TEntry, TMeasure> {
-  const pivot = editableNode(root.right!, edit);
-  root.right = pivot.left;
-  refreshNode(root, context);
-  pivot.left = root;
+  const lower = editableNode(root, edit);
+  const pivot = editableNode(lower.right!, edit);
+  lower.right = pivot.left;
+  refreshNode(lower, context);
+  pivot.left = lower;
   refreshNode(pivot, context);
   return pivot;
+}
+
+function rebalance<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
+  root: TreeNode<TId, TEntry, TMeasure>,
+  context: TreeContext<TId, TEntry, TMeasure>,
+  edit: TreeEditToken | null,
+): TreeNode<TId, TEntry, TMeasure> {
+  refreshNode(root, context);
+  const balance = balanceFactor(root);
+  if (balance > 1) {
+    if (balanceFactor(root.left!) < 0) {
+      root.left = rotateLeft(root.left!, context, edit);
+    }
+    return rotateRight(root, context, edit);
+  }
+  if (balance < -1) {
+    if (balanceFactor(root.right!) > 0) {
+      root.right = rotateRight(root.right!, context, edit);
+    }
+    return rotateLeft(root, context, edit);
+  }
+  return root;
 }
 
 function insertNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
@@ -240,7 +289,6 @@ function insertNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   edit: TreeEditToken | null,
 ): TreeNode<TId, TEntry, TMeasure> {
   if (root === null) return inserted;
-
   const comparison = compareEntries(
     inserted.entry,
     inserted.id,
@@ -248,58 +296,30 @@ function insertNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
     root.id,
     context,
   );
+  if (comparison === 0) return root;
+
   const updated = editableNode(root, edit);
   if (comparison < 0) {
     updated.left = insertNode(updated.left, inserted, context, edit);
-    refreshNode(updated, context);
-    if (
-      compareHeapKeys(
-        updated.left.priority,
-        updated.left.id,
-        updated.priority,
-        updated.id,
-      ) < 0
-    ) {
-      return rotateRight(updated, context, edit);
-    }
-    return updated;
+  } else {
+    updated.right = insertNode(updated.right, inserted, context, edit);
   }
-
-  updated.right = insertNode(updated.right, inserted, context, edit);
-  refreshNode(updated, context);
-  if (
-    compareHeapKeys(
-      updated.right.priority,
-      updated.right.id,
-      updated.priority,
-      updated.id,
-    ) < 0
-  ) {
-    return rotateLeft(updated, context, edit);
-  }
-  return updated;
+  return rebalance(updated, context, edit);
 }
 
-function mergeNodes<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
-  left: TreeNode<TId, TEntry, TMeasure> | null,
-  right: TreeNode<TId, TEntry, TMeasure> | null,
+function extractMinimum<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
+  root: TreeNode<TId, TEntry, TMeasure>,
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
-): TreeNode<TId, TEntry, TMeasure> | null {
-  if (left === null) return right;
-  if (right === null) return left;
-
-  if (compareHeapKeys(left.priority, left.id, right.priority, right.id) < 0) {
-    const updated = editableNode(left, edit);
-    updated.right = mergeNodes(updated.right, right, context, edit);
-    refreshNode(updated, context);
-    return updated;
-  }
-
-  const updated = editableNode(right, edit);
-  updated.left = mergeNodes(left, updated.left, context, edit);
-  refreshNode(updated, context);
-  return updated;
+): ExtractedMinimum<TId, TEntry, TMeasure> {
+  if (root.left === null) return { minimum: root, node: root.right };
+  const extracted = extractMinimum(root.left, context, edit);
+  const updated = editableNode(root, edit);
+  updated.left = extracted.node;
+  return {
+    minimum: extracted.minimum,
+    node: rebalance(updated, context, edit),
+  };
 }
 
 function removeNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
@@ -318,39 +338,37 @@ function removeNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
     context,
   );
   if (comparison === 0) {
+    if (root.left === null) return { node: root.right, changed: true };
+    if (root.right === null) return { node: root.left, changed: true };
+    const extracted = extractMinimum(root.right, context, edit);
+    const replacement = editableNode(extracted.minimum, edit);
+    replacement.left = root.left;
+    replacement.right = extracted.node;
     return {
-      node: mergeNodes(root.left, root.right, context, edit),
+      node: rebalance(replacement, context, edit),
       changed: true,
     };
   }
 
   if (comparison < 0) {
-    const leftChange = removeNode(
+    const change = removeNode(
       root.left,
       removedEntry,
       removedId,
       context,
       edit,
     );
-    if (!leftChange.changed) return { node: root, changed: false };
+    if (!change.changed) return { node: root, changed: false };
     const updated = editableNode(root, edit);
-    updated.left = leftChange.node;
-    refreshNode(updated, context);
-    return { node: updated, changed: true };
+    updated.left = change.node;
+    return { node: rebalance(updated, context, edit), changed: true };
   }
 
-  const rightChange = removeNode(
-    root.right,
-    removedEntry,
-    removedId,
-    context,
-    edit,
-  );
-  if (!rightChange.changed) return { node: root, changed: false };
+  const change = removeNode(root.right, removedEntry, removedId, context, edit);
+  if (!change.changed) return { node: root, changed: false };
   const updated = editableNode(root, edit);
-  updated.right = rightChange.node;
-  refreshNode(updated, context);
-  return { node: updated, changed: true };
+  updated.right = change.node;
+  return { node: rebalance(updated, context, edit), changed: true };
 }
 
 function entryAtNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
@@ -360,16 +378,13 @@ function entryAtNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   if (!Number.isInteger(index) || index < 0 || index >= (root?.count ?? 0)) {
     return undefined;
   }
-
   let node = root;
   let remaining = index;
   while (node !== null) {
     const leftCount = node.left?.count ?? 0;
-    if (remaining < leftCount) {
-      node = node.left;
-    } else if (remaining === leftCount) {
-      return node.entry;
-    } else {
+    if (remaining < leftCount) node = node.left;
+    else if (remaining === leftCount) return node.entry;
+    else {
       remaining -= leftCount + 1;
       node = node.right;
     }
@@ -387,14 +402,11 @@ function rankOfNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   let rank = 0;
   while (node !== null) {
     const comparison = compareEntries(entry, id, node.entry, node.id, context);
-    if (comparison < 0) {
-      node = node.left;
-    } else if (comparison > 0) {
+    if (comparison < 0) node = node.left;
+    else if (comparison > 0) {
       rank += (node.left?.count ?? 0) + 1;
       node = node.right;
-    } else {
-      return rank + (node.left?.count ?? 0);
-    }
+    } else return rank + (node.left?.count ?? 0);
   }
   return undefined;
 }
@@ -413,9 +425,7 @@ function appendRange<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
 ): void {
   if (node === null || start >= end) return;
   const nodeRank = offset + (node.left?.count ?? 0);
-  if (start < nodeRank) {
-    appendRange(node.left, offset, start, end, result);
-  }
+  if (start < nodeRank) appendRange(node.left, offset, start, end, result);
   if (start <= nodeRank && nodeRank < end) result.push(node.entry);
   if (nodeRank + 1 < end) {
     appendRange(node.right, nodeRank + 1, start, end, result);
@@ -445,6 +455,22 @@ function* iterateEntries<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   yield* iterateEntries(node.right);
 }
 
+function* iterateTransientEntries<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+>(
+  node: TreeNode<TId, TEntry, TMeasure> | null,
+  assertHealthy: () => void,
+): IterableIterator<TEntry> {
+  assertHealthy();
+  if (node === null) return;
+  yield* iterateTransientEntries(node.left, assertHealthy);
+  assertHealthy();
+  yield node.entry;
+  yield* iterateTransientEntries(node.right, assertHealthy);
+}
+
 class PersistentOrderStatisticTree<
   TId extends OrderStatisticTreeId,
   TEntry,
@@ -462,6 +488,7 @@ class PersistentOrderStatisticTree<
     this.#root = root;
     this.#byId = byId;
     this.#context = context;
+    persistentRoots.set(this, root);
   }
 
   get size(): number {
@@ -496,11 +523,18 @@ class PersistentOrderStatisticTree<
     const exists = previous !== undefined || this.#byId.has(id);
     if (exists && Object.is(previous, entry)) return this;
 
-    const inserted = createNode(entry, id, this.#context, null);
-    const withoutPrevious = exists
-      ? removeNode(this.#root, previous!, id, this.#context, null).node
-      : this.#root;
-    const root = insertNode(withoutPrevious, inserted, this.#context, null);
+    let root = this.#root;
+    if (exists) {
+      const removal = removeNode(root, previous!, id, this.#context, null);
+      if (!removal.changed) return this;
+      root = removal.node;
+    }
+    root = insertNode(
+      root,
+      createNode(entry, id, this.#context, null),
+      this.#context,
+      null,
+    );
     return new PersistentOrderStatisticTree(
       root,
       this.#byId.set(id, entry),
@@ -511,8 +545,10 @@ class PersistentOrderStatisticTree<
   remove(id: TId): OrderStatisticTree<TId, TEntry, TMeasure> {
     const entry = this.#byId.get(id);
     if (entry === undefined && !this.#byId.has(id)) return this;
+    const removal = removeNode(this.#root, entry!, id, this.#context, null);
+    if (!removal.changed) return this;
     return new PersistentOrderStatisticTree(
-      removeNode(this.#root, entry!, id, this.#context, null).node,
+      removal.node,
       this.#byId.delete(id),
       this.#context,
     );
@@ -529,10 +565,6 @@ class PersistentOrderStatisticTree<
   entries(): IterableIterator<TEntry> {
     return iterateEntries(this.#root);
   }
-
-  rootForTesting(): TreeNode<TId, TEntry, TMeasure> | null {
-    return this.#root;
-  }
 }
 
 class TransientOrderStatisticTreeImpl<
@@ -545,6 +577,8 @@ class TransientOrderStatisticTreeImpl<
   readonly #context: TreeContext<TId, TEntry, TMeasure>;
   readonly #edit = new TreeEditToken();
   #frozen: OrderStatisticTree<TId, TEntry, TMeasure> | undefined;
+  #poisoned = false;
+  #poisonCause: unknown;
 
   constructor(
     root: TreeNode<TId, TEntry, TMeasure> | null,
@@ -556,70 +590,114 @@ class TransientOrderStatisticTreeImpl<
     this.#context = context;
   }
 
+  #assertHealthy(): void {
+    if (this.#poisoned) {
+      throw new PoisonedTransientOrderStatisticTreeError(this.#poisonCause);
+    }
+  }
+
+  #assertMutable(): void {
+    this.#assertHealthy();
+    this.#edit.assertEditable();
+  }
+
+  #guard<T>(operation: () => T): T {
+    try {
+      return operation();
+    } catch (error) {
+      this.#poisoned = true;
+      this.#poisonCause = error;
+      throw error;
+    }
+  }
+
   get size(): number {
+    this.#assertHealthy();
     return this.#root?.count ?? 0;
   }
 
   get measure(): TMeasure {
+    this.#assertHealthy();
     return this.#root?.measure ?? this.#context.measure.empty;
   }
 
   get(id: TId): TEntry | undefined {
+    this.#assertHealthy();
     return this.#byId.get(id);
   }
 
   entryAt(index: number): TEntry | undefined {
+    this.#assertHealthy();
     return entryAtNode(this.#root, index);
   }
 
   rankOf(id: TId): number | undefined {
-    const entry = this.#byId.get(id);
-    if (entry === undefined && !this.#byId.has(id)) return undefined;
-    return rankOfNode(this.#root, entry!, id, this.#context);
+    this.#assertHealthy();
+    return this.#guard(() => {
+      const entry = this.#byId.get(id);
+      if (entry === undefined && !this.#byId.has(id)) return undefined;
+      return rankOfNode(this.#root, entry!, id, this.#context);
+    });
   }
 
   range(start: number, end: number): readonly TEntry[] {
+    this.#assertHealthy();
     return rangeFromNode(this.#root, start, end);
   }
 
   insertOrReplace(entry: TEntry): this {
-    this.#edit.assertEditable();
-    const id = this.#context.getId(entry);
-    const previous = this.#byId.get(id);
-    const exists = previous !== undefined || this.#byId.has(id);
-    if (exists && Object.is(previous, entry)) return this;
+    this.#assertMutable();
+    return this.#guard(() => {
+      const id = this.#context.getId(entry);
+      const previous = this.#byId.get(id);
+      const exists = previous !== undefined || this.#byId.has(id);
+      if (exists && Object.is(previous, entry)) return this;
 
-    const inserted = createNode(entry, id, this.#context, this.#edit);
-    if (exists) {
-      this.#root = removeNode(
-        this.#root,
-        previous!,
-        id,
+      let root = this.#root;
+      if (exists) {
+        const removal = removeNode(
+          root,
+          previous!,
+          id,
+          this.#context,
+          this.#edit,
+        );
+        if (!removal.changed) return this;
+        root = removal.node;
+      }
+      root = insertNode(
+        root,
+        createNode(entry, id, this.#context, this.#edit),
         this.#context,
         this.#edit,
-      ).node;
-    }
-    this.#root = insertNode(this.#root, inserted, this.#context, this.#edit);
-    this.#byId.set(id, entry);
-    return this;
+      );
+      this.#root = root;
+      this.#byId.set(id, entry);
+      return this;
+    });
   }
 
   remove(id: TId): this {
-    this.#edit.assertEditable();
-    const entry = this.#byId.get(id);
-    if (entry === undefined && !this.#byId.has(id)) return this;
-    this.#root = removeNode(
-      this.#root,
-      entry!,
-      id,
-      this.#context,
-      this.#edit,
-    ).node;
-    this.#byId.delete(id);
-    return this;
+    this.#assertMutable();
+    return this.#guard(() => {
+      const entry = this.#byId.get(id);
+      if (entry === undefined && !this.#byId.has(id)) return this;
+      const removal = removeNode(
+        this.#root,
+        entry!,
+        id,
+        this.#context,
+        this.#edit,
+      );
+      if (!removal.changed) return this;
+      this.#root = removal.node;
+      this.#byId.delete(id);
+      return this;
+    });
   }
 
   freeze(): OrderStatisticTree<TId, TEntry, TMeasure> {
+    this.#assertHealthy();
     if (this.#frozen !== undefined) return this.#frozen;
     this.#edit.freeze();
     this.#frozen = new PersistentOrderStatisticTree(
@@ -631,10 +709,12 @@ class TransientOrderStatisticTreeImpl<
   }
 
   entries(): IterableIterator<TEntry> {
-    return iterateEntries(this.#root);
+    this.#assertHealthy();
+    return iterateTransientEntries(this.#root, () => this.#assertHealthy());
   }
 }
 
+/** Creates an empty persistent AVL order-statistic tree. */
 export function createOrderStatisticTree<
   TId extends OrderStatisticTreeId,
   TEntry,
@@ -658,21 +738,124 @@ export function createOrderStatisticTree<
   );
 }
 
-export function getOrderStatisticTreePriorityForTesting(
-  id: OrderStatisticTreeId,
-): number {
-  return priorityForId(id);
+function inspectNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
+  node: TreeNode<TId, TEntry, TMeasure> | null,
+): {
+  readonly snapshot: OrderStatisticTreeNodeDiagnostic<TId> | null;
+  readonly balanced: boolean;
+  readonly count: number;
+  readonly height: number;
+} {
+  if (node === null) {
+    return { snapshot: null, balanced: true, count: 0, height: 0 };
+  }
+  const left = inspectNode(node.left);
+  const right = inspectNode(node.right);
+  const count = left.count + 1 + right.count;
+  const height = 1 + Math.max(left.height, right.height);
+  const balance = left.height - right.height;
+  const snapshot = Object.freeze({
+    id: node.id,
+    count: node.count,
+    height: node.height,
+    balance,
+    left: left.snapshot,
+    right: right.snapshot,
+  });
+  return {
+    snapshot,
+    balanced:
+      left.balanced &&
+      right.balanced &&
+      Math.abs(balance) <= 1 &&
+      node.count === count &&
+      node.height === height,
+    count,
+    height,
+  };
 }
 
-export function getOrderStatisticTreeRootForTesting<
+function collectNodes(
+  node: { readonly left: object | null; readonly right: object | null } | null,
+  result: Set<object>,
+): void {
+  if (node === null) return;
+  result.add(node);
+  collectNodes(
+    node.left as {
+      readonly left: object | null;
+      readonly right: object | null;
+    } | null,
+    result,
+  );
+  collectNodes(
+    node.right as {
+      readonly left: object | null;
+      readonly right: object | null;
+    } | null,
+    result,
+  );
+}
+
+function countSharedNodes(
+  node: { readonly left: object | null; readonly right: object | null } | null,
+  candidates: ReadonlySet<object>,
+): number {
+  if (node === null) return 0;
+  return (
+    (candidates.has(node) ? 1 : 0) +
+    countSharedNodes(
+      node.left as {
+        readonly left: object | null;
+        readonly right: object | null;
+      } | null,
+      candidates,
+    ) +
+    countSharedNodes(
+      node.right as {
+        readonly left: object | null;
+        readonly right: object | null;
+      } | null,
+      candidates,
+    )
+  );
+}
+
+export function getOrderStatisticTreeDiagnosticsForTesting<
   TId extends OrderStatisticTreeId,
   TEntry,
   TMeasure,
 >(
   tree: OrderStatisticTree<TId, TEntry, TMeasure>,
-): OrderStatisticTreeNodeForTesting<TEntry, TMeasure> | null {
-  if (!(tree instanceof PersistentOrderStatisticTree)) {
+  comparedWith?: OrderStatisticTree<TId, TEntry, TMeasure>,
+): OrderStatisticTreeDiagnostics<TId> {
+  if (!persistentRoots.has(tree as object)) {
     throw new TypeError("Diagnostics require a tree created by this module.");
   }
-  return tree.rootForTesting();
+  const root = persistentRoots.get(tree as object) as TreeNode<
+    TId,
+    TEntry,
+    TMeasure
+  > | null;
+  const inspected = inspectNode(root);
+  let sharedNodeCount = 0;
+  if (comparedWith !== undefined) {
+    if (!persistentRoots.has(comparedWith as object)) {
+      throw new TypeError("Diagnostics require a tree created by this module.");
+    }
+    const comparedRoot = persistentRoots.get(comparedWith as object) as {
+      readonly left: object | null;
+      readonly right: object | null;
+    } | null;
+    const candidates = new Set<object>();
+    collectNodes(comparedRoot, candidates);
+    sharedNodeCount = countSharedNodes(root, candidates);
+  }
+  return Object.freeze({
+    count: inspected.count,
+    height: inspected.height,
+    balanced: inspected.balanced,
+    sharedNodeCount,
+    root: inspected.snapshot,
+  });
 }

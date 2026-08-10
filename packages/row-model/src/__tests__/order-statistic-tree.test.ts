@@ -1,10 +1,11 @@
 import { describe, expect, test } from "vitest";
 import {
+  PoisonedTransientOrderStatisticTreeError,
   createOrderStatisticTree,
-  getOrderStatisticTreePriorityForTesting,
-  getOrderStatisticTreeRootForTesting,
+  getOrderStatisticTreeDiagnosticsForTesting,
   type OrderStatisticTree,
-  type OrderStatisticTreeNodeForTesting,
+  type OrderStatisticTreeNodeDiagnostic,
+  type TransientOrderStatisticTree,
 } from "../persistent/order-statistic-tree";
 
 interface Item {
@@ -34,62 +35,79 @@ function ids(tree: OrderStatisticTree<string | number, Item, number>) {
   return [...tree.entries()].map((entry) => entry.id);
 }
 
+function adversarialOrder(id: number): number {
+  const value = `n:${id}`;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 0xc2b2ae35);
+  hash ^= hash >>> 16;
+  return hash >>> 0;
+}
+
+function verifyNodeDiagnostics<TId extends string | number>(
+  node: OrderStatisticTreeNodeDiagnostic<TId> | null,
+): { readonly count: number; readonly height: number } {
+  if (node === null) return { count: 0, height: 0 };
+  expect(Object.isFrozen(node)).toBe(true);
+  const left = verifyNodeDiagnostics(node.left);
+  const right = verifyNodeDiagnostics(node.right);
+  expect(node.count).toBe(left.count + 1 + right.count);
+  expect(node.height).toBe(1 + Math.max(left.height, right.height));
+  expect(node.balance).toBe(left.height - right.height);
+  expect(Math.abs(node.balance)).toBeLessThanOrEqual(1);
+  return { count: node.count, height: node.height };
+}
+
+function expectPoisoned(operation: () => unknown): void {
+  try {
+    operation();
+    throw new Error("Expected a poisoned-draft error.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(PoisonedTransientOrderStatisticTreeError);
+    expect(error).toMatchObject({
+      code: "poisoned-transient-order-statistic-tree",
+    });
+  }
+}
+
+function assertDraftReadsPoisoned(
+  draft: TransientOrderStatisticTree<string | number, Item, number>,
+  iteratorCreatedBeforeFailure: IterableIterator<Item>,
+): void {
+  expectPoisoned(() => draft.size);
+  expectPoisoned(() => draft.measure);
+  expectPoisoned(() => draft.get("alpha"));
+  expectPoisoned(() => draft.entryAt(0));
+  expectPoisoned(() => draft.rankOf("alpha"));
+  expectPoisoned(() => draft.range(0, 1));
+  expectPoisoned(() => draft.entries());
+  expectPoisoned(() => iteratorCreatedBeforeFailure.next());
+  expectPoisoned(() => draft.insertOrReplace(item("delta", 4)));
+  expectPoisoned(() => draft.remove("alpha"));
+  expectPoisoned(() => draft.freeze());
+}
+
 describe("OrderStatisticTree", () => {
-  test("uses deterministic stable-ID priorities", () => {
-    const idsToInsert = ["delta", 7, "alpha", 2, "omega"] as const;
-    const priorities = idsToInsert.map((id) =>
-      getOrderStatisticTreePriorityForTesting(id),
-    );
-
-    expect(
-      idsToInsert.map((id) => getOrderStatisticTreePriorityForTesting(id)),
-    ).toEqual(priorities);
-    expect(getOrderStatisticTreePriorityForTesting(1)).not.toBe(
-      getOrderStatisticTreePriorityForTesting("1"),
-    );
-
-    const ascending = idsToInsert.reduce(
-      (tree, id) => tree.insertOrReplace(item(id, 0)),
-      createTree(),
-    );
-    const descending = [...idsToInsert]
-      .reverse()
-      .reduce((tree, id) => tree.insertOrReplace(item(id, 0)), createTree());
-
-    const shape = (
-      node: OrderStatisticTreeNodeForTesting<Item, number> | null,
-    ): unknown =>
-      node === null
-        ? null
-        : [node.entry.id, node.priority, shape(node.left), shape(node.right)];
-    expect(shape(getOrderStatisticTreeRootForTesting(ascending))).toEqual(
-      shape(getOrderStatisticTreeRootForTesting(descending)),
-    );
-  });
-
-  test("mixes sequential stable IDs into a balanced expected shape", () => {
-    let tree = createTree();
-    for (let id = 0; id < 1_000; id += 1) {
-      tree = tree.insertOrReplace(item(id, id));
-    }
-
-    const height = (
-      node: OrderStatisticTreeNodeForTesting<Item, number> | null,
-    ): number =>
-      node === null ? 0 : 1 + Math.max(height(node.left), height(node.right));
-
-    expect(height(getOrderStatisticTreeRootForTesting(tree))).toBeLessThan(40);
-  });
-
-  test("orders by the comparator and totalizes ties by stable ID", () => {
+  test("orders by the comparator and totalizes special mixed IDs", () => {
     const tree = createTree()
-      .insertOrReplace(item("z", 1))
+      .insertOrReplace(item("a", 1))
       .insertOrReplace(item("1", 1))
-      .insertOrReplace(item(10, 1))
-      .insertOrReplace(item(2, 1))
-      .insertOrReplace(item("a", 0));
+      .insertOrReplace(item(Number.NaN, 1))
+      .insertOrReplace(item(1, 1))
+      .insertOrReplace(item(0, 1))
+      .insertOrReplace({ ...item(-0, 1), label: "negative-zero" });
 
-    expect(ids(tree)).toEqual(["a", 2, 10, "1", "z"]);
+    expect(tree.size).toBe(5);
+    expect(ids(tree)).toEqual([-0, 1, Number.NaN, "1", "a"]);
+    expect(tree.get(0)?.label).toBe("negative-zero");
+    expect(tree.get(-0)?.label).toBe("negative-zero");
+    expect(tree.rankOf(Number.NaN)).toBe(2);
   });
 
   test("inserts, replaces, repositions, removes, and preserves no-op identity", () => {
@@ -132,34 +150,87 @@ describe("OrderStatisticTree", () => {
     expect(tree.range(4, 2)).toEqual([]);
   });
 
-  test("caches correct subtree counts and generic measures", () => {
+  test("keeps monotonic and reverse insertion AVL-balanced", () => {
+    const size = 100_000;
+    let ascending = createTree();
+    let descending = createTree();
+    for (let id = 0; id < size; id += 1) {
+      ascending = ascending.insertOrReplace(item(id, id, 1));
+      descending = descending.insertOrReplace(
+        item(size - id - 1, size - id - 1, 1),
+      );
+    }
+
+    for (const tree of [ascending, descending]) {
+      const diagnostics = getOrderStatisticTreeDiagnosticsForTesting(tree);
+      expect(diagnostics.balanced).toBe(true);
+      expect(diagnostics.count).toBe(size);
+      expect(diagnostics.height).toBeLessThanOrEqual(
+        Math.ceil(1.45 * Math.log2(size + 2)),
+      );
+      expect(tree.entryAt(0)?.score).toBe(0);
+      expect(tree.entryAt(size - 1)?.score).toBe(size - 1);
+      expect(tree.rankOf(Math.floor(size / 2))).toBe(Math.floor(size / 2));
+      expect(tree.range(size - 3, size).map((entry) => entry.score)).toEqual([
+        size - 3,
+        size - 2,
+        size - 1,
+      ]);
+      expect(tree.measure).toBe(size);
+    }
+  });
+
+  test("stays AVL-balanced when comparator order is correlated with IDs", () => {
+    const size = 20_000;
+    let tree = createTree();
+    const expected: Item[] = [];
+    for (let id = 0; id < size; id += 1) {
+      const next = item(id, adversarialOrder(id), 1);
+      expected.push(next);
+      tree = tree.insertOrReplace(next);
+    }
+    expected.sort(
+      (left, right) =>
+        left.score - right.score || (left.id as number) - (right.id as number),
+    );
+
+    const diagnostics = getOrderStatisticTreeDiagnosticsForTesting(tree);
+    expect(diagnostics.balanced).toBe(true);
+    expect(diagnostics.height).toBeLessThanOrEqual(
+      Math.ceil(1.45 * Math.log2(size + 2)),
+    );
+    expect(diagnostics.count).toBe(size);
+    expect(tree.measure).toBe(size);
+    const middle = Math.floor(size / 2);
+    expect(tree.entryAt(middle)).toBe(expected[middle]);
+    expect(tree.rankOf(expected[middle]!.id)).toBe(middle);
+    expect(tree.range(middle - 2, middle + 3)).toEqual(
+      expected.slice(middle - 2, middle + 3),
+    );
+  });
+
+  test("returns frozen diagnostics without exposing live tree nodes", () => {
     let tree = createTree();
     for (let score = 0; score < 40; score += 1) {
       tree = tree.insertOrReplace(item(`id-${score}`, score, score + 1));
     }
 
-    const verify = (
-      node: OrderStatisticTreeNodeForTesting<Item, number> | null,
-    ): { count: number; measure: number } => {
-      if (node === null) return { count: 0, measure: 0 };
-      const left = verify(node.left);
-      const right = verify(node.right);
-      expect(node.count).toBe(left.count + 1 + right.count);
-      expect(node.measure).toBe(
-        left.measure + node.entry.weight + right.measure,
-      );
-      return { count: node.count, measure: node.measure };
-    };
+    const diagnostics = getOrderStatisticTreeDiagnosticsForTesting(tree);
 
-    expect(verify(getOrderStatisticTreeRootForTesting(tree))).toEqual({
+    expect(Object.isFrozen(diagnostics)).toBe(true);
+    expect(diagnostics).toMatchObject({ count: 40, balanced: true });
+    expect(verifyNodeDiagnostics(diagnostics.root)).toEqual({
       count: 40,
-      measure: 820,
+      height: diagnostics.height,
     });
     expect(tree.measure).toBe(820);
     expect(tree.remove("id-20").measure).toBe(799);
+    expect(Object.keys(tree)).toEqual([]);
+    expect(Reflect.get(tree, "rootForTesting")).toBeUndefined();
+    expect(Reflect.get(tree, "root")).toBeUndefined();
   });
 
-  test("computes leaf measures only for inserted or replaced entries", () => {
+  test("caches exact ordered noncommutative measures on changed paths", () => {
     let fromEntryCalls = 0;
     let tree = createOrderStatisticTree({
       getId: (entry: Item) => entry.id,
@@ -168,7 +239,7 @@ describe("OrderStatisticTree", () => {
         empty: "",
         fromEntry: (entry) => {
           fromEntryCalls += 1;
-          return entry.label;
+          return `${entry.label}|`;
         },
         combine: (left, right) => left + right,
       },
@@ -178,6 +249,9 @@ describe("OrderStatisticTree", () => {
       tree = tree.insertOrReplace(item(`id-${score}`, score));
     }
     expect(fromEntryCalls).toBe(25);
+    expect(tree.measure).toBe(
+      [...tree.entries()].map((entry) => `${entry.label}|`).join(""),
+    );
 
     const same = tree.entryAt(12)!;
     expect(tree.insertOrReplace(same)).toBe(tree);
@@ -185,25 +259,28 @@ describe("OrderStatisticTree", () => {
 
     tree = tree.insertOrReplace({ ...same, label: "replacement" });
     expect(fromEntryCalls).toBe(26);
-    expect(tree.measure.includes("replacement")).toBe(true);
+    expect(tree.measure).toBe(
+      [...tree.entries()].map((entry) => `${entry.label}|`).join(""),
+    );
   });
 
-  test("keeps old roots immutable", () => {
-    const original = createTree()
-      .insertOrReplace(item("alpha", 1, 2))
-      .insertOrReplace(item("beta", 2, 3))
-      .insertOrReplace(item("gamma", 3, 5));
-    const originalRoot = getOrderStatisticTreeRootForTesting(original);
-    const updated = original
-      .insertOrReplace(item("alpha", 4, 7))
-      .remove("beta")
-      .insertOrReplace(item("delta", 0, 11));
+  test("keeps old roots immutable and reports structural sharing", () => {
+    let original = createTree();
+    for (let score = 0; score < 64; score += 1) {
+      original = original.insertOrReplace(item(`id-${score}`, score, 1));
+    }
+    const updated = original.insertOrReplace(item("id-63", 63, 7));
+    const diagnostics = getOrderStatisticTreeDiagnosticsForTesting(
+      updated,
+      original,
+    );
 
-    expect(ids(original)).toEqual(["alpha", "beta", "gamma"]);
-    expect(original.measure).toBe(10);
-    expect(getOrderStatisticTreeRootForTesting(original)).toBe(originalRoot);
-    expect(ids(updated)).toEqual(["delta", "gamma", "alpha"]);
-    expect(updated.measure).toBe(23);
+    expect(original.get("id-63")?.weight).toBe(1);
+    expect(original.measure).toBe(64);
+    expect(updated.get("id-63")?.weight).toBe(7);
+    expect(updated.measure).toBe(70);
+    expect(diagnostics.sharedNodeCount).toBeGreaterThan(0);
+    expect(diagnostics.sharedNodeCount).toBeLessThan(original.size);
   });
 
   test("batches transient edits and freezes safely", () => {
@@ -234,7 +311,147 @@ describe("OrderStatisticTree", () => {
     expect(() => draft.remove("gamma")).toThrow(/frozen/i);
   });
 
-  test("matches a sorted-array oracle across seeded randomized operations", () => {
+  test("matches a sorted-array oracle across transient randomized operations", () => {
+    let randomState = 0xa511e9b3;
+    const random = () => {
+      randomState = (Math.imul(randomState, 1_664_525) + 1_013_904_223) >>> 0;
+      return randomState;
+    };
+    const compare = (left: Item, right: Item) =>
+      left.score - right.score || (left.id as number) - (right.id as number);
+    const oracle = new Map<number, Item>();
+    const draft = createOrderStatisticTree({
+      getId: (entry: Item) => entry.id as number,
+      compare: (left, right) => left.score - right.score,
+      measure: {
+        empty: 0,
+        fromEntry: (entry) => entry.weight,
+        combine: (left, right) => left + right,
+      },
+    }).asTransient();
+
+    for (let operation = 0; operation < 3_000; operation += 1) {
+      const id = random() % 257;
+      if ((random() & 3) === 0) {
+        draft.remove(id);
+        oracle.delete(id);
+      } else {
+        const next = item(id, random() % 31, random() % 101);
+        draft.insertOrReplace(next);
+        oracle.set(id, next);
+      }
+      if (operation % 50 === 0) {
+        const sorted = [...oracle.values()].sort(compare);
+        expect([...draft.entries()]).toEqual(sorted);
+        expect(draft.measure).toBe(
+          sorted.reduce((sum, entry) => sum + entry.weight, 0),
+        );
+      }
+    }
+
+    const sorted = [...oracle.values()].sort(compare);
+    const frozen = draft.freeze();
+    expect([...frozen.entries()]).toEqual(sorted);
+    expect(frozen.measure).toBe(
+      sorted.reduce((sum, entry) => sum + entry.weight, 0),
+    );
+    expect(getOrderStatisticTreeDiagnosticsForTesting(frozen).balanced).toBe(
+      true,
+    );
+  });
+
+  test("poisons every transient operation after a comparator callback throws", () => {
+    const callbackError = new Error("comparator failed");
+    let throwForReplacement = false;
+    const tree = createOrderStatisticTree({
+      getId: (entry: Item) => entry.id,
+      compare: (left, right) => {
+        if (
+          throwForReplacement &&
+          (left.label === "replacement" || right.label === "replacement")
+        ) {
+          throw callbackError;
+        }
+        return left.score - right.score;
+      },
+      measure: {
+        empty: 0,
+        fromEntry: (entry) => entry.weight,
+        combine: (left, right) => left + right,
+      },
+    })
+      .insertOrReplace(item("alpha", 1))
+      .insertOrReplace(item("beta", 2));
+    const draft = tree.asTransient();
+    const iterator = draft.entries();
+    throwForReplacement = true;
+
+    expect(() =>
+      draft.insertOrReplace({
+        ...item("alpha", 3),
+        label: "replacement",
+      }),
+    ).toThrow(callbackError);
+    assertDraftReadsPoisoned(draft, iterator);
+    expect(ids(tree)).toEqual(["alpha", "beta"]);
+    expect(tree.measure).toBe(3);
+  });
+
+  test("poisons a transient after a measure callback throws", () => {
+    const callbackError = new Error("combine failed");
+    let throwOnCombine = false;
+    const tree = createOrderStatisticTree({
+      getId: (entry: Item) => entry.id,
+      compare: (left, right) => left.score - right.score,
+      measure: {
+        empty: 0,
+        fromEntry: (entry) => entry.weight,
+        combine: (left, right) => {
+          if (throwOnCombine) throw callbackError;
+          return left + right;
+        },
+      },
+    })
+      .insertOrReplace(item("alpha", 1))
+      .insertOrReplace(item("beta", 2));
+    const draft = tree.asTransient();
+    throwOnCombine = true;
+
+    expect(() => draft.insertOrReplace(item("gamma", 3))).toThrow(
+      callbackError,
+    );
+    expectPoisoned(() => draft.get("alpha"));
+    expectPoisoned(() => draft.freeze());
+    expect(tree.size).toBe(2);
+    expect(tree.measure).toBe(3);
+  });
+
+  test("preserves tree and ID index identity when comparator drift hides an ID", () => {
+    let reversed = false;
+    let tree = createOrderStatisticTree({
+      getId: (entry: Item) => entry.id as number,
+      compare: (left, right) =>
+        (reversed ? -1 : 1) * (left.score - right.score),
+      measure: {
+        empty: 0,
+        fromEntry: (entry) => entry.weight,
+        combine: (left, right) => left + right,
+      },
+    });
+    for (let id = 0; id < 7; id += 1) {
+      tree = tree.insertOrReplace(item(id, id));
+    }
+    const rootId = getOrderStatisticTreeDiagnosticsForTesting(tree).root!.id;
+    const hiddenId = rootId === 0 ? 6 : 0;
+    reversed = true;
+
+    const removal = tree.remove(hiddenId);
+
+    expect(removal).toBe(tree);
+    expect(removal.get(hiddenId)).toBeDefined();
+  });
+
+  test("matches a sorted-array oracle across seeded persistent operations", () => {
     let randomState = 0x6d2b79f5;
     const random = () => {
       randomState = (Math.imul(randomState, 1_664_525) + 1_013_904_223) >>> 0;
