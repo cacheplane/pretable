@@ -23,6 +23,10 @@
   /* Lines */
   --pretable-rule: #d4d4d4; /* Excel desktop default RGB 211,211,211 */
   --pretable-rule-strong: #a6a6a6;
+  /* Excel draws the full cage: the vertical divider tracks the horizontal rule.
+     A theme that wants horizontal-only separation sets this to `transparent`. */
+  --pretable-rule-vertical: var(--pretable-rule);
+  --pretable-rule-width: 1px;
   --pretable-radius: 0; /* Sharp edges — Excel never rounds */
 
   /* State */
