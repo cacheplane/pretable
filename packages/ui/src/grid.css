@@ -118,6 +118,20 @@
     border-right: none;
   }
 
+  /* Rows containing a wrapped cell top-align every cell, so each column's first
+     line shares a baseline instead of every cell centring independently against
+     a variable row height.
+     `data-pretable-wrap` comes from `column.wrap` — a COLUMN property — so it
+     marks "this column can wrap", not "this cell did wrap". The match is
+     therefore static, and alignment never flips as streaming content changes a
+     row's height. A true per-row signal would flip on every height change; do
+     not add one. */
+  :where(
+    [data-pretable-row]:has([data-pretable-wrap="true"]) [data-pretable-cell]
+  ) {
+    align-items: flex-start;
+  }
+
   /* Zebra striping — only effective when --pretable-bg-grid-alt differs */
   :where([data-pretable-row]:nth-child(even) [data-pretable-cell]) {
     background: var(--pretable-bg-grid-alt);

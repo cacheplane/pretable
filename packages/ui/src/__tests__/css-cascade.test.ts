@@ -204,6 +204,17 @@ describe("grid.css cascade contract", () => {
     expect(rule).not.toMatch(/text-align/);
   });
 
+  test("rows with a wrapped cell top-align so first lines share a baseline", () => {
+    // Cells are `align-items: center`, which in a variable-height row makes every
+    // cell centre independently and destroys the row's shared first baseline.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\s*\[data-pretable-row\]:has\(\[data-pretable-wrap="true"\]\)\s+\[data-pretable-cell\]\s*\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no wrapped-row alignment rule found").toBeDefined();
+    expect(rule).toMatch(/align-items:\s*flex-start/);
+  });
+
   test("numeric and date cells get tabular figures without changing family", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums/);
