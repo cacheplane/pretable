@@ -55,6 +55,18 @@ class ManualScheduler implements CooperativeTransitionScheduler {
   }
 }
 
+class ThrowingCancelScheduler extends ManualScheduler {
+  readonly cancellationFailure = new Error("scheduler cancellation exploded");
+
+  override schedule(task: () => void): () => void {
+    const cancel = super.schedule(task);
+    return () => {
+      cancel();
+      throw this.cancellationFailure;
+    };
+  }
+}
+
 function tickingClock() {
   let tick = 0;
   return () => tick++;
@@ -71,7 +83,7 @@ function makeRows(): readonly Row[] {
 
 function createModel(options: {
   readonly rows?: readonly Row[];
-  readonly scheduler?: ManualScheduler;
+  readonly scheduler?: CooperativeTransitionScheduler;
   readonly query?: {
     readonly filters: readonly {
       readonly columnId: "score";
@@ -82,12 +94,14 @@ function createModel(options: {
     readonly rowGroups: readonly [];
   };
   readonly changeJournalCapacity?: number;
+  readonly distinctValueCacheCapacity?: number;
 }) {
   return createLocalRowModel({
     rows: options.rows ?? makeRows(),
     columns,
     query: options.query,
     changeJournalCapacity: options.changeJournalCapacity,
+    distinctValueCacheCapacity: options.distinctValueCacheCapacity,
     transitionScheduler: options.scheduler,
     transitionClock: tickingClock(),
     transitionBudgetMs: 1,
@@ -108,6 +122,114 @@ function extendedDiagnostics(model: object) {
 }
 
 describe("bounded distinct-value dictionaries", () => {
+  test("hostile cancellation hooks cannot retain cancelled builds or run stale work", async () => {
+    const scheduler = new ThrowingCancelScheduler();
+    const model = createModel({ scheduler });
+    const query = model.distinctValues("label", { limit: 10 });
+    const staleTask = scheduler.entries[0]?.task;
+
+    expect(() => query.cancel()).not.toThrow();
+    await expect(query.finished).rejects.toMatchObject({
+      name: "PretableDistinctValueCancelledError",
+      reason: "cancelled",
+    });
+    expect(extendedDiagnostics(model)).toMatchObject({
+      cacheEntryCount: 0,
+      buildingDictionaryCount: 0,
+      capturedRootCount: 0,
+      activeProjectionCount: 0,
+    });
+    staleTask?.();
+    expect(extendedDiagnostics(model)).toMatchObject({
+      cacheEntryCount: 0,
+      buildingDictionaryCount: 0,
+      capturedRootCount: 0,
+      activeProjectionCount: 0,
+    });
+  });
+
+  test("hostile cancellation hooks cannot interrupt build eviction or disposal", async () => {
+    const scheduler = new ThrowingCancelScheduler();
+    const model = createModel({ scheduler, distinctValueCacheCapacity: 1 });
+    const first = model.distinctValues("label", { limit: 10 });
+    const firstStaleTask = scheduler.entries[0]?.task;
+    const firstRejection = expect(first.finished).rejects.toMatchObject({
+      name: "PretableDistinctValueCancelledError",
+      reason: "evicted",
+    });
+
+    const second = model.distinctValues("score", { limit: 10 });
+    await firstRejection;
+    expect(extendedDiagnostics(model)).toMatchObject({
+      cacheEntryCount: 1,
+      buildingDictionaryCount: 1,
+      capturedRootCount: 1,
+    });
+    firstStaleTask?.();
+    expect(extendedDiagnostics(model)).toMatchObject({
+      cacheEntryCount: 1,
+      buildingDictionaryCount: 1,
+      capturedRootCount: 1,
+    });
+
+    const secondStaleTask = scheduler.entries.at(-1)?.task;
+    expect(() => model.dispose()).not.toThrow();
+    await expect(second.finished).rejects.toBeInstanceOf(
+      PretableDisposedModelError,
+    );
+    expect(extendedDiagnostics(model)).toMatchObject({
+      cacheEntryCount: 0,
+      retainedDictionaryCount: 0,
+      buildingDictionaryCount: 0,
+      capturedRootCount: 0,
+      activeProjectionCount: 0,
+      disposed: true,
+    });
+    secondStaleTask?.();
+    expect(extendedDiagnostics(model)).toMatchObject({
+      cacheEntryCount: 0,
+      buildingDictionaryCount: 0,
+      activeProjectionCount: 0,
+      disposed: true,
+    });
+  });
+
+  test("hostile cancellation hooks release cancellable search projections", async () => {
+    const scheduler = new ThrowingCancelScheduler();
+    const model = createModel({ scheduler });
+    const direct = model.distinctValues("label", { limit: 10 });
+    scheduler.flushAll();
+    await direct.finished;
+
+    const searched = model.distinctValues("label", {
+      search: "beta",
+      limit: 10,
+    });
+    const staleTask = scheduler.entries.at(-1)?.task;
+    expect(extendedDiagnostics(model)).toMatchObject({
+      activeProjectionCount: 1,
+      projectionIteratorCount: 1,
+      projectionScheduledCount: 1,
+    });
+
+    expect(() => searched.cancel()).not.toThrow();
+    await expect(searched.finished).rejects.toMatchObject({
+      name: "PretableDistinctValueCancelledError",
+      reason: "cancelled",
+    });
+    expect(extendedDiagnostics(model)).toMatchObject({
+      activeProjectionCount: 0,
+      projectionIteratorCount: 0,
+      projectionScheduledCount: 0,
+    });
+    staleTask?.();
+    expect(extendedDiagnostics(model)).toMatchObject({
+      activeProjectionCount: 0,
+      projectionIteratorCount: 0,
+      projectionScheduledCount: 0,
+    });
+  });
+
   test("canonicalizes SameValueZero zero representatives across insertion order and retained removal", async () => {
     const permutations = [
       [-0, +0, -0],

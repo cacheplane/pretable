@@ -616,8 +616,13 @@ export function createLocalRowModel<
     const transition = activeTransition;
     if (transition === undefined) return undefined;
     activeTransition = undefined;
-    transition.cancelScheduled?.();
+    const cancelScheduled = transition.cancelScheduled;
     transition.cancelScheduled = undefined;
+    try {
+      cancelScheduled?.();
+    } catch {
+      // Scheduler cancellation is best-effort; model ownership still releases.
+    }
     transition.candidate.release();
     transition.reject(
       new PretableTransitionCancelledError(transition.id, reason),
@@ -630,8 +635,13 @@ export function createLocalRowModel<
   ): void => {
     if (activeTransition !== transition) return;
     activeTransition = undefined;
-    transition.cancelScheduled?.();
+    const cancelScheduled = transition.cancelScheduled;
     transition.cancelScheduled = undefined;
+    try {
+      cancelScheduled?.();
+    } catch {
+      // Preserve the transition failure rather than a scheduler cleanup error.
+    }
     transition.candidate.release();
     const typed =
       findPretableReentrantMutationError(error) ??
@@ -686,8 +696,13 @@ export function createLocalRowModel<
       const revision = previousRevision + 1;
       const committedRoot = transition.candidate.finish(revision);
       activeTransition = undefined;
-      transition.cancelScheduled?.();
+      const cancelScheduled = transition.cancelScheduled;
       transition.cancelScheduled = undefined;
+      try {
+        cancelScheduled?.();
+      } catch {
+        // Successful publication cannot be rolled back by advisory cleanup.
+      }
       queryPlan = committedRoot.queryPlan;
       query = committedRoot.queryPlan.query;
       derivations = committedRoot.queryPlan.derivations;

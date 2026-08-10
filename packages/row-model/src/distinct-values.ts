@@ -806,9 +806,18 @@ export function createDistinctValueManager<
   });
   const activeProjections = new Set<SearchProjection<unknown>>();
 
+  const bestEffortCancel = (cancel: (() => void) | undefined): void => {
+    try {
+      cancel?.();
+    } catch {
+      // Scheduler hooks are advisory and never own dictionary/projection state.
+    }
+  };
+
   const releaseProjection = (projection: SearchProjection<unknown>): void => {
-    projection.cancelScheduled?.();
+    const cancelScheduled = projection.cancelScheduled;
     projection.cancelScheduled = undefined;
+    bestEffortCancel(cancelScheduled);
     projection.iterator = undefined;
     projection.tree = undefined;
     projection.values.length = 0;
@@ -908,8 +917,9 @@ export function createDistinctValueManager<
   const releaseBuilding = (
     entry: BuildingCacheEntry<TRow, TRowId, TColumns>,
   ): void => {
-    entry.cancelScheduled?.();
+    const cancelScheduled = entry.cancelScheduled;
     entry.cancelScheduled = undefined;
+    bestEffortCancel(cancelScheduled);
     if (!entry.candidate.released) {
       rowsEvaluated += entry.candidate.processedRows;
       entry.candidate.release();

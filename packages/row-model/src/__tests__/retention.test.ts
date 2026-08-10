@@ -85,8 +85,9 @@ describe("instrumented local row-model retention", () => {
     instrumented.model.dispose();
   });
 
-  test("releases the token before a delegated cancellation hook throws", () => {
+  test("completes explicit cancellation when its queued hook throws", async () => {
     const cancellationFailure = new Error("scheduler cancellation exploded");
+    let staleTask: (() => void) | undefined;
     const instrumented = createInstrumentedLocalRowModel({
       rows: Array.from({ length: 20 }, (_, id) => ({
         id,
@@ -96,7 +97,8 @@ describe("instrumented local row-model retention", () => {
       })),
       columns,
       transitionScheduler: {
-        schedule(): () => void {
+        schedule(task): () => void {
+          staleTask = task;
           return () => {
             throw cancellationFailure;
           };
@@ -104,6 +106,10 @@ describe("instrumented local row-model retention", () => {
       },
       transitionClock: tickingClock(),
       transitionBudgetMs: 1,
+    });
+    let notifications = 0;
+    instrumented.model.subscribe(() => {
+      notifications += 1;
     });
     const transition = instrumented.model.setQuery({
       filters: [],
@@ -113,10 +119,26 @@ describe("instrumented local row-model retention", () => {
     expect(
       instrumented.diagnostics.read().retention.scheduledCallbackCount,
     ).toBe(1);
-    expect(() => transition.cancel()).toThrow(cancellationFailure);
+    expect(() => transition.cancel()).not.toThrow();
+    await expect(transition.finished).rejects.toMatchObject({
+      reason: "cancelled",
+    });
+    expect(instrumented.model.getState()).toMatchObject({
+      snapshot: { revision: 0 },
+      status: { kind: "ready" },
+    });
+    expect(notifications).toBe(2);
     expect(
       instrumented.diagnostics.read().retention.scheduledCallbackCount,
     ).toBe(0);
+    expect(instrumented.diagnostics.read().retention).toMatchObject({
+      transitionCandidateRootCount: 0,
+      transitionDeltaRootCount: 0,
+    });
+    const cancelledState = instrumented.model.getState();
+    staleTask?.();
+    expect(instrumented.model.getState()).toBe(cancelledState);
+    expect(notifications).toBe(2);
     instrumented.model.dispose();
   });
 

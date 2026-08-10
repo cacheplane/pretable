@@ -69,6 +69,18 @@ class ManualScheduler implements CooperativeTransitionScheduler {
   }
 }
 
+class ThrowingCancelScheduler extends ManualScheduler {
+  readonly cancellationFailure = new Error("scheduler cancellation exploded");
+
+  override schedule(task: () => void): () => void {
+    const cancel = super.schedule(task);
+    return () => {
+      cancel();
+      throw this.cancellationFailure;
+    };
+  }
+}
+
 function tickingClock() {
   let tick = 0;
   return () => tick++;
@@ -83,7 +95,7 @@ function rowIds(model: ReturnType<typeof createModel>) {
 
 function createModel(options: {
   readonly rows?: readonly Row[];
-  readonly scheduler?: ManualScheduler;
+  readonly scheduler?: CooperativeTransitionScheduler;
   readonly budgetMs?: number;
   readonly clock?: () => number;
 }) {
@@ -665,6 +677,114 @@ describe("cooperative query and derivation transitions", () => {
     });
     scheduler.flushAll();
     expect(model.getState().snapshot.revision).toBe(0);
+  });
+
+  test("hostile cancellation hooks cannot interrupt cancellation, supersession, or disposal", async () => {
+    const scheduler = new ThrowingCancelScheduler();
+    const model = createModel({
+      scheduler,
+      clock: tickingClock(),
+      budgetMs: 1,
+    });
+    const listener = vi.fn();
+    model.subscribe(listener);
+
+    const first = model.setQuery({
+      filters: [{ columnId: "score", operator: "gte", value: 3 }],
+      sort: [],
+      rowGroups: [],
+    });
+    const firstStaleTask = scheduler.entries[0]?.task;
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    expect(() => first.cancel()).not.toThrow();
+    await expect(first.finished).rejects.toMatchObject({
+      transitionId: first.id,
+      reason: "cancelled",
+    });
+    expect(model.getState()).toMatchObject({
+      snapshot: { revision: 0 },
+      status: { kind: "ready" },
+    });
+    expect(listener).toHaveBeenCalledTimes(2);
+    firstStaleTask?.();
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    const superseded = model.setQuery({
+      filters: [{ columnId: "score", operator: "gte", value: 4 }],
+      sort: [],
+      rowGroups: [],
+    });
+    const supersededStaleTask = scheduler.entries.at(-1)?.task;
+    const replacement = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    await expect(superseded.finished).rejects.toMatchObject({
+      transitionId: superseded.id,
+      reason: "superseded",
+    });
+    expect(model.getState().status).toMatchObject({
+      kind: "rebuilding",
+      transitionId: replacement.id,
+    });
+    supersededStaleTask?.();
+    expect(model.getState().status).toMatchObject({
+      kind: "rebuilding",
+      transitionId: replacement.id,
+    });
+
+    const notificationsBeforeDispose = listener.mock.calls.length;
+    const replacementStaleTask = scheduler.entries.at(-1)?.task;
+    expect(() => model.dispose()).not.toThrow();
+    await expect(replacement.finished).rejects.toMatchObject({
+      transitionId: replacement.id,
+      reason: "disposed",
+    });
+    expect(model.getState()).toMatchObject({
+      snapshot: { revision: 0 },
+      status: { kind: "disposed" },
+    });
+    expect(listener).toHaveBeenCalledTimes(notificationsBeforeDispose + 1);
+    replacementStaleTask?.();
+    expect(listener).toHaveBeenCalledTimes(notificationsBeforeDispose + 1);
+  });
+
+  test("transition failures preserve their typed error with a hostile cancellation hook", async () => {
+    const scheduler = new ThrowingCancelScheduler();
+    const failure = new Error("accessor exploded");
+    const model = createModel({
+      scheduler,
+      clock: tickingClock(),
+      budgetMs: 1,
+    });
+    const before = model.getState().snapshot;
+    const transition = model.setDerivations([
+      columns[0],
+      {
+        ...columns[1],
+        accessor: (row: Row) => {
+          if (row.id === 2) throw failure;
+          return row.score;
+        },
+        value: (row: Row) => row.score,
+      },
+    ]);
+
+    scheduler.flushAll();
+
+    await expect(transition.finished).rejects.toMatchObject({
+      code: "accessor-failed",
+      operation: "set-derivations",
+      cause: failure,
+    });
+    expect(model.getState().snapshot).toBe(before);
+    expect(model.getState().status).toMatchObject({
+      kind: "error",
+      transitionId: transition.id,
+      error: { code: "accessor-failed", cause: failure },
+    });
   });
 
   test("cross-supersession keeps rebuilding under the new ID and stale callbacks are inert", async () => {

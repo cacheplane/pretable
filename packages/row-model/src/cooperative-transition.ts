@@ -81,6 +81,15 @@ interface BrowserScheduler {
   ): unknown;
 }
 
+function bestEffortCancel(cancel: (() => void) | undefined): void {
+  try {
+    cancel?.();
+  } catch {
+    // Scheduler cancellation is advisory infrastructure cleanup. It must not
+    // interrupt the model-owned release and settlement that follows.
+  }
+}
+
 function postTaskScheduler(
   postTask: BrowserScheduler["postTask"],
   fallback: CooperativeTransitionScheduler,
@@ -111,9 +120,14 @@ function postTaskScheduler(
       return () => {
         if (cancelled) return;
         cancelled = true;
-        controller?.abort();
-        cancelFallback?.();
+        const cancel = cancelFallback;
         cancelFallback = undefined;
+        try {
+          controller?.abort();
+        } catch {
+          // A hostile AbortController is no more authoritative than the task.
+        }
+        bestEffortCancel(cancel);
       };
     },
   } satisfies CooperativeTransitionScheduler;
@@ -125,23 +139,32 @@ function messageChannelScheduler(): CooperativeTransitionScheduler | null {
     schedule(task) {
       const channel = new MessageChannel();
       let cancelled = false;
+      const close = () => {
+        try {
+          channel.port1.close();
+        } catch {
+          // Closing a host channel is best-effort cleanup.
+        }
+        try {
+          channel.port2.close();
+        } catch {
+          // Closing a host channel is best-effort cleanup.
+        }
+      };
       channel.port1.onmessage = () => {
-        channel.port1.close();
-        channel.port2.close();
+        close();
         if (!cancelled) task();
       };
       try {
         channel.port2.postMessage(undefined);
       } catch (error) {
-        channel.port1.close();
-        channel.port2.close();
+        close();
         throw error;
       }
       return () => {
         if (cancelled) return;
         cancelled = true;
-        channel.port1.close();
-        channel.port2.close();
+        close();
       };
     },
   };
@@ -227,7 +250,7 @@ export function createCooperativeTransitionRuntime(options: {
             }
             return () => {
               options.instrumentation!.scheduledCallbacks.delete(token);
-              cancel();
+              bestEffortCancel(cancel);
             };
           },
         };
