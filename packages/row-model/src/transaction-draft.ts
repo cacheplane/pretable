@@ -486,6 +486,9 @@ export function applyFlatTransactionDraft<
         ignored += 1;
         continue;
       }
+      if (previous.integrity.kind === "fingerprinted") {
+        throw new PretableUnsupportedRowUpdateError(rowId);
+      }
       const merged = mergeChanges(previous.row, changes, rowId);
       if (!merged.changed) {
         unchanged += 1;

@@ -171,6 +171,18 @@ export function inspectRowIntegrity<TRowId extends PretableRowId>(
     }
   }
 
+  try {
+    if (Object.isFrozen(row)) {
+      return {
+        integrity: { kind: "frozen" },
+        sameReferenceMutation: false,
+      };
+    }
+  } catch (cause) {
+    const current = fingerprint(row, cause);
+    return fingerprintInspection(current, rowId, previous, sameReference);
+  }
+
   const current = fingerprint(row);
   return fingerprintInspection(current, rowId, previous, sameReference);
 }

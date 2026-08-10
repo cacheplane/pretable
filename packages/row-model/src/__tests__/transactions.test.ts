@@ -489,6 +489,72 @@ describe("flat transactions", () => {
     );
   });
 
+  test("rejects fingerprinted proxy and non-extensible rows before partial merge", () => {
+    const target = { id: 1, label: "base", score: 1 };
+    const proxy = new Proxy(target, {
+      get: (source, key, receiver) =>
+        key === "label" ? "virtual" : Reflect.get(source, key, receiver),
+      preventExtensions: () => {
+        throw new Error("proxy refuses freeze");
+      },
+    });
+    const proxyModel = createLocalRowModel({ rows: [proxy], columns });
+    const proxyBefore = proxyModel.getState();
+    expect(proxyBefore.snapshot.rowAt(0)).toMatchObject({
+      row: expect.objectContaining({ label: "virtual", score: 1 }),
+    });
+
+    expect(() =>
+      proxyModel.applyTransaction({
+        update: [{ id: 1, changes: { score: 2 } }],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "unsupported-row-update", rowId: 1 }),
+    );
+    expect(proxyModel.getState()).toBe(proxyBefore);
+    expect(proxyModel.getState().snapshot.rowAt(0)).toMatchObject({
+      row: expect.objectContaining({ label: "virtual", score: 1 }),
+    });
+
+    const fingerprinted = Object.preventExtensions({
+      id: 2,
+      label: "fixed",
+      score: 2,
+    });
+    const fixedModel = createLocalRowModel({ rows: [fingerprinted], columns });
+    const fixedBefore = fixedModel.getState();
+    expect(() =>
+      fixedModel.applyTransaction({
+        update: [{ id: 2, changes: { score: 3 } }],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "unsupported-row-update", rowId: 2 }),
+    );
+    expect(fixedModel.getState()).toBe(fixedBefore);
+    expect(() =>
+      fixedModel.setRows([{ id: 2, label: "replacement", score: 3 }]),
+    ).not.toThrow();
+    expect(fixedModel.getState().snapshot.rowAt(0)).toMatchObject({
+      row: { label: "replacement", score: 3 },
+    });
+
+    const nullPrototype = Object.assign(Object.create(null), {
+      id: 3,
+      label: "null",
+      score: 3,
+    }) as Row;
+    const nullModel = createLocalRowModel({ rows: [nullPrototype], columns });
+    expect(
+      nullModel.applyTransaction({
+        update: [{ id: 3, changes: { score: 4 } }],
+      }),
+    ).toMatchObject({ updated: 1, revision: 1 });
+    const updated = nullModel.getState().snapshot.rowAt(0);
+    expect(updated?.kind === "data" && Object.getPrototypeOf(updated.row)).toBe(
+      null,
+    );
+  });
+
   test("captures every partial patch before running any active accessor", () => {
     const accessor = vi.fn((row: Row) => row.score);
     const activeColumns = [

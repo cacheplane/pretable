@@ -158,6 +158,15 @@ export interface PretableRowUpdate<
   TRowId extends PretableRowId,
 > {
   readonly id: TRowId;
+  /**
+   * An enumerable-own-data-property patch for an ordinary object or
+   * null-prototype record. Class instances, arrays, built-in exotic objects,
+   * and proxies are not valid partial-update targets because cloning them
+   * would lose private state or observable behavior. Replace those values
+   * atomically with `setRows` instead. Development builds enforce this for
+   * rows that cannot be verified and frozen; production trusts this contract
+   * without reflection or proxy detection.
+   */
   readonly changes: Partial<TRow>;
 }
 
@@ -296,6 +305,11 @@ export interface PretableRowModel<
   subscribe(listener: () => void): () => void;
 
   setRows(rows: readonly TRow[]): PretableMutationResult<TRowId>;
+  /**
+   * Applies one atomic batch. Partial updates require ordinary or
+   * null-prototype row records; use `setRows` to replace proxy, class, array,
+   * or other exotic row values.
+   */
   applyTransaction(
     transaction: PretableTransaction<TRow, TRowId>,
   ): PretableMutationResult<TRowId>;
