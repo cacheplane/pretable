@@ -2,9 +2,13 @@ const warned = new Set<string>();
 
 /**
  * One console warning per key per process. The conditions that call this
- * describe consumer misconfiguration the engine cannot repair, and they are
- * evaluated on paths that run once per poll tick — a warning per emit under a
- * 2 s cadence would be a firehose that trains people to ignore it.
+ * describe consumer misconfiguration the component cannot repair, and they are
+ * evaluated in render — a warning per render pass would be a firehose that
+ * trains people to ignore it.
+ *
+ * Not gated on a build flag: the package ships no `process.env` reference, and
+ * a misconfiguration that survives to production is exactly the one still worth
+ * reporting.
  *
  * @internal
  */

@@ -481,4 +481,32 @@ describe("PretableSurface — built-in filter funnel", () => {
     >;
     expect(lastFilters.title?.operator).toBe("equals");
   });
+
+  it("keeps an applied operator the allow-list excludes selectable", () => {
+    // External filter authority can apply an operator its own allow-list
+    // omits. Pruning it would leave the select naming "contains" while
+    // "isEmpty" is what filters, and "contains" would be unreachable — the
+    // select already displays it, so choosing it fires no change event.
+    const view = renderSurface({
+      columns: [
+        {
+          id: "title",
+          header: "Title",
+          widthPx: 200,
+          type: "text",
+          filterOperators: ["contains", "startsWith"],
+        },
+      ],
+      state: { filters: { title: { operator: "isEmpty" } as ColumnFilter } },
+    });
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+
+    const select = view.getByLabelText("Filter operator") as HTMLSelectElement;
+    expect(
+      [...select.querySelectorAll("option")].map((o) =>
+        o.getAttribute("value"),
+      ),
+    ).toEqual(["contains", "startsWith", "isEmpty"]);
+    expect(select.value).toBe("isEmpty");
+  });
 });

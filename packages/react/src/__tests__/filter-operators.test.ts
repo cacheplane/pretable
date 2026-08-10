@@ -1,6 +1,7 @@
 // packages/react/src/__tests__/filter-operators.test.ts
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  menuOperators,
   operatorsForType,
   operatorValueShape,
   isComplete,
@@ -11,6 +12,12 @@ import {
   type FilterDraft,
 } from "../filter-menu/filter-operators";
 import { resetDevWarnings } from "../dev-warn";
+
+// The emitted-key set is module state: without this, the second test to assert
+// a given warning sees nothing.
+afterEach(() => {
+  resetDevWarnings();
+});
 
 describe("operatorsForType", () => {
   it("lists the operators for each type incl. shared empties", () => {
@@ -72,7 +79,6 @@ describe("operatorsForType", () => {
 
   it("falls back to the full set and warns when the allow-list matches nothing", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    resetDevWarnings();
     expect(operatorsForType("number", ["isAnyOf"])).toEqual([
       "equals",
       "notEquals",
@@ -86,6 +92,27 @@ describe("operatorsForType", () => {
     ]);
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+});
+
+describe("menuOperators", () => {
+  it("returns the permitted set when it already holds the applied operator", () => {
+    expect(
+      menuOperators("text", "contains", ["contains", "startsWith"]),
+    ).toEqual(["contains", "startsWith"]);
+  });
+
+  it("keeps an applied operator the allow-list excludes, in the per-type order", () => {
+    expect(
+      menuOperators("text", "isEmpty", ["startsWith", "contains"]),
+    ).toEqual(["contains", "startsWith", "isEmpty"]);
+  });
+
+  it("appends an applied operator the column type does not offer", () => {
+    expect(menuOperators("text", "gt", ["contains"])).toEqual([
+      "contains",
+      "gt",
+    ]);
   });
 });
 
@@ -195,6 +222,21 @@ describe("fromColumnFilter (hydrate)", () => {
       operator: "isAnyOf",
       selected: [],
     });
+  });
+
+  it("seeds the null draft from the allow-list", () => {
+    expect(fromColumnFilter("text", null, ["startsWith"])).toEqual({
+      operator: "startsWith",
+      text: "",
+    });
+  });
+
+  it("keeps an applied operator the allow-list excludes", () => {
+    // Rewriting it here would leave the draft naming one operator while the
+    // engine filters by another; `menuOperators` widens the select instead.
+    expect(
+      fromColumnFilter("text", { operator: "isEmpty" }, ["contains"]),
+    ).toEqual({ operator: "isEmpty" });
   });
 });
 

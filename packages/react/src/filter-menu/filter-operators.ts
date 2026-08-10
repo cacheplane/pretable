@@ -75,6 +75,30 @@ export function operatorsForType(
   return pruned;
 }
 
+/**
+ * The operators the select renders: the permitted set, plus whichever operator
+ * the filter currently applies. A `<select>` whose value matches no option
+ * silently displays the first one, so pruning the applied operator would leave
+ * the menu naming an operator the filter is not using — and that named operator
+ * unreachable, since choosing what is already displayed fires no change event.
+ */
+export function menuOperators(
+  type: ColumnType,
+  active: FilterOperator,
+  allowed?: readonly FilterOperator[],
+): FilterOperator[] {
+  const permitted = operatorsForType(type, allowed);
+  if (permitted.includes(active)) {
+    return permitted;
+  }
+  const full = operatorsForType(type);
+  if (!full.includes(active)) {
+    return [...permitted, active];
+  }
+  const kept = new Set([...permitted, active]);
+  return full.filter((op) => kept.has(op));
+}
+
 export const OPERATOR_LABELS: Record<FilterOperator, string> = {
   contains: "contains",
   notContains: "does not contain",

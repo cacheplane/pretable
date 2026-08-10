@@ -12,8 +12,8 @@ import {
   OPERATOR_LABELS,
   defaultDraft,
   fromColumnFilter,
+  menuOperators,
   operatorValueShape,
-  operatorsForType,
   toColumnFilter,
   type FilterDraft,
 } from "./filter-operators";
@@ -146,7 +146,7 @@ export function FilterMenu({
   );
 
   const shape = operatorValueShape(draft.operator);
-  const operators = operatorsForType(type, filterOperators);
+  const operators = menuOperators(type, draft.operator, filterOperators);
   const inputType = type === "date" ? "date" : "text";
   const numericProps =
     type === "number" ? { inputMode: "numeric" as const } : {};
