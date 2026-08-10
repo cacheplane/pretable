@@ -1,5 +1,9 @@
 # Roadmap: Fix-Then-Expand
 
+> **Status: Historical.** This point-in-time roadmap is preserved for decision
+> history; its projects are no longer the current backlog. See the canonical
+> [ROADMAP.md](../../../ROADMAP.md) for current priorities.
+
 ## Goal
 
 Prioritized backlog of the next five projects for pretable, sequenced to prove interactions before expanding scope.

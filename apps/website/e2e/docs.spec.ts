@@ -18,6 +18,31 @@ test("docs page renders sidebar with active state", async ({ page }) => {
   await expect(active).toHaveAttribute("href", "/docs/grid/pretable-component");
 });
 
+test("row grouping page renders its nav entry and live example", async ({
+  page,
+}) => {
+  await page.goto("/docs/grid/grouping", { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(
+    "Row grouping",
+  );
+  const active = page.locator(
+    'nav[aria-label="Docs sections"] a[aria-current="page"]',
+  );
+  await expect(active).toHaveCount(1);
+  await expect(active).toHaveAttribute("href", "/docs/grid/grouping");
+
+  // The <Example> island is a client component; the grid inside it only exists
+  // once that has hydrated and mounted, so this asserts the whole path.
+  const grid = page.getByRole("treegrid", {
+    name: "Positions grouped by desk",
+  });
+  await expect(grid).toBeVisible();
+  await expect(
+    page.getByRole("listbox", { name: "Grouping levels" }),
+  ).toBeVisible();
+  await expect(page.locator("[data-pretable-group-row]").first()).toBeVisible();
+});
+
 test("Copy as Markdown button is visible", async ({ page }) => {
   await page.goto("/docs/grid/pretable-component", {
     waitUntil: "domcontentloaded",

@@ -105,7 +105,7 @@ Density tokens follow the same rule. Override them at `:root` to tweak the dimen
 }
 ```
 
-The engine's `useResolvedHeights` hook reads `--pretable-row-height` and `--pretable-header-height` directly from CSS, so the virtualizer respects your values without you passing props.
+The engine reads `--pretable-row-height` and `--pretable-header-height` directly from CSS, so the virtualizer respects your values without you passing props. One constraint: it parses only `<number>px`, so a height written as `2rem` or a `calc()` falls back to the built-in default rather than the value you meant.
 
 ## Token groups
 

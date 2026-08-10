@@ -57,9 +57,9 @@ Two density tokens are read by the engine in JavaScript, not just by CSS:
 - `--pretable-row-height` — used by the row virtualizer to compute `top` positions.
 - `--pretable-header-height` — used to position the sticky header and compute body viewport height.
 
-The engine reads these via the `useResolvedHeights` hook (in `@pretable/react`), which subscribes to attribute changes on `<html>` via `MutationObserver`. When you flip `data-density`, the engine re-renders the grid with new heights automatically.
+The engine reads both from `<html>`'s computed style and subscribes to attribute changes on `<html>` with a `MutationObserver`. When you flip `data-density`, the grid re-renders with new heights automatically — this is internal to `<Pretable>` and `<PretableSurface>`, and needs no wiring from you.
 
-See [Density helpers](/docs/grid/density-helpers) for the full hook API.
+To read the same two values in your own code, `@pretable/ui` exports `getDensityHeights`. See [Density helpers](/docs/grid/density-helpers).
 
 ## Composition with light/dark
 
@@ -103,4 +103,4 @@ return <DensityPicker density={density} onChange={setDensity} />;
 
 - [Override tokens](/docs/theming/override-tokens) — change density values themselves, not just which tier is active.
 - [Light / dark switching](/docs/theming/light-dark) — composes with density.
-- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights` API.
+- [Density helpers](/docs/grid/density-helpers) — the `getDensityHeights` API.

@@ -49,8 +49,9 @@ See [API reference](/docs/grid/api-reference) for the full type signatures.
 ## A minimal working example
 
 ```tsx
-import { useResolvedHeights, usePretable } from "@pretable/react";
+import { usePretable } from "@pretable/react";
 import type { PretableColumn, PretableRow } from "@pretable/react";
+import { getDensityHeights } from "@pretable/ui";
 
 interface Person extends PretableRow {
   id: string;
@@ -66,7 +67,9 @@ const columns: PretableColumn<Person>[] = [
 ];
 
 export function MyGrid({ rows }: { rows: Person[] }) {
-  const { headerHeight } = useResolvedHeights();
+  // Density as a number, for sizing the sticky header. See the note below the
+  // example if you server-render or switch density at runtime.
+  const { headerHeight } = getDensityHeights();
   const viewportHeight = 480;
 
   const { grid, snapshot, renderSnapshot } = usePretable({
@@ -216,6 +219,8 @@ export function MyGrid({ rows }: { rows: Person[] }) {
 
 This renders a working sortable grid with click-to-select. Wire `@pretable/ui/themes/excel.css` + `@pretable/ui/grid.css` and the data attributes get styled automatically — gridlines, header bg, selection background, sort indicator color.
 
+`getDensityHeights()` is a synchronous read of the density tokens, so the header sizes itself from the active theme rather than from a hardcoded number. Two caveats it buys you: it re-reads on every render, and on the server it returns the fallback `36` — so if you server-render this component, or let users switch density at runtime, swap it for the subscription in [Density helpers](/docs/grid/density-helpers#recipe-making-it-reactive).
+
 ## What this example does NOT cover
 
 The minimal example above is a starting point. For production grids, you'll likely also need:
@@ -245,6 +250,6 @@ For the full reference implementation, see `packages/react/src/pretable-surface.
 ## Where to go next
 
 - [API reference](/docs/grid/api-reference) — `PretableGrid` model methods, hook return types.
-- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
+- [Density helpers](/docs/grid/density-helpers) — `getDensityHeights`, and the recipe for making it reactive.
 - [Theming Overview](/docs/theming) — how the `[data-pretable-*]` attributes get styled.
 - [Token reference](/docs/theming/token-reference) — the 24 CSS variables that drive the look.
