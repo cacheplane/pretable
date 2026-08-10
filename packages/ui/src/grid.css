@@ -526,6 +526,13 @@
     align-items: center;
     gap: 4px;
     box-sizing: border-box;
+    /* No `flex: none` here, deliberately. The panel is a nowrap flex row, so
+       the obvious worry is that its chips shrink towards min-content instead
+       of letting the strip overflow and scroll. They do not: the label's
+       `white-space: nowrap` makes each chip's min-content size its full label
+       width, capped below by this `max-width`, and a flex item never shrinks
+       past its automatic minimum. Measured in both engines — adding `flex:
+       none` changes no rectangle. */
     max-width: 14em;
     padding: 2px 4px;
     border: 1px solid var(--pretable-rule);

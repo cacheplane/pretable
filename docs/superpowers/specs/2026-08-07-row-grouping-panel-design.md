@@ -21,9 +21,9 @@ removed.
 In: the panel, header→panel drag, chip reorder and removal by drag and by
 keyboard, a real column menu with Group by / Ungroup, and `onRowGroupsChange`.
 
-Out: docs and hero adoption (SP4), per-chip aggregation pickers, pivot,
-`groupLockGroupColumns`-style locked levels, and panel autoscroll when chips
-overflow. Each is under "Deliberately not doing".
+Out: docs and hero adoption (SP4), per-chip aggregation pickers, pivot, and
+`groupLockGroupColumns`-style locked levels. Each is under "Deliberately not
+doing". Panel overflow was also out, wrongly — see decision 7, added 2026-08-09.
 
 ## Decisions
 
@@ -192,27 +192,56 @@ because expansion ids are path-derived and changing the levels invalidates every
 path. Dragging a chip therefore collapses everything back to the default. This
 is correct, not a bug, but it is surprising enough to belong in SP4's docs.
 
+### 7. Chips that do not fit scroll sideways
+
+Added 2026-08-09. This section originally said "many chips overflow; ag-grid
+autoscrolls, ours wraps instead" — which was false and had never been
+implemented. The panel was `display: flex` (nowrap by default) at a fixed
+`height` with `overflow: hidden`, and no rule anywhere set `flex-wrap`. Chips
+past the strip's width were painted into dead space: unreachable by mouse,
+focusable-but-invisible by keyboard.
+
+**Scrolling, not wrapping.** The height is a theme token that `PretableSurface`
+SUBTRACTS from `viewportHeight`, so the component occupies the same box whether
+or not the panel is enabled. Wrapping makes that height content-dependent: the
+chip that starts a second line reflows the grid under the user mid-drag, and
+`insertIndexAt` has to become two-dimensional. Scrolling keeps all of it.
+
+- `overflow-x: auto`, `overflow-y: hidden` (one axis `visible` and the other not
+  computes the `visible` one to `auto`), `scrollbar-width: thin` so a classic
+  scrollbar cannot eat a third of a 28px compact strip.
+- **Focus reveal is hand-rolled** (`group-panel-scroll.ts`), and chips are
+  focused with `preventScroll`. Native focus scrolling does reveal the chip
+  inside the strip — but it walks every scrollable ancestor, so with the strip's
+  right edge past the window's, one arrow press moved the document 765px in
+  Chromium and 781px in WebKit. Measured; that is the whole reason ag-grid
+  hand-rolls `_scrollContainerHorizontallyToShowChild`.
+- **Autoscroll** on a 40px buffer with a step scaling to 14px/frame, driven by
+  `requestAnimationFrame` rather than ag-grid's `setInterval`. It re-runs the hit
+  test on every step, because the pointer is stationary during an autoscroll and
+  the drop indicator would otherwise freeze while the chips slid under it. It
+  only runs while the pointer is inside the panel's rect — the same predicate as
+  `hitTestGroupPanel`, so the strip scrolls exactly when a drop would land in it.
+- **`hitTestGroupPanel` needed no change.** `getBoundingClientRect()` is
+  viewport-relative and the chips stay in order, so counting midpoints already
+  gives the right index at any scroll offset. "Correcting" it by `scrollLeft` is
+  the plausible-looking bug, and it puts every drop at level 0; that is pinned.
+- **Chips need no `flex: none`.** The label's `white-space: nowrap` makes each
+  chip's min-content size its full label width, and a flex item never shrinks
+  past its automatic minimum — so they overflow rather than squeezing. Measured
+  in both engines: adding `flex: none` changes no rectangle.
+
+All of it is covered in `apps/website/e2e/grouping.spec.ts` against
+`/fixtures/grouping-overflow`, in Chromium and WebKit. jsdom reports 0 for every
+rect and silently discards an assigned `scrollLeft`, so none of it can be
+unit-tested.
+
 ## Deliberately not doing
 
 - **Per-chip aggregation pickers.** Aggregation is configured per _column_
   today, not per grouping level; this needs an engine model change and is its
   own sub-project. ag-grid only offers it in the value zone anyway
   (`dropZoneColumnComp.ts:229-231`).
-- **Panel autoscroll.** Many chips overflow; ag-grid autoscrolls with an
-  interval, a 50px buffer, and escalating step size
-  (`moveColumnFeature.ts:578-641`). Ours wraps instead. Revisit if it bites.
-
-  > **This claim was false and was never implemented.** Corrected 2026-08-09.
-  > `styles.ts:57-66` gives the panel `display: flex` (nowrap default), a fixed
-  > `height`, and `overflow: hidden`, and `grid.css` sets no `flex-wrap`. Chips
-  > do not wrap — they are clipped into dead space that cannot be scrolled.
-  > A clipped chip is unreachable by mouse, focusable-but-invisible by keyboard,
-  > and hands `hitTestGroupPanel` an off-screen rect, so drag insertion is wrong
-  > for exactly the levels the user cannot see. Fixing it is a layout design
-  > — measured multi-line height versus accessible horizontal scrolling, plus
-  > two-dimensional drop hit-testing if wrapping wins — and is deliberately not
-  > folded into a correctness branch. Tracked, unfixed, no test coverage.
-
 - **Locked grouping levels** (`groupLockGroupColumns`).
 - **Sorting by clicking a chip.** ag-grid does this; it collides with the chip
   being a drag handle and a listbox option at once.

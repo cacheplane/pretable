@@ -49,10 +49,27 @@ export function getGroupPanelWrapperStyle(
  * The group panel strip itself. Layout only — its skin (background, chip
  * spacing, the empty message's styling) lives in @pretable/ui's grid.css.
  *
- * `flexShrink: 0` matters: the wrapper is a fixed-height flex column and the
- * viewport below carries `contain: content`, so without it a panel whose chips
- * wrap would be squeezed instead of holding the height the viewport already
+ * `flexShrink: 0` matters: the wrapper is a fixed-height flex column, so
+ * without it the strip is a shrinkable item next to a viewport that carries
+ * `contain: content`, and it gives up the height the viewport already
  * subtracted for it.
+ *
+ * ## Why the overflow scrolls sideways rather than wrapping
+ *
+ * The height is a theme token that `PretableSurface` SUBTRACTS from
+ * `viewportHeight` so the component occupies the same box whether or not the
+ * panel is enabled. Wrapping would make that height content-dependent: adding
+ * the chip that starts a second line would reflow the grid underneath the user
+ * mid-drag, and `insertIndexAt` would have to become two-dimensional. Scrolling
+ * keeps the height fixed, so all of that stays true.
+ *
+ * `overflowY` has to be stated: a box with one axis `visible` and the other not
+ * computes the `visible` one to `auto`, which would put a vertical scrollbar on
+ * a strip one chip tall.
+ *
+ * `scrollbarWidth: "thin"` is here for the same height reason. Where scrollbars
+ * are classic rather than overlay, a full-width one eats a third of a compact
+ * 28px strip; where they are overlay, it costs nothing.
  */
 export function getGroupPanelStyle(height: number): CSSProperties {
   return {
@@ -61,7 +78,9 @@ export function getGroupPanelStyle(height: number): CSSProperties {
     display: "flex",
     flexShrink: 0,
     height,
-    overflow: "hidden",
+    overflowX: "auto",
+    overflowY: "hidden",
+    scrollbarWidth: "thin",
   };
 }
 
