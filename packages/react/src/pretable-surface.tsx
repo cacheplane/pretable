@@ -473,14 +473,20 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    */
   state?: PretableSurfaceState | null;
   /**
-   * Who applies filtering and sorting to the loaded records. Construction-time:
-   * changing it after mount does rebuild the grid.
+   * Who applies filtering and sorting to the loaded records.
+   *
+   * Create-time configuration, like {@link PretableSurfaceProps.autosize}:
+   * changing it rebuilds the grid, discarding selection, focus, measured
+   * heights, column layout and any in-flight edit. Passing it inline is fine —
+   * only its fields are depended on.
    *
    * @experimental
    */
   processing?: PretableProcessingOptions;
   /**
-   * Matching total + dataset identity for the loaded records.
+   * Matching total + dataset identity for the loaded records. Unlike
+   * {@link PretableSurfaceProps.processing} this is live: a new total is
+   * applied on every change, and passing it inline is fine.
    *
    * @experimental
    */

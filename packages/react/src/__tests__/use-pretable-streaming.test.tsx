@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, renderHook } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { usePretable } from "../use-pretable";
@@ -100,47 +100,59 @@ describe("usePretable streaming lifecycle", () => {
   });
 
   it("does not recreate the grid when processing is an inline object literal", () => {
-    const seen: unknown[] = [];
-    function Harness({ rows }: { rows: Row[] }) {
-      const model = usePretable<Row>({
-        columns,
-        rows,
-        getRowId: (row) => row.id,
-        viewportHeight: 300,
-        processing: { filter: "external", sort: "external" },
-      });
-      seen.push(model.grid);
-      return null;
-    }
-    const view = render(<Harness rows={rowsA} />);
-    view.rerender(<Harness rows={rowsB} />);
-    expect(new Set(seen).size).toBe(1);
+    const { result, rerender } = renderHook(
+      ({ rows }: { rows: Row[] }) =>
+        usePretable<Row>({
+          columns,
+          rows,
+          getRowId: (row) => row.id,
+          viewportHeight: 300,
+          // Fresh object identity every render, the way a consumer writes it.
+          processing: { filter: "external", sort: "external" },
+        }),
+      { initialProps: { rows: rowsA } },
+    );
+
+    const grid = result.current.grid;
+    rerender({ rows: rowsB });
+
+    expect(result.current.grid).toBe(grid);
   });
 
   it("routes a meta-only change through setResultMeta and keeps the rows array", () => {
-    function Harness({ rows, total }: { rows: Row[]; total: number }) {
-      const model = usePretable<Row>({
-        columns,
-        rows,
-        getRowId: (row) => row.id,
-        viewportHeight: 300,
-        processing: { filter: "external" },
-        resultMeta: { total: { kind: "exact", count: total } },
-      });
-      return (
-        <div
-          data-total={JSON.stringify(model.snapshot.matchingTotal)}
-          data-loaded={model.telemetry.loadedRowCount}
-        />
-      );
-    }
-    const view = render(<Harness rows={rowsA} total={100} />);
-    view.rerender(<Harness rows={rowsA} total={101} />);
-    const node = view.container.firstElementChild!;
-    expect(node.getAttribute("data-total")).toBe(
-      JSON.stringify({ kind: "exact", count: 101 }),
+    const { result, rerender } = renderHook(
+      ({ rows, total }: { rows: Row[]; total: number }) =>
+        usePretable<Row>({
+          columns,
+          rows,
+          getRowId: (row) => row.id,
+          viewportHeight: 300,
+          processing: { filter: "external" },
+          resultMeta: { total: { kind: "exact", count: total } },
+        }),
+      { initialProps: { rows: rowsA, total: 100 } },
     );
-    expect(node.getAttribute("data-loaded")).toBe(String(rowsA.length));
+
+    expect(result.current.snapshot.matchingTotal).toEqual({
+      kind: "exact",
+      count: 100,
+    });
+    const visibleRows = result.current.snapshot.visibleRows;
+
+    rerender({ rows: rowsA, total: 101 });
+
+    expect(result.current.snapshot.matchingTotal).toEqual({
+      kind: "exact",
+      count: 101,
+    });
+    expect(result.current.telemetry.matchingTotal).toEqual({
+      kind: "exact",
+      count: 101,
+    });
+    // The engine caches its derivation and drops that cache on setRows, so a
+    // surviving array identity is what distinguishes the setResultMeta path
+    // from a rows replacement carrying the same rows.
+    expect(result.current.snapshot.visibleRows).toBe(visibleRows);
   });
 
   it("re-applies resultMeta to a grid rebuilt by a processing change", () => {

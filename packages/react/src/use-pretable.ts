@@ -159,6 +159,9 @@ export interface PretableSurfaceState {
  * @public
  */
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
+  columns: PretableColumn<TRow>[];
+  rows: TRow[];
+  getRowId?: PretableGridOptions<TRow>["getRowId"];
   autosize?: boolean | AutosizeOptions;
   /**
    * Who applies filtering and sorting. Forwarded to `createGrid`. Participates
@@ -174,9 +177,6 @@ export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
    * @experimental
    */
   resultMeta?: PretableResultMeta;
-  columns: PretableColumn<TRow>[];
-  rows: TRow[];
-  getRowId?: PretableGridOptions<TRow>["getRowId"];
   /**
    * Configure the derived group column. Notably `pinned: "left"` seats the tree
    * column ahead of the left-pinned data columns; unpinned it leads the
@@ -263,12 +263,12 @@ function focusStatesEqual(
  * @public
  */
 export function usePretable<TRow extends PretableRow = PretableRow>({
-  autosize,
-  processing,
-  resultMeta,
   columns,
   rows,
   getRowId,
+  autosize,
+  processing,
+  resultMeta,
   groupColumn,
   hideGroupedColumns,
   aggregateFilteredRows,
@@ -293,21 +293,17 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   ).current;
   /* eslint-enable react-hooks/refs */
 
-  // The four grouping options have no engine setter — they are read at
-  // construction — so they belong in the deps below alongside `autosize`.
-  // Depend on `groupColumn`'s primitive FIELDS rather than the object, the way
-  // the surface already does for `rowSelectionColumn`: consumers write
-  // `groupColumn={{ pinned: "left" }}` inline, and a new object identity every
-  // render would rebuild the grid on every parent update, discarding sort,
-  // filters, selection, focus and expansion.
+  // The four grouping options and `processing` have no engine setter — they are
+  // read at construction — so they belong in the deps below alongside
+  // `autosize`. Depend on their primitive FIELDS rather than the objects, the
+  // way the surface already does for `rowSelectionColumn`: consumers write
+  // `groupColumn={{ pinned: "left" }}` or `processing={{ filter: "external" }}`
+  // inline, and a new object identity every render would rebuild the grid on
+  // every parent update, discarding sort, filters, selection, focus and
+  // expansion.
   const groupColumnHeader = groupColumn?.header;
   const groupColumnWidthPx = groupColumn?.widthPx;
   const groupColumnPinned = groupColumn?.pinned;
-
-  // Object identity is deliberately not a dependency: an inline
-  // `processing={{ filter: "external" }}` literal is a new object every render
-  // and must not rebuild the grid (which would destroy selection, focus,
-  // measured heights and any in-flight edit on every keystroke).
   const processingFilter = processing?.filter;
   const processingSort = processing?.sort;
 
@@ -323,10 +319,7 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
         rows,
         getRowId: stableGetRowId,
         autosize,
-        processing:
-          processingFilter === undefined && processingSort === undefined
-            ? undefined
-            : { filter: processingFilter, sort: processingSort },
+        processing: { filter: processingFilter, sort: processingSort },
         groupColumn: {
           header: groupColumnHeader,
           widthPx: groupColumnWidthPx,
