@@ -10,6 +10,7 @@ import {
 import type {
   RowHeightEntry,
   RowHeightIndex,
+  RowHeightReplacementSource,
   RowMetricsReader,
 } from "../types";
 
@@ -724,6 +725,152 @@ describe("persistent row-height index", () => {
     while (!builder.done) builder.advance({ maxUnits: 256, now: () => 0 });
     expect(builder.progress.previousRowsScanned).toBe(rows.length);
     expect(builder.finish()).toBe(base);
+  });
+
+  test("captures a hostile replacement source once with its method receiver", () => {
+    const base = createIndex([entry(data("base"), 20)]);
+    let rowCountGetterCalls = 0;
+    let entryAtGetterCalls = 0;
+    let originalEntryCalls = 0;
+    let mutatedRowCountGetterCalls = 0;
+    let mutatedEntryAtGetterCalls = 0;
+    const receiver = { marker: "original" } as {
+      marker: string;
+      readonly rowCount: number;
+      readonly entryAt: (index: number) => RowHeightEntry<Key>;
+    };
+    Object.defineProperties(receiver, {
+      rowCount: {
+        configurable: true,
+        get: () => {
+          rowCountGetterCalls += 1;
+          return 3;
+        },
+      },
+      entryAt: {
+        configurable: true,
+        get: () => {
+          entryAtGetterCalls += 1;
+          return function (this: { marker: string }, index: number) {
+            expect(this).toBe(receiver);
+            expect(this.marker).toBe("original");
+            originalEntryCalls += 1;
+            return entry(data(`captured-${index}`), 20 + index);
+          };
+        },
+      },
+    });
+
+    const builder = base.beginReplacement(receiver);
+    expect(rowCountGetterCalls).toBe(1);
+    expect(entryAtGetterCalls).toBe(1);
+    Object.defineProperties(receiver, {
+      rowCount: {
+        configurable: true,
+        get: () => {
+          mutatedRowCountGetterCalls += 1;
+          return 99;
+        },
+      },
+      entryAt: {
+        configurable: true,
+        get: () => {
+          mutatedEntryAtGetterCalls += 1;
+          return () => entry(data("mutated"), 99);
+        },
+      },
+    });
+
+    while (!builder.done) builder.advance({ maxUnits: 1, now: () => 0 });
+    expect(originalEntryCalls).toBe(3);
+    expect(mutatedRowCountGetterCalls).toBe(0);
+    expect(mutatedEntryAtGetterCalls).toBe(0);
+    expect(replacementDiagnostics(builder)).toMatchObject({
+      retainedSourceCount: 0,
+    });
+    expect(builder.progress.sourceRowsIngested).toBe(3);
+    const result = builder.finish();
+    expect(result.rowCount).toBe(3);
+    expect([0, 1, 2].map((index) => result.keyAt(index))).toEqual([
+      data("captured-0"),
+      data("captured-1"),
+      data("captured-2"),
+    ]);
+  });
+
+  test("rejects throwing or invalid replacement source getters atomically", () => {
+    const base = createIndex([entry(data("base"), 20)]).measure(
+      0,
+      data("base"),
+      44,
+    );
+    let rowCountReads = 0;
+    const throwingRowCount = Object.defineProperties(
+      {},
+      {
+        rowCount: {
+          get: () => {
+            rowCountReads += 1;
+            throw new Error("rowCount getter exploded");
+          },
+        },
+        entryAt: { value: () => entry(data("unused"), 20) },
+      },
+    ) as RowHeightReplacementSource<Key>;
+    expect(() => base.beginReplacement(throwingRowCount)).toThrow(
+      "rowCount getter exploded",
+    );
+    expect(rowCountReads).toBe(1);
+
+    let entryAtReads = 0;
+    const throwingEntryAt = Object.defineProperties(
+      {},
+      {
+        rowCount: { value: 1 },
+        entryAt: {
+          get: () => {
+            entryAtReads += 1;
+            throw new Error("entryAt getter exploded");
+          },
+        },
+      },
+    ) as RowHeightReplacementSource<Key>;
+    expect(() => base.beginReplacement(throwingEntryAt)).toThrow(
+      "entryAt getter exploded",
+    );
+    expect(entryAtReads).toBe(1);
+
+    for (const rowCount of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      let reads = 0;
+      const invalid = {
+        get rowCount() {
+          reads += 1;
+          return rowCount;
+        },
+        entryAt: () => entry(data("unused"), 20),
+      };
+      expect(() => base.beginReplacement(invalid)).toThrow(RangeError);
+      expect(reads).toBe(1);
+    }
+    let invalidEntryAtReads = 0;
+    const invalidEntryAt = Object.defineProperties(
+      {},
+      {
+        rowCount: { value: 1 },
+        entryAt: {
+          get: () => {
+            invalidEntryAtReads += 1;
+            return undefined;
+          },
+        },
+      },
+    ) as RowHeightReplacementSource<Key>;
+    expect(() => base.beginReplacement(invalidEntryAt)).toThrow(TypeError);
+    expect(invalidEntryAtReads).toBe(1);
+
+    expect(base.rowCount).toBe(1);
+    expect(base.keyAt(0)).toEqual(data("base"));
+    expect(base.getHeight(0)).toBe(44);
   });
 
   test("leaves cache and sequence roots unchanged when replacement identity fails", () => {

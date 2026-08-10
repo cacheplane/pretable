@@ -1297,12 +1297,14 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   beginReplacement(
     source: RowHeightReplacementSource<TKey>,
   ): RowHeightReplacementBuilder<TKey> {
-    if (!Number.isSafeInteger(source.rowCount) || source.rowCount < 0) {
+    const rowCount = source.rowCount;
+    if (!Number.isSafeInteger(rowCount) || rowCount < 0) {
       throw new RangeError(
         "Replacement source rowCount must be a non-negative safe integer.",
       );
     }
-    if (typeof source.entryAt !== "function") {
+    const entryAt = source.entryAt;
+    if (typeof entryAt !== "function") {
       throw new TypeError("Replacement source entryAt must be a function.");
     }
     return new PersistentRowHeightReplacementBuilder({
@@ -1318,7 +1320,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
         nextTicket: this.#nextTicket,
         maxRetainedMeasurements: this.#maxRetainedMeasurements,
       },
-      source,
+      rowCount,
+      entryAt: entryAt.bind(source),
     });
   }
 
@@ -1400,7 +1403,8 @@ class PersistentRowHeightReplacementBuilder<
   #status: RowHeightReplacementBuilderDiagnostics["status"] = "pending";
   #phase: RowHeightReplacementProgress["phase"] = "ingest";
   #base: ReplacementBase<TKey> | null;
-  #source: RowHeightReplacementSource<TKey> | null;
+  #entryAt: ((index: number) => RowHeightEntry<TKey>) | null;
+  readonly #sourceRowCount: number;
   #values: HeightValue<TKey>[] | null = [];
   #identities: Set<string> | null = new Set();
   #retainedMeasurements: RetainedMeasurement[] | null = [];
@@ -1441,15 +1445,17 @@ class PersistentRowHeightReplacementBuilder<
 
   constructor(options: {
     readonly base: ReplacementBase<TKey>;
-    readonly source: RowHeightReplacementSource<TKey>;
+    readonly rowCount: number;
+    readonly entryAt: (index: number) => RowHeightEntry<TKey>;
   }) {
     this.#base = options.base;
-    this.#source = options.source;
+    this.#entryAt = options.entryAt;
+    this.#sourceRowCount = options.rowCount;
     this.#measurements = options.base.measurements;
     this.#nextTicket = options.base.nextTicket;
     this.#totalUnits = Math.min(
       Number.MAX_SAFE_INTEGER,
-      options.source.rowCount * 4 +
+      options.rowCount * 4 +
         nodeCount(options.base.root) * 8 +
         hashCount(options.base.tombstones) * 8 +
         8,
@@ -1484,7 +1490,7 @@ class PersistentRowHeightReplacementBuilder<
       status: this.#status,
       phase: this.#phase,
       retainedBaseRootCount: this.#base === null ? 0 : 1,
-      retainedSourceCount: this.#source === null ? 0 : 1,
+      retainedSourceCount: this.#entryAt === null ? 0 : 1,
       candidateArrayEntryCount:
         (this.#values?.length ?? 0) + (this.#retainedMeasurements?.length ?? 0),
       candidateStackEntryCount:
@@ -1668,12 +1674,11 @@ class PersistentRowHeightReplacementBuilder<
   }
 
   #stepIngest(): void {
-    const source = this.#source!;
     const base = this.#base!;
     const values = this.#values!;
     const identities = this.#identities!;
-    if (this.#ingestIndex < source.rowCount) {
-      const row = source.entryAt(this.#ingestIndex);
+    if (this.#ingestIndex < this.#sourceRowCount) {
+      const row = this.#entryAt!(this.#ingestIndex);
       const identity = encodeStableKey(base.getKey(row.key));
       this.#work.entriesVisited += 1;
       this.#work.identityLookups += 1;
@@ -1706,7 +1711,7 @@ class PersistentRowHeightReplacementBuilder<
       return;
     }
 
-    this.#source = null;
+    this.#entryAt = null;
     this.#phase = "scan-retained";
     if (base.tombstoneOrder !== null) {
       this.#retainedTraversal!.push({
@@ -1955,7 +1960,7 @@ class PersistentRowHeightReplacementBuilder<
 
   #release(): void {
     this.#base = null;
-    this.#source = null;
+    this.#entryAt = null;
     this.#values = null;
     this.#identities = null;
     this.#retainedMeasurements = null;
