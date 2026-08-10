@@ -1,13 +1,43 @@
-import {
-  inspectionColumns,
-  type InspectionFilterableColumnId,
-  type InspectionRow,
-} from "@pretable-internal/scenario-data";
+import { inspectionColumns } from "@pretable-internal/scenario-data";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./use-pretable";
 
 import { LabeledGridSurface } from "./labeled-grid-surface";
 import type { PretableSurfaceProps } from "./pretable-surface";
+
+/**
+ * Severity of an {@link InspectionRow}, used for the built-in `severity` column.
+ *
+ * @beta
+ */
+export type InspectionSeverity = "trace" | "info" | "warn" | "error";
+
+/**
+ * Row shape {@link InspectionGrid} renders. The component ships a fixed
+ * log-inspection column set, so the row contract is fixed too — this type is
+ * that contract, declared here rather than imported from a fixture package so
+ * consumers can name what they pass to `rows`.
+ *
+ * @beta
+ */
+export interface InspectionRow extends Record<string, unknown> {
+  id: string;
+  timestamp: string;
+  severity: InspectionSeverity;
+  source: string;
+  owner: string;
+  tags: string[];
+  message: string;
+}
+
+/**
+ * Columns of {@link InspectionRow} that {@link InspectionGridProps.filterableColumnIds}
+ * may name.
+ *
+ * @beta
+ */
+export type InspectionFilterableColumnId =
+  "timestamp" | "severity" | "source" | "message";
 
 const inspectionGridColumns = [...inspectionColumns];
 const getInspectionRowId = (row: InspectionRow) => row.id;
