@@ -24,7 +24,7 @@ doc-derived claims labeled):
   source **downloaded from GitHub during research** (not a pinned local
   checkout, so line numbers are snapshot-relative); Handsontable, Ant Design,
   React Aria, and Infinite Table claims are **doc-derived only**. Race
-  handling and a11y for Infinite Table are *unknown* (not covered in fetched
+  handling and a11y for Infinite Table are _unknown_ (not covered in fetched
   docs), not absent.
 
 The three primary audits (AG Grid, MUI, TanStack) are local, version-pinned,
@@ -36,11 +36,11 @@ corroborating context, not load-bearing evidence.
 Every approach the design compared is shipped by someone. The market
 bifurcates along precisely the boundary the design debated:
 
-| Camp | Who ships it | Notes |
-|---|---|---|
-| **A — consumer-owned everything, grid displays only** | react-data-grid (sort emitted, "does not reorder rows for you"; no filtering at all); Ant Design Table (`sorter: true` + `onChange` callback) | Existence proof that display+emit-only can be a successful grid's *only* mode |
-| **B — per-operation authority flags + consumer request loop** | **TanStack Table** (`manualSorting`/`manualFiltering`/… — row-model pass-through, state still displayed and emitted — the design's flags semantics *verbatim*); **Tabulator** (`sortMode`/`filterMode: "local"\|"remote"` — shipped years ago); **MUI legacy mode** (`sortingMode`/`filterMode`/`paginationMode: "client"\|"server"` with genuine no-reapply short-circuits); React Aria `useAsyncList` (consumer loop, cursor-only, built-in stale discard) | The chosen approach has three independent, battle-tested precedents |
-| **C — engine-owned datasource** | **AG Grid** SSRM/infinite (offset blocks, stubs, engine-owned cache/races); **MUI `dataSource`** (GA in community 9.10.1: engine-owned fetch, cache, `lastRequestId` stale discard); **Handsontable `dataProvider`** (new in 17.1, 2026 — AbortSignal + serialized CRUD); Infinite Table | The deferred approach is also real and converging — see §5 |
+| Camp                                                          | Who ships it                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Notes                                                                         |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| **A — consumer-owned everything, grid displays only**         | react-data-grid (sort emitted, "does not reorder rows for you"; no filtering at all); Ant Design Table (`sorter: true` + `onChange` callback)                                                                                                                                                                                                                                                                                                                | Existence proof that display+emit-only can be a successful grid's _only_ mode |
+| **B — per-operation authority flags + consumer request loop** | **TanStack Table** (`manualSorting`/`manualFiltering`/… — row-model pass-through, state still displayed and emitted — the design's flags semantics _verbatim_); **Tabulator** (`sortMode`/`filterMode: "local"\|"remote"` — shipped years ago); **MUI legacy mode** (`sortingMode`/`filterMode`/`paginationMode: "client"\|"server"` with genuine no-reapply short-circuits); React Aria `useAsyncList` (consumer loop, cursor-only, built-in stale discard) | The chosen approach has three independent, battle-tested precedents           |
+| **C — engine-owned datasource**                               | **AG Grid** SSRM/infinite (offset blocks, stubs, engine-owned cache/races); **MUI `dataSource`** (GA in community 9.10.1: engine-owned fetch, cache, `lastRequestId` stale discard); **Handsontable `dataProvider`** (new in 17.1, 2026 — AbortSignal + serialized CRUD); Infinite Table                                                                                                                                                                     | The deferred approach is also real and converging — see §5                    |
 
 Two market facts bear directly on the design's staging decision:
 
@@ -50,33 +50,33 @@ Two market facts bear directly on the design's staging decision:
    B-primitives remain the substrate under the C-layer; C does not replace
    them. That is the design's B-now/C-seamed bet, validated by the closest
    competitor's actual history.
-2. **AG Grid demonstrates the cost of *not* having per-operation flags**:
+2. **AG Grid demonstrates the cost of _not_ having per-operation flags**:
    authority is a global `rowModelType` switch, enforced by per-model option
    validations and API allowlists, with features silently degrading across
    models (infinite mode wipes selection on sort change; range selection
    returns empty across unloaded gaps). Their only granular authority toggle,
-   `serverSideEnableClientSideSort`, *silently flips sort authority based on
-   whether a group happens to be fully loaded* — exactly the
+   `serverSideEnableClientSideSort`, _silently flips sort authority based on
+   whether a group happens to be fully loaded_ — exactly the
    load-state-dependent ambiguity the design's static flags exist to prevent.
 
 ## 3. Decision-by-decision alignment
 
-| Design decision | AG Grid | MUI X | TanStack | Verdict |
-|---|---|---|---|---|
-| Per-op authority flags | Absent (global row-model switch; one silent completeness-driven sort flip) | **Same model** (3 flags, no-reapply verified in source) | **Same model** (manual* pass-through) | Validated; our flags are *declared contracts* where TanStack's are plugin-omission side effects |
-| Controls display + emit, never re-apply | SSRM: filterModel passed verbatim, never locally evaluated (verified absence) | "The prop should always win" — internal writes discarded | State accessors never consult manual flags | Unanimous across all server modes |
-| No placeholder rows in the row model | Opposite: stub rows everywhere, with a visible tax (§4.1) | Community: same as us (overlay-layer skeleton). Pro: stubs in model, with leaks | Same as us (absence) | Validated at the community tier; AG documents the cost of the alternative |
-| Keyset continuation | **Offset only**; code self-heals offset drift by id and never documents the duplicate/omission hazard | Offset only; cursor *typed* but unconsumed in community | n/a (consumer-owned) | **We are ahead of every shipped grid**; only React Aria `useAsyncList` (cursor-only) is prior art |
-| Totals: exact\|estimate\|unknown | exact or unknown(-1); unknown encoded as a phantom +1 row | Three-state (`rowCount:-1` + `estimatedRowCount` + `hasNextPage` latch) but estimate reaches the *footer label only* | exact or `-1` | Validated; ours is the only single-type version, and the only one whose estimate tier has defined ARIA semantics |
-| `aria-rowcount = -1` for unknown | **Identical shipped behavior** | Never uses -1; aria is loaded-scope everywhere ("row 3 of 27" per page) | Zero aria anywhere (grep-confirmed) | Incumbent-proven |
-| Global `aria-rowindex` over partial window | Same arithmetic (virtual-model positions, header-inclusive) | Absent | Absent | Validated by AG locally; **Glide Data Grid appears to ship our exact pattern** (hidden windowed a11y tree, total+1, global rowindex) — GitHub-snapshot evidence, §1 provenance caveat |
-| No `aria-busy` on the grid | **Zero occurrences across five packages** | Zero occurrences | Zero occurrences | Unanimous market confirmation |
-| Data-lifecycle announcements | **None** — data loads/refreshes/filter results announce nothing (verified absence; only overlays and pagination summary) | None | None (headless) | **We fill a gap nobody ships**; AG's docs instead tell SR users to disable virtualization and paginate |
-| Consumer-owned request loop w/ revisions | Grid-owned, coarse (cache-generation liveness; **no per-request revision — a non-purge refresh accepts pre-refresh responses**; grand-total race punted to example code) | Engine-owned `lastRequestId` inside `dataSource`; **nothing at all** in legacy server mode | Delegated to TanStack Query (`placeholderData: keepPreviousData` = our stale phase) | Validated; our revision protocol fills the exact hole MUI's legacy mode has and generalizes what AG keeps internal |
-| Explicit `datasetKey` | Implicit (cache destroyed on sort/filter change); purge loses heights + focus identity | Implicit (cache key = stringified models) | **Documented footgun** (data reference identity; cannot distinguish refresh from new query) | **Genuinely novel** — no competitor has an explicit dataset-identity primitive; our DK-change semantics are strictly stronger than AG's purge |
-| Focus preserved by row id | Positional (index) restore; self-documents the failure ("focus moved up"); but **never drops to `<body>`** (header fallback + forced re-grab) | n/a | n/a | Ours is stronger; AG sets the never-body bar our DK focus rule must match (design already does) |
-| Selection loaded-scope by default | Opposite: `{selectAll, toggledNodes}` ranges over never-loaded rows | Loaded-scope by default; off-window via opt-in `keepNonExistentRowsSelected` | Loaded-scope | Validated; see §4.2 for what AG/MUI's dataset-scope selection costs |
-| Eviction deferred | **Eviction is off by default** (`maxBlocksInCache: -1`) and force-disabled under variable row heights (warns 203/204) | Community: none (TTL cache of responses, not rows) | n/a | Our deferral matches the incumbent default; §5.1 attaches their coupling evidence to our EXT seam |
+| Design decision                            | AG Grid                                                                                                                                                                  | MUI X                                                                                                                | TanStack                                                                                    | Verdict                                                                                                                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-op authority flags                     | Absent (global row-model switch; one silent completeness-driven sort flip)                                                                                               | **Same model** (3 flags, no-reapply verified in source)                                                              | **Same model** (manual* pass-through)                                                       | Validated; our flags are _declared contracts_ where TanStack's are plugin-omission side effects                                                                                       |
+| Controls display + emit, never re-apply    | SSRM: filterModel passed verbatim, never locally evaluated (verified absence)                                                                                            | "The prop should always win" — internal writes discarded                                                             | State accessors never consult manual flags                                                  | Unanimous across all server modes                                                                                                                                                     |
+| No placeholder rows in the row model       | Opposite: stub rows everywhere, with a visible tax (§4.1)                                                                                                                | Community: same as us (overlay-layer skeleton). Pro: stubs in model, with leaks                                      | Same as us (absence)                                                                        | Validated at the community tier; AG documents the cost of the alternative                                                                                                             |
+| Keyset continuation                        | **Offset only**; code self-heals offset drift by id and never documents the duplicate/omission hazard                                                                    | Offset only; cursor _typed_ but unconsumed in community                                                              | n/a (consumer-owned)                                                                        | **We are ahead of every shipped grid**; only React Aria `useAsyncList` (cursor-only) is prior art                                                                                     |
+| Totals: exact\|estimate\|unknown           | exact or unknown(-1); unknown encoded as a phantom +1 row                                                                                                                | Three-state (`rowCount:-1` + `estimatedRowCount` + `hasNextPage` latch) but estimate reaches the _footer label only_ | exact or `-1`                                                                               | Validated; ours is the only single-type version, and the only one whose estimate tier has defined ARIA semantics                                                                      |
+| `aria-rowcount = -1` for unknown           | **Identical shipped behavior**                                                                                                                                           | Never uses -1; aria is loaded-scope everywhere ("row 3 of 27" per page)                                              | Zero aria anywhere (grep-confirmed)                                                         | Incumbent-proven                                                                                                                                                                      |
+| Global `aria-rowindex` over partial window | Same arithmetic (virtual-model positions, header-inclusive)                                                                                                              | Absent                                                                                                               | Absent                                                                                      | Validated by AG locally; **Glide Data Grid appears to ship our exact pattern** (hidden windowed a11y tree, total+1, global rowindex) — GitHub-snapshot evidence, §1 provenance caveat |
+| No `aria-busy` on the grid                 | **Zero occurrences across five packages**                                                                                                                                | Zero occurrences                                                                                                     | Zero occurrences                                                                            | Unanimous market confirmation                                                                                                                                                         |
+| Data-lifecycle announcements               | **None** — data loads/refreshes/filter results announce nothing (verified absence; only overlays and pagination summary)                                                 | None                                                                                                                 | None (headless)                                                                             | **We fill a gap nobody ships**; AG's docs instead tell SR users to disable virtualization and paginate                                                                                |
+| Consumer-owned request loop w/ revisions   | Grid-owned, coarse (cache-generation liveness; **no per-request revision — a non-purge refresh accepts pre-refresh responses**; grand-total race punted to example code) | Engine-owned `lastRequestId` inside `dataSource`; **nothing at all** in legacy server mode                           | Delegated to TanStack Query (`placeholderData: keepPreviousData` = our stale phase)         | Validated; our revision protocol fills the exact hole MUI's legacy mode has and generalizes what AG keeps internal                                                                    |
+| Explicit `datasetKey`                      | Implicit (cache destroyed on sort/filter change); purge loses heights + focus identity                                                                                   | Implicit (cache key = stringified models)                                                                            | **Documented footgun** (data reference identity; cannot distinguish refresh from new query) | **Genuinely novel** — no competitor has an explicit dataset-identity primitive; our DK-change semantics are strictly stronger than AG's purge                                         |
+| Focus preserved by row id                  | Positional (index) restore; self-documents the failure ("focus moved up"); but **never drops to `<body>`** (header fallback + forced re-grab)                            | n/a                                                                                                                  | n/a                                                                                         | Ours is stronger; AG sets the never-body bar our DK focus rule must match (design already does)                                                                                       |
+| Selection loaded-scope by default          | Opposite: `{selectAll, toggledNodes}` ranges over never-loaded rows                                                                                                      | Loaded-scope by default; off-window via opt-in `keepNonExistentRowsSelected`                                         | Loaded-scope                                                                                | Validated; see §4.2 for what AG/MUI's dataset-scope selection costs                                                                                                                   |
+| Eviction deferred                          | **Eviction is off by default** (`maxBlocksInCache: -1`) and force-disabled under variable row heights (warns 203/204)                                                    | Community: none (TTL cache of responses, not rows)                                                                   | n/a                                                                                         | Our deferral matches the incumbent default; §5.1 attaches their coupling evidence to our EXT seam                                                                                     |
 
 ## 4. The two most instructive incumbent case studies
 
@@ -96,12 +96,12 @@ alternative. What stubs-in-the-model costs them, verified in source:
   navigation splits scroll-target from focus-target "ie. scrollRow could be
   stub"; `firstDataRendered` must special-case them; selection sync excludes
   them at every call site.
-- MUI Pro's version leaks: skeleton rows are *not* excluded by
+- MUI Pro's version leaks: skeleton rows are _not_ excluded by
   `isRowSelectable` — they escape selection only because the skeleton cell
   renders no checkbox.
 
 What stubs buy them, honestly: random-access scrollbar geometry under
-unknown totals (the phantom "+1 loading row" *is* their infinite-scroll
+unknown totals (the phantom "+1 loading row" _is_ their infinite-scroll
 trigger) and a per-position SR affordance ("Row data is loading" label at the
 position the user reached). The design traded both away for accumulate-only
 load-more — a documented scope boundary, and §6.1 records the one mitigation
@@ -119,7 +119,7 @@ selected-count returns `-1` rendered as `?` in the status bar; and the
 "all except X"→ids translation is pushed entirely to the application. MUI's
 `include|exclude` model adds five bail-out conditions and a footer count that
 reports a page-scope number for a dataset-scope intent. Both incumbents thus
-*validate the deferral*: dataset-scope selection is real and wanted, and it
+_validate the deferral_: dataset-scope selection is real and wanted, and it
 drags exactly the mutation-safety and honesty problems the requirements said
 it would (OUT-SELECT-01's "query-plus-exclusions model and separate mutation
 safety review").
@@ -127,7 +127,7 @@ safety review").
 ## 5. Incumbent evidence now attached to our deferred seams
 
 - **EXT-DATA-01 / EXT-GRID-03 (bounded windows/eviction).** AG Grid: eviction
-  off by default; *banned* in combination with dynamic row heights (rather
+  off by default; _banned_ in combination with dynamic row heights (rather
   than solved); focused/expanded/editing nodes exempted per-node, so blocks
   evict with holes; the infinite model refuses to purge focused blocks. A
   decade of incumbent evidence that eviction couples to heights, focus, and
@@ -166,7 +166,7 @@ worth recording:
    labeled stubs give an SR user who outruns loading a "Row data is loading"
    row at the position reached; we have no equivalent position. Mitigation
    already in the design (§9.2 boundary announcement + load-more label +
-   load-completion announcement) — and AG itself never *announces* stub
+   load-completion announcement) — and AG itself never _announces_ stub
    resolution, so the net SR experience still favors the design. No change.
 2. **AG's focus re-grab is the implementation bar** for the DK-change focus
    rule: when the browser drops focus to `<body>` mid-teardown, AG forcibly
@@ -175,7 +175,7 @@ worth recording:
    proven mechanics).
 3. **Handsontable's partial-data filter honesty** (removing "Filter by
    value" from the column menu because value lists would be incomplete) is
-   precedent for going *further* than the design's dev-warn on the
+   precedent for going _further_ than the design's dev-warn on the
    enum-distinct-values fallback. Option recorded for implementation review:
    suppress rather than warn. Non-blocking.
 4. **React Aria `useAsyncList`'s typed loading phases** distinguish

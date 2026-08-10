@@ -42,7 +42,7 @@ The React controlled-state prop (`PretableSurfaceProps.state`, the repo's only
 `@experimental` symbol — packages/react/src/pretable-surface.tsx:453-466) is
 applied by re-asserting `grid.replaceSort` / `grid.replaceFilters` in a layout
 effect (packages/react/src/use-pretable.ts:310-321), i.e. controlled state is
-always *locally applied*, never display-only. **A consumer that filters rows
+always _locally applied_, never display-only. **A consumer that filters rows
 server-side and also passes `state.filters` gets the filter applied twice.**
 
 **Filter model.** One `ColumnFilter { operator, value? }` per column, all
@@ -50,14 +50,14 @@ AND-combined (packages/grid-core/src/derived-rows.ts:91-105). Operators are
 selected per `column.type ?? "text"`: text
 contains/notContains/equals/notEquals/startsWith/endsWith (lowercased compare),
 number equals…between, date on/before/after/dateBetween (UTC day buckets), enum
-and boolean isAnyOf/isNoneOf (an empty selection is *inactive* and the filter
+and boolean isAnyOf/isNoneOf (an empty selection is _inactive_ and the filter
 entry is deleted — packages/grid-core/src/evaluate-filter.ts:14-21,
 packages/grid-core/src/create-grid-core.ts:290-313), isEmpty/isNotEmpty on all
 types. The filter UI is the built-in per-column funnel menu, keyed off
 `column.type` (packages/react/src/filter-menu/filter-operators.ts:20-51).
 
 **Sort model.** Ordered multi-sort `PretableSortEntry[]`; comparator chosen by
-*runtime value inspection* (all-number → numeric, else stringified
+_runtime value inspection_ (all-number → numeric, else stringified
 `Intl.Collator`), not by `column.type`
 (packages/grid-core/src/row-utils.ts:31-34, 46-88); final tie-break is source
 index. `setSort`/`replaceSort` sanitize unknown and `sortable: false` columns.
@@ -72,9 +72,9 @@ instance is recreated only when the `autosize` prop identity changes
 (packages/react/src/use-pretable.ts:253-257). `applyTransaction {add, update,
 remove}` is the incremental path; `@pretable/stream-adapter` is a push-only
 ingestion pipe over it. These guarantees are pinned by tests
-(packages/grid-core/src/__tests__/set-rows.test.ts,
-packages/react/src/__tests__/use-pretable-streaming.test.tsx,
-packages/react/src/__tests__/pretable-surface.test.tsx:3535). **No scroll
+(packages/grid-core/src/**tests**/set-rows.test.ts,
+packages/react/src/**tests**/use-pretable-streaming.test.tsx,
+packages/react/src/**tests**/pretable-surface.test.tsx:3535). **No scroll
 anchoring exists anywhere** — content shifts under a static `scrollTop`.
 
 **Counts, ARIA, selection scope — all derived from supplied rows.**
@@ -82,7 +82,7 @@ anchoring exists anywhere** — content shifts under a static `scrollTop`.
 exists anywhere — packages/grid-core/src/create-grid-core.ts:1540).
 `aria-rowcount` = `visibleRows.length + 1`, `aria-rowindex` = model index + 2,
 group rows included (packages/react/src/pretable-surface.tsx:2216, 3266).
-Header select-all targets all post-filter *model* data rows — children of
+Header select-all targets all post-filter _model_ data rows — children of
 collapsed groups excluded — via `setSelectAllVisible`
 (packages/react/src/pretable-surface.tsx:2554-2617,
 packages/grid-core/src/create-grid-core.ts:513-557). React-level telemetry
@@ -126,7 +126,7 @@ the Postgres implementation documents the skew as accepted
 (pgvector-store.ts:483-486).
 
 **Public-contract shape.** `BrowseQuery`/`BrowsePage` are exported from the
-`@dawn-ai/memory` barrel; `@dawn-ai/core` carries a *structural mirror* with the
+`@dawn-ai/memory` barrel; `@dawn-ai/core` carries a _structural mirror_ with the
 query shape inlined anonymously on `MemoryStoreLike.browse`
 (packages/core/src/capabilities/types.ts:76-93) that must move in lockstep; the
 pgvector store is a third implementor. A shared ~40-test conformance suite
@@ -156,7 +156,7 @@ sorting. Sort and filter are uncontrolled and fully local over a fixed
 `limit=200` fetch; no offset is ever sent, there is no pagination UI, and the
 response's `total` is never displayed (the facet rail's counts come from a
 separate, always-global stats endpoint). Selection is the uncontrolled checkbox
-column mirrored out via `onRowSelectionChange`; *clearing* selection requires
+column mirrored out via `onRowSelectionChange`; _clearing_ selection requires
 remounting the grid (`key={gridEpoch}` —
 packages/inspector/src/components/memory/list-page.tsx:149-155, 299). Bulk
 actions POST one ID at a time, deliberately sequential (concurrent approves
@@ -170,14 +170,15 @@ List polling pauses during search; stats keep polling; mutations bump a
 `refreshKey`.
 
 **The three consumer-correctness defects the handoff names, confirmed:**
-1. *Namespace narrowing*: the server filters by prefix, the client then narrows
+
+1. _Namespace narrowing_: the server filters by prefix, the client then narrows
    to exact equality (list-page.tsx:167-172) — displayed rows and any
    prefix-based total can disagree.
-2. *Timeline re-sort*: the timeline receives an `updated_at DESC` browse page
+2. _Timeline re-sort_: the timeline receives an `updated_at DESC` browse page
    and re-sorts it client-side by event time
    (packages/inspector/src/components/memory/timeline-view.tsx:22-27) — a
    result selected under one order presented as another population.
-3. *Inert controls during search*: the status/kind selects stay rendered and
+3. _Inert controls during search_: the status/kind selects stay rendered and
    interactive while a search is active, but the search route hardcodes
    `status: "active"` and takes no kind — they are silently ignored
    (packages/inspector/app/api/memory/search/route.ts:43-49).
@@ -212,8 +213,8 @@ this document changes**; the starting point does. Corrections to §1.2:
   the extension seam for the rest.
 - **Two Inspector columns now declare filter metadata.** #434 (`ff73de5a`)
   gives `status` and `kind` `type: "enum"` + `options` + `filterable: true`,
-  and sets `filterable: false` on the other four *because the server cannot
-  express them yet* — the four controls were deleted rather than left
+  and sets `filterable: false` on the other four _because the server cannot
+  express them yet_ — the four controls were deleted rather than left
   dishonest. Filter state is now controlled and lifted to `ListPage`.
 - **The double-application hazard is live but currently neutralized by
   accident, not by design.** Dawn re-encodes every funnel selection as
@@ -223,7 +224,7 @@ this document changes**; the starting point does. Corrections to §1.2:
   works only while every pushed-down filter is set-shaped and equality-based;
   it breaks for `contains`, ranges, and dates, and it already leaks in one
   place — between a filter tick and its response, the new predicate is
-  applied locally to the *old* page. This is direct field evidence for
+  applied locally to the _old_ page. This is direct field evidence for
   `D1-GRID-01`.
 - **Sort is now the largest honesty gap in the Inspector.** #434 fixed the
   lie for filters and left it standing for sort: no column sets
@@ -232,7 +233,7 @@ this document changes**; the starting point does. Corrections to §1.2:
 - **Partial-window counts already cost a shipped feature.** The unmerged
   grouping branch now gates grouping on `page.records.length >= page.total`
   ("group only when the page is the whole answer") — the only place in Dawn
-  that reads `total`, used to *withhold* a feature because there was no
+  that reads `total`, used to _withhold_ a feature because there was no
   honest way to show partial counts. §9.4's loaded-scope labeling is what
   replaces that gate.
 - Two items to absorb: `packages/core/src/capabilities/types.ts:78-79` still
@@ -250,9 +251,9 @@ Pretable version bump). §13's order is unchanged.
 ## 2. Design summary (read this first)
 
 **Recommendation: a B-core hybrid.** Pretable gains a minimal, transport-neutral
-set of primitives — per-operation *processing authority*, a *result metadata*
-input (matching total + dataset identity), and a consumer-asserted *data
-lifecycle* presentation — and refuses to own anything else. Dawn owns the entire
+set of primitives — per-operation _processing authority_, a _result metadata_
+input (matching total + dataset identity), and a consumer-asserted _data
+lifecycle_ presentation — and refuses to own anything else. Dawn owns the entire
 request loop: desired/fulfilled query revisions, stale-response suppression,
 keyset continuation, head-anchored poll refresh, and the domain query. The full
 remote-datasource abstraction (Approach C) is deferred with named seams; the
@@ -263,7 +264,7 @@ The shape in one paragraph: the Inspector declares its six columns with real
 types (`status`/`kind` enum, `confidence` number, `updated` date) and
 constructs the grid with `processing: { filter: "external", sort: "external" }`.
 Pretable's existing funnel menus and header sort affordances keep working as
-*intent editors* — they mutate display state and fire the existing
+_intent editors_ — they mutate display state and fire the existing
 `onFiltersChange`/`onSortChange` callbacks — but the engine's derivation
 pipeline no longer applies them to the loaded rows. Dawn's new `useMemoryBrowse`
 hook maps that intent to an extended `BrowseQuery` (normalized filters, ordered
@@ -280,20 +281,20 @@ Inspector's `key={gridEpoch}` remount hack with a first-class primitive.
 
 Headline decisions (each argued later; §15 maps all twelve open decisions):
 
-| Decision | Ruling | Where |
-|---|---|---|
-| Boundary | B-core hybrid; C deferred, A rejected | §3 |
-| Authority granularity | Per-operation `{filter, sort}` flags, with an ARIA-honesty downgrade rule for mixed modes | §4.2, §4.5 |
-| D1 navigation | Load-more (accumulate); keyset continuation, opaque server cursor | §6.2 |
-| Consistency | Per-response snapshot (explicit transaction, both backends); eventual across responses, repaired ≤ one poll period *while polling is active* | §5.6, §6.3 |
-| Rows+total | Two statements inside one transaction; `COUNT(*) OVER ()` rejected on measurement | §5.6 |
-| Desired/fulfilled state | Dawn-owned (`useMemoryBrowse`); Pretable displays, never orchestrates | §6.1 |
-| Lifecycle rendering | Pretable renders body states + announcements when `dataState` is supplied; Dawn owns failure banners and retry | §4.4, §9 |
-| Selection | Engine-reconciled across same-dataset refresh/append; cleared on dataset change; bulk retry re-attempts failures only | §9.3 |
-| ARIA counts | `aria-rowcount = total + 1` only under full external authority, ungrouped, exact total; loaded-count under grouping/engine-sort; `-1` otherwise | §4.5 |
-| Dawn query | Additive `BrowseQuery` extension: normalized `filters[]`, whitelisted `orderBy[]`, opaque `cursor`; named `BrowseQueryLike` mirror in core | §5 |
-| Budgets | Proposed numerically from measured baselines | §11 |
-| aria-busy | Not used on the grid in any state (AT support reality); status region + announcements instead | §4.5, §9.1 |
+| Decision                | Ruling                                                                                                                                          | Where      |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Boundary                | B-core hybrid; C deferred, A rejected                                                                                                           | §3         |
+| Authority granularity   | Per-operation `{filter, sort}` flags, with an ARIA-honesty downgrade rule for mixed modes                                                       | §4.2, §4.5 |
+| D1 navigation           | Load-more (accumulate); keyset continuation, opaque server cursor                                                                               | §6.2       |
+| Consistency             | Per-response snapshot (explicit transaction, both backends); eventual across responses, repaired ≤ one poll period _while polling is active_    | §5.6, §6.3 |
+| Rows+total              | Two statements inside one transaction; `COUNT(*) OVER ()` rejected on measurement                                                               | §5.6       |
+| Desired/fulfilled state | Dawn-owned (`useMemoryBrowse`); Pretable displays, never orchestrates                                                                           | §6.1       |
+| Lifecycle rendering     | Pretable renders body states + announcements when `dataState` is supplied; Dawn owns failure banners and retry                                  | §4.4, §9   |
+| Selection               | Engine-reconciled across same-dataset refresh/append; cleared on dataset change; bulk retry re-attempts failures only                           | §9.3       |
+| ARIA counts             | `aria-rowcount = total + 1` only under full external authority, ungrouped, exact total; loaded-count under grouping/engine-sort; `-1` otherwise | §4.5       |
+| Dawn query              | Additive `BrowseQuery` extension: normalized `filters[]`, whitelisted `orderBy[]`, opaque `cursor`; named `BrowseQueryLike` mirror in core      | §5         |
+| Budgets                 | Proposed numerically from measured baselines                                                                                                    | §11        |
+| aria-busy               | Not used on the grid in any state (AT support reality); status region + announcements instead                                                   | §4.5, §9.1 |
 
 **What ships in D1** (per the delivery boundary): the ordinary browse grid,
 server-authoritative for every visible column's filter and for ordered sort,
@@ -317,7 +318,7 @@ artifacts.
 **Mechanism.** Filters become grid-blind: every column `filterable: false`
 (suppresses the funnel; the derivation pipeline additionally ignores filters on
 such columns), and Dawn renders its own query bar above the grid. Sort keeps
-the native header affordance as an *optimistic preview*: the grid locally
+the native header affordance as an _optimistic preview_: the grid locally
 re-sorts the loaded window while Dawn fetches the server-sorted result, with
 comparator compatibility engineered per column. Dataset changes are handled by
 remounting the surface keyed on a fulfilled-query hash.
@@ -333,13 +334,13 @@ revisions, keyset discipline) is exactly what the recommended design adopts.
    means every header click destroys the DOM node the keyboard user just
    pressed (focus falls to `<body>`), clears selection — diverging from
    Pretable's own local-mode semantics, where sorting preserves row-ID-keyed
-   selection because sort changes *order*, not *membership* — and drops
+   selection because sort changes _order_, not _membership_ — and drops
    measured heights. The remount is a scroll-reset workaround dressed up as
    identity semantics.
 2. **Its `aria-busy`-during-refresh plan makes the grid intermittently
    invisible to AT** under 2 s polling (assistive tech treats `aria-busy`
    subtrees as suppressed). See §4.5 for the ruling this design adopts instead.
-3. **The optimistic sort preview shows the wrong *sample*, not just the wrong
+3. **The optimistic sort preview shows the wrong _sample_, not just the wrong
    order**: between click and fulfillment (indefinitely, on failure), a
    recency-selected window re-sorted by confidence presents "top confidence of
    a recency-biased sample" under a truthful-looking `aria-sort` — the
@@ -355,7 +356,7 @@ revisions, keyset discipline) is exactly what the recommended design adopts.
 
 **Mechanism.** A new `@pretable/data` package defines
 `PretableDataSource.getRows(request) → {rows, total, hasMore, continuation}`
-plus an orchestrating reconciler driving desired/fulfilled revisions *inside*
+plus an orchestrating reconciler driving desired/fulfilled revisions _inside_
 the grid; the engine gains `rowModel: "local" | "external"` and a commit port.
 Consumers implement one interface; races become unrepresentable by
 construction.
@@ -379,7 +380,7 @@ props-driven consumer cannot reach — a real retrofit asymmetry.
 3. **Bimodality tax**: every future engine feature must answer "what does this
    do in external mode?" — and the review found two concrete unpriced
    regressions in C's own brief (client grouping killed while Dawn has a
-   working prototype branch; clipboard *paste* into a server-owned window left
+   working prototype branch; clipboard _paste_ into a server-owned window left
    with no defined semantics), plus a spec bug in its refresh transition that
    would shrink a 600-row resident window to 200 on every poll tick.
 4. **Its D1 default was offset-append over a mutating dataset** — the
@@ -398,7 +399,7 @@ Approach B as originally championed had four defects found by adversarial
 review, all incorporated into §4:
 
 1. An **empty-state contradiction**: built-in "no results" blocks gated on a
-   *defaulted* `idle` phase would change behavior for existing local consumers
+   _defaulted_ `idle` phase would change behavior for existing local consumers
    (`rows={[]}` renders nothing today) — violating `D1-GRID-04` — and would
    flash "No results" for remote consumers before their first fetch. Fix:
    `dataState` has **no default**; lifecycle presentation is entirely off
@@ -416,7 +417,7 @@ review, all incorporated into §4:
    ID-dedup model, specified precisely.
 
 **Why B wins**: its primitives are the smallest set that fixes the three
-verified Inspector defects *inside* Pretable's tested surface — the
+verified Inspector defects _inside_ Pretable's tested surface — the
 double-application hazard (authority flags), the `gridEpoch` remount
 (`datasetKey`), and dishonest counts (`resultMeta` + ARIA/labeling rules) —
 while the orchestration that genuinely varies per consumer (transport,
@@ -428,7 +429,7 @@ enum values; `datasetKey` is a policy-free identity string. Nothing in the new
 surface names records, namespaces, statuses, instants, or HTTP
 (`D1-GRID-05`).
 
-**Scope boundary recorded honestly**: B's D1 shape is *accumulate-only*
+**Scope boundary recorded honestly**: B's D1 shape is _accumulate-only_
 (head-anchored load-more). A page-based table with jump-to-page — the most
 common server-grid pattern elsewhere — would additionally need a window-offset
 input (`rowIndexOffset`), selection-across-window semantics, and scroll-reset
@@ -508,11 +509,11 @@ interface PretableColumn<TRow> {
 }
 ```
 
-Placement reasons: these change what the row model *is*, so they are engine
+Placement reasons: these change what the row model _is_, so they are engine
 concerns — the documented headless path (`createGrid` +
 `useSyncExternalStore`) gets them without React. `processing` is
 construction-time; flipping it is honestly a new grid. In the React memo it
-participates as its two *scalar* fields (`processing?.filter`,
+participates as its two _scalar_ fields (`processing?.filter`,
 `processing?.sort`), never as object identity — an inline
 `processing={{...}}` literal must not recreate the grid every render. `meta`
 rides on `setRows` so rows and total commit in one emit; `setResultMeta`
@@ -525,12 +526,12 @@ The single change site is the derivation call in `getSnapshot`
 filters; external sort authority substitutes an empty sort list (the empty-sort
 path already falls through to `sourceIndex`, i.e. supplied order).
 
-| authority (filter, sort) | model = |
-|---|---|
-| engine, engine | today, byte-for-byte |
-| external, external | loaded records in supplied order (+grouping if grouped) |
-| external, engine | loaded records, unfiltered, engine-sorted |
-| engine, external | locally filtered, supplied order |
+| authority (filter, sort) | model =                                                 |
+| ------------------------ | ------------------------------------------------------- |
+| engine, engine           | today, byte-for-byte                                    |
+| external, external       | loaded records in supplied order (+grouping if grouped) |
+| external, engine         | loaded records, unfiltered, engine-sorted               |
+| engine, external         | locally filtered, supplied order                        |
 
 **State mutators are untouched.** `setSort`/`replaceSort`/`setColumnFilter`/
 `replaceFilters`/`clearFilters` mutate display state, sanitize exactly as today
@@ -553,9 +554,9 @@ Derived features under external authority:
   fold loaded records). Activating grouping in external mode triggers the ARIA
   downgrade (§4.5) and marks counts loaded-only (§9.4). Remote grouping is EXT;
   its seam is a `processing.group` key that deliberately does not exist yet.
-- **Select-all**: mechanics unchanged — all post-filter *model* data rows,
+- **Select-all**: mechanics unchanged — all post-filter _model_ data rows,
   excluding children of collapsed groups (existing behavior); under full
-  external authority ungrouped, that set *is* the loaded window. The scope
+  external authority ungrouped, that set _is_ the loaded window. The scope
   difference is a labeling obligation (§4.5), not an engine one. Query-wide
   select-all is OUT.
 - **Counts**: `loadedRowCount = sourceRows.length`. `matchingTotal` under
@@ -595,17 +596,17 @@ bounded-window seam revisits this.
  *  local consumers see zero change. Remote consumers must supply it from
  *  their first render, starting at { phase: "loading" }. */
 export type PretableDataState =
-  | { phase: "idle" }          // loaded records answer the desired query
-  | { phase: "loading" }       // nothing usable loaded for the desired query
-  | { phase: "stale" }         // records answer a PREVIOUS query; desired in flight
-  | { phase: "refreshing" }    // same query, newer fulfillment in flight (polling)
-  | { phase: "loading-more" }  // tail extension in flight
+  | { phase: "idle" } // loaded records answer the desired query
+  | { phase: "loading" } // nothing usable loaded for the desired query
+  | { phase: "stale" } // records answer a PREVIOUS query; desired in flight
+  | { phase: "refreshing" } // same query, newer fulfillment in flight (polling)
+  | { phase: "loading-more" } // tail extension in flight
   | { phase: "error"; message?: string };
 
 interface PretableSurfaceProps<TRow> {
-  processing?: PretableProcessingOptions;   // forwarded to createGrid
-  resultMeta?: PretableResultMeta;          // applied via setRows/setResultMeta
-  dataState?: PretableDataState;            // no default — see above
+  processing?: PretableProcessingOptions; // forwarded to createGrid
+  resultMeta?: PretableResultMeta; // applied via setRows/setResultMeta
+  dataState?: PretableDataState; // no default — see above
   /** Override the built-in body-state blocks (loading / empty / error-without-
    *  rows). Built-ins are minimal vanilla-CSS blocks; strings from messages. */
   renderBodyState?: (input: {
@@ -625,23 +626,32 @@ interface PretableSurfaceMessages {
   selectAllLabel?: (args: { scope: "all" | "loaded" }) => string;
   /** existing entry — args gain scope + counts (additive). */
   selectAllAnnouncement?: (args: {
-    rowCount: number; columnCount: number; isAll: boolean;
-    scope: "all" | "loaded"; loadedCount: number; total?: number;
+    rowCount: number;
+    columnCount: number;
+    isAll: boolean;
+    scope: "all" | "loaded";
+    loadedCount: number;
+    total?: number;
   }) => string;
   /** existing entry — args gain scope (additive): a copy of 200-of-10,432
    *  must not announce as an unscoped copy. */
-  copyAnnouncement?: (args: { /* existing */ scope: "all" | "loaded" }) => string;
+  copyAnnouncement?: (args: {
+    /* existing */ scope: "all" | "loaded";
+  }) => string;
   /** Announced when loading/stale/loading-more resolves to idle — the honest
    *  count moment, and the missing filter-result announcement: "Showing 200
    *  of 4,120"; with `added`, "Loaded 200 more. 400 of 5,432 loaded." */
   resultsAnnouncement?: (args: {
-    loaded: number; total: PretableMatchingTotal; added?: number;
+    loaded: number;
+    total: PretableMatchingTotal;
+    added?: number;
   }) => string;
   /** NEW — group-header child count label (today hardcoded "({childCount})").
    *  scope "loaded" marks partial-window grouping: default "12 loaded" — a
    *  loaded-children count that makes no claim about the population. */
   groupChildCountLabel?: (args: {
-    childCount: number; scope: "all" | "loaded";
+    childCount: number;
+    scope: "all" | "loaded";
   }) => string;
   dataErrorAnnouncement?: (args: { message?: string }) => string;
   /** Fired only when focus reconciliation's id-lookup misses during a rows
@@ -655,14 +665,17 @@ interface PretableSurfaceMessages {
   staleAnnouncement?: () => string;
   /** Announced when navigation is refused at the last loaded row while more
    *  matching rows exist: "End of loaded rows. 5,032 more available." */
-  moreRowsBoundaryAnnouncement?: (args: { loadedCount: number; total?: number }) => string;
-  emptyStateMessage?: () => string;        // filtered vs unfiltered handled by consumer copy
+  moreRowsBoundaryAnnouncement?: (args: {
+    loadedCount: number;
+    total?: number;
+  }) => string;
+  emptyStateMessage?: () => string; // filtered vs unfiltered handled by consumer copy
   loadingStateMessage?: () => string;
 }
 
 interface PretableTelemetry {
-  loadedRowCount: number;                  // RENAMED from totalRowCount
-  matchingTotal: PretableMatchingTotal;    // NEW
+  loadedRowCount: number; // RENAMED from totalRowCount
+  matchingTotal: PretableMatchingTotal; // NEW
   // rowModelRowCount, renderedRowCount, visibleRowRange unchanged
 }
 ```
@@ -681,15 +694,15 @@ Local mode always passes `"all"` — additive, no behavior change.
 
 Body-state blocks render only when `dataState` is supplied:
 
-| phase + loaded | rendering |
-|---|---|
-| `loading`, 0 loaded | built-in loading block (austere vanilla CSS, no spinner opinion) |
-| `idle`, 0 loaded | built-in empty block (`emptyStateMessage`) |
-| `error`, 0 loaded | built-in error block (message + slot for consumer retry) |
-| `error`, >0 loaded | rows stay visible and interactive; a `role="status"` strip at the viewport top; never discard fulfilled records. (This is the query-change-failure presentation: the visible rows belong to an older fulfilled revision — §6.4; the strip carries the consumer's retry affordance via `renderBodyState`) |
-| `stale` / `refreshing` / `loading-more`, >0 loaded | rows stay fully visible; `data-pretable-data-phase` attribute on the root is the consumer styling hook (Dawn dims stale rows) |
-| `stale`, 0 loaded | loading block (an old-empty result with a *new query* in flight shows loading, not "no results") |
-| `refreshing`, 0 loaded | empty block stays; attribute-only change (a 2 s poll over an empty result must not flicker empty → loading → empty) |
+| phase + loaded                                     | rendering                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loading`, 0 loaded                                | built-in loading block (austere vanilla CSS, no spinner opinion)                                                                                                                                                                                                                                         |
+| `idle`, 0 loaded                                   | built-in empty block (`emptyStateMessage`)                                                                                                                                                                                                                                                               |
+| `error`, 0 loaded                                  | built-in error block (message + slot for consumer retry)                                                                                                                                                                                                                                                 |
+| `error`, >0 loaded                                 | rows stay visible and interactive; a `role="status"` strip at the viewport top; never discard fulfilled records. (This is the query-change-failure presentation: the visible rows belong to an older fulfilled revision — §6.4; the strip carries the consumer's retry affordance via `renderBodyState`) |
+| `stale` / `refreshing` / `loading-more`, >0 loaded | rows stay fully visible; `data-pretable-data-phase` attribute on the root is the consumer styling hook (Dawn dims stale rows)                                                                                                                                                                            |
+| `stale`, 0 loaded                                  | loading block (an old-empty result with a _new query_ in flight shows loading, not "no results")                                                                                                                                                                                                         |
+| `refreshing`, 0 loaded                             | empty block stays; attribute-only change (a 2 s poll over an empty result must not flicker empty → loading → empty)                                                                                                                                                                                      |
 
 No skeleton rows and no synthetic loading/footer rows in the row model: a
 synthetic row would occupy an `aria-rowindex` that belongs to a real server row
@@ -701,14 +714,14 @@ outside the grid element (§9.2).
 ### 4.5 ARIA and labeling rules (normative)
 
 Grounded in the ARIA 1.2 definitions: `aria-rowcount` is the total row count
-of the *full* table including rows not in the DOM, `-1` when unknown;
+of the _full_ table including rows not in the DOM, `-1` when unknown;
 `aria-rowindex` is the 1-based position within the full table, counting all
 rows including headers (which is why Pretable's header is index 1 and data
 rows start at 2 — the existing `+1`/`+2` arithmetic is spec arithmetic).
 
 **Row counts.** With filter and sort authority both external, no grouping
 active, and `matchingTotal.kind === "exact"`: `aria-rowcount = count + 1` and
-`aria-rowindex = model index + 2` — correct *global* positions, because a
+`aria-rowindex = model index + 2` — correct _global_ positions, because a
 head-anchored contiguous window makes loaded model index i equal dataset
 position i. This contiguous-from-head contract is documented on
 `PretableResultMeta` and asserted in dev mode where violations are detectable.
@@ -726,7 +739,7 @@ Downgrades:
   unknown value). Estimates go in human-readable text ("about 5,000"), never
   through an API whose contract is an exact integer.
 - **Noncontiguous windows** (D1-A11Y-02's remaining case): unrepresentable by
-  the D1 contract, and a *detected* violation of the contiguous-from-head
+  the D1 contract, and a _detected_ violation of the contiguous-from-head
   contract does not merely dev-assert — production behavior downgrades to
   loaded-model counts, the same rule as grouping. Windowed/noncontiguous
   arithmetic (`rowIndexOffset`) is the reserved EXT seam.
@@ -742,16 +755,16 @@ lock stays as-is.)
 **Announcements** (all through the existing 500 ms trailing-edge, last-wins
 scheduler; one channel per event, never double-spoken):
 
-| Event | Channel | Rule |
-|---|---|---|
-| `loading`/`stale` → `idle` | Pretable live region, `resultsAnnouncement` | the honest-count moment; also serves as the filter-result announcement |
-| `loading-more` → `idle` | Pretable live region, `resultsAnnouncement` with `added` | "Loaded 200 more. 400 of 5,432 loaded." — the cumulative count is what the user navigates by |
-| `refreshing` → `idle` | silent | a 2 s poll must not produce a metronome; a *changed* row set or total still announces via `resultsAnnouncement` |
-| → `error` | whoever renders the failure UI | the channel rule is structural: Pretable's `dataErrorAnnouncement` fires only when Pretable renders the failure (error block or status strip, i.e. `phase === "error"`); a consumer that shows its own `role="alert"` banner keeps the phase out of `error` (Dawn's pattern for refresh/load-more failures, §6.4) — so double-speak is impossible by construction |
-| → `stale` | Pretable live region, `staleAnnouncement` | at most once per settling burst: announced on entering `stale`, deduped (message equality through the last-wins scheduler) until the burst settles. This is the *only* AT-facing stale signal — the data-phase attribute and consumer dimming are visual |
-| focus repaired after row removal | Pretable, `focusedRowRemovedAnnouncement` | only for data-driven replacements, not user actions |
-| navigation refused at loaded boundary | Pretable, `moreRowsBoundaryAnnouncement` | once per boundary arrival |
-| select-all / copy | existing announcements | gain `scope` so "All rows selected" can never be said about a partial window |
+| Event                                 | Channel                                                  | Rule                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loading`/`stale` → `idle`            | Pretable live region, `resultsAnnouncement`              | the honest-count moment; also serves as the filter-result announcement                                                                                                                                                                                                                                                                                            |
+| `loading-more` → `idle`               | Pretable live region, `resultsAnnouncement` with `added` | "Loaded 200 more. 400 of 5,432 loaded." — the cumulative count is what the user navigates by                                                                                                                                                                                                                                                                      |
+| `refreshing` → `idle`                 | silent                                                   | a 2 s poll must not produce a metronome; a _changed_ row set or total still announces via `resultsAnnouncement`                                                                                                                                                                                                                                                   |
+| → `error`                             | whoever renders the failure UI                           | the channel rule is structural: Pretable's `dataErrorAnnouncement` fires only when Pretable renders the failure (error block or status strip, i.e. `phase === "error"`); a consumer that shows its own `role="alert"` banner keeps the phase out of `error` (Dawn's pattern for refresh/load-more failures, §6.4) — so double-speak is impossible by construction |
+| → `stale`                             | Pretable live region, `staleAnnouncement`                | at most once per settling burst: announced on entering `stale`, deduped (message equality through the last-wins scheduler) until the burst settles. This is the _only_ AT-facing stale signal — the data-phase attribute and consumer dimming are visual                                                                                                          |
+| focus repaired after row removal      | Pretable, `focusedRowRemovedAnnouncement`                | only for data-driven replacements, not user actions                                                                                                                                                                                                                                                                                                               |
+| navigation refused at loaded boundary | Pretable, `moreRowsBoundaryAnnouncement`                 | once per boundary arrival                                                                                                                                                                                                                                                                                                                                         |
+| select-all / copy                     | existing announcements                                   | gain `scope` so "All rows selected" can never be said about a partial window                                                                                                                                                                                                                                                                                      |
 
 **Scope labeling** (closing the three surfaces the review found): the header
 checkbox `aria-label` becomes the localizable `selectAllLabel` (external-mode
@@ -763,17 +776,17 @@ aggregate display in external mode is marked loaded-scope (§9.4).
 Every new symbol tested against three non-Dawn consumers — a REST+SQL admin
 table, a GraphQL (Relay-connection) dashboard, an Elasticsearch browser:
 
-| API | Non-Dawn forcing function | Dawn shape? |
-|---|---|---|
-| `processing {filter, sort}` | ES browser: both external; small REST table: external filter + engine sort over a *complete* filtered set | two enum values |
-| `PretableMatchingTotal` | ES `hits.total {value, relation: "gte"}` forces `unknown+atLeast`; GraphQL `totalCount` absent forces `unknown` — Dawn only ever uses `exact` | none |
-| `setRows(rows, meta)` / `setResultMeta` | any page/cursor accumulation | an array and a count |
-| `datasetKey` | new WHERE ⇒ selection cleared — every listed consumer needs exactly this bundle | policy-free string |
-| `dataState` | mirrors the transport-free status vocabulary every fetch layer already has | none |
-| `column.filterOperators` | expose only indexed operators; useful to purely local consumers who want smaller menus | none |
-| messages/`renderBodyState`/`ariaDescribedBy` | localization + branding | none |
+| API                                          | Non-Dawn forcing function                                                                                                                     | Dawn shape?          |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `processing {filter, sort}`                  | ES browser: both external; small REST table: external filter + engine sort over a _complete_ filtered set                                     | two enum values      |
+| `PretableMatchingTotal`                      | ES `hits.total {value, relation: "gte"}` forces `unknown+atLeast`; GraphQL `totalCount` absent forces `unknown` — Dawn only ever uses `exact` | none                 |
+| `setRows(rows, meta)` / `setResultMeta`      | any page/cursor accumulation                                                                                                                  | an array and a count |
+| `datasetKey`                                 | new WHERE ⇒ selection cleared — every listed consumer needs exactly this bundle                                                               | policy-free string   |
+| `dataState`                                  | mirrors the transport-free status vocabulary every fetch layer already has                                                                    | none                 |
+| `column.filterOperators`                     | expose only indexed operators; useful to purely local consumers who want smaller menus                                                        | none                 |
+| messages/`renderBodyState`/`ariaDescribedBy` | localization + branding                                                                                                                       | none                 |
 
-Kept out of Pretable on purpose (generic *problems*, not generic *shapes*):
+Kept out of Pretable on purpose (generic _problems_, not generic _shapes_):
 revision bookkeeping, abort discipline, continuation strategy, polling
 cadence, caches, retries, facet counts. The moment Pretable ships a fetcher it
 picks a transport — explicitly OUT.
@@ -791,7 +804,7 @@ conformance suite (§5.7).
 ```ts
 // packages/memory/src/types.ts (public via the @dawn-ai/memory barrel)
 export type BrowseSortField =
-  | "updatedAt" | "createdAt" | "confidence" | "namespace" | "kind" | "status";
+  "updatedAt" | "createdAt" | "confidence" | "namespace" | "kind" | "status";
 
 export interface BrowseSortEntry {
   readonly field: BrowseSortField;
@@ -802,49 +815,76 @@ export type BrowseFilter =
   // Split per field, NOT `field: "status" | "kind"` with `values: string[]` —
   // a shared arm would make `{field:"status", values:["actve"]}` compile, a
   // check the existing `BrowseQuery.status` shorthand already gives us.
-  | { readonly field: "status";
-      readonly op: "in" | "notIn"; readonly values: readonly MemoryStatus[] }
-  | { readonly field: "kind";
-      readonly op: "in" | "notIn"; readonly values: readonly MemoryKind[] }
-  | { readonly field: "content";
-      readonly op: "contains" | "notContains" | "equals" | "notEquals"
-                 | "startsWith" | "endsWith";
-      readonly value: string }
-  | { readonly field: "namespace";
-      readonly op: "equals" | "startsWith"; readonly value: string }
-  | { readonly field: "confidence";
+  | {
+      readonly field: "status";
+      readonly op: "in" | "notIn";
+      readonly values: readonly MemoryStatus[];
+    }
+  | {
+      readonly field: "kind";
+      readonly op: "in" | "notIn";
+      readonly values: readonly MemoryKind[];
+    }
+  | {
+      readonly field: "content";
+      readonly op:
+        | "contains"
+        | "notContains"
+        | "equals"
+        | "notEquals"
+        | "startsWith"
+        | "endsWith";
+      readonly value: string;
+    }
+  | {
+      readonly field: "namespace";
+      readonly op: "equals" | "startsWith";
+      readonly value: string;
+    }
+  | {
+      readonly field: "confidence";
       readonly op: "eq" | "neq" | "gt" | "gte" | "lt" | "lte";
-      readonly value: number }
-  | { readonly field: "confidence";
-      readonly op: "between"; readonly min: number; readonly max: number }
-  | { readonly field: "updatedAt";
+      readonly value: number;
+    }
+  | {
+      readonly field: "confidence";
+      readonly op: "between";
+      readonly min: number;
+      readonly max: number;
+    }
+  | {
+      readonly field: "updatedAt";
       readonly op: "onDay" | "beforeDay" | "afterDay";
-      readonly day: string }                     // "YYYY-MM-DD", UTC day
-  | { readonly field: "updatedAt";
+      readonly day: string;
+    } // "YYYY-MM-DD", UTC day
+  | {
+      readonly field: "updatedAt";
       readonly op: "betweenDays";
-      readonly fromDay: string; readonly untilDay: string }; // inclusive days
+      readonly fromDay: string;
+      readonly untilDay: string;
+    }; // inclusive days
 
 export interface BrowseQuery {
   // — existing nine fields retained, semantics unchanged —
   readonly namespacePrefix?: string;
-  readonly status?: MemoryStatus;      // sugar for filters:[{field:"status",op:"in",values:[s]}]
-  readonly kind?: MemoryKind;          // sugar likewise
+  readonly status?: MemoryStatus; // sugar for filters:[{field:"status",op:"in",values:[s]}]
+  readonly kind?: MemoryKind; // sugar likewise
   readonly sourceType?: MemorySource["type"];
-  readonly limit?: number;             // NOW CLAMPED: 1..1000, default 50 (was unbounded)
-  readonly offset?: number;            // retained for existing callers; Inspector stops using it
+  readonly limit?: number; // NOW CLAMPED: 1..1000, default 50 (was unbounded)
+  readonly offset?: number; // retained for existing callers; Inspector stops using it
   readonly since?: string;
   readonly until?: string;
   readonly now?: string;
   // — new —
-  readonly namespace?: string;         // EXACT namespace; distinct from namespacePrefix
-  readonly filters?: readonly BrowseFilter[];   // AND-combined, one per field max
+  readonly namespace?: string; // EXACT namespace; distinct from namespacePrefix
+  readonly filters?: readonly BrowseFilter[]; // AND-combined, one per field max
   readonly orderBy?: readonly BrowseSortEntry[]; // whitelist above; [] or absent = default order
-  readonly cursor?: string;            // opaque continuation from a prior BrowsePage
+  readonly cursor?: string; // opaque continuation from a prior BrowsePage
 }
 
 export interface BrowsePage {
   readonly records: readonly MemoryRecord[];
-  readonly total: number;              // exact, same snapshot as records (§5.6)
+  readonly total: number; // exact, same snapshot as records (§5.6)
   readonly continuation: string | null; // NEW — opaque; null = no more rows
 }
 ```
@@ -863,22 +903,22 @@ field is NOT NULL, so they are meaningless here). Unpruned menus would show
 operators the server ignores: the dishonest-control class this design exists
 to kill.
 
-| column | `type` | `options` | `filterOperators` | `sortable` |
-|---|---|---|---|---|
-| status | enum | domain statuses | `isAnyOf`, `isNoneOf` | yes |
-| kind | enum | domain kinds | `isAnyOf`, `isNoneOf` | yes |
-| namespace | text | — | `startsWith`, `equals` | yes |
-| content | text | — | `contains`, `notContains`, `equals`, `notEquals`, `startsWith`, `endsWith` | no (§14 Q2) |
-| confidence | number | — | `equals`, `notEquals`, `gt`, `gte`, `lt`, `lte`, `between` | yes |
-| updated | date | — | `on`, `before`, `after`, `dateBetween` | yes |
+| column     | `type` | `options`       | `filterOperators`                                                          | `sortable`  |
+| ---------- | ------ | --------------- | -------------------------------------------------------------------------- | ----------- |
+| status     | enum   | domain statuses | `isAnyOf`, `isNoneOf`                                                      | yes         |
+| kind       | enum   | domain kinds    | `isAnyOf`, `isNoneOf`                                                      | yes         |
+| namespace  | text   | —               | `startsWith`, `equals`                                                     | yes         |
+| content    | text   | —               | `contains`, `notContains`, `equals`, `notEquals`, `startsWith`, `endsWith` | no (§14 Q2) |
+| confidence | number | —               | `equals`, `notEquals`, `gt`, `gte`, `lt`, `lte`, `between`                 | yes         |
+| updated    | date   | —               | `on`, `before`, `after`, `dateBetween`                                     | yes         |
 
 `toBrowseQuery` **throws** on an operator it cannot map (a programming error
 by construction once menus are pruned — never a silent drop, which would
 recreate the active-looking-but-ignored control).
 
-**Two "defaults", deliberately distinct**: `limit` absent → 50 is the *API*
-default (unchanged for existing callers); 200 is the *Inspector's requested
-page size* (§11).
+**Two "defaults", deliberately distinct**: `limit` absent → 50 is the _API_
+default (unchanged for existing callers); 200 is the _Inspector's requested
+page size_ (§11).
 
 **One filter per field** mirrors Pretable's one-`ColumnFilter`-per-column
 model (D1-QUERY-03): cross-field composition is AND; within-field multi-value
@@ -907,7 +947,7 @@ exact selection. `equals` = exact match; `startsWith` = the existing
 byte-exact prefix, now implemented sargably as a range —
 `namespace >= $p AND namespace < succ($p)` — preserving the deliberate
 metachar-literal semantics while using the existing namespace-leading index.
-`succ` is defined over *code points* (order-equivalent to byte order for
+`succ` is defined over _code points_ (order-equivalent to byte order for
 valid UTF-8, and implementable in JS without producing invalid parameter
 strings): strip trailing maximal code points, then increment the last
 remaining one; an all-maximal prefix drops the upper bound. The existing
@@ -993,16 +1033,16 @@ Measured against Dawn's exact DDL (SQLite 3.47.2 via `node:sqlite`, 100k and
 benchmark scripts are committed into the dawn repo with slice 2 (as the
 store-bench harness §11 requires) so these baselines remain reproducible:
 
-| Query shape | Plan | 100k / 1M |
-|---|---|---|
-| Default order + keyset guard, LIMIT 200 | index SEARCH on new `(updated_at DESC, id ASC)` | 0.54 / 0.50 ms (flat) |
-| status/kind equality or IN + default order | filter-scan of the same index, early terminate | ~0.2 ms (flat) |
-| Filtered `COUNT(*)` | index/filtered count | 5.1 / 53 ms |
-| Non-default sort (e.g. confidence) | scan + top-k temp b-tree (no per-sort index in D1) | 12.6 / 101 ms |
-| Content contains, rare term | full scan (no substring index without FTS5/pg_trgm — EXT) | 46 / 355 ms |
-| Namespace exact (+status) | existing `(namespace, status, updated_at DESC)` | sub-ms |
-| Namespace prefix as byte-range | SEARCH on existing namespace-leading index | 0.63 / 7.1 ms |
-| Namespace prefix, today's `substr()` form | not sargable — full scan | 8.0 / 71.5 ms |
+| Query shape                                | Plan                                                      | 100k / 1M             |
+| ------------------------------------------ | --------------------------------------------------------- | --------------------- |
+| Default order + keyset guard, LIMIT 200    | index SEARCH on new `(updated_at DESC, id ASC)`           | 0.54 / 0.50 ms (flat) |
+| status/kind equality or IN + default order | filter-scan of the same index, early terminate            | ~0.2 ms (flat)        |
+| Filtered `COUNT(*)`                        | index/filtered count                                      | 5.1 / 53 ms           |
+| Non-default sort (e.g. confidence)         | scan + top-k temp b-tree (no per-sort index in D1)        | 12.6 / 101 ms         |
+| Content contains, rare term                | full scan (no substring index without FTS5/pg_trgm — EXT) | 46 / 355 ms           |
+| Namespace exact (+status)                  | existing `(namespace, status, updated_at DESC)`           | sub-ms                |
+| Namespace prefix as byte-range             | SEARCH on existing namespace-leading index                | 0.63 / 7.1 ms         |
+| Namespace prefix, today's `substr()` form  | not sargable — full scan                                  | 8.0 / 71.5 ms         |
 
 New DDL (the minimal set — the default order is the hot path hit by every
 poll tick; user sorts are interactive one-offs, accepted as top-k scans at D1
@@ -1029,12 +1069,12 @@ itself breaks budget.
 ### 5.6 Rows + total consistency (D1-DATA-04, D1-COUNT-01/03)
 
 **Ruling: per-response snapshot via explicit transaction, both backends;
-eventual consistency *across* responses, repaired by the poll refresh.**
+eventual consistency _across_ responses, repaired by the poll refresh.**
 
 - SQLite: `BEGIN DEFERRED … COMMIT` around the two statements on the existing
   `DatabaseSync` connection — one WAL read snapshot, cost ≈ 0.
 - Postgres: one pool client, `BEGIN ISOLATION LEVEL REPEATABLE READ; rows;
-  count; COMMIT` (READ COMMITTED has per-statement snapshots — same skew as
+count; COMMIT` (READ COMMITTED has per-statement snapshots — same skew as
   today).
 - `COUNT(*) OVER ()` (single statement) was measured and **rejected**: the
   window aggregate forces materialization of the entire filtered set —
@@ -1042,7 +1082,7 @@ eventual consistency *across* responses, repaired by the poll refresh.**
   the lazy top-k path for the rows themselves.
 
 Every fulfilled response's `records`, `total`, and `continuation` are
-therefore mutually exact *at that fulfilled result revision*. The loaded
+therefore mutually exact _at that fulfilled result revision_. The loaded
 client model remains a composite of windows fulfilled at different instants:
 rows deleted after loading linger ≤ one poll period, hoisted/inserted rows are
 invisible ≤ one poll period, and the UI presents "N loaded of M matching"
@@ -1091,12 +1131,12 @@ requester pattern for future consumers.
 
 ```ts
 interface UseMemoryBrowseResult {
-  rows: MemoryRecordRow[];            // accumulated, deduped, reconciled
-  resultMeta: PretableResultMeta;     // { total: {kind:"exact",...}, datasetKey }
+  rows: MemoryRecordRow[]; // accumulated, deduped, reconciled
+  resultMeta: PretableResultMeta; // { total: {kind:"exact",...}, datasetKey }
   dataState: PretableDataState;
-  loadMore(): void;                   // no-op unless idle and continuation !== null
-  refresh(): void;                    // manual tick (mutation recovery)
-  retry(): void;                      // re-attempt the failed request kind
+  loadMore(): void; // no-op unless idle and continuation !== null
+  refresh(): void; // manual tick (mutation recovery)
+  retry(): void; // re-attempt the failed request kind
 }
 ```
 
@@ -1109,7 +1149,7 @@ interface UseMemoryBrowseResult {
   hashed → `datasetKey`; the fingerprint is these fields plus the pinned
   `now` generation.
 - Every fetch closes over `{ revision, kind: "initial" | "refresh" |
-  "load-more" }` and an `AbortController`. On resolve: **the response is
+"load-more" }` and an `AbortController`. On resolve: **the response is
   discarded whole unless its revision is still the desired revision** — that
   one comparison is the entirety of stale-response suppression; aborting is an
   optimization layered on top, and correctness never depends on it
@@ -1130,8 +1170,8 @@ interface UseMemoryBrowseResult {
 - Phase derivation is mechanical: fulfilled = desired → `idle` (or
   `refreshing`/`loading-more` by in-flight kind); fulfilled < desired with
   rows → `stale`; without rows → `loading`; **`error` exactly when the last
-  attempt for the desired revision failed and nothing is fulfilled *for that
-  revision*** — initial and query-change failures, with or without an older
+  attempt for the desired revision failed and nothing is fulfilled _for that
+  revision_** — initial and query-change failures, with or without an older
   revision's rows still visible. The failure-channel partition follows:
   `error`-phase failures are rendered and announced by Pretable (error block,
   or the status strip over still-visible older rows; retry affordance supplied
@@ -1147,13 +1187,13 @@ real write workload):** the Inspector's primary interaction — approve — sets
 `updatedAt = now`, hoisting a row from anywhere to position 0 of the default
 order; forget/reject delete; a status filter turns approve into a
 filter-departure (a delete, for that dataset). Under **offset** paging this
-workload produces routine *silent omissions* (a hoist above the seam skips an
+workload produces routine _silent omissions_ (a hoist above the seam skips an
 unseen row — undetectable client-side; a duplicate at least arrives with a
 known ID) plus linearly growing scan cost (measured 7.6 ms at offset 500k vs
 0.5 ms flat for keyset). Under **keyset** with the default order, the
 monotone-hoist property (updated_at only increases) means writes only move
 rows into territory the walk has already passed — never a duplicate; new/
-hoisted rows are invisible to the forward walk *by design* and are exactly
+hoisted rows are invisible to the forward walk _by design_ and are exactly
 what the head refresh repairs within ≤ 2 s. Under user sorts, the only keyset
 duplicate case is a sort-key edit crossing the cursor downward — absorbed by
 ID-dedup; upward crossings are omissions-until-refresh. Hybrid
@@ -1198,7 +1238,7 @@ displayed total are dropped together — they belong to the dead identity
 (D1-DATA-03). Not invalidating: poll refreshes (same identity, new
 generation), selection/focus/column-layout changes. Every fulfilled response
 computes its continuation from its own last row; the client always continues
-from the *newest* fulfilled response's token, never a remembered one.
+from the _newest_ fulfilled response's token, never a remembered one.
 
 ### 6.3 Head-anchored refresh and reconciliation (D1-DATA-05, D1-GRID-08)
 
@@ -1237,7 +1277,7 @@ for the one keyset duplicate case — and updates `total`/`continuation` from
 the response. Documented residual (the consistency model's "acceptable skew"):
 between polls, loaded rows can be ≤ 2 s stale, hoisted/inserted rows ≤ 2 s
 invisible, and under user sorts a moved row can be transiently mispositioned —
-all bounded by one poll period + response latency, and all *visible-state*
+all bounded by one poll period + response latency, and all _visible-state_
 errors, never silent permanent omissions.
 
 ### 6.4 Failure and retry (D1-DATA-06, D1-UX-01/03)
@@ -1254,9 +1294,9 @@ with the desired revision fulfilled → rows stay usable; the phase stays
 slots** — one independent slot per request kind (refresh, load-more,
 mutation), the same pattern as the Inspector's existing per-source error
 slots — so one kind's success can never clear another kind's failure. A
-succeeding poll tick clears the *refresh* slot; a load-more slot clears only
+succeeding poll tick clears the _refresh_ slot; a load-more slot clears only
 on retry or a succeeding load-more. `retry()` re-attempts the failed kind
-under the *current* desired revision — if the query moved on, the retry is
+under the _current_ desired revision — if the query moved on, the retry is
 simply the new query's initial fetch. Message-equality suppression prevents
 banner re-announcement on repeated failing ticks. Columns are never rebuilt
 on retry; grid state is untouched.
@@ -1275,25 +1315,25 @@ focus, expansion, layout) always the Pretable engine; for lifecycle always the
 below is a path through this table; per-flow prose adds the
 focus/selection/announcement specifics.
 
-| State | Event | Next | Actions |
-|---|---|---|---|
-| any | query change (DQR++, DK′) | `stale` (rows loaded) / `loading` (none) | abort in-flight; drop continuation; fetch(initial, DQR) |
-| `loading` | response, rev = DQR | `idle` | apply rows+meta (one emit); announce results |
-| `loading` | response, rev < DQR | *(same)* | discard whole (Flow 6) |
-| `loading` | failure, rev = DQR | `error` | error block + banner; **suspend polling** |
-| `error` | `retry()` | `loading` | fetch(initial, DQR); resume polling on success |
-| `idle` | poll tick due (live ∧ visible) | `refreshing` | fetch(refresh, DQR, limit = resident) |
-| `refreshing` | response, rev = DQR | `idle` | reconcile §6.3; silent unless changed |
-| `refreshing` | failure, rev = DQR | `idle` | refresh banner slot; rows untouched |
-| `refreshing` | `loadMore()` | `refreshing` | **queue** load-more; run on settle |
-| `idle` | `loadMore()` (continuation ∧ under cap) | `loading-more` | fetch(load-more, DQR, cursor) |
-| `loading-more` | poll tick due | `loading-more` | **skip** tick (next covers it) |
-| `loading-more` | response, rev = DQR | `idle` | dedupe-append; announce with `added` |
-| `loading-more` | failure, rev = DQR | `idle` | load-more banner slot; rows untouched |
-| `stale` | response, rev = DQR | `idle` | apply rows+meta; DK′ clears selection/focus/scroll; announce results |
-| `stale` | failure, rev = DQR | `error` (nothing fulfilled for DQR… rows are FRR<DQR) | banner; rows stay visibly stale; retry re-arms |
-| any | live off / tab hidden | *(same)* | pause ticks; as-of indicator (§6.3) |
-| any | live on / visible / unmount-guard | *(same)* | immediate tick on resume; post-unmount resolutions ignored |
+| State          | Event                                   | Next                                                  | Actions                                                              |
+| -------------- | --------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
+| any            | query change (DQR++, DK′)               | `stale` (rows loaded) / `loading` (none)              | abort in-flight; drop continuation; fetch(initial, DQR)              |
+| `loading`      | response, rev = DQR                     | `idle`                                                | apply rows+meta (one emit); announce results                         |
+| `loading`      | response, rev < DQR                     | _(same)_                                              | discard whole (Flow 6)                                               |
+| `loading`      | failure, rev = DQR                      | `error`                                               | error block + banner; **suspend polling**                            |
+| `error`        | `retry()`                               | `loading`                                             | fetch(initial, DQR); resume polling on success                       |
+| `idle`         | poll tick due (live ∧ visible)          | `refreshing`                                          | fetch(refresh, DQR, limit = resident)                                |
+| `refreshing`   | response, rev = DQR                     | `idle`                                                | reconcile §6.3; silent unless changed                                |
+| `refreshing`   | failure, rev = DQR                      | `idle`                                                | refresh banner slot; rows untouched                                  |
+| `refreshing`   | `loadMore()`                            | `refreshing`                                          | **queue** load-more; run on settle                                   |
+| `idle`         | `loadMore()` (continuation ∧ under cap) | `loading-more`                                        | fetch(load-more, DQR, cursor)                                        |
+| `loading-more` | poll tick due                           | `loading-more`                                        | **skip** tick (next covers it)                                       |
+| `loading-more` | response, rev = DQR                     | `idle`                                                | dedupe-append; announce with `added`                                 |
+| `loading-more` | failure, rev = DQR                      | `idle`                                                | load-more banner slot; rows untouched                                |
+| `stale`        | response, rev = DQR                     | `idle`                                                | apply rows+meta; DK′ clears selection/focus/scroll; announce results |
+| `stale`        | failure, rev = DQR                      | `error` (nothing fulfilled for DQR… rows are FRR<DQR) | banner; rows stay visibly stale; retry re-arms                       |
+| any            | live off / tab hidden                   | _(same)_                                              | pause ticks; as-of indicator (§6.3)                                  |
+| any            | live on / visible / unmount-guard       | _(same)_                                              | immediate tick on resume; post-unmount resolutions ignored           |
 
 **Flow 1 — initial browse load.** Mount: DQR=1, FRR=0, no rows →
 `dataState={phase:"loading"}`; grid renders loading block (no aria-busy).
@@ -1319,7 +1359,7 @@ is discarded (revision gate).
 state changes (display only; model order untouched — sort authority
 external) → `onSortChange(entries)` → DQR bump, DK change → same as Flow 2.
 Note the honest intermediate state: between click and fulfillment the rows
-remain in the *old* order while the header shows the *desired* sort — plus
+remain in the _old_ order while the header shows the _desired_ sort — plus
 the stale marking. This is deliberate: re-sorting the stale window locally
 would present a recency-biased sample as a confidence-sorted result (the
 Approach-A defect). Clearing sort restores the documented default order
@@ -1329,7 +1369,7 @@ Approach-A defect). Clearing sort restores the documented default order
 Flows 2/3: phase `stale`, rows dimmed via the data-phase attribute, status
 chrome shows "Updating…", controls show B (desired), rows/total/continuation
 all still tagged FRR=A. The UI never presents A's records as answering B
-(D1-DATA-01); selection over A's rows remains valid *for A* and is cleared
+(D1-DATA-01); selection over A's rows remains valid _for A_ and is cleared
 exactly when B fulfills (DK change) — never mid-flight.
 
 **Flow 5 — next result window.** `loadMore()` (footer control after the
@@ -1356,7 +1396,7 @@ phase `loading` → Flow 1. Columns and grid instance persist throughout.
 **Flow 8 — refresh/next-window failure and retry.** Failure with fulfilled
 rows: rows remain usable and interactive; per-source banner appears; the
 failed kind is recorded against its revision; poll ticks continue (a
-succeeding tick clears the *refresh* banner via message-equality rules;
+succeeding tick clears the _refresh_ banner via message-equality rules;
 a load-more banner clears only via retry/success). Retry re-attempts the
 failed kind at the current DQR. A retry can never re-apply a completed
 append: continuation tokens are consumed only on success, and dedupeById
@@ -1371,7 +1411,7 @@ survivor-else-clamped-index + `focusedRowRemovedAnnouncement`); inserted/
 hoisted rows appear at their true positions; beyond-span residents retained
 stale. Phase `refreshing` during flight — rows never dim (it is the same
 query); silent on no-change; results announcement only when the row set or
-total changed. Scroll *offset* is untouched; when a tick inserts or hoists
+total changed. Scroll _offset_ is untouched; when a tick inserts or hoists
 rows above the viewport, content shifts under that static offset — the
 accepted, documented D1 behavior (no anchoring exists or is added; §8.1,
 decision 8). Row heights preserved by ID.
@@ -1414,7 +1454,7 @@ selection is preserved deliberately.
 
 **Flow 12 — namespace grouping prototype on a partial dataset.** If enabled
 (controlled `state.rowGroups=["namespace"]` per the prototype branch):
-engine groups the *loaded* records; ARIA downgrades to loaded-model counts
+engine groups the _loaded_ records; ARIA downgrades to loaded-model counts
 (§4.5); group `childCount` renders through the `groupChildCountLabel`
 message with `scope: "loaded"` (§4.3) — default "12 loaded", a
 loaded-children count that makes no claim about the population; the results
@@ -1429,30 +1469,30 @@ prototype must adopt the loaded-only labeling or stay unmerged
 
 ### 8.1 Ownership matrix (required constraints satisfied)
 
-| State / responsibility | Owner | How the constraint is met |
-|---|---|---|
-| Column interaction + displayed filter/sort state | Pretable engine (display state) + built-in react controls | Mutators and menus work identically through pending/failed requests; authority flags only change *application*, never interaction |
-| Domain field/operator semantics | Dawn: `@dawn-ai/memory` validator + stores; Inspector column config (`type`, `options`, `filterOperators`) | Pretable never infers semantics; `toBrowseQuery` is Inspector code |
-| Desired query revision | Dawn: `useMemoryBrowse` (single source of truth) | Controls mirror through engine display state; the hook owns the canonical query + revision counter |
-| Fulfilled result revision | Dawn: `useMemoryBrowse` | Records/total/continuation/DK stored together, revision-tagged |
-| Request creation, cancellation, stale suppression | Dawn: `useMemoryBrowse` | Outside the transport-agnostic grid core, per D1-GRID-05; revision gate is the correctness mechanism, abort the optimization |
-| Loaded record cache + deduplication | Dawn: `useMemoryBrowse` (one owner) | Engine renders the array it is handed; dedupeById at append; reconciliation at refresh |
-| Continuation token + availability | Dawn holds it; the server mints/validates it | Pretable never sees it; `loadMore` guard consumes `continuation !== null` |
-| Matching total + freshness | Backend result contract (`BrowsePage.total`, snapshot-consistent) → `resultMeta.total` | Pretable displays; never computes remote totals |
-| Loading and error state | Orchestration: Dawn (`dataState` derivation). Rendering: Pretable body blocks + announcements; Dawn banners + retry controls | Both owners named; one channel per event (§4.5) |
-| Focus, selection, measured heights, group expansion | Pretable engine/surface (existing guarantees) | Preserved across same-DK replace/append; cleared on DK change; heights ID-keyed React state |
-| Off-window selection | Deferred (EXT-SELECT-01) | Engine prunes vanished IDs; no component infers selection from absent rows; if Dawn ever retains it, Dawn owns and displays it |
-| Scroll anchoring / restoration | D1: surface resets to top on DK change; otherwise the scroll *offset* is untouched and **content may shift when a poll inserts/hoists rows above the viewport** — no anchoring exists or is added in D1; the shift is accepted, documented behavior (decision 8, §15) | Future eviction/anchoring owner: the EXT bounded-window design (engine-coordinated, per the Approach-C analysis) |
+| State / responsibility                              | Owner                                                                                                                                                                                                                                                                 | How the constraint is met                                                                                                         |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Column interaction + displayed filter/sort state    | Pretable engine (display state) + built-in react controls                                                                                                                                                                                                             | Mutators and menus work identically through pending/failed requests; authority flags only change _application_, never interaction |
+| Domain field/operator semantics                     | Dawn: `@dawn-ai/memory` validator + stores; Inspector column config (`type`, `options`, `filterOperators`)                                                                                                                                                            | Pretable never infers semantics; `toBrowseQuery` is Inspector code                                                                |
+| Desired query revision                              | Dawn: `useMemoryBrowse` (single source of truth)                                                                                                                                                                                                                      | Controls mirror through engine display state; the hook owns the canonical query + revision counter                                |
+| Fulfilled result revision                           | Dawn: `useMemoryBrowse`                                                                                                                                                                                                                                               | Records/total/continuation/DK stored together, revision-tagged                                                                    |
+| Request creation, cancellation, stale suppression   | Dawn: `useMemoryBrowse`                                                                                                                                                                                                                                               | Outside the transport-agnostic grid core, per D1-GRID-05; revision gate is the correctness mechanism, abort the optimization      |
+| Loaded record cache + deduplication                 | Dawn: `useMemoryBrowse` (one owner)                                                                                                                                                                                                                                   | Engine renders the array it is handed; dedupeById at append; reconciliation at refresh                                            |
+| Continuation token + availability                   | Dawn holds it; the server mints/validates it                                                                                                                                                                                                                          | Pretable never sees it; `loadMore` guard consumes `continuation !== null`                                                         |
+| Matching total + freshness                          | Backend result contract (`BrowsePage.total`, snapshot-consistent) → `resultMeta.total`                                                                                                                                                                                | Pretable displays; never computes remote totals                                                                                   |
+| Loading and error state                             | Orchestration: Dawn (`dataState` derivation). Rendering: Pretable body blocks + announcements; Dawn banners + retry controls                                                                                                                                          | Both owners named; one channel per event (§4.5)                                                                                   |
+| Focus, selection, measured heights, group expansion | Pretable engine/surface (existing guarantees)                                                                                                                                                                                                                         | Preserved across same-DK replace/append; cleared on DK change; heights ID-keyed React state                                       |
+| Off-window selection                                | Deferred (EXT-SELECT-01)                                                                                                                                                                                                                                              | Engine prunes vanished IDs; no component infers selection from absent rows; if Dawn ever retains it, Dawn owns and displays it    |
+| Scroll anchoring / restoration                      | D1: surface resets to top on DK change; otherwise the scroll _offset_ is untouched and **content may shift when a poll inserts/hoists rows above the viewport** — no anchoring exists or is added in D1; the shift is accepted, documented behavior (decision 8, §15) | Future eviction/anchoring owner: the EXT bounded-window design (engine-coordinated, per the Approach-C analysis)                  |
 
 ### 8.2 View-scope matrix (D1 binding; EXT decided or deferred)
 
-| View | D1 behavior | Extension question (disposition) |
-|---|---|---|
-| Ordinary browse | Server-authoritative filters, ordered sort, exact snapshot total, keyset load-more; full-external ungrouped ARIA semantics | Richer totals (`estimate`/`unknown` already typed — EXT); auto near-end load (EXT-GRID-01, telemetry seam) |
-| Ranked search | Existing relevance behavior unchanged. **Fix shipped dishonesty**: status/kind selects and any browse-only filter controls are disabled while a query is active — the concrete pattern is `aria-disabled="true"` + still focusable + `aria-describedby` → "Not applied to search" text, so keyboard/AT users can *discover why* (a `disabled` attribute would remove them from the tab order and hide the reason); namespace facet remains active (it does apply) | Which filters compose into search; totals/continuation for search; alternate sort (EXT-QUERY-01 — deferred, seam: search becomes a second dataset identity family) |
-| Timeline | Remains separately scoped; keeps its own fetch; never inherits browse continuation or DK; its client-side event-time re-sort is *known-dishonest* and documented as such pending EXT-QUERY-02 (it is not made worse by D1; browse controls that don't apply are disabled as in search) | Server event-time order + paging (EXT-QUERY-02 — deferred; the cursor design already handles `COALESCE(effective_at, created_at)` as a NOT-NULL-by-construction key) |
-| Facet rail | Counts stay global and are **labeled global** ("all memories"), satisfying honesty by labeling; selecting a namespace sends the *exact* `namespace` param (deleting the client-side narrowing) | Query-aware/self-excluding counts, cardinality bounds (EXT-COUNT-01..03 — deferred) |
-| Namespace grouping | Not baseline. If the prototype ships: loaded-only labeling + ARIA downgrade per Flow 12 | Remote groups, global counts, partial children (EXT-COUNT-04/EXT-GRID-02 — deferred) |
+| View               | D1 behavior                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Extension question (disposition)                                                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ordinary browse    | Server-authoritative filters, ordered sort, exact snapshot total, keyset load-more; full-external ungrouped ARIA semantics                                                                                                                                                                                                                                                                                                                                        | Richer totals (`estimate`/`unknown` already typed — EXT); auto near-end load (EXT-GRID-01, telemetry seam)                                                           |
+| Ranked search      | Existing relevance behavior unchanged. **Fix shipped dishonesty**: status/kind selects and any browse-only filter controls are disabled while a query is active — the concrete pattern is `aria-disabled="true"` + still focusable + `aria-describedby` → "Not applied to search" text, so keyboard/AT users can _discover why_ (a `disabled` attribute would remove them from the tab order and hide the reason); namespace facet remains active (it does apply) | Which filters compose into search; totals/continuation for search; alternate sort (EXT-QUERY-01 — deferred, seam: search becomes a second dataset identity family)   |
+| Timeline           | Remains separately scoped; keeps its own fetch; never inherits browse continuation or DK; its client-side event-time re-sort is _known-dishonest_ and documented as such pending EXT-QUERY-02 (it is not made worse by D1; browse controls that don't apply are disabled as in search)                                                                                                                                                                            | Server event-time order + paging (EXT-QUERY-02 — deferred; the cursor design already handles `COALESCE(effective_at, created_at)` as a NOT-NULL-by-construction key) |
+| Facet rail         | Counts stay global and are **labeled global** ("all memories"), satisfying honesty by labeling; selecting a namespace sends the _exact_ `namespace` param (deleting the client-side narrowing)                                                                                                                                                                                                                                                                    | Query-aware/self-excluding counts, cardinality bounds (EXT-COUNT-01..03 — deferred)                                                                                  |
+| Namespace grouping | Not baseline. If the prototype ships: loaded-only labeling + ARIA downgrade per Flow 12                                                                                                                                                                                                                                                                                                                                                                           | Remote groups, global counts, partial children (EXT-COUNT-04/EXT-GRID-02 — deferred)                                                                                 |
 
 ---
 
@@ -1463,7 +1503,7 @@ prototype must adopt the loaded-only labeling or stay unmerged
 The six distinguishable presentations and their construction: initial loading
 (loading block), background refresh (data-phase attribute only, silent),
 next-window load (footer control busy + phase), filtered-empty vs
-unfiltered-empty (both are `idle`+0 loaded; the *copy* differs — the consumer
+unfiltered-empty (both are `idle`+0 loaded; the _copy_ differs — the consumer
 knows whether filters are active and supplies the message; Dawn: "No memories
 match the current filters" vs "No memories yet"), failure-with-rows (banner +
 intact rows), failure-without-rows (error block). A failed refresh or append
@@ -1477,7 +1517,7 @@ the new query (D1-UX-02). Retry never rebuilds columns or recreates the grid
 
 Tab order: error banner (retry, when present) → header controls (funnels,
 column menus, select-all) → grid body (single entry stop, roving tabindex) →
-load-more footer control → rest of page. The load-more control lives *outside*
+load-more footer control → rest of page. The load-more control lives _outside_
 the scroll viewport because the viewport is the `role="grid"` element (a loose
 button corrupts the grid's owned children), virtualization can unmount
 focused in-viewport nodes, and a windowed control would move on every append.
@@ -1493,7 +1533,7 @@ pointer-only gaps (column resize/reorder) are out of D1 scope and recorded in
 ### 9.3 Selection and bulk safety (D1-SELECT-01..04)
 
 Scope: the header checkbox and Cmd/Ctrl+A operate on loaded/model rows only,
-and *say so* (`selectAllLabel`, scoped announcements, scoped copy
+and _say so_ (`selectAllLabel`, scoped announcements, scoped copy
 announcement). Query changes (DK change) clear selection; same-DK refresh/
 append preserve it for surviving IDs; deduplication precedes the engine so
 duplicate selections cannot form. Bulk mutations keep the existing
@@ -1506,13 +1546,13 @@ them from the grid and selection.
 
 ### 9.4 Grouping honesty (D1-COUNT-04, EXT-GRID-02 seam)
 
-Engine grouping over a partial window is permitted but *marked*: ARIA
+Engine grouping over a partial window is permitted but _marked_: ARIA
 downgrade (§4.5), `childCount` rendered through `groupChildCountLabel` with
 `scope: "loaded"` (§4.3), and aggregate cells (`formatAggregate`) receive a
 `scope: "loaded" | "all"` input so a sum over 200 loaded rows is never
 presentable as a population sum. Local mode (`processing` absent) always
 passes `scope: "all"` — no behavior change. One pre-existing subtlety carried
-forward unchanged: select-all targets *expanded* data rows (children of
+forward unchanged: select-all targets _expanded_ data rows (children of
 collapsed groups are excluded, today's local behavior) — the scoped labels
 use counts rather than the word "all", so they stay truthful under grouping.
 
@@ -1572,24 +1612,24 @@ to be measured by the new bench scripts (§12.3) before implementation is
 declared complete; the numbers below are the acceptance ceilings proposed for
 approval, not aspirations.
 
-| Budget | Proposed value | Grounding |
-|---|---|---|
-| Target dataset size (D1 validated) | 100 000 records (design headroom demonstrated to 1M on the default order) | measured §5.5 |
-| Default window / page size | 200 records | current Inspector fetch size |
-| Maximum request `limit` | 1 000, **route-enforced only** (in-process callers like distillation's 10 000-row scan are exempt — §5.3) | closes the unbounded-limit hole on the network boundary without breaking consolidation |
-| Resident-record cap (client) | **1 000 records (5 pages) — deliberately equal to the max request limit**, so a single head refresh always covers the whole resident span and the convergence guarantee stays arithmetic (§6.3); load-more disables at cap with an explanatory label | ≈ 2 MB at ~2 kB/record; EXT-PERF-01 owns growth beyond |
-| Client memory | grid-attributable heap ≤ 32 MB at the resident cap during steady polling (rows + heights cache + React/DOM overhead) | measured via heap snapshot in the bench lane |
-| Request concurrency | 1 browse request in flight per view + 1 stats poll | single-flight design §6.1 |
-| Server: windowed fetch (default order, keyset) | p95 < 10 ms @100k SQLite; < 30 ms Postgres-local | measured 0.54 ms; margin for real payloads |
-| Server: filtered `COUNT(*)` | p95 < 25 ms @100k SQLite; < 100 ms Postgres | measured 5.1 ms |
-| Server: head refresh (rows+count, one txn, resident=1000) | p95 < 50 ms @100k | measured ~3–8 ms + decode |
-| Server: non-default sort window | p95 < 50 ms @100k (accepted scan) | measured 12.6 ms |
-| Server: content contains | p95 < 150 ms @100k (accepted scan; FTS is EXT) | measured 46 ms rare-term worst case |
-| End-to-end interaction (filter/sort click → fulfilled render, local server) | p95 < 300 ms | sum of budgets + fetch overhead; verified in e2e |
-| Client: replace (refresh, 200 rows) | < 20 ms grid work, no grid reconstruction | new bench script; stable-instance assertion |
-| Client: append (200 onto 1 800) | < 30 ms grid work; zero scroll movement; heights cache hit for unchanged rows | new bench script (replace and append measured separately per D1-PERF-04) |
-| Poll tick, no changes | < 10 ms client CPU; zero announcements | silent-refresh rule |
-| Refresh cadence | 2 s visible-tab (unchanged); documented EXT trigger: back off to 10 s under non-default sort beyond ~1M rows, where a refresh tick costs ≈ 150 ms (sort-window scan ≈ 101 ms + count ≈ 53 ms) | measured §5.5 |
+| Budget                                                                      | Proposed value                                                                                                                                                                                                                                       | Grounding                                                                              |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Target dataset size (D1 validated)                                          | 100 000 records (design headroom demonstrated to 1M on the default order)                                                                                                                                                                            | measured §5.5                                                                          |
+| Default window / page size                                                  | 200 records                                                                                                                                                                                                                                          | current Inspector fetch size                                                           |
+| Maximum request `limit`                                                     | 1 000, **route-enforced only** (in-process callers like distillation's 10 000-row scan are exempt — §5.3)                                                                                                                                            | closes the unbounded-limit hole on the network boundary without breaking consolidation |
+| Resident-record cap (client)                                                | **1 000 records (5 pages) — deliberately equal to the max request limit**, so a single head refresh always covers the whole resident span and the convergence guarantee stays arithmetic (§6.3); load-more disables at cap with an explanatory label | ≈ 2 MB at ~2 kB/record; EXT-PERF-01 owns growth beyond                                 |
+| Client memory                                                               | grid-attributable heap ≤ 32 MB at the resident cap during steady polling (rows + heights cache + React/DOM overhead)                                                                                                                                 | measured via heap snapshot in the bench lane                                           |
+| Request concurrency                                                         | 1 browse request in flight per view + 1 stats poll                                                                                                                                                                                                   | single-flight design §6.1                                                              |
+| Server: windowed fetch (default order, keyset)                              | p95 < 10 ms @100k SQLite; < 30 ms Postgres-local                                                                                                                                                                                                     | measured 0.54 ms; margin for real payloads                                             |
+| Server: filtered `COUNT(*)`                                                 | p95 < 25 ms @100k SQLite; < 100 ms Postgres                                                                                                                                                                                                          | measured 5.1 ms                                                                        |
+| Server: head refresh (rows+count, one txn, resident=1000)                   | p95 < 50 ms @100k                                                                                                                                                                                                                                    | measured ~3–8 ms + decode                                                              |
+| Server: non-default sort window                                             | p95 < 50 ms @100k (accepted scan)                                                                                                                                                                                                                    | measured 12.6 ms                                                                       |
+| Server: content contains                                                    | p95 < 150 ms @100k (accepted scan; FTS is EXT)                                                                                                                                                                                                       | measured 46 ms rare-term worst case                                                    |
+| End-to-end interaction (filter/sort click → fulfilled render, local server) | p95 < 300 ms                                                                                                                                                                                                                                         | sum of budgets + fetch overhead; verified in e2e                                       |
+| Client: replace (refresh, 200 rows)                                         | < 20 ms grid work, no grid reconstruction                                                                                                                                                                                                            | new bench script; stable-instance assertion                                            |
+| Client: append (200 onto 1 800)                                             | < 30 ms grid work; zero scroll movement; heights cache hit for unchanged rows                                                                                                                                                                        | new bench script (replace and append measured separately per D1-PERF-04)               |
+| Poll tick, no changes                                                       | < 10 ms client CPU; zero announcements                                                                                                                                                                                                               | silent-refresh rule                                                                    |
+| Refresh cadence                                                             | 2 s visible-tab (unchanged); documented EXT trigger: back off to 10 s under non-default sort beyond ~1M rows, where a refresh tick costs ≈ 150 ms (sort-window scan ≈ 101 ms + count ≈ 53 ms)                                                        | measured §5.5                                                                          |
 
 Benchmark method: server budgets via a seeded-store script per backend
 (SQLite in-process; Postgres via the existing testcontainers gate); client
@@ -1702,26 +1742,26 @@ mutual dependency and run in parallel.
 
 **Risks, priced:**
 
-1. *Split-brain authority tax* — every future derivation-adjacent feature
+1. _Split-brain authority tax_ — every future derivation-adjacent feature
    must answer "which authority?" forever. Accepted as the cost of granular
    honesty; the options-object shape keeps future keys (e.g.
    `processing.group`) additive.
-2. *Delegated honesty* — Pretable renders `dataState`/`resultMeta` it cannot
+2. _Delegated honesty_ — Pretable renders `dataState`/`resultMeta` it cannot
    validate; a lying consumer renders lies. Mitigated by dev-warnings on
    detectable contradictions and by the reference requester being specified
    normatively (§6) rather than as a loose recipe; structurally solved only
    by Approach C, deferred.
-3. *API lock-in before evidence* — mitigated by `@experimental` tags through
+3. _API lock-in before evidence_ — mitigated by `@experimental` tags through
    the dogfood and the pre-1.0 rename policy.
-4. *Keyset complexity in the stores* — the OR-chain + guard + cursor
+4. _Keyset complexity in the stores_ — the OR-chain + guard + cursor
    validation is the hardest new store code; contained by the conformance
    suite and the measured plans.
-5. *Postgres estimates* — server budgets for Postgres are estimates until the
+5. _Postgres estimates_ — server budgets for Postgres are estimates until the
    container bench runs in slice 2; budgets may need one revision.
 
 **Rejected alternatives** (with reasons recorded in-line above): Approach A
 (§3.1); Approach C now (§3.2 — flip condition: a second remote-data consumer
-with a committed timeline *plus* any of eviction/auto-near-end/push moving
+with a committed timeline _plus_ any of eviction/auto-near-end/push moving
 from EXT to the committed roadmap; at that point building C once beats
 migrating twice); `COUNT(*) OVER ()` totals (§5.6); offset
 paging and offset+overlap hybrids (§6.2); `aria-busy` on the grid (§4.5);
@@ -1758,7 +1798,7 @@ boundary = B-core hybrid (§3); (2) granular per-operation authority (§4.1);
 per-response snapshot + ≤ 2 s convergence (§5.6); (6) lifecycle rendering
 split Pretable-blocks/Dawn-chrome (§4.4, §9.1); (7) selection
 clearing/retention + failures-only bulk retry (§9.3); (8) scroll: reset to
-top on DK change; otherwise the scroll *offset* is never moved — and D1
+top on DK change; otherwise the scroll _offset_ is never moved — and D1
 explicitly **accepts content shift** when a poll inserts or hoists rows above
 the viewport (no anchoring exists or is added; the audit's finding stands);
 anchoring belongs to the EXT bounded-window owner (§8.1); (9) Dawn query shape + additive public strategy (§5);
@@ -1770,19 +1810,19 @@ constraint.
 
 Every EXT requirement's disposition:
 
-| EXT | Disposition |
-|---|---|
-| EXT-GRID-01 end-of-window signal | Deferred. Existing telemetry (`visibleRowRange` + `renderedRowCount` + `loadedRowCount`) is sufficient for a future trigger; a dedicated event is not warranted yet. |
-| EXT-GRID-02 partial grouping | Seam shipped in D1: loaded-only labeling + ARIA downgrade + `scope` in aggregate formatting. Remote group metadata deferred. |
-| EXT-GRID-03 bounded windows | Deferred. Seam reserved: `PretableResultMeta.windowStart` / `rowIndexOffset` (named, not implemented); append-only retention is not assumed forever (resident cap + this seam are the guardrails). |
-| EXT-DATA-01 bounded-cache semantics | Deferred behind the resident cap; the eviction owner must be the engine-coordinated design (Approach-C analysis, §3.2) because heights/selection/focus caches are engine-owned. |
-| EXT-DATA-02 push updates | Deferred. Seam: push schedules the same `refresh()` under the same identity + reconciliation (§9.5); Dawn's SSE plumbing exists CLI-side but is process-separate today. |
-| EXT-QUERY-01 search composition | Deferred. D1 disables inert controls (§8.2); the seam is that search becomes its own dataset-identity family through the same revision machinery. |
-| EXT-QUERY-02 timeline query | Deferred. Cursor design already accommodates the coalesced event-time key (NOT NULL by construction, §6.2/§5.4). |
-| EXT-COUNT-01..03 query-aware facets | Deferred entirely (rail stays global-labeled). Semantic-consistency requirement noted: facet predicates must reuse `validateBrowseQuery`'s normalized filter model when built. |
-| EXT-COUNT-04 remote grouping | Deferred; blocked on EXT-GRID-02's remote-metadata half and a `processing.group` authority key. |
-| EXT-SELECT-01 off-window selection | Deferred. D1 invariant preserved: engine prunes vanished IDs; nothing infers selection from absent rows; a future retainer must own and display it consumer-side. |
-| EXT-PERF-01 resident-window bounds | Deferred; D1's cap prevents accidental full-dataset retention; eviction budgets belong to EXT-DATA-01's design. |
+| EXT                                 | Disposition                                                                                                                                                                                        |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EXT-GRID-01 end-of-window signal    | Deferred. Existing telemetry (`visibleRowRange` + `renderedRowCount` + `loadedRowCount`) is sufficient for a future trigger; a dedicated event is not warranted yet.                               |
+| EXT-GRID-02 partial grouping        | Seam shipped in D1: loaded-only labeling + ARIA downgrade + `scope` in aggregate formatting. Remote group metadata deferred.                                                                       |
+| EXT-GRID-03 bounded windows         | Deferred. Seam reserved: `PretableResultMeta.windowStart` / `rowIndexOffset` (named, not implemented); append-only retention is not assumed forever (resident cap + this seam are the guardrails). |
+| EXT-DATA-01 bounded-cache semantics | Deferred behind the resident cap; the eviction owner must be the engine-coordinated design (Approach-C analysis, §3.2) because heights/selection/focus caches are engine-owned.                    |
+| EXT-DATA-02 push updates            | Deferred. Seam: push schedules the same `refresh()` under the same identity + reconciliation (§9.5); Dawn's SSE plumbing exists CLI-side but is process-separate today.                            |
+| EXT-QUERY-01 search composition     | Deferred. D1 disables inert controls (§8.2); the seam is that search becomes its own dataset-identity family through the same revision machinery.                                                  |
+| EXT-QUERY-02 timeline query         | Deferred. Cursor design already accommodates the coalesced event-time key (NOT NULL by construction, §6.2/§5.4).                                                                                   |
+| EXT-COUNT-01..03 query-aware facets | Deferred entirely (rail stays global-labeled). Semantic-consistency requirement noted: facet predicates must reuse `validateBrowseQuery`'s normalized filter model when built.                     |
+| EXT-COUNT-04 remote grouping        | Deferred; blocked on EXT-GRID-02's remote-metadata half and a `processing.group` authority key.                                                                                                    |
+| EXT-SELECT-01 off-window selection  | Deferred. D1 invariant preserved: engine prunes vanished IDs; nothing infers selection from absent rows; a future retainer must own and display it consumer-side.                                  |
+| EXT-PERF-01 resident-window bounds  | Deferred; D1's cap prevents accidental full-dataset retention; eviction budgets belong to EXT-DATA-01's design.                                                                                    |
 
 OUT items (query-wide select-all, Pretable HTTP client, universal cache, URL
 persistence, memory-record editing, backward cursors/random jumps, remote
@@ -1800,73 +1840,73 @@ Every normative ID from the requirements handoff. "Scenario n" = the
 handoff's dogfood acceptance scenarios, implemented as named e2e specs
 (§12.2); test families per §12.
 
-| ID | Design section(s) | Acceptance test / deferral |
-|---|---|---|
-| D1-GRID-01 explicit authority | §4.1–4.2 | engine external-mode tests; Scenario 1 |
-| D1-GRID-02 controlled intent | §4.2 | controlled round-trip tests; no local re-application under external authority |
-| D1-GRID-03 independent operations | §4.1 (granular ruling + reasons), §4.5 (mixed-mode guard) | derivation table tests, all four combinations |
-| D1-GRID-04 local compatibility | §10.1 | local-mode regression suite; Scenario 14 |
-| D1-GRID-05 transport independence | §4.6, §8.1 | api-report review: no domain/transport types in new surface |
-| D1-GRID-06 result metadata | §4.1, §4.3 (counts vocabulary) | telemetry/count tests; no placeholder records anywhere (§4.4) |
-| D1-GRID-07 lifecycle inputs | §4.3–4.4 | body-state matrix tests; Scenario 8 |
-| D1-GRID-08 interaction preservation | §4.2 (DK semantics), §6.3 | engine append/replace preservation tests; bench stability; Scenario 10 |
-| D1-GRID-09 no callback loops | §12.1 callback-loop tests | deterministic-firing tests |
-| EXT-GRID-01 end-of-window signal | §15 | deferred; telemetry deemed sufficient |
-| EXT-GRID-02 partial grouping | §9.4, §15 | loaded-only labeling shipped; remote metadata deferred |
-| EXT-GRID-03 bounded windows | §15 | deferred; `windowStart`/`rowIndexOffset` seam reserved |
-| D1-DATA-01 desired vs fulfilled | §6.1, Flow 4 | component tests; Scenario 6 |
-| D1-DATA-02 stale suppression | §6.1, Flow 6 | orchestration unit tests; Scenario 7 |
-| D1-DATA-03 window compatibility | §6.2 (invalidation + dedupe ownership) | dedupe/identity tests |
-| D1-DATA-04 consistency model | §5.6 | conformance concurrent-write tests; Scenario 9 |
-| D1-DATA-05 polling safety | §6.3, §9.5, Flow 9 | polling-identity tests |
-| D1-DATA-06 loading behavior | §6.4, §9.1 | failure-path component tests; Scenario 8 |
-| D1-DATA-07 beyond-first-window | §6.2, Flow 5 | e2e; Scenario 5 |
-| D1-DATA-08 paging under writes | §6.2 (measured comparison + ruling) | keyset conformance walks under writes |
-| EXT-DATA-01 bounded cache | §15 | deferred; engine-coordinated eviction named as owner |
-| EXT-DATA-02 push updates | §9.5, §15 | deferred; refresh-path seam specified |
-| D1-QUERY-01 all visible fields | §5.1 (column declaration table), §5.2, Flow 2 | Scenario 1; validator + conformance |
-| D1-QUERY-02 operator validation | §5.3 | validator tests |
-| D1-QUERY-03 boolean composition | §5.1 (AND across fields; in/notIn within; empty list = 400) | validator + conformance |
-| D1-QUERY-04 text semantics | §5.2 content/namespace | conformance ASCII pins; documented divergence; Scenario 3 |
-| D1-QUERY-05 numeric semantics | §5.2 confidence | conformance |
-| D1-QUERY-06 date semantics | §5.2 updatedAt (UTC days; distinct from event time) | conformance |
-| D1-QUERY-07 enum semantics | §5.2 status/kind; sourceType retained | conformance; 400 on unknown values |
-| D1-QUERY-08 namespace semantics | §5.2 (exact vs prefix distinct; client narrowing deleted) | Scenario 4 |
-| D1-QUERY-09 ordered sorting | §5.1 orderBy, §5.4 default restore | Scenario 2 |
-| D1-QUERY-10 deterministic order | §5.4 | tied-value conformance both backends; Scenario 2 |
-| D1-QUERY-11 bounded requests | §5.3 | validator bounds tests; whitelist review |
-| D1-QUERY-12 public contract impact | §5.7 | changeset + mirror + conformance diffs reviewed in slice 2 |
-| D1-QUERY-13 cross-backend parity | §5.2, §5.4, §12.2 | shared conformance assertions; Scenario 3 |
-| EXT-QUERY-01 search composition | §8.2, §15 | deferred; controls disabled meanwhile (Scenario 12) |
-| EXT-QUERY-02 timeline query | §8.2, §15 | deferred; cursor accommodates event-time key |
-| D1-COUNT-01 honest matching total | §5.6, §4.1 | Scenario 5; snapshot-total conformance |
-| D1-COUNT-02 population identity | §8.2 facet rail (global-labeled), §4.5 announcements | component tests; Scenario 12 |
-| D1-COUNT-03 concurrent consistency | §5.6 | conformance concurrent-write tests; Scenario 9 |
-| D1-COUNT-04 prospective local grouping | Flow 12, §9.4 | grouping-honesty tests; Scenario 11 |
-| EXT-COUNT-01 query-aware facets | §15 | deferred; validator-model consistency noted |
-| EXT-COUNT-02 snapshot/freshness | §15 | deferred with EXT-COUNT-01 |
-| EXT-COUNT-03 cardinality bounds | §15 | deferred with EXT-COUNT-01 |
-| EXT-COUNT-04 remote grouping | §15 | deferred; blocked on EXT-GRID-02 + `processing.group` |
-| D1-SELECT-01 explicit scope | §9.3, §4.5 labeling | scoped-label tests; Scenario 10 |
-| D1-SELECT-02 query changes | §4.2 DK clear; Flow 11 pruning | engine + component tests |
-| D1-SELECT-03 window changes | §6.3, Flow 11 | append/dedupe selection tests; Scenario 10 |
-| D1-SELECT-04 safe bulk outcomes | §9.3, Flow 11 | bulk partial/retry tests; Scenario 10 |
-| EXT-SELECT-01 off-window selection | §15 | deferred; no-inference invariant preserved |
-| OUT-SELECT-01 query-wide selection | §15 (OUT) | out of scope; labeling leaves the door open |
-| D1-UX-01 distinct lifecycle presentation | §9.1, §4.4 | body-state matrix tests; Scenario 8 |
-| D1-UX-02 stale presentation | Flow 4, §9.1 | Scenario 6 |
-| D1-UX-03 retry | §6.4 | retry tests; Scenario 8 |
-| D1-A11Y-01 busy/status semantics | §4.5 (no aria-busy ruling; announcement matrix) | react a11y tests; Scenario 13 |
-| D1-A11Y-02 row counts and positions | §4.5 | ARIA tests incl. downgrades; Scenario 13 |
-| D1-A11Y-03 focus continuity | §4.2 (DK-change focus rule), §4.5, Flow 2/9, §9.2 | focus tests (DK reset, survivor, clamp, banner rules); Scenario 13 |
-| D1-A11Y-04 keyboard completion | §9.2 | keyboard e2e walkthrough; Scenario 13 |
-| D1-PERF-01 bounded windows | §11 (default 200 / max 1 000) | route clamp tests |
-| D1-PERF-02 numeric budgets | §11 (proposed for approval; method defined) | bench + e2e assertions in slice 5 |
-| D1-PERF-03 query plans | §5.5 | plan assertions in store benches; index DDL review |
-| D1-PERF-04 stable grid work | §4.2, §11 | new replace/append bench scripts, measured separately |
-| EXT-PERF-01 resident-window bounds | §15 | deferred; D1 cap prevents accidental retention |
+| ID                                       | Design section(s)                                           | Acceptance test / deferral                                                    |
+| ---------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| D1-GRID-01 explicit authority            | §4.1–4.2                                                    | engine external-mode tests; Scenario 1                                        |
+| D1-GRID-02 controlled intent             | §4.2                                                        | controlled round-trip tests; no local re-application under external authority |
+| D1-GRID-03 independent operations        | §4.1 (granular ruling + reasons), §4.5 (mixed-mode guard)   | derivation table tests, all four combinations                                 |
+| D1-GRID-04 local compatibility           | §10.1                                                       | local-mode regression suite; Scenario 14                                      |
+| D1-GRID-05 transport independence        | §4.6, §8.1                                                  | api-report review: no domain/transport types in new surface                   |
+| D1-GRID-06 result metadata               | §4.1, §4.3 (counts vocabulary)                              | telemetry/count tests; no placeholder records anywhere (§4.4)                 |
+| D1-GRID-07 lifecycle inputs              | §4.3–4.4                                                    | body-state matrix tests; Scenario 8                                           |
+| D1-GRID-08 interaction preservation      | §4.2 (DK semantics), §6.3                                   | engine append/replace preservation tests; bench stability; Scenario 10        |
+| D1-GRID-09 no callback loops             | §12.1 callback-loop tests                                   | deterministic-firing tests                                                    |
+| EXT-GRID-01 end-of-window signal         | §15                                                         | deferred; telemetry deemed sufficient                                         |
+| EXT-GRID-02 partial grouping             | §9.4, §15                                                   | loaded-only labeling shipped; remote metadata deferred                        |
+| EXT-GRID-03 bounded windows              | §15                                                         | deferred; `windowStart`/`rowIndexOffset` seam reserved                        |
+| D1-DATA-01 desired vs fulfilled          | §6.1, Flow 4                                                | component tests; Scenario 6                                                   |
+| D1-DATA-02 stale suppression             | §6.1, Flow 6                                                | orchestration unit tests; Scenario 7                                          |
+| D1-DATA-03 window compatibility          | §6.2 (invalidation + dedupe ownership)                      | dedupe/identity tests                                                         |
+| D1-DATA-04 consistency model             | §5.6                                                        | conformance concurrent-write tests; Scenario 9                                |
+| D1-DATA-05 polling safety                | §6.3, §9.5, Flow 9                                          | polling-identity tests                                                        |
+| D1-DATA-06 loading behavior              | §6.4, §9.1                                                  | failure-path component tests; Scenario 8                                      |
+| D1-DATA-07 beyond-first-window           | §6.2, Flow 5                                                | e2e; Scenario 5                                                               |
+| D1-DATA-08 paging under writes           | §6.2 (measured comparison + ruling)                         | keyset conformance walks under writes                                         |
+| EXT-DATA-01 bounded cache                | §15                                                         | deferred; engine-coordinated eviction named as owner                          |
+| EXT-DATA-02 push updates                 | §9.5, §15                                                   | deferred; refresh-path seam specified                                         |
+| D1-QUERY-01 all visible fields           | §5.1 (column declaration table), §5.2, Flow 2               | Scenario 1; validator + conformance                                           |
+| D1-QUERY-02 operator validation          | §5.3                                                        | validator tests                                                               |
+| D1-QUERY-03 boolean composition          | §5.1 (AND across fields; in/notIn within; empty list = 400) | validator + conformance                                                       |
+| D1-QUERY-04 text semantics               | §5.2 content/namespace                                      | conformance ASCII pins; documented divergence; Scenario 3                     |
+| D1-QUERY-05 numeric semantics            | §5.2 confidence                                             | conformance                                                                   |
+| D1-QUERY-06 date semantics               | §5.2 updatedAt (UTC days; distinct from event time)         | conformance                                                                   |
+| D1-QUERY-07 enum semantics               | §5.2 status/kind; sourceType retained                       | conformance; 400 on unknown values                                            |
+| D1-QUERY-08 namespace semantics          | §5.2 (exact vs prefix distinct; client narrowing deleted)   | Scenario 4                                                                    |
+| D1-QUERY-09 ordered sorting              | §5.1 orderBy, §5.4 default restore                          | Scenario 2                                                                    |
+| D1-QUERY-10 deterministic order          | §5.4                                                        | tied-value conformance both backends; Scenario 2                              |
+| D1-QUERY-11 bounded requests             | §5.3                                                        | validator bounds tests; whitelist review                                      |
+| D1-QUERY-12 public contract impact       | §5.7                                                        | changeset + mirror + conformance diffs reviewed in slice 2                    |
+| D1-QUERY-13 cross-backend parity         | §5.2, §5.4, §12.2                                           | shared conformance assertions; Scenario 3                                     |
+| EXT-QUERY-01 search composition          | §8.2, §15                                                   | deferred; controls disabled meanwhile (Scenario 12)                           |
+| EXT-QUERY-02 timeline query              | §8.2, §15                                                   | deferred; cursor accommodates event-time key                                  |
+| D1-COUNT-01 honest matching total        | §5.6, §4.1                                                  | Scenario 5; snapshot-total conformance                                        |
+| D1-COUNT-02 population identity          | §8.2 facet rail (global-labeled), §4.5 announcements        | component tests; Scenario 12                                                  |
+| D1-COUNT-03 concurrent consistency       | §5.6                                                        | conformance concurrent-write tests; Scenario 9                                |
+| D1-COUNT-04 prospective local grouping   | Flow 12, §9.4                                               | grouping-honesty tests; Scenario 11                                           |
+| EXT-COUNT-01 query-aware facets          | §15                                                         | deferred; validator-model consistency noted                                   |
+| EXT-COUNT-02 snapshot/freshness          | §15                                                         | deferred with EXT-COUNT-01                                                    |
+| EXT-COUNT-03 cardinality bounds          | §15                                                         | deferred with EXT-COUNT-01                                                    |
+| EXT-COUNT-04 remote grouping             | §15                                                         | deferred; blocked on EXT-GRID-02 + `processing.group`                         |
+| D1-SELECT-01 explicit scope              | §9.3, §4.5 labeling                                         | scoped-label tests; Scenario 10                                               |
+| D1-SELECT-02 query changes               | §4.2 DK clear; Flow 11 pruning                              | engine + component tests                                                      |
+| D1-SELECT-03 window changes              | §6.3, Flow 11                                               | append/dedupe selection tests; Scenario 10                                    |
+| D1-SELECT-04 safe bulk outcomes          | §9.3, Flow 11                                               | bulk partial/retry tests; Scenario 10                                         |
+| EXT-SELECT-01 off-window selection       | §15                                                         | deferred; no-inference invariant preserved                                    |
+| OUT-SELECT-01 query-wide selection       | §15 (OUT)                                                   | out of scope; labeling leaves the door open                                   |
+| D1-UX-01 distinct lifecycle presentation | §9.1, §4.4                                                  | body-state matrix tests; Scenario 8                                           |
+| D1-UX-02 stale presentation              | Flow 4, §9.1                                                | Scenario 6                                                                    |
+| D1-UX-03 retry                           | §6.4                                                        | retry tests; Scenario 8                                                       |
+| D1-A11Y-01 busy/status semantics         | §4.5 (no aria-busy ruling; announcement matrix)             | react a11y tests; Scenario 13                                                 |
+| D1-A11Y-02 row counts and positions      | §4.5                                                        | ARIA tests incl. downgrades; Scenario 13                                      |
+| D1-A11Y-03 focus continuity              | §4.2 (DK-change focus rule), §4.5, Flow 2/9, §9.2           | focus tests (DK reset, survivor, clamp, banner rules); Scenario 13            |
+| D1-A11Y-04 keyboard completion           | §9.2                                                        | keyboard e2e walkthrough; Scenario 13                                         |
+| D1-PERF-01 bounded windows               | §11 (default 200 / max 1 000)                               | route clamp tests                                                             |
+| D1-PERF-02 numeric budgets               | §11 (proposed for approval; method defined)                 | bench + e2e assertions in slice 5                                             |
+| D1-PERF-03 query plans                   | §5.5                                                        | plan assertions in store benches; index DDL review                            |
+| D1-PERF-04 stable grid work              | §4.2, §11                                                   | new replace/append bench scripts, measured separately                         |
+| EXT-PERF-01 resident-window bounds       | §15                                                         | deferred; D1 cap prevents accidental retention                                |
 
 ---
 
-*End of design document. Implementation is gated on human approval of this
-design, per the requirements handoff and the brainstorming-skill hard gate.*
+_End of design document. Implementation is gated on human approval of this
+design, per the requirements handoff and the brainstorming-skill hard gate._

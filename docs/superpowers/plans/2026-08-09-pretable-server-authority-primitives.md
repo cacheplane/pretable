@@ -4,7 +4,7 @@
 
 **Goal:** Add the engine + React primitives that let an upstream processor (a server) own filtering and sorting while Pretable renders honest counts, honest labels, and an honest data lifecycle — Slice 1 of `docs/superpowers/specs/2026-08-09-server-controlled-exploration-design.md`, Pretable-only, everything `@experimental`.
 
-**Architecture:** `@pretable-internal/grid-core` gains construction-time *processing authority* flags that substitute empty filters / empty sort into the single `deriveVisibleRows` call inside `getSnapshot`, plus a *result metadata* input (`{ total, datasetKey }`) that rides on `setRows` or arrives alone via `setResultMeta`. The snapshot grows `matchingTotal` and `datasetKey`, and `totalRowCount` is hard-renamed to `loadedRowCount`. `@pretable/react` forwards `processing`/`resultMeta`, adds a consumer-asserted `dataState` lifecycle with body-state blocks, and routes every user-facing count through a single `"all" | "loaded"` scope so a 200-of-10,432 window can never be described as "all rows". No Dawn changes, no transport, no fetcher.
+**Architecture:** `@pretable-internal/grid-core` gains construction-time _processing authority_ flags that substitute empty filters / empty sort into the single `deriveVisibleRows` call inside `getSnapshot`, plus a _result metadata_ input (`{ total, datasetKey }`) that rides on `setRows` or arrives alone via `setResultMeta`. The snapshot grows `matchingTotal` and `datasetKey`, and `totalRowCount` is hard-renamed to `loadedRowCount`. `@pretable/react` forwards `processing`/`resultMeta`, adds a consumer-asserted `dataState` lifecycle with body-state blocks, and routes every user-facing count through a single `"all" | "loaded"` scope so a 200-of-10,432 window can never be described as "all rows". No Dawn changes, no transport, no fetcher.
 
 **Tech Stack:** TypeScript, React 19, vitest (+ jsdom for React), pnpm workspaces, api-extractor (CI-gated public API reports), changesets, vanilla CSS in `@pretable/ui`.
 
@@ -18,7 +18,6 @@
 > confirm by searching for the quoted symbol or code. If a cited line holds
 > something unrelated, that is drift, not a missing prerequisite — do not "fix"
 > the repo to match the plan.
-
 
 ## Read before you start
 
@@ -39,49 +38,49 @@ Design-doc sections that are normative for this plan: §1.3, §4.1–§4.6, §9.
 
 ### Created
 
-| Path | Single responsibility |
-|---|---|
-| `packages/grid-core/src/dev-warn.ts` | `warnOnce(key, message)` + `resetDevWarnings()` — one console warning per key per process, for consumer misconfiguration the engine cannot fix. |
-| `packages/grid-core/src/__tests__/local-mode-baseline.test.ts` | Regression net: a default-constructed grid's snapshot and derivation are byte-identical before and after every change in this plan. |
-| `packages/grid-core/src/__tests__/processing-authority.test.ts` | The four `{filter, sort}` authority combinations from §4.2, and mutators emitting display state without applying it. |
-| `packages/grid-core/src/__tests__/result-meta.test.ts` | `setRows(rows, meta)`, `setResultMeta`, `matchingTotal` precedence, `datasetKey` clear semantics, dev warnings. |
-| `packages/react/src/dev-warn.ts` | React-side twin of the engine's `warnOnce` (react depends on `@pretable/core`, not on grid-core internals). |
-| `packages/react/src/data-state.ts` | `PretableDataState` type + `resolveBodyStateKind` — which body block a phase owes. |
-| `packages/react/src/data-scope.ts` | `resolveDataScope` + `resolveAriaRowCount` — the two honesty rules every label and count reads. |
-| `packages/react/src/__tests__/local-mode-baseline.test.tsx` | Regression net for the surface: ARIA, DOM shape, and labels with no new props supplied. |
-| `packages/react/src/__tests__/data-state-surface.test.tsx` | Body-state matrix (§4.4), `renderBodyState`, `data-pretable-data-phase`, no-`dataState` inertness. |
-| `packages/react/src/__tests__/server-authority-aria.test.tsx` | `aria-rowcount`/`aria-rowindex` per §4.5 with every downgrade; no `aria-busy` in any phase; `ariaDescribedBy`. |
-| `packages/react/src/__tests__/scoped-labels.test.tsx` | `selectAllLabel`, scoped select-all + copy announcements, `groupChildCountLabel`, `formatAggregate` scope. |
+| Path                                                            | Single responsibility                                                                                                                                        |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/grid-core/src/dev-warn.ts`                            | `warnOnce(key, message)` + `resetDevWarnings()` — one console warning per key per process, for consumer misconfiguration the engine cannot fix.              |
+| `packages/grid-core/src/__tests__/local-mode-baseline.test.ts`  | Regression net: a default-constructed grid's snapshot and derivation are byte-identical before and after every change in this plan.                          |
+| `packages/grid-core/src/__tests__/processing-authority.test.ts` | The four `{filter, sort}` authority combinations from §4.2, and mutators emitting display state without applying it.                                         |
+| `packages/grid-core/src/__tests__/result-meta.test.ts`          | `setRows(rows, meta)`, `setResultMeta`, `matchingTotal` precedence, `datasetKey` clear semantics, dev warnings.                                              |
+| `packages/react/src/dev-warn.ts`                                | React-side twin of the engine's `warnOnce` (react depends on `@pretable/core`, not on grid-core internals).                                                  |
+| `packages/react/src/data-state.ts`                              | `PretableDataState` type + `resolveBodyStateKind` — which body block a phase owes.                                                                           |
+| `packages/react/src/data-scope.ts`                              | `resolveDataScope` + `resolveAriaRowCount` — the two honesty rules every label and count reads.                                                              |
+| `packages/react/src/__tests__/local-mode-baseline.test.tsx`     | Regression net for the surface: ARIA, DOM shape, and labels with no new props supplied.                                                                      |
+| `packages/react/src/__tests__/data-state-surface.test.tsx`      | Body-state matrix (§4.4), `renderBodyState`, `data-pretable-data-phase`, no-`dataState` inertness.                                                           |
+| `packages/react/src/__tests__/server-authority-aria.test.tsx`   | `aria-rowcount`/`aria-rowindex` per §4.5 with every downgrade; no `aria-busy` in any phase; `ariaDescribedBy`.                                               |
+| `packages/react/src/__tests__/scoped-labels.test.tsx`           | `selectAllLabel`, scoped select-all + copy announcements, `groupChildCountLabel`, `formatAggregate` scope.                                                   |
 | `packages/react/src/__tests__/lifecycle-announcements.test.tsx` | `resultsAnnouncement` (+`added`), `dataErrorAnnouncement`, silent refresh, `focusedRowRemovedAnnouncement`, `moreRowsBoundaryAnnouncement`, DK-change focus. |
-| `.changeset/server-authority-primitives.md` | One minor changeset for the whole slice. |
+| `.changeset/server-authority-primitives.md`                     | One minor changeset for the whole slice.                                                                                                                     |
 
 ### Modified
 
-| Path | What changes |
-|---|---|
-| `packages/grid-core/src/types.ts` | `PretableProcessingAuthority`, `PretableProcessingOptions`, `PretableMatchingTotal`, `PretableResultMeta`; `PretableGridOptions.processing`; `PretableColumn.filterOperators`; `PretableAggregateFormatInput.scope`; snapshot `totalRowCount → loadedRowCount` + `matchingTotal` + `datasetKey`; `PretableEngine.setRows` signature + `setResultMeta`. |
-| `packages/grid-core/src/derived-rows.ts` (38–63) | `deriveVisibleRows` returns `{ rows, filteredCount }` instead of a bare array. |
-| `packages/grid-core/src/create-grid-core.ts` | Authority consts; the derivation call (~1508–1521); `setRows` (~1137); new `setResultMeta`; snapshot fields (~1540); dataset-change clear bundle. |
-| `packages/grid-core/src/__tests__/{grid-core,set-rows,group-rows}.test.ts` | Rename + `deriveVisibleRows` return-shape fallout. |
-| `packages/core/src/types.ts`, `public_api.ts`, `pretable-grid.ts`, `create-grid.ts` | Re-export the new types; widen `setRows`; add `setResultMeta`. |
-| `packages/react/src/use-pretable.ts` | `processing`/`resultMeta` options; grid memo scalar deps (253–257); rows+meta effect (263–269); telemetry `loadedRowCount`/`matchingTotal` (112–124, 445–488). |
-| `packages/react/src/pretable-surface.tsx` | New props; messages entries + defaults (241–320); `aria-rowcount`/`aria-describedby`/`data-pretable-data-phase` (2211–2224); select-all label + announcement (2554–2641); copy announcement (2356); body-state wrapper + blocks; lifecycle/focus/boundary effects; FilterMenu `filterOperators` + enum dev warn (3694–3721). |
-| `packages/react/src/group-row.tsx` (163) | Hardcoded `({group.childCount})` → `groupChildCountLabel`; aggregate `scope`. |
-| `packages/react/src/rendering.ts` (38–44) | `formatAggregateValue` gains a required `scope` argument. |
-| `packages/react/src/copy.ts` (56–61, 285) | `SerializeRangesArgs.scope`; pass it to `formatAggregateValue`. |
-| `packages/react/src/filter-menu/filter-operators.ts` (41–49, 86–92) | `operatorsForType`/`defaultDraft` accept an allow-list. |
-| `packages/react/src/filter-menu/FilterMenu.tsx` (24–41, 147) | `filterOperators` prop. |
-| `packages/react/src/public_api.ts` | Export the new types. |
-| `packages/ui/src/grid.css` | Body-state block styles (vanilla, inside `@layer pretable`). |
-| `apps/bench/src/bench-runtime.ts` (55), `apps/bench/src/__tests__/*.ts(x)` | Rename fallout. |
-| `apps/website/content/docs/**` | Rename fallout in five MDX files. |
-| `packages/core/core.api.md`, `packages/react/react.api.md` | Regenerated. |
+| Path                                                                                | What changes                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/grid-core/src/types.ts`                                                   | `PretableProcessingAuthority`, `PretableProcessingOptions`, `PretableMatchingTotal`, `PretableResultMeta`; `PretableGridOptions.processing`; `PretableColumn.filterOperators`; `PretableAggregateFormatInput.scope`; snapshot `totalRowCount → loadedRowCount` + `matchingTotal` + `datasetKey`; `PretableEngine.setRows` signature + `setResultMeta`. |
+| `packages/grid-core/src/derived-rows.ts` (38–63)                                    | `deriveVisibleRows` returns `{ rows, filteredCount }` instead of a bare array.                                                                                                                                                                                                                                                                         |
+| `packages/grid-core/src/create-grid-core.ts`                                        | Authority consts; the derivation call (~1508–1521); `setRows` (~1137); new `setResultMeta`; snapshot fields (~1540); dataset-change clear bundle.                                                                                                                                                                                                      |
+| `packages/grid-core/src/__tests__/{grid-core,set-rows,group-rows}.test.ts`          | Rename + `deriveVisibleRows` return-shape fallout.                                                                                                                                                                                                                                                                                                     |
+| `packages/core/src/types.ts`, `public_api.ts`, `pretable-grid.ts`, `create-grid.ts` | Re-export the new types; widen `setRows`; add `setResultMeta`.                                                                                                                                                                                                                                                                                         |
+| `packages/react/src/use-pretable.ts`                                                | `processing`/`resultMeta` options; grid memo scalar deps (253–257); rows+meta effect (263–269); telemetry `loadedRowCount`/`matchingTotal` (112–124, 445–488).                                                                                                                                                                                         |
+| `packages/react/src/pretable-surface.tsx`                                           | New props; messages entries + defaults (241–320); `aria-rowcount`/`aria-describedby`/`data-pretable-data-phase` (2211–2224); select-all label + announcement (2554–2641); copy announcement (2356); body-state wrapper + blocks; lifecycle/focus/boundary effects; FilterMenu `filterOperators` + enum dev warn (3694–3721).                           |
+| `packages/react/src/group-row.tsx` (163)                                            | Hardcoded `({group.childCount})` → `groupChildCountLabel`; aggregate `scope`.                                                                                                                                                                                                                                                                          |
+| `packages/react/src/rendering.ts` (38–44)                                           | `formatAggregateValue` gains a required `scope` argument.                                                                                                                                                                                                                                                                                              |
+| `packages/react/src/copy.ts` (56–61, 285)                                           | `SerializeRangesArgs.scope`; pass it to `formatAggregateValue`.                                                                                                                                                                                                                                                                                        |
+| `packages/react/src/filter-menu/filter-operators.ts` (41–49, 86–92)                 | `operatorsForType`/`defaultDraft` accept an allow-list.                                                                                                                                                                                                                                                                                                |
+| `packages/react/src/filter-menu/FilterMenu.tsx` (24–41, 147)                        | `filterOperators` prop.                                                                                                                                                                                                                                                                                                                                |
+| `packages/react/src/public_api.ts`                                                  | Export the new types.                                                                                                                                                                                                                                                                                                                                  |
+| `packages/ui/src/grid.css`                                                          | Body-state block styles (vanilla, inside `@layer pretable`).                                                                                                                                                                                                                                                                                           |
+| `apps/bench/src/bench-runtime.ts` (55), `apps/bench/src/__tests__/*.ts(x)`          | Rename fallout.                                                                                                                                                                                                                                                                                                                                        |
+| `apps/website/content/docs/**`                                                      | Rename fallout in five MDX files.                                                                                                                                                                                                                                                                                                                      |
+| `packages/core/core.api.md`, `packages/react/react.api.md`                          | Regenerated.                                                                                                                                                                                                                                                                                                                                           |
 
 ---
 
 ## Task 1: Rebase onto current origin/main and establish a green baseline
 
-This branch has already been rebased onto `e7fcc97` (`chore: version packages (#265)`), so this task is a re-check rather than a first rebase. Do not treat any SHA written in this plan as current: Brian runs concurrent sessions, so `origin/main` moves *while* the plan is being executed. Fetch and compare against `origin/main` between tasks, not only here. **Never `git stash` in a worktree** — the stash stack is shared across worktrees and a parallel session's `pop` can steal your entry. Commit instead.
+This branch has already been rebased onto `e7fcc97` (`chore: version packages (#265)`), so this task is a re-check rather than a first rebase. Do not treat any SHA written in this plan as current: Brian runs concurrent sessions, so `origin/main` moves _while_ the plan is being executed. Fetch and compare against `origin/main` between tasks, not only here. **Never `git stash` in a worktree** — the stash stack is shared across worktrees and a parallel session's `pop` can steal your entry. Commit instead.
 
 **Files:** none (git only)
 
@@ -99,6 +98,7 @@ This branch has already been rebased onto `e7fcc97` (`chore: version packages (#
 This is the safety net for every later task: it asserts that a grid constructed with **no** new props behaves exactly as it does today. It must pass right now, and must keep passing unmodified except for the mechanical rename in Task 3.
 
 **Files:**
+
 - Create: `packages/grid-core/src/__tests__/local-mode-baseline.test.ts`
 - Create: `packages/react/src/__tests__/local-mode-baseline.test.tsx`
 - Test: both of the above
@@ -142,7 +142,9 @@ function makeGrid() {
 function dataIds(grid: ReturnType<typeof makeGrid>): string[] {
   return grid
     .getSnapshot()
-    .visibleRows.filter((entry): entry is PretableDataRow<Row> => entry.kind === "data")
+    .visibleRows.filter(
+      (entry): entry is PretableDataRow<Row> => entry.kind === "data",
+    )
     .map((entry) => entry.id);
 }
 
@@ -204,9 +206,13 @@ describe("local mode baseline", () => {
   test("grouping synthesizes headers with post-filter child counts", () => {
     const grid = makeGrid();
     grid.setRowGroups(["score"]);
-    const groups = grid.getSnapshot().visibleRows.filter((r) => r.kind === "group");
+    const groups = grid
+      .getSnapshot()
+      .visibleRows.filter((r) => r.kind === "group");
     expect(groups).toHaveLength(3);
-    expect(groups.every((g) => g.kind === "group" && g.childCount === 1)).toBe(true);
+    expect(groups.every((g) => g.kind === "group" && g.childCount === 1)).toBe(
+      true,
+    );
   });
 });
 ```
@@ -309,6 +315,7 @@ describe("local mode baseline (surface)", () => {
 The old name becomes actively wrong the day two totals exist (§10.1). No alias. Fifteen call sites across four packages and two apps.
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts:408`, `packages/grid-core/src/create-grid-core.ts:1540`
 - Modify: `packages/grid-core/src/__tests__/grid-core.test.ts` (208, 294, 331, 350, 394, 408), `set-rows.test.ts` (53, 71), `local-mode-baseline.test.ts` (from Task 2)
 - Modify: `packages/react/src/use-pretable.ts:117,464,484`, `packages/react/src/__tests__/pretable.test.tsx:374`
@@ -319,8 +326,8 @@ The old name becomes actively wrong the day two totals exist (§10.1). No alias.
 - [ ] **Step 1: Rename the snapshot field in the engine type.** In `packages/grid-core/src/types.ts`, replace `  totalRowCount: number;` (line 408, inside `PretableGridSnapshot`) with:
 
 ```ts
-  /** Count of loaded source records. Not the matching population — see {@link PretableGridSnapshot.matchingTotal}. */
-  loadedRowCount: number;
+/** Count of loaded source records. Not the matching population — see {@link PretableGridSnapshot.matchingTotal}. */
+loadedRowCount: number;
 ```
 
 - [ ] **Step 2: Rename the emit site.** In `packages/grid-core/src/create-grid-core.ts`, replace `      totalRowCount: sourceRows.length,` (line 1540) with `      loadedRowCount: sourceRows.length,`.
@@ -330,8 +337,8 @@ The old name becomes actively wrong the day two totals exist (§10.1). No alias.
 - [ ] **Step 6: Rename in React.** Run `cd /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a/packages/react && grep -rl totalRowCount src | xargs sed -i '' 's/totalRowCount/loadedRowCount/g'`. Then add the doc comment: in `packages/react/src/use-pretable.ts`, replace `  loadedRowCount: number;` inside `PretableTelemetry` with:
 
 ```ts
-  /** Count of loaded source records. Renamed from `totalRowCount` — it never meant the matching population. */
-  loadedRowCount: number;
+/** Count of loaded source records. Renamed from `totalRowCount` — it never meant the matching population. */
+loadedRowCount: number;
 ```
 
 - [ ] **Step 7: Rename in the apps.** Run `cd /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a && grep -rl totalRowCount apps | xargs sed -i '' 's/totalRowCount/loadedRowCount/g'`. This covers `apps/bench` source + tests and all five `apps/website` MDX files. Verify with `grep -rn totalRowCount apps` — expect no output.
@@ -349,6 +356,7 @@ The old name becomes actively wrong the day two totals exist (§10.1). No alias.
 Types and plumbing only. Behavior lands in Task 5, so the baseline net stays green throughout.
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts` (before `PretableGridOptions`, ~line 185), `packages/grid-core/src/index.ts`
 - Modify: `packages/core/src/types.ts`, `packages/core/src/public_api.ts`
 - Test: `packages/grid-core/src/__tests__/processing-authority.test.ts` (created)
@@ -466,69 +474,70 @@ export interface PretableProcessingOptions {
 The single change site is the `deriveVisibleRows` call in `getSnapshot` (`create-grid-core.ts:1508-1521`). State mutators are untouched: they still sanitize, still store, still emit — they just stop being applied.
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts` (~174 for the authority consts, 1508–1521 for the call)
 - Test: `packages/grid-core/src/__tests__/processing-authority.test.ts`
 
 - [ ] **Step 1: Write the failing tests.** Append to `packages/grid-core/src/__tests__/processing-authority.test.ts`, inside the existing `describe("processing authority", ...)`:
 
 ```ts
-  test("engine/engine is today's behavior byte-for-byte", () => {
-    const grid = makeGrid();
-    grid.setSort("score", "asc");
-    grid.setColumnFilter("name", { operator: "contains", value: "b" });
-    expect(dataIds(grid)).toEqual(["b"]);
-  });
+test("engine/engine is today's behavior byte-for-byte", () => {
+  const grid = makeGrid();
+  grid.setSort("score", "asc");
+  grid.setColumnFilter("name", { operator: "contains", value: "b" });
+  expect(dataIds(grid)).toEqual(["b"]);
+});
 
-  test("external/external leaves the supplied order untouched", () => {
-    const grid = makeGrid({ filter: "external", sort: "external" });
-    grid.setSort("score", "asc");
-    grid.setColumnFilter("name", { operator: "contains", value: "b" });
-    expect(dataIds(grid)).toEqual(["a", "b", "c"]);
-  });
+test("external/external leaves the supplied order untouched", () => {
+  const grid = makeGrid({ filter: "external", sort: "external" });
+  grid.setSort("score", "asc");
+  grid.setColumnFilter("name", { operator: "contains", value: "b" });
+  expect(dataIds(grid)).toEqual(["a", "b", "c"]);
+});
 
-  test("external filter with engine sort sorts the unfiltered records", () => {
-    const grid = makeGrid({ filter: "external", sort: "engine" });
-    grid.setSort("score", "asc");
-    grid.setColumnFilter("name", { operator: "contains", value: "b" });
-    expect(dataIds(grid)).toEqual(["b", "c", "a"]);
-  });
+test("external filter with engine sort sorts the unfiltered records", () => {
+  const grid = makeGrid({ filter: "external", sort: "engine" });
+  grid.setSort("score", "asc");
+  grid.setColumnFilter("name", { operator: "contains", value: "b" });
+  expect(dataIds(grid)).toEqual(["b", "c", "a"]);
+});
 
-  test("engine filter with external sort filters but keeps supplied order", () => {
-    const grid = makeGrid({ filter: "engine", sort: "external" });
-    grid.setSort("score", "asc");
-    grid.setColumnFilter("score", { operator: "gte", value: 2 });
-    expect(dataIds(grid)).toEqual(["a", "c"]);
-  });
+test("engine filter with external sort filters but keeps supplied order", () => {
+  const grid = makeGrid({ filter: "engine", sort: "external" });
+  grid.setSort("score", "asc");
+  grid.setColumnFilter("score", { operator: "gte", value: 2 });
+  expect(dataIds(grid)).toEqual(["a", "c"]);
+});
 
-  test("mutators still record display state under external authority", () => {
-    const grid = makeGrid({ filter: "external", sort: "external" });
-    grid.setSort("score", "asc");
-    grid.setColumnFilter("name", { operator: "contains", value: "b" });
-    const snap = grid.getSnapshot();
-    expect(snap.sort).toEqual([{ columnId: "score", direction: "asc" }]);
-    expect(snap.filters).toEqual({
-      name: { operator: "contains", value: "b" },
-    });
+test("mutators still record display state under external authority", () => {
+  const grid = makeGrid({ filter: "external", sort: "external" });
+  grid.setSort("score", "asc");
+  grid.setColumnFilter("name", { operator: "contains", value: "b" });
+  const snap = grid.getSnapshot();
+  expect(snap.sort).toEqual([{ columnId: "score", direction: "asc" }]);
+  expect(snap.filters).toEqual({
+    name: { operator: "contains", value: "b" },
   });
+});
 
-  test("sortable:false still prunes under external sort authority", () => {
-    const grid = createGridCore<Row>({
-      columns: [{ id: "name" }, { id: "score", sortable: false }],
-      rows: rows.map((r) => ({ ...r })),
-      getRowId: (row: Row) => row.id,
-      processing: { filter: "external", sort: "external" },
-    });
-    grid.setSort("score", "asc");
-    expect(grid.getSnapshot().sort).toEqual([]);
+test("sortable:false still prunes under external sort authority", () => {
+  const grid = createGridCore<Row>({
+    columns: [{ id: "name" }, { id: "score", sortable: false }],
+    rows: rows.map((r) => ({ ...r })),
+    getRowId: (row: Row) => row.id,
+    processing: { filter: "external", sort: "external" },
   });
+  grid.setSort("score", "asc");
+  expect(grid.getSnapshot().sort).toEqual([]);
+});
 
-  test("grouping still works under external authority", () => {
-    const grid = makeGrid({ filter: "external", sort: "external" });
-    grid.setRowGroups(["score"]);
-    expect(
-      grid.getSnapshot().visibleRows.filter((r) => r.kind === "group"),
-    ).toHaveLength(3);
-  });
+test("grouping still works under external authority", () => {
+  const grid = makeGrid({ filter: "external", sort: "external" });
+  grid.setRowGroups(["score"]);
+  expect(
+    grid.getSnapshot().visibleRows.filter((r) => r.kind === "group"),
+  ).toHaveLength(3);
+});
 ```
 
 - [ ] **Step 2: Run and see them fail.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run src/__tests__/processing-authority.test.ts`. Expect three failures, e.g. `expected [ 'b' ] to deeply equal [ 'a', 'b', 'c' ]` for "external/external leaves the supplied order untouched".
@@ -547,13 +556,13 @@ const NO_SORT: PretableSortEntry[] = [];
 - [ ] **Step 4: Resolve the authorities once at construction.** In `packages/grid-core/src/create-grid-core.ts`, immediately after `  let sourceRows = createSourceRows(options);` (line 174), insert:
 
 ```ts
-  // Read once: `processing` is construction-time by contract, and `options` is
-  // reassigned throughout (setRows, autosize, column mutators), so re-reading
-  // it per snapshot would only invite an accidental mid-life flip.
-  const filterAuthority: PretableProcessingAuthority =
-    options.processing?.filter ?? "engine";
-  const sortAuthority: PretableProcessingAuthority =
-    options.processing?.sort ?? "engine";
+// Read once: `processing` is construction-time by contract, and `options` is
+// reassigned throughout (setRows, autosize, column mutators), so re-reading
+// it per snapshot would only invite an accidental mid-life flip.
+const filterAuthority: PretableProcessingAuthority =
+  options.processing?.filter ?? "engine";
+const sortAuthority: PretableProcessingAuthority =
+  options.processing?.sort ?? "engine";
 ```
 
 - [ ] **Step 5: Import the type.** In `packages/grid-core/src/create-grid-core.ts`, add `  PretableProcessingAuthority,` to the `import type { ... } from "./types";` block (after `PretableMoveFocusOptions`).
@@ -593,6 +602,7 @@ with
 `matchingTotal` under engine filter authority is the exact **post-filter, pre-grouping** count. That number is not derivable from `visibleRows` (group synthesis adds headers; collapsed branches hide children), so `deriveVisibleRows` must report it. This also closes the long-standing "post-filter row count" residual.
 
 **Files:**
+
 - Modify: `packages/grid-core/src/derived-rows.ts:22-63`
 - Modify: `packages/grid-core/src/types.ts` (new `PretableMatchingTotal`; snapshot field)
 - Modify: `packages/grid-core/src/create-grid-core.ts` (~184 cache slot, ~1500–1549 getSnapshot)
@@ -735,30 +745,30 @@ export type PretableMatchingTotal =
 and inside `PretableGridSnapshot`, immediately after the `loadedRowCount` field, insert:
 
 ```ts
-  /**
-   * Engine filter authority: computed locally and always exact (post-filter,
-   * pre-grouping). External filter authority: the last supplied
-   * `resultMeta.total`, else `{ kind: "unknown" }`.
-   *
-   * @experimental
-   */
-  matchingTotal: PretableMatchingTotal;
-  /**
-   * The last supplied dataset identity; `null` before any. Local mode never
-   * changes it.
-   *
-   * @experimental
-   */
-  datasetKey: string | null;
+/**
+ * Engine filter authority: computed locally and always exact (post-filter,
+ * pre-grouping). External filter authority: the last supplied
+ * `resultMeta.total`, else `{ kind: "unknown" }`.
+ *
+ * @experimental
+ */
+matchingTotal: PretableMatchingTotal;
+/**
+ * The last supplied dataset identity; `null` before any. Local mode never
+ * changes it.
+ *
+ * @experimental
+ */
+datasetKey: string | null;
 ```
 
 - [ ] **Step 5: Add the cache slot and compute the total.** In `packages/grid-core/src/create-grid-core.ts`, immediately after `  let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;` (line 184), insert:
 
 ```ts
-  let cachedFilteredCount = 0;
-  /** Last supplied `resultMeta.total`; only consulted under external filter authority. */
-  let suppliedTotal: PretableMatchingTotal | null = null;
-  let datasetKey: string | null = null;
+let cachedFilteredCount = 0;
+/** Last supplied `resultMeta.total`; only consulted under external filter authority. */
+let suppliedTotal: PretableMatchingTotal | null = null;
+let datasetKey: string | null = null;
 ```
 
 Then in `getSnapshot`, replace
@@ -773,33 +783,33 @@ Then in `getSnapshot`, replace
 …through the closing `        );` of that expression, with:
 
 ```ts
-    let visibleRows: PretableVisibleRow<TRow>[];
-    let filteredCount: number;
+let visibleRows: PretableVisibleRow<TRow>[];
+let filteredCount: number;
 
-    if (derivedIsFresh) {
-      visibleRows = cachedVisibleRows!;
-      filteredCount = cachedFilteredCount;
-    } else {
-      const derived = deriveVisibleRows({
-        columns: options.columns,
-        // External filter authority: the records arrived already filtered
-        // upstream, so applying the displayed filters here would filter the
-        // same predicate twice. The state is still displayed — see
-        // `snapshot.filters` — it is simply not applied.
-        filters: filterAuthority === "external" ? NO_FILTERS : filters,
-        rows: sourceRows,
-        // External sort authority: the empty-sort path already falls through to
-        // `sourceIndex`, i.e. the order the records were supplied in, which is
-        // exactly the upstream processor's order.
-        sort: sortAuthority === "external" ? NO_SORT : sort,
-        rowGroups,
-        groupExpansionOverrides,
-        groupsDefaultExpanded,
-        aggregateFilteredRows,
-      });
-      visibleRows = preserveAggregateIdentity(derived.rows);
-      filteredCount = derived.filteredCount;
-    }
+if (derivedIsFresh) {
+  visibleRows = cachedVisibleRows!;
+  filteredCount = cachedFilteredCount;
+} else {
+  const derived = deriveVisibleRows({
+    columns: options.columns,
+    // External filter authority: the records arrived already filtered
+    // upstream, so applying the displayed filters here would filter the
+    // same predicate twice. The state is still displayed — see
+    // `snapshot.filters` — it is simply not applied.
+    filters: filterAuthority === "external" ? NO_FILTERS : filters,
+    rows: sourceRows,
+    // External sort authority: the empty-sort path already falls through to
+    // `sourceIndex`, i.e. the order the records were supplied in, which is
+    // exactly the upstream processor's order.
+    sort: sortAuthority === "external" ? NO_SORT : sort,
+    rowGroups,
+    groupExpansionOverrides,
+    groupsDefaultExpanded,
+    aggregateFilteredRows,
+  });
+  visibleRows = preserveAggregateIdentity(derived.rows);
+  filteredCount = derived.filteredCount;
+}
 ```
 
 (This replaces the substitution edit from Task 5 Step 6 — the comments carry over verbatim.) Then, immediately after `    cachedVisibleRows = visibleRows;`, insert `    cachedFilteredCount = filteredCount;`.
@@ -817,7 +827,7 @@ Then in `getSnapshot`, replace
 - [ ] **Step 7: Import the new type.** Add `  PretableMatchingTotal,` to the `import type { ... } from "./types";` block in `create-grid-core.ts` (after `PretableGridOptions`).
 - [ ] **Step 8: Fix the one other `deriveVisibleRows` caller.** In `packages/grid-core/src/__tests__/group-rows.test.ts:107`, the expression `const expected = deriveVisibleRows<Holding>({` now returns an object. Append `.rows` to the end of that call — i.e. change the closing `    });` of that call to `    }).rows;`.
 - [ ] **Step 9: Export the type.** Add `  PretableMatchingTotal,` to the alphabetized `export type { ... }` lists in `packages/grid-core/src/index.ts`, `packages/core/src/types.ts`, and `packages/core/src/public_api.ts` (between `PretableGroupRow` and `PretableMoveFocusOptions`).
-- [ ] **Step 10: Update the baseline snapshot key list.** In `packages/grid-core/src/__tests__/local-mode-baseline.test.ts`, add `"matchingTotal",` and `"datasetKey",` to the expected key array. This is the *only* permitted edit to the baseline net in this slice: two additive keys, no removals, no value changes.
+- [ ] **Step 10: Update the baseline snapshot key list.** In `packages/grid-core/src/__tests__/local-mode-baseline.test.ts`, add `"matchingTotal",` and `"datasetKey",` to the expected key array. This is the _only_ permitted edit to the baseline net in this slice: two additive keys, no removals, no value changes.
 - [ ] **Step 11: Run and see it pass.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run`. Expect all files green, `result-meta.test.ts` with `Tests  4 passed (4)`.
 - [ ] **Step 12: Commit.** `git -C /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a add -A && git -C /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a commit -m "feat(core): compute snapshot.matchingTotal from the filter pass"`.
 
@@ -826,6 +836,7 @@ Then in `getSnapshot`, replace
 ## Task 7: Engine — `PretableResultMeta`, `setRows(rows, meta)`, `setResultMeta`
 
 **Files:**
+
 - Create: `packages/grid-core/src/dev-warn.ts`
 - Modify: `packages/grid-core/src/types.ts` (`PretableResultMeta`; `PretableEngine.setRows`/`setResultMeta`)
 - Modify: `packages/grid-core/src/create-grid-core.ts` (setRows ~1137, new setResultMeta)
@@ -994,29 +1005,29 @@ const SUPPLIED_TOTAL_WARN_MESSAGE =
 (c) Immediately above the `store` object (before `const store = {`), add:
 
 ```ts
-  /** Store the parts of `meta` the current authority can honor. */
-  function applyResultMeta(meta: PretableResultMeta | undefined): void {
-    if (!meta) {
-      return;
-    }
-    if (meta.datasetKey !== undefined) {
-      datasetKey = meta.datasetKey;
-    }
-    if (meta.total !== undefined) {
-      if (filterAuthority === "external") {
-        suppliedTotal = meta.total;
-      } else {
-        warnOnce(SUPPLIED_TOTAL_WARN_KEY, SUPPLIED_TOTAL_WARN_MESSAGE);
-      }
+/** Store the parts of `meta` the current authority can honor. */
+function applyResultMeta(meta: PretableResultMeta | undefined): void {
+  if (!meta) {
+    return;
+  }
+  if (meta.datasetKey !== undefined) {
+    datasetKey = meta.datasetKey;
+  }
+  if (meta.total !== undefined) {
+    if (filterAuthority === "external") {
+      suppliedTotal = meta.total;
+    } else {
+      warnOnce(SUPPLIED_TOTAL_WARN_KEY, SUPPLIED_TOTAL_WARN_MESSAGE);
     }
   }
+}
 ```
 
 (d) In `setRows`, replace the first line `      const before = captureVisibleRowsForFocusReconciliation();` with:
 
 ```ts
-      applyResultMeta(meta);
-      const before = captureVisibleRowsForFocusReconciliation();
+applyResultMeta(meta);
+const before = captureVisibleRowsForFocusReconciliation();
 ```
 
 and change the signature `    setRows(nextRows: TRow[]) {` to `    setRows(nextRows: TRow[], meta?: PretableResultMeta) {`.
@@ -1089,6 +1100,7 @@ and add `  PretableResultMeta,` to its `import type { ... } from "@pretable-inte
 A different `datasetKey` means the loaded records answer a different question. Clear selection, focus, group-expansion overrides, the in-flight edit and the aggregate-identity cache; **suppress the clamped-index focus fallback**, because a row position in the old query's result has no relationship to the same position in a different query's window.
 
 **Files:**
+
 - Modify: `packages/grid-core/src/create-grid-core.ts` (`setRows`, `setResultMeta`, new `clearForDatasetChange`)
 - Test: `packages/grid-core/src/__tests__/result-meta.test.ts`
 
@@ -1098,7 +1110,10 @@ A different `datasetKey` means the loaded records answer a different question. C
 describe("datasetKey", () => {
   function externalGrid() {
     const grid = makeGrid({ filter: "external", sort: "external" });
-    grid.setRows(rows, { datasetKey: "q1", total: { kind: "exact", count: 3 } });
+    grid.setRows(rows, {
+      datasetKey: "q1",
+      total: { kind: "exact", count: 3 },
+    });
     grid.toggleRowSelection("a");
     grid.setFocus({ rowId: "a", columnId: "name" });
     grid.beginEdit({ rowId: "b", columnId: "name" });
@@ -1143,7 +1158,9 @@ describe("datasetKey", () => {
     const grid = makeGrid({ filter: "external" });
     grid.setRows(rows, { datasetKey: "q1" });
     grid.setRowGroups(["score"]);
-    const firstGroup = grid.getSnapshot().visibleRows.find((r) => r.kind === "group")!;
+    const firstGroup = grid
+      .getSnapshot()
+      .visibleRows.find((r) => r.kind === "group")!;
     grid.setGroupExpanded(firstGroup.id, false);
     expect(grid.getSnapshot().groupExpansionOverrides.size).toBe(1);
     grid.setRows(rows, { datasetKey: "q2" });
@@ -1164,58 +1181,58 @@ describe("datasetKey", () => {
 - [ ] **Step 3: Add the clear bundle.** In `packages/grid-core/src/create-grid-core.ts`, immediately above `applyResultMeta` (added in Task 7), insert:
 
 ```ts
-  /**
-   * The dataset-pivot clear bundle. A different `datasetKey` means the loaded
-   * records answer a different question, so nothing keyed to the old answer
-   * survives — including the aggregate-identity cache, whose group ids are
-   * path-derived and would otherwise hand back a previous query's objects.
-   */
-  function clearForDatasetChange(): void {
-    selection = { ranges: [], anchor: null };
-    focus = { rowId: null, columnId: null };
-    groupExpansionOverrides = new Set<string>();
-    editing = null;
-    previousAggregates = new Map();
-    cachedVisibleRows = null;
-  }
+/**
+ * The dataset-pivot clear bundle. A different `datasetKey` means the loaded
+ * records answer a different question, so nothing keyed to the old answer
+ * survives — including the aggregate-identity cache, whose group ids are
+ * path-derived and would otherwise hand back a previous query's objects.
+ */
+function clearForDatasetChange(): void {
+  selection = { ranges: [], anchor: null };
+  focus = { rowId: null, columnId: null };
+  groupExpansionOverrides = new Set<string>();
+  editing = null;
+  previousAggregates = new Map();
+  cachedVisibleRows = null;
+}
 ```
 
 - [ ] **Step 4: Wire it into `setRows`.** In `setRows`, replace
 
 ```ts
-      applyResultMeta(meta);
-      const before = captureVisibleRowsForFocusReconciliation();
+applyResultMeta(meta);
+const before = captureVisibleRowsForFocusReconciliation();
 ```
 
 with
 
 ```ts
-      const datasetChanged =
-        meta?.datasetKey !== undefined &&
-        datasetKey !== null &&
-        meta.datasetKey !== datasetKey;
+const datasetChanged =
+  meta?.datasetKey !== undefined &&
+  datasetKey !== null &&
+  meta.datasetKey !== datasetKey;
 
-      if (datasetChanged) {
-        clearForDatasetChange();
-      }
+if (datasetChanged) {
+  clearForDatasetChange();
+}
 
-      applyResultMeta(meta);
+applyResultMeta(meta);
 
-      // `null` disables focus reconciliation entirely. Across an identity
-      // change the clamped-index fallback is not a repair, it is a guess:
-      // position i in the old query's result says nothing about position i in
-      // a different query's window.
-      const before = datasetChanged
-        ? null
-        : captureVisibleRowsForFocusReconciliation();
+// `null` disables focus reconciliation entirely. Across an identity
+// change the clamped-index fallback is not a repair, it is a guess:
+// position i in the old query's result says nothing about position i in
+// a different query's window.
+const before = datasetChanged
+  ? null
+  : captureVisibleRowsForFocusReconciliation();
 ```
 
 - [ ] **Step 5: Wire it into `setResultMeta`.** In `setResultMeta`, immediately after the early-return guard `      }` that follows `if (nextKey === datasetKey && matchingTotalsEqual(...))`, insert:
 
 ```ts
-      if (nextKey !== datasetKey && datasetKey !== null) {
-        clearForDatasetChange();
-      }
+if (nextKey !== datasetKey && datasetKey !== null) {
+  clearForDatasetChange();
+}
 ```
 
 - [ ] **Step 6: Run and see them pass.** Run `pnpm --filter @pretable-internal/grid-core exec vitest run src/__tests__/result-meta.test.ts`. Expect `Tests  16 passed (16)`.
@@ -1229,6 +1246,7 @@ with
 The built-in funnel appends `isEmpty`/`isNotEmpty` to every type. A consumer whose processor cannot express those operators is otherwise forced to ship a control that does nothing — the exact dishonesty class this slice exists to remove.
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts` (`PretableColumn`, after `filterable?`)
 - Create: `packages/react/src/dev-warn.ts`
 - Modify: `packages/react/src/filter-menu/filter-operators.ts:41-49,86-92`
@@ -1239,43 +1257,43 @@ The built-in funnel appends `isEmpty`/`isNotEmpty` to every type. A consumer who
 - [ ] **Step 1: Write the failing unit tests.** Append to `packages/react/src/__tests__/filter-operators.test.ts`, inside `describe("operatorsForType", ...)`:
 
 ```ts
-  it("prunes to the declared allow-list, in the per-type order", () => {
-    expect(operatorsForType("text", ["equals", "contains"])).toEqual([
-      "contains",
-      "equals",
-    ]);
-  });
+it("prunes to the declared allow-list, in the per-type order", () => {
+  expect(operatorsForType("text", ["equals", "contains"])).toEqual([
+    "contains",
+    "equals",
+  ]);
+});
 
-  it("drops isEmpty/isNotEmpty when they are not allowed", () => {
-    expect(operatorsForType("enum", ["isAnyOf", "isNoneOf"])).toEqual([
-      "isAnyOf",
-      "isNoneOf",
-    ]);
-  });
+it("drops isEmpty/isNotEmpty when they are not allowed", () => {
+  expect(operatorsForType("enum", ["isAnyOf", "isNoneOf"])).toEqual([
+    "isAnyOf",
+    "isNoneOf",
+  ]);
+});
 
-  it("falls back to the full set and warns when the allow-list matches nothing", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    resetDevWarnings();
-    expect(operatorsForType("number", ["isAnyOf"])).toEqual([
-      "equals",
-      "notEquals",
-      "gt",
-      "gte",
-      "lt",
-      "lte",
-      "between",
-      "isEmpty",
-      "isNotEmpty",
-    ]);
-    expect(warn).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
-  });
+it("falls back to the full set and warns when the allow-list matches nothing", () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  resetDevWarnings();
+  expect(operatorsForType("number", ["isAnyOf"])).toEqual([
+    "equals",
+    "notEquals",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "between",
+    "isEmpty",
+    "isNotEmpty",
+  ]);
+  expect(warn).toHaveBeenCalledTimes(1);
+  warn.mockRestore();
+});
 ```
 
 Add `vi` to the vitest import and `import { resetDevWarnings } from "../dev-warn";`.
 
 - [ ] **Step 2: Run and see it fail.** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/filter-operators.test.ts`. Expect `Failed to resolve import "../dev-warn"`.
-- [ ] **Step 3: Create the React dev-warn twin.** Create `packages/react/src/dev-warn.ts` with byte-identical content to `packages/grid-core/src/dev-warn.ts` (Task 7 Step 3). It is duplicated rather than shared because `@pretable/react` depends on the *public* `@pretable/core`, and `warnOnce` is not public API — eight lines is cheaper than widening the surface.
+- [ ] **Step 3: Create the React dev-warn twin.** Create `packages/react/src/dev-warn.ts` with byte-identical content to `packages/grid-core/src/dev-warn.ts` (Task 7 Step 3). It is duplicated rather than shared because `@pretable/react` depends on the _public_ `@pretable/core`, and `warnOnce` is not public API — eight lines is cheaper than widening the surface.
 - [ ] **Step 4: Add `filterOperators` to the column type.** In `packages/grid-core/src/types.ts`, inside `PretableColumn`, immediately after `  filterable?: boolean;`, insert:
 
 ```ts
@@ -1343,29 +1361,29 @@ export function defaultDraft(
 - [ ] **Step 7: Write the failing surface test.** Append to `packages/react/src/__tests__/filter-menu-surface.test.tsx`, inside its top-level `describe`:
 
 ```tsx
-  it("column.filterOperators prunes the funnel's operator select", () => {
-    const view = render(
-      <PretableSurface<Row>
-        ariaLabel="Rows"
-        columns={[
-          {
-            id: "name",
-            header: "Name",
-            filterable: true,
-            filterOperators: ["contains", "startsWith"],
-          },
-        ]}
-        rows={rows}
-        getRowId={(row) => row.id}
-        viewportHeight={400}
-      />,
-    );
-    fireEvent.click(view.container.querySelector("[data-pretable-funnel]")!);
-    const select = screen.getByLabelText("Filter operator");
-    expect(
-      [...select.querySelectorAll("option")].map((o) => o.getAttribute("value")),
-    ).toEqual(["contains", "startsWith"]);
-  });
+it("column.filterOperators prunes the funnel's operator select", () => {
+  const view = render(
+    <PretableSurface<Row>
+      ariaLabel="Rows"
+      columns={[
+        {
+          id: "name",
+          header: "Name",
+          filterable: true,
+          filterOperators: ["contains", "startsWith"],
+        },
+      ]}
+      rows={rows}
+      getRowId={(row) => row.id}
+      viewportHeight={400}
+    />,
+  );
+  fireEvent.click(view.container.querySelector("[data-pretable-funnel]")!);
+  const select = screen.getByLabelText("Filter operator");
+  expect(
+    [...select.querySelectorAll("option")].map((o) => o.getAttribute("value")),
+  ).toEqual(["contains", "startsWith"]);
+});
 ```
 
 Check the funnel's actual attribute selector against the existing tests in that file and use whatever they use to click the funnel (search for `funnel` in the file) — do not invent a selector.
@@ -1381,6 +1399,7 @@ Check the funnel's actual attribute selector against the existing tests in that 
 ## Task 10: React — forward `processing` and `resultMeta`; extend telemetry
 
 **Files:**
+
 - Modify: `packages/react/src/use-pretable.ts:112-124` (telemetry type), `149-161` (options), `253-269` (memo + rows effect), `445-488` (telemetry memo)
 - Modify: `packages/react/src/pretable-surface.tsx` (props ~430–560, `usePretable` call ~949)
 - Modify: `packages/react/src/public_api.ts`
@@ -1389,55 +1408,49 @@ Check the funnel's actual attribute selector against the existing tests in that 
 - [ ] **Step 1: Write the failing tests.** Append to `packages/react/src/__tests__/use-pretable-streaming.test.tsx`:
 
 ```tsx
-  it("does not recreate the grid when processing is an inline object literal", () => {
-    const seen: unknown[] = [];
-    function Harness({ rows }: { rows: Row[] }) {
-      const model = usePretable<Row>({
-        columns,
-        rows,
-        getRowId: (row) => row.id,
-        viewportHeight: 300,
-        processing: { filter: "external", sort: "external" },
-      });
-      seen.push(model.grid);
-      return null;
-    }
-    const view = render(<Harness rows={rowsA} />);
-    view.rerender(<Harness rows={rowsB} />);
-    expect(new Set(seen).size).toBe(1);
-  });
-
-  it("routes a meta-only change through setResultMeta and keeps the rows array", () => {
-    function Harness({
+it("does not recreate the grid when processing is an inline object literal", () => {
+  const seen: unknown[] = [];
+  function Harness({ rows }: { rows: Row[] }) {
+    const model = usePretable<Row>({
+      columns,
       rows,
-      total,
-    }: {
-      rows: Row[];
-      total: number;
-    }) {
-      const model = usePretable<Row>({
-        columns,
-        rows,
-        getRowId: (row) => row.id,
-        viewportHeight: 300,
-        processing: { filter: "external" },
-        resultMeta: { total: { kind: "exact", count: total } },
-      });
-      return (
-        <div
-          data-total={JSON.stringify(model.snapshot.matchingTotal)}
-          data-loaded={model.telemetry.loadedRowCount}
-        />
-      );
-    }
-    const view = render(<Harness rows={rowsA} total={100} />);
-    view.rerender(<Harness rows={rowsA} total={101} />);
-    const node = view.container.firstElementChild!;
-    expect(node.getAttribute("data-total")).toBe(
-      JSON.stringify({ kind: "exact", count: 101 }),
+      getRowId: (row) => row.id,
+      viewportHeight: 300,
+      processing: { filter: "external", sort: "external" },
+    });
+    seen.push(model.grid);
+    return null;
+  }
+  const view = render(<Harness rows={rowsA} />);
+  view.rerender(<Harness rows={rowsB} />);
+  expect(new Set(seen).size).toBe(1);
+});
+
+it("routes a meta-only change through setResultMeta and keeps the rows array", () => {
+  function Harness({ rows, total }: { rows: Row[]; total: number }) {
+    const model = usePretable<Row>({
+      columns,
+      rows,
+      getRowId: (row) => row.id,
+      viewportHeight: 300,
+      processing: { filter: "external" },
+      resultMeta: { total: { kind: "exact", count: total } },
+    });
+    return (
+      <div
+        data-total={JSON.stringify(model.snapshot.matchingTotal)}
+        data-loaded={model.telemetry.loadedRowCount}
+      />
     );
-    expect(node.getAttribute("data-loaded")).toBe(String(rowsA.length));
-  });
+  }
+  const view = render(<Harness rows={rowsA} total={100} />);
+  view.rerender(<Harness rows={rowsA} total={101} />);
+  const node = view.container.firstElementChild!;
+  expect(node.getAttribute("data-total")).toBe(
+    JSON.stringify({ kind: "exact", count: 101 }),
+  );
+  expect(node.getAttribute("data-loaded")).toBe(String(rowsA.length));
+});
 ```
 
 Reuse whatever `columns`, `rowsA`, `rowsB`, `Row` the file already defines; if the names differ, use the file's own names rather than adding fixtures.
@@ -1467,67 +1480,67 @@ and add `  type PretableProcessingOptions,`, `  type PretableResultMeta,`, `  ty
 - [ ] **Step 4: Extend the telemetry type.** In `packages/react/src/use-pretable.ts`, inside `PretableTelemetry`, immediately after the `loadedRowCount` field, insert:
 
 ```ts
-  /**
-   * How many records match the fulfilled query — loaded or not. Equal to the
-   * exact post-filter count in local mode.
-   *
-   * @experimental
-   */
-  matchingTotal: PretableMatchingTotal;
+/**
+ * How many records match the fulfilled query — loaded or not. Equal to the
+ * exact post-filter count in local mode.
+ *
+ * @experimental
+ */
+matchingTotal: PretableMatchingTotal;
 ```
 
 - [ ] **Step 5: Destructure the new options.** In the `usePretable` parameter destructuring, add `  processing,` and `  resultMeta,` alongside `autosize`.
 - [ ] **Step 6: Rebuild the grid memo on scalar authority changes only.** Replace the memo at lines 253–257 with:
 
 ```ts
-  // Object identity is deliberately not a dependency: an inline
-  // `processing={{ filter: "external" }}` literal is a new object every render
-  // and must not rebuild the grid (which would destroy selection, focus,
-  // measured heights and any in-flight edit on every keystroke).
-  const processingFilter = processing?.filter;
-  const processingSort = processing?.sort;
-  const grid = useMemo(
-    () =>
-      createGrid({
-        columns,
-        rows,
-        getRowId: stableGetRowId,
-        autosize,
-        processing:
-          processingFilter === undefined && processingSort === undefined
-            ? undefined
-            : { filter: processingFilter, sort: processingSort },
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above; processing participates as its scalar fields
-    [autosize, stableGetRowId, processingFilter, processingSort],
-  );
+// Object identity is deliberately not a dependency: an inline
+// `processing={{ filter: "external" }}` literal is a new object every render
+// and must not rebuild the grid (which would destroy selection, focus,
+// measured heights and any in-flight edit on every keystroke).
+const processingFilter = processing?.filter;
+const processingSort = processing?.sort;
+const grid = useMemo(
+  () =>
+    createGrid({
+      columns,
+      rows,
+      getRowId: stableGetRowId,
+      autosize,
+      processing:
+        processingFilter === undefined && processingSort === undefined
+          ? undefined
+          : { filter: processingFilter, sort: processingSort },
+    }),
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above; processing participates as its scalar fields
+  [autosize, stableGetRowId, processingFilter, processingSort],
+);
 ```
 
 - [ ] **Step 7: Commit rows and meta in one emit.** Replace the rows layout effect at lines 262–269 with:
 
 ```ts
-  const lastRowsRef = useRef(rows);
-  // Starts `undefined` rather than `resultMeta` so an initial meta reaches the
-  // grid: `createGrid` takes no meta, and the rows branch below never fires on
-  // the first commit.
-  const lastResultMetaRef = useRef<PretableResultMeta | undefined>(undefined);
-  useLayoutEffect(() => {
-    const rowsChanged = lastRowsRef.current !== rows;
-    const metaChanged = lastResultMetaRef.current !== resultMeta;
-    lastRowsRef.current = rows;
-    lastResultMetaRef.current = resultMeta;
+const lastRowsRef = useRef(rows);
+// Starts `undefined` rather than `resultMeta` so an initial meta reaches the
+// grid: `createGrid` takes no meta, and the rows branch below never fires on
+// the first commit.
+const lastResultMetaRef = useRef<PretableResultMeta | undefined>(undefined);
+useLayoutEffect(() => {
+  const rowsChanged = lastRowsRef.current !== rows;
+  const metaChanged = lastResultMetaRef.current !== resultMeta;
+  lastRowsRef.current = rows;
+  lastResultMetaRef.current = resultMeta;
 
-    if (rowsChanged) {
-      // One call, one emit: rows and their total can never render torn.
-      grid.setRows(rows, resultMeta);
-      return;
-    }
+  if (rowsChanged) {
+    // One call, one emit: rows and their total can never render torn.
+    grid.setRows(rows, resultMeta);
+    return;
+  }
 
-    if (metaChanged && resultMeta) {
-      // A refined total with the same rows — no rows-identity churn needed.
-      grid.setResultMeta(resultMeta);
-    }
-  }, [grid, resultMeta, rows]);
+  if (metaChanged && resultMeta) {
+    // A refined total with the same rows — no rows-identity churn needed.
+    grid.setResultMeta(resultMeta);
+  }
+}, [grid, resultMeta, rows]);
 ```
 
 - [ ] **Step 8: Publish the total in telemetry.** In the telemetry memo, add `      matchingTotal: snapshot.matchingTotal,` immediately after the `loadedRowCount` entry, and add `    snapshot.matchingTotal,` to the dependency array next to `snapshot.loadedRowCount`.
@@ -1567,9 +1580,10 @@ Add `processing`, `resultMeta`, `ariaDescribedBy` to the component's parameter d
 
 ## Task 11: React — the ARIA row-count honesty rules
 
-ARIA 1.2: `aria-rowcount` is the total row count of the **full** table including rows not in the DOM, `-1` when unknown; `aria-rowindex` is the 1-based position within the full table counting the header. **`aria-rowindex` needs no code change** — under a head-anchored contiguous window, loaded model index `i` *is* dataset position `i`, so the existing `rowIndex + 2` is already the global position. Only `aria-rowcount` moves, and only when every honesty condition holds.
+ARIA 1.2: `aria-rowcount` is the total row count of the **full** table including rows not in the DOM, `-1` when unknown; `aria-rowindex` is the 1-based position within the full table counting the header. **`aria-rowindex` needs no code change** — under a head-anchored contiguous window, loaded model index `i` _is_ dataset position `i`, so the existing `rowIndex + 2` is already the global position. Only `aria-rowcount` moves, and only when every honesty condition holds.
 
 **Files:**
+
 - Create: `packages/react/src/data-scope.ts`
 - Modify: `packages/react/src/pretable-surface.tsx:2214` (`aria-rowcount`)
 - Test: `packages/react/src/__tests__/server-authority-aria.test.tsx` (created)
@@ -1813,7 +1827,7 @@ export function warnOnEngineSortOverPartialWindow(
   }
   warnOnce(
     "engine-sort-over-partial-window",
-    "[pretable] sort authority is \"engine\" while only part of the matching " +
+    '[pretable] sort authority is "engine" while only part of the matching ' +
       "population is loaded. Sorting a server-selected window locally presents " +
       "the wrong SAMPLE, not just the wrong order. Set " +
       'processing: { sort: "external" } or load the whole result.',
@@ -1824,16 +1838,16 @@ export function warnOnEngineSortOverPartialWindow(
 - [ ] **Step 4: Use it in the surface.** In `packages/react/src/pretable-surface.tsx`, add `import { resolveAriaRowCount, resolveDataScope, warnOnEngineSortOverPartialWindow } from "./data-scope";` next to the other local imports. Immediately after the `const isGrouped = snapshot.rowGroups.length > 0;` line (~973), insert:
 
 ```ts
-  const dataHonestyInput = {
-    visibleRowCount: snapshot.visibleRows.length,
-    rowGroupCount: snapshot.rowGroups.length,
-    loadedRowCount: snapshot.loadedRowCount,
-    matchingTotal: snapshot.matchingTotal,
-  };
-  const ariaRowCount = resolveAriaRowCount(dataHonestyInput, processing);
-  /** "all" or "loaded" — every count-bearing label reads this, never its own rule. */
-  const dataScope = resolveDataScope(dataHonestyInput, processing);
-  warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
+const dataHonestyInput = {
+  visibleRowCount: snapshot.visibleRows.length,
+  rowGroupCount: snapshot.rowGroups.length,
+  loadedRowCount: snapshot.loadedRowCount,
+  matchingTotal: snapshot.matchingTotal,
+};
+const ariaRowCount = resolveAriaRowCount(dataHonestyInput, processing);
+/** "all" or "loaded" — every count-bearing label reads this, never its own rule. */
+const dataScope = resolveDataScope(dataHonestyInput, processing);
+warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
 ```
 
 Then replace `      aria-rowcount={snapshot.visibleRows.length + 1}` (~2214) with `      aria-rowcount={ariaRowCount}`.
@@ -1849,6 +1863,7 @@ Then replace `      aria-rowcount={snapshot.visibleRows.length + 1}` (~2214) wit
 Three surfaces the review caught: the header checkbox's hardcoded `aria-label="Select all rows"`, the select-all announcement, and the copy announcement. A copy of 200-of-10,432 must not announce as an unscoped copy.
 
 **Files:**
+
 - Modify: `packages/react/src/pretable-surface.tsx:241-320` (messages + defaults), `2356` (copy), `2554-2641` (header checkbox)
 - Create: `packages/react/src/__tests__/scoped-labels.test.tsx`
 
@@ -2031,9 +2046,10 @@ and inside the same button's `onClick`, replace the `scheduleAnnouncement(...)` 
 
 ## Task 13: React — `groupChildCountLabel` and `formatAggregate` scope
 
-Engine grouping over a partial window stays permitted but is *marked*: a sum over 200 loaded rows must never be presentable as a population sum (§9.4).
+Engine grouping over a partial window stays permitted but is _marked_: a sum over 200 loaded rows must never be presentable as a population sum (§9.4).
 
 **Files:**
+
 - Modify: `packages/grid-core/src/types.ts` (`PretableAggregateFormatInput`)
 - Modify: `packages/react/src/rendering.ts:38-44`
 - Modify: `packages/react/src/group-row.tsx:14-33,163,166`
@@ -2116,14 +2132,14 @@ describe("grouping honesty under a partial window", () => {
 - [ ] **Step 3: Widen the aggregate format input.** In `packages/grid-core/src/types.ts`, inside `PretableAggregateFormatInput`, immediately after `  group: PretableGroupRow;`, insert:
 
 ```ts
-  /**
-   * `"loaded"` when the aggregate folded a window onto a larger population, so
-   * a sum over 200 loaded rows is never presentable as a population sum. Local
-   * mode always passes `"all"`.
-   *
-   * @experimental
-   */
-  scope: "all" | "loaded";
+/**
+ * `"loaded"` when the aggregate folded a window onto a larger population, so
+ * a sum over 200 loaded rows is never presentable as a population sum. Local
+ * mode always passes `"all"`.
+ *
+ * @experimental
+ */
+scope: "all" | "loaded";
 ```
 
 - [ ] **Step 4: Require scope at the formatter.** In `packages/react/src/rendering.ts`, replace `formatAggregateValue` with:
@@ -2168,18 +2184,16 @@ and in `defaultMessages`:
 - [ ] **Step 6: Thread scope into `GroupRow`.** In `packages/react/src/group-row.tsx`, add to `GroupRowProps`:
 
 ```ts
-  /** Renders the child count; supplied by the surface from `messages`. */
-  childCountLabel: (childCount: number) => string;
-  /** `"loaded"` when the folded rows are a window onto a larger population. */
-  scope: "all" | "loaded";
+/** Renders the child count; supplied by the surface from `messages`. */
+childCountLabel: (childCount: number) => string;
+/** `"loaded"` when the folded rows are a window onto a larger population. */
+scope: "all" | "loaded";
 ```
 
 destructure both in the component signature, replace `                <span data-pretable-group-count="">({group.childCount})</span>` with:
 
 ```tsx
-                <span data-pretable-group-count="">
-                  {childCountLabel(group.childCount)}
-                </span>
+<span data-pretable-group-count="">{childCountLabel(group.childCount)}</span>
 ```
 
 and replace `              formatAggregateValue(column, group)` with `              formatAggregateValue(column, group, scope)`.
@@ -2187,11 +2201,11 @@ and replace `              formatAggregateValue(column, group)` with `          
 - [ ] **Step 7: Supply them from the surface.** In `packages/react/src/pretable-surface.tsx`, near the `dataScope` const, add:
 
 ```ts
-  const groupChildCountLabel = useCallback(
-    (childCount: number) =>
-      effectiveMessages.groupChildCountLabel({ childCount, scope: dataScope }),
-    [dataScope, effectiveMessages],
-  );
+const groupChildCountLabel = useCallback(
+  (childCount: number) =>
+    effectiveMessages.groupChildCountLabel({ childCount, scope: dataScope }),
+  [dataScope, effectiveMessages],
+);
 ```
 
 and add `                childCountLabel={groupChildCountLabel}` + `                scope={dataScope}` to the `<GroupRow ... />` element.
@@ -2221,6 +2235,7 @@ replace `            text = formatAggregateValue(col, row);` with `            t
 **`dataState` has no default.** With the prop absent the entire lifecycle presentation is off: no blocks, no phase attribute, no announcements. That is what keeps `rows={[]}` rendering nothing for existing local consumers (D1-GRID-04) and stops a remote consumer flashing "No results" before its first fetch.
 
 **Files:**
+
 - Create: `packages/react/src/data-state.ts`
 - Modify: `packages/react/src/pretable-surface.tsx` (props, messages, scrollViewport attrs ~2211, the two return statements ~3770–3810)
 - Modify: `packages/ui/src/grid.css`
@@ -2385,7 +2400,8 @@ export type PretableDataState =
   | { phase: "error"; message?: string };
 
 /** Which body block the surface owes, or `null` when the rows are the answer. */
-export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip";
+export type PretableBodyStateKind =
+  "loading" | "empty" | "error" | "error-strip";
 
 /**
  * §4.4's table, as a function. Called only when `dataState` was supplied.
@@ -2518,23 +2534,23 @@ export function resolveBodyStateKind(
 - [ ] **Step 7: Wrap only when the prop is supplied.** Immediately above `  if (!groupPanelEnabled) {`, insert:
 
 ```tsx
-  // The block cannot live inside the viewport: that element carries
-  // role="grid"/"treegrid", whose children must be rows and rowgroups. It gets
-  // a wrapper — created ONLY when `dataState` is supplied, so a local
-  // consumer's DOM, CSS selectors and layout are byte-identical to before this
-  // prop existed.
-  const withBodyState = (content: ReactNode): ReactNode =>
-    dataState === undefined ? (
-      content
-    ) : (
-      <div data-pretable-data-state-wrapper="">
-        {bodyStateKind === "error-strip" ? bodyStateBlock : null}
-        {content}
-        {bodyStateKind !== null && bodyStateKind !== "error-strip"
-          ? bodyStateBlock
-          : null}
-      </div>
-    );
+// The block cannot live inside the viewport: that element carries
+// role="grid"/"treegrid", whose children must be rows and rowgroups. It gets
+// a wrapper — created ONLY when `dataState` is supplied, so a local
+// consumer's DOM, CSS selectors and layout are byte-identical to before this
+// prop existed.
+const withBodyState = (content: ReactNode): ReactNode =>
+  dataState === undefined ? (
+    content
+  ) : (
+    <div data-pretable-data-state-wrapper="">
+      {bodyStateKind === "error-strip" ? bodyStateBlock : null}
+      {content}
+      {bodyStateKind !== null && bodyStateKind !== "error-strip"
+        ? bodyStateBlock
+        : null}
+    </div>
+  );
 ```
 
 Then change the no-panel return's `{scrollViewport}` to `{withBodyState(scrollViewport)}`, and in the panel return wrap the whole `<div data-pretable-group-panel-wrapper="" …>…</div>` element in `withBodyState( … )`.
@@ -2542,38 +2558,38 @@ Then change the no-panel return's `{scrollViewport}` to `{withBodyState(scrollVi
 - [ ] **Step 8: Style the blocks (vanilla CSS).** In `packages/ui/src/grid.css`, immediately before the closing `}` of `@layer pretable`, add:
 
 ```css
-  /* Data-lifecycle body states. Austere by design: no spinner opinion and no
+/* Data-lifecycle body states. Austere by design: no spinner opinion and no
      animation — a consumer who wants one supplies `renderBodyState`. */
-  :where([data-pretable-data-state-wrapper]) {
-    display: flex;
-    flex-direction: column;
-  }
+:where([data-pretable-data-state-wrapper]) {
+  display: flex;
+  flex-direction: column;
+}
 
-  :where([data-pretable-body-state]) {
-    box-sizing: border-box;
-    padding: calc(var(--pretable-cell-padding-y) * 4)
-      var(--pretable-cell-padding-x);
-    background: var(--pretable-bg-grid);
-    color: var(--pretable-text-dim);
-    font-family: var(--pretable-font-sans);
-    font-size: var(--pretable-font-size-cell);
-    text-align: center;
-  }
+:where([data-pretable-body-state]) {
+  box-sizing: border-box;
+  padding: calc(var(--pretable-cell-padding-y) * 4)
+    var(--pretable-cell-padding-x);
+  background: var(--pretable-bg-grid);
+  color: var(--pretable-text-dim);
+  font-family: var(--pretable-font-sans);
+  font-size: var(--pretable-font-size-cell);
+  text-align: center;
+}
 
-  /* Failures read left-aligned like prose, and in the theme's error color. */
-  :where([data-pretable-body-state="error"]),
-  :where([data-pretable-body-state="error-strip"]) {
-    color: var(--pretable-text-error);
-    text-align: start;
-  }
+/* Failures read left-aligned like prose, and in the theme's error color. */
+:where([data-pretable-body-state="error"]),
+:where([data-pretable-body-state="error-strip"]) {
+  color: var(--pretable-text-error);
+  text-align: start;
+}
 
-  /* The strip sits above intact rows, so it needs the seam the viewport's own
+/* The strip sits above intact rows, so it needs the seam the viewport's own
      top border would otherwise draw twice. */
-  :where([data-pretable-body-state="error-strip"]) {
-    border: 1px solid var(--pretable-rule-strong);
-    border-bottom: 0;
-    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
-  }
+:where([data-pretable-body-state="error-strip"]) {
+  border: 1px solid var(--pretable-rule-strong);
+  border-bottom: 0;
+  border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+}
 ```
 
 - [ ] **Step 9: Export the type.** In `packages/react/src/public_api.ts`, add `export type { PretableDataState } from "./data-state";` in the "Component prop / message / config types" block.
@@ -2588,6 +2604,7 @@ Then change the no-panel return's `{scrollViewport}` to `{withBodyState(scrollVi
 One channel per event, never double-spoken, all through the existing 500 ms trailing-edge last-wins scheduler. A 2 s poll resolving `refreshing → idle` is **silent** — a metronome in a live region is worse than no announcement at all.
 
 **Files:**
+
 - Modify: `packages/react/src/pretable-surface.tsx` (messages, one new effect)
 - Create: `packages/react/src/__tests__/lifecycle-announcements.test.tsx`
 
@@ -2643,7 +2660,8 @@ function liveText(): string {
     vi.advanceTimersByTime(600);
   });
   return (
-    document.body.querySelector("[data-pretable-live-region]")?.textContent ?? ""
+    document.body.querySelector("[data-pretable-live-region]")?.textContent ??
+    ""
   );
 }
 
@@ -2663,7 +2681,11 @@ describe("lifecycle announcements", () => {
       <Harness rows={page1} dataState={{ phase: "idle" }} total={4120} />,
     );
     view.rerender(
-      <Harness rows={page1} dataState={{ phase: "loading-more" }} total={4120} />,
+      <Harness
+        rows={page1}
+        dataState={{ phase: "loading-more" }}
+        total={4120}
+      />,
     );
     view.rerender(
       <Harness rows={page2} dataState={{ phase: "idle" }} total={4120} />,
@@ -2768,77 +2790,77 @@ Add it to `effectiveMessages`.
 - [ ] **Step 4: Add the transition effect.** In `pretable-surface.tsx`, after the `scheduleAnnouncement` definition and after the `usePretable` call, insert:
 
 ```tsx
-  // Phase transitions, one announcement each. Deliberately keyed on the phase
-  // VALUE, not on `dataState` identity: an inline `dataState={{phase:"idle"}}`
-  // literal is a new object every render and must not re-announce.
-  const previousPhaseRef = useRef<PretableDataState["phase"] | undefined>(
-    undefined,
-  );
-  const loadedBeforeLoadMoreRef = useRef(0);
+// Phase transitions, one announcement each. Deliberately keyed on the phase
+// VALUE, not on `dataState` identity: an inline `dataState={{phase:"idle"}}`
+// literal is a new object every render and must not re-announce.
+const previousPhaseRef = useRef<PretableDataState["phase"] | undefined>(
+  undefined,
+);
+const loadedBeforeLoadMoreRef = useRef(0);
 
-  useEffect(() => {
-    const phase = dataState?.phase;
-    const previousPhase = previousPhaseRef.current;
-    previousPhaseRef.current = phase;
+useEffect(() => {
+  const phase = dataState?.phase;
+  const previousPhase = previousPhaseRef.current;
+  previousPhaseRef.current = phase;
 
-    if (phase === undefined || phase === previousPhase) {
-      return;
-    }
+  if (phase === undefined || phase === previousPhase) {
+    return;
+  }
 
-    if (phase === "loading-more") {
-      // Remember the baseline so the resolution can report the delta.
-      loadedBeforeLoadMoreRef.current = snapshot.loadedRowCount;
-      return;
-    }
+  if (phase === "loading-more") {
+    // Remember the baseline so the resolution can report the delta.
+    loadedBeforeLoadMoreRef.current = snapshot.loadedRowCount;
+    return;
+  }
 
-    if (phase === "stale") {
-      // The desired query has moved ahead of the fulfilled rows. Announced
-      // once on entry (the phase-value guard above makes repeats impossible
-      // within a settling burst); the resolution's resultsAnnouncement
-      // supersedes it through the last-wins scheduler.
-      scheduleAnnouncement(effectiveMessages.staleAnnouncement());
-      return;
-    }
+  if (phase === "stale") {
+    // The desired query has moved ahead of the fulfilled rows. Announced
+    // once on entry (the phase-value guard above makes repeats impossible
+    // within a settling burst); the resolution's resultsAnnouncement
+    // supersedes it through the last-wins scheduler.
+    scheduleAnnouncement(effectiveMessages.staleAnnouncement());
+    return;
+  }
 
-    if (phase === "error") {
-      // Structural single-channel rule: Pretable announces the failure only
-      // because Pretable is the one rendering it (error block or status strip).
-      // A consumer showing its own role="alert" banner keeps the phase out of
-      // "error", so double-speak is impossible by construction.
-      scheduleAnnouncement(
-        effectiveMessages.dataErrorAnnouncement({ message: errorMessage }),
-      );
-      return;
-    }
-
-    if (phase !== "idle") {
-      return;
-    }
-
-    // A 2 s poll must not produce a metronome, and the very first commit is not
-    // a transition anyone asked to hear about.
-    if (previousPhase === undefined || previousPhase === "refreshing") {
-      return;
-    }
-
+  if (phase === "error") {
+    // Structural single-channel rule: Pretable announces the failure only
+    // because Pretable is the one rendering it (error block or status strip).
+    // A consumer showing its own role="alert" banner keeps the phase out of
+    // "error", so double-speak is impossible by construction.
     scheduleAnnouncement(
-      effectiveMessages.resultsAnnouncement({
-        loaded: snapshot.loadedRowCount,
-        total: snapshot.matchingTotal,
-        added:
-          previousPhase === "loading-more"
-            ? snapshot.loadedRowCount - loadedBeforeLoadMoreRef.current
-            : undefined,
-      }),
+      effectiveMessages.dataErrorAnnouncement({ message: errorMessage }),
     );
-  }, [
-    dataState,
-    effectiveMessages,
-    errorMessage,
-    scheduleAnnouncement,
-    snapshot.loadedRowCount,
-    snapshot.matchingTotal,
-  ]);
+    return;
+  }
+
+  if (phase !== "idle") {
+    return;
+  }
+
+  // A 2 s poll must not produce a metronome, and the very first commit is not
+  // a transition anyone asked to hear about.
+  if (previousPhase === undefined || previousPhase === "refreshing") {
+    return;
+  }
+
+  scheduleAnnouncement(
+    effectiveMessages.resultsAnnouncement({
+      loaded: snapshot.loadedRowCount,
+      total: snapshot.matchingTotal,
+      added:
+        previousPhase === "loading-more"
+          ? snapshot.loadedRowCount - loadedBeforeLoadMoreRef.current
+          : undefined,
+    }),
+  );
+}, [
+  dataState,
+  effectiveMessages,
+  errorMessage,
+  scheduleAnnouncement,
+  snapshot.loadedRowCount,
+  snapshot.matchingTotal,
+]);
 ```
 
 - [ ] **Step 5: Run and see it pass.** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/lifecycle-announcements.test.tsx`. Expect `Tests  6 passed (6)`. If the live-region text is empty because the region is gated on hydration, check how `pretable-surface.test.tsx` reaches `[data-pretable-live-region]` and copy that approach — the portal only mounts after `useHydrated` flips.
@@ -2853,6 +2875,7 @@ Two consequences of a data-driven rows replacement, handled in one effect becaus
 The effect must be declared **after** the `usePretable` call so it runs after that hook's own `setRows` layout effect in the same commit. `grid.getSnapshot()` inside it is post-replacement, while the DOM has not yet re-rendered — which is exactly why `document.activeElement` still reports where the user was.
 
 **Files:**
+
 - Modify: `packages/react/src/pretable-surface.tsx`
 - Test: `packages/react/src/__tests__/lifecycle-announcements.test.tsx`
 
@@ -2875,7 +2898,10 @@ describe("data-driven focus reconciliation", () => {
         getRowId={(row) => row.id}
         viewportHeight={400}
         processing={{ filter: "external", sort: "external" }}
-        resultMeta={{ datasetKey, total: { kind: "exact", count: rows.length } }}
+        resultMeta={{
+          datasetKey,
+          total: { kind: "exact", count: rows.length },
+        }}
         state={{ focus: undefined }}
       />
     );
@@ -2941,74 +2967,74 @@ Add it to `effectiveMessages`.
 - [ ] **Step 4: Add the reconciliation effect.** In `pretable-surface.tsx`, immediately after the phase-transition effect from Task 15, insert:
 
 ```tsx
-  // Declared AFTER `usePretable` on purpose: layout effects run in declaration
-  // order within a component, so this fires after the hook's own `setRows`
-  // effect in the same commit. `grid.getSnapshot()` is therefore
-  // post-replacement while the DOM still shows the old rows — which is what
-  // makes the `document.activeElement` read below meaningful.
-  const focusRowIdBeforeRowsRef = useRef<string | null>(null);
-  const datasetKeyBeforeRowsRef = useRef<string | null>(null);
-  const rowsSeenRef = useRef(rows);
+// Declared AFTER `usePretable` on purpose: layout effects run in declaration
+// order within a component, so this fires after the hook's own `setRows`
+// effect in the same commit. `grid.getSnapshot()` is therefore
+// post-replacement while the DOM still shows the old rows — which is what
+// makes the `document.activeElement` read below meaningful.
+const focusRowIdBeforeRowsRef = useRef<string | null>(null);
+const datasetKeyBeforeRowsRef = useRef<string | null>(null);
+const rowsSeenRef = useRef(rows);
 
-  useLayoutEffect(() => {
-    const after = grid.getSnapshot();
+useLayoutEffect(() => {
+  const after = grid.getSnapshot();
 
-    if (rowsSeenRef.current === rows) {
-      focusRowIdBeforeRowsRef.current = after.focus.rowId;
-      datasetKeyBeforeRowsRef.current = after.datasetKey;
-      return;
-    }
-
-    const focusWasInsideGrid =
-      typeof document !== "undefined" &&
-      viewportRef.current !== null &&
-      document.activeElement !== null &&
-      viewportRef.current.contains(document.activeElement);
-
-    const previousFocusRowId = focusRowIdBeforeRowsRef.current;
-    const previousDatasetKey = datasetKeyBeforeRowsRef.current;
-    rowsSeenRef.current = rows;
-    datasetKeyBeforeRowsRef.current = after.datasetKey;
-
-    const datasetPivoted =
-      previousDatasetKey !== null && after.datasetKey !== previousDatasetKey;
-
-    if (datasetPivoted) {
-      // The engine already cleared focus. Put it somewhere deterministic rather
-      // than letting DOM focus fall to <body> — but only if the user was
-      // actually inside the grid; nothing gets grabbed otherwise.
-      if (focusWasInsideGrid) {
-        const firstDataRow = after.visibleRows.find(isDataRow);
-        const firstColumn = columnsInVisualOrder.find(
-          (column) => column.id !== ROW_SELECT_COLUMN_ID,
-        );
-        if (firstDataRow && firstColumn) {
-          grid.setFocus({ rowId: firstDataRow.id, columnId: firstColumn.id });
-        } else {
-          viewportRef.current?.focus();
-        }
-      }
-
-      // A different question: the old scroll offset means nothing against the
-      // new answer.
-      if (viewportRef.current) {
-        viewportRef.current.scrollTop = 0;
-      }
-      grid.setViewport({ ...after.viewport, scrollTop: 0 });
-
-      focusRowIdBeforeRowsRef.current = grid.getSnapshot().focus.rowId;
-      return;
-    }
-
+  if (rowsSeenRef.current === rows) {
     focusRowIdBeforeRowsRef.current = after.focus.rowId;
+    datasetKeyBeforeRowsRef.current = after.datasetKey;
+    return;
+  }
 
-    if (previousFocusRowId !== null && after.focus.rowId !== previousFocusRowId) {
-      scheduleAnnouncement(effectiveMessages.focusedRowRemovedAnnouncement());
+  const focusWasInsideGrid =
+    typeof document !== "undefined" &&
+    viewportRef.current !== null &&
+    document.activeElement !== null &&
+    viewportRef.current.contains(document.activeElement);
+
+  const previousFocusRowId = focusRowIdBeforeRowsRef.current;
+  const previousDatasetKey = datasetKeyBeforeRowsRef.current;
+  rowsSeenRef.current = rows;
+  datasetKeyBeforeRowsRef.current = after.datasetKey;
+
+  const datasetPivoted =
+    previousDatasetKey !== null && after.datasetKey !== previousDatasetKey;
+
+  if (datasetPivoted) {
+    // The engine already cleared focus. Put it somewhere deterministic rather
+    // than letting DOM focus fall to <body> — but only if the user was
+    // actually inside the grid; nothing gets grabbed otherwise.
+    if (focusWasInsideGrid) {
+      const firstDataRow = after.visibleRows.find(isDataRow);
+      const firstColumn = columnsInVisualOrder.find(
+        (column) => column.id !== ROW_SELECT_COLUMN_ID,
+      );
+      if (firstDataRow && firstColumn) {
+        grid.setFocus({ rowId: firstDataRow.id, columnId: firstColumn.id });
+      } else {
+        viewportRef.current?.focus();
+      }
     }
-  });
+
+    // A different question: the old scroll offset means nothing against the
+    // new answer.
+    if (viewportRef.current) {
+      viewportRef.current.scrollTop = 0;
+    }
+    grid.setViewport({ ...after.viewport, scrollTop: 0 });
+
+    focusRowIdBeforeRowsRef.current = grid.getSnapshot().focus.rowId;
+    return;
+  }
+
+  focusRowIdBeforeRowsRef.current = after.focus.rowId;
+
+  if (previousFocusRowId !== null && after.focus.rowId !== previousFocusRowId) {
+    scheduleAnnouncement(effectiveMessages.focusedRowRemovedAnnouncement());
+  }
+});
 ```
 
-The effect has no dependency array on purpose: it must sample state after *every* commit, matching the existing height-measurement effect at ~2140.
+The effect has no dependency array on purpose: it must sample state after _every_ commit, matching the existing height-measurement effect at ~2140.
 
 - [ ] **Step 5: Run and see it pass.** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/lifecycle-announcements.test.tsx`. Expect `Tests  7 passed (7)`.
 - [ ] **Step 6: Confirm streaming preservation is intact.** Run `pnpm --filter @pretable/react exec vitest run --environment jsdom src/__tests__/use-pretable-streaming.test.tsx src/__tests__/pretable-surface.test.tsx`. Expect all passing — a same-key streaming replacement must not fire the announcement.
@@ -3021,6 +3047,7 @@ The effect has no dependency array on purpose: it must sample state after *every
 Navigation refused at the last loaded row while more matching rows exist is otherwise a silent dead end for a keyboard user. Announce it once per boundary arrival.
 
 **Files:**
+
 - Modify: `packages/react/src/pretable-surface.tsx` (messages, `SurfaceKeyDownContext` ~4319, arrow-key branch ~4419, ctx construction, FilterMenu options callback ~3700)
 - Test: `packages/react/src/__tests__/lifecycle-announcements.test.tsx`
 
@@ -3101,48 +3128,48 @@ Add it to `effectiveMessages`.
 destructure it in `handleSurfaceKeyDown`, and inside the `if (direction) {` branch, immediately after `    grid.moveFocus(direction, { extend: shift, jumpToEdge: cmd });`, insert:
 
 ```ts
-    // A refused downward move at the end of the model is the load-more
-    // boundary. Detecting it here rather than in the engine keeps the engine
-    // ignorant of what "more" means.
-    if (
-      direction === "down" &&
-      onLoadedBoundaryReached &&
-      focus.rowId !== null &&
-      grid.getSnapshot().focus.rowId === focus.rowId &&
-      rows[rows.length - 1]?.id === focus.rowId
-    ) {
-      onLoadedBoundaryReached();
-    }
+// A refused downward move at the end of the model is the load-more
+// boundary. Detecting it here rather than in the engine keeps the engine
+// ignorant of what "more" means.
+if (
+  direction === "down" &&
+  onLoadedBoundaryReached &&
+  focus.rowId !== null &&
+  grid.getSnapshot().focus.rowId === focus.rowId &&
+  rows[rows.length - 1]?.id === focus.rowId
+) {
+  onLoadedBoundaryReached();
+}
 ```
 
 - [ ] **Step 5: Supply the callback.** In the component, near the other refs, add `  const boundaryAnnouncedForRowIdRef = useRef<string | null>(null);` and:
 
 ```tsx
-  // Reset when focus leaves the boundary row, so a second arrival announces
-  // again while sitting there does not.
-  useEffect(() => {
-    if (snapshot.focus.rowId !== boundaryAnnouncedForRowIdRef.current) {
-      boundaryAnnouncedForRowIdRef.current = null;
-    }
-  }, [snapshot.focus.rowId]);
+// Reset when focus leaves the boundary row, so a second arrival announces
+// again while sitting there does not.
+useEffect(() => {
+  if (snapshot.focus.rowId !== boundaryAnnouncedForRowIdRef.current) {
+    boundaryAnnouncedForRowIdRef.current = null;
+  }
+}, [snapshot.focus.rowId]);
 
-  const announceLoadedBoundary = useCallback(() => {
-    const snap = grid.getSnapshot();
-    const total = snap.matchingTotal;
-    if (!(total.kind === "exact" && total.count > snap.loadedRowCount)) {
-      return;
-    }
-    if (boundaryAnnouncedForRowIdRef.current === snap.focus.rowId) {
-      return;
-    }
-    boundaryAnnouncedForRowIdRef.current = snap.focus.rowId;
-    scheduleAnnouncement(
-      effectiveMessages.moreRowsBoundaryAnnouncement({
-        loadedCount: snap.loadedRowCount,
-        total: total.count,
-      }),
-    );
-  }, [effectiveMessages, grid, scheduleAnnouncement]);
+const announceLoadedBoundary = useCallback(() => {
+  const snap = grid.getSnapshot();
+  const total = snap.matchingTotal;
+  if (!(total.kind === "exact" && total.count > snap.loadedRowCount)) {
+    return;
+  }
+  if (boundaryAnnouncedForRowIdRef.current === snap.focus.rowId) {
+    return;
+  }
+  boundaryAnnouncedForRowIdRef.current = snap.focus.rowId;
+  scheduleAnnouncement(
+    effectiveMessages.moreRowsBoundaryAnnouncement({
+      loadedCount: snap.loadedRowCount,
+      total: total.count,
+    }),
+  );
+}, [effectiveMessages, grid, scheduleAnnouncement]);
 ```
 
 Then add `      onLoadedBoundaryReached: announceLoadedBoundary,` to the object passed to `handleSurfaceKeyDown`.
@@ -3150,29 +3177,29 @@ Then add `      onLoadedBoundaryReached: announceLoadedBoundary,` to the object 
 - [ ] **Step 6: Warn on the enum distinct-values fallback.** At the `FilterMenu` render site (~3700), replace
 
 ```tsx
-            const options = resolveColumnOptions(col, () =>
-              grid.distinctColumnValues(filterOpenState.columnId),
-            );
+const options = resolveColumnOptions(col, () =>
+  grid.distinctColumnValues(filterOpenState.columnId),
+);
 ```
 
 with
 
 ```tsx
-            const options = resolveColumnOptions(col, () => {
-              // Reaching the fallback under external filter authority means the
-              // funnel is about to offer the distinct values of the LOADED
-              // window as an `isAnyOf` universe — an incomplete one, silently.
-              if (processing?.filter === "external") {
-                warnOnce(
-                  `distinct-values-fallback:${col.id}`,
-                  `[pretable] Column "${col.id}" has no \`options\` and filtering is ` +
-                    "external, so the funnel is offering the distinct values of the " +
-                    "loaded window. That is an incomplete universe for isAnyOf. " +
-                    "Declare `column.options`.",
-                );
-              }
-              return grid.distinctColumnValues(filterOpenState.columnId);
-            });
+const options = resolveColumnOptions(col, () => {
+  // Reaching the fallback under external filter authority means the
+  // funnel is about to offer the distinct values of the LOADED
+  // window as an `isAnyOf` universe — an incomplete one, silently.
+  if (processing?.filter === "external") {
+    warnOnce(
+      `distinct-values-fallback:${col.id}`,
+      `[pretable] Column "${col.id}" has no \`options\` and filtering is ` +
+        "external, so the funnel is offering the distinct values of the " +
+        "loaded window. That is an incomplete universe for isAnyOf. " +
+        "Declare `column.options`.",
+    );
+  }
+  return grid.distinctColumnValues(filterOpenState.columnId);
+});
 ```
 
 and add `import { warnOnce } from "./dev-warn";` to the surface's imports.
@@ -3188,11 +3215,12 @@ and add `import { warnOnce } from "./dev-warn";` to the surface's imports.
 Every new symbol ships `@experimental` (house precedent: the `state` prop). Promotion to stable happens after Inspector dogfooding, not here.
 
 **Files:**
+
 - Modify: any new symbol still missing the tag
 - Modify: `packages/core/core.api.md`, `packages/react/react.api.md`
 - Create: `.changeset/server-authority-primitives.md`
 
-- [ ] **Step 1: Audit the tags.** Run `cd /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a && grep -rn "PretableProcessingAuthority\|PretableProcessingOptions\|PretableMatchingTotal\|PretableResultMeta\|PretableDataState\|filterOperators\|renderBodyState\|ariaDescribedBy\|selectAllLabel\|resultsAnnouncement\|groupChildCountLabel\|dataErrorAnnouncement\|focusedRowRemovedAnnouncement\|moreRowsBoundaryAnnouncement\|emptyStateMessage\|loadingStateMessage\|matchingTotal\|datasetKey\|loadedRowCount\|setResultMeta" packages/grid-core/src/types.ts packages/core/src/pretable-grid.ts packages/react/src/use-pretable.ts packages/react/src/pretable-surface.tsx packages/react/src/data-state.ts packages/react/src/copy.ts`. For every *declaration* hit, confirm the preceding TSDoc block contains `@experimental`. Add it where missing. `loadedRowCount` is a rename of a stable field and stays stable — do **not** tag it.
+- [ ] **Step 1: Audit the tags.** Run `cd /Users/blove/repos/pretable/.claude/worktrees/hopeful-cray-45f99a && grep -rn "PretableProcessingAuthority\|PretableProcessingOptions\|PretableMatchingTotal\|PretableResultMeta\|PretableDataState\|filterOperators\|renderBodyState\|ariaDescribedBy\|selectAllLabel\|resultsAnnouncement\|groupChildCountLabel\|dataErrorAnnouncement\|focusedRowRemovedAnnouncement\|moreRowsBoundaryAnnouncement\|emptyStateMessage\|loadingStateMessage\|matchingTotal\|datasetKey\|loadedRowCount\|setResultMeta" packages/grid-core/src/types.ts packages/core/src/pretable-grid.ts packages/react/src/use-pretable.ts packages/react/src/pretable-surface.tsx packages/react/src/data-state.ts packages/react/src/copy.ts`. For every _declaration_ hit, confirm the preceding TSDoc block contains `@experimental`. Add it where missing. `loadedRowCount` is a rename of a stable field and stays stable — do **not** tag it.
 - [ ] **Step 2: Typecheck every package.** Run `pnpm typecheck`. Expect no errors. A missing `scope` argument at a `formatAggregateValue` call or a missing `matchingTotal` in a hand-built telemetry fixture will surface here.
 - [ ] **Step 3: Lint.** Run `pnpm lint`. Expect no errors. The most likely complaint is `react-hooks/exhaustive-deps` on the new effects — fix by adding the missing dependency, not by widening the disable comment, except on the grid memo where the disable is already justified in a comment.
 - [ ] **Step 4: Format.** Run `pnpm format:write && pnpm format`. Expect `All matched files use Prettier code style!`.
