@@ -123,6 +123,20 @@ function remapSetRowsError(error: unknown): unknown {
   return error;
 }
 
+function emitDiagnostics<TRowId extends PretableRowId>(
+  diagnostics: readonly PretableRowIntegrityDiagnostic<TRowId>[],
+  sink: PretableRowIntegrityDiagnosticSink<TRowId> | undefined,
+): void {
+  if (sink === undefined) return;
+  for (const diagnostic of diagnostics) {
+    try {
+      sink(diagnostic);
+    } catch {
+      // Diagnostics run after publication and never change command success.
+    }
+  }
+}
+
 const READY = Object.freeze({ kind: "ready" as const });
 const DISPOSED = Object.freeze({ kind: "disposed" as const });
 
@@ -246,7 +260,6 @@ export function createLocalRowModel<
     rows: options.rows,
     getRowId,
     queryPlan,
-    onDiagnostic: diagnosticSink,
   });
   let root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision: 0,
@@ -307,17 +320,18 @@ export function createLocalRowModel<
     },
     setRows(nextRows: readonly TRow[]): PretableMutationResult<TRowId> {
       assertActive("set-rows");
+      const previousRoot = root;
       try {
         let nextPlan = queryPlan;
         let store = buildRowStore({
           rows: nextRows,
           getRowId,
           queryPlan: nextPlan,
-          previous: root.rows,
-          onDiagnostic: diagnosticSink,
+          previous: previousRoot.rows,
         });
+        const pendingDiagnostics = store.diagnostics;
         const classified = classifyReplacement(
-          root,
+          previousRoot,
           store.records,
           store.sameReferenceMutationCount,
         );
@@ -327,7 +341,7 @@ export function createLocalRowModel<
             rows: nextRows,
             getRowId,
             queryPlan: nextPlan,
-            previous: root.rows,
+            previous: previousRoot.rows,
           });
         }
         const noOp =
@@ -336,9 +350,13 @@ export function createLocalRowModel<
           classified.removed === 0 &&
           !store.sameReferenceMutation;
         if (noOp) {
-          return mutationResult(root.revision, root.revision, classified);
+          return mutationResult(
+            previousRoot.revision,
+            previousRoot.revision,
+            classified,
+          );
         }
-        const previousRevision = root.revision;
+        const previousRevision = previousRoot.revision;
         const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
           Object.freeze({
             revision: previousRevision + 1,
@@ -353,7 +371,7 @@ export function createLocalRowModel<
               ) => number,
             ),
             queryPlan: nextPlan,
-            expansion: root.expansion,
+            expansion: previousRoot.expansion,
             cause: Object.freeze({ kind: "set-rows" as const }),
           });
         const result = mutationResult<TRowId>(
@@ -363,6 +381,7 @@ export function createLocalRowModel<
         );
         queryPlan = nextPlan;
         publish(committedRoot);
+        emitDiagnostics(pendingDiagnostics, diagnosticSink);
         return result;
       } catch (error) {
         throw remapSetRowsError(error);
@@ -411,5 +430,8 @@ export function createLocalRowModel<
     },
   };
 
+  // Construction has no subscribers. Future ingestion diagnostics, if any,
+  // are delivered only after the initial immutable state and model exist.
+  emitDiagnostics(initialStore.diagnostics, diagnosticSink);
   return model as unknown as PretableRowModel<TRow, TRowId, TColumns>;
 }

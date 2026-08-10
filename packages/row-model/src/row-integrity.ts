@@ -47,9 +47,7 @@ export type PretableRowIntegrityDiagnosticSink<TRowId extends PretableRowId> = (
 export interface RowIntegrityInspection<TRowId extends PretableRowId> {
   readonly integrity: RowIntegrityRecord;
   readonly sameReferenceMutation: boolean;
-  emitDiagnostic(
-    sink: PretableRowIntegrityDiagnosticSink<TRowId> | undefined,
-  ): void;
+  readonly diagnostic?: PretableRowIntegrityDiagnostic<TRowId>;
 }
 
 function failIntegrity(operation: "set-rows", cause: unknown): never {
@@ -145,7 +143,6 @@ export function inspectRowIntegrity<TRowId extends PretableRowId>(
     return {
       integrity: { kind: "unchecked" },
       sameReferenceMutation: false,
-      emitDiagnostic: () => undefined,
     };
   }
 
@@ -164,7 +161,6 @@ export function inspectRowIntegrity<TRowId extends PretableRowId>(
         return {
           integrity: { kind: "frozen" },
           sameReferenceMutation: false,
-          emitDiagnostic: () => undefined,
         };
       }
       const current = fingerprint(row);
@@ -192,18 +188,13 @@ function fingerprintInspection<TRowId extends PretableRowId>(
   return {
     integrity: { kind: "fingerprinted", fingerprint: current },
     sameReferenceMutation,
-    emitDiagnostic(sink) {
-      if (!sameReferenceMutation || sink === undefined) return;
-      try {
-        sink({
+    diagnostic: sameReferenceMutation
+      ? Object.freeze({
           code: "same-reference-row-mutation",
           rowId,
           message:
             "A row object changed without changing identity; it was reevaluated. Previously captured snapshots may observe that caller-owned mutation through the shared row reference.",
-        });
-      } catch {
-        // Diagnostics must not add a failure mode to row ingestion.
-      }
-    },
+        })
+      : undefined,
   };
 }

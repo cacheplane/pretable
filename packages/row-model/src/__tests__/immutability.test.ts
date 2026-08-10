@@ -4,6 +4,8 @@ import {
   PretableRowModelError,
   createColumnHelper,
   createLocalRowModel,
+  type PretableMutationResult,
+  type PretableRowModel,
   type PretableRowIntegrityDiagnostic,
 } from "../index";
 
@@ -89,6 +91,98 @@ describe("local row integrity", () => {
     if (capturedVisibleRow?.kind === "data") {
       expect(capturedVisibleRow.row.label).toBe("after");
     }
+  });
+
+  test("publishes before a diagnostic callback disposes the model", () => {
+    const target = { id: 1, label: "before" };
+    const row = new Proxy(target, {
+      preventExtensions: () => {
+        throw new Error("freeze refused");
+      },
+    });
+    const diagnostic = vi.fn(() => model.dispose());
+    const model: PretableRowModel<Row, number, typeof columns> =
+      createLocalRowModel({
+        rows: [row],
+        columns,
+        onDiagnostic: diagnostic,
+      });
+    expect(diagnostic).not.toHaveBeenCalled();
+
+    target.label = "after";
+    const result = model.setRows([row]);
+
+    expect(result).toMatchObject({
+      previousRevision: 0,
+      revision: 1,
+      updated: 1,
+    });
+    expect(diagnostic).toHaveBeenCalledTimes(1);
+    expect(model.getState().status).toEqual({ kind: "disposed" });
+    expect(model.getState().snapshot.revision).toBe(1);
+    expect(() => model.setRows([row])).toThrowError(
+      expect.objectContaining({ code: "disposed-model" }),
+    );
+  });
+
+  test("orders a diagnostic callback's nested setRows after the outer commit", () => {
+    const target = { id: 1, label: "before" };
+    const row = new Proxy(target, {
+      preventExtensions: () => {
+        throw new Error("freeze refused");
+      },
+    });
+    let nestedResult: PretableMutationResult<number> | undefined;
+    const diagnostic = vi.fn(() => {
+      nestedResult = model.setRows([{ id: 1, label: "nested" }]);
+    });
+    const model: PretableRowModel<Row, number, typeof columns> =
+      createLocalRowModel({
+        rows: [row],
+        columns,
+        onDiagnostic: diagnostic,
+      });
+
+    target.label = "outer";
+    const outerResult = model.setRows([row]);
+
+    expect(outerResult).toMatchObject({
+      previousRevision: 0,
+      revision: 1,
+      updated: 1,
+    });
+    expect(nestedResult).toMatchObject({
+      previousRevision: 1,
+      revision: 2,
+      updated: 1,
+    });
+    expect(diagnostic).toHaveBeenCalledTimes(1);
+    expect(model.getState().snapshot.revision).toBe(2);
+    expect(model.getState().snapshot.rowAt(0)).toMatchObject({
+      row: expect.objectContaining({ label: "nested" }),
+    });
+  });
+
+  test("isolates a throwing diagnostic after committing it exactly once", () => {
+    const target = { id: 1, label: "before" };
+    const row = new Proxy(target, {
+      preventExtensions: () => {
+        throw new Error("freeze refused");
+      },
+    });
+    const diagnostic = vi.fn(() => {
+      throw new Error("diagnostic failed");
+    });
+    const model = createLocalRowModel({
+      rows: [row],
+      columns,
+      onDiagnostic: diagnostic,
+    });
+
+    target.label = "after";
+    expect(() => model.setRows([row])).not.toThrow();
+    expect(diagnostic).toHaveBeenCalledTimes(1);
+    expect(model.getState().snapshot.revision).toBe(1);
   });
 
   test("diagnoses same-reference mutation of a non-extensible row and reevaluates it", () => {

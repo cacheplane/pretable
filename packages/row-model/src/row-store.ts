@@ -9,7 +9,7 @@ import {
 } from "./persistent/persistent-map";
 import {
   inspectRowIntegrity,
-  type PretableRowIntegrityDiagnosticSink,
+  type PretableRowIntegrityDiagnostic,
 } from "./row-integrity";
 
 export interface BuildRowStoreInput<
@@ -21,7 +21,6 @@ export interface BuildRowStoreInput<
   readonly getRowId: (row: TRow) => TRowId;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly previous?: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>;
-  readonly onDiagnostic?: PretableRowIntegrityDiagnosticSink<TRowId>;
 }
 
 export interface BuiltRowStore<
@@ -34,6 +33,7 @@ export interface BuiltRowStore<
   readonly records: readonly RowRecord<TRow, TRowId, TColumns>[];
   readonly sameReferenceMutation: boolean;
   readonly sameReferenceMutationCount: number;
+  readonly diagnostics: readonly PretableRowIntegrityDiagnostic<TRowId>[];
 }
 
 function createSourceOrderTree<TRowId extends PretableRowId>() {
@@ -159,9 +159,6 @@ export function buildRowStore<
     sourceDraft.insertOrReplace(Object.freeze({ rowId, sourceOrder }));
     records.push(record);
   }
-  inspections.forEach((inspection) =>
-    inspection.emitDiagnostic(input.onDiagnostic),
-  );
   return {
     rows: mapDraft.freeze(),
     sourceOrder: sourceDraft.freeze(),
@@ -170,5 +167,10 @@ export function buildRowStore<
     sameReferenceMutationCount: inspections.filter(
       (inspection) => inspection.sameReferenceMutation,
     ).length,
+    diagnostics: Object.freeze(
+      inspections.flatMap((inspection) =>
+        inspection.diagnostic === undefined ? [] : [inspection.diagnostic],
+      ),
+    ),
   };
 }
