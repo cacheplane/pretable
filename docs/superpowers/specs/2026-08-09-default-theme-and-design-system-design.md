@@ -7,8 +7,8 @@
 ## Problem
 
 pretable ships two themes — `excel.css` and `material.css` — and no house style. The website
-picks Material, the bench picks Excel, and a consumer's first styling decision is *which other
-product should my grid look like?* There is no theme that represents pretable itself.
+picks Material, the bench picks Excel, and a consumer's first styling decision is _which other
+product should my grid look like?_ There is no theme that represents pretable itself.
 
 Reviewing the token contract against a reference set of dashboard designs surfaced ten defects,
 two of which are outright bugs. The reference's discipline — hairline rules, tabular figures,
@@ -19,7 +19,7 @@ a quiet header, elevation instead of borders — is not reachable from the curre
 1. **Full scope.** Foundation, house theme, and cell-presentation primitives all land, decomposed
    into four sequenced sub-projects.
 2. **`pretable.css` becomes the documented default.** Excel and Material are reframed as
-   compatibility skins — imitations meant to disappear into a host design system. They are *not*
+   compatibility skins — imitations meant to disappear into a host design system. They are _not_
    retuned toward the reference brief; that would destroy their reason to exist.
 3. **Right-side pinning is a shipped feature and stays.** Earlier notes claiming otherwise were
    stale. Verified: `core.api.md:117` (`pinned?: "left" | "right"`), `:263`
@@ -41,8 +41,8 @@ Every claim below was confirmed against the tree at `e7fcc97`.
 - **`data-pretable-numeric` is never emitted.** It appears only in the rule that styles it
   (`packages/ui/src/grid.css:239-245`). `packages/ui/README.md:54` nonetheless advertises it as
   part of the public attribute contract. The original design doc predicted this exact outcome:
-  *"depends on whether the column-config API lets a column declare itself numeric; if not, this
-  rule waits"* (`docs/superpowers/specs/2026-05-01-pretable-theming-architecture-design.md:578`).
+  _"depends on whether the column-config API lets a column declare itself numeric; if not, this
+  rule waits"_ (`docs/superpowers/specs/2026-05-01-pretable-theming-architecture-design.md:578`).
   It waited fifteen months.
 - **One radius token serves twelve sites**, from the grid container to a 14px chip-remove button.
   The checkbox additionally hard-codes `3px`, ignoring the theme entirely.
@@ -59,7 +59,7 @@ Every claim below was confirmed against the tree at `e7fcc97`.
   DOM read of the bench confirmed the computed value is `rgba(0,0,0,0)` there.
 - **Two rules never paint.** The selection background at `:214` loses to the `aria-selected` rule
   at `:231` (equal specificity, later in source, set from the same condition) — but its
-  `color: var(--pretable-text-selected)` line *is* live and must be preserved. The focus outline at
+  `color: var(--pretable-text-selected)` line _is_ live and must be preserved. The focus outline at
   `:220` is neutralized on data cells by an inline `outline: "none"`
   (`packages/react/src/pretable-surface.tsx:3541`), while group cells, which set no inline outline,
   receive a doubled ring.
@@ -80,7 +80,7 @@ The foundation. No new theme, no palette change; existing themes keep their curr
   `data-pretable-align` on body cells, header cells, and group-row aggregate cells.
 - Alignment must use **`justify-content`**, not `text-align`. Cells are flex containers and an
   unwrapped value is an anonymous flex item, which `text-align` cannot move. Use
-  `justify-content: safe flex-end` — plain `flex-end` clips an over-wide number at its *leading*
+  `justify-content: safe flex-end` — plain `flex-end` clips an over-wide number at its _leading_
   edge, silently turning `1,234,567` into a legible, plausible, wrong `34,567`.
 - **Keep** the header's inline `textAlign: "left"` (`pretable-surface.tsx:2986`). It blocks nothing
   — `justifyContent` is not in that inline style — and removing it exposes the UA
@@ -105,7 +105,7 @@ stale `dist/` silently strips exports.
   popovers). Add `--pretable-shadow-card` and `--pretable-shadow-seam`. Override the overlay shadow
   in Material dark.
 - Pinned seam on **both** edges. The left-side occlusion trick does not mirror: on the right the
-  affordance must escape the *first* right-pinned cell's leading edge, which later right-pinned
+  affordance must escape the _first_ right-pinned cell's leading edge, which later right-pinned
   cells in the same `z-index: 1` tier paint over. Vertical bleed also needs `spread ≤ -blur/2` or
   every row boundary inside the pinned region gets a dark band.
 - Express hover and range selection as `background-image: linear-gradient(...)` so state composes
@@ -134,7 +134,7 @@ stale `dist/` silently strips exports.
   scrolling rows by ~1.2:1. Keep the header tinted, or use `--pretable-bg-inset`.
 - **Group rows need their own fill before the header loses its.** They borrow the header token
   deliberately so the eye reads them as structure; flatten it and, with muted header text, they read
-  as *less* prominent than the records they contain.
+  as _less_ prominent than the records they contain.
 - Packaging: `package.json` exports, `scripts/copy-css-assets.mjs`, and
   `build-config.test.ts` — which pins `cssExports` with `toMatchObject` (`:70`) and the
   `lint:packaging` script with `toBe` (`:82`). `contract.test.ts`'s three loops are hardcoded to
@@ -154,7 +154,7 @@ meter, and two-line entity stack.
 - Requires a `column.renderAggregate` addition and a fix to a real measurement bug:
   `measureRenderedRowHeight` (`packages/react/src/row-height.ts`) measures only
   `[data-pretable-wrap="true"]` cells when any exist, falling back to all cells only when none do.
-  So a two-line stack in a non-wrap column, in a row that *also* has a wrap column, is measured at
+  So a two-line stack in a non-wrap column, in a row that _also_ has a wrap column, is measured at
   single-line height and clipped — in browsers only, invisible to jsdom.
 
 ## Explicitly rejected
@@ -167,7 +167,7 @@ meter, and two-line entity stack.
 - **Row-as-card tables.** Rows are absolutely positioned against a prefix-sum index with integer
   heights; a gap must fold into row height, corrupting reveal math and wrapped-text measurement, and
   it cannot survive pinning — a card corner scrolling under a sticky column reads as broken. The
-  transferable half, an unfilled header with muted labels, *is* adopted.
+  transferable half, an unfilled header with muted labels, _is_ adopted.
 - **A categorical color ramp.** A grid renders one column at a time; it has no series. Categorical
   color is a chart concern and stays app-side.
 - **Icon tiles, an avatar tile, and an icon set.** A 36px tile does not fit a 40px compact row, and
