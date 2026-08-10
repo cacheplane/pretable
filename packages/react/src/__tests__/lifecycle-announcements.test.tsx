@@ -830,10 +830,8 @@ describe("a load failure outranks a pending user announcement", () => {
   // yielding to a copy confirmation would leave the user believing the grid
   // still holds a result.
   it("announces the error even when a user message is already pending", () => {
-    const view = render(
-      <Harness rows={page1} dataState={{ phase: "idle" }} />,
-    );
-    const grid = view.baseElement.querySelector("[role=\"grid\"]");
+    const view = render(<Harness rows={page1} dataState={{ phase: "idle" }} />);
+    const grid = view.baseElement.querySelector('[role="grid"]');
     if (!grid) throw new Error("grid not found");
 
     // Queue a user-sourced announcement into the 500 ms slot, unflushed.

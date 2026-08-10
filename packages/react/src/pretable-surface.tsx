@@ -486,6 +486,9 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
       : `End of loaded rows. ${total - loadedCount} more available.`,
 };
 
+/** Priority order for the single live-region slot: error > user > lifecycle. */
+type AnnouncementSource = "user" | "lifecycle" | "error";
+
 const ANNOUNCE_DEBOUNCE_MS = 500;
 
 /**
@@ -1122,7 +1125,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const [liveMessage, setLiveMessage] = useState<string>("");
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingAnnouncementRef = useRef<string | null>(null);
-  const pendingAnnouncementSourceRef = useRef<"user" | "lifecycle">("user");
+  const pendingAnnouncementSourceRef = useRef<AnnouncementSource>("user");
 
   /**
    * One slot, trailing edge, last wins — but only between equals. A data
@@ -1138,7 +1141,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
    * would leave a screen-reader user believing the grid still holds a result.
    */
   const scheduleAnnouncement = useCallback(
-    (message: string, source: "user" | "lifecycle" | "error" = "user") => {
+    (message: string, source: AnnouncementSource = "user") => {
       if (
         source === "lifecycle" &&
         pendingAnnouncementRef.current !== null &&
