@@ -232,3 +232,72 @@ describe("result meta under external filter authority", () => {
     });
   });
 });
+
+describe("datasetKey", () => {
+  function externalGrid() {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    grid.setRows(rows, {
+      datasetKey: "q1",
+      total: { kind: "exact", count: 3 },
+    });
+    grid.toggleRowSelection("a");
+    grid.setFocus({ rowId: "a", columnId: "name" });
+    grid.beginEdit({ rowId: "b", columnId: "name" });
+    return grid;
+  }
+
+  test("the first key is an assignment, not a pivot", () => {
+    const grid = makeGrid({ filter: "external" });
+    grid.toggleRowSelection("a");
+    grid.setRows(rows, { datasetKey: "q1" });
+    expect(grid.getSnapshot().selection.ranges).toHaveLength(1);
+    expect(grid.getSnapshot().datasetKey).toBe("q1");
+  });
+
+  test("an unchanged key preserves selection, focus and edit", () => {
+    const grid = externalGrid();
+    grid.setRows(rows, { datasetKey: "q1" });
+    const snap = grid.getSnapshot();
+    expect(snap.selection.ranges).toHaveLength(1);
+    expect(snap.focus).toEqual({ rowId: "a", columnId: "name" });
+    expect(snap.editing).not.toBeNull();
+  });
+
+  test("a changed key clears selection, focus and edit", () => {
+    const grid = externalGrid();
+    grid.setRows(rows, { datasetKey: "q2" });
+    const snap = grid.getSnapshot();
+    expect(snap.selection.ranges).toEqual([]);
+    expect(snap.focus).toEqual({ rowId: null, columnId: null });
+    expect(snap.editing).toBeNull();
+    expect(snap.datasetKey).toBe("q2");
+  });
+
+  test("a changed key suppresses the clamped-index focus fallback", () => {
+    const grid = externalGrid();
+    // "a" survives the replacement, so same-key reconciliation would keep it.
+    grid.setRows(rows, { datasetKey: "q2" });
+    expect(grid.getSnapshot().focus.rowId).toBeNull();
+  });
+
+  test("a changed key clears group-expansion overrides", () => {
+    const grid = makeGrid({ filter: "external" });
+    grid.setRows(rows, { datasetKey: "q1" });
+    grid.setRowGroups(["score"]);
+    const firstGroup = grid
+      .getSnapshot()
+      .visibleRows.find((r) => r.kind === "group")!;
+    grid.setGroupExpanded(firstGroup.id, false);
+    expect(grid.getSnapshot().groupExpansionOverrides.size).toBe(1);
+    grid.setRows(rows, { datasetKey: "q2" });
+    expect(grid.getSnapshot().groupExpansionOverrides.size).toBe(0);
+  });
+
+  test("setResultMeta can pivot the dataset too", () => {
+    const grid = externalGrid();
+    grid.setResultMeta({ datasetKey: "q2" });
+    const snap = grid.getSnapshot();
+    expect(snap.selection.ranges).toEqual([]);
+    expect(snap.datasetKey).toBe("q2");
+  });
+});

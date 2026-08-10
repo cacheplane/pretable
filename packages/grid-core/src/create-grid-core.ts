@@ -292,6 +292,21 @@ export function createGridCore<TRow extends PretableRow>(
     width: 0,
   };
 
+  /**
+   * The dataset-pivot clear bundle. A different `datasetKey` means the loaded
+   * records answer a different question, so nothing keyed to the old answer
+   * survives — including the aggregate-identity cache, whose group ids are
+   * path-derived and would otherwise hand back a previous query's objects.
+   */
+  function clearForDatasetChange(): void {
+    selection = { ranges: [], anchor: null };
+    focus = { rowId: null, columnId: null };
+    groupExpansionOverrides = new Set<string>();
+    editing = null;
+    previousAggregates = new Map();
+    cachedDerivation = null;
+  }
+
   /** Store the parts of `meta` the current authority can honor. */
   function applyResultMeta(meta: PretableResultMeta | undefined): void {
     if (!meta) {
@@ -1222,8 +1237,24 @@ export function createGridCore<TRow extends PretableRow>(
       emit();
     },
     setRows(nextRows: TRow[], meta?: PretableResultMeta) {
+      const datasetChanged =
+        meta?.datasetKey !== undefined &&
+        datasetKey !== null &&
+        meta.datasetKey !== datasetKey;
+
+      if (datasetChanged) {
+        clearForDatasetChange();
+      }
+
       applyResultMeta(meta);
-      const before = captureVisibleRowsForFocusReconciliation();
+
+      // `null` disables focus reconciliation entirely. Across an identity
+      // change the clamped-index fallback is not a repair, it is a guess:
+      // position i in the old query's result says nothing about position i in
+      // a different query's window.
+      const before = datasetChanged
+        ? null
+        : captureVisibleRowsForFocusReconciliation();
       options = { ...options, rows: nextRows };
       sourceRows = createSourceRows(options);
       sourceRowIndex.clear();
@@ -1304,6 +1335,10 @@ export function createGridCore<TRow extends PretableRow>(
         matchingTotalsEqual(nextTotal, suppliedTotal)
       ) {
         return;
+      }
+
+      if (nextKey !== datasetKey && datasetKey !== null) {
+        clearForDatasetChange();
       }
 
       datasetKey = nextKey;
