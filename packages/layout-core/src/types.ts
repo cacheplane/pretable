@@ -89,6 +89,52 @@ export interface RowHeightAnchor<TKey> {
   readonly offset: number;
 }
 
+/** Indexed replacement input; rows are read lazily by cooperative builders. @internal */
+export interface RowHeightReplacementSource<TKey> {
+  readonly rowCount: number;
+  entryAt(index: number): RowHeightEntry<TKey>;
+}
+
+/** One cooperative replacement slice budget. @internal */
+export interface RowHeightReplacementAdvanceOptions {
+  /** Positive integer work budget; implementations enforce a hard cap of 256. */
+  readonly maxUnits: number;
+  /** Absolute deadline in the clock domain returned by `now`. */
+  readonly deadline?: number;
+  /** Required with `deadline`; sampled after every completed work unit. */
+  readonly now?: () => number;
+}
+
+/** Observable cooperative replacement progress. @internal */
+export interface RowHeightReplacementProgress {
+  readonly phase:
+    | "ingest"
+    | "scan-retained"
+    | "scan-visible"
+    | "evict"
+    | "build-tombstones"
+    | "build-sequence"
+    | "build-retention-order"
+    | "done";
+  readonly completedUnits: number;
+  readonly totalUnits: number;
+  readonly unitsThisSlice: number;
+  readonly sourceRowsIngested: number;
+  readonly previousRowsScanned: number;
+  readonly done: boolean;
+}
+
+/** Cancellable cooperative construction of one immutable height root. @internal */
+export interface RowHeightReplacementBuilder<TKey> {
+  readonly done: boolean;
+  readonly progress: RowHeightReplacementProgress;
+  advance(
+    options: RowHeightReplacementAdvanceOptions,
+  ): RowHeightReplacementProgress;
+  finish(): RowHeightIndex<TKey>;
+  cancel(): void;
+}
+
 /**
  * Immutable, persistent row geometry keyed by logical visible-row identity.
  * `replace` and later inserts reuse retained measurements for equal stable keys,
@@ -101,6 +147,9 @@ export interface RowHeightIndex<TKey> extends RowMetricsReader {
   measure(index: number, ref: TKey, height: number): RowHeightIndex<TKey>;
   apply(operations: readonly RowHeightOperation<TKey>[]): RowHeightIndex<TKey>;
   replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey>;
+  beginReplacement(
+    source: RowHeightReplacementSource<TKey>,
+  ): RowHeightReplacementBuilder<TKey>;
   captureAnchor(
     index: number,
     scrollTop: number,

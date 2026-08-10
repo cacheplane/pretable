@@ -53,6 +53,59 @@ describe("layout-core", () => {
     expect(plan.totalHeight).toBe(490);
   });
 
+  test("normalizes fractional and non-finite row overscan to bounded integers", () => {
+    const metrics = createRowMetricsIndex([40, 50, 60, 70, 80, 90, 100]);
+    const expected = planViewport({
+      scrollTop: 95,
+      viewportHeight: 120,
+      overscan: 0,
+      rowMetrics: metrics,
+      pinnedLeft: [{ columnId: "left", width: 100 }],
+    });
+
+    for (const overscan of [
+      0.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      -2,
+    ]) {
+      let heightReads = 0;
+      let offsetReads = 0;
+      let indexReads = 0;
+      const plan = planViewport({
+        scrollTop: 95,
+        viewportHeight: 120,
+        overscan,
+        rowMetrics: {
+          rowCount: metrics.rowCount,
+          getHeight: (index) => {
+            heightReads += 1;
+            return metrics.getHeight(index);
+          },
+          getOffsetForIndex: (index) => {
+            offsetReads += 1;
+            return metrics.getOffsetForIndex(index);
+          },
+          getIndexForOffset: (offset) => {
+            indexReads += 1;
+            return metrics.getIndexForOffset(offset);
+          },
+          getTotalHeight: () => metrics.getTotalHeight(),
+        },
+        pinnedLeft: [{ columnId: "left", width: 100 }],
+      });
+
+      expect(plan).toEqual(expected);
+      expect(Number.isInteger(plan.range.start)).toBe(true);
+      expect(Number.isInteger(plan.range.end)).toBe(true);
+      expect(plan.rows.every((row) => Number.isInteger(row.index))).toBe(true);
+      expect(heightReads).toBe(expected.rows.length);
+      expect(offsetReads).toBe(1);
+      expect(indexReads).toBe(2);
+    }
+  });
+
   test("pinned-column metadata survives viewport planning without mutating row math", () => {
     const rowMetrics = createRowMetricsIndex([40, 50, 60, 70]);
     const offsetBefore = rowMetrics.getOffsetForIndex(2);

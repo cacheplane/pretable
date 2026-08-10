@@ -10,6 +10,10 @@ export function planViewport(input: PlanViewportInput): ViewportPlan {
   const rowMetrics = input.rowMetrics;
   const totalHeight = rowMetrics.getTotalHeight();
   const rowCount = rowMetrics.rowCount;
+  const overscan =
+    Number.isFinite(input.overscan) && input.overscan > 0
+      ? Math.floor(input.overscan)
+      : 0;
 
   if (rowCount === 0) {
     return {
@@ -40,11 +44,8 @@ export function planViewport(input: PlanViewportInput): ViewportPlan {
       ) + 1,
     ),
   );
-  const start = Math.max(0, visibleStart - Math.max(0, input.overscan));
-  const end = Math.min(
-    rowCount,
-    visibleEndExclusive + Math.max(0, input.overscan),
-  );
+  const start = Math.max(0, visibleStart - overscan);
+  const end = Math.min(rowCount, visibleEndExclusive + overscan);
   const rows: PlannedRow[] = [];
   let top = rowMetrics.getOffsetForIndex(start);
 

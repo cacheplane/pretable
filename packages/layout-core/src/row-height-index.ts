@@ -4,6 +4,10 @@ import type {
   RowHeightEntry,
   RowHeightIndex,
   RowHeightOperation,
+  RowHeightReplacementAdvanceOptions,
+  RowHeightReplacementBuilder,
+  RowHeightReplacementProgress,
+  RowHeightReplacementSource,
 } from "./types";
 
 interface Work {
@@ -61,7 +65,22 @@ interface HashEntry<TValue> {
 interface HashLeaf<TValue> {
   readonly kind: "leaf";
   readonly hash: number;
-  readonly entries: readonly HashEntry<TValue>[];
+  readonly entry: HashEntry<TValue>;
+  readonly count: 1;
+}
+
+interface CollisionNode<TValue> {
+  readonly entry: HashEntry<TValue>;
+  readonly left: CollisionNode<TValue> | null;
+  readonly right: CollisionNode<TValue> | null;
+  readonly height: number;
+  readonly count: number;
+}
+
+interface HashCollision<TValue> {
+  readonly kind: "collision";
+  readonly hash: number;
+  readonly root: CollisionNode<TValue>;
   readonly count: number;
 }
 
@@ -72,7 +91,8 @@ interface HashBranch<TValue> {
   readonly count: number;
 }
 
-type HashNode<TValue> = HashLeaf<TValue> | HashBranch<TValue>;
+type HashTerminal<TValue> = HashLeaf<TValue> | HashCollision<TValue>;
+type HashNode<TValue> = HashTerminal<TValue> | HashBranch<TValue>;
 
 interface RemovedSequenceValue<TKey> {
   readonly root: SequenceNode<TKey> | null;
@@ -103,7 +123,7 @@ export interface RowHeightIndexDiagnostics {
   readonly identityLookups: number;
   /** Exact encoded-key equality checks inside HAMT collision leaves. */
   readonly identityComparisons: number;
-  /** Cached measurement entries materialized by bulk replacement. */
+  /** Cached measurement entries reused while ingesting bulk replacement. */
   readonly measurementEntriesScanned: number;
   /** Rows in the prior visible sequence examined by bulk replacement. */
   readonly previousEntriesScanned: number;
@@ -112,6 +132,83 @@ export interface RowHeightIndexDiagnostics {
   readonly visibleMeasurementCount: number;
   readonly tombstoneCount: number;
   readonly measurementCacheCount: number;
+}
+
+type ReplacementLifecycleCode =
+  "not-ready" | "cancelled" | "failed" | "finished" | "done";
+
+export class RowHeightReplacementLifecycleError extends Error {
+  readonly code: ReplacementLifecycleCode;
+
+  constructor(code: ReplacementLifecycleCode, message: string) {
+    super(message);
+    this.name = "RowHeightReplacementLifecycleError";
+    this.code = code;
+  }
+}
+
+/** Direct test seam; intentionally not exported from the layout-core barrel. */
+export interface RowHeightReplacementBuilderDiagnostics {
+  readonly status: "pending" | "done" | "cancelled" | "failed" | "finished";
+  readonly phase: RowHeightReplacementProgress["phase"];
+  readonly retainedBaseRootCount: number;
+  readonly retainedSourceCount: number;
+  readonly candidateArrayEntryCount: number;
+  readonly candidateStackEntryCount: number;
+  readonly candidateRootCount: number;
+  readonly identitySetEntryCount: number;
+  readonly maxSliceUnits: number;
+  readonly maxSliceDuration: number;
+  readonly sliceCount: number;
+  readonly completedUnits: number;
+  readonly totalUnits: number;
+  readonly phaseUnits: Readonly<
+    Record<RowHeightReplacementProgress["phase"], number>
+  >;
+  readonly nodesCreated: number;
+  readonly identityLookups: number;
+  readonly identityComparisons: number;
+}
+
+interface ReplacementBase<TKey> {
+  readonly index: PersistentRowHeightIndex<TKey>;
+  readonly defaultHeight: number;
+  readonly getKey: (key: TKey) => string | number;
+  readonly root: SequenceNode<TKey> | null;
+  readonly visibleKeys: HashNode<true> | null;
+  readonly measurements: HashNode<number> | null;
+  readonly tombstones: HashNode<number> | null;
+  readonly tombstoneOrder: KeyMapNode<string> | null;
+  readonly nextTicket: number;
+  readonly maxRetainedMeasurements: number;
+}
+
+interface TraversalFrame<TNode> {
+  readonly node: TNode;
+  state: 0 | 1 | 2;
+}
+
+interface SequenceBuildFrame<TKey> {
+  readonly start: number;
+  readonly end: number;
+  readonly middle: number;
+  state: 0 | 1 | 2;
+  left: SequenceNode<TKey> | null;
+  right: SequenceNode<TKey> | null;
+}
+
+interface RetentionBuildFrame {
+  readonly start: number;
+  readonly end: number;
+  readonly middle: number;
+  state: 0 | 1 | 2;
+  left: KeyMapNode<string> | null;
+  right: KeyMapNode<string> | null;
+}
+
+interface RetainedMeasurement {
+  readonly identity: string;
+  readonly ticket: number;
 }
 
 function nodeHeight(node: { readonly height: number } | null): number {
@@ -296,32 +393,6 @@ function sequenceAt<TKey>(
   return undefined;
 }
 
-function buildSequence<TKey>(
-  values: readonly HeightValue<TKey>[],
-  start: number,
-  end: number,
-  work: Work,
-): SequenceNode<TKey> | null {
-  if (start >= end) return null;
-  const middle = Math.floor((start + end) / 2);
-  return sequenceNode(
-    values[middle]!,
-    buildSequence(values, start, middle, work),
-    buildSequence(values, middle + 1, end, work),
-    work,
-  );
-}
-
-function forEachSequenceValue<TKey>(
-  root: SequenceNode<TKey> | null,
-  visit: (value: HeightValue<TKey>) => void,
-): void {
-  if (root === null) return;
-  forEachSequenceValue(root.left, visit);
-  visit(root.value);
-  forEachSequenceValue(root.right, visit);
-}
-
 function hashIdentity(identity: string): number {
   let hash = 0x811c9dc5;
   for (let index = 0; index < identity.length; index += 1) {
@@ -356,11 +427,185 @@ function hashPosition(bitmap: number, bit: number): number {
 
 function hashLeaf<TValue>(
   hash: number,
-  entries: readonly HashEntry<TValue>[],
+  entry: HashEntry<TValue>,
   work: Work,
 ): HashLeaf<TValue> {
   work.nodesCreated += 1;
-  return { kind: "leaf", hash, entries, count: entries.length };
+  return { kind: "leaf", hash, entry, count: 1 };
+}
+
+function collisionCount<TValue>(root: CollisionNode<TValue> | null): number {
+  return root?.count ?? 0;
+}
+
+function collisionNode<TValue>(
+  entry: HashEntry<TValue>,
+  left: CollisionNode<TValue> | null,
+  right: CollisionNode<TValue> | null,
+  work: Work,
+): CollisionNode<TValue> {
+  work.nodesCreated += 1;
+  return {
+    entry,
+    left,
+    right,
+    height: 1 + Math.max(nodeHeight(left), nodeHeight(right)),
+    count: collisionCount(left) + 1 + collisionCount(right),
+  };
+}
+
+function rebalanceCollision<TValue>(
+  entry: HashEntry<TValue>,
+  left: CollisionNode<TValue> | null,
+  right: CollisionNode<TValue> | null,
+  work: Work,
+): CollisionNode<TValue> {
+  if (nodeHeight(left) > nodeHeight(right) + 1) {
+    const pivot = left!;
+    if (nodeHeight(pivot.left) >= nodeHeight(pivot.right)) {
+      return collisionNode(
+        pivot.entry,
+        pivot.left,
+        collisionNode(entry, pivot.right, right, work),
+        work,
+      );
+    }
+    const middle = pivot.right!;
+    return collisionNode(
+      middle.entry,
+      collisionNode(pivot.entry, pivot.left, middle.left, work),
+      collisionNode(entry, middle.right, right, work),
+      work,
+    );
+  }
+  if (nodeHeight(right) > nodeHeight(left) + 1) {
+    const pivot = right!;
+    if (nodeHeight(pivot.right) >= nodeHeight(pivot.left)) {
+      return collisionNode(
+        pivot.entry,
+        collisionNode(entry, left, pivot.left, work),
+        pivot.right,
+        work,
+      );
+    }
+    const middle = pivot.left!;
+    return collisionNode(
+      middle.entry,
+      collisionNode(entry, left, middle.left, work),
+      collisionNode(pivot.entry, middle.right, pivot.right, work),
+      work,
+    );
+  }
+  return collisionNode(entry, left, right, work);
+}
+
+function compareIdentity(left: string, right: string, work: Work): number {
+  work.identityComparisons += 1;
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function collisionGet<TValue>(
+  root: CollisionNode<TValue> | null,
+  key: string,
+  work: Work | undefined,
+): TValue | undefined {
+  let current = root;
+  while (current !== null) {
+    const comparison =
+      work === undefined
+        ? key < current.entry.key
+          ? -1
+          : key > current.entry.key
+            ? 1
+            : 0
+        : compareIdentity(key, current.entry.key, work);
+    if (comparison < 0) current = current.left;
+    else if (comparison > 0) current = current.right;
+    else return current.entry.value;
+  }
+  return undefined;
+}
+
+function collisionSet<TValue>(
+  root: CollisionNode<TValue> | null,
+  entry: HashEntry<TValue>,
+  work: Work,
+): CollisionNode<TValue> {
+  if (root === null) return collisionNode(entry, null, null, work);
+  const comparison = compareIdentity(entry.key, root.entry.key, work);
+  if (comparison < 0) {
+    return rebalanceCollision(
+      root.entry,
+      collisionSet(root.left, entry, work),
+      root.right,
+      work,
+    );
+  }
+  if (comparison > 0) {
+    return rebalanceCollision(
+      root.entry,
+      root.left,
+      collisionSet(root.right, entry, work),
+      work,
+    );
+  }
+  if (Object.is(root.entry.value, entry.value)) return root;
+  return collisionNode(entry, root.left, root.right, work);
+}
+
+function extractCollisionMinimum<TValue>(
+  root: CollisionNode<TValue>,
+  work: Work,
+): {
+  readonly root: CollisionNode<TValue> | null;
+  readonly minimum: HashEntry<TValue>;
+} {
+  if (root.left === null) return { root: root.right, minimum: root.entry };
+  const extracted = extractCollisionMinimum(root.left, work);
+  return {
+    minimum: extracted.minimum,
+    root: rebalanceCollision(root.entry, extracted.root, root.right, work),
+  };
+}
+
+function collisionDelete<TValue>(
+  root: CollisionNode<TValue> | null,
+  key: string,
+  work: Work,
+): CollisionNode<TValue> | null {
+  if (root === null) return null;
+  const comparison = compareIdentity(key, root.entry.key, work);
+  if (comparison < 0) {
+    const left = collisionDelete(root.left, key, work);
+    if (left === root.left) return root;
+    return rebalanceCollision(root.entry, left, root.right, work);
+  }
+  if (comparison > 0) {
+    const right = collisionDelete(root.right, key, work);
+    if (right === root.right) return root;
+    return rebalanceCollision(root.entry, root.left, right, work);
+  }
+  if (root.left === null) return root.right;
+  if (root.right === null) return root.left;
+  const extracted = extractCollisionMinimum(root.right, work);
+  return rebalanceCollision(extracted.minimum, root.left, extracted.root, work);
+}
+
+function minimumCollisionEntry<TValue>(
+  root: CollisionNode<TValue>,
+): HashEntry<TValue> {
+  let current = root;
+  while (current.left !== null) current = current.left;
+  return current.entry;
+}
+
+function hashCollision<TValue>(
+  hash: number,
+  root: CollisionNode<TValue>,
+  work: Work,
+): HashCollision<TValue> {
+  work.nodesCreated += 1;
+  return { kind: "collision", hash, root, count: root.count };
 }
 
 function hashBranch<TValue>(
@@ -377,16 +622,16 @@ function hashBranch<TValue>(
   };
 }
 
-function mergeHashLeaves<TValue>(
-  left: HashLeaf<TValue>,
-  right: HashLeaf<TValue>,
+function mergeHashTerminals<TValue>(
+  left: HashTerminal<TValue>,
+  right: HashTerminal<TValue>,
   shift: number,
   work: Work,
 ): HashNode<TValue> {
   const leftFragment = hashFragment(left.hash, shift);
   const rightFragment = hashFragment(right.hash, shift);
   if (leftFragment === rightFragment) {
-    const child = mergeHashLeaves(left, right, shift + 5, work);
+    const child = mergeHashTerminals(left, right, shift + 5, work);
     return hashBranch(hashBit(leftFragment), [child], work);
   }
   const leftBit = hashBit(leftFragment);
@@ -406,13 +651,13 @@ function hashGetNode<TValue>(
   work: Work | undefined,
 ): TValue | undefined {
   if (root === null) return undefined;
-  if (root.kind === "leaf") {
+  if (root.kind !== "branch") {
     if (root.hash !== hash) return undefined;
-    for (const entry of root.entries) {
+    if (root.kind === "leaf") {
       if (work !== undefined) work.identityComparisons += 1;
-      if (entry.key === key) return entry.value;
+      return root.entry.key === key ? root.entry.value : undefined;
     }
-    return undefined;
+    return collisionGet(root.root, key, work);
   }
   const bit = hashBit(hashFragment(hash, shift));
   if ((root.bitmap & bit) === 0) return undefined;
@@ -442,33 +687,37 @@ function hashSetNode<TValue>(
   shift: number,
   work: Work,
 ): HashNode<TValue> {
-  if (root === null) return hashLeaf(hash, [{ key, value }], work);
-  if (root.kind === "leaf") {
+  if (root === null) return hashLeaf(hash, { key, value }, work);
+  if (root.kind !== "branch") {
     if (root.hash !== hash) {
-      return mergeHashLeaves(
+      return mergeHashTerminals(
         root,
-        hashLeaf(hash, [{ key, value }], work),
+        hashLeaf(hash, { key, value }, work),
         shift,
         work,
       );
     }
-    const index = root.entries.findIndex((entry) => {
+    if (root.kind === "leaf") {
       work.identityComparisons += 1;
-      return entry.key === key;
-    });
-    if (index < 0) {
-      return hashLeaf(hash, [...root.entries, { key, value }], work);
+      if (root.entry.key === key) {
+        return Object.is(root.entry.value, value)
+          ? root
+          : hashLeaf(hash, { key, value }, work);
+      }
+      let collisionRoot = collisionSet(null, root.entry, work);
+      collisionRoot = collisionSet(collisionRoot, { key, value }, work);
+      return hashCollision(hash, collisionRoot, work);
     }
-    if (Object.is(root.entries[index]!.value, value)) return root;
-    const entries = [...root.entries];
-    entries[index] = { key, value };
-    return hashLeaf(hash, entries, work);
+    const collisionRoot = collisionSet(root.root, { key, value }, work);
+    return collisionRoot === root.root
+      ? root
+      : hashCollision(hash, collisionRoot, work);
   }
   const bit = hashBit(hashFragment(hash, shift));
   const position = hashPosition(root.bitmap, bit);
   if ((root.bitmap & bit) === 0) {
     const children = [...root.children];
-    children.splice(position, 0, hashLeaf(hash, [{ key, value }], work));
+    children.splice(position, 0, hashLeaf(hash, { key, value }, work));
     return hashBranch((root.bitmap | bit) >>> 0, children, work);
   }
   const child = hashSetNode(
@@ -503,19 +752,19 @@ function hashDeleteNode<TValue>(
   work: Work,
 ): HashNode<TValue> | null {
   if (root === null) return null;
-  if (root.kind === "leaf") {
+  if (root.kind !== "branch") {
     if (root.hash !== hash) return root;
-    const index = root.entries.findIndex((entry) => {
+    if (root.kind === "leaf") {
       work.identityComparisons += 1;
-      return entry.key === key;
-    });
-    if (index < 0) return root;
-    if (root.entries.length === 1) return null;
-    return hashLeaf(
-      hash,
-      root.entries.filter((_, entryIndex) => entryIndex !== index),
-      work,
-    );
+      return root.entry.key === key ? null : root;
+    }
+    const collisionRoot = collisionDelete(root.root, key, work);
+    if (collisionRoot === root.root) return root;
+    if (collisionRoot === null) return null;
+    if (collisionRoot.count === 1) {
+      return hashLeaf(hash, minimumCollisionEntry(collisionRoot), work);
+    }
+    return hashCollision(hash, collisionRoot, work);
   }
   const bit = hashBit(hashFragment(hash, shift));
   if ((root.bitmap & bit) === 0) return root;
@@ -533,7 +782,7 @@ function hashDeleteNode<TValue>(
     const children = root.children.filter(
       (_, childIndex) => childIndex !== position,
     );
-    if (children.length === 1 && children[0]?.kind === "leaf") {
+    if (children.length === 1 && children[0]?.kind !== "branch") {
       return children[0];
     }
     return hashBranch((root.bitmap & ~bit) >>> 0, children, work);
@@ -550,18 +799,6 @@ function hashDelete<TValue>(
 ): HashNode<TValue> | null {
   work.identityLookups += 1;
   return hashDeleteNode(root, key, hashIdentity(key), 0, work);
-}
-
-function forEachHashEntry<TValue>(
-  root: HashNode<TValue> | null,
-  visit: (entry: HashEntry<TValue>) => void,
-): void {
-  if (root === null) return;
-  if (root.kind === "leaf") {
-    for (const entry of root.entries) visit(entry);
-    return;
-  }
-  for (const child of root.children) forEachHashEntry(child, visit);
 }
 
 function mapNode<TValue>(
@@ -700,24 +937,6 @@ function mapDelete<TValue>(
   );
 }
 
-function buildMap<TValue>(
-  entries: readonly (readonly [string, TValue])[],
-  start: number,
-  end: number,
-  work: Work,
-): KeyMapNode<TValue> | null {
-  if (start >= end) return null;
-  const middle = Math.floor((start + end) / 2);
-  const [key, value] = entries[middle]!;
-  return mapNode(
-    key,
-    value,
-    buildMap(entries, start, middle, work),
-    buildMap(entries, middle + 1, end, work),
-    work,
-  );
-}
-
 function minimumMapEntry<TValue>(
   root: KeyMapNode<TValue> | null,
 ): KeyMapNode<TValue> | undefined {
@@ -726,16 +945,6 @@ function minimumMapEntry<TValue>(
     current = current.left;
   }
   return current ?? undefined;
-}
-
-function forEachMapEntry<TValue>(
-  root: KeyMapNode<TValue> | null,
-  visit: (key: string, value: TValue) => void,
-): void {
-  if (root === null) return;
-  forEachMapEntry(root.left, visit);
-  visit(root.key, root.value);
-  forEachMapEntry(root.right, visit);
 }
 
 function normalizeHeight(height: number, label: string): number {
@@ -786,27 +995,6 @@ function takeNextTicket(ticket: number): number {
     );
   }
   return ticket + 1;
-}
-
-function equalVisibleRows<TKey>(
-  root: SequenceNode<TKey> | null,
-  rows: readonly HeightValue<TKey>[],
-): boolean {
-  let index = 0;
-  const visit = (node: SequenceNode<TKey> | null): boolean => {
-    if (node === null) return true;
-    if (!visit(node.left)) return false;
-    const row = rows[index++];
-    if (
-      row === undefined ||
-      row.identity !== node.value.identity ||
-      row.estimatedHeight !== node.value.estimatedHeight
-    ) {
-      return false;
-    }
-    return visit(node.right);
-  };
-  return visit(root) && index === rows.length;
 }
 
 class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
@@ -1098,100 +1286,40 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   }
 
   replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey> {
-    const work = createWork(rows.length);
-    const measurementSnapshot = new Map<string, number>();
-    forEachHashEntry(this.#measurements, (entry) => {
-      work.measurementEntriesScanned += 1;
-      measurementSnapshot.set(entry.key, entry.value);
+    const builder = this.beginReplacement({
+      rowCount: rows.length,
+      entryAt: (index) => rows[index]!,
     });
-    const identities = new Set<string>();
-    const values = rows.map((row) => {
-      const identity = this.#identity(row.key);
-      work.identityLookups += 1;
-      if (identities.has(identity)) {
-        throw new Error(`Duplicate stable row-height key: ${identity}`);
-      }
-      identities.add(identity);
-      const estimatedHeight = this.#estimated(row.estimatedHeight);
-      work.identityLookups += 1;
-      const measuredHeight = measurementSnapshot.get(identity);
-      return {
-        ref: row.key,
-        identity,
-        estimatedHeight: row.estimatedHeight,
-        height: measuredHeight ?? estimatedHeight,
-        measured: measuredHeight !== undefined,
-      } satisfies HeightValue<TKey>;
-    });
-    if (equalVisibleRows(this.#root, values)) return this;
-    let visibleKeys: HashNode<true> | null = null;
-    for (const value of values) {
-      visibleKeys = hashSet(visibleKeys, value.identity, true, work);
-    }
+    while (!builder.done) builder.advance({ maxUnits: 256 });
+    return builder.finish();
+  }
 
-    let measurements = this.#measurements;
-    let nextTicket = this.#nextTicket;
-
-    const retainedTombstones: Array<{
-      readonly identity: string;
-      readonly ticket: number;
-    }> = [];
-    forEachMapEntry(this.#tombstoneOrder, (key, identity) => {
-      work.identityLookups += 1;
-      if (!identities.has(identity)) {
-        retainedTombstones.push({ identity, ticket: Number(key) });
-      }
-    });
-
-    forEachSequenceValue(this.#root, (value) => {
-      work.previousEntriesScanned += 1;
-      if (!value.measured) return;
-      work.identityLookups += 1;
-      if (identities.has(value.identity)) return;
-      if (this.#maxRetainedMeasurements === 0) {
-        measurements = hashDelete(measurements, value.identity, work);
-        return;
-      }
-      const ticket = nextTicket;
-      nextTicket = takeNextTicket(nextTicket);
-      retainedTombstones.push({ identity: value.identity, ticket });
-    });
-
-    const evictedCount = Math.max(
-      0,
-      retainedTombstones.length - this.#maxRetainedMeasurements,
-    );
-    for (let index = 0; index < evictedCount; index += 1) {
-      measurements = hashDelete(
-        measurements,
-        retainedTombstones[index]!.identity,
-        work,
+  beginReplacement(
+    source: RowHeightReplacementSource<TKey>,
+  ): RowHeightReplacementBuilder<TKey> {
+    if (!Number.isSafeInteger(source.rowCount) || source.rowCount < 0) {
+      throw new RangeError(
+        "Replacement source rowCount must be a non-negative safe integer.",
       );
     }
-    const keptTombstones = retainedTombstones.slice(evictedCount);
-    let tombstones: HashNode<number> | null = null;
-    const orderEntries: Array<readonly [string, string]> = [];
-    for (const retained of keptTombstones) {
-      tombstones = hashSet(
-        tombstones,
-        retained.identity,
-        retained.ticket,
-        work,
-      );
-      orderEntries.push([ticketKey(retained.ticket), retained.identity]);
+    if (typeof source.entryAt !== "function") {
+      throw new TypeError("Replacement source entryAt must be a function.");
     }
-    const tombstoneOrder = buildMap(orderEntries, 0, orderEntries.length, work);
-
-    const root = buildSequence(values, 0, values.length, work);
-    return this.#next(
-      root,
-      visibleKeys,
-      measurements,
-      tombstones,
-      tombstoneOrder,
-      nextTicket,
-      work,
-    );
+    return new PersistentRowHeightReplacementBuilder({
+      base: {
+        index: this,
+        defaultHeight: this.#defaultHeight,
+        getKey: this.#getKey,
+        root: this.#root,
+        visibleKeys: this.#visibleKeys,
+        measurements: this.#measurements,
+        tombstones: this.#tombstones,
+        tombstoneOrder: this.#tombstoneOrder,
+        nextTicket: this.#nextTicket,
+        maxRetainedMeasurements: this.#maxRetainedMeasurements,
+      },
+      source,
+    });
   }
 
   captureAnchor(
@@ -1266,6 +1394,583 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   }
 }
 
+class PersistentRowHeightReplacementBuilder<
+  TKey,
+> implements RowHeightReplacementBuilder<TKey> {
+  #status: RowHeightReplacementBuilderDiagnostics["status"] = "pending";
+  #phase: RowHeightReplacementProgress["phase"] = "ingest";
+  #base: ReplacementBase<TKey> | null;
+  #source: RowHeightReplacementSource<TKey> | null;
+  #values: HeightValue<TKey>[] | null = [];
+  #identities: Set<string> | null = new Set();
+  #retainedMeasurements: RetainedMeasurement[] | null = [];
+  #retainedTraversal: TraversalFrame<KeyMapNode<string>>[] | null = [];
+  #visibleTraversal: TraversalFrame<SequenceNode<TKey>>[] | null = [];
+  #sequenceBuildStack: SequenceBuildFrame<TKey>[] | null = [];
+  #retentionBuildStack: RetentionBuildFrame[] | null = [];
+  #visibleKeys: HashNode<true> | null = null;
+  #measurements: HashNode<number> | null;
+  #tombstones: HashNode<number> | null = null;
+  #tombstoneOrder: KeyMapNode<string> | null = null;
+  #root: SequenceNode<TKey> | null = null;
+  #nextTicket: number;
+  #ingestIndex = 0;
+  #retainedStart = 0;
+  #evictionIndex = 0;
+  #tombstoneBuildIndex = 0;
+  #completedUnits = 0;
+  #lastSliceUnits = 0;
+  #sliceCount = 0;
+  #maxSliceUnits = 0;
+  #maxSliceDuration = 0;
+  #noOp = false;
+  #equalVisible = true;
+  readonly #phaseUnits: Record<RowHeightReplacementProgress["phase"], number> =
+    {
+      ingest: 0,
+      "scan-retained": 0,
+      "scan-visible": 0,
+      evict: 0,
+      "build-tombstones": 0,
+      "build-sequence": 0,
+      "build-retention-order": 0,
+      done: 0,
+    };
+  readonly #totalUnits: number;
+  readonly #work = createWork();
+
+  constructor(options: {
+    readonly base: ReplacementBase<TKey>;
+    readonly source: RowHeightReplacementSource<TKey>;
+  }) {
+    this.#base = options.base;
+    this.#source = options.source;
+    this.#measurements = options.base.measurements;
+    this.#nextTicket = options.base.nextTicket;
+    this.#totalUnits = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      options.source.rowCount * 4 +
+        nodeCount(options.base.root) * 8 +
+        hashCount(options.base.tombstones) * 8 +
+        8,
+    );
+  }
+
+  get done(): boolean {
+    return this.#status === "done" || this.#status === "finished";
+  }
+
+  get progress(): RowHeightReplacementProgress {
+    return Object.freeze({
+      phase: this.#phase,
+      completedUnits: this.#completedUnits,
+      totalUnits: Math.max(this.#totalUnits, this.#completedUnits),
+      unitsThisSlice: this.#lastSliceUnits,
+      sourceRowsIngested: this.#ingestIndex,
+      previousRowsScanned: this.#work.previousEntriesScanned,
+      done: this.done,
+    });
+  }
+
+  get diagnostics(): RowHeightReplacementBuilderDiagnostics {
+    const candidateRoots = [
+      this.#root,
+      this.#visibleKeys,
+      this.#measurements,
+      this.#tombstones,
+      this.#tombstoneOrder,
+    ].filter((root) => root !== null).length;
+    return Object.freeze({
+      status: this.#status,
+      phase: this.#phase,
+      retainedBaseRootCount: this.#base === null ? 0 : 1,
+      retainedSourceCount: this.#source === null ? 0 : 1,
+      candidateArrayEntryCount:
+        (this.#values?.length ?? 0) + (this.#retainedMeasurements?.length ?? 0),
+      candidateStackEntryCount:
+        (this.#retainedTraversal?.length ?? 0) +
+        (this.#visibleTraversal?.length ?? 0) +
+        (this.#sequenceBuildStack?.length ?? 0) +
+        (this.#retentionBuildStack?.length ?? 0),
+      candidateRootCount: candidateRoots,
+      identitySetEntryCount: this.#identities?.size ?? 0,
+      maxSliceUnits: this.#maxSliceUnits,
+      maxSliceDuration: this.#maxSliceDuration,
+      sliceCount: this.#sliceCount,
+      completedUnits: this.#completedUnits,
+      totalUnits: Math.max(this.#totalUnits, this.#completedUnits),
+      phaseUnits: Object.freeze({ ...this.#phaseUnits }),
+      nodesCreated: this.#work.nodesCreated,
+      identityLookups: this.#work.identityLookups,
+      identityComparisons: this.#work.identityComparisons,
+    });
+  }
+
+  advance(
+    options: RowHeightReplacementAdvanceOptions,
+  ): RowHeightReplacementProgress {
+    this.#assertPending();
+    if (!Number.isSafeInteger(options.maxUnits) || options.maxUnits <= 0) {
+      throw new RangeError(
+        "Replacement maxUnits must be a positive safe integer.",
+      );
+    }
+    if (options.now !== undefined && typeof options.now !== "function") {
+      throw new TypeError("Replacement now must be a function.");
+    }
+    if (options.deadline !== undefined) {
+      if (!Number.isFinite(options.deadline)) {
+        throw new RangeError("Replacement deadline must be finite.");
+      }
+      if (options.now === undefined) {
+        throw new TypeError(
+          "Replacement now is required when deadline is supplied.",
+        );
+      }
+    }
+    const maxUnits = Math.min(256, Math.floor(options.maxUnits));
+    let units = 0;
+    let startedAt: number | undefined;
+    let observedAt: number | undefined;
+
+    try {
+      if (options.now !== undefined) {
+        startedAt = options.now();
+        if (!Number.isFinite(startedAt)) {
+          throw new RangeError(
+            "Replacement clock must return a finite number.",
+          );
+        }
+        observedAt = startedAt;
+      }
+      while (units < maxUnits && this.#status === "pending") {
+        const phase = this.#phase;
+        this.#step();
+        this.#phaseUnits[phase] += 1;
+        units += 1;
+        this.#completedUnits += 1;
+        if (options.now !== undefined) {
+          observedAt = options.now();
+          if (!Number.isFinite(observedAt)) {
+            throw new RangeError(
+              "Replacement clock must return a finite number.",
+            );
+          }
+          if (
+            options.deadline !== undefined &&
+            observedAt >= options.deadline
+          ) {
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      this.#status = "failed";
+      this.#release();
+      throw error;
+    }
+
+    this.#lastSliceUnits = units;
+    this.#sliceCount += 1;
+    this.#maxSliceUnits = Math.max(this.#maxSliceUnits, units);
+    if (startedAt !== undefined && observedAt !== undefined) {
+      this.#maxSliceDuration = Math.max(
+        this.#maxSliceDuration,
+        Math.max(0, observedAt - startedAt),
+      );
+    }
+    return this.progress;
+  }
+
+  finish(): RowHeightIndex<TKey> {
+    if (this.#status !== "done") {
+      if (this.#status === "pending") {
+        throw new RowHeightReplacementLifecycleError(
+          "not-ready",
+          "Replacement is not complete.",
+        );
+      }
+      throw this.#lifecycleError(this.#status);
+    }
+    const base = this.#base!;
+    const result = this.#noOp
+      ? base.index
+      : new PersistentRowHeightIndex({
+          defaultHeight: base.defaultHeight,
+          getKey: base.getKey,
+          root: this.#root,
+          visibleKeys: this.#visibleKeys,
+          measurements: this.#measurements,
+          tombstones: this.#tombstones,
+          tombstoneOrder: this.#tombstoneOrder,
+          nextTicket: this.#nextTicket,
+          maxRetainedMeasurements: base.maxRetainedMeasurements,
+          work: this.#work,
+        });
+    this.#status = "finished";
+    this.#release();
+    return result;
+  }
+
+  cancel(): void {
+    if (this.#status === "cancelled") return;
+    if (this.#status === "pending" || this.#status === "done") {
+      this.#status = "cancelled";
+      this.#release();
+    }
+  }
+
+  #assertPending(): void {
+    if (this.#status === "pending") return;
+    throw this.#lifecycleError(this.#status);
+  }
+
+  #lifecycleError(
+    status: RowHeightReplacementBuilderDiagnostics["status"],
+  ): RowHeightReplacementLifecycleError {
+    const code: ReplacementLifecycleCode =
+      status === "pending" ? "not-ready" : status;
+    return new RowHeightReplacementLifecycleError(
+      code,
+      `Replacement builder is ${status}.`,
+    );
+  }
+
+  #step(): void {
+    switch (this.#phase) {
+      case "ingest":
+        this.#stepIngest();
+        return;
+      case "scan-retained":
+        this.#stepRetainedTraversal();
+        return;
+      case "scan-visible":
+        this.#stepVisibleTraversal();
+        return;
+      case "evict":
+        this.#stepEviction();
+        return;
+      case "build-tombstones":
+        this.#stepTombstoneBuild();
+        return;
+      case "build-sequence":
+        this.#stepSequenceBuild();
+        return;
+      case "build-retention-order":
+        this.#stepRetentionBuild();
+        return;
+      case "done":
+        throw new RowHeightReplacementLifecycleError(
+          "done",
+          "Replacement builder is done.",
+        );
+    }
+  }
+
+  #stepIngest(): void {
+    const source = this.#source!;
+    const base = this.#base!;
+    const values = this.#values!;
+    const identities = this.#identities!;
+    if (this.#ingestIndex < source.rowCount) {
+      const row = source.entryAt(this.#ingestIndex);
+      const identity = encodeStableKey(base.getKey(row.key));
+      this.#work.entriesVisited += 1;
+      this.#work.identityLookups += 1;
+      if (identities.has(identity)) {
+        throw new Error(`Duplicate stable row-height key: ${identity}`);
+      }
+      identities.add(identity);
+      const estimatedHeight =
+        row.estimatedHeight === undefined
+          ? base.defaultHeight
+          : normalizeHeight(row.estimatedHeight, "Estimated row height");
+      const measuredHeight = hashGet(this.#measurements, identity, this.#work);
+      if (measuredHeight !== undefined) {
+        this.#work.measurementEntriesScanned += 1;
+      }
+      this.#visibleKeys = hashSet(
+        this.#visibleKeys,
+        identity,
+        true,
+        this.#work,
+      );
+      values.push({
+        ref: row.key,
+        identity,
+        estimatedHeight: row.estimatedHeight,
+        height: measuredHeight ?? estimatedHeight,
+        measured: measuredHeight !== undefined,
+      });
+      this.#ingestIndex += 1;
+      return;
+    }
+
+    this.#source = null;
+    this.#phase = "scan-retained";
+    if (base.tombstoneOrder !== null) {
+      this.#retainedTraversal!.push({
+        node: base.tombstoneOrder,
+        state: 0,
+      });
+    }
+  }
+
+  #stepRetainedTraversal(): void {
+    const stack = this.#retainedTraversal!;
+    const frame = stack.at(-1);
+    if (frame === undefined) {
+      this.#phase = "scan-visible";
+      const root = this.#base!.root;
+      if (root !== null) this.#visibleTraversal!.push({ node: root, state: 0 });
+      return;
+    }
+    if (frame.state === 0) {
+      frame.state = 1;
+      if (frame.node.left !== null) {
+        stack.push({ node: frame.node.left, state: 0 });
+      }
+      return;
+    }
+    if (frame.state === 1) {
+      frame.state = 2;
+      this.#work.identityLookups += 1;
+      if (!this.#identities!.has(frame.node.value)) {
+        this.#retainedMeasurements!.push({
+          identity: frame.node.value,
+          ticket: Number(frame.node.key),
+        });
+      }
+      return;
+    }
+    stack.pop();
+    if (frame.node.right !== null) {
+      stack.push({ node: frame.node.right, state: 0 });
+    }
+  }
+
+  #stepVisibleTraversal(): void {
+    const stack = this.#visibleTraversal!;
+    const frame = stack.at(-1);
+    if (frame === undefined) {
+      if (
+        this.#equalVisible &&
+        this.#work.previousEntriesScanned === this.#values!.length
+      ) {
+        this.#noOp = true;
+        this.#phase = "done";
+        this.#status = "done";
+        return;
+      }
+      this.#phase = "evict";
+      this.#retainedStart = Math.max(
+        0,
+        this.#retainedMeasurements!.length -
+          this.#base!.maxRetainedMeasurements,
+      );
+      return;
+    }
+    if (frame.state === 0) {
+      frame.state = 1;
+      if (frame.node.left !== null) {
+        stack.push({ node: frame.node.left, state: 0 });
+      }
+      return;
+    }
+    if (frame.state === 1) {
+      frame.state = 2;
+      const value = frame.node.value;
+      const candidate = this.#values![this.#work.previousEntriesScanned];
+      if (
+        candidate === undefined ||
+        candidate.identity !== value.identity ||
+        candidate.estimatedHeight !== value.estimatedHeight
+      ) {
+        this.#equalVisible = false;
+      }
+      this.#work.previousEntriesScanned += 1;
+      if (value.measured) {
+        this.#work.identityLookups += 1;
+        if (!this.#identities!.has(value.identity)) {
+          if (this.#base!.maxRetainedMeasurements === 0) {
+            this.#measurements = hashDelete(
+              this.#measurements,
+              value.identity,
+              this.#work,
+            );
+          } else {
+            const ticket = this.#nextTicket;
+            this.#nextTicket = takeNextTicket(this.#nextTicket);
+            this.#retainedMeasurements!.push({
+              identity: value.identity,
+              ticket,
+            });
+          }
+        }
+      }
+      return;
+    }
+    stack.pop();
+    if (frame.node.right !== null) {
+      stack.push({ node: frame.node.right, state: 0 });
+    }
+  }
+
+  #stepEviction(): void {
+    if (this.#evictionIndex < this.#retainedStart) {
+      const evicted = this.#retainedMeasurements![this.#evictionIndex]!;
+      this.#measurements = hashDelete(
+        this.#measurements,
+        evicted.identity,
+        this.#work,
+      );
+      this.#evictionIndex += 1;
+      return;
+    }
+    this.#phase = "build-tombstones";
+    this.#tombstoneBuildIndex = this.#retainedStart;
+  }
+
+  #stepTombstoneBuild(): void {
+    const retained = this.#retainedMeasurements!;
+    if (this.#tombstoneBuildIndex < retained.length) {
+      const value = retained[this.#tombstoneBuildIndex]!;
+      this.#tombstones = hashSet(
+        this.#tombstones,
+        value.identity,
+        value.ticket,
+        this.#work,
+      );
+      this.#tombstoneBuildIndex += 1;
+      return;
+    }
+    this.#phase = "build-sequence";
+    if (this.#values!.length > 0) {
+      this.#sequenceBuildStack!.push(
+        this.#newSequenceBuildFrame(0, this.#values!.length),
+      );
+    }
+  }
+
+  #stepSequenceBuild(): void {
+    const stack = this.#sequenceBuildStack!;
+    const frame = stack.at(-1);
+    if (frame === undefined) {
+      this.#phase = "build-retention-order";
+      if (this.#retainedStart < this.#retainedMeasurements!.length) {
+        this.#retentionBuildStack!.push(
+          this.#newRetentionBuildFrame(
+            this.#retainedStart,
+            this.#retainedMeasurements!.length,
+          ),
+        );
+      }
+      return;
+    }
+    if (frame.state === 0) {
+      frame.state = 1;
+      if (frame.start < frame.middle) {
+        stack.push(this.#newSequenceBuildFrame(frame.start, frame.middle));
+      }
+      return;
+    }
+    if (frame.state === 1) {
+      frame.state = 2;
+      if (frame.middle + 1 < frame.end) {
+        stack.push(this.#newSequenceBuildFrame(frame.middle + 1, frame.end));
+      }
+      return;
+    }
+    const node = sequenceNode(
+      this.#values![frame.middle]!,
+      frame.left,
+      frame.right,
+      this.#work,
+    );
+    stack.pop();
+    const parent = stack.at(-1);
+    if (parent === undefined) this.#root = node;
+    else if (parent.state === 1) parent.left = node;
+    else parent.right = node;
+  }
+
+  #stepRetentionBuild(): void {
+    const stack = this.#retentionBuildStack!;
+    const frame = stack.at(-1);
+    if (frame === undefined) {
+      this.#phase = "done";
+      this.#status = "done";
+      return;
+    }
+    if (frame.state === 0) {
+      frame.state = 1;
+      if (frame.start < frame.middle) {
+        stack.push(this.#newRetentionBuildFrame(frame.start, frame.middle));
+      }
+      return;
+    }
+    if (frame.state === 1) {
+      frame.state = 2;
+      if (frame.middle + 1 < frame.end) {
+        stack.push(this.#newRetentionBuildFrame(frame.middle + 1, frame.end));
+      }
+      return;
+    }
+    const retained = this.#retainedMeasurements![frame.middle]!;
+    const node = mapNode(
+      ticketKey(retained.ticket),
+      retained.identity,
+      frame.left,
+      frame.right,
+      this.#work,
+    );
+    stack.pop();
+    const parent = stack.at(-1);
+    if (parent === undefined) this.#tombstoneOrder = node;
+    else if (parent.state === 1) parent.left = node;
+    else parent.right = node;
+  }
+
+  #newSequenceBuildFrame(start: number, end: number): SequenceBuildFrame<TKey> {
+    return {
+      start,
+      end,
+      middle: Math.floor((start + end) / 2),
+      state: 0,
+      left: null,
+      right: null,
+    };
+  }
+
+  #newRetentionBuildFrame(start: number, end: number): RetentionBuildFrame {
+    return {
+      start,
+      end,
+      middle: Math.floor((start + end) / 2),
+      state: 0,
+      left: null,
+      right: null,
+    };
+  }
+
+  #release(): void {
+    this.#base = null;
+    this.#source = null;
+    this.#values = null;
+    this.#identities = null;
+    this.#retainedMeasurements = null;
+    this.#retainedTraversal = null;
+    this.#visibleTraversal = null;
+    this.#sequenceBuildStack = null;
+    this.#retentionBuildStack = null;
+    this.#visibleKeys = null;
+    this.#measurements = null;
+    this.#tombstones = null;
+    this.#tombstoneOrder = null;
+    this.#root = null;
+  }
+}
+
 export function createRowHeightIndex<TKey>(
   options: CreateRowHeightIndexOptions<TKey>,
 ): RowHeightIndex<TKey> {
@@ -1308,4 +2013,16 @@ export function getRowHeightIndexDiagnosticsForTesting(
     throw new TypeError("Diagnostics require a persistent row-height index.");
   }
   return index.diagnostics;
+}
+
+/** Direct test seam; intentionally not exported from the layout-core barrel. */
+export function getRowHeightReplacementBuilderDiagnosticsForTesting(
+  builder: unknown,
+): RowHeightReplacementBuilderDiagnostics {
+  if (!(builder instanceof PersistentRowHeightReplacementBuilder)) {
+    throw new TypeError(
+      "Diagnostics require a persistent row-height replacement builder.",
+    );
+  }
+  return builder.diagnostics;
 }

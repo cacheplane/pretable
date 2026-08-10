@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { planViewport } from "../viewport-plan";
 import { createRowMetricsIndex } from "../prefix-sums";
+import * as rowHeightIndexTesting from "../row-height-index";
 import {
   createRowHeightIndex,
   getRowHeightIndexDiagnosticsForTesting,
@@ -23,6 +24,82 @@ const entry = (key: Key, estimatedHeight?: number): RowHeightEntry<Key> => ({
   key,
   estimatedHeight,
 });
+
+const FNV_PRIME = 0x01000193;
+const FNV_PRIME_INVERSE = 899_433_627;
+
+function fnv1a(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), FNV_PRIME) >>> 0;
+  }
+  return hash;
+}
+
+function sameHashKeys(count: number): string[] {
+  const targetHash = 0x4a17c0de;
+  const encodedPrefix = "s:5:";
+  const targetBeforeLastCharacter =
+    Math.imul(targetHash, FNV_PRIME_INVERSE) >>> 0;
+  const result: string[] = [];
+
+  for (let identityIndex = 0; identityIndex < count; identityIndex += 1) {
+    const first = (identityIndex >>> 16) & 0xffff;
+    const second = identityIndex & 0xffff;
+    let hash = fnv1a(encodedPrefix);
+    hash = Math.imul(hash ^ first, FNV_PRIME) >>> 0;
+    hash = Math.imul(hash ^ second, FNV_PRIME) >>> 0;
+    let found: string | undefined;
+
+    for (let third = 0; third <= 0xffff && found === undefined; third += 1) {
+      const afterThird = Math.imul(hash ^ third, FNV_PRIME) >>> 0;
+      for (let fourth = 0; fourth <= 0xffff; fourth += 1) {
+        const afterFourth = Math.imul(afterThird ^ fourth, FNV_PRIME) >>> 0;
+        const fifth = (afterFourth ^ targetBeforeLastCharacter) >>> 0;
+        if (fifth <= 0xffff) {
+          found = String.fromCharCode(first, second, third, fourth, fifth);
+          break;
+        }
+      }
+    }
+
+    if (found === undefined)
+      throw new Error("Unable to generate FNV collision.");
+    result.push(found);
+  }
+
+  return result;
+}
+
+function replacementDiagnostics(builder: unknown): Record<string, unknown> {
+  const seam = (
+    rowHeightIndexTesting as unknown as {
+      getRowHeightReplacementBuilderDiagnosticsForTesting?: (
+        value: unknown,
+      ) => Record<string, unknown>;
+    }
+  ).getRowHeightReplacementBuilderDiagnosticsForTesting;
+  if (seam === undefined) {
+    throw new Error("Replacement-builder diagnostics are unavailable.");
+  }
+  return seam(builder);
+}
+
+function expectReplacementLifecycleError(
+  operation: () => unknown,
+  code: string,
+): void {
+  let thrown: unknown;
+  try {
+    operation();
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toMatchObject({
+    name: "RowHeightReplacementLifecycleError",
+    code,
+  });
+}
 
 function createIndex(
   rows: readonly RowHeightEntry<Key>[],
@@ -178,6 +255,57 @@ describe("persistent row-height index", () => {
     expect(
       index.apply([{ kind: "insert", ref: first, index: 1 }]).getHeight(1),
     ).toBe(51);
+  });
+
+  test("keeps adversarial full-hash collisions logarithmic and persistent", () => {
+    const keys = sameHashKeys(1_600);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(
+      new Set(keys.map((key) => fnv1a(`s:${key.length}:${key}`))).size,
+    ).toBe(1);
+
+    for (const count of [200, 400, 800, 1_600]) {
+      const collisionKeys = keys.slice(0, count);
+      const index = createRowHeightIndex({
+        defaultHeight: 30,
+        getKey: (key: string) => key,
+        rows: collisionKeys.map((key, rowIndex) => ({
+          key,
+          estimatedHeight: 10 + (rowIndex % 20),
+        })),
+      });
+      const work = getRowHeightIndexDiagnosticsForTesting(index);
+      expect(work.identityComparisons).toBeLessThan(count * 24);
+      expect(work.nodesCreated).toBeLessThan(count * 36);
+      expect(index.keyAt(0)).toBe(collisionKeys[0]);
+      expect(index.keyAt(count - 1)).toBe(collisionKeys[count - 1]);
+      expect(index.getHeight(count - 1)).toBe(10 + ((count - 1) % 20));
+    }
+
+    const historical = createRowHeightIndex({
+      defaultHeight: 30,
+      getKey: (key: string) => key,
+      rows: keys.map((key, rowIndex) => ({
+        key,
+        estimatedHeight: 10 + (rowIndex % 20),
+      })),
+    });
+    const removed = historical.apply(
+      keys.slice(0, 800).map((key) => ({
+        kind: "remove" as const,
+        ref: key,
+        previousIndex: 0,
+      })),
+    );
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(removed).identityComparisons,
+    ).toBeLessThan(800 * 30);
+    expect(removed.rowCount).toBe(800);
+    expect(removed.keyAt(0)).toBe(keys[800]);
+    expect(removed.getHeight(0)).toBe(10);
+    expect(removed.keyAt(799)).toBe(keys[1_599]);
+    expect(historical.rowCount).toBe(1_600);
+    expect(historical.keyAt(0)).toBe(keys[0]);
   });
 
   test("updates invalidate stale measurements while moves leave them intact", () => {
@@ -405,6 +533,197 @@ describe("persistent row-height index", () => {
     expect(work.identityComparisons).toBeLessThanOrEqual(count * 8 + 1_000);
     expect(work.nodesCreated).toBeLessThanOrEqual(count * 12);
     expect(replaced.getHeight(count - 1)).toBe(25);
+  });
+
+  test("rebuilds 100k replacement roots cooperatively with a hard slice cap", () => {
+    const count = 100_000;
+    const rows = Array.from({ length: count }, (_, index) =>
+      entry(data(String(index)), 20),
+    );
+    const base = createIndex(rows, 30, 100_000)
+      .measure(0, data("0"), 41)
+      .measure(50_000, data("50000"), 42);
+    let entryAtCalls = 0;
+    const source = {
+      rowCount: count,
+      entryAt: (index: number) => {
+        entryAtCalls += 1;
+        return entry(data(String(count - index - 1)), 20);
+      },
+    };
+    const builder = base.beginReplacement(source);
+
+    expect(entryAtCalls).toBe(0);
+    expectReplacementLifecycleError(() => builder.finish(), "not-ready");
+    expect(() => builder.advance({ maxUnits: 32, deadline: 10 })).toThrow(
+      /now.*deadline/i,
+    );
+
+    const first = builder.advance({ maxUnits: 10_000, now: () => 0 });
+    expect(first.unitsThisSlice).toBe(256);
+    expect(first.done).toBe(false);
+    expect(first.completedUnits).toBe(256);
+    expect(first.totalUnits).toBeGreaterThanOrEqual(first.completedUnits);
+    expect(first.sourceRowsIngested).toBeGreaterThan(0);
+    expect(replacementDiagnostics(builder)).toMatchObject({
+      status: "pending",
+      retainedBaseRootCount: 1,
+      retainedSourceCount: 1,
+      candidateArrayEntryCount: 256,
+      candidateStackEntryCount: 0,
+      candidateRootCount: 2,
+      identitySetEntryCount: 256,
+      maxSliceUnits: 256,
+    });
+
+    let slices = 1;
+    let previousCompleted = first.completedUnits;
+    let previousTotal = first.totalUnits;
+    while (!builder.done) {
+      const progress = builder.advance({ maxUnits: 256, now: () => 0 });
+      expect(progress.unitsThisSlice).toBeLessThanOrEqual(256);
+      expect(progress.completedUnits).toBeGreaterThan(previousCompleted);
+      expect(progress.totalUnits).toBeGreaterThanOrEqual(previousTotal);
+      expect(progress.totalUnits).toBeGreaterThanOrEqual(
+        progress.completedUnits,
+      );
+      previousCompleted = progress.completedUnits;
+      previousTotal = progress.totalUnits;
+      slices += 1;
+    }
+
+    expect(slices).toBeGreaterThan(1_000);
+    expect(entryAtCalls).toBe(count);
+    const doneDiagnostics = replacementDiagnostics(builder);
+    expect(doneDiagnostics).toMatchObject({
+      status: "done",
+      maxSliceUnits: 256,
+      retainedBaseRootCount: 1,
+      retainedSourceCount: 0,
+    });
+    expect(
+      Object.values(
+        doneDiagnostics.phaseUnits as Record<string, number>,
+      ).reduce((total, units) => total + units, 0),
+    ).toBe(doneDiagnostics.completedUnits);
+
+    const rebuilt = builder.finish();
+    const synchronous = base.replace([...rows].reverse());
+    expect(rebuilt.rowCount).toBe(count);
+    expect(rebuilt.getTotalHeight()).toBe(synchronous.getTotalHeight());
+    for (const index of [0, 1, 49_999, 50_000, count - 2, count - 1]) {
+      expect(rebuilt.keyAt(index)).toEqual(synchronous.keyAt(index));
+      expect(rebuilt.getHeight(index)).toBe(synchronous.getHeight(index));
+      expect(rebuilt.getOffsetForIndex(index)).toBe(
+        synchronous.getOffsetForIndex(index),
+      );
+    }
+    expect(rebuilt.getHeight(49_999)).toBe(42);
+    expect(rebuilt.getHeight(count - 1)).toBe(41);
+    expect(replacementDiagnostics(builder)).toMatchObject({
+      status: "finished",
+      retainedBaseRootCount: 0,
+      retainedSourceCount: 0,
+      candidateArrayEntryCount: 0,
+      candidateStackEntryCount: 0,
+      candidateRootCount: 0,
+      identitySetEntryCount: 0,
+    });
+    expectReplacementLifecycleError(() => builder.finish(), "finished");
+  });
+
+  test("honors deadline and releases cancelled or failed replacement state", () => {
+    const rows = Array.from({ length: 1_000 }, (_, index) =>
+      entry(data(String(index)), 20),
+    );
+    const base = createIndex(rows, 30, 16).measure(0, data("0"), 44);
+    const source = {
+      rowCount: rows.length,
+      entryAt: (index: number) => rows[rows.length - index - 1]!,
+    };
+    const deadlineBuilder = base.beginReplacement(source);
+    let clock = 0;
+    const deadlineProgress = deadlineBuilder.advance({
+      maxUnits: 256,
+      deadline: 4,
+      now: () => clock++,
+    });
+    expect(deadlineProgress.unitsThisSlice).toBeGreaterThan(0);
+    expect(deadlineProgress.unitsThisSlice).toBeLessThanOrEqual(4);
+    expect(replacementDiagnostics(deadlineBuilder)).toMatchObject({
+      maxSliceUnits: deadlineProgress.unitsThisSlice,
+      maxSliceDuration: 4,
+    });
+    deadlineBuilder.cancel();
+    deadlineBuilder.cancel();
+    expect(replacementDiagnostics(deadlineBuilder)).toMatchObject({
+      status: "cancelled",
+      retainedBaseRootCount: 0,
+      retainedSourceCount: 0,
+      candidateArrayEntryCount: 0,
+      candidateStackEntryCount: 0,
+      candidateRootCount: 0,
+      identitySetEntryCount: 0,
+    });
+    expectReplacementLifecycleError(
+      () => deadlineBuilder.advance({ maxUnits: 1 }),
+      "cancelled",
+    );
+
+    const failing = base.beginReplacement({
+      rowCount: 10,
+      entryAt: (index: number) => {
+        if (index === 5) throw new Error("replacement source exploded");
+        return entry(data(`next-${index}`), 25);
+      },
+    });
+    expect(() => failing.advance({ maxUnits: 256 })).toThrow(
+      "replacement source exploded",
+    );
+    expect(base.rowCount).toBe(1_000);
+    expect(base.getHeight(0)).toBe(44);
+    expect(replacementDiagnostics(failing)).toMatchObject({
+      status: "failed",
+      retainedBaseRootCount: 0,
+      retainedSourceCount: 0,
+      candidateArrayEntryCount: 0,
+      candidateStackEntryCount: 0,
+      candidateRootCount: 0,
+      identitySetEntryCount: 0,
+    });
+    expectReplacementLifecycleError(
+      () => failing.advance({ maxUnits: 1 }),
+      "failed",
+    );
+  });
+
+  test("slices semantic no-op detection instead of hiding a full old-root scan", () => {
+    const rows = Array.from({ length: 1_000 }, (_, index) =>
+      entry(data(String(index)), 20),
+    );
+    const base = createIndex(rows);
+    const builder = base.beginReplacement({
+      rowCount: rows.length,
+      entryAt: (index) => entry(data(String(index)), 20),
+    });
+
+    while (builder.progress.sourceRowsIngested < rows.length) {
+      builder.advance({
+        maxUnits: Math.min(
+          256,
+          rows.length - builder.progress.sourceRowsIngested,
+        ),
+        now: () => 0,
+      });
+    }
+    const afterIngest = builder.advance({ maxUnits: 1, now: () => 0 });
+    expect(afterIngest.done).toBe(false);
+    expect(afterIngest.phase).toBe("scan-retained");
+    expect(afterIngest.previousRowsScanned).toBe(0);
+
+    while (!builder.done) builder.advance({ maxUnits: 256, now: () => 0 });
+    expect(builder.progress.previousRowsScanned).toBe(rows.length);
+    expect(builder.finish()).toBe(base);
   });
 
   test("leaves cache and sequence roots unchanged when replacement identity fails", () => {

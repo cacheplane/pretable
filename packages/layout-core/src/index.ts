@@ -30,5 +30,9 @@ export type {
   RowHeightEntry,
   RowHeightIndex,
   RowHeightOperation,
+  RowHeightReplacementAdvanceOptions,
+  RowHeightReplacementBuilder,
+  RowHeightReplacementProgress,
+  RowHeightReplacementSource,
   ViewportPlan,
 } from "./types";
