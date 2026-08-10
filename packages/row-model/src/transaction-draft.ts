@@ -7,11 +7,16 @@ import {
 } from "./errors";
 import type { RevisionRoot, RowRecord } from "./internal-types";
 import {
+  attachGroupIndex,
+  getGroupIndex,
+  updateGroupIndex,
+} from "./group-index";
+import {
   inspectRowIntegrity,
   type PretableRowIntegrityDiagnostic,
 } from "./row-integrity";
 import type { PretableMutationIssue, PretableTransaction } from "./types";
-import { createFlatVisibleTree } from "./visible-index";
+import { createFlatVisibleTree, createVisibleIndex } from "./visible-index";
 
 interface TransactionDraftInput<
   TRow extends object,
@@ -577,18 +582,20 @@ export function applyFlatTransactionDraft<
 
     const rowDraft = input.root.rows.asTransient();
     const sourceDraft = input.root.sourceOrder.asTransient();
+    const previousGroups = getGroupIndex(input.root.visible);
     const visibleNeedsChange =
-      effectiveRemoves.some(
+      previousGroups === undefined &&
+      (effectiveRemoves.some(
         (rowId) => input.root.rows.get(rowId)?.metadata.filterPasses === true,
       ) ||
-      prepared.some((record) => {
-        const previous = input.root.rows.get(record.rowId);
-        return (
-          (previous?.metadata.filterPasses === true ||
-            record.metadata.filterPasses) &&
-          (previous === undefined || !sameFlatOrder(previous, record))
-        );
-      });
+        prepared.some((record) => {
+          const previous = input.root.rows.get(record.rowId);
+          return (
+            (previous?.metadata.filterPasses === true ||
+              record.metadata.filterPasses) &&
+            (previous === undefined || !sameFlatOrder(previous, record))
+          );
+        }));
     const visibleDraft = visibleNeedsChange
       ? input.root.visible.rows.asTransient()
       : undefined;
@@ -611,13 +618,32 @@ export function applyFlatTransactionDraft<
       if (previous?.metadata.filterPasses) visibleDraft?.remove(record.rowId);
       if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
     }
+    const frozenRows = rowDraft.freeze();
+    const frozenFlatRows = visibleDraft?.freeze();
+    const grouped =
+      previousGroups === undefined
+        ? undefined
+        : updateGroupIndex(
+            previousGroups,
+            [
+              ...effectiveRemoves.map((rowId) => input.root.rows.get(rowId)!),
+              ...prepared.flatMap((record) => {
+                const old = input.root.rows.get(record.rowId);
+                return old === undefined ? [] : [old];
+              }),
+            ],
+            prepared,
+            input.root.expansion.overrides,
+          );
     return {
-      rows: rowDraft.freeze(),
+      rows: frozenRows,
       sourceOrder: sourceDraft.freeze(),
       visible:
-        visibleDraft === undefined
-          ? input.root.visible
-          : Object.freeze({ rows: visibleDraft.freeze() }),
+        grouped !== undefined
+          ? attachGroupIndex(frozenFlatRows ?? input.root.visible.rows, grouped)
+          : visibleDraft === undefined
+            ? input.root.visible
+            : Object.freeze({ rows: frozenFlatRows! }),
       nextSourceOrder,
       added: addById.size,
       updated: prepared.length - addById.size,
@@ -884,13 +910,26 @@ export function replaceFlatRowsDraft<
   for (const record of orderChangedRecords) {
     if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
   }
-  return {
-    rows: rowDraft.freeze(),
-    sourceOrder: sourceDraft.freeze(),
-    visible:
-      visibleDraft === undefined
+  const frozenRows = rowDraft.freeze();
+  const frozenSource = sourceDraft.freeze();
+  const previousGroups = getGroupIndex(input.root.visible);
+  const visible =
+    previousGroups === undefined
+      ? visibleDraft === undefined
         ? input.root.visible
-        : Object.freeze({ rows: visibleDraft.freeze() }),
+        : Object.freeze({ rows: visibleDraft.freeze() })
+      : createVisibleIndex(
+          Array.from(frozenRows.entries(), ([, record]) => record),
+          input.queryPlan,
+          previousGroups.aggregateFilteredRows,
+          input.root.expansion.overrides,
+          "set-rows",
+          previousGroups,
+        );
+  return {
+    rows: frozenRows,
+    sourceOrder: frozenSource,
+    visible,
     nextSourceOrder: Math.max(input.nextSourceOrder, captured.length),
     added,
     updated,

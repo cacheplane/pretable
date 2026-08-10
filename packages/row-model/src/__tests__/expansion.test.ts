@@ -1,0 +1,202 @@
+import { describe, expect, test, vi } from "vitest";
+
+import {
+  createColumnHelper,
+  createLocalRowModel,
+  type PretableGroupId,
+} from "../index";
+
+interface Row {
+  id: number;
+  region: string;
+  team: string;
+  score: number;
+}
+const helper = createColumnHelper<Row>();
+const columns = [
+  helper.accessor("region", { type: "text" }),
+  helper.accessor("team", { type: "text" }),
+  helper.accessor("score", { type: "number", aggregate: "sum" }),
+] as const;
+const rows = [
+  { id: 1, region: "West", team: "A", score: 1 },
+  { id: 2, region: "West", team: "B", score: 2 },
+  { id: 3, region: "East", team: "A", score: 3 },
+];
+const west = "__group__:region=s:West" as PretableGroupId;
+const westA = "__group__:region=s:West/team=s:A" as PretableGroupId;
+
+function model(
+  initialExpansion?:
+    | { readonly kind: "collapsed" | "expanded" }
+    | { readonly kind: "through-depth"; readonly depth: number },
+) {
+  return createLocalRowModel({
+    rows,
+    columns,
+    initialExpansion,
+    query: {
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "region" }, { columnId: "team" }],
+    },
+  });
+}
+
+describe("group expansion policies", () => {
+  test("defaults collapsed and treats through-depth as inclusive and zero-based", () => {
+    expect(model().getState().snapshot.visibleRowCount).toBe(2);
+    const through = model({ kind: "through-depth", depth: 0 }).getState()
+      .snapshot;
+    expect(
+      through
+        .range(0, 20)
+        .flatMap((row) =>
+          row.kind === "group" && row.depth === 0 ? [row.expanded] : [],
+        )
+        .every(Boolean),
+    ).toBe(true);
+    expect(
+      through
+        .range(0, 20)
+        .flatMap((row) =>
+          row.kind === "group" && row.depth === 1 ? [row.expanded] : [],
+        )
+        .every((expanded) => !expanded),
+    ).toBe(true);
+    expect(through.visibleDataRowCount).toBe(0);
+  });
+
+  test("stores sparse overrides and removes an override equal to the default", () => {
+    const grouped = model();
+    const first = grouped.setGroupExpanded(west, true);
+    expect(first.revision).toBe(1);
+    expect(grouped.getState().snapshot.expansion.overrideCount).toBe(1);
+    expect(grouped.getState().snapshot.isGroupExpanded(west)).toBe(true);
+    const second = grouped.setGroupExpanded(west, false);
+    expect(second.revision).toBe(2);
+    expect(grouped.getState().snapshot.expansion.overrideCount).toBe(0);
+  });
+
+  test("returns a structured no-op issue for an unknown group", () => {
+    const grouped = model();
+    const unknown = "__group__:region=s:Missing" as PretableGroupId;
+    const before = grouped.getState();
+    expect(grouped.setGroupExpanded(unknown, true)).toMatchObject({
+      previousRevision: 0,
+      revision: 0,
+      ignored: 1,
+      issues: [{ code: "unknown-group-id", groupId: unknown }],
+    });
+    expect(grouped.getState()).toBe(before);
+  });
+
+  test("applies default changes to future groups and clears or preserves overrides", () => {
+    const grouped = model();
+    grouped.setGroupExpanded(west, true);
+    grouped.setExpansionDefault(
+      { kind: "expanded" },
+      { preserveOverrides: true },
+    );
+    expect(grouped.getState().snapshot.expansion.overrideCount).toBe(1);
+    grouped.applyTransaction({
+      add: [{ id: 4, region: "North", team: "N", score: 4 }],
+    });
+    const north = "__group__:region=s:North" as PretableGroupId;
+    expect(grouped.getState().snapshot.isGroupExpanded(north)).toBe(true);
+    grouped.setExpansionDefault({ kind: "collapsed" });
+    expect(grouped.getState().snapshot.expansion.overrideCount).toBe(0);
+  });
+
+  test("expandAll and collapseAll replace policy roots without enumerating groups", () => {
+    const grouped = model();
+    const listener = vi.fn();
+    grouped.subscribe(listener);
+    expect(grouped.expandAll()).toMatchObject({
+      previousRevision: 0,
+      revision: 1,
+    });
+    expect(grouped.getState().snapshot.expansion).toEqual({
+      default: { kind: "expanded" },
+      overrideCount: 0,
+    });
+    expect(grouped.collapseAll()).toMatchObject({
+      previousRevision: 1,
+      revision: 2,
+    });
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  test("finds nearest visible ancestors for collapsed descendants", () => {
+    const grouped = model({ kind: "expanded" });
+    const captured = grouped.getState().snapshot;
+    grouped.setGroupExpanded(west, false);
+    const snapshot = grouped.getState().snapshot;
+    expect(snapshot.nearestVisibleRef({ kind: "data", rowId: 1 })).toEqual({
+      kind: "group",
+      groupId: west,
+    });
+    expect(
+      snapshot.nearestVisibleRef({ kind: "group", groupId: westA }),
+    ).toEqual({ kind: "group", groupId: west });
+    expect(captured.nearestVisibleRef({ kind: "data", rowId: 1 })).toEqual({
+      kind: "data",
+      rowId: 1,
+    });
+  });
+
+  test("rebuilds grouped compatible derivations without changing the schema", async () => {
+    const grouped = model();
+    const replacements = [
+      columns[0],
+      columns[1],
+      { ...columns[2], aggregate: "avg" as const },
+    ] as const;
+
+    const transition = grouped.setDerivations(replacements);
+    await expect(transition.finished).resolves.toBe(1);
+    const westGroup = grouped
+      .getState()
+      .snapshot.range(0, 10)
+      .find((row) => row.kind === "group" && row.groupId === west);
+    expect(westGroup?.kind === "group" && westGroup.aggregates.score).toBe(1.5);
+    expect(transition.requestedDerivations[2]?.aggregate).toBe("avg");
+  });
+
+  test("guards expansion and derivation commands after disposal", () => {
+    const grouped = model();
+    grouped.dispose();
+    expect(() => grouped.setGroupExpanded(west, true)).toThrowError(
+      expect.objectContaining({
+        code: "disposed-model",
+        operation: "set-group-expanded",
+      }),
+    );
+    expect(() =>
+      grouped.setExpansionDefault({ kind: "expanded" }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "disposed-model",
+        operation: "set-expansion-default",
+      }),
+    );
+    expect(() => grouped.expandAll()).toThrowError(
+      expect.objectContaining({
+        code: "disposed-model",
+        operation: "expand-all",
+      }),
+    );
+    expect(() => grouped.collapseAll()).toThrowError(
+      expect.objectContaining({
+        code: "disposed-model",
+        operation: "collapse-all",
+      }),
+    );
+    expect(() => grouped.setDerivations(columns)).toThrowError(
+      expect.objectContaining({
+        code: "disposed-model",
+        operation: "set-derivations",
+      }),
+    );
+  });
+});

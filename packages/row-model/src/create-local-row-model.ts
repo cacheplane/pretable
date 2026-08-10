@@ -12,7 +12,12 @@ import {
   PretableRowModelError,
   type PretableRowModelOperation,
 } from "./errors";
-import type { ExpansionRoot, RevisionRoot, RowRecord } from "./internal-types";
+import type { ExpansionRoot, RevisionRoot } from "./internal-types";
+import {
+  attachGroupIndex,
+  getGroupIndex,
+  setGroupOverride,
+} from "./group-index";
 import { createPersistentMap } from "./persistent/persistent-map";
 import { buildRowStore, rebuildRowStoreForQuery } from "./row-store";
 import type {
@@ -31,7 +36,7 @@ import type {
   PretableRowModelState,
   PretableTransaction,
 } from "./types";
-import { createFlatSnapshot, createFlatVisibleIndex } from "./visible-index";
+import { createFlatSnapshot, createVisibleIndex } from "./visible-index";
 import {
   applyFlatTransactionDraft,
   replaceFlatRowsDraft,
@@ -46,6 +51,12 @@ interface CreateLocalRowModelBaseOptions<
   readonly derivations?: PretableDerivationsFor<TColumns>;
   readonly query?: PretableQueryFor<TColumns>;
   readonly initialExpansion?: PretableExpansionDefault;
+  /**
+   * Selects whether published group aggregate outputs use the all-row or
+   * post-filter population. Both populations remain indexed; this choice is
+   * fixed for the lifetime of the model and defaults to `false`.
+   */
+  readonly aggregateFilteredRows?: boolean;
   readonly onDiagnostic?: (
     diagnostic: PretableRowIntegrityDiagnostic<TRowId>,
   ) => void;
@@ -224,8 +235,9 @@ export function createLocalRowModel<
     derivations: requestedDerivations,
     query: requestedQuery,
   });
-  const derivations = queryPlan.derivations;
-  const query = queryPlan.query;
+  let derivations = queryPlan.derivations;
+  let query = queryPlan.query;
+  const aggregateFilteredRows = options.aggregateFilteredRows ?? false;
   const diagnosticSink = options.onDiagnostic as
     PretableRowIntegrityDiagnosticSink<TRowId> | undefined;
   const initialStore = buildRowStore({
@@ -233,20 +245,20 @@ export function createLocalRowModel<
     getRowId,
     queryPlan,
   });
+  const initialExpansion = createExpansionRoot(options.initialExpansion);
   let root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision: 0,
     parentRevision: null,
     rows: initialStore.rows,
     sourceOrder: initialStore.sourceOrder,
-    visible: createFlatVisibleIndex(
+    visible: createVisibleIndex(
       initialStore.records,
-      queryPlan.compareRows as unknown as (
-        left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-        right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-      ) => number,
+      queryPlan,
+      aggregateFilteredRows,
+      initialExpansion.overrides,
     ),
     queryPlan,
-    expansion: createExpansionRoot(options.initialExpansion),
+    expansion: initialExpansion,
     cause: Object.freeze({ kind: "initial" as const }),
   });
   let snapshot = createFlatSnapshot(root);
@@ -474,18 +486,20 @@ export function createLocalRowModel<
             parentRevision: previousRoot.revision,
             rows: store.rows,
             sourceOrder: store.sourceOrder,
-            visible: createFlatVisibleIndex(
+            visible: createVisibleIndex(
               store.records,
-              nextPlan.compareRows as unknown as (
-                left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-                right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-              ) => number,
+              nextPlan,
+              aggregateFilteredRows,
+              previousRoot.expansion.overrides,
+              "set-query",
+              getGroupIndex(previousRoot.visible),
             ),
             queryPlan: nextPlan,
             expansion: previousRoot.expansion,
             cause: Object.freeze({ kind: "set-rows" as const }),
           });
         queryPlan = nextPlan;
+        query = nextPlan.query;
         commit(committedRoot);
         return {
           transition: Object.freeze({
@@ -500,20 +514,208 @@ export function createLocalRowModel<
       if (prepared.notify) notify();
       return prepared.transition;
     },
-    setDerivations(): PretableDerivationTransition<TColumns> {
-      return unavailable("set-derivations");
+    setDerivations(
+      nextDerivations: PretableDerivationsFor<TColumns>,
+    ): PretableDerivationTransition<TColumns> {
+      const prepared = guarded("set-derivations", () => {
+        const id = nextTransitionId++;
+        const previousRoot = root;
+        const nextPlan = compileQuery({
+          derivations: nextDerivations,
+          query,
+          previous: queryPlan,
+        });
+        if (nextPlan === queryPlan) {
+          return {
+            transition: Object.freeze({
+              id,
+              requestedDerivations: queryPlan.derivations,
+              finished: Promise.resolve(previousRoot.revision),
+              cancel: () => assertCommandAllowed("set-derivations"),
+            }),
+            notify: false,
+          };
+        }
+        const store = rebuildRowStoreForQuery(
+          previousRoot.rows,
+          previousRoot.sourceOrder,
+          nextPlan,
+        );
+        const revision = previousRoot.revision + 1;
+        const committedRoot: RevisionRoot<TRow, TRowId, TColumns> =
+          Object.freeze({
+            revision,
+            parentRevision: previousRoot.revision,
+            rows: store.rows,
+            sourceOrder: store.sourceOrder,
+            visible: createVisibleIndex(
+              store.records,
+              nextPlan,
+              aggregateFilteredRows,
+              previousRoot.expansion.overrides,
+              "set-derivations",
+              getGroupIndex(previousRoot.visible),
+            ),
+            queryPlan: nextPlan,
+            expansion: previousRoot.expansion,
+            cause: Object.freeze({ kind: "set-rows" as const }),
+          });
+        queryPlan = nextPlan;
+        derivations = nextPlan.derivations;
+        commit(committedRoot);
+        return {
+          transition: Object.freeze({
+            id,
+            requestedDerivations: nextPlan.derivations,
+            finished: Promise.resolve(revision),
+            cancel: () => assertCommandAllowed("set-derivations"),
+          }),
+          notify: true,
+        };
+      });
+      if (prepared.notify) notify();
+      return prepared.transition;
     },
-    setGroupExpanded() {
-      return unavailable("set-group-expanded");
+    setGroupExpanded(groupId: PretableGroupId, expanded: boolean) {
+      const prepared = guarded("set-group-expanded", () => {
+        const previousRoot = root;
+        const groups = getGroupIndex(previousRoot.visible);
+        const group = groups?.groups.get(groupId);
+        if (
+          groups === undefined ||
+          group === undefined ||
+          group.filteredCount === 0
+        ) {
+          return {
+            result: mutationResult(
+              previousRoot.revision,
+              previousRoot.revision,
+              { ignored: 1 },
+              [Object.freeze({ code: "unknown-group-id" as const, groupId })],
+            ),
+            notify: false,
+          };
+        }
+        const defaultExpanded =
+          previousRoot.expansion.default.kind === "expanded" ||
+          (previousRoot.expansion.default.kind === "through-depth" &&
+            group.depth <= previousRoot.expansion.default.depth);
+        const override = expanded === defaultExpanded ? undefined : expanded;
+        const current = previousRoot.expansion.overrides.get(groupId);
+        const exists = previousRoot.expansion.overrides.has(groupId);
+        if (
+          (override === undefined && !exists) ||
+          (override !== undefined && exists && current === override)
+        ) {
+          return {
+            result: mutationResult(
+              previousRoot.revision,
+              previousRoot.revision,
+            ),
+            notify: false,
+          };
+        }
+        const overrides =
+          override === undefined
+            ? previousRoot.expansion.overrides.delete(groupId)
+            : previousRoot.expansion.overrides.set(groupId, override);
+        const nextGroups = setGroupOverride(groups, groupId, override);
+        const expansion = Object.freeze({
+          default: previousRoot.expansion.default,
+          overrides,
+          state: Object.freeze({
+            default: previousRoot.expansion.default,
+            overrideCount: overrides.size,
+          }),
+        });
+        const revision = previousRoot.revision + 1;
+        commit(
+          Object.freeze({
+            ...previousRoot,
+            revision,
+            parentRevision: previousRoot.revision,
+            visible: attachGroupIndex(previousRoot.visible.rows, nextGroups),
+            expansion,
+          }),
+        );
+        return {
+          result: mutationResult(previousRoot.revision, revision),
+          notify: true,
+        };
+      });
+      if (prepared.notify) notify();
+      return prepared.result;
     },
-    setExpansionDefault() {
-      return unavailable("set-expansion-default");
+    setExpansionDefault(
+      policy: PretableExpansionDefault,
+      expansionOptions?: { readonly preserveOverrides?: boolean },
+    ) {
+      const prepared = guarded("set-expansion-default", () => {
+        const previousRoot = root;
+        const nextPolicy = Object.freeze({
+          ...policy,
+        }) as PretableExpansionDefault;
+        const preserve = expansionOptions?.preserveOverrides === true;
+        const samePolicy =
+          JSON.stringify(previousRoot.expansion.default) ===
+          JSON.stringify(nextPolicy);
+        if (
+          samePolicy &&
+          (preserve || previousRoot.expansion.overrides.size === 0)
+        ) {
+          return {
+            result: mutationResult(
+              previousRoot.revision,
+              previousRoot.revision,
+            ),
+            notify: false,
+          };
+        }
+        let groups = getGroupIndex(previousRoot.visible);
+        if (!preserve && groups !== undefined) {
+          for (const [groupId] of previousRoot.expansion.overrides.entries()) {
+            groups = setGroupOverride(groups, groupId, undefined);
+          }
+        }
+        const overrides = preserve
+          ? previousRoot.expansion.overrides
+          : createPersistentMap<PretableGroupId, boolean>();
+        const expansion = Object.freeze({
+          default: nextPolicy,
+          overrides,
+          state: Object.freeze({
+            default: nextPolicy,
+            overrideCount: overrides.size,
+          }),
+        });
+        const revision = previousRoot.revision + 1;
+        commit(
+          Object.freeze({
+            ...previousRoot,
+            revision,
+            parentRevision: previousRoot.revision,
+            visible:
+              groups === undefined
+                ? previousRoot.visible
+                : attachGroupIndex(previousRoot.visible.rows, groups),
+            expansion,
+          }),
+        );
+        return {
+          result: mutationResult(previousRoot.revision, revision),
+          notify: true,
+        };
+      });
+      if (prepared.notify) notify();
+      return prepared.result;
     },
     expandAll() {
-      return unavailable("expand-all");
+      assertCommandAllowed("expand-all");
+      return model.setExpansionDefault({ kind: "expanded" });
     },
     collapseAll() {
-      return unavailable("collapse-all");
+      assertCommandAllowed("collapse-all");
+      return model.setExpansionDefault({ kind: "collapsed" });
     },
     changesSince() {
       return unavailable("changes-since");
