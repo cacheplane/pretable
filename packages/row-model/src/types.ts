@@ -1,6 +1,5 @@
 import type {
   ColumnDescriptorOf,
-  ColumnIdOf,
   ColumnValueOf,
   PretableAggregatesFor,
   PretableDerivationsFor,
@@ -267,6 +266,10 @@ export interface PretableDistinctValueOptions {
   readonly start?: number;
   readonly limit?: number;
   readonly population?: "all" | "filtered";
+  /** Includes nullish, NaN, and trim-empty string values. Defaults to false. */
+  readonly includeBlanks?: boolean;
+  /** Places included blank values before or after non-blank values. */
+  readonly blankOrder?: "first" | "last";
 }
 
 export interface PretableDistinctValueResult<TValue> {
@@ -284,6 +287,23 @@ export interface PretableDistinctValueQuery<TValue> {
   readonly finished: Promise<PretableDistinctValueResult<TValue>>;
   cancel(): void;
 }
+
+type PretableDistinctScalar =
+  string | number | bigint | boolean | Date | null | undefined;
+
+type PretableDistinctDescriptor<TDescriptor> = TDescriptor extends {
+  readonly id: string;
+  readonly value: infer TValue;
+}
+  ? [TValue] extends [PretableDistinctScalar]
+    ? TDescriptor
+    : never
+  : never;
+
+/** Column IDs whose complete inferred value type has stable local identity. */
+export type PretableDistinctColumnIdOf<TColumns> = PretableDistinctDescriptor<
+  ColumnDescriptorOf<TColumns>
+>["id"];
 
 export interface PretableRowModelCarrier<
   TRow extends object,
@@ -343,7 +363,7 @@ export interface PretableRowModel<
    * always returns an empty `changes` sequence.
    */
   changesSince(revision: number): PretableChangeSequence<TRowId>;
-  distinctValues<TColumnId extends ColumnIdOf<TColumns>>(
+  distinctValues<TColumnId extends PretableDistinctColumnIdOf<TColumns>>(
     columnId: TColumnId,
     options?: PretableDistinctValueOptions,
   ): PretableDistinctValueQuery<ColumnValueOf<TColumns, TColumnId>>;

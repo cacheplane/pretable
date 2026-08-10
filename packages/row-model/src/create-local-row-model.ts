@@ -6,6 +6,7 @@ import {
   type CooperativeTransitionCandidate,
   type CooperativeTransitionScheduler,
 } from "./cooperative-transition";
+import { createDistinctValueManager } from "./distinct-values";
 import {
   createChangeJournal,
   getChangeJournalDiagnosticsForTesting,
@@ -89,6 +90,8 @@ interface CreateLocalRowModelBaseOptions<
   readonly transitionBudgetMs?: number;
   /** Internal deterministic hard cap for work units when clocks stall. */
   readonly transitionMaxUnitsPerSlice?: number;
+  /** Internal cache bound override for distinct-value tests and diagnostics. */
+  readonly distinctValueCacheCapacity?: number;
   readonly onDiagnostic?: (
     diagnostic: PretableRowIntegrityDiagnostic<TRowId>,
   ) => void;
@@ -178,19 +181,6 @@ interface ActiveTransition<
   readonly resolve: (revision: number) => void;
   readonly reject: (error: unknown) => void;
   cancelScheduled: (() => void) | undefined;
-}
-
-class PretableNotYetImplementedError extends PretableRowModelError {
-  readonly name = "PretableNotYetImplementedError";
-  readonly reason = "not-yet-implemented" as const;
-
-  constructor(operation: PretableRowModelOperation) {
-    super(
-      "derivation-failed",
-      `The ${operation} command is not implemented in the flat bootstrap model.`,
-      { operation },
-    );
-  }
 }
 
 class PretableSetRowsExecutionError extends PretableRowModelError {
@@ -498,6 +488,12 @@ export function createLocalRowModel<
     budgetMs: options.transitionBudgetMs,
     maxUnitsPerSlice: options.transitionMaxUnitsPerSlice,
   });
+  const distinctValues = createDistinctValueManager({
+    getRoot: () => root,
+    getDerivations: () => derivations as readonly unknown[],
+    runtime: transitionRuntime,
+    cacheCapacity: options.distinctValueCacheCapacity,
+  });
 
   const assertCommandAllowed = (operation: PretableRowModelOperation): void => {
     if (activeMutation !== undefined) {
@@ -520,10 +516,6 @@ export function createLocalRowModel<
     } finally {
       activeMutation = undefined;
     }
-  };
-  const unavailable = (operation: PretableRowModelOperation): never => {
-    assertCommandAllowed(operation);
-    throw new PretableNotYetImplementedError(operation);
   };
   const rebuildingStatus = (
     transition: ActiveTransition<TRow, TRowId, TColumns>,
@@ -648,6 +640,7 @@ export function createLocalRowModel<
       query = committedRoot.queryPlan.query;
       derivations = committedRoot.queryPlan.derivations;
       commit(committedRoot, READY);
+      distinctValues.publishTransitionRoot(committedRoot);
       changeJournal.appendBarrier(previousRevision, revision);
       transition.candidate.release();
       transition.resolve(revision);
@@ -851,10 +844,20 @@ export function createLocalRowModel<
             committedRoot.revision,
             drafted,
           );
+          const distinctCommit = distinctValues.prepareCommit(
+            committedRoot,
+            drafted.affectedRowIds,
+            "set-rows",
+          );
           queryPlan = nextPlan;
           nextSourceOrder = drafted.nextSourceOrder;
           appendTransitionDelta(committedRoot, drafted.affectedRowIds);
           commit(committedRoot);
+          distinctValues.publishCommit(
+            distinctCommit,
+            committedRoot,
+            drafted.affectedRowIds,
+          );
           changeJournal.appendBarrier(previousRevision, committedRoot.revision);
           return {
             result,
@@ -899,9 +902,19 @@ export function createLocalRowModel<
             expansion: previousRoot.expansion,
             cause: Object.freeze({ kind: "set-rows" as const }),
           });
+        const distinctCommit = distinctValues.prepareCommit(
+          committedRoot,
+          drafted.affectedRowIds,
+          "apply-transaction",
+        );
         nextSourceOrder = drafted.nextSourceOrder;
         appendTransitionDelta(committedRoot, drafted.affectedRowIds);
         commit(committedRoot);
+        distinctValues.publishCommit(
+          distinctCommit,
+          committedRoot,
+          drafted.affectedRowIds,
+        );
         changeJournal.appendChanges(
           previousRoot.revision,
           committedRoot.revision,
@@ -957,20 +970,27 @@ export function createLocalRowModel<
       try {
         const prepared = guarded("set-derivations", () => {
           const id = nextTransitionId++;
-          const nextPlan = compileQuery({
+          const capturedPlan = compileQuery({
             derivations: nextDerivations,
+            query,
+            operation: "set-derivations",
+          });
+          const nextPlan = compileQuery({
+            derivations: capturedPlan.derivations,
             query,
             previous: queryPlan,
             operation: "set-derivations",
           });
           if (nextPlan === queryPlan) {
+            derivations = capturedPlan.derivations;
+            distinctValues.publishTransitionRoot(root);
             const superseded =
               cancelActiveTransition("superseded") !== undefined;
             if (superseded) state = Object.freeze({ snapshot, status: READY });
             return {
               transition: Object.freeze({
                 id,
-                requestedDerivations: queryPlan.derivations,
+                requestedDerivations: capturedPlan.derivations,
                 finished: Promise.resolve(root.revision),
                 cancel: () => cancelTransitionHandle(id, "set-derivations"),
               }),
@@ -1101,8 +1121,13 @@ export function createLocalRowModel<
       assertCommandAllowed("changes-since");
       return changeJournal.changesSince(revision, root.revision);
     },
-    distinctValues(): PretableDistinctValueQuery<never> {
-      return unavailable("distinct-values");
+    distinctValues(
+      columnId: string,
+      distinctOptions?: Parameters<typeof distinctValues.query>[1],
+    ): PretableDistinctValueQuery<unknown> {
+      return guarded("distinct-values", () =>
+        distinctValues.query(columnId, distinctOptions),
+      );
     },
     dispose(): void {
       if (activeMutation !== undefined) {
@@ -1111,6 +1136,9 @@ export function createLocalRowModel<
       if (disposed) return;
       const current = guarded("dispose", () => {
         cancelActiveTransition("disposed");
+        distinctValues.dispose(
+          new PretableDisposedModelError("distinct-values"),
+        );
         changeJournal.clear();
         disposed = true;
         state = Object.freeze({ snapshot, status: DISPOSED });
@@ -1133,6 +1161,7 @@ export function createLocalRowModel<
   modelChangeJournals.set(model, changeJournal as ChangeJournal<PretableRowId>);
   modelRevisionCauses.set(model, () => root.cause);
   modelActiveTransitionCandidates.set(model, () => activeTransition?.candidate);
+  distinctValues.attachModel(model);
   emitDiagnostics(initialStore.diagnostics, diagnosticSink);
   return model as unknown as PretableRowModel<TRow, TRowId, TColumns>;
 }
