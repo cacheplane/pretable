@@ -41,6 +41,47 @@ describe("local row integrity", () => {
     expect(model.getState().snapshot.rowAt(0)).toMatchObject({ row });
   });
 
+  test("shallow-freezes safely extensible class instances", () => {
+    class ClassRow implements Row {
+      constructor(
+        readonly id: number,
+        public label: string,
+      ) {}
+    }
+    const row = new ClassRow(1, "one");
+    const model = createLocalRowModel({ rows: [row], columns });
+
+    expect(Object.isFrozen(row)).toBe(true);
+    expect(model.getState().snapshot.rowAt(0)).toMatchObject({ row });
+  });
+
+  test("falls back to fingerprints when an extensible proxy cannot be frozen", () => {
+    const diagnostics: PretableRowIntegrityDiagnostic<number>[] = [];
+    const target = { id: 1, label: "before" };
+    const preventExtensions = vi.fn(() => {
+      throw new Error("freeze refused");
+    });
+    const row = new Proxy(target, { preventExtensions });
+    const model = createLocalRowModel({
+      rows: [row],
+      columns,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    expect(model.getState().snapshot.rowAt(0)).toMatchObject({ row });
+    expect(Object.isExtensible(target)).toBe(true);
+    expect(preventExtensions).toHaveBeenCalledTimes(1);
+
+    target.label = "after";
+    expect(model.setRows([row])).toMatchObject({ revision: 1, updated: 1 });
+    expect(preventExtensions).toHaveBeenCalledTimes(3);
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        code: "same-reference-row-mutation",
+        rowId: 1,
+      }),
+    ]);
+  });
+
   test("diagnoses same-reference mutation of a non-extensible row and reevaluates it", () => {
     const diagnostics: PretableRowIntegrityDiagnostic<number>[] = [];
     const accessor = vi.fn((row: Row) => row.label);

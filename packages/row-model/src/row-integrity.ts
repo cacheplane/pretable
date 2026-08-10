@@ -60,7 +60,10 @@ function failIntegrity(operation: "set-rows", cause: unknown): never {
   );
 }
 
-function fingerprint(row: object): RowIntegrityFingerprint {
+function fingerprint(
+  row: object,
+  earlierFailure?: unknown,
+): RowIntegrityFingerprint {
   try {
     const entries = Reflect.ownKeys(row).map((key): FingerprintEntry => {
       const descriptor = Object.getOwnPropertyDescriptor(row, key);
@@ -87,8 +90,13 @@ function fingerprint(row: object): RowIntegrityFingerprint {
       });
     });
     return Object.freeze({ entries: Object.freeze(entries) });
-  } catch (cause) {
-    return failIntegrity("set-rows", cause);
+  } catch (fingerprintFailure) {
+    return failIntegrity(
+      "set-rows",
+      earlierFailure === undefined
+        ? fingerprintFailure
+        : Object.freeze({ earlierFailure, fingerprintFailure }),
+    );
   }
 }
 
@@ -141,22 +149,42 @@ export function inspectRowIntegrity<TRowId extends PretableRowId>(
     };
   }
 
+  let extensible: boolean;
   try {
-    const prototype = Object.getPrototypeOf(row);
-    const ordinary = prototype === Object.prototype || prototype === null;
-    if (ordinary && Object.isExtensible(row)) {
-      Object.freeze(row);
-      return {
-        integrity: { kind: "frozen" },
-        sameReferenceMutation: false,
-        emitDiagnostic: () => undefined,
-      };
-    }
+    extensible = Object.isExtensible(row);
   } catch (cause) {
-    return failIntegrity("set-rows", cause);
+    const current = fingerprint(row, cause);
+    return fingerprintInspection(current, rowId, previous, sameReference);
+  }
+
+  if (extensible) {
+    try {
+      Object.freeze(row);
+      if (Object.isFrozen(row)) {
+        return {
+          integrity: { kind: "frozen" },
+          sameReferenceMutation: false,
+          emitDiagnostic: () => undefined,
+        };
+      }
+      const current = fingerprint(row);
+      return fingerprintInspection(current, rowId, previous, sameReference);
+    } catch (cause) {
+      const current = fingerprint(row, cause);
+      return fingerprintInspection(current, rowId, previous, sameReference);
+    }
   }
 
   const current = fingerprint(row);
+  return fingerprintInspection(current, rowId, previous, sameReference);
+}
+
+function fingerprintInspection<TRowId extends PretableRowId>(
+  current: RowIntegrityFingerprint,
+  rowId: TRowId,
+  previous: RowIntegrityRecord | undefined,
+  sameReference: boolean,
+): RowIntegrityInspection<TRowId> {
   const sameReferenceMutation =
     sameReference &&
     previous?.kind === "fingerprinted" &&

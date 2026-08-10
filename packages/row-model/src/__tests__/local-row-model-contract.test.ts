@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   PretableDisposedModelError,
   PretableRowModelError,
+  type RowIdOf,
   createColumnHelper,
   createLocalRowModel,
   type PretableGroupId,
@@ -26,6 +27,12 @@ const query = {
   rowGroups: [],
 } as const;
 
+type Equal<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
+    ? true
+    : false;
+type Expect<T extends true> = T;
+
 function rows(count = 100): Row[] {
   return Array.from({ length: count }, (_, index) => ({
     id: index,
@@ -35,6 +42,120 @@ function rows(count = 100): Row[] {
 }
 
 describe("createLocalRowModel flat snapshot contract", () => {
+  test("uses a conventional row.id by default and preserves its inferred type", () => {
+    const model = createLocalRowModel({ rows: rows(3), columns });
+    type _rowId = Expect<Equal<RowIdOf<typeof model>, number>>;
+    const keepTypeFixtureUsed: _rowId = true;
+
+    expect(keepTypeFixtureUsed).toBe(true);
+    expect(model.getState().snapshot.rowAt(0)).toMatchObject({ rowId: 0 });
+    expect(model.getState().snapshot.indexOf({ kind: "data", rowId: 2 })).toBe(
+      2,
+    );
+  });
+
+  test("keeps explicit ID accessors for arbitrary row domains", () => {
+    interface DomainRow {
+      key: `holding-${number}`;
+      label: string;
+    }
+    const helper = createColumnHelper<DomainRow>();
+    const domainColumns = [helper.accessor("label", { type: "text" })] as const;
+    const model = createLocalRowModel({
+      rows: [{ key: "holding-1", label: "one" }],
+      columns: domainColumns,
+      getRowId: (row) => row.key,
+    });
+    type _rowId = Expect<Equal<RowIdOf<typeof model>, `holding-${number}`>>;
+    const keepTypeFixtureUsed: _rowId = true;
+
+    expect(keepTypeFixtureUsed).toBe(true);
+    expect(model.getState().snapshot.rowAt(0)).toMatchObject({
+      rowId: "holding-1",
+    });
+  });
+
+  test("requires an explicit accessor when the row domain has no valid id", () => {
+    interface MissingIdRow {
+      key: string;
+      label: string;
+    }
+    const helper = createColumnHelper<MissingIdRow>();
+    const missingIdColumns = [
+      helper.accessor("label", { type: "text" }),
+    ] as const;
+    interface InvalidIdRow {
+      id: boolean;
+      label: string;
+    }
+    const invalidHelper = createColumnHelper<InvalidIdRow>();
+    const invalidIdColumns = [
+      invalidHelper.accessor("label", { type: "text" }),
+    ] as const;
+    if (false) {
+      // @ts-expect-error rows without a conventional ID require getRowId
+      createLocalRowModel({
+        rows: [{ key: "one", label: "one" }],
+        columns: missingIdColumns,
+      });
+      // @ts-expect-error boolean is not a supported conventional row ID
+      createLocalRowModel({
+        rows: [{ id: true, label: "one" }],
+        columns: invalidIdColumns,
+      });
+      // @ts-expect-error explicit row IDs must still be strings or numbers
+      createLocalRowModel({
+        rows: [{ id: true, label: "one" }],
+        columns: invalidIdColumns,
+        getRowId: (row) => row.id,
+      });
+    }
+    expect(true).toBe(true);
+  });
+
+  test("reports invalid, missing, and throwing default IDs as structured errors", () => {
+    expect(() =>
+      createLocalRowModel({
+        rows: [{ label: "missing", score: 1 }] as unknown as Row[],
+        columns,
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "derivation-failed",
+        operation: "set-rows",
+      }),
+    );
+    expect(() =>
+      createLocalRowModel({
+        rows: [{ id: true, label: "invalid", score: 1 }] as unknown as Row[],
+        columns,
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "derivation-failed",
+        operation: "set-rows",
+      }),
+    );
+    const throwingId = Object.defineProperty(
+      { label: "getter", score: 1 },
+      "id",
+      {
+        enumerable: true,
+        get: () => {
+          throw new Error("spoofed id getter");
+        },
+      },
+    ) as Row;
+    expect(() =>
+      createLocalRowModel({ rows: [throwingId], columns }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "derivation-failed",
+        operation: "set-rows",
+      }),
+    );
+  });
+
   test("publishes an indexed revision-zero snapshot without construction notifications", () => {
     const inputRows = rows();
     const model = createLocalRowModel({
@@ -110,8 +231,9 @@ describe("createLocalRowModel flat snapshot contract", () => {
     const model = createLocalRowModel({
       rows: [{ id: collision, label: "data" }],
       columns: stringColumns,
-      getRowId: (row) => row.id,
     });
+    type _rowId = Expect<Equal<RowIdOf<typeof model>, string>>;
+    const keepTypeFixtureUsed: _rowId = true;
     const synthetic: PretableVisibleRowRef<string> = {
       kind: "group",
       groupId: collision as PretableGroupId,
@@ -120,6 +242,7 @@ describe("createLocalRowModel flat snapshot contract", () => {
     expect(
       model.getState().snapshot.indexOf({ kind: "data", rowId: collision }),
     ).toBe(0);
+    expect(keepTypeFixtureUsed).toBe(true);
     expect(model.getState().snapshot.indexOf(synthetic)).toBe(-1);
     expect(
       model.getState().snapshot.nearestVisibleRef(synthetic),

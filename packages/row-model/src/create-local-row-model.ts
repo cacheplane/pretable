@@ -29,13 +29,12 @@ import type {
 } from "./types";
 import { createFlatSnapshot, createFlatVisibleIndex } from "./visible-index";
 
-export interface CreateLocalRowModelOptions<
+interface CreateLocalRowModelBaseOptions<
   TColumns,
   TRowId extends PretableRowId,
 > {
   readonly rows: readonly RowForColumns<TColumns>[];
   readonly columns: TColumns;
-  readonly getRowId: (row: RowForColumns<TColumns>) => TRowId;
   readonly derivations?: PretableDerivationsFor<TColumns>;
   readonly query?: PretableQueryFor<TColumns>;
   readonly initialExpansion?: PretableExpansionDefault;
@@ -44,12 +43,40 @@ export interface CreateLocalRowModelOptions<
   ) => void;
 }
 
+export type CreateLocalRowModelOptions<
+  TColumns,
+  TRowId extends PretableRowId,
+> = CreateLocalRowModelBaseOptions<TColumns, TRowId> & {
+  readonly getRowId: (row: RowForColumns<TColumns>) => TRowId;
+};
+
 type RowForColumns<TColumns> =
   ColumnDescriptorOf<TColumns> extends {
     readonly row: infer TRow extends object;
   }
     ? TRow
     : never;
+
+type DefaultRowId<TColumns> =
+  RowForColumns<TColumns> extends {
+    readonly id: infer TRowId extends PretableRowId;
+  }
+    ? TRowId
+    : never;
+
+export type CreateLocalRowModelWithDefaultIdOptions<TColumns> =
+  RowForColumns<TColumns> extends { readonly id: PretableRowId }
+    ? CreateLocalRowModelBaseOptions<TColumns, DefaultRowId<TColumns>> & {
+        readonly getRowId?: undefined;
+      }
+    : never;
+
+type RuntimeCreateLocalRowModelOptions<
+  TColumns,
+  TRowId extends PretableRowId,
+> = CreateLocalRowModelBaseOptions<TColumns, TRowId> & {
+  readonly getRowId?: (row: RowForColumns<TColumns>) => TRowId;
+};
 
 class PretableNotYetImplementedError extends PretableRowModelError {
   readonly name = "PretableNotYetImplementedError";
@@ -149,16 +176,29 @@ function classifyReplacement<
 }
 
 /** Creates the persistent, framework-independent local row model. */
+export function createLocalRowModel<const TColumns extends readonly unknown[]>(
+  options: CreateLocalRowModelWithDefaultIdOptions<TColumns>,
+): PretableRowModel<RowForColumns<TColumns>, DefaultRowId<TColumns>, TColumns>;
 export function createLocalRowModel<
   const TColumns extends readonly unknown[],
   const TRowId extends PretableRowId,
 >(
   options: CreateLocalRowModelOptions<TColumns, TRowId>,
+): PretableRowModel<RowForColumns<TColumns>, TRowId, TColumns>;
+export function createLocalRowModel<
+  const TColumns extends readonly unknown[],
+  const TRowId extends PretableRowId,
+>(
+  options: RuntimeCreateLocalRowModelOptions<TColumns, TRowId>,
 ): PretableRowModel<RowForColumns<TColumns>, TRowId, TColumns> {
   type TRow = RowForColumns<TColumns>;
   const columns = Object.freeze(
     Array.from(options.columns),
   ) as unknown as TColumns;
+  const getRowId =
+    options.getRowId ??
+    ((row: TRow): TRowId =>
+      (row as TRow & { readonly id: unknown }).id as TRowId);
   const requestedDerivations = (options.derivations ??
     columns) as PretableDerivationsFor<TColumns>;
   const requestedQuery = options.query ?? emptyQuery<TColumns>();
@@ -172,7 +212,7 @@ export function createLocalRowModel<
     PretableRowIntegrityDiagnosticSink<TRowId> | undefined;
   const initialStore = buildRowStore({
     rows: options.rows,
-    getRowId: options.getRowId,
+    getRowId,
     queryPlan,
     onDiagnostic: diagnosticSink,
   });
@@ -238,7 +278,7 @@ export function createLocalRowModel<
       let nextPlan = queryPlan;
       let store = buildRowStore({
         rows: nextRows,
-        getRowId: options.getRowId,
+        getRowId,
         queryPlan: nextPlan,
         previous: root.rows,
         onDiagnostic: diagnosticSink,
@@ -252,7 +292,7 @@ export function createLocalRowModel<
         nextPlan = compileQuery({ derivations, query });
         store = buildRowStore({
           rows: nextRows,
-          getRowId: options.getRowId,
+          getRowId,
           queryPlan: nextPlan,
           previous: root.rows,
         });
