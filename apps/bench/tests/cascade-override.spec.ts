@@ -30,13 +30,19 @@ test("an unlayered consumer rule beats the layered grid default", async ({
   await expect(cell).toHaveCSS("color", "rgb(7, 8, 9)");
 });
 
-test("the selection fill wins over zebra via source order", async ({
+test("the selection fill composes over zebra instead of replacing it", async ({
   page,
 }) => {
   // Pin the relevant tokens to known rgb values inline, so the assertion is
   // format-deterministic. The selected cell sits in an EVEN row, so the zebra
-  // rule also targets it — proving the selection fill wins is the behavior we
-  // locked.
+  // rule also targets it — how the two combine is the behavior we lock.
+  //
+  // The selection fill is a background-IMAGE layer, so it paints ON TOP of
+  // whatever surface color an earlier rule set rather than replacing it. That
+  // is load-bearing, not stylistic: --pretable-selection-bg is translucent in
+  // both shipped themes, and pinned cells are position:sticky with unpinned
+  // cells scrolling underneath — a selected pinned cell that replaced its
+  // opaque fill would let the scrolled-under column print through it.
   //
   // The fixture mirrors what @pretable/react actually renders: a selected cell
   // carries role="gridcell", aria-selected="true" AND data-pretable-selected,
@@ -57,12 +63,18 @@ test("the selection fill wins over zebra via source order", async ({
   );
   await page.addStyleTag({ path: GRID_CSS });
 
-  // Both zebra (rgb 50,50,50) and the selection fill (rgb 1,2,3) match #sel;
-  // the selection must win because its rule comes later in source order at
-  // equal (0,0,0).
+  // Zebra keeps the background-COLOR slot: the surface underneath survives.
   await expect(page.locator("#sel")).toHaveCSS(
     "background-color",
-    "rgb(1, 2, 3)",
+    "rgb(50, 50, 50)",
+  );
+  // And the selection tint sits above it in the background-IMAGE slot. Both
+  // halves have to hold — a selection that took the color slot back would be
+  // the sticky-transparency bug returning, and a missing image means no
+  // selection is painted at all.
+  await expect(page.locator("#sel")).toHaveCSS(
+    "background-image",
+    "linear-gradient(rgb(1, 2, 3), rgb(1, 2, 3))",
   );
   // And the text color still comes from the data-pretable-selected rule, which
   // is the only declaration left in it.
