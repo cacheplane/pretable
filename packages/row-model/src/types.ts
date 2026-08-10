@@ -1,6 +1,7 @@
 import type {
   ColumnIdOf,
   ColumnValueOf,
+  PretableAggregatesFor,
   PretableDerivationsFor,
   PretableQueryFor,
   PretableRowId,
@@ -29,21 +30,22 @@ export interface PretableDataRow<
   readonly depth: number;
 }
 
-export interface PretableGroupRow {
+export interface PretableGroupRow<TColumns = readonly []> {
   readonly kind: "group";
   readonly groupId: PretableGroupId;
   readonly depth: number;
   readonly columnId: string;
   readonly value: unknown;
   readonly childCount: number;
-  readonly aggregates: Readonly<Record<string, unknown>>;
+  readonly aggregates: PretableAggregatesFor<TColumns>;
   readonly expanded: boolean;
 }
 
 export type PretableVisibleRow<
   TRow extends object,
   TRowId extends PretableRowId,
-> = PretableDataRow<TRow, TRowId> | PretableGroupRow;
+  TColumns = readonly [],
+> = PretableDataRow<TRow, TRowId> | PretableGroupRow<TColumns>;
 
 export type PretableExpansionDefault =
   | { readonly kind: "collapsed" }
@@ -65,11 +67,11 @@ export interface PretableRowModelSnapshot<
   readonly visibleRowCount: number;
   readonly visibleDataRowCount: number;
 
-  rowAt(index: number): PretableVisibleRow<TRow, TRowId> | undefined;
+  rowAt(index: number): PretableVisibleRow<TRow, TRowId, TColumns> | undefined;
   range(
     start: number,
     end: number,
-  ): readonly PretableVisibleRow<TRow, TRowId>[];
+  ): readonly PretableVisibleRow<TRow, TRowId, TColumns>[];
   indexOf(ref: PretableVisibleRowRef<TRowId>): number;
   dataRowAt(index: number): PretableDataRow<TRow, TRowId> | undefined;
   firstDataRow(): PretableDataRow<TRow, TRowId> | undefined;
@@ -82,7 +84,7 @@ export interface PretableRowModelSnapshot<
   ): PretableDataRow<TRow, TRowId> | undefined;
   parentGroupOf(
     ref: PretableVisibleRowRef<TRowId>,
-  ): PretableGroupRow | undefined;
+  ): PretableGroupRow<TColumns> | undefined;
   nearestVisibleRef(
     ref: PretableVisibleRowRef<TRowId>,
   ): PretableVisibleRowRef<TRowId> | undefined;

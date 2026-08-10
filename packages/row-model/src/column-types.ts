@@ -231,6 +231,32 @@ export type ColumnAggregateValueOf<
       : never
     : never;
 
+type AggregateDescriptorOf<TColumns> =
+  DescriptorOf<ColumnUnion<TColumns>> extends infer TDescriptor
+    ? TDescriptor extends {
+        readonly id: string;
+        readonly aggregate: infer TAggregate;
+      }
+      ? [TAggregate] extends [undefined]
+        ? never
+        : TDescriptor
+      : never
+    : never;
+
+type AggregateColumnIdOf<TColumns> =
+  AggregateDescriptorOf<TColumns> extends {
+    readonly id: infer TId extends string;
+  }
+    ? TId
+    : never;
+
+export type PretableAggregatesFor<TColumns> = Prettify<{
+  readonly [TColumnId in AggregateColumnIdOf<TColumns>]: ColumnAggregateValueOf<
+    TColumns,
+    TColumnId
+  >;
+}>;
+
 type EmptyFilter<TId extends string> = {
   readonly columnId: TId;
   readonly operator: "isEmpty" | "isNotEmpty";
@@ -314,8 +340,73 @@ type RuntimeColumnOf<TColumn> =
     infer TType,
     infer TAggregate
   >
-    ? PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>
+    ? PretableColumnDerivation<TRow, TId, TValue, TType, TAggregate>
     : never;
+
+type IsExactly<TLeft, TRight> = [TLeft] extends [TRight]
+  ? [TRight] extends [TLeft]
+    ? true
+    : false
+  : false;
+
+type CompatibleBuiltinAggregate<TValue, TOutput> =
+  IsExactly<TOutput, number | null> extends true
+    ? PretableBuiltinAggregate<TValue>
+    : never;
+
+/**
+ * Structural existential for a custom accumulator. Row/value/output remain
+ * correlated while the private accumulator representation may vary.
+ */
+export interface PretableCompatibleAggregator<
+  TRow extends object,
+  TValue,
+  TOutput,
+> {
+  init(): unknown;
+  accumulate(accumulator: never, value: TValue, row: TRow): unknown;
+  merge(left: never, right: never): unknown;
+  finalize(accumulator: never): TOutput;
+}
+
+export type PretableCompatibleAggregateSpec<
+  TRow extends object,
+  TValue,
+  TAggregate,
+> = [TAggregate] extends [undefined]
+  ? undefined
+  : | CompatibleBuiltinAggregate<TValue, AggregateOutputOfSpec<TAggregate>>
+    | PretableCompatibleAggregator<
+        TRow,
+        TValue,
+        AggregateOutputOfSpec<TAggregate>
+      >;
+
+export interface PretableColumnDerivation<
+  TRow extends object,
+  TId extends string,
+  TValue,
+  TType extends PretableColumnType,
+  TAggregate,
+> {
+  readonly id: TId;
+  readonly type: TType;
+  readonly accessor: (row: TRow) => TValue;
+  readonly value: (row: TRow) => TValue;
+  readonly compare?: (left: TValue, right: TValue) => number;
+  readonly aggregate?: PretableCompatibleAggregateSpec<
+    TRow,
+    TValue,
+    TAggregate
+  >;
+  readonly [columnDescriptor]: PretableColumnDescriptor<
+    TRow,
+    TId,
+    TValue,
+    TType,
+    TAggregate
+  >;
+}
 
 export type PretableDerivationsFor<TColumns> = {
   readonly [K in keyof TColumns]: RuntimeColumnOf<TColumns[K]>;

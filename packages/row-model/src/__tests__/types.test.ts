@@ -10,7 +10,9 @@ import {
   type PretableDerivationTransition,
   type PretableDerivationsFor,
   type PretableExpansionDefault,
+  PretableDisposedModelError,
   type PretableGroupId,
+  type PretableGroupRow,
   type PretableMutationIssue,
   type PretableMutationResult,
   type PretableQueryFor,
@@ -67,6 +69,86 @@ const customAggregateColumn = column.accessor("quantity", {
   formatAggregate: ({ value }) => value.toUpperCase(),
 });
 void customAggregateColumn;
+
+const compatibleAverage: PretableAggregator<
+  Holding,
+  number,
+  { sum: number; count: number },
+  number | null
+> = {
+  init: () => ({ sum: 0, count: 0 }),
+  accumulate: (accumulator, value) => ({
+    sum: accumulator.sum + value,
+    count: accumulator.count + 1,
+  }),
+  merge: (left, right) => ({
+    sum: left.sum + right.sum,
+    count: left.count + right.count,
+  }),
+  finalize: ({ sum, count }) => (count === 0 ? null : sum / count),
+};
+const incompatibleTextAggregate: PretableAggregator<
+  Holding,
+  string,
+  string[],
+  string
+> = {
+  init: () => [],
+  accumulate: (accumulator, value) => [...accumulator, value],
+  merge: (left, right) => [...left, ...right],
+  finalize: (accumulator) => accumulator.join(","),
+};
+
+const avgDerivations: PretableDerivationsFor<typeof columns> = [
+  columns[0],
+  { ...columns[1], aggregate: "avg" },
+];
+const customDerivations: PretableDerivationsFor<typeof columns> = [
+  columns[0],
+  { ...columns[1], aggregate: compatibleAverage },
+];
+const badDerivations: PretableDerivationsFor<typeof columns> = [
+  columns[0],
+  {
+    ...columns[1],
+    // @ts-expect-error a numeric column rejects a text-input/string-output aggregate
+    aggregate: incompatibleTextAggregate,
+  },
+];
+void avgDerivations;
+void customDerivations;
+void badDerivations;
+
+const typedGroupAggregates: PretableGroupRow<typeof columns>["aggregates"] = {
+  quantity: 42,
+};
+const nullGroupAggregates: PretableGroupRow<typeof columns>["aggregates"] = {
+  quantity: null,
+};
+const badAggregateValue: PretableGroupRow<typeof columns>["aggregates"] = {
+  // @ts-expect-error sum aggregates produce number | null
+  quantity: "42",
+};
+const badAggregateKey: PretableGroupRow<typeof columns>["aggregates"] = {
+  quantity: 42,
+  // @ts-expect-error only aggregate column IDs are accepted
+  sector: "Energy",
+};
+void typedGroupAggregates;
+void nullGroupAggregates;
+void badAggregateValue;
+void badAggregateKey;
+
+const customAggregateColumns = [
+  column.accessor("quantityLabel", (row) => row.quantity, {
+    type: "number",
+    aggregate: totalLabel,
+  }),
+] as const;
+const typedCustomGroupAggregates: PretableGroupRow<
+  typeof customAggregateColumns
+>["aggregates"] = { quantityLabel: "42" };
+void typedCustomGroupAggregates;
 
 type Ids = ColumnIdOf<typeof columns>;
 type _ids = Expect<Equal<Ids, "sector" | "quantity">>;
@@ -174,6 +256,8 @@ const invalidInsert: PretableChangeOperation<number> = {
 };
 void invalidInsert;
 
+const disposedChangesError = new PretableDisposedModelError("changes-since");
+
 function assertOperationalSignatures(
   rowModel: PretableRowModel<Holding, number, typeof columns>,
   queryTransition: PretableQueryTransition<typeof columns>,
@@ -260,4 +344,9 @@ void assertOperationalSignatures;
 test("the column helper retains runtime column IDs", () => {
   expect(columns.map((entry) => entry.id)).toEqual(["sector", "quantity"]);
   expect(query.filters[0]?.columnId).toBe("quantity");
+});
+
+test("the disposed error identifies changesSince", () => {
+  expect(disposedChangesError.code).toBe("disposed-model");
+  expect(disposedChangesError.operation).toBe("changes-since");
 });

@@ -9,6 +9,7 @@ export type PretableRowModelOperation =
   | "set-expansion-default"
   | "expand-all"
   | "collapse-all"
+  | "changes-since"
   | "distinct-values";
 
 export type PretableRowModelErrorCode =
