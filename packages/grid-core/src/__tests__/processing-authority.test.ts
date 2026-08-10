@@ -45,4 +45,62 @@ describe("processing authority", () => {
       "c",
     ]);
   });
+
+  test("engine/engine is today's behavior byte-for-byte", () => {
+    const grid = makeGrid();
+    grid.setSort("score", "asc");
+    grid.setColumnFilter("name", { operator: "contains", value: "b" });
+    expect(dataIds(grid)).toEqual(["b"]);
+  });
+
+  test("external/external leaves the supplied order untouched", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    grid.setSort("score", "asc");
+    grid.setColumnFilter("name", { operator: "contains", value: "b" });
+    expect(dataIds(grid)).toEqual(["a", "b", "c"]);
+  });
+
+  test("external filter with engine sort sorts the unfiltered records", () => {
+    const grid = makeGrid({ filter: "external", sort: "engine" });
+    grid.setSort("score", "asc");
+    grid.setColumnFilter("name", { operator: "contains", value: "b" });
+    expect(dataIds(grid)).toEqual(["b", "c", "a"]);
+  });
+
+  test("engine filter with external sort filters but keeps supplied order", () => {
+    const grid = makeGrid({ filter: "engine", sort: "external" });
+    grid.setSort("score", "asc");
+    grid.setColumnFilter("score", { operator: "gte", value: 2 });
+    expect(dataIds(grid)).toEqual(["a", "c"]);
+  });
+
+  test("mutators still record display state under external authority", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    grid.setSort("score", "asc");
+    grid.setColumnFilter("name", { operator: "contains", value: "b" });
+    const snap = grid.getSnapshot();
+    expect(snap.sort).toEqual([{ columnId: "score", direction: "asc" }]);
+    expect(snap.filters).toEqual({
+      name: { operator: "contains", value: "b" },
+    });
+  });
+
+  test("sortable:false still prunes under external sort authority", () => {
+    const grid = createGridCore<Row>({
+      columns: [{ id: "name" }, { id: "score", sortable: false }],
+      rows: rows.map((r) => ({ ...r })),
+      getRowId: (row: Row) => row.id,
+      processing: { filter: "external", sort: "external" },
+    });
+    grid.setSort("score", "asc");
+    expect(grid.getSnapshot().sort).toEqual([]);
+  });
+
+  test("grouping still works under external authority", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    grid.setRowGroups(["score"]);
+    expect(
+      grid.getSnapshot().visibleRows.filter((r) => r.kind === "group"),
+    ).toHaveLength(3);
+  });
 });

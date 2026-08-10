@@ -21,6 +21,7 @@ import type {
   PretableFocusDirection,
   PretableFocusState,
   PretableMoveFocusOptions,
+  PretableProcessingAuthority,
   PretableGridOptions,
   PretableRow,
   PretableVisibleRow,
@@ -34,6 +35,14 @@ import type {
 } from "./types";
 
 const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
+
+/**
+ * Substituted into the derivation when an operation's authority is external.
+ * Module-level so the identity is stable and the derivation cache is not
+ * invalidated by a fresh empty literal on every snapshot.
+ */
+const NO_FILTERS: Record<string, ColumnFilter> = {};
+const NO_SORT: PretableSortEntry[] = [];
 
 /**
  * Group rows: focus targets, never selection or edit targets.
@@ -172,6 +181,13 @@ export function createGridCore<TRow extends PretableRow>(
     inputOptions.columns,
   ).map((c) => ({ ...c }));
   let sourceRows = createSourceRows(options);
+  // Read once: `processing` is construction-time by contract, and `options` is
+  // reassigned throughout (setRows, autosize, column mutators), so re-reading
+  // it per snapshot would only invite an accidental mid-life flip.
+  const filterAuthority: PretableProcessingAuthority =
+    options.processing?.filter ?? "engine";
+  const sortAuthority: PretableProcessingAuthority =
+    options.processing?.sort ?? "engine";
   const sourceRowIndex = new Map<string, SourceRow<TRow>>(
     sourceRows.map((entry) => [entry.id, entry]),
   );
@@ -1750,9 +1766,16 @@ export function createGridCore<TRow extends PretableRow>(
       : preserveAggregateIdentity(
           deriveVisibleRows({
             columns: options.columns,
-            filters,
+            // External filter authority: the records arrived already filtered
+            // upstream, so applying the displayed filters here would filter the
+            // same predicate twice. The state is still displayed — see
+            // `snapshot.filters` — it is simply not applied.
+            filters: filterAuthority === "external" ? NO_FILTERS : filters,
             rows: sourceRows,
-            sort,
+            // External sort authority: the empty-sort path already falls
+            // through to `sourceIndex`, i.e. the order the records were
+            // supplied in, which is exactly the upstream processor's order.
+            sort: sortAuthority === "external" ? NO_SORT : sort,
             rowGroups,
             groupExpansionOverrides,
             groupsDefaultExpanded,
