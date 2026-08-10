@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const GRID_CSS = path.resolve(__dirname, "../grid.css");
+const THEMES_DIR = path.resolve(__dirname, "../themes");
 
 describe("grid.css cascade contract", () => {
   test("grid.css declares @layer pretable", () => {
@@ -32,6 +33,39 @@ describe("grid.css cascade contract", () => {
       /:where\(\s*\[data-pretable-header-cell\]\[data-pretable-pinned="left"\],\s*\[data-pretable-header-cell\]\[data-pretable-pinned="right"\]\s*\)\s*\{[^}]*\}/,
     );
     expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
+  });
+
+  test("pinned body cells and group rows have their own surface tokens", () => {
+    // They used to borrow --pretable-bg-header, which meant a theme could not
+    // restyle a frozen data column without also restyling the header strip.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const pinnedBody = css.match(
+      /:where\(\[data-pretable-cell\]\[data-pretable-pinned="left"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(pinnedBody, "no left-pinned body rule").toBeDefined();
+    expect(pinnedBody).toMatch(/background:\s*var\(--pretable-bg-pinned\)/);
+
+    const groupRow = css.match(
+      /:where\(\[data-pretable-group-row\] \[data-pretable-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(groupRow, "no group-row rule").toBeDefined();
+    expect(groupRow).toMatch(/background:\s*var\(--pretable-bg-group-row\)/);
+  });
+
+  test("row hover is declared after the pinned surfaces so it reaches them", () => {
+    // Everything here is :where()-flattened to (0,0,0), so source order is the
+    // only cascade lever. Declared before the pinned rules, hover loses on
+    // pinned cells and a hovered row visibly breaks in half at the frozen edge.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const pinned = css.indexOf(
+      '[data-pretable-cell][data-pretable-pinned="left"]',
+    );
+    const hover = css.indexOf("[data-pretable-row]:hover [data-pretable-cell]");
+    expect(pinned, "no pinned rule").toBeGreaterThan(-1);
+    expect(hover, "no hover rule").toBeGreaterThan(-1);
+    expect(hover, "hover must come after the pinned surfaces").toBeGreaterThan(
+      pinned,
+    );
   });
 
   test("header cells reset the button border before drawing the tokenized divider", () => {
@@ -91,6 +125,18 @@ describe("grid.css cascade contract", () => {
     )?.[1];
     expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
     expect(rule).toMatch(/background:\s*transparent/);
+  });
+
+  test("small controls use the control radius, surfaces use the card radius", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const funnel = css.match(
+      /:where\(\[data-pretable-filter-funnel\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(funnel).toMatch(/border-radius:\s*var\(--pretable-radius-control\)/);
+    const viewport = css.match(
+      /:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(viewport).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
   });
 
   test("grid.css styles the enum combobox listbox", () => {
@@ -268,6 +314,64 @@ describe("grid.css cascade contract", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).not.toMatch(/data-pretable-toolbar/);
     expect(css).not.toMatch(/data-pretable-status-bar/);
+  });
+
+  test("hover and selection tint the surface instead of replacing it", () => {
+    // Both state fills are translucent in both shipped themes — Excel sets
+    // --pretable-bg-hover to `transparent` outright, and --pretable-selection-bg
+    // is a color-mix at 8% in both. Declared as the `background` SHORTHAND these
+    // rules replace the surface fill the earlier rules painted. On a pinned cell
+    // that is a real bug, not a cosmetic one: pinned cells are
+    // `position: sticky; z-index: 1` with unpinned cells scrolling underneath,
+    // so a hovered or selected pinned cell that loses its opaque fill lets the
+    // scrolled-under column print straight through it. As a background-IMAGE
+    // layer the state composes OVER the surface color instead.
+    // Comments are stripped first so prose mentioning `background` can't satisfy
+    // (or trip) these assertions.
+    const css = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const hover = css.match(
+      /:where\(\[data-pretable-row\]:hover \[data-pretable-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(hover, "no hover rule").toBeDefined();
+    expect(hover).toMatch(
+      /background-image:\s*linear-gradient\(\s*var\(--pretable-bg-hover\),\s*var\(--pretable-bg-hover\),?\s*\)/,
+    );
+    expect(
+      hover,
+      "hover must not use the background shorthand: it resets background-color and makes sticky cells transparent",
+    ).not.toMatch(/background:\s/);
+
+    const selection = css.match(
+      /:where\(\[role="gridcell"\]\[aria-selected="true"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(selection, "no selection fill rule").toBeDefined();
+    expect(selection).toMatch(
+      /background-image:\s*linear-gradient\(\s*var\(--pretable-selection-bg\),\s*var\(--pretable-selection-bg\),?\s*\)/,
+    );
+    expect(
+      selection,
+      "selection must not use the background shorthand: same sticky-transparency failure as hover",
+    ).not.toMatch(/background:\s/);
+  });
+
+  test("overlays read the elevation token, not the drag ghost's", () => {
+    // Four of the five things that took --pretable-reorder-ghost-shadow are
+    // popovers; only one was ever a drag ghost. The name is now what is lifted.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).not.toMatch(/reorder-ghost-shadow/);
+    expect(css).toMatch(/box-shadow:\s*var\(--pretable-shadow-overlay\)/);
+  });
+
+  test("dark mode overrides the overlay shadow", () => {
+    // A black shadow on a #1c1c1c surface is invisible; without an override
+    // every dark-mode popover reads as flat.
+    const css = fs.readFileSync(path.join(THEMES_DIR, "material.css"), "utf8");
+    const dark = css.match(/\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/)?.[1];
+    expect(dark, "no dark block").toBeDefined();
+    expect(dark).toMatch(/--pretable-shadow-overlay:/);
   });
 
   test("every grid.css rule selector is wrapped in :where()", () => {

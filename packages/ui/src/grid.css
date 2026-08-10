@@ -125,10 +125,11 @@
 
   /* ---- Row grouping ---------------------------------------------------- */
 
-  /* Group headers borrow the header fill so the eye reads them as structure
-     rather than as another record. */
+  /* Group headers take a structural fill so the eye reads them as structure
+     rather than as another record. Its own token, not the header's: a theme
+     must be able to restyle group rows without restyling the header strip. */
   :where([data-pretable-group-row] [data-pretable-cell]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-group-row);
     color: var(--pretable-text-header);
     font-weight: 600;
   }
@@ -194,20 +195,16 @@
     );
   }
 
-  /* Hover */
-  :where([data-pretable-row]:hover [data-pretable-cell]) {
-    background: var(--pretable-bg-hover);
-  }
-
-  /* Pinned cells (sticky left) — reuse header background */
+  /* Pinned cells (sticky left) — an opaque fill so scrolled columns pass
+     underneath, on their own token rather than the header's. */
   :where([data-pretable-cell][data-pretable-pinned="left"]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-pinned);
     z-index: 1;
   }
 
   /* Pinned cells (sticky right) — mirror of the left rule */
   :where([data-pretable-cell][data-pretable-pinned="right"]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-pinned);
     z-index: 1;
   }
 
@@ -221,6 +218,26 @@
   ) {
     border-left: var(--pretable-rule-width, 1px) solid
       var(--pretable-rule-vertical, var(--pretable-rule));
+  }
+
+  /* Hover. Declared after the pinned surfaces on purpose: every selector here is
+     :where()-flattened to (0,0,0), so source order is the only cascade lever,
+     and a hover declared earlier loses on pinned cells — leaving a hovered row
+     visibly broken in half at the frozen edge. Selection follows this rule for
+     the same reason. */
+  :where([data-pretable-row]:hover [data-pretable-cell]) {
+    /* A background-IMAGE layer, not the background shorthand: the surface rules
+       that precede this one (base, zebra, group row, pinned) each set
+       `background-color`, and hover must tint that rather than replace it.
+       Replacing it is not cosmetic — `--pretable-bg-hover` is a translucent
+       state layer in both themes (Excel sets it to `transparent` outright), and
+       pinned cells are `position: sticky; z-index: 1` with unpinned cells
+       scrolling underneath. A hovered pinned cell that loses its opaque fill
+       lets the scrolled-under column print straight through it. */
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
   }
 
   /* Selection text color. The selection FILL is drawn by the
@@ -246,7 +263,17 @@
    * a usable visual.
    */
   :where([role="gridcell"][aria-selected="true"]) {
-    background: var(--pretable-selection-bg);
+    /* A background-image layer for the same reason as hover above:
+       `--pretable-selection-bg` is a color-mix at 8% in both themes, so the
+       `background` shorthand would replace a pinned cell's opaque fill with a
+       92%-transparent one and let the scrolled-under column show through.
+       This rule follows hover in source order, so on a cell that is both
+       hovered and selected the selection tint wins the background-image slot
+       outright — the same precedence the shorthand gave it, unchanged. */
+    background-image: linear-gradient(
+      var(--pretable-selection-bg),
+      var(--pretable-selection-bg)
+    );
   }
 
   :where([role="gridcell"][data-pretable-focused="true"]) {
@@ -410,7 +437,7 @@
     position: fixed;
     pointer-events: none;
     background: var(--pretable-reorder-ghost-bg);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     opacity: 0.6;
     z-index: 10;
     user-select: none;
@@ -437,7 +464,7 @@
     height: 18px;
     padding: 0;
     border: 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: transparent;
     color: var(--pretable-text-dim);
     cursor: pointer;
@@ -467,7 +494,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     font: inherit;
     /* Portaled into <body>, so the font-family declared on the scroll
        viewport is no longer inherited — declare it here. */
@@ -481,7 +508,7 @@
     box-sizing: border-box;
     padding: 5px 7px;
     border: 1px solid var(--pretable-rule);
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: var(--pretable-bg-grid);
     color: var(--pretable-text-cell);
     font: inherit;
@@ -612,7 +639,7 @@
     height: 14px;
     padding: 0;
     border: 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: transparent;
     color: var(--pretable-text-dim);
     font-size: 10px;
@@ -648,7 +675,7 @@
     height: 18px;
     padding: 0;
     border: 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: transparent;
     color: var(--pretable-text-dim);
     cursor: pointer;
@@ -669,7 +696,7 @@
     display: flex;
     flex-direction: column;
     padding: 4px;
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body>, so nothing is inherited from the viewport. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
@@ -679,7 +706,7 @@
     width: 100%;
     padding: 6px 8px;
     border: 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: transparent;
     color: var(--pretable-text-cell);
     font: inherit;
@@ -710,7 +737,7 @@
     background: var(--pretable-bg-grid);
     border: 1px solid var(--pretable-rule-strong);
     border-radius: var(--pretable-radius);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body> — see the filter menu above. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
@@ -748,7 +775,7 @@
     background: var(--pretable-bg-grid);
     border: 1px solid var(--pretable-rule-strong);
     border-radius: var(--pretable-radius);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body> — see the filter menu above. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
@@ -789,7 +816,7 @@
   :where([data-pretable-date-day]) {
     text-align: center;
     padding: 4px 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     cursor: pointer;
   }
 
