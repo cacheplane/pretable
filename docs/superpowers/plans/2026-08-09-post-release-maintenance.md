@@ -254,7 +254,7 @@ rm -rf -- .tmp-favicon-build
 git status --short
 ```
 
-Expected: no listener; the validation confirms the exact temporary target existed before removal; only `apps/website/app/favicon.ico` and `apps/website/e2e/smoke.spec.ts` remain changed. If Next.js created fresh `apps/website/AGENTS.md` or `apps/website/CLAUDE.md`, remove only those newly generated files with `apply_patch`; never remove a preflight-baseline file.
+Expected: no listener; the validation confirms the exact temporary target existed before removal; only `apps/website/app/favicon.ico` and `apps/website/e2e/smoke.spec.ts` remain changed. If Next.js created fresh instruction artifacts under `apps/website`, remove only those newly generated files with `apply_patch`; never remove a preflight-baseline file.
 
 - [ ] **Step 9: Commit the favicon slice**
 
