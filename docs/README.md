@@ -20,8 +20,8 @@ speculative roadmap APIs.
 
 ## Lifecycle
 
-New design specs use docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md.
-Implementation plans use docs/superpowers/plans/YYYY-MM-DD-<topic>.md.
+New design specs use `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`.
+Implementation plans use `docs/superpowers/plans/YYYY-MM-DD-<topic>.md`.
 
 Every new spec should include:
 
