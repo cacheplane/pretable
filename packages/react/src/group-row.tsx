@@ -8,6 +8,7 @@ import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 
 import { resolveColumnAlign } from "./column-align";
 import { groupLabel } from "./group-model";
+import { ChevronDownIcon } from "./icons";
 import { formatAggregateValue } from "./rendering";
 import { getPositionedCellStyle, getRowStyle } from "./styles";
 import type { PretableColumn } from "./types";
@@ -172,7 +173,7 @@ export function GroupRow<TRow extends PretableRow>({
                   >
                     {/* Points down when expanded; the stylesheet rotates it
                         -90deg while aria-expanded is "false". */}
-                    ▾
+                    <ChevronDownIcon />
                   </button>
                 ) : null}
                 <span data-pretable-group-label="">{label}</span>

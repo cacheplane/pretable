@@ -187,6 +187,7 @@ import { MenuButton } from "./column-menu/MenuButton";
 import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import { OverlayPortal } from "./overlay/OverlayPortal";
+import { CheckIcon, SortAscIcon, SortDescIcon } from "./icons";
 import { popoverStyle } from "./overlay/popover-position";
 import { useHeaderPopover } from "./overlay/useHeaderPopover";
 import { useHydrated } from "./use-hydrated";
@@ -941,7 +942,7 @@ function HeaderContentImpl({
       <strong>
         {sortDirection ? (
           <span aria-hidden="true" data-pretable-sort-indicator={sortDirection}>
-            {sortDirection === "asc" ? "▲" : "▼"}
+            {sortDirection === "asc" ? <SortAscIcon /> : <SortDescIcon />}
           </span>
         ) : null}
         {sortPriority !== null ? (
@@ -3369,11 +3370,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     role="checkbox"
                     type="button"
                   >
-                    {headerCheckState === "true"
-                      ? "✓"
-                      : headerCheckState === "mixed"
-                        ? "–"
-                        : ""}
+                    {headerCheckState === "true" ? (
+                      <CheckIcon />
+                    ) : headerCheckState === "mixed" ? (
+                      "–"
+                    ) : null}
                   </button>
                 ) : null}
               </div>
@@ -4367,11 +4368,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                         role="checkbox"
                         type="button"
                       >
-                        {rowCheckState === "true"
-                          ? "✓"
-                          : rowCheckState === "mixed"
-                            ? "–"
-                            : ""}
+                        {rowCheckState === "true" ? (
+                          <CheckIcon />
+                        ) : rowCheckState === "mixed" ? (
+                          "–"
+                        ) : null}
                       </button>
                     ) : (
                       <MemoizedCellContent

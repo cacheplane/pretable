@@ -156,10 +156,17 @@
     );
   }
 
+  /* Sized from the icon token rather than 1em: the twisty is an SVG now, and a
+     1em button around a 12px glyph left it off-centre — and `rotate` below
+     turns about the BUTTON's centre, so the box has to hug the glyph or the
+     collapsed arrow swings off its own axis. */
   :where([data-pretable-group-twisty]) {
     flex: none;
-    width: 1em;
-    height: 1em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--pretable-icon-size);
+    height: var(--pretable-icon-size);
     padding: 0;
     border: 0;
     background: none;

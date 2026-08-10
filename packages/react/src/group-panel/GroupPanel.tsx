@@ -22,6 +22,7 @@ import {
   moveGroupLevel,
   removeGroupLevel,
 } from "./group-panel-model";
+import { CloseIcon } from "../icons";
 
 /** Matches the header reorder drag's threshold, so both grabs feel the same. */
 const CHIP_DRAG_THRESHOLD_PX = 5;
@@ -480,7 +481,7 @@ export function GroupPanel({
               tabIndex={-1}
               type="button"
             >
-              <span aria-hidden="true">✕</span>
+              <CloseIcon />
             </button>
           </div>,
         ];

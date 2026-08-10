@@ -9,6 +9,7 @@ import type { PretableTelemetry } from "./use-pretable";
 
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 import type { PretableColumn } from "./types";
+import { SortAscIcon, SortDescIcon } from "./icons";
 
 const NO_OPERAND_OPERATORS = new Set(["isEmpty", "isNotEmpty"]);
 
@@ -188,7 +189,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
           <span>{label}</span>
           {sortDirection ? (
             <span className="sort-indicator">
-              {sortDirection === "desc" ? "▼" : "▲"}
+              {sortDirection === "desc" ? <SortDescIcon /> : <SortAscIcon />}
             </span>
           ) : null}
         </>
