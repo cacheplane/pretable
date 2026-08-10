@@ -115,7 +115,7 @@ export interface PretableTelemetry {
   rowModelRowCount: number;
   renderedRowCount: number;
   selectedRowId: string | null;
-  /** Count of loaded source records. Renamed from `totalRowCount` — it never meant the matching population. */
+  /** Count of loaded source records — not the matching population. */
   loadedRowCount: number;
   totalHeight: number;
   visibleRowCount: number;

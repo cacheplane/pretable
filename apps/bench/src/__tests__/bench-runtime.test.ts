@@ -103,7 +103,7 @@ describe("bench runtime", () => {
     ).toEqual([
       "internal telemetry rendered rows: 8",
       "internal telemetry visible rows: 6",
-      "internal telemetry total rows: 750",
+      "internal telemetry loaded rows: 750",
       "internal telemetry planned height: 59010",
       "internal telemetry viewport range: 0-6",
       "internal telemetry selected row: evt-dev-0001",
