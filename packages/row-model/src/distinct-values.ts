@@ -294,6 +294,9 @@ function describeValue(value: unknown): ValueDescription {
 }
 
 function snapshotDistinctValue(value: unknown): unknown {
+  // Number keys use SameValueZero identity. Canonicalizing their representative
+  // prevents insertion and removal history from leaking through as negative zero.
+  if (typeof value === "number" && value === 0) return 0;
   if (value !== null && typeof value === "object") {
     const timestamp = dateTimestamp(value);
     if (timestamp !== undefined) return new Date(timestamp);

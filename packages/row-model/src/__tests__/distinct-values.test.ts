@@ -108,6 +108,165 @@ function extendedDiagnostics(model: object) {
 }
 
 describe("bounded distinct-value dictionaries", () => {
+  test("canonicalizes SameValueZero zero representatives across insertion order and retained removal", async () => {
+    const permutations = [
+      [-0, +0, -0],
+      [-0, -0, +0],
+      [+0, -0, -0],
+    ] as const;
+
+    for (const values of permutations) {
+      const scheduler = new ManualScheduler();
+      const model = createModel({
+        scheduler,
+        rows: values.map((score, index) => ({
+          id: index + 1,
+          label: String(index),
+          score,
+          opaque: { code: String(index) },
+        })),
+      });
+      const query = model.distinctValues("score", { limit: 10 });
+      scheduler.flushAll();
+      const result = await query.finished;
+
+      expect(result.values).toHaveLength(1);
+      expect(result.values[0]?.count).toBe(3);
+      expect(Object.is(result.values[0]?.value, +0)).toBe(true);
+      expect(Object.is(result.values[0]?.value, -0)).toBe(false);
+    }
+
+    const scheduler = new ManualScheduler();
+    const retained = createModel({
+      scheduler,
+      rows: [
+        { id: 1, label: "negative", score: -0, opaque: { code: "1" } },
+        { id: 2, label: "positive", score: +0, opaque: { code: "2" } },
+        { id: 3, label: "negative", score: -0, opaque: { code: "3" } },
+      ],
+    });
+    const initial = retained.distinctValues("score", { limit: 10 });
+    scheduler.flushAll();
+    await initial.finished;
+
+    retained.applyTransaction({ remove: [1, 3] });
+    const retainedResult = await retained.distinctValues("score", {
+      limit: 10,
+    }).finished;
+
+    const freshScheduler = new ManualScheduler();
+    const fresh = createModel({
+      scheduler: freshScheduler,
+      rows: [{ id: 2, label: "positive", score: +0, opaque: { code: "2" } }],
+    });
+    const freshQuery = fresh.distinctValues("score", { limit: 10 });
+    freshScheduler.flushAll();
+    const freshResult = await freshQuery.finished;
+
+    expect(retainedResult.values).toEqual(freshResult.values);
+    expect(Object.is(retainedResult.values[0]?.value, +0)).toBe(true);
+    expect(Object.is(freshResult.values[0]?.value, +0)).toBe(true);
+  });
+
+  test("canonicalizes zero through setRows and active cooperative catch-up", async () => {
+    const setRowsScheduler = new ManualScheduler();
+    const replaced = createModel({
+      scheduler: setRowsScheduler,
+      rows: [
+        { id: 1, label: "negative", score: -0, opaque: { code: "1" } },
+        { id: 2, label: "positive", score: +0, opaque: { code: "2" } },
+      ],
+    });
+    const beforeReplace = replaced.distinctValues("score", { limit: 10 });
+    setRowsScheduler.flushAll();
+    await beforeReplace.finished;
+
+    replaced.setRows([
+      { id: 3, label: "negative", score: -0, opaque: { code: "3" } },
+      { id: 4, label: "positive", score: +0, opaque: { code: "4" } },
+    ]);
+    const replacedResult = await replaced.distinctValues("score", {
+      limit: 10,
+    }).finished;
+    expect(replacedResult.values[0]?.count).toBe(2);
+    expect(Object.is(replacedResult.values[0]?.value, +0)).toBe(true);
+
+    const catchUpScheduler = new ManualScheduler();
+    const catchingUp = createModel({
+      scheduler: catchUpScheduler,
+      rows: [
+        { id: 1, label: "negative", score: -0, opaque: { code: "1" } },
+        { id: 2, label: "positive", score: +0, opaque: { code: "2" } },
+        { id: 3, label: "negative", score: -0, opaque: { code: "3" } },
+      ],
+    });
+    const pending = catchingUp.distinctValues("score", { limit: 10 });
+    expect(pending.status).toBe("pending");
+    catchingUp.applyTransaction({ remove: [1, 3] });
+    catchUpScheduler.flushAll();
+    const caughtUp = await pending.finished;
+
+    expect(caughtUp.rowModelRevision).toBe(1);
+    expect(caughtUp.values[0]?.count).toBe(1);
+    expect(Object.is(caughtUp.values[0]?.value, +0)).toBe(true);
+  });
+
+  test("keeps zero canonical through blank-aware search and custom comparison", async () => {
+    const scheduler = new ManualScheduler();
+    let comparisons = 0;
+    const derivations = [
+      columns[0],
+      {
+        ...columns[1],
+        compare: (left: number, right: number) => {
+          comparisons += 1;
+          return left === right ? 0 : left < right ? -1 : 1;
+        },
+      },
+      columns[2],
+    ] as const;
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, label: "negative", score: -0, opaque: { code: "1" } },
+        { id: 2, label: "positive", score: +0, opaque: { code: "2" } },
+        { id: 3, label: "blank", score: Number.NaN, opaque: { code: "3" } },
+        { id: 4, label: "other", score: 2, opaque: { code: "4" } },
+      ],
+      columns,
+      derivations,
+      transitionScheduler: scheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const all = model.distinctValues("score", {
+      includeBlanks: true,
+      limit: 10,
+    });
+    scheduler.flushAll();
+    const allResult = await all.finished;
+    expect(allResult.values.find(({ value }) => value === 0)?.count).toBe(2);
+    expect(
+      Object.is(allResult.values.find(({ value }) => value === 0)?.value, +0),
+    ).toBe(true);
+    expect(allResult.values.some(({ value }) => Number.isNaN(value))).toBe(
+      true,
+    );
+
+    const searched = model.distinctValues("score", {
+      includeBlanks: true,
+      search: "0",
+      limit: 10,
+    });
+    expect(searched.status).toBe("pending");
+    scheduler.flushAll();
+    const searchedResult = await searched.finished;
+    expect(searchedResult.values).toHaveLength(1);
+    expect(searchedResult.values[0]?.count).toBe(2);
+    expect(Object.is(searchedResult.values[0]?.value, +0)).toBe(true);
+    expect(comparisons).toBeGreaterThan(0);
+  });
+
   test("returns exact typed values and counts from the all-row population by default", async () => {
     const scheduler = new ManualScheduler();
     const model = createModel({ scheduler });

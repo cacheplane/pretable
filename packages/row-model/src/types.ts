@@ -274,6 +274,7 @@ export interface PretableDistinctValueOptions {
 
 export interface PretableDistinctValueResult<TValue> {
   readonly values: readonly {
+    /** Numeric zero uses SameValueZero identity and is returned as positive zero. */
     readonly value: TValue;
     readonly count: number;
   }[];
