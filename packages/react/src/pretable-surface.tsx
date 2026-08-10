@@ -390,6 +390,15 @@ export interface PretableSurfaceMessages {
    * @experimental
    */
   staleAnnouncement?: () => string;
+
+  /**
+   * Announced only when focus reconciliation's id lookup misses during a
+   * data-driven rows replacement — never for a user action, and never for a
+   * dataset change (the results announcement covers that transition).
+   *
+   * @experimental
+   */
+  focusedRowRemovedAnnouncement?: () => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -454,6 +463,8 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
       : `Loaded ${added} more. ${population} loaded.`;
   },
   staleAnnouncement: () => "Updating results…",
+  focusedRowRemovedAnnouncement: () =>
+    "Focused row is no longer in the results; moved to a nearby row.",
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -1171,6 +1182,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         messages?.resultsAnnouncement ?? defaultMessages.resultsAnnouncement,
       staleAnnouncement:
         messages?.staleAnnouncement ?? defaultMessages.staleAnnouncement,
+      focusedRowRemovedAnnouncement:
+        messages?.focusedRowRemovedAnnouncement ??
+        defaultMessages.focusedRowRemovedAnnouncement,
     }),
     [messages],
   );
@@ -1556,6 +1570,77 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       return definition ? [definition] : [];
     });
   }, [drawnColumns, effectiveColumns]);
+
+  // Declared AFTER `usePretable` on purpose: layout effects run in declaration
+  // order within a component, so this fires after the hook's own `setRows`
+  // effect in the same commit. `grid.getSnapshot()` is therefore
+  // post-replacement while the DOM still shows the old rows — which is what
+  // makes the `document.activeElement` read below meaningful.
+  const focusRowIdBeforeRowsRef = useRef<string | null>(null);
+  const datasetKeyBeforeRowsRef = useRef<string | null>(null);
+  const rowsSeenRef = useRef(rows);
+
+  useLayoutEffect(() => {
+    const after = grid.getSnapshot();
+    const previousFocusRowId = focusRowIdBeforeRowsRef.current;
+    const previousDatasetKey = datasetKeyBeforeRowsRef.current;
+    // A pivot does not need a rows replacement to reach the engine: a consumer
+    // that mints the new key before its rows land goes through
+    // `setResultMeta`, which clears focus with the `rows` identity untouched.
+    const datasetPivoted =
+      previousDatasetKey !== null && after.datasetKey !== previousDatasetKey;
+
+    if (rowsSeenRef.current === rows && !datasetPivoted) {
+      focusRowIdBeforeRowsRef.current = after.focus.rowId;
+      datasetKeyBeforeRowsRef.current = after.datasetKey;
+      return;
+    }
+
+    const focusWasInsideGrid =
+      typeof document !== "undefined" &&
+      viewportRef.current !== null &&
+      document.activeElement !== null &&
+      viewportRef.current.contains(document.activeElement);
+
+    rowsSeenRef.current = rows;
+    datasetKeyBeforeRowsRef.current = after.datasetKey;
+
+    if (datasetPivoted) {
+      // The engine already cleared focus. Put it somewhere deterministic rather
+      // than letting DOM focus fall to <body> — but only if the user was
+      // actually inside the grid; nothing gets grabbed otherwise.
+      if (focusWasInsideGrid) {
+        const firstDataRow = after.visibleRows.find(isDataRow);
+        const firstColumn = columnsInVisualOrder.find(
+          (column) => column.id !== ROW_SELECT_COLUMN_ID,
+        );
+        if (firstDataRow && firstColumn) {
+          grid.setFocus({ rowId: firstDataRow.id, columnId: firstColumn.id });
+        } else {
+          viewportRef.current?.focus();
+        }
+      }
+
+      // A different question: the old scroll offset means nothing against the
+      // new answer.
+      if (viewportRef.current) {
+        viewportRef.current.scrollTop = 0;
+      }
+      grid.setViewport({ ...after.viewport, scrollTop: 0 });
+
+      focusRowIdBeforeRowsRef.current = grid.getSnapshot().focus.rowId;
+      return;
+    }
+
+    focusRowIdBeforeRowsRef.current = after.focus.rowId;
+
+    if (
+      previousFocusRowId !== null &&
+      after.focus.rowId !== previousFocusRowId
+    ) {
+      scheduleAnnouncement(effectiveMessages.focusedRowRemovedAnnouncement());
+    }
+  });
 
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the
   // closures it captures would otherwise go stale across renders. Keep refs to

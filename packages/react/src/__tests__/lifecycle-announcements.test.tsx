@@ -340,3 +340,62 @@ describe("lifecycle announcement counts", () => {
     expect(announceFirstPage({ kind: "exact", count: 1 })).toBe("Showing 1");
   });
 });
+
+describe("data-driven focus reconciliation", () => {
+  function FocusHarness({
+    rows,
+    datasetKey,
+  }: {
+    rows: Row[];
+    datasetKey: string;
+  }) {
+    return (
+      <PretableSurface<Row>
+        ariaLabel="People"
+        columns={columns}
+        rows={rows}
+        getRowId={(row) => row.id}
+        viewportHeight={400}
+        processing={{ filter: "external", sort: "external" }}
+        resultMeta={{
+          datasetKey,
+          total: { kind: "exact", count: rows.length },
+        }}
+        state={{ focus: undefined }}
+      />
+    );
+  }
+
+  function focusCell(view: ReturnType<typeof render>, rowId: string): void {
+    const cell = view.container.querySelector<HTMLElement>(
+      `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="name"]`,
+    )!;
+    act(() => {
+      cell.focus();
+      cell.click();
+    });
+  }
+
+  it("announces a repaired focus when the focused row leaves the results", () => {
+    const view = render(<FocusHarness rows={page2} datasetKey="q1" />);
+    focusCell(view, "b");
+    view.rerender(<FocusHarness rows={page1} datasetKey="q1" />);
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe(
+      "Focused row is no longer in the results; moved to a nearby row.",
+    );
+  });
+
+  it("moves focus to the first cell of a new dataset and does not announce a repair", () => {
+    const view = render(<FocusHarness rows={page2} datasetKey="q1" />);
+    focusCell(view, "b");
+    view.rerender(<FocusHarness rows={page2} datasetKey="q2" />);
+    flushAnnouncement();
+    expect(liveRegionText(view)).not.toContain("no longer in the results");
+    expect(
+      view.container.querySelector(
+        '[data-pretable-row-id="a"] [data-pretable-column-id="name"]',
+      ),
+    ).toHaveAttribute("tabindex", "0");
+  });
+});
