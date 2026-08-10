@@ -102,8 +102,7 @@ See the current [core changelog](packages/core/CHANGELOG.md),
 
 - Close remaining public API/documentation gaps and make stable row identity
   consistent across entry points.
-- Finish grouping adoption with dedicated consumer documentation and committed
-  benchmark evidence.
+- Finish grouping adoption with committed benchmark evidence.
 - Add deterministic PMS and financial-planning benchmark profiles without
   weakening existing 60 Hz, zero-gap, and interaction-continuity gates.
 

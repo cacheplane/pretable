@@ -90,8 +90,8 @@ The initial tiers are fixed for this documentation slice:
 
 - **Now — harden and measure:** close remaining public API/documentation gaps,
   make stable row identity consistent across entry points, finish grouping
-  adoption with dedicated consumer documentation and committed benchmark
-  evidence, and add PMS and financial-planning benchmark profiles.
+  adoption with committed benchmark evidence, and add PMS and
+  financial-planning benchmark profiles.
 - **Next — describe and manipulate financial views:** add the financial field
   schema, nested headers, view-management surface, saved-view persistence
   (persistence slice 1), and the typed command foundation with bounded local
