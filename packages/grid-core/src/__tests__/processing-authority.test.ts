@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { createGridCore } from "../index";
+import {
+  createGridCore,
+  type PretableProcessingAuthority,
+  type PretableProcessingOptions,
+} from "../index";
 import type { PretableDataRow } from "../types";
 
 type Row = { id: string; name: string; score: number };
@@ -16,10 +20,7 @@ const columns = [
   { id: "score", header: "Score", type: "number" as const },
 ];
 
-function makeGrid(processing?: {
-  filter?: "engine" | "external";
-  sort?: "engine" | "external";
-}) {
+function makeGrid(processing?: PretableProcessingOptions) {
   return createGridCore<Row>({
     columns: columns.map((c) => ({ ...c })),
     rows: rows.map((r) => ({ ...r })),
@@ -37,7 +38,8 @@ function dataIds(grid: ReturnType<typeof makeGrid>): string[] {
 
 describe("processing authority", () => {
   test("accepts a processing option without changing the default model", () => {
-    expect(dataIds(makeGrid({ filter: "engine", sort: "engine" }))).toEqual([
+    const engine: PretableProcessingAuthority = "engine";
+    expect(dataIds(makeGrid({ filter: engine, sort: engine }))).toEqual([
       "a",
       "b",
       "c",

@@ -234,9 +234,10 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
   rows: TRow[];
   getRowId?: (row: TRow, index: number) => string;
   autosize?: boolean | AutosizeOptions;
+  // processing authority:
   /**
    * Who applies filtering and sorting to the loaded records. Construction-time
-   * only — flipping authority is honestly a new grid.
+   * only.
    *
    * @experimental
    */

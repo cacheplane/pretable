@@ -301,7 +301,6 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;
     hideGroupedColumns?: boolean;
-    processing?: PretableProcessingOptions;
     // (undocumented)
     rows: TRow[];
 }
@@ -357,15 +356,6 @@ export interface PretableMoveFocusOptions {
     extend?: boolean;
     // (undocumented)
     jumpToEdge?: boolean;
-}
-
-// @public
-export type PretableProcessingAuthority = "engine" | "external";
-
-// @public
-export interface PretableProcessingOptions {
-    filter?: PretableProcessingAuthority;
-    sort?: PretableProcessingAuthority;
 }
 
 // @public
