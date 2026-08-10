@@ -250,7 +250,6 @@ interface ActiveReplacement<
   currentOperations: readonly PretableChangeOperation<TRowId>[] | undefined;
   pendingChangeSetCount: number;
   pendingOperationCount: number;
-  readonly invalidatedMeasurementKeys: Set<string>;
   anchor: CapturedAnchor<TRowId> | undefined;
   cancelScheduled: (() => void) | undefined;
   candidate: RowHeightIndex<PretableVisibleRowRef<TRowId>> | undefined;
@@ -262,6 +261,7 @@ interface StagedMeasurement<TRowId extends PretableRowId> {
   readonly ref: PretableVisibleRowRef<TRowId>;
   readonly height: number;
   readonly capturedRevision: number;
+  readonly appliedToken: object | undefined;
 }
 
 export function createRowLayoutController<
@@ -305,6 +305,7 @@ export function createRowLayoutController<
   let active: ActiveReplacement<TRow, TRowId, TColumns> | undefined;
   const stagedMeasurements = new Map<string, StagedMeasurement<TRowId>>();
   const stagedMeasurementKeys: string[] = [];
+  const stagedMeasurementKeyIndexes = new Map<string, number>();
   let stagedMeasurementHead = 0;
   let replacementSliceCount = 0;
   let maxReplacementUnitsPerSlice = 0;
@@ -418,6 +419,7 @@ export function createRowLayoutController<
   const clearStagedMeasurements = (): void => {
     stagedMeasurements.clear();
     stagedMeasurementKeys.length = 0;
+    stagedMeasurementKeyIndexes.clear();
     stagedMeasurementHead = 0;
   };
 
@@ -578,7 +580,6 @@ export function createRowLayoutController<
     root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
     operation: PretableChangeOperation<TRowId>,
     revision: number,
-    invalidatedMeasurementKeys?: Set<string>,
   ): RowHeightIndex<PretableVisibleRowRef<TRowId>> => {
     let heightOperation: RowHeightOperation<PretableVisibleRowRef<TRowId>>;
     if (operation.kind === "insert") {
@@ -607,13 +608,8 @@ export function createRowLayoutController<
         index: operation.index,
       };
       const identity = identityOf(operation.ref);
-      invalidatedMeasurementKeys?.add(identity);
       const staged = stagedMeasurements.get(identity);
-      if (
-        staged !== undefined &&
-        (invalidatedMeasurementKeys !== undefined ||
-          staged.capturedRevision < revision)
-      ) {
+      if (staged !== undefined && staged.capturedRevision < revision) {
         stagedMeasurements.delete(identity);
       }
     }
@@ -649,7 +645,7 @@ export function createRowLayoutController<
       replacement.pending[replacement.pendingHead] !== undefined ||
       replacement.appliedRevision !== replacement.capturedRevision ||
       replacement.capturedWakeVersion !== modelWakeVersion ||
-      stagedMeasurements.size > 0
+      stagedMeasurementHead < stagedMeasurementKeys.length
     ) {
       scheduleReplacement(replacement);
       return;
@@ -664,7 +660,7 @@ export function createRowLayoutController<
       expectedWakeVersion === modelWakeVersion &&
       replacement.pending[replacement.pendingHead] === undefined &&
       replacement.appliedRevision === replacement.capturedRevision &&
-      stagedMeasurements.size === 0;
+      stagedMeasurementHead === stagedMeasurementKeys.length;
     let scrollTop = viewport.scrollTop;
     if (replacement.anchor !== undefined && resolvedAnchor !== undefined) {
       const index = target.indexOf(resolvedAnchor);
@@ -782,7 +778,6 @@ export function createRowLayoutController<
                 replacement.candidate!,
                 operation,
                 change.revision,
-                replacement.invalidatedMeasurementKeys,
               );
               replacement.pendingOperationIndex += 1;
               replacement.pendingOperationCount -= 1;
@@ -819,7 +814,10 @@ export function createRowLayoutController<
         const stagedKey = stagedMeasurementKeys[stagedMeasurementHead];
         if (stagedKey !== undefined) {
           const measurement = stagedMeasurements.get(stagedKey);
-          if (measurement !== undefined) {
+          if (
+            measurement !== undefined &&
+            measurement.appliedToken !== replacement.token
+          ) {
             const index = replacement.latestTarget.indexOf(measurement.ref);
             if (active !== replacement || disposed) return;
             stagedMeasurementHead += 1;
@@ -835,15 +833,16 @@ export function createRowLayoutController<
                 measurement.height,
               );
             }
-            stagedMeasurements.delete(stagedKey);
+            stagedMeasurements.set(stagedKey, {
+              ...measurement,
+              appliedToken: replacement.token,
+            });
           } else {
             stagedMeasurementHead += 1;
           }
           sliceCatchUpUnits += 1;
           continue;
         }
-        stagedMeasurementKeys.length = 0;
-        stagedMeasurementHead = 0;
         break;
       }
       replayingCatchUp = false;
@@ -1023,13 +1022,13 @@ export function createRowLayoutController<
       currentOperations: undefined,
       pendingChangeSetCount: 0,
       pendingOperationCount: 0,
-      invalidatedMeasurementKeys: new Set(),
       anchor,
       cancelScheduled: undefined,
       candidate: undefined,
       searchDistance: 1,
       searchPrevious: false,
     };
+    stagedMeasurementHead = 0;
     active = replacement;
     state = Object.freeze({
       ...state,
@@ -1316,14 +1315,18 @@ export function createRowLayoutController<
       }
       if (active !== undefined) {
         const identity = identityOf(ref);
-        if (active.invalidatedMeasurementKeys.has(identity)) return;
-        if (!stagedMeasurements.has(identity)) {
+        let keyIndex = stagedMeasurementKeyIndexes.get(identity);
+        if (keyIndex === undefined) {
+          keyIndex = stagedMeasurementKeys.length;
           stagedMeasurementKeys.push(identity);
+          stagedMeasurementKeyIndexes.set(identity, keyIndex);
         }
+        stagedMeasurementHead = Math.min(stagedMeasurementHead, keyIndex);
         stagedMeasurements.set(identity, {
           ref,
           height,
           capturedRevision: active.capturedRevision,
+          appliedToken: undefined,
         });
         return;
       }

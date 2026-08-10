@@ -961,12 +961,17 @@ describe("indexed DOM row layout controller", () => {
         label: `new ${index}`,
       })),
     );
+    controller.measure(data(0), 123);
     controller.setViewport({ scrollTop: 440, viewportHeight: 88, overscan: 0 });
     scheduler.flushAll();
     expect(controller.getState()).toMatchObject({
       viewport: { scrollTop: 0 },
       status: { kind: "error" },
     });
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .stagedMeasurementCount,
+    ).toBe(0);
 
     controller.setViewport({ scrollTop: 440, viewportHeight: 88, overscan: 0 });
     expect(controller.getState()).toMatchObject({
@@ -1467,6 +1472,145 @@ describe("indexed DOM row layout controller", () => {
     const rank = restored.snapshot!.indexOf(data(1));
     expect(restored.rowHeights.getHeight(rank)).toBe(91);
     expect(restored.rowHeights.hasMeasurement(data(1))).toBe(true);
+  });
+
+  test("keeps an applied reset measurement alive when a later barrier discards the candidate", () => {
+    const rows = (count: number, label: string): readonly Row[] =>
+      Array.from({ length: count }, (_, index) => ({
+        id: index,
+        team: label,
+        score: index,
+        label: `${label} ${index}`,
+      }));
+    const model = createModel(rows(100, "initial"));
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 1,
+    });
+    scheduler.flushAll();
+
+    model.setRows(rows(1_000, "first reset"));
+    controller.measure(data(1), 99);
+    const catchUpBefore =
+      getRowLayoutControllerDiagnosticsForTesting(controller).catchUpUnits;
+    let slices = 0;
+    while (
+      getRowLayoutControllerDiagnosticsForTesting(controller).catchUpUnits ===
+      catchUpBefore
+    ) {
+      expect(flushNextLive(scheduler)).toBe(true);
+      slices += 1;
+      expect(slices).toBeLessThan(20_000);
+    }
+    expect(controller.getState().status.kind).toBe("rebuilding");
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .retainedCandidateRootCount,
+    ).toBe(1);
+
+    model.setRows(rows(1_001, "superseding reset"));
+    scheduler.flushAll();
+    const ready = controller.getState();
+    const index = ready.snapshot!.indexOf(data(1));
+    expect(ready.rowHeights.getHeight(index)).toBe(99);
+    expect(ready.rowHeights.hasMeasurement(data(1))).toBe(true);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .stagedMeasurementCount,
+    ).toBe(0);
+  });
+
+  test("orders repeated reset barriers, updates, and later measurements", () => {
+    const rows = (count: number, label: string): readonly Row[] =>
+      Array.from({ length: count }, (_, index) => ({
+        id: index,
+        team: label,
+        score: index,
+        label: `${label} ${index}`,
+      }));
+    const model = createModel(rows(10, "initial"));
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 1,
+    });
+    scheduler.flushAll();
+
+    model.setRows(rows(100, "first reset"));
+    controller.measure(data(1), 71);
+    const firstCatchUp =
+      getRowLayoutControllerDiagnosticsForTesting(controller).catchUpUnits;
+    while (
+      getRowLayoutControllerDiagnosticsForTesting(controller).catchUpUnits ===
+      firstCatchUp
+    ) {
+      expect(flushNextLive(scheduler)).toBe(true);
+    }
+    model.setRows(rows(101, "first barrier"));
+    model.applyTransaction({
+      update: [{ id: 1, changes: { label: "updated after measurement" } }],
+    });
+    controller.measure(data(1), 137);
+    model.setRows(rows(102, "second barrier"));
+    scheduler.flushAll();
+
+    const ready = controller.getState();
+    const index = ready.snapshot!.indexOf(data(1));
+    expect(ready.rowHeights.getHeight(index)).toBe(137);
+    expect(ready.rowHeights.hasMeasurement(data(1))).toBe(true);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .stagedMeasurementCount,
+    ).toBe(0);
+  });
+
+  test("keeps a measurement captured after an update that is still queued for replay", () => {
+    const rows = (count: number, label: string): readonly Row[] =>
+      Array.from({ length: count }, (_, index) => ({
+        id: index,
+        team: label,
+        score: index,
+        label: `${label} ${index}`,
+      }));
+    const model = createModel(rows(10, "initial"));
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 1,
+    });
+    scheduler.flushAll();
+
+    model.setRows(rows(100, "reset"));
+    model.applyTransaction({
+      update: [{ id: 1, changes: { label: "queued update" } }],
+    });
+    controller.measure(data(1), 137);
+    scheduler.flushAll();
+
+    const ready = controller.getState();
+    const index = ready.snapshot!.indexOf(data(1));
+    expect(ready.rowHeights.getHeight(index)).toBe(137);
+    expect(ready.rowHeights.hasMeasurement(data(1))).toBe(true);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .stagedMeasurementCount,
+    ).toBe(0);
   });
 
   test("invalidates an old-DOM reset measurement on a later exact row update", () => {
