@@ -45,11 +45,42 @@ interface ValidationState {
   warned: boolean;
 }
 
+interface EqualityContext {
+  leftToRight: Map<object, object>;
+  rightToLeft: Map<object, object>;
+}
+
+function clonedContext(context: EqualityContext): EqualityContext {
+  return {
+    leftToRight: new Map(context.leftToRight),
+    rightToLeft: new Map(context.rightToLeft),
+  };
+}
+
+function commitContext(target: EqualityContext, source: EqualityContext): void {
+  target.leftToRight = source.leftToRight;
+  target.rightToLeft = source.rightToLeft;
+}
+
+function equalBytes(left: ArrayBufferView, right: ArrayBufferView): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  const leftBytes = new Uint8Array(
+    left.buffer,
+    left.byteOffset,
+    left.byteLength,
+  );
+  const rightBytes = new Uint8Array(
+    right.buffer,
+    right.byteOffset,
+    right.byteLength,
+  );
+  return leftBytes.every((value, index) => value === rightBytes[index]);
+}
+
 function structuredEqual(
   left: unknown,
   right: unknown,
-  leftToRight: WeakMap<object, object>,
-  rightToLeft: WeakMap<object, object>,
+  context: EqualityContext,
 ): boolean {
   if (Object.is(left, right)) return true;
   if (
@@ -61,9 +92,9 @@ function structuredEqual(
     return false;
   }
 
-  const knownRight = leftToRight.get(left);
+  const knownRight = context.leftToRight.get(left);
   if (knownRight !== undefined) return knownRight === right;
-  const knownLeft = rightToLeft.get(right);
+  const knownLeft = context.rightToLeft.get(right);
   if (knownLeft !== undefined) return knownLeft === left;
   if (Object.getPrototypeOf(left) !== Object.getPrototypeOf(right))
     return false;
@@ -71,51 +102,61 @@ function structuredEqual(
   if (left instanceof Date && right instanceof Date) {
     return Object.is(left.getTime(), right.getTime());
   }
+  if (left instanceof RegExp && right instanceof RegExp) {
+    return (
+      left.source === right.source &&
+      left.flags === right.flags &&
+      left.lastIndex === right.lastIndex
+    );
+  }
+  if (left instanceof ArrayBuffer && right instanceof ArrayBuffer) {
+    return equalBytes(new Uint8Array(left), new Uint8Array(right));
+  }
+  if (ArrayBuffer.isView(left) && ArrayBuffer.isView(right)) {
+    return equalBytes(left, right);
+  }
 
-  leftToRight.set(left, right);
-  rightToLeft.set(right, left);
+  context.leftToRight.set(left, right);
+  context.rightToLeft.set(right, left);
 
   if (left instanceof Map && right instanceof Map) {
     if (left.size !== right.size) return false;
-    const leftEntries = left.entries();
-    const rightEntries = right.entries();
-    for (let index = 0; index < left.size; index += 1) {
-      const leftEntry = leftEntries.next().value as
-        readonly [unknown, unknown] | undefined;
-      const rightEntry = rightEntries.next().value as
-        readonly [unknown, unknown] | undefined;
-      if (
-        leftEntry === undefined ||
-        rightEntry === undefined ||
-        !structuredEqual(
-          leftEntry[0],
-          rightEntry[0],
-          leftToRight,
-          rightToLeft,
-        ) ||
-        !structuredEqual(leftEntry[1], rightEntry[1], leftToRight, rightToLeft)
-      ) {
-        return false;
+    const unmatched = [...right.entries()];
+    for (const [leftKey, leftValue] of left) {
+      let matched = false;
+      for (let index = 0; index < unmatched.length; index += 1) {
+        const rightEntry = unmatched[index]!;
+        const trial = clonedContext(context);
+        if (
+          structuredEqual(leftKey, rightEntry[0], trial) &&
+          structuredEqual(leftValue, rightEntry[1], trial)
+        ) {
+          commitContext(context, trial);
+          unmatched.splice(index, 1);
+          matched = true;
+          break;
+        }
       }
+      if (!matched) return false;
     }
     return true;
   }
 
   if (left instanceof Set && right instanceof Set) {
     if (left.size !== right.size) return false;
-    const leftValues = left.values();
-    const rightValues = right.values();
-    for (let index = 0; index < left.size; index += 1) {
-      if (
-        !structuredEqual(
-          leftValues.next().value,
-          rightValues.next().value,
-          leftToRight,
-          rightToLeft,
-        )
-      ) {
-        return false;
+    const unmatched = [...right.values()];
+    for (const leftValue of left) {
+      let matched = false;
+      for (let index = 0; index < unmatched.length; index += 1) {
+        const trial = clonedContext(context);
+        if (structuredEqual(leftValue, unmatched[index], trial)) {
+          commitContext(context, trial);
+          unmatched.splice(index, 1);
+          matched = true;
+          break;
+        }
       }
+      if (!matched) return false;
     }
     return true;
   }
@@ -136,14 +177,12 @@ function structuredEqual(
     ) {
       return false;
     }
-    if ("value" in leftDescriptor && "value" in rightDescriptor) {
+    const leftIsData = "value" in leftDescriptor;
+    const rightIsData = "value" in rightDescriptor;
+    if (leftIsData !== rightIsData) return false;
+    if (leftIsData && rightIsData) {
       if (
-        !structuredEqual(
-          leftDescriptor.value,
-          rightDescriptor.value,
-          leftToRight,
-          rightToLeft,
-        )
+        !structuredEqual(leftDescriptor.value, rightDescriptor.value, context)
       ) {
         return false;
       }
@@ -162,12 +201,10 @@ export function defaultAggregatorOutputEquality(
   left: unknown,
   right: unknown,
 ): boolean {
-  return structuredEqual(
-    left,
-    right,
-    new WeakMap<object, object>(),
-    new WeakMap<object, object>(),
-  );
+  return structuredEqual(left, right, {
+    leftToRight: new Map<object, object>(),
+    rightToLeft: new Map<object, object>(),
+  });
 }
 
 const productionValidator: AggregatorLawValidator = Object.freeze({

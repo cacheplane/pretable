@@ -41,6 +41,11 @@ export interface AggregateTree<
     leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ): AggregateTree<TId, TRow, TValue, TDependency, TOutput>;
   remove(id: TId): AggregateTree<TId, TRow, TValue, TDependency, TOutput>;
+  /**
+   * Returns the cached finalized output. Custom finalizers receive a detached
+   * accumulator snapshot, so even an identity finalizer cannot expose or
+   * corrupt the persistent accumulator graph.
+   */
   finalize(): TOutput;
   asTransient(): TransientAggregateTree<
     TId,
@@ -87,6 +92,12 @@ export interface CustomAggregateTreeOptions<
     left: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
     right: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ) => number;
+  /**
+   * Produces a detached accumulator snapshot for `finalize`. Supply this for
+   * class instances or other values that the platform cannot structured-clone.
+   * The callback must be pure and must not return the cached accumulator.
+   */
+  readonly snapshotAccumulator?: (accumulator: TAccumulator) => TAccumulator;
   readonly lawValidator?: AggregatorLawValidator;
 }
 
@@ -160,8 +171,12 @@ function extremum(kind: "min" | "max") {
       return {
         value:
           kind === "min"
-            ? Math.min(accumulator.value, value)
-            : Math.max(accumulator.value, value),
+            ? value < accumulator.value
+              ? value
+              : accumulator.value
+            : value > accumulator.value
+              ? value
+              : accumulator.value,
       };
     },
     merge(
@@ -173,8 +188,12 @@ function extremum(kind: "min" | "max") {
       return {
         value:
           kind === "min"
-            ? Math.min(left.value, right.value)
-            : Math.max(left.value, right.value),
+            ? right.value < left.value
+              ? right.value
+              : left.value
+            : right.value > left.value
+              ? right.value
+              : left.value,
       };
     },
     finalize: (accumulator: ExtremumAccumulator) => accumulator.value,
@@ -212,6 +231,8 @@ interface TreeContext<TRow extends object, TValue, TAccumulator, TOutput> {
   readonly columnId: string;
   readonly aggregator: PretableAggregator<TRow, TValue, TAccumulator, TOutput>;
   readonly lawValidator: AggregatorLawValidator | undefined;
+  readonly snapshotAccumulator:
+    ((accumulator: TAccumulator) => TAccumulator) | undefined;
   readonly custom: boolean;
 }
 
@@ -257,12 +278,39 @@ function finalizedValue<TAccumulator, TOutput>(
   accumulator: TAccumulator,
   aggregator: PretableAggregator<object, unknown, TAccumulator, TOutput>,
   cache: FinalizedCache<TAccumulator, TOutput>,
+  custom: boolean,
+  snapshotAccumulator:
+    ((accumulator: TAccumulator) => TAccumulator) | undefined,
 ): TOutput {
   if (!Object.is(cache.accumulator, accumulator)) {
     throw new Error("Aggregate finalization cache does not match its root.");
   }
   if (!cache.ready) {
-    cache.output = aggregator.finalize(accumulator);
+    let finalizedAccumulator = accumulator;
+    if (
+      custom &&
+      accumulator !== null &&
+      (typeof accumulator === "object" || typeof accumulator === "function")
+    ) {
+      if (snapshotAccumulator !== undefined) {
+        finalizedAccumulator = snapshotAccumulator(accumulator);
+        if (Object.is(finalizedAccumulator, accumulator)) {
+          throw new TypeError(
+            "snapshotAccumulator must return a detached accumulator.",
+          );
+        }
+      } else {
+        try {
+          finalizedAccumulator = structuredClone(accumulator);
+        } catch (error) {
+          throw new TypeError(
+            "Custom aggregator accumulators must be structured-cloneable or provide snapshotAccumulator.",
+            { cause: error },
+          );
+        }
+      }
+    }
+    cache.output = aggregator.finalize(finalizedAccumulator);
     cache.ready = true;
   }
   return cache.output as TOutput;
@@ -340,6 +388,8 @@ class PersistentAggregateTree<
         TOutput
       >,
       this.#cache,
+      this.#context.custom,
+      this.#context.snapshotAccumulator,
     );
   }
 
@@ -429,6 +479,8 @@ class TransientAggregateTreeImpl<
         TOutput
       >,
       this.#cache,
+      this.#context.custom,
+      this.#context.snapshotAccumulator,
     );
   }
 
@@ -520,6 +572,22 @@ export function createAggregateTree<
             >
           ).lawValidator
         : undefined,
+    snapshotAccumulator: custom
+      ? ((
+          options as CustomAggregateTreeOptions<
+            TId,
+            TRow,
+            TValue,
+            TDependency,
+            TAccumulator,
+            TOutput
+          >
+        ).snapshotAccumulator as unknown as
+          | ((
+              accumulator: TAccumulator | BuiltinAccumulator,
+            ) => TAccumulator | BuiltinAccumulator)
+          | undefined)
+      : undefined,
     custom,
   };
   const tree = createOrderStatisticTree<

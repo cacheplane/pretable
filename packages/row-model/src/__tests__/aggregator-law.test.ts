@@ -30,11 +30,58 @@ describe("aggregator law validation", () => {
       ),
     ).toBe(false);
     expect(
-      defaultAggregatorOutputEquality(new Set([1, 2]), new Set([1, 2])),
+      defaultAggregatorOutputEquality(
+        new Map([
+          ["first", 1],
+          ["second", 2],
+        ]),
+        new Map([
+          ["second", 2],
+          ["first", 1],
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      defaultAggregatorOutputEquality(new Set([1, 2]), new Set([2, 1])),
     ).toBe(true);
     expect(
       defaultAggregatorOutputEquality(new Set([1, 2]), new Set([1, 3])),
     ).toBe(false);
+  });
+
+  test("compares RegExp and ArrayBuffer outputs by value", () => {
+    expect(defaultAggregatorOutputEquality(/total/giu, /total/giu)).toBe(true);
+    expect(defaultAggregatorOutputEquality(/total/giu, /other/giu)).toBe(false);
+    expect(
+      defaultAggregatorOutputEquality(
+        Uint8Array.from([1, 2, 3]).buffer,
+        Uint8Array.from([1, 2, 3]).buffer,
+      ),
+    ).toBe(true);
+    expect(
+      defaultAggregatorOutputEquality(
+        Uint8Array.from([1, 2, 3]).buffer,
+        Uint8Array.from([1, 2, 4]).buffer,
+      ),
+    ).toBe(false);
+  });
+
+  test("compares cyclic Map and Set outputs safely", () => {
+    const leftMap = new Map<string, unknown>();
+    const leftSet = new Set<unknown>();
+    leftMap.set("set", leftSet);
+    leftSet.add(leftMap);
+    leftSet.add("value");
+
+    const rightMap = new Map<string, unknown>();
+    const rightSet = new Set<unknown>();
+    rightSet.add("value");
+    rightSet.add(rightMap);
+    rightMap.set("set", rightSet);
+
+    expect(defaultAggregatorOutputEquality(leftMap, rightMap)).toBe(true);
+    rightSet.add("different");
+    expect(defaultAggregatorOutputEquality(leftMap, rightMap)).toBe(false);
   });
 
   test("reports a sequential/partition mismatch once per aggregator and column", () => {

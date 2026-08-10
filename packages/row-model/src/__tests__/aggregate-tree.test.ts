@@ -85,6 +85,18 @@ describe("AggregateTree", () => {
     ).toBe(Infinity);
   });
 
+  test("preserves legacy ordered signed-zero extrema", () => {
+    const minimum = builtinTree("min")
+      .insertOrReplace(leaf("positive", +0, 1))
+      .insertOrReplace(leaf("negative", -0, 2));
+    const maximum = builtinTree("max")
+      .insertOrReplace(leaf("negative", -0, 1))
+      .insertOrReplace(leaf("positive", +0, 2));
+
+    expect(Object.is(minimum.finalize(), +0)).toBe(true);
+    expect(Object.is(maximum.finalize(), -0)).toBe(true);
+  });
+
   test("supports ordered custom monoids", () => {
     const concatenate: PretableAggregator<Row, string, string, string> = {
       init: () => "",
@@ -250,6 +262,50 @@ describe("AggregateTree", () => {
     expect(originalOutput).toEqual({ names: ["a"] });
     expect(updated.finalize()).toEqual({ names: ["a", "b"] });
     expect(original.finalize()).toBe(originalOutput);
+  });
+
+  test("does not expose a live custom accumulator through finalize", () => {
+    const identityFinalize: PretableAggregator<
+      Row,
+      number,
+      number[],
+      number[]
+    > = {
+      init: () => [],
+      accumulate: (accumulator, value) => [...accumulator, value],
+      merge: (left, right) => [...left, ...right],
+      finalize: (accumulator) => accumulator,
+    };
+    const firstRow = { name: "first" };
+    const original = createAggregateTree<
+      string,
+      Row,
+      number,
+      number,
+      number[],
+      number[]
+    >({
+      columnId: "amount",
+      aggregator: identityFinalize,
+      compare: (left, right) => left.dependency - right.dependency,
+    }).insertOrReplace({
+      id: "first",
+      row: firstRow,
+      value: 1,
+      dependency: 1,
+    });
+
+    const exposed = original.finalize();
+    exposed.push(99);
+    const branch = original.insertOrReplace({
+      id: "second",
+      row: { name: "second" },
+      value: 2,
+      dependency: 2,
+    });
+
+    expect(exposed).toEqual([1, 99]);
+    expect(branch.finalize()).toEqual([1, 2]);
   });
 
   test("supports transient batches without changing the source root", () => {
