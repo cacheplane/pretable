@@ -53,7 +53,8 @@
     color: var(--pretable-text-header);
     background: transparent;
     border: 0;
-    border-right: var(--pretable-rule-width) solid var(--pretable-rule-vertical);
+    border-right: var(--pretable-rule-width, 1px) solid
+      var(--pretable-rule-vertical, var(--pretable-rule));
     box-sizing: border-box;
   }
 
@@ -91,8 +92,15 @@
     font-size: var(--pretable-font-size-cell);
     color: var(--pretable-text-cell);
     background: var(--pretable-bg-grid);
-    border-right: var(--pretable-rule-width) solid var(--pretable-rule-vertical);
-    border-bottom: var(--pretable-rule-width) solid var(--pretable-rule);
+    /* Fallbacks matter here: `border-right`/`border-left` are SHORTHANDS
+       containing var() references, so if either custom property were unset
+       the whole shorthand goes invalid at computed-value time and every
+       longhand resets to initial — the divider vanishes instead of just
+       changing color. A theme that predates the vertical/horizontal split
+       must degrade to today's single-token cage, not lose its borders. */
+    border-right: var(--pretable-rule-width, 1px) solid
+      var(--pretable-rule-vertical, var(--pretable-rule));
+    border-bottom: var(--pretable-rule-width, 1px) solid var(--pretable-rule);
     /* Cells are absolutely positioned, so a value wider than its column paints
        straight over the next one. Clip at the column edge instead.
        NOTE: the cell is a flex container, and `text-overflow: ellipsis` has no
@@ -208,7 +216,8 @@
     [data-pretable-cell]:not([data-pretable-pinned="right"])
       + [data-pretable-cell][data-pretable-pinned="right"]
   ) {
-    border-left: var(--pretable-rule-width) solid var(--pretable-rule-vertical);
+    border-left: var(--pretable-rule-width, 1px) solid
+      var(--pretable-rule-vertical, var(--pretable-rule));
   }
 
   /* Selection — wins over zebra/hover via source order (they precede it) */

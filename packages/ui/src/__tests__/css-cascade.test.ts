@@ -41,24 +41,30 @@ describe("grid.css cascade contract", () => {
     )?.[1];
     expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
     expect(rule).toMatch(
-      /border:\s*0;[\s\S]*border-right:\s*var\(--pretable-rule-width\) solid var\(--pretable-rule-vertical\)/,
+      /border:\s*0;[\s\S]*border-right:\s*var\(--pretable-rule-width,\s*1px\)\s*solid\s*var\(--pretable-rule-vertical,\s*var\(--pretable-rule\)\)/,
     );
   });
 
   test("the row hairline and the column divider read different tokens", () => {
     // The whole point of the split: a theme must be able to drop the vertical
     // cage without also erasing row separation. If both axes resolve to the
-    // same token again, that capability is silently gone.
+    // same token again, that capability is silently gone. The fallback chain
+    // on the vertical declarations (`--pretable-rule-vertical, var(--pretable-rule)`)
+    // is deliberate — a theme predating the axis split still needs to fall
+    // back to `--pretable-rule`, not to no vertical token at all — so this
+    // regex checks for the vertical TOKEN NAME appearing at all, which a
+    // collapsed-axis edit (deleting `-vertical` and reusing `--pretable-rule`
+    // outright) would fail.
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const cellRule = css.match(
       /:where\(\[data-pretable-cell\]\)\s*\{([\s\S]*?)\}/,
     )?.[1];
     expect(cellRule, "no [data-pretable-cell] rule found").toBeDefined();
     expect(cellRule).toMatch(
-      /border-right:\s*var\(--pretable-rule-width\) solid var\(--pretable-rule-vertical\)/,
+      /border-right:\s*var\(--pretable-rule-width,\s*1px\)\s*solid\s*var\(--pretable-rule-vertical,\s*var\(--pretable-rule\)\)/,
     );
     expect(cellRule).toMatch(
-      /border-bottom:\s*var\(--pretable-rule-width\) solid var\(--pretable-rule\)/,
+      /border-bottom:\s*var\(--pretable-rule-width,\s*1px\)\s*solid\s*var\(--pretable-rule\);/,
     );
   });
 
