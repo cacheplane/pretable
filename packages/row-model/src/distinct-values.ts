@@ -97,6 +97,18 @@ interface QueryWaiter<TValue> {
   readonly options: CapturedQueryOptions;
   readonly resolve: (value: PretableDistinctValueResult<TValue>) => void;
   readonly reject: (error: unknown) => void;
+  cancelActive: (() => void) | undefined;
+}
+
+interface SearchProjection<TValue> {
+  tree: ValueTree | undefined;
+  iterator: IterableIterator<ValueEntry> | undefined;
+  readonly waiter: QueryWaiter<TValue>;
+  readonly revision: number;
+  readonly search: string;
+  readonly values: { readonly value: TValue; readonly count: number }[];
+  matchingCount: number;
+  cancelScheduled: (() => void) | undefined;
 }
 
 interface BuildingCacheEntry<
@@ -135,6 +147,7 @@ export class PretableDistinctValueCancelledError extends Error {
 }
 
 export interface DistinctValueManagerDiagnostics {
+  readonly cacheEntryCount: number;
   readonly retainedDictionaryCount: number;
   readonly buildingDictionaryCount: number;
   readonly retainedRowValueCount: number;
@@ -143,6 +156,10 @@ export interface DistinctValueManagerDiagnostics {
   readonly capturedRootCount: number;
   readonly rowsEvaluated: number;
   readonly releasedCandidateCount: number;
+  readonly activeProjectionCount: number;
+  readonly projectionEntriesExamined: number;
+  readonly projectionIteratorCount: number;
+  readonly projectionScheduledCount: number;
   readonly disposed: boolean;
 }
 
@@ -349,25 +366,47 @@ function createValueTree<TRow extends object>(
   });
 }
 
+function frame(tag: string, payload = ""): string {
+  return `${tag}${payload.length}:${payload}`;
+}
+
 function semanticValueKey(value: unknown): string {
   if (Array.isArray(value)) {
-    return `array:[${value.map(semanticValueKey).join(",")}]`;
+    return frame("a", value.map(semanticValueKey).join(""));
   }
   if (value && typeof value === "object") {
     const timestamp = dateTimestamp(value);
-    if (timestamp !== undefined) return `date:${String(timestamp)}`;
+    if (timestamp !== undefined) {
+      return Number.isNaN(timestamp)
+        ? frame("dN")
+        : frame("d", String(timestamp));
+    }
     const keys = Object.keys(value as Record<string, unknown>).sort();
-    return `object:{${keys
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${semanticValueKey(
-            (value as Record<string, unknown>)[key],
-          )}`,
-      )
-      .join(",")}}`;
+    return frame(
+      "o",
+      keys
+        .map(
+          (key) =>
+            frame("k", key) +
+            frame(
+              "v",
+              semanticValueKey((value as Record<string, unknown>)[key]),
+            ),
+        )
+        .join(""),
+    );
   }
-  if (typeof value === "number" && Object.is(value, -0)) return "number:-0";
-  return `${typeof value}:${String(value)}`;
+  if (value === null) return frame("l");
+  if (value === undefined) return frame("u");
+  if (typeof value === "string") return frame("s", value);
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) return frame("nN");
+    if (Object.is(value, -0)) return frame("nZ");
+    return frame("n", String(value));
+  }
+  if (typeof value === "bigint") return frame("i", String(value));
+  if (typeof value === "boolean") return frame(value ? "t" : "f");
+  return frame(typeof value, String(value));
 }
 
 function filterSemanticKey<
@@ -385,12 +424,16 @@ function filterSemanticKey<
         readonly operator: string;
         readonly value?: unknown;
       };
-      return `${runtime.columnId}:${identityId(
-        byId.get(runtime.columnId)?.accessor,
-      )}:${runtime.operator}:${semanticValueKey(runtime.value)}`;
+      return frame(
+        "f",
+        frame("c", runtime.columnId) +
+          frame("i", String(identityId(byId.get(runtime.columnId)?.accessor))) +
+          frame("p", runtime.operator) +
+          frame("v", semanticValueKey(runtime.value)),
+      );
     })
     .sort()
-    .join("|");
+    .join("");
 }
 
 function columnForDerivations<TRow extends object>(
@@ -417,15 +460,16 @@ function cacheKey<TRow extends object, TRowId extends PretableRowId, TColumns>(
 ): string {
   const filterKey =
     options.population === "filtered" ? filterSemanticKey(root) : "";
-  return [
-    column.id,
-    options.population,
-    identityId(column.accessor),
-    identityId(column.compare),
-    options.includeBlanks ? 1 : 0,
-    options.blankOrder,
-    filterKey,
-  ].join("\u0000");
+  return frame(
+    "K",
+    frame("c", column.id) +
+      frame("p", options.population) +
+      frame("a", String(identityId(column.accessor))) +
+      frame("o", String(identityId(column.compare))) +
+      frame(options.includeBlanks ? "b1" : "b0") +
+      frame("n", options.blankOrder) +
+      frame("f", filterKey),
+  );
 }
 
 function callbackError(
@@ -680,34 +724,21 @@ function createDictionaryCandidate<
   };
 }
 
-function projectResult<TValue, TRowId extends PretableRowId>(
+function projectIndexedResult<TValue, TRowId extends PretableRowId>(
   state: DictionaryState<TRowId>,
   options: CapturedQueryOptions,
   revision: number,
 ): PretableDistinctValueResult<TValue> {
-  const search = options.search?.toLocaleLowerCase();
-  const values: { readonly value: TValue; readonly count: number }[] = [];
-  let matchingCount = 0;
-  for (const entry of state.values.entries()) {
-    if (
-      search !== undefined &&
-      !String(entry.value).toLocaleLowerCase().includes(search)
-    ) {
-      continue;
-    }
-    if (matchingCount >= options.start && values.length < options.limit) {
-      values.push(
-        Object.freeze({
-          value: snapshotDistinctValue(entry.value) as TValue,
-          count: entry.count,
-        }),
-      );
-    }
-    matchingCount += 1;
-  }
+  const end = Math.min(state.values.size, options.start + options.limit);
+  const values = state.values.range(options.start, end).map((entry) =>
+    Object.freeze({
+      value: snapshotDistinctValue(entry.value) as TValue,
+      count: entry.count,
+    }),
+  );
   return Object.freeze({
     values: Object.freeze(values),
-    totalDistinct: matchingCount,
+    totalDistinct: state.values.size,
     population: options.population,
     rowModelRevision: revision,
   });
@@ -765,6 +796,111 @@ export function createDistinctValueManager<
   let disposed = false;
   let rowsEvaluated = 0;
   let releasedCandidateCount = 0;
+  let projectionEntriesExamined = 0;
+  const projectionRuntime: CooperativeTransitionRuntime = Object.freeze({
+    ...options.runtime,
+    maxUnitsPerSlice: Math.min(options.runtime.maxUnitsPerSlice, 256),
+  });
+  const activeProjections = new Set<SearchProjection<unknown>>();
+
+  const releaseProjection = (projection: SearchProjection<unknown>): void => {
+    projection.cancelScheduled?.();
+    projection.cancelScheduled = undefined;
+    projection.iterator = undefined;
+    projection.tree = undefined;
+    projection.values.length = 0;
+    projection.waiter.cancelActive = undefined;
+    activeProjections.delete(projection);
+  };
+  const finishProjection = (projection: SearchProjection<unknown>): void => {
+    const waiter = projection.waiter;
+    const values = Object.freeze([...projection.values]);
+    const result = Object.freeze({
+      values,
+      totalDistinct: projection.matchingCount,
+      population: waiter.options.population,
+      rowModelRevision: projection.revision,
+    });
+    releaseProjection(projection);
+    waiter.status = "ready";
+    waiter.resolve(result);
+  };
+  const failProjection = (
+    projection: SearchProjection<unknown>,
+    error: unknown,
+  ): void => {
+    const waiter = projection.waiter;
+    releaseProjection(projection);
+    waiter.status = "error";
+    waiter.reject(error);
+  };
+  const runProjectionSlice = (projection: SearchProjection<unknown>): void => {
+    if (disposed || !activeProjections.has(projection)) return;
+    try {
+      const complete = runCooperativeTransitionSlice(projectionRuntime, () => {
+        const next = projection.iterator?.next();
+        if (next === undefined || next.done) return true;
+        projectionEntriesExamined += 1;
+        if (
+          String(next.value.value)
+            .toLocaleLowerCase()
+            .includes(projection.search)
+        ) {
+          if (
+            projection.matchingCount >= projection.waiter.options.start &&
+            projection.values.length < projection.waiter.options.limit
+          ) {
+            projection.values.push(
+              Object.freeze({
+                value: snapshotDistinctValue(next.value.value),
+                count: next.value.count,
+              }),
+            );
+          }
+          projection.matchingCount += 1;
+        }
+        return false;
+      });
+      if (disposed || !activeProjections.has(projection)) return;
+      if (complete) {
+        finishProjection(projection);
+        return;
+      }
+      projection.cancelScheduled = options.runtime.scheduler.schedule(() => {
+        projection.cancelScheduled = undefined;
+        runProjectionSlice(projection);
+      });
+    } catch (error) {
+      failProjection(projection, error);
+    }
+  };
+  const startProjection = <TValue>(
+    state: DictionaryState<TRowId>,
+    waiter: QueryWaiter<TValue>,
+    revision: number,
+  ): void => {
+    const projection: SearchProjection<TValue> = {
+      tree: state.values,
+      iterator: state.values.entries(),
+      waiter,
+      revision,
+      search: waiter.options.search!.toLocaleLowerCase(),
+      values: [],
+      matchingCount: 0,
+      cancelScheduled: undefined,
+    };
+    const opaque = projection as SearchProjection<unknown>;
+    activeProjections.add(opaque);
+    waiter.cancelActive = () => releaseProjection(opaque);
+    try {
+      projection.cancelScheduled = options.runtime.scheduler.schedule(() => {
+        projection.cancelScheduled = undefined;
+        runProjectionSlice(opaque);
+      });
+    } catch (error) {
+      failProjection(opaque, error);
+    }
+  };
 
   const releaseBuilding = (
     entry: BuildingCacheEntry<TRow, TRowId, TColumns>,
@@ -783,11 +919,29 @@ export function createDistinctValueManager<
   ): void => {
     releaseBuilding(entry);
     for (const waiter of entry.waiters) {
+      waiter.cancelActive = undefined;
       waiter.status = "cancelled";
       waiter.reject(new PretableDistinctValueCancelledError(reason));
     }
     entry.waiters.clear();
     cache.delete(entry.key);
+  };
+  const evictEntry = (entry: CacheEntry<TRow, TRowId, TColumns>): void => {
+    if (entry.kind === "building") {
+      cancelBuilding(entry, "evicted");
+      return;
+    }
+    entry.state = undefined;
+    cache.delete(entry.key);
+  };
+  const makeRoomForEntry = (): void => {
+    while (cache.size >= capacity) {
+      const oldest = [...cache.values()].sort(
+        (left, right) => left.lastUsed - right.lastUsed,
+      )[0];
+      if (oldest === undefined) return;
+      evictEntry(oldest);
+    }
   };
   const evictReady = (): void => {
     const ready = [...cache.values()].filter(
@@ -820,14 +974,21 @@ export function createDistinctValueManager<
     for (const waiter of entry.waiters) {
       if (waiter.status !== "pending") continue;
       try {
-        const result = projectResult(
-          dictionary,
-          waiter.options,
-          options.getRoot().revision,
-        );
-        waiter.status = "ready";
-        waiter.resolve(result);
+        const revision = options.getRoot().revision;
+        if ((waiter.options.search?.length ?? 0) === 0) {
+          const result = projectIndexedResult(
+            dictionary,
+            waiter.options,
+            revision,
+          );
+          waiter.cancelActive = undefined;
+          waiter.status = "ready";
+          waiter.resolve(result);
+        } else {
+          startProjection(dictionary, waiter, revision);
+        }
       } catch (error) {
+        waiter.cancelActive = undefined;
         waiter.status = "error";
         waiter.reject(error);
       }
@@ -842,6 +1003,7 @@ export function createDistinctValueManager<
     releaseBuilding(entry);
     cache.delete(entry.key);
     for (const waiter of entry.waiters) {
+      waiter.cancelActive = undefined;
       waiter.status = "error";
       waiter.reject(error);
     }
@@ -882,11 +1044,15 @@ export function createDistinctValueManager<
       );
       const key = cacheKey(root, column, captured);
       const existing = cache.get(key);
-      if (existing?.kind === "ready" && existing.state !== undefined) {
+      if (
+        existing?.kind === "ready" &&
+        existing.state !== undefined &&
+        (captured.search?.length ?? 0) === 0
+      ) {
         existing.lastUsed = ++clock;
         let status: WaiterStatus = "ready";
         const finished = Promise.resolve(
-          projectResult<TValue, TRowId>(
+          projectIndexedResult<TValue, TRowId>(
             existing.state,
             captured,
             root.revision,
@@ -917,12 +1083,33 @@ export function createDistinctValueManager<
         options: captured,
         resolve,
         reject,
+        cancelActive: undefined,
       };
+      const query = Object.freeze({
+        get status() {
+          return waiter.status;
+        },
+        finished,
+        cancel() {
+          if (waiter.status !== "pending") return;
+          waiter.status = "cancelled";
+          const cancelActive = waiter.cancelActive;
+          waiter.cancelActive = undefined;
+          cancelActive?.();
+          waiter.reject(new PretableDistinctValueCancelledError("cancelled"));
+        },
+      }) as PretableDistinctValueQuery<TValue>;
+      if (existing?.kind === "ready" && existing.state !== undefined) {
+        existing.lastUsed = ++clock;
+        startProjection(existing.state, waiter, root.revision);
+        return query;
+      }
       let entry: BuildingCacheEntry<TRow, TRowId, TColumns>;
       if (existing?.kind === "building") {
         entry = existing;
         entry.lastUsed = ++clock;
       } else {
+        makeRoomForEntry();
         entry = {
           kind: "building",
           key,
@@ -940,22 +1127,14 @@ export function createDistinctValueManager<
         cache.set(key, entry);
       }
       entry.waiters.add(waiter as QueryWaiter<unknown>);
-      const query = Object.freeze({
-        get status() {
-          return waiter.status;
-        },
-        finished,
-        cancel() {
-          if (waiter.status !== "pending") return;
-          waiter.status = "cancelled";
-          entry.waiters.delete(waiter as QueryWaiter<unknown>);
-          waiter.reject(new PretableDistinctValueCancelledError("cancelled"));
+      waiter.cancelActive = () => {
+        if (entry.waiters.delete(waiter as QueryWaiter<unknown>)) {
           if (entry.waiters.size === 0 && cache.get(entry.key) === entry) {
             releaseBuilding(entry);
             cache.delete(entry.key);
           }
-        },
-      }) as PretableDistinctValueQuery<TValue>;
+        }
+      };
       if (existing?.kind !== "building") runBuildSlice(entry);
       return query;
     },
@@ -1017,6 +1196,7 @@ export function createDistinctValueManager<
         if (entry.kind === "building") {
           releaseBuilding(entry);
           for (const waiter of entry.waiters) {
+            waiter.cancelActive = undefined;
             waiter.status = "cancelled";
             waiter.reject(error);
           }
@@ -1024,6 +1204,12 @@ export function createDistinctValueManager<
         } else entry.state = undefined;
       }
       cache.clear();
+      for (const projection of [...activeProjections]) {
+        const waiter = projection.waiter;
+        releaseProjection(projection);
+        waiter.status = "cancelled";
+        waiter.reject(error);
+      }
     },
     attachModel(model) {
       modelManagers.set(model, {
@@ -1046,6 +1232,7 @@ export function createDistinctValueManager<
             }
           }
           return Object.freeze({
+            cacheEntryCount: cache.size,
             retainedDictionaryCount,
             buildingDictionaryCount,
             retainedRowValueCount,
@@ -1063,6 +1250,14 @@ export function createDistinctValueManager<
               ),
             releasedCandidateCount,
             capturedRootCount,
+            activeProjectionCount: activeProjections.size,
+            projectionEntriesExamined,
+            projectionIteratorCount: [...activeProjections].filter(
+              (projection) => projection.iterator !== undefined,
+            ).length,
+            projectionScheduledCount: [...activeProjections].filter(
+              (projection) => projection.cancelScheduled !== undefined,
+            ).length,
             disposed,
           });
         },

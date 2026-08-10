@@ -95,6 +95,18 @@ function createModel(options: {
   });
 }
 
+function extendedDiagnostics(model: object) {
+  return getDistinctValueDiagnosticsForTesting(model) as ReturnType<
+    typeof getDistinctValueDiagnosticsForTesting
+  > & {
+    readonly cacheEntryCount: number;
+    readonly activeProjectionCount: number;
+    readonly projectionEntriesExamined: number;
+    readonly projectionIteratorCount: number;
+    readonly projectionScheduledCount: number;
+  };
+}
+
 describe("bounded distinct-value dictionaries", () => {
   test("returns exact typed values and counts from the all-row population by default", async () => {
     const scheduler = new ManualScheduler();
@@ -159,6 +171,111 @@ describe("bounded distinct-value dictionaries", () => {
         { value: "Beta", count: 1 },
       ],
       rowModelRevision: 1,
+    });
+  });
+
+  test("distinguishes hostile nested filter values without filter-order churn", async () => {
+    interface FilterRow {
+      id: number;
+      primary: string;
+      secondary: string;
+    }
+    const filterHelper = createColumnHelper<FilterRow>();
+    const filterColumns = [
+      filterHelper.accessor("primary", { type: "enum" }),
+      filterHelper.accessor("secondary", { type: "enum" }),
+    ] as const;
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, primary: "a", secondary: "x|y:z" },
+        { id: 2, primary: "b", secondary: "x|y:z" },
+        { id: 3, primary: "a,string:b", secondary: "x|y:z" },
+      ],
+      columns: filterColumns,
+      query: {
+        filters: [
+          {
+            columnId: "primary",
+            operator: "isAnyOf",
+            value: ["a", "b"],
+          },
+          {
+            columnId: "secondary",
+            operator: "isAnyOf",
+            value: ["x|y:z"],
+          },
+        ],
+        sort: [],
+        rowGroups: [],
+      },
+      transitionScheduler: scheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const initial = model.distinctValues("primary", {
+      population: "filtered",
+      limit: 10,
+    });
+    scheduler.flushAll();
+    await expect(initial.finished).resolves.toMatchObject({
+      values: [
+        { value: "a", count: 1 },
+        { value: "b", count: 1 },
+      ],
+    });
+
+    const reordered = model.setQuery({
+      filters: [
+        {
+          columnId: "secondary",
+          operator: "isAnyOf",
+          value: ["x|y:z"],
+        },
+        {
+          columnId: "primary",
+          operator: "isAnyOf",
+          value: ["a", "b"],
+        },
+      ],
+      sort: [],
+      rowGroups: [],
+    });
+    await expect(reordered.finished).resolves.toBe(0);
+    expect(
+      model.distinctValues("primary", {
+        population: "filtered",
+        limit: 10,
+      }).status,
+    ).toBe("ready");
+
+    const colliding = model.setQuery({
+      filters: [
+        {
+          columnId: "primary",
+          operator: "isAnyOf",
+          value: ["a,string:b"],
+        },
+        {
+          columnId: "secondary",
+          operator: "isAnyOf",
+          value: ["x|y:z"],
+        },
+      ],
+      sort: [],
+      rowGroups: [],
+    });
+    scheduler.flushAll();
+    await colliding.finished;
+    const rebuilt = model.distinctValues("primary", {
+      population: "filtered",
+      limit: 10,
+    });
+    expect(rebuilt.status).toBe("pending");
+    scheduler.flushAll();
+    await expect(rebuilt.finished).resolves.toMatchObject({
+      values: [{ value: "a,string:b", count: 1 }],
     });
   });
 
@@ -496,6 +613,292 @@ describe("bounded distinct-value dictionaries", () => {
     expect(
       getDistinctValueDiagnosticsForTesting(model).retainedDictionaryCount,
     ).toBe(2);
+  });
+
+  test("uses indexed no-search ranges and cooperatively scans 100k-value searches", async () => {
+    interface LargeRow {
+      id: number;
+      value: string;
+    }
+    const largeHelper = createColumnHelper<LargeRow>();
+    const largeColumns = [
+      largeHelper.accessor("value", { type: "text" }),
+    ] as const;
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 100_000 }, (_, id) => ({
+        id,
+        value:
+          id % 10_000 === 0
+            ? `needle-${String(id).padStart(6, "0")}`
+            : `value-${String(id).padStart(6, "0")}`,
+      })),
+      columns: largeColumns,
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+      transitionBudgetMs: 5,
+      // Projection work retains its own 256-unit safety cap even when the
+      // shared runtime permits much larger transition slices.
+      transitionMaxUnitsPerSlice: 10_000,
+    });
+    const build = model.distinctValues("value", { limit: 1 });
+    scheduler.flushAll();
+    await build.finished;
+    const beforeRange = extendedDiagnostics(model).projectionEntriesExamined;
+
+    const ranged = model.distinctValues("value", {
+      start: 99_990,
+      limit: 5,
+    });
+
+    expect(ranged.status).toBe("ready");
+    await expect(ranged.finished).resolves.toMatchObject({
+      values: [
+        { value: "value-099990", count: 1 },
+        { value: "value-099991", count: 1 },
+        { value: "value-099992", count: 1 },
+        { value: "value-099993", count: 1 },
+        { value: "value-099994", count: 1 },
+      ],
+      totalDistinct: 100_000,
+    });
+    expect(extendedDiagnostics(model).projectionEntriesExamined).toBe(
+      beforeRange,
+    );
+
+    const searched = model.distinctValues("value", {
+      search: "needle",
+      start: 2,
+      limit: 3,
+    });
+    expect(searched.status).toBe("pending");
+    let previousWork = extendedDiagnostics(model).projectionEntriesExamined;
+    expect(extendedDiagnostics(model)).toMatchObject({
+      activeProjectionCount: 1,
+      projectionIteratorCount: 1,
+      projectionScheduledCount: 1,
+    });
+    while (scheduler.flushOne()) {
+      const work = extendedDiagnostics(model).projectionEntriesExamined;
+      expect(work - previousWork).toBeLessThanOrEqual(256);
+      previousWork = work;
+    }
+    await expect(searched.finished).resolves.toMatchObject({
+      values: [
+        { value: "needle-020000", count: 1 },
+        { value: "needle-030000", count: 1 },
+        { value: "needle-040000", count: 1 },
+      ],
+      totalDistinct: 10,
+    });
+    expect(extendedDiagnostics(model)).toMatchObject({
+      activeProjectionCount: 0,
+      projectionIteratorCount: 0,
+      projectionScheduledCount: 0,
+    });
+  }, 30_000);
+
+  test("moves shared-build waiters into independent cancellable search projections", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createModel({ scheduler });
+    const direct = model.distinctValues("label", { limit: 10 });
+    const searched = model.distinctValues("label", {
+      search: "beta",
+      limit: 10,
+    });
+    while (direct.status === "pending") {
+      expect(scheduler.flushOne()).toBe(true);
+    }
+    await direct.finished;
+
+    expect(searched.status).toBe("pending");
+    expect(extendedDiagnostics(model).activeProjectionCount).toBe(1);
+    const rejection = expect(searched.finished).rejects.toMatchObject({
+      name: "PretableDistinctValueCancelledError",
+      reason: "cancelled",
+    });
+    searched.cancel();
+    await rejection;
+    expect(extendedDiagnostics(model)).toMatchObject({
+      activeProjectionCount: 0,
+      projectionIteratorCount: 0,
+      projectionScheduledCount: 0,
+    });
+    scheduler.flushAll();
+  });
+
+  test("counts building dictionaries toward capacity and evicts the oldest pending build", async () => {
+    interface CapacityRow {
+      id: number;
+      first: string;
+      second: string;
+      third: string;
+      fourth: string;
+    }
+    const capacityHelper = createColumnHelper<CapacityRow>();
+    const capacityColumns = [
+      capacityHelper.accessor("first", { type: "text" }),
+      capacityHelper.accessor("second", { type: "text" }),
+      capacityHelper.accessor("third", { type: "text" }),
+      capacityHelper.accessor("fourth", { type: "text" }),
+    ] as const;
+    const rows = Array.from({ length: 20 }, (_, id) => ({
+      id,
+      first: `a-${id}`,
+      second: `b-${id}`,
+      third: `c-${id}`,
+      fourth: `d-${id}`,
+    }));
+
+    const oneScheduler = new ManualScheduler();
+    const one = createLocalRowModel({
+      rows,
+      columns: capacityColumns,
+      distinctValueCacheCapacity: 1,
+      transitionScheduler: oneScheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const evicted = one.distinctValues("first", { limit: 1 });
+    const eviction = expect(evicted.finished).rejects.toMatchObject({
+      name: "PretableDistinctValueCancelledError",
+      reason: "evicted",
+    });
+    const survivor = one.distinctValues("second", { limit: 1 });
+    await eviction;
+    expect(evicted.status).toBe("cancelled");
+    expect(extendedDiagnostics(one)).toMatchObject({
+      cacheEntryCount: 1,
+      buildingDictionaryCount: 1,
+      capturedRootCount: 1,
+    });
+    oneScheduler.flushAll();
+    await survivor.finished;
+
+    const threeScheduler = new ManualScheduler();
+    const three = createLocalRowModel({
+      rows,
+      columns: capacityColumns,
+      distinctValueCacheCapacity: 3,
+      transitionScheduler: threeScheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const first = three.distinctValues("first", { limit: 1 });
+    const firstEviction = expect(first.finished).rejects.toMatchObject({
+      reason: "evicted",
+    });
+    const remaining = [
+      three.distinctValues("second", { limit: 1 }),
+      three.distinctValues("third", { limit: 1 }),
+      three.distinctValues("fourth", { limit: 1 }),
+    ];
+    await firstEviction;
+    expect(extendedDiagnostics(three)).toMatchObject({
+      cacheEntryCount: 3,
+      buildingDictionaryCount: 3,
+      capturedRootCount: 3,
+    });
+    threeScheduler.flushAll();
+    await Promise.all(remaining.map((query) => query.finished));
+    expect(extendedDiagnostics(three)).toMatchObject({
+      cacheEntryCount: 3,
+      retainedDictionaryCount: 3,
+      buildingDictionaryCount: 0,
+    });
+  });
+
+  test("keeps active search projections outside dictionary capacity", async () => {
+    interface ProjectedRow {
+      id: number;
+      first: string;
+      second: string;
+    }
+    const projectedHelper = createColumnHelper<ProjectedRow>();
+    const projectedColumns = [
+      projectedHelper.accessor("first", { type: "text" }),
+      projectedHelper.accessor("second", { type: "text" }),
+    ] as const;
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 1_000 }, (_, id) => ({
+        id,
+        first: id === 999 ? "needle" : `first-${id}`,
+        second: `second-${id}`,
+      })),
+      columns: projectedColumns,
+      distinctValueCacheCapacity: 1,
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+      transitionBudgetMs: 5,
+      transitionMaxUnitsPerSlice: 256,
+    });
+    const firstBuild = model.distinctValues("first", { limit: 1 });
+    scheduler.flushAll();
+    await firstBuild.finished;
+    const projection = model.distinctValues("first", {
+      search: "needle",
+      limit: 10,
+    });
+    const secondBuild = model.distinctValues("second", { limit: 1 });
+    expect(extendedDiagnostics(model)).toMatchObject({
+      cacheEntryCount: 1,
+      buildingDictionaryCount: 1,
+      activeProjectionCount: 1,
+    });
+    scheduler.flushAll();
+    await expect(projection.finished).resolves.toMatchObject({
+      values: [{ value: "needle", count: 1 }],
+    });
+    await secondBuild.finished;
+    expect(extendedDiagnostics(model)).toMatchObject({
+      cacheEntryCount: 1,
+      retainedDictionaryCount: 1,
+      activeProjectionCount: 0,
+    });
+  });
+
+  test("releases an active search projection before the disposal notification", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createModel({ scheduler });
+    const build = model.distinctValues("label", { limit: 10 });
+    scheduler.flushAll();
+    await build.finished;
+    const searched = model.distinctValues("label", {
+      search: "beta",
+      limit: 10,
+    });
+    expect(extendedDiagnostics(model).activeProjectionCount).toBe(1);
+    const observed: unknown[] = [];
+    model.subscribe(() =>
+      observed.push({
+        status: searched.status,
+        diagnostics: extendedDiagnostics(model),
+      }),
+    );
+    const rejection = expect(searched.finished).rejects.toMatchObject({
+      code: "disposed-model",
+      operation: "distinct-values",
+    });
+
+    model.dispose();
+
+    await rejection;
+    expect(observed).toEqual([
+      {
+        status: "cancelled",
+        diagnostics: expect.objectContaining({
+          activeProjectionCount: 0,
+          projectionIteratorCount: 0,
+          projectionScheduledCount: 0,
+          cacheEntryCount: 0,
+          disposed: true,
+        }),
+      },
+    ]);
+    scheduler.flushAll();
   });
 
   test("preserves all-population caches across filters and invalidates only filtered semantics", async () => {
