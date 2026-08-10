@@ -97,6 +97,30 @@ test.
 simpler, but it means grouping silently discards the user's selection, which is
 the behaviour we are fixing. Re-encoding preserves intent.
 
+### 1b. Reordering and pinning corrupt ranges too — and this is not a grouping bug
+
+Found while implementing §1, and verified independently: the same corruption
+occurs with **no grouping involved at all**. A range does not need to _lose_ a
+column to break; it only needs the columns between its endpoints to change.
+
+Measured on columns `a,b,c` with no grouping:
+
+```
+toggleRowSelection("r1")  → range a…c, row "selected"
+moveColumn("c", 0)        → drawn order c,a,b
+                          → range still a…c, which now spans (c,a) and excludes b
+                          → row tri-state: "indeterminate"
+```
+
+So a user who selects a row and then drags a column sees the checkbox go
+half-filled, and Cmd+C copies two of three columns. This affects every grid with
+row selection and drag-to-reorder — both shipped long before grouping.
+
+`moveColumn`, `setColumnOrder` and `setColumnPinned` must therefore call the
+same reconciler. It is already generic over "the drawn column model changed";
+these paths simply were not wired to it because §1 was scoped to paths that
+_replace_ `options.columns`. That scoping was mine and it was too narrow.
+
 ### 2. Invalidation is gated on grouping actually being active
 
 `sameColumnGroupingSemantics` compares by identity, which is correct and cheap
