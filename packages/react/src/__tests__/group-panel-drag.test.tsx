@@ -498,21 +498,52 @@ describe("chip reorder by drag", () => {
     expect(onRowGroupsChange).toHaveBeenCalledWith(["industry"]);
   });
 
-  it("shows a gap indicator at the pending insertion point", () => {
+  /**
+   * The indicator is rendered from two separate call sites: one inside the
+   * chip loop for every position BETWEEN chips, and one after the loop for the
+   * append position. Only exercising `insertIndex: rowGroups.length` proves the
+   * trailing one — the in-loop render could be deleted outright and an
+   * append-only test would stay green. So all three positions are probed, and
+   * the indicator's position among the panel's children must equal the
+   * insertion index exactly: with N chips before it, index N is where it goes.
+   */
+  it.each([
+    { insertIndex: 0, name: "before both chips" },
+    { insertIndex: 1, name: "between the two chips" },
+    { insertIndex: 2, name: "after both chips — the append case" },
+  ])(
+    "shows a gap indicator $name (insertIndex $insertIndex)",
+    ({ insertIndex }) => {
+      const view = render(
+        <MirroredGrid initialRowGroups={["sector", "industry"]} />,
+      );
+
+      hit.result = { insertIndex };
+      dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+
+      const indicators = panelOf(view).querySelectorAll(
+        "[data-pretable-chip-drop-indicator]",
+      );
+      expect(indicators).toHaveLength(1);
+
+      const nodes = Array.from(panelOf(view).children);
+      // Two chips plus exactly one indicator.
+      expect(nodes).toHaveLength(3);
+      expect(nodes.indexOf(indicators[0]!)).toBe(insertIndex);
+    },
+  );
+
+  it("draws no indicator while no drop is pending", () => {
     const view = render(
       <MirroredGrid initialRowGroups={["sector", "industry"]} />,
     );
 
-    hit.result = { insertIndex: 2 };
-    dragChip(chipFor(view, "sector"), { x: 180, y: 18 });
+    hit.result = null;
+    dragChip(chipFor(view, "sector"), { x: 180, y: 400 });
 
-    const nodes = Array.from(panelOf(view).children);
-    const indicator = panelOf(view).querySelector(
-      "[data-pretable-chip-drop-indicator]",
-    )!;
-    expect(indicator).not.toBeNull();
-    // After both chips — index 2 of two chips means "append".
-    expect(nodes.indexOf(indicator)).toBe(nodes.length - 1);
+    expect(
+      panelOf(view).querySelector("[data-pretable-chip-drop-indicator]"),
+    ).toBeNull();
   });
 
   it("marks the chip being dragged", () => {

@@ -180,6 +180,19 @@ the tree column at the head of the left-pinned region where it belongs.
 Each is rewritten to a form that fails when the behaviour it names is removed,
 and each gets a negative control run.
 
+**One of the seven needed an implementation change, not just a test.** Pinning
+`hitTestGroupPanel`'s edge semantics forces a decision the code had never made
+deliberately: all four comparisons were inclusive, so the panel owned
+`rect.bottom`. The panel and the scroll viewport are adjacent children of a
+fixed-height flex column (`pretable-surface.tsx:3823-3841`), so the panel's
+`rect.bottom` **is** the header row's `rect.top`, to the pixel — and an
+inclusive bottom edge means one row of pixels aimed at the header groups the
+column instead of reordering it. That is the exact failure the module's own
+docstring says it exists to prevent when it rejects a collapsed panel. The rect
+is now half-open, `[left, right) × [top, bottom)`, matching
+`elementFromPoint`: left and top inside, right and bottom out. Each of the four
+comparisons has its own probe and its own negative control.
+
 ## Deliberately deferred
 
 **Panel chip overflow.** The SP3 spec claims "Ours wraps instead"
