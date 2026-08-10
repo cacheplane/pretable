@@ -1,0 +1,104 @@
+import type {
+  PretableMatchingTotal,
+  PretableProcessingOptions,
+} from "@pretable/core";
+
+import { warnOnce } from "./dev-warn";
+
+/** The snapshot fields these rules read. Structural so tests can pass literals. */
+export interface DataHonestyInput {
+  visibleRowCount: number;
+  rowGroupCount: number;
+  loadedRowCount: number;
+  matchingTotal: PretableMatchingTotal;
+}
+
+/**
+ * `aria-rowcount` per the design's honesty rules (§4.5).
+ *
+ * ARIA 1.2 defines the attribute as the total row count of the FULL table
+ * including rows not in the DOM, with `-1` for unknown. A remote grid may only
+ * publish the population count when every condition that makes loaded model
+ * index `i` equal dataset position `i` holds. Any doubt downgrades to the
+ * loaded-model count, which is the one number the grid can prove.
+ */
+export function resolveAriaRowCount(
+  input: DataHonestyInput,
+  processing: PretableProcessingOptions | undefined,
+): number {
+  const loadedModelCount = input.visibleRowCount + 1;
+
+  // Anything short of full external authority means the engine reordered or
+  // re-selected the loaded window locally, and global positions no longer hold.
+  if (processing?.filter !== "external" || processing.sort !== "external") {
+    return loadedModelCount;
+  }
+
+  // Grouping synthesizes header rows and hides the children of collapsed
+  // branches: the contiguous mapping is gone.
+  if (input.rowGroupCount > 0) {
+    return loadedModelCount;
+  }
+
+  const total = input.matchingTotal;
+
+  // An estimate cannot be spoken through an attribute whose contract is an
+  // exact integer. `-1` is the spec's "unknown"; the number belongs in prose.
+  if (total.kind !== "exact") {
+    return -1;
+  }
+
+  // A detected violation of the contiguous-from-head contract: more records
+  // loaded than the population claims. Downgrade rather than lie.
+  if (total.count < input.loadedRowCount) {
+    return loadedModelCount;
+  }
+
+  return total.count + 1;
+}
+
+/**
+ * Whether the loaded records are the whole matching population (`"all"`) or a
+ * window onto it (`"loaded"`). Every user-facing count label routes through
+ * this, so a 200-of-10,432 window can never be described as "all rows". Local
+ * mode is always `"all"`.
+ */
+export function resolveDataScope(
+  input: Pick<DataHonestyInput, "loadedRowCount" | "matchingTotal">,
+  processing: PretableProcessingOptions | undefined,
+): "all" | "loaded" {
+  if (processing?.filter !== "external") {
+    return "all";
+  }
+  const total = input.matchingTotal;
+  if (total.kind === "exact" && total.count <= input.loadedRowCount) {
+    return "all";
+  }
+  return "loaded";
+}
+
+/**
+ * Engine sort over a partial window is expressible — a complete-window consumer
+ * legitimately uses it — but dishonest when the window really is partial: it
+ * presents "top N of a server-selected sample" under a truthful-looking
+ * `aria-sort`.
+ */
+export function warnOnEngineSortOverPartialWindow(
+  input: DataHonestyInput,
+  processing: PretableProcessingOptions | undefined,
+): void {
+  if (processing?.filter !== "external" || processing.sort === "external") {
+    return;
+  }
+  const total = input.matchingTotal;
+  if (total.kind !== "exact" || total.count <= input.loadedRowCount) {
+    return;
+  }
+  warnOnce(
+    "engine-sort-over-partial-window",
+    '[pretable] sort authority is "engine" while only part of the matching ' +
+      "population is loaded. Sorting a server-selected window locally presents " +
+      "the wrong SAMPLE, not just the wrong order. Set " +
+      'processing: { sort: "external" } or load the whole result.',
+  );
+}

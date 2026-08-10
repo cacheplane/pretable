@@ -200,6 +200,10 @@ import {
   type RejectedPasteCell,
 } from "./paste";
 import { parseDraftForType } from "./editors/type-parsing";
+import {
+  resolveAriaRowCount,
+  warnOnEngineSortOverPartialWindow,
+} from "./data-scope";
 
 async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -1070,6 +1074,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     normalizedControlledFocusForFollow?.columnId;
   const bodyEntryTabbable = focusedRowId === null && focusedColumnId === null;
   const isGrouped = snapshot.rowGroups.length > 0;
+  const dataHonestyInput = {
+    visibleRowCount: snapshot.visibleRows.length,
+    rowGroupCount: snapshot.rowGroups.length,
+    loadedRowCount: snapshot.loadedRowCount,
+    matchingTotal: snapshot.matchingTotal,
+  };
+  const ariaRowCount = resolveAriaRowCount(dataHonestyInput, processing);
+  warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
   // then report what the engine actually holds. Reading the list back rather
   // than echoing the argument matters — `sanitizeRowGroups` drops unknown and
@@ -2320,7 +2332,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       aria-describedby={ariaDescribedBy}
       aria-label={ariaLabel}
       aria-multiselectable="true"
-      aria-rowcount={snapshot.visibleRows.length + 1}
+      aria-rowcount={ariaRowCount}
       data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
