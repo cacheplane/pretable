@@ -1,7 +1,7 @@
 # Pinned-column drag smoke hardening design
 
 **Date:** 2026-08-10  
-**Status:** Approved for specification review  
+**Status:** Approved
 **Scope:** Website end-to-end test only
 
 ## Problem
