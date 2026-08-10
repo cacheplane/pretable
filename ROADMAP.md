@@ -2,60 +2,91 @@
 
 Last reviewed: 2026-08-09
 
-Pretable is a batteries-included React data grid built to be the fastest and best grid for demanding, financial-grade applications. Reference workloads include live portfolio-management systems and collaborative financial planning.
+Pretable is a batteries-included React data grid built to be the fastest and
+best grid for demanding, financial-grade applications. The roadmap uses two
+reference workloads: live portfolio-management systems and collaborative
+financial planning.
 
 ## Governing principles
 
-- Performance and correctness are product features; every major capability has an explicit complexity and memory budget, deterministic workload, and committed evidence.
+- Performance and correctness are product features: every major capability gets
+  an explicit complexity/memory budget, deterministic workload, and committed
+  evidence.
 - Pretable ships working grid behavior and UI, not interfaces alone.
-- One canonical derived model governs rendering, focus, selection, editing, clipboard, accessibility, and virtualization.
-- Finance-capable but domain-agnostic; apps own valuation, formulas, permissions, storage endpoints, and retention.
+- One canonical derived model governs rendering, focus, selection, editing,
+  clipboard, accessibility, and virtualization.
+- The grid remains finance-capable but domain-agnostic; applications own
+  valuation, formulas, permissions, storage endpoints, and retention policy.
 - Public state and protocols are versioned and migration-aware.
 
 ## Current baseline
 
-The released grid includes local sorting and typed filtering, selection, keyboard navigation, copy and validated bulk paste, typed async editing, column virtualization and layout, row grouping and aggregation, variable-height rows, and batched streaming transactions. Changelogs and API reports are shipped truth.
+The released grid already includes local sorting and typed filtering, selection,
+keyboard navigation, copy and validated bulk paste, typed asynchronous editing,
+column virtualization and layout, row grouping and aggregation, variable-height
+rows, and batched streaming transactions. Package changelogs and generated API
+reports are the source of truth for shipped behavior.
 
-- [Core changelog](packages/core/CHANGELOG.md)
-- [React changelog](packages/react/CHANGELOG.md)
-- [Core API report](packages/core/core.api.md)
-- [React API report](packages/react/react.api.md)
-- [Comparator-aware evaluators milestone](status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json)
+See the current [core changelog](packages/core/CHANGELOG.md),
+[React changelog](packages/react/CHANGELOG.md),
+[core API report](packages/core/core.api.md),
+[React API report](packages/react/react.api.md), and
+[committed comparative benchmark evidence](status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json).
 
 ## Now — harden and measure
 
-- Repair API and docs contract drift and consistent stable row identity.
-- Finish grouping adoption: React option plumbing, public API cleanup, consumer docs, benchmarks, and panel overflow.
-- Add deterministic PMS and planning benchmark profiles without weakening 60 Hz, zero-gap, or interaction-continuity gates.
+- Repair current API/documentation contract drift and make stable row identity
+  consistent across entry points.
+- Finish grouping adoption: React option plumbing, public API cleanup, consumer
+  documentation, benchmark coverage, and panel-overflow follow-up.
+- Add deterministic PMS and financial-planning benchmark profiles without
+  weakening existing 60 Hz, zero-gap, and interaction-continuity gates.
 
 ## Next — describe and manipulate financial views
 
-1. Financial field schema, nested column bands, chooser, format descriptors, and view management.
-2. Saved-view persistence: versioned portable document, migration, reconciliation, browser-local store, remote adapter, and shared/personal layers.
-3. Typed commands, atomic edit/paste, inverses, and bounded local undo/redo. Saved views precede command history.
+1. Add a financial field schema, nested column bands, field chooser, formatting
+   descriptors, and view-management surface.
+2. Ship saved-view persistence: a versioned portable view document, migrations,
+   schema reconciliation, browser-local storage, remote store adapter, and
+   shared/personal view layers.
+3. Add a typed command foundation with atomic edit/paste batches, inverses, and
+   bounded local undo/redo. Saved views precede command history.
 
 ## Later — remote scale, analytics, and collaboration
 
-1. Remote/live row model with bounded cache, typed query plan, cancellation, partial/stale/error, and ordered resync.
-2. Revisioned mutations with IDs/base revisions, optimistic/pessimistic, conflicts, rollback/retry/resync.
-3. Parallel tracks: PMS analytics (incremental grouping/aggregation, totals, pivot, drill-through, context actions, export); financial planning (range edit, fill, row create/reorder, formula/provenance, time/scenario comparison columns).
-4. Durable audit/version history, history UI, revert-as-new-command, redaction, retention, and collaboration.
-5. Convergence: shared/personal config, capability-aware UI, tree data, localization, and accessibility.
+1. Add a remote/live row model with bounded caching, typed query plans,
+   cancellation, partial/stale/error state, and ordered resynchronization.
+2. Add revisioned mutations with command IDs, base revisions, optimistic and
+   pessimistic execution, conflicts, rollback, retries, and resync.
+3. Develop parallel application tracks:
+   - PMS analytics: incremental grouping/aggregation, totals, pivot,
+     drill-through, context actions, and export.
+   - Financial planning: range editing, fill, row creation/reordering, formula
+     and provenance surfaces, and time/scenario comparison columns.
+4. Add provider-backed durable audit/version history, history UI,
+   revert-as-new-command, redaction, retention hooks, and collaborative updates.
+5. Converge both tracks with shared/personal configuration, capability-aware UI,
+   tree data, localization, and accessibility hardening.
 
 ## Not planned
 
-- Hosted Pretable backend/auth.
-- Finance-domain valuation/formula/scenario/permission policy.
-- Chart/page-layout/financial-app platform.
-- Persist complete runtime grid snapshots.
+- A hosted Pretable backend or authentication system.
+- Finance-domain valuation, formula, scenario, or permission policy.
+- A chart, page-layout, or financial-application platform.
+- Persistence of complete runtime grid snapshots.
 
 ## Persistence and history sequence
 
-Saved views → command foundation/local undo-redo → revisioned mutations → durable audit/version history.
+Saved views → command foundation and local undo/redo → revisioned mutations →
+durable audit/version history.
 
-- [Persistence and history design](docs/superpowers/specs/2026-08-09-persistence-and-history-design.md)
-- [Persistence and history documentation plan](docs/superpowers/plans/2026-08-09-persistence-and-history-documentation.md)
+See the approved [persistence and history design](docs/superpowers/specs/2026-08-09-persistence-and-history-design.md)
+and its [documentation implementation plan](docs/superpowers/plans/2026-08-09-persistence-and-history-documentation.md).
 
 ## How roadmap items ship
 
-Focused approved design + plan before implementation; complete only when API reports, consumer docs, correctness tests, and benchmark evidence agree. Roadmap outcomes; changelogs shipped work; plans historical recipes.
+An item moves into implementation only after an approved focused design and
+implementation plan. It is complete only when public API reports, consumer
+documentation, correctness tests, and relevant benchmark evidence agree with the
+released behavior. The roadmap tracks outcomes; changelogs track shipped work,
+and dated plans remain historical execution recipes.
