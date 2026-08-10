@@ -486,7 +486,7 @@ function semanticValueEqual(left: unknown, right: unknown): boolean {
     );
   }
   if (left instanceof Date && right instanceof Date)
-    return Object.is(left.getTime(), right.getTime());
+    return Object.is(readDateTimestamp(left), readDateTimestamp(right));
   if (isPlainObject(left) && isPlainObject(right)) {
     const leftKeys = Object.keys(left).sort();
     const rightKeys = Object.keys(right).sort();
@@ -595,7 +595,11 @@ function cloneOwnedValue(
   }
   if (typeof value === "symbol")
     fail("symbols are not supported in compiled inputs", path);
-  if (value instanceof Date) return immutableDate(value.getTime());
+  if (value instanceof Date) {
+    const timestamp = readDateTimestamp(value);
+    if (timestamp === undefined) fail("value has an invalid Date brand", path);
+    return Object.freeze(new Date(timestamp));
+  }
   if (typeof value !== "object") fail("unsupported compiled input value", path);
   if (seen.has(value)) fail("cyclic values are not supported", path);
   seen.add(value);
@@ -623,23 +627,12 @@ function cloneOwnedValue(
   }
 }
 
-function immutableDate(timestamp: number): Date {
-  const date = new Date(timestamp);
-  const proxy = new Proxy(date, {
-    get(target, property) {
-      if (typeof property === "string" && property.startsWith("set")) {
-        return () => {
-          throw new TypeError("Compiled query Date snapshots are immutable.");
-        };
-      }
-      const value = Reflect.get(target, property, target) as unknown;
-      return typeof value === "function" ? value.bind(target) : value;
-    },
-    set() {
-      throw new TypeError("Compiled query Date snapshots are immutable.");
-    },
-  });
-  return Object.freeze(proxy);
+function readDateTimestamp(value: Date): number | undefined {
+  try {
+    return Date.prototype.getTime.call(value) as number;
+  } catch {
+    return undefined;
+  }
 }
 
 function snapshotColumns(
@@ -739,7 +732,7 @@ function filterDescriptorKey(filter: RuntimeFilter): string {
 }
 
 function filterValueKey(value: unknown): string {
-  if (value instanceof Date) return `date:${value.getTime()}`;
+  if (value instanceof Date) return `date:${String(readDateTimestamp(value))}`;
   if (Array.isArray(value))
     return `array:[${value.map(filterValueKey).join(",")}]`;
   if (typeof value === "number") {
@@ -799,7 +792,10 @@ function isoDayMs(value: string): number {
 
 /** Deterministic UTC calendar-day policy shared with the frozen legacy oracle. */
 function toDayMs(value: unknown): number {
-  if (value instanceof Date) return utcDayOf(value.getTime());
+  if (value instanceof Date) {
+    const timestamp = readDateTimestamp(value);
+    return timestamp === undefined ? Number.NaN : utcDayOf(timestamp);
+  }
   if (typeof value === "number") return utcDayOf(value);
   if (typeof value !== "string") return Number.NaN;
   const trimmed = value.trim();
@@ -924,9 +920,9 @@ function compareValues(
 class CompiledQueryPlan<TColumns>
   implements CompiledQuery<TColumns>, InternalCompiledQuery
 {
-  readonly derivations: PretableDerivationsFor<TColumns>;
-  readonly query: PretableQueryFor<TColumns>;
   readonly activeColumnIds: readonly ColumnIdOf<TColumns>[];
+  readonly #publicColumns: readonly RuntimeColumn[];
+  readonly #publicQuery: RuntimeQuery;
   readonly #runtimeColumns: readonly RuntimeColumn[];
   readonly #runtimeQuery: RuntimeQuery;
   readonly #byId: ReadonlyMap<string, RuntimeColumn>;
@@ -946,20 +942,28 @@ class CompiledQueryPlan<TColumns>
       ) && queryEqual(this.#runtimeQuery, query),
   };
 
+  get derivations(): PretableDerivationsFor<TColumns> {
+    return snapshotColumns(
+      this.#publicColumns,
+      "derivations",
+    ) as unknown as PretableDerivationsFor<TColumns>;
+  }
+
+  get query(): PretableQueryFor<TColumns> {
+    return snapshotQuery(
+      this.#publicQuery,
+      "query",
+    ) as unknown as PretableQueryFor<TColumns>;
+  }
+
   constructor(
     derivations: PretableDerivationsFor<TColumns>,
     query: PretableQueryFor<TColumns>,
   ) {
     const sourceColumns = runtimeColumns(derivations);
     const sourceQuery = runtimeQuery(query);
-    this.derivations = snapshotColumns(
-      sourceColumns,
-      "derivations",
-    ) as unknown as PretableDerivationsFor<TColumns>;
-    this.query = snapshotQuery(
-      sourceQuery,
-      "query",
-    ) as unknown as PretableQueryFor<TColumns>;
+    this.#publicColumns = snapshotColumns(sourceColumns, "public.derivations");
+    this.#publicQuery = snapshotQuery(sourceQuery, "public.query");
     this.#runtimeColumns = snapshotColumns(
       sourceColumns,
       "internal.derivations",
@@ -1059,7 +1063,14 @@ class CompiledQueryPlan<TColumns>
         });
         return Object.freeze({
           columnId: column.id,
-          aggregate: column.aggregate,
+          aggregate:
+            typeof column.aggregate === "object"
+              ? snapshotAggregator(
+                  column.aggregate,
+                  `aggregateLeaves.${column.id}`,
+                  column.id,
+                )
+              : column.aggregate,
           allLeaf,
           filteredLeaf: filterPasses ? allLeaf : undefined,
         });
