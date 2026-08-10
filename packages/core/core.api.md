@@ -297,8 +297,7 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     autosize?: boolean | AutosizeOptions;
     // (undocumented)
     columns: PretableColumn<TRow>[];
-    // (undocumented)
-    getRowId?: (row: TRow, index: number) => string;
+    getRowId: (row: TRow) => string;
     groupColumn?: PretableGroupColumnOptions;
     groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;

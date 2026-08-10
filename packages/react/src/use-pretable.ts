@@ -178,7 +178,12 @@ export interface PretableSurfaceState {
 export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
   rows: TRow[];
-  getRowId?: PretableGridOptions<TRow>["getRowId"];
+  /**
+   * Stable identity for a row, derived from the row's own data. Required — see
+   * {@link PretableGridOptions.getRowId}. There is no positional default at any
+   * pretable entry point.
+   */
+  getRowId: PretableGridOptions<TRow>["getRowId"];
   autosize?: boolean | AutosizeOptions;
   /**
    * Who applies filtering and sorting. Forwarded to `createGrid`. Participates
@@ -293,6 +298,7 @@ function selectionStatesEqual(
  * const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
  *   columns,
  *   rows,
+ *   getRowId: (row) => row.id,
  *   viewportHeight: 480,
  * });
  * ```
@@ -318,15 +324,29 @@ export function usePretable<TRow extends PretableRow = PretableRow>({
   onSelectionChange,
   onFocusChange,
 }: UsePretableOptions<TRow>): PretableModel<TRow> {
+  // Check here as well as in the engine. The wrapper below is always a
+  // function, so an omitted `getRowId` would otherwise reach `createGrid`
+  // disguised as a present one and slip past its guard — which is exactly how
+  // `applyTransaction`'s existing check came to be unreachable from React.
+  if (typeof getRowId !== "function") {
+    throw new TypeError(
+      "pretable: `getRowId` is required. Selection, focus, edits and " +
+        "transactions are keyed by row id, so identity must come from the " +
+        "row's own data — e.g. `getRowId={(row) => row.id}`. There is no " +
+        "positional default: one would silently re-point selection and " +
+        "in-flight edits at the wrong rows whenever `rows` is replaced in a " +
+        "different order.",
+    );
+  }
+
   // getRowId may be an inline closure that changes identity every render. Wrap
   // it in a stable function so it never forces the grid — and the selection /
-  // focus state it holds — to be recreated. Mirrors createSourceRows' default.
+  // focus state it holds — to be recreated.
   /* eslint-disable react-hooks/refs -- intentional stable wrapper: the inner fn reads ref.current lazily at call time (not during render), giving a stable identity that always calls the latest getRowId. Mirrors HeroGrid.tsx's columns factory. */
   const getRowIdRef = useRef(getRowId);
   getRowIdRef.current = getRowId;
-  const stableGetRowId = useRef(
-    (row: TRow, index: number): string =>
-      getRowIdRef.current?.(row, index) ?? String(index),
+  const stableGetRowId = useRef((row: TRow): string =>
+    getRowIdRef.current(row),
   ).current;
   /* eslint-enable react-hooks/refs */
 

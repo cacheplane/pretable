@@ -10,6 +10,7 @@ import { buildGroupedRows } from "./group-rows";
 import { readCellValue, type SourceRow } from "./row-utils";
 
 export {
+  assertGetRowId,
   collator,
   createSourceRows,
   readCellValue,

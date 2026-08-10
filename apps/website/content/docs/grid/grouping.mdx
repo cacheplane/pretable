@@ -286,6 +286,7 @@ import { createGrid, GROUP_COLUMN_ID } from "@pretable/core";
 const grid = createGrid({
   columns,
   rows,
+  getRowId: (row) => row.id,
   groupsDefaultExpanded: false,
   groupExpansionOverrideLimit: Infinity,
 });

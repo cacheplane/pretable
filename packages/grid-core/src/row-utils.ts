@@ -21,10 +21,33 @@ export function createSourceRows<TRow extends PretableRow>(
   options: PretableGridOptions<TRow>,
 ): SourceRow<TRow>[] {
   return options.rows.map((row, index) => ({
-    id: options.getRowId?.(row, index) ?? String(index),
+    id: options.getRowId(row),
     row,
     sourceIndex: index,
   }));
+}
+
+/**
+ * Guard the one invariant every id-keyed subsystem rests on: identity comes
+ * from the row, never from where the row sits. `getRowId` is a required field,
+ * so this only fires for callers TypeScript cannot reach — plain JS, `any`, a
+ * hand-built options object crossing a package boundary.
+ *
+ * @internal
+ */
+export function assertGetRowId<TRow extends PretableRow>(
+  options: PretableGridOptions<TRow>,
+): void {
+  if (typeof options.getRowId !== "function") {
+    throw new TypeError(
+      "pretable: `getRowId` is required. Selection, focus, edits and " +
+        "transactions are keyed by row id, so identity must come from the " +
+        "row's own data — e.g. `getRowId: (row) => row.id`. There is no " +
+        "positional default: one would silently re-point selection and " +
+        "in-flight edits at the wrong rows whenever `rows` is replaced in a " +
+        "different order.",
+    );
+  }
 }
 
 /** @internal */

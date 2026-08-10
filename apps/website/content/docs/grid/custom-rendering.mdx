@@ -26,6 +26,7 @@ import { usePretable } from "@pretable/react";
 const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
   columns,
   rows,
+  getRowId,
   viewportHeight,
   // optional:
   viewportWidth,
@@ -75,6 +76,7 @@ export function MyGrid({ rows }: { rows: Person[] }) {
   const { grid, snapshot, renderSnapshot } = usePretable({
     columns,
     rows,
+    getRowId: (row) => row.id,
     viewportHeight,
   });
 

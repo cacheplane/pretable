@@ -173,8 +173,7 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
         column: PretableColumn<TRow>;
         sortDirection: PretableSortDirection;
     }) => HTMLAttributes<HTMLButtonElement> | undefined;
-    // (undocumented)
-    getRowId?: PretableGridOptions<TRow>["getRowId"];
+    getRowId: PretableGridOptions<TRow>["getRowId"];
     // (undocumented)
     headerCellClassName?: string;
     // (undocumented)
@@ -586,8 +585,7 @@ export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
     autosize?: boolean | AutosizeOptions;
     // (undocumented)
     columns: PretableBaseColumn<TRow>[];
-    // (undocumented)
-    getRowId?: (row: TRow, index: number) => string;
+    getRowId: (row: TRow) => string;
     groupColumn?: PretableGroupColumnOptions;
     groupExpansionOverrideLimit?: number;
     groupsDefaultExpanded?: boolean;
@@ -706,8 +704,7 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
     copyToClipboard?: PretableSurfaceProps<TRow>["copyToClipboard"];
     // (undocumented)
     copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
-    // (undocumented)
-    getRowId?: PretableGridOptions<TRow>["getRowId"];
+    getRowId: PretableGridOptions<TRow>["getRowId"];
     // (undocumented)
     messages?: PretableSurfaceProps<TRow>["messages"];
     // (undocumented)
@@ -931,8 +928,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     getHeaderCellProps?: (input: PretableSurfaceHeaderCellInput<TRow>) => HTMLAttributes<HTMLButtonElement> | undefined;
     // (undocumented)
     getRowClassName?: (input: PretableSurfaceRowInput<TRow>) => string | undefined;
-    // (undocumented)
-    getRowId?: PretableGridOptions<TRow>["getRowId"];
+    getRowId: PretableGridOptions<TRow>["getRowId"];
     // (undocumented)
     getRowProps?: (input: PretableSurfaceRowInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
     groupColumn?: PretableGroupColumnOptions;
@@ -1144,8 +1140,7 @@ export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
     autosize?: boolean | AutosizeOptions;
     // (undocumented)
     columns: PretableColumn<TRow>[];
-    // (undocumented)
-    getRowId?: PretableGridOptions<TRow>["getRowId"];
+    getRowId: PretableGridOptions<TRow>["getRowId"];
     groupColumn?: PretableGroupColumnOptions;
     groupsDefaultExpanded?: boolean;
     hideGroupedColumns?: boolean;

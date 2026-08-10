@@ -19,12 +19,41 @@ Creates an engine instance. `TRow` defaults to `PretableRow` (`Record<string, un
 
 ### `PretableGridOptions<TRow>`
 
-| Field      | Type                                   | Notes                                              |
-| ---------- | -------------------------------------- | -------------------------------------------------- |
-| `columns`  | `PretableColumn<TRow>[]`               | Column definitions.                                |
-| `rows`     | `TRow[]`                               | The source rows.                                   |
-| `getRowId` | `(row: TRow, index: number) => string` | Optional. How to derive a stable id for each row.  |
-| `autosize` | `boolean \| AutosizeOptions`           | Optional. Autosize columns to content on creation. |
+| Field      | Type                         | Notes                                                                                       |
+| ---------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `columns`  | `PretableColumn<TRow>[]`     | Column definitions.                                                                         |
+| `rows`     | `TRow[]`                     | The source rows.                                                                            |
+| `getRowId` | `(row: TRow) => string`      | **Required.** Stable id derived from the row's own data. See [Row identity](#row-identity). |
+| `autosize` | `boolean \| AutosizeOptions` | Optional. Autosize columns to content on creation.                                          |
+
+### Row identity
+
+`getRowId` is required, and there is no positional default at any pretable
+entry point.
+
+Selection, focus, in-flight edits, group expansion and `applyTransaction` are
+all keyed by row id, and they are designed to survive a wholesale row
+replacement. That only works when the id travels with the row. Derived from
+array position instead, replacing `rows` in a different order — an external
+sort, a streaming batch, a removal — would silently re-point selection, focus
+and an open editor at whichever rows now occupy those positions. No error, no
+warning, wrong rows. So the engine refuses to guess.
+
+The function receives only the row, so position is not in scope. Rows with no
+natural key need one synthesized when the data is loaded, not derived from
+where the row happens to sit:
+
+```ts
+// A stable id assigned once, at load time.
+const rows = raw.map((row, index) => ({
+  ...row,
+  rowKey: `${batchId}:${index}`,
+}));
+
+createGrid({ columns, rows, getRowId: (row) => row.rowKey });
+```
+
+Ids must be unique and stable across renders for the same logical row.
 
 ## `PretableGrid<TRow>`
 

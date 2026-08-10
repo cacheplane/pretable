@@ -248,7 +248,31 @@ export interface PretableProcessingOptions {
 export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
   columns: PretableColumn<TRow>[];
   rows: TRow[];
-  getRowId?: (row: TRow, index: number) => string;
+  /**
+   * Stable identity for a row, derived from the row's own data. **Required**,
+   * and deliberately not defaultable.
+   *
+   * Selection, focus, in-flight edits, group expansion and
+   * {@link PretableGrid.applyTransaction} are all keyed by this id, and they
+   * are designed to survive a wholesale row replacement. That design is only
+   * sound when the id travels with the row: if it were derived from array
+   * position instead, replacing `rows` in a different order — an external
+   * sort, a streaming batch, a removal — would silently re-point selection,
+   * focus and an open editor at whichever rows now occupy those positions. No
+   * error, no warning, wrong rows.
+   *
+   * The function receives only the row, so position is not in scope. Rows with
+   * no natural key need one synthesized when the data is loaded, not derived
+   * from where the row happens to sit.
+   *
+   * Ids must be unique and stable across renders for the same logical row.
+   *
+   * @example
+   * ```ts
+   * createGrid({ columns, rows, getRowId: (row) => row.id });
+   * ```
+   */
+  getRowId: (row: TRow) => string;
   autosize?: boolean | AutosizeOptions;
   // processing authority:
   /**

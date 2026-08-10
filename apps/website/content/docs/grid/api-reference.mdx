@@ -78,6 +78,41 @@ type PretableRow = Record<string, unknown>;
 
 Your row type extends this. The engine treats rows as opaque records; only `getRowId` and `value` access fields.
 
+## Row identity
+
+`getRowId` is **required** on every pretable entry point — `createGrid`,
+`usePretable`, `<Pretable>`, `<PretableSurface>`, `<LabeledGridSurface>` — and
+there is no positional default anywhere.
+
+Selection, focus, in-flight edits, group expansion and `applyTransaction` are
+all keyed by row id, and they are designed to survive a wholesale row
+replacement. That only works when the id travels with the row. Derived from
+array position instead, replacing `rows` in a different order — an external
+sort, a streaming batch, a removal — would silently re-point selection, focus
+and an open editor at whichever rows now occupy those positions. No error, no
+warning, wrong rows. So pretable refuses to guess.
+
+The function receives only the row, so position is not in scope:
+
+```ts
+getRowId: (row: TRow) => string;
+```
+
+Rows with no natural key need one synthesized when the data is loaded, not
+derived from where the row happens to sit:
+
+```tsx
+// A stable id assigned once, at load time.
+const rows = raw.map((row, index) => ({
+  ...row,
+  rowKey: `${batchId}:${index}`,
+}));
+
+<Pretable columns={columns} rows={rows} getRowId={(row) => row.rowKey} />;
+```
+
+Ids must be unique and stable across renders for the same logical row.
+
 ## Selection types
 
 The cell-range selection model. See [Selection](/docs/grid/selection) for the conceptual overview.
@@ -401,7 +436,7 @@ interface PretableGroupRow {
 interface UsePretableOptions<TRow> {
   columns: PretableColumn<TRow>[];
   rows: TRow[];
-  getRowId?: (row: TRow, index: number) => string;
+  getRowId: (row: TRow) => string; // required — see "Row identity" below
   autosize?: boolean | AutosizeOptions;
   viewportHeight: number;
   viewportWidth?: number;
