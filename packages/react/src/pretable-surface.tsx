@@ -325,10 +325,19 @@ export interface PretableSurfaceMessages {
 const defaultMessages: Required<PretableSurfaceMessages> = {
   selectAllLabel: ({ scope }) =>
     scope === "loaded" ? "Select all loaded rows" : "Select all rows",
-  selectAllAnnouncement: ({ rowCount, columnCount, isAll, scope }) =>
+  // `rowCount` counts the data rows the selection covers, `loadedCount` the
+  // records the grid holds; a collapsed group parts them. The loaded branch
+  // therefore quotes both instead of calling the smaller number "all".
+  selectAllAnnouncement: ({
+    rowCount,
+    columnCount,
+    isAll,
+    scope,
+    loadedCount,
+  }) =>
     isAll
       ? scope === "loaded"
-        ? `All ${rowCount} loaded rows selected`
+        ? `${rowCount} of ${loadedCount} loaded rows selected`
         : "All rows selected"
       : `${rowCount} rows × ${columnCount} columns selected`,
   copyAnnouncement: ({ rowCount, columnCount, scope }) =>
@@ -986,7 +995,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
 
   const effectiveMessages = useMemo(
     () => ({
-      selectAllLabel: messages?.selectAllLabel ?? defaultMessages.selectAllLabel,
+      selectAllLabel:
+        messages?.selectAllLabel ?? defaultMessages.selectAllLabel,
       selectAllAnnouncement:
         messages?.selectAllAnnouncement ??
         defaultMessages.selectAllAnnouncement,
@@ -1109,6 +1119,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // props here would pair a prop-supplied count with a snapshot the engine has
   // not rebuilt for that authority yet.
   const ariaRowCount = resolveAriaRowCount(dataHonestyInput, processing);
+  // Labels render from the committed snapshot. Announcements instead re-derive
+  // scope from the snapshot they are reporting on, so the scope word and the
+  // counts in one sentence are always the same observation.
   const dataScope = resolveDataScope(dataHonestyInput, processing);
   warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
@@ -2505,7 +2518,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   effectiveMessages.copyAnnouncement({
                     rowCount: extent.rowCount,
                     columnCount: extent.columnCount,
-                    scope: dataScope,
+                    scope: resolveDataScope(snap, processing),
                   }),
                 );
               })
@@ -2627,7 +2640,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 rowCount: extent.rowCount,
                 columnCount: extent.columnCount,
                 isAll: extent.isAll,
-                scope: dataScope,
+                scope: resolveDataScope(after, processing),
                 loadedCount: after.loadedRowCount,
                 total:
                   after.matchingTotal.kind === "exact"
@@ -2784,7 +2797,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                             rowCount: extent.rowCount,
                             columnCount: extent.columnCount,
                             isAll: extent.isAll,
-                            scope: dataScope,
+                            scope: resolveDataScope(after, processing),
                             loadedCount: after.loadedRowCount,
                             total:
                               after.matchingTotal.kind === "exact"
