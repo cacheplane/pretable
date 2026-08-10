@@ -18,7 +18,26 @@ export function createFlatVisibleIndex<
     right: RowRecord<TRow, TRowId, TColumns>["metadata"],
   ) => number,
 ): VisibleIndexRoot<TRow, TRowId, TColumns> {
-  const draft = createOrderStatisticTree<
+  const draft = createFlatVisibleTree<TRow, TRowId, TColumns>(
+    compareRows,
+  ).asTransient();
+  for (const record of records) {
+    if (record.metadata.filterPasses) draft.insertOrReplace(record);
+  }
+  return Object.freeze({ rows: draft.freeze() });
+}
+
+export function createFlatVisibleTree<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  compareRows: (
+    left: RowRecord<TRow, TRowId, TColumns>["metadata"],
+    right: RowRecord<TRow, TRowId, TColumns>["metadata"],
+  ) => number,
+) {
+  return createOrderStatisticTree<
     TRowId,
     RowRecord<TRow, TRowId, TColumns>,
     number
@@ -30,11 +49,7 @@ export function createFlatVisibleIndex<
       fromEntry: () => 1,
       combine: (left, right) => left + right,
     },
-  }).asTransient();
-  for (const record of records) {
-    if (record.metadata.filterPasses) draft.insertOrReplace(record);
-  }
-  return Object.freeze({ rows: draft.freeze() });
+  });
 }
 
 function dataRef<TRowId extends PretableRowId>(

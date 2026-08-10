@@ -36,7 +36,50 @@ export interface BuiltRowStore<
   readonly diagnostics: readonly PretableRowIntegrityDiagnostic<TRowId>[];
 }
 
-function createSourceOrderTree<TRowId extends PretableRowId>() {
+/** Re-evaluates a bulk query while preserving every canonical source token. */
+export function rebuildRowStoreForQuery<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  previousRows: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>,
+  sourceOrder: ReturnType<typeof createSourceOrderTree<TRowId>>,
+  queryPlan: CompiledQuery<TColumns>,
+): Pick<
+  BuiltRowStore<TRow, TRowId, TColumns>,
+  "rows" | "sourceOrder" | "records"
+> {
+  const draft = createPersistentMap<
+    TRowId,
+    RowRecord<TRow, TRowId, TColumns>
+  >().asTransient();
+  const records: RowRecord<TRow, TRowId, TColumns>[] = [];
+  for (const source of sourceOrder.entries()) {
+    const previous = previousRows.get(source.rowId);
+    if (previous === undefined) {
+      throw new PretableRowModelError(
+        "derivation-failed",
+        "The canonical source index referenced a missing row.",
+        { operation: "set-query", rowId: source.rowId },
+      );
+    }
+    const metadata = queryPlan.evaluate({
+      rowId: previous.rowId,
+      row: previous.row as never,
+      sourceOrder: previous.sourceOrder,
+    }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
+    const record = Object.freeze({ ...previous, metadata });
+    draft.set(record.rowId, record);
+    records.push(record);
+  }
+  return {
+    rows: draft.freeze(),
+    sourceOrder,
+    records: Object.freeze(records),
+  };
+}
+
+export function createSourceOrderTree<TRowId extends PretableRowId>() {
   return createOrderStatisticTree<TRowId, SourceOrderKey<TRowId>, number>({
     getId: (entry) => entry.rowId,
     compare: (left, right) => left.sourceOrder - right.sourceOrder,

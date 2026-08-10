@@ -12,7 +12,7 @@ import {
 } from "./errors";
 import type { ExpansionRoot, RevisionRoot, RowRecord } from "./internal-types";
 import { createPersistentMap } from "./persistent/persistent-map";
-import { buildRowStore } from "./row-store";
+import { buildRowStore, rebuildRowStoreForQuery } from "./row-store";
 import type {
   PretableRowIntegrityDiagnostic,
   PretableRowIntegrityDiagnosticSink,
@@ -23,11 +23,17 @@ import type {
   PretableExpansionDefault,
   PretableGroupId,
   PretableMutationResult,
+  PretableMutationIssue,
   PretableQueryTransition,
   PretableRowModel,
   PretableRowModelState,
+  PretableTransaction,
 } from "./types";
 import { createFlatSnapshot, createFlatVisibleIndex } from "./visible-index";
+import {
+  applyFlatTransactionDraft,
+  replaceFlatRowsDraft,
+} from "./transaction-draft";
 
 interface CreateLocalRowModelBaseOptions<
   TColumns,
@@ -170,6 +176,7 @@ function mutationResult<TRowId extends PretableRowId>(
       "added" | "updated" | "removed" | "unchanged" | "ignored"
     >
   > = {},
+  issues: readonly PretableMutationIssue<TRowId>[] = [],
 ): PretableMutationResult<TRowId> {
   return Object.freeze({
     previousRevision,
@@ -179,46 +186,8 @@ function mutationResult<TRowId extends PretableRowId>(
     removed: counts.removed ?? 0,
     unchanged: counts.unchanged ?? 0,
     ignored: counts.ignored ?? 0,
-    issues: Object.freeze([]),
+    issues: Object.freeze(Array.from(issues)),
   });
-}
-
-interface ReplacementCounts {
-  added: number;
-  updated: number;
-  removed: number;
-  unchanged: number;
-}
-
-function classifyReplacement<
-  TRow extends object,
-  TRowId extends PretableRowId,
-  TColumns,
->(
-  previous: RevisionRoot<TRow, TRowId, TColumns>,
-  nextRecords: readonly RowRecord<TRow, TRowId, TColumns>[],
-  sameReferenceMutationCount: number,
-): ReplacementCounts {
-  let added = 0;
-  let updated = 0;
-  let unchanged = 0;
-  const retained = new Set<TRowId>();
-  nextRecords.forEach((record) => {
-    const { row, rowId, sourceOrder } = record;
-    retained.add(rowId);
-    const old = previous.rows.get(rowId);
-    if (old === undefined) added += 1;
-    else if (Object.is(old.row, row) && old.sourceOrder === sourceOrder)
-      unchanged += 1;
-    else updated += 1;
-  });
-  let removed = 0;
-  for (const [rowId] of previous.rows.entries()) {
-    if (!retained.has(rowId)) removed += 1;
-  }
-  updated += sameReferenceMutationCount;
-  unchanged -= sameReferenceMutationCount;
-  return { added, updated, removed, unchanged };
 }
 
 /** Creates the persistent, framework-independent local row model. */
@@ -283,6 +252,8 @@ export function createLocalRowModel<
     status: READY,
   });
   let disposed = false;
+  let nextSourceOrder = initialStore.records.length;
+  let nextTransitionId = 1;
   const listeners = new Set<() => void>();
 
   const assertActive = (operation: PretableRowModelOperation): void => {
@@ -323,37 +294,30 @@ export function createLocalRowModel<
       const previousRoot = root;
       try {
         let nextPlan = queryPlan;
-        let store = buildRowStore({
+        let drafted = replaceFlatRowsDraft({
+          root: previousRoot,
           rows: nextRows,
           getRowId,
           queryPlan: nextPlan,
-          previous: previousRoot.rows,
+          nextSourceOrder,
         });
-        const pendingDiagnostics = store.diagnostics;
-        const classified = classifyReplacement(
-          previousRoot,
-          store.records,
-          store.sameReferenceMutationCount,
-        );
-        if (store.sameReferenceMutation) {
+        const pendingDiagnostics = drafted.diagnostics;
+        if (drafted.sameReferenceMutation) {
           nextPlan = compileQuery({ derivations, query });
-          store = buildRowStore({
+          drafted = replaceFlatRowsDraft({
+            root: previousRoot,
             rows: nextRows,
             getRowId,
             queryPlan: nextPlan,
-            previous: previousRoot.rows,
+            nextSourceOrder,
+            acceptSameReferenceMutation: true,
           });
         }
-        const noOp =
-          classified.added === 0 &&
-          classified.updated === 0 &&
-          classified.removed === 0 &&
-          !store.sameReferenceMutation;
-        if (noOp) {
+        if (!drafted.effective) {
           return mutationResult(
             previousRoot.revision,
             previousRoot.revision,
-            classified,
+            drafted,
           );
         }
         const previousRevision = previousRoot.revision;
@@ -361,15 +325,9 @@ export function createLocalRowModel<
           Object.freeze({
             revision: previousRevision + 1,
             parentRevision: previousRevision,
-            rows: store.rows,
-            sourceOrder: store.sourceOrder,
-            visible: createFlatVisibleIndex(
-              store.records,
-              nextPlan.compareRows as unknown as (
-                left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-                right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-              ) => number,
-            ),
+            rows: drafted.rows,
+            sourceOrder: drafted.sourceOrder,
+            visible: drafted.visible,
             queryPlan: nextPlan,
             expansion: previousRoot.expansion,
             cause: Object.freeze({ kind: "set-rows" as const }),
@@ -377,9 +335,10 @@ export function createLocalRowModel<
         const result = mutationResult<TRowId>(
           previousRevision,
           committedRoot.revision,
-          classified,
+          drafted,
         );
         queryPlan = nextPlan;
+        nextSourceOrder = drafted.nextSourceOrder;
         publish(committedRoot);
         emitDiagnostics(pendingDiagnostics, diagnosticSink);
         return result;
@@ -387,11 +346,110 @@ export function createLocalRowModel<
         throw remapSetRowsError(error);
       }
     },
-    applyTransaction() {
-      return unavailable("apply-transaction");
+    applyTransaction(transaction: PretableTransaction<TRow, TRowId>) {
+      assertActive("apply-transaction");
+      const previousRoot = root;
+      const drafted = applyFlatTransactionDraft({
+        root: previousRoot,
+        transaction,
+        getRowId,
+        queryPlan,
+        nextSourceOrder,
+      });
+      const result = mutationResult<TRowId>(
+        previousRoot.revision,
+        drafted.effective ? previousRoot.revision + 1 : previousRoot.revision,
+        drafted,
+        drafted.issues,
+      );
+      if (!drafted.effective) return result;
+      const committedRoot: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze(
+        {
+          revision: result.revision,
+          parentRevision: previousRoot.revision,
+          rows: drafted.rows,
+          sourceOrder: drafted.sourceOrder,
+          visible: drafted.visible,
+          queryPlan,
+          expansion: previousRoot.expansion,
+          cause: Object.freeze({ kind: "set-rows" as const }),
+        },
+      );
+      nextSourceOrder = drafted.nextSourceOrder;
+      publish(committedRoot);
+      emitDiagnostics(drafted.diagnostics, diagnosticSink);
+      return result;
     },
-    setQuery(): PretableQueryTransition<TColumns> {
-      return unavailable("set-query");
+    setQuery(
+      nextQuery: PretableQueryFor<TColumns>,
+    ): PretableQueryTransition<TColumns> {
+      assertActive("set-query");
+      const id = nextTransitionId++;
+      const previousRoot = root;
+      const nextPlan = compileQuery({
+        derivations,
+        query: nextQuery,
+        previous: queryPlan,
+      });
+      if (nextPlan === queryPlan) {
+        return Object.freeze({
+          id,
+          requestedQuery: queryPlan.query,
+          finished: Promise.resolve(previousRoot.revision),
+          cancel: () => assertActive("set-query"),
+        });
+      }
+      let store: ReturnType<
+        typeof rebuildRowStoreForQuery<TRow, TRowId, TColumns>
+      >;
+      try {
+        store = rebuildRowStoreForQuery(
+          previousRoot.rows,
+          previousRoot.sourceOrder,
+          nextPlan,
+        );
+      } catch (error) {
+        if (
+          error instanceof PretableRowModelError &&
+          error.operation !== "set-query"
+        ) {
+          throw new PretableRowModelError(error.code, error.message, {
+            operation: "set-query",
+            rowId: error.rowId,
+            columnId: error.columnId,
+            cause: error.cause,
+          });
+        }
+        throw error;
+      }
+      const revision = previousRoot.revision + 1;
+      const committedRoot: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze(
+        {
+          revision,
+          parentRevision: previousRoot.revision,
+          rows: store.rows,
+          sourceOrder: store.sourceOrder,
+          visible: createFlatVisibleIndex(
+            store.records,
+            nextPlan.compareRows as unknown as (
+              left: RowRecord<TRow, TRowId, TColumns>["metadata"],
+              right: RowRecord<TRow, TRowId, TColumns>["metadata"],
+            ) => number,
+          ),
+          queryPlan: nextPlan,
+          expansion: previousRoot.expansion,
+          cause: Object.freeze({ kind: "set-rows" as const }),
+        },
+      );
+      queryPlan = nextPlan;
+      publish(committedRoot);
+      const finished = Promise.resolve(revision);
+      return Object.freeze({
+        id,
+        requestedQuery: nextPlan.query,
+        finished,
+        cancel: () => assertActive("set-query"),
+      });
     },
     setDerivations(): PretableDerivationTransition<TColumns> {
       return unavailable("set-derivations");
