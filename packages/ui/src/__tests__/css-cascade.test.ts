@@ -215,6 +215,28 @@ describe("grid.css cascade contract", () => {
     expect(rule).toMatch(/align-items:\s*flex-start/);
   });
 
+  test("wrapped-row alignment follows the row-selection rule in source order", () => {
+    // Every selector in this file is :where()-flattened to (0,0,0), so source
+    // order is the ONLY thing that lets the wrapped-row rule reach the checkbox
+    // cell — the row-selection rule sets `align-items: center` on it. Move the
+    // alignment rule above that one and the checkbox silently goes back to
+    // floating in the middle of a three-line row while every other cell sits at
+    // the top. Nothing else in the suite would notice.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rowSelect = css.indexOf('[data-pretable-row-select-cell="true"]');
+    const wrapAlign = css.indexOf(
+      '[data-pretable-row]:has([data-pretable-wrap="true"]) [data-pretable-cell]',
+    );
+    expect(rowSelect, "row-selection rule not found").toBeGreaterThan(-1);
+    expect(wrapAlign, "wrapped-row alignment rule not found").toBeGreaterThan(
+      -1,
+    );
+    expect(
+      wrapAlign,
+      "wrapped-row alignment must come AFTER the row-selection rule",
+    ).toBeGreaterThan(rowSelect);
+  });
+
   test("numeric and date cells get tabular figures without changing family", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums/);
