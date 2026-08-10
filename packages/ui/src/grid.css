@@ -416,7 +416,7 @@
     position: fixed;
     pointer-events: none;
     background: var(--pretable-reorder-ghost-bg);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     opacity: 0.6;
     z-index: 10;
     user-select: none;
@@ -473,7 +473,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     font: inherit;
     /* Portaled into <body>, so the font-family declared on the scroll
        viewport is no longer inherited — declare it here. */
@@ -675,7 +675,7 @@
     display: flex;
     flex-direction: column;
     padding: 4px;
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body>, so nothing is inherited from the viewport. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
@@ -716,7 +716,7 @@
     background: var(--pretable-bg-grid);
     border: 1px solid var(--pretable-rule-strong);
     border-radius: var(--pretable-radius);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body> — see the filter menu above. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
@@ -754,7 +754,7 @@
     background: var(--pretable-bg-grid);
     border: 1px solid var(--pretable-rule-strong);
     border-radius: var(--pretable-radius);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body> — see the filter menu above. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);

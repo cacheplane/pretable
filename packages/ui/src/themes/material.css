@@ -69,8 +69,17 @@
   --pretable-resize-handle: transparent;
   --pretable-resize-handle-hover: var(--pretable-accent);
   --pretable-reorder-ghost-bg: var(--pretable-bg-header);
-  --pretable-reorder-ghost-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
   --pretable-reorder-drop-indicator: var(--pretable-accent);
+
+  /* Elevation. Four of the five things that read a shadow are popovers, so the
+     scale is named for what is lifted, not for the drag ghost that happened to
+     need one first. */
+  --pretable-shadow-overlay: 0 4px 12px rgb(0 0 0 / 0.12);
+  /* No card shadow: this theme draws a frame instead. pretable.css uses it. */
+  --pretable-shadow-card: none;
+  /* The frozen-column edge. Spread must be <= -blur/2 or the blur bleeds above
+     and below each pinned cell and paints a dark band at every row boundary. */
+  --pretable-shadow-seam: 6px 0 10px -8px rgb(0 0 0 / 0.18);
 
   /* Density — natural default = standard */
   --pretable-row-height: 48px;
@@ -137,4 +146,10 @@
   --pretable-text-error: #f2b8b5; /* M3 error (dark) */
 
   --pretable-accent: #9ecaff;
+
+  /* A 12%-black shadow on a #1c1c1c surface is invisible, so every dark-mode
+     popover read as flat until this override existed. Deeper and more opaque
+     rather than lighter: M3 keeps shadows black in dark mode and gets the
+     separation from the tonal surface, not from the shadow color. */
+  --pretable-shadow-overlay: 0 4px 12px rgb(0 0 0 / 0.5);
 }

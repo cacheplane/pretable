@@ -41,8 +41,10 @@ const TOKENS = [
   "pretable-resize-handle",
   "pretable-resize-handle-hover",
   "pretable-reorder-ghost-bg",
-  "pretable-reorder-ghost-shadow",
   "pretable-reorder-drop-indicator",
+  "pretable-shadow-overlay",
+  "pretable-shadow-card",
+  "pretable-shadow-seam",
   "pretable-edit-bg",
   "pretable-text-error",
 ];

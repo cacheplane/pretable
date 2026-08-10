@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const GRID_CSS = path.resolve(__dirname, "../grid.css");
+const THEMES_DIR = path.resolve(__dirname, "../themes");
 
 describe("grid.css cascade contract", () => {
   test("grid.css declares @layer pretable", () => {
@@ -313,6 +314,23 @@ describe("grid.css cascade contract", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     expect(css).not.toMatch(/data-pretable-toolbar/);
     expect(css).not.toMatch(/data-pretable-status-bar/);
+  });
+
+  test("overlays read the elevation token, not the drag ghost's", () => {
+    // Four of the five things that took --pretable-reorder-ghost-shadow are
+    // popovers; only one was ever a drag ghost. The name is now what is lifted.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).not.toMatch(/reorder-ghost-shadow/);
+    expect(css).toMatch(/box-shadow:\s*var\(--pretable-shadow-overlay\)/);
+  });
+
+  test("dark mode overrides the overlay shadow", () => {
+    // A black shadow on a #1c1c1c surface is invisible; without an override
+    // every dark-mode popover reads as flat.
+    const css = fs.readFileSync(path.join(THEMES_DIR, "material.css"), "utf8");
+    const dark = css.match(/\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/)?.[1];
+    expect(dark, "no dark block").toBeDefined();
+    expect(dark).toMatch(/--pretable-shadow-overlay:/);
   });
 
   test("every grid.css rule selector is wrapped in :where()", () => {
