@@ -17,6 +17,8 @@ npm install @pretable/react @pretable/core @pretable/ui
 # or pnpm add … / yarn add …
 ```
 
+Requires `react ^19.0.0` and `react-dom ^19.0.0` as peer dependencies.
+
 `@pretable/ui` ships the CSS theme; import the stylesheet once at the root of your app.
 
 ## Minimal example

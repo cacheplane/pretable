@@ -42,19 +42,26 @@ The contract:
 
 ## Render `snapshot.visibleRows`
 
-`visibleRows` is the filtered + sorted set — the rows that pass the current filter, in sort order. It is not a viewport window; you get every matching row and decide how to render them.
+`visibleRows` is the flat filtered + sorted row set. Without grouping, every entry is a data row. Grouping inserts group-header entries into the same list. It is not a viewport window; you get every visible entry and decide how to render it.
 
 ```tsx
 <tbody>
-  {snapshot.visibleRows.map(({ id, row }) => (
-    <tr key={id}>
-      {columns.map((c) => (
-        <td key={c.id}>{String(row[c.id])}</td>
-      ))}
-    </tr>
-  ))}
+  {snapshot.visibleRows.map((visibleRow) => {
+    if (visibleRow.kind !== "data") return null;
+    const { id, row } = visibleRow;
+
+    return (
+      <tr key={id}>
+        {columns.map((column) => (
+          <td key={column.id}>{String(row[column.id])}</td>
+        ))}
+      </tr>
+    );
+  })}
 </tbody>
 ```
+
+This first example skips group headers. A custom grouped renderer should branch on `visibleRow.kind` and render both `"data"` and `"group"` entries.
 
 ## Drive it
 
