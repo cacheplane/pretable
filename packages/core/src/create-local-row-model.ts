@@ -1,6 +1,5 @@
 import {
   createLocalRowModel as createInternalLocalRowModel,
-  type ColumnDescriptorOf,
   type CreateLocalRowModelOptions as InternalCreateLocalRowModelOptions,
   type PretableDerivationsFor,
   type PretableExpansionDefault,
@@ -10,36 +9,63 @@ import {
   type PretableRowModel,
 } from "@pretable-internal/row-model";
 
-type RowForColumns<TColumns> =
-  ColumnDescriptorOf<TColumns> extends {
-    readonly row: infer TRow extends object;
-  }
-    ? TRow
-    : never;
-
 /** Options for a local row model with an explicit row-ID accessor. @public */
 export interface CreateLocalRowModelOptions<
   TColumns,
   TRowId extends PretableRowId,
 > {
-  readonly rows: readonly (TColumns extends readonly (infer TColumn)[]
-    ? TColumn extends {
-        readonly accessor: (row: infer TRow extends object) => unknown;
+  readonly rows: readonly (TColumns extends readonly [
+    infer TFirstColumn,
+    ...(readonly unknown[]),
+  ]
+    ? TFirstColumn extends {
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
       }
-      ? TRow
+      ? [TValue] extends [unknown]
+        ? TRow
+        : never
       : never
     : never)[];
-  readonly columns: TColumns;
+  readonly columns: TColumns & {
+    readonly [K in keyof TColumns]: TColumns[K] extends {
+      readonly accessor: (
+        row: infer TColumnRow extends object,
+      ) => infer TColumnValue;
+    }
+      ? [TColumnValue] extends [unknown]
+        ? TColumns extends readonly [
+            infer TFirstColumn,
+            ...(readonly unknown[]),
+          ]
+          ? TFirstColumn extends {
+              readonly accessor: (
+                row: infer TFirstRow extends object,
+              ) => infer TFirstValue;
+            }
+            ? [TFirstValue] extends [unknown]
+              ? [TColumnRow] extends [TFirstRow]
+                ? [TFirstRow] extends [TColumnRow]
+                  ? TColumns[K]
+                  : never
+                : never
+              : never
+            : never
+          : never
+        : never
+      : never;
+  };
   readonly derivations?: PretableDerivationsFor<TColumns>;
   readonly query?: PretableQueryFor<TColumns>;
   readonly initialExpansion?: PretableExpansionDefault;
   readonly aggregateFilteredRows?: boolean;
   readonly getRowId: (
-    row: TColumns extends readonly (infer TColumn)[]
-      ? TColumn extends {
-          readonly accessor: (row: infer TRow extends object) => unknown;
+    row: TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])]
+      ? TFirstColumn extends {
+          readonly accessor: (row: infer TRow extends object) => infer TValue;
         }
-        ? TRow
+        ? [TValue] extends [unknown]
+          ? TRow
+          : never
         : never
       : never,
   ) => TRowId;
@@ -47,23 +73,57 @@ export interface CreateLocalRowModelOptions<
 
 /** Options for a local row model using the conventional `row.id`. @public */
 export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (
-  TColumns extends readonly (infer TColumn)[]
-    ? TColumn extends {
-        readonly accessor: (row: infer TRow extends object) => unknown;
+  TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])]
+    ? TFirstColumn extends {
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
       }
-      ? TRow
+      ? [TValue] extends [unknown]
+        ? TRow
+        : never
       : never
     : never
 ) extends { readonly id: PretableRowId }
   ? Prettify<{
-      readonly rows: readonly (TColumns extends readonly (infer TColumn)[]
-        ? TColumn extends {
-            readonly accessor: (row: infer TRow extends object) => unknown;
+      readonly rows: readonly (TColumns extends readonly [
+        infer TFirstColumn,
+        ...(readonly unknown[]),
+      ]
+        ? TFirstColumn extends {
+            readonly accessor: (row: infer TRow extends object) => infer TValue;
           }
-          ? TRow
+          ? [TValue] extends [unknown]
+            ? TRow
+            : never
           : never
         : never)[];
-      readonly columns: TColumns;
+      readonly columns: TColumns & {
+        readonly [K in keyof TColumns]: TColumns[K] extends {
+          readonly accessor: (
+            row: infer TColumnRow extends object,
+          ) => infer TColumnValue;
+        }
+          ? [TColumnValue] extends [unknown]
+            ? TColumns extends readonly [
+                infer TFirstColumn,
+                ...(readonly unknown[]),
+              ]
+              ? TFirstColumn extends {
+                  readonly accessor: (
+                    row: infer TFirstRow extends object,
+                  ) => infer TFirstValue;
+                }
+                ? [TFirstValue] extends [unknown]
+                  ? [TColumnRow] extends [TFirstRow]
+                    ? [TFirstRow] extends [TColumnRow]
+                      ? TColumns[K]
+                      : never
+                    : never
+                  : never
+                : never
+              : never
+            : never
+          : never;
+      };
       readonly derivations?: PretableDerivationsFor<TColumns>;
       readonly query?: PretableQueryFor<TColumns>;
       readonly initialExpansion?: PretableExpansionDefault;
@@ -77,7 +137,9 @@ export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (
  *
  * @public
  */
-export function createLocalRowModel<const TColumns extends readonly unknown[]>(
+export function createLocalRowModel<
+  const TColumns extends readonly [unknown, ...(readonly unknown[])],
+>(
   options: CreateLocalRowModelWithDefaultIdOptions<TColumns>,
 ): PretableRowModel<
   CreateLocalRowModelWithDefaultIdOptions<TColumns>["rows"][number],
@@ -94,7 +156,7 @@ export function createLocalRowModel<const TColumns extends readonly unknown[]>(
  * @public
  */
 export function createLocalRowModel<
-  const TColumns extends readonly unknown[],
+  const TColumns extends readonly [unknown, ...(readonly unknown[])],
   const TRowId extends PretableRowId,
 >(
   options: CreateLocalRowModelOptions<TColumns, TRowId>,
@@ -110,7 +172,7 @@ export function createLocalRowModel<
   options:
     | CreateLocalRowModelWithDefaultIdOptions<TColumns>
     | CreateLocalRowModelOptions<TColumns, TRowId>,
-): PretableRowModel<RowForColumns<TColumns>, TRowId, TColumns> {
+): unknown {
   return createInternalLocalRowModel(
     options as unknown as InternalCreateLocalRowModelOptions<TColumns, TRowId>,
   );

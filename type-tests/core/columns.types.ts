@@ -71,6 +71,57 @@ column.accessor("symbol", { type: "text", aggregate: "sum" });
 // @ts-expect-error a number-valued accessor cannot declare a text column
 column.accessor("quantity", { type: "text" });
 
+interface NumericEligibilityRow {
+  nullableNumber: number | null;
+  nullOnly: null;
+  undefinedOnly: undefined;
+  numberOrText: number | string;
+}
+const numericEligibilityColumn = createColumnHelper<NumericEligibilityRow>();
+
+numericEligibilityColumn.accessor("nullableNumber", {
+  type: "number",
+  aggregate: "sum",
+});
+numericEligibilityColumn.accessor(
+  "computedNullableNumber",
+  (row) => row.nullableNumber,
+  { type: "number", aggregate: "avg" },
+);
+numericEligibilityColumn.accessor("nullOnly", {
+  // @ts-expect-error null-only values are not numeric columns
+  type: "number",
+  // @ts-expect-error null-only values are not summable
+  aggregate: "sum",
+});
+numericEligibilityColumn.accessor("undefinedOnly", {
+  // @ts-expect-error undefined-only values are not numeric columns
+  type: "number",
+  // @ts-expect-error undefined-only values are not averageable
+  aggregate: "avg",
+});
+numericEligibilityColumn.accessor("numberOrText", {
+  type: "number",
+  // @ts-expect-error a number|string value is not wholly numeric
+  aggregate: "sum",
+});
+numericEligibilityColumn.accessor("computedNullOnly", (row) => row.nullOnly, {
+  // @ts-expect-error computed null-only values are not numeric columns
+  type: "number",
+  // @ts-expect-error computed null-only values are not summable
+  aggregate: "sum",
+});
+numericEligibilityColumn.accessor(
+  "computedUndefinedOnly",
+  (row) => row.undefinedOnly,
+  {
+    // @ts-expect-error computed undefined-only values are not numeric columns
+    type: "number",
+    // @ts-expect-error computed undefined-only values are not averageable
+    aggregate: "avg",
+  },
+);
+
 void (null as unknown as _ColumnIds);
 void (null as unknown as _Quantity);
 void (null as unknown as _Computed);

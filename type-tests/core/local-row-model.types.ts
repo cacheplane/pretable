@@ -33,10 +33,10 @@ conventional.applyTransaction({
   update: [{ id: 1, changes: { quantity: 11, active: false } }],
   remove: [1],
 });
-// @ts-expect-error deterministic scheduler injection is not public API
 createLocalRowModel({
   rows: holdings,
   columns: holdingColumns,
+  // @ts-expect-error deterministic scheduler injection is not public API
   transitionScheduler: { schedule: () => () => {} },
 });
 // @ts-expect-error the conventional id remains numeric
@@ -103,6 +103,72 @@ const numericModel = createLocalRowModel({
 });
 type _ExplicitNumberId = Expect<Equal<RowIdOf<typeof numericModel>, number>>;
 
+interface AlphaRow {
+  id: string;
+  alpha: string;
+}
+interface BetaRow {
+  id: string;
+  beta: number;
+}
+const alphaColumn = createColumnHelper<AlphaRow>();
+const secondAlphaColumn = createColumnHelper<AlphaRow>();
+const betaColumn = createColumnHelper<BetaRow>();
+const mixedRowColumns = [
+  alphaColumn.accessor("alpha", { type: "text" }),
+  betaColumn.accessor("beta", { type: "number" }),
+] as const;
+const sameRowColumns = [
+  alphaColumn.accessor("alpha", { type: "text" }),
+  secondAlphaColumn.accessor("id", { type: "text" }),
+] as const;
+
+interface BaseRow {
+  id: string;
+}
+interface DetailedRow extends BaseRow {
+  detail: string;
+}
+const baseColumn = createColumnHelper<BaseRow>();
+const detailedColumn = createColumnHelper<DetailedRow>();
+const subtypeMixedColumns = [
+  baseColumn.accessor("id", { type: "text" }),
+  detailedColumn.accessor("detail", { type: "text" }),
+] as const;
+
+const sameRowDefaultModel = createLocalRowModel({
+  rows: [{ id: "alpha-1", alpha: "one" }],
+  columns: sameRowColumns,
+});
+const sameRowExplicitModel = createLocalRowModel({
+  rows: [{ id: "alpha-1", alpha: "one" }],
+  columns: sameRowColumns,
+  getRowId: (row) => row.id,
+});
+type _SameRowDefault = Expect<
+  Equal<RowOf<typeof sameRowDefaultModel>, AlphaRow>
+>;
+type _SameRowExplicit = Expect<
+  Equal<RowOf<typeof sameRowExplicitModel>, AlphaRow>
+>;
+
+createLocalRowModel({
+  rows: [{ id: "alpha-1", alpha: "one" }],
+  // @ts-expect-error one model cannot combine columns from incompatible row helpers
+  columns: mixedRowColumns,
+});
+createLocalRowModel({
+  rows: [{ id: "alpha-1", alpha: "one" }],
+  // @ts-expect-error explicit IDs do not make incompatible row helpers compatible
+  columns: mixedRowColumns,
+  getRowId: (row: AlphaRow) => row.id,
+});
+// @ts-expect-error row-helper correlation is invariant, even for row subtypes
+createLocalRowModel({
+  rows: [{ id: "detail-1", detail: "one" }],
+  columns: subtypeMixedColumns,
+});
+
 // @ts-expect-error rows without a conventional id require getRowId
 createLocalRowModel({
   rows: [{ key: 1, value: "one" }],
@@ -134,3 +200,5 @@ void (null as unknown as _ConventionalColumns);
 void (null as unknown as _TemplateId);
 void (null as unknown as _ExplicitStringId);
 void (null as unknown as _ExplicitNumberId);
+void (null as unknown as _SameRowDefault);
+void (null as unknown as _SameRowExplicit);

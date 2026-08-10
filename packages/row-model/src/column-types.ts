@@ -44,9 +44,11 @@ export interface PretableAggregator<
 /** @public */
 export type PretableBuiltinAggregate<TValue> =
   | "count"
-  | (NonNullable<TValue> extends number
-      ? "sum" | "avg" | "min" | "max"
-      : never);
+  | ([NonNullable<TValue>] extends [never]
+      ? never
+      : NonNullable<TValue> extends number
+        ? "sum" | "avg" | "min" | "max"
+        : never);
 
 /** @public */
 export type PretableAggregateSpec<TRow extends object, TValue> =
@@ -132,8 +134,11 @@ export interface PretableColumnDefinition<
 }
 
 /** @public */
-export type PretableColumnTypeFor<TValue> =
-  NonNullable<TValue> extends number
+export type PretableColumnTypeFor<TValue> = [NonNullable<TValue>] extends [
+  never,
+]
+  ? Exclude<PretableColumnType, "number">
+  : NonNullable<TValue> extends number
     ? "number"
     : NonNullable<TValue> extends boolean
       ? "boolean"
@@ -198,9 +203,17 @@ export interface PretableColumnHelper<TRow extends object> {
   accessor<
     const TId extends string,
     const TAccessor,
-    const TType extends PretableColumnTypeFor<
-      NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>
-    >,
+    const TType extends
+      | PretableColumnTypeFor<
+          NoInfer<
+            TAccessor extends (row: TRow) => infer TValue ? TValue : never
+          >
+        >
+      | ([
+          TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+        ] extends [never]
+          ? PretableColumnType
+          : never),
     const TAggregate extends
       | PretableAggregateSpec<
           TRow,
@@ -208,17 +221,47 @@ export interface PretableColumnHelper<TRow extends object> {
             TAccessor extends (row: TRow) => infer TValue ? TValue : never
           >
         >
+      | ([
+          TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+        ] extends [never]
+          ? PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max"
+          : never)
       | undefined = undefined,
   >(
     id: TId,
     accessor: TAccessor & ((row: TRow) => unknown),
-    options: PretableColumnOptions<
-      TRow,
-      TId,
-      NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>,
-      TType,
-      TAggregate
-    >,
+    options: {
+      readonly type: TType;
+      readonly header?: string;
+      readonly compare?: (
+        left: TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+        right: TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+      ) => number;
+      readonly aggregate?: TAggregate;
+      readonly format?: (input: {
+        readonly value: TAccessor extends (row: TRow) => infer TValue
+          ? TValue
+          : never;
+        readonly row: TRow;
+        readonly column: PretableColumnCallbackContext<
+          TRow,
+          TId,
+          TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+          TType,
+          TAggregate
+        >;
+      }) => string;
+      readonly formatAggregate?: (input: {
+        readonly value: PretableAggregateOutputOf<TAggregate>;
+        readonly column: PretableColumnCallbackContext<
+          TRow,
+          TId,
+          TAccessor extends (row: TRow) => infer TValue ? TValue : never,
+          TType,
+          TAggregate
+        >;
+      }) => string;
+    },
   ): PretableColumnDefinition<
     TRow,
     TId,
@@ -424,9 +467,11 @@ export type PretableRowGroupFor<TColumns> = Prettify<
         readonly id: infer TId extends string;
         readonly accessor: (...args: never[]) => infer TValue;
       }
-      ? [TValue] extends [PretableGroupKey]
-        ? { readonly columnId: TId }
-        : never
+      ? [TValue] extends [never]
+        ? never
+        : [TValue] extends [PretableGroupKey]
+          ? { readonly columnId: TId }
+          : never
       : never
     : never) & {
     readonly direction?: "asc" | "desc";

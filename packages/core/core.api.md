@@ -66,45 +66,69 @@ export function createColumnHelper<TRow extends object>(): PretableColumnHelper<
 export function createGrid<TRow extends PretableRow = PretableRow>(options: PretableGridOptions<TRow>): PretableGrid<TRow>;
 
 // @public
-export function createLocalRowModel<const TColumns extends readonly unknown[]>(options: CreateLocalRowModelWithDefaultIdOptions<TColumns>): PretableRowModel<CreateLocalRowModelWithDefaultIdOptions<TColumns>["rows"][number], CreateLocalRowModelWithDefaultIdOptions<TColumns>["rows"][number] extends {
+export function createLocalRowModel<const TColumns extends readonly [unknown, ...(readonly unknown[])]>(options: CreateLocalRowModelWithDefaultIdOptions<TColumns>): PretableRowModel<CreateLocalRowModelWithDefaultIdOptions<TColumns>["rows"][number], CreateLocalRowModelWithDefaultIdOptions<TColumns>["rows"][number] extends {
     readonly id: infer TRowId extends PretableRowId;
 } ? TRowId : never, TColumns>;
 
 // @public
-export function createLocalRowModel<const TColumns extends readonly unknown[], const TRowId extends PretableRowId>(options: CreateLocalRowModelOptions<TColumns, TRowId>): PretableRowModel<CreateLocalRowModelOptions<TColumns, TRowId>["rows"][number], TRowId, TColumns>;
+export function createLocalRowModel<const TColumns extends readonly [unknown, ...(readonly unknown[])], const TRowId extends PretableRowId>(options: CreateLocalRowModelOptions<TColumns, TRowId>): PretableRowModel<CreateLocalRowModelOptions<TColumns, TRowId>["rows"][number], TRowId, TColumns>;
 
 // @public
 export interface CreateLocalRowModelOptions<TColumns, TRowId extends PretableRowId> {
     // (undocumented)
     readonly aggregateFilteredRows?: boolean;
     // (undocumented)
-    readonly columns: TColumns;
+    readonly columns: TColumns & {
+        readonly [K in keyof TColumns]: TColumns[K] extends {
+            readonly accessor: (row: infer TColumnRow extends object) => infer TColumnValue;
+        } ? [TColumnValue] extends [unknown] ? TColumns extends readonly [
+        infer TFirstColumn,
+        ...(readonly unknown[])
+        ] ? TFirstColumn extends {
+            readonly accessor: (row: infer TFirstRow extends object) => infer TFirstValue;
+        } ? [TFirstValue] extends [unknown] ? [TColumnRow] extends [TFirstRow] ? [TFirstRow] extends [TColumnRow] ? TColumns[K] : never : never : never : never : never : never : never;
+    };
     // (undocumented)
     readonly derivations?: PretableDerivationsFor<TColumns>;
     // (undocumented)
-    readonly getRowId: (row: TColumns extends readonly (infer TColumn)[] ? TColumn extends {
-        readonly accessor: (row: infer TRow extends object) => unknown;
-    } ? TRow : never : never) => TRowId;
+    readonly getRowId: (row: TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])] ? TFirstColumn extends {
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
+    } ? [TValue] extends [unknown] ? TRow : never : never : never) => TRowId;
     // (undocumented)
     readonly initialExpansion?: PretableExpansionDefault;
     // (undocumented)
     readonly query?: PretableQueryFor<TColumns>;
     // (undocumented)
-    readonly rows: readonly (TColumns extends readonly (infer TColumn)[] ? TColumn extends {
-        readonly accessor: (row: infer TRow extends object) => unknown;
-    } ? TRow : never : never)[];
+    readonly rows: readonly (TColumns extends readonly [
+    infer TFirstColumn,
+    ...(readonly unknown[])
+    ] ? TFirstColumn extends {
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
+    } ? [TValue] extends [unknown] ? TRow : never : never : never)[];
 }
 
 // @public
-export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extends readonly (infer TColumn)[] ? TColumn extends {
-    readonly accessor: (row: infer TRow extends object) => unknown;
-} ? TRow : never : never) extends {
+export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])] ? TFirstColumn extends {
+    readonly accessor: (row: infer TRow extends object) => infer TValue;
+} ? [TValue] extends [unknown] ? TRow : never : never : never) extends {
     readonly id: PretableRowId;
 } ? Prettify<{
-    readonly rows: readonly (TColumns extends readonly (infer TColumn)[] ? TColumn extends {
-        readonly accessor: (row: infer TRow extends object) => unknown;
-    } ? TRow : never : never)[];
-    readonly columns: TColumns;
+    readonly rows: readonly (TColumns extends readonly [
+    infer TFirstColumn,
+    ...(readonly unknown[])
+    ] ? TFirstColumn extends {
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
+    } ? [TValue] extends [unknown] ? TRow : never : never : never)[];
+    readonly columns: TColumns & {
+        readonly [K in keyof TColumns]: TColumns[K] extends {
+            readonly accessor: (row: infer TColumnRow extends object) => infer TColumnValue;
+        } ? [TColumnValue] extends [unknown] ? TColumns extends readonly [
+        infer TFirstColumn,
+        ...(readonly unknown[])
+        ] ? TFirstColumn extends {
+            readonly accessor: (row: infer TFirstRow extends object) => infer TFirstValue;
+        } ? [TFirstValue] extends [unknown] ? [TColumnRow] extends [TFirstRow] ? [TFirstRow] extends [TColumnRow] ? TColumns[K] : never : never : never : never : never : never : never;
+    };
     readonly derivations?: PretableDerivationsFor<TColumns>;
     readonly query?: PretableQueryFor<TColumns>;
     readonly initialExpansion?: PretableExpansionDefault;
@@ -161,7 +185,7 @@ export interface PretableAggregator<TRow extends object = object, TValue = unkno
 }
 
 // @public (undocumented)
-export type PretableBuiltinAggregate<TValue> = "count" | (NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never);
+export type PretableBuiltinAggregate<TValue> = "count" | ([NonNullable<TValue>] extends [never] ? never : NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never);
 
 // @public
 export interface PretableCellAddress {
@@ -342,7 +366,25 @@ export interface PretableColumnDerivation<TRow extends object, TId extends strin
 // @public (undocumented)
 export interface PretableColumnHelper<TRow extends object> {
     // (undocumented)
-    accessor<const TId extends string, const TAccessor, const TType extends PretableColumnTypeFor<NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>>, const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => unknown), options: PretableColumnOptions<TRow, TId, NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>, TType, TAggregate>): PretableColumnDefinition<TRow, TId, TAccessor extends (row: TRow) => infer TValue ? TValue : never, TType, TAggregate>;
+    accessor<const TId extends string, const TAccessor, const TType extends PretableColumnTypeFor<NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | ([
+    TAccessor extends (row: TRow) => infer TValue ? TValue : never
+    ] extends [never] ? PretableColumnType : never), const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TAccessor extends (row: TRow) => infer TValue ? TValue : never>> | ([
+    TAccessor extends (row: TRow) => infer TValue ? TValue : never
+    ] extends [never] ? PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max" : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => unknown), options: {
+        readonly type: TType;
+        readonly header?: string;
+        readonly compare?: (left: TAccessor extends (row: TRow) => infer TValue ? TValue : never, right: TAccessor extends (row: TRow) => infer TValue ? TValue : never) => number;
+        readonly aggregate?: TAggregate;
+        readonly format?: (input: {
+            readonly value: TAccessor extends (row: TRow) => infer TValue ? TValue : never;
+            readonly row: TRow;
+            readonly column: PretableColumnCallbackContext<TRow, TId, TAccessor extends (row: TRow) => infer TValue ? TValue : never, TType, TAggregate>;
+        }) => string;
+        readonly formatAggregate?: (input: {
+            readonly value: PretableAggregateOutputOf<TAggregate>;
+            readonly column: PretableColumnCallbackContext<TRow, TId, TAccessor extends (row: TRow) => infer TValue ? TValue : never, TType, TAggregate>;
+        }) => string;
+    }): PretableColumnDefinition<TRow, TId, TAccessor extends (row: TRow) => infer TValue ? TValue : never, TType, TAggregate>;
     // (undocumented)
     accessor<const TKey extends Extract<keyof TRow, string>, const TType extends PretableColumnTypeFor<TRow[TKey]>, const TAggregate extends PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined>(key: TKey, options: PretableColumnOptions<TRow, TKey, TRow[TKey], TType, TAggregate>): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate>;
 }
@@ -368,7 +410,9 @@ export type PretableColumnOptions<TRow extends object, TId extends string, TValu
 export type PretableColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 // @public (undocumented)
-export type PretableColumnTypeFor<TValue> = NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends Date ? "date" : NonNullable<TValue> extends string ? "text" | "enum" | "date" : PretableColumnType;
+export type PretableColumnTypeFor<TValue> = [NonNullable<TValue>] extends [
+never
+] ? Exclude<PretableColumnType, "number"> : NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends Date ? "date" : NonNullable<TValue> extends string ? "text" | "enum" | "date" : PretableColumnType;
 
 // @public (undocumented)
 export type PretableCompatibleAggregateSpec<TRow extends object, TValue, TAggregate> = [TAggregate] extends [undefined] ? undefined : ([PretableAggregateOutputOf<TAggregate>] extends [number | null] ? [number | null] extends [PretableAggregateOutputOf<TAggregate>] ? PretableBuiltinAggregate<TValue> : never : never) | PretableCompatibleAggregator<TRow, TValue, PretableAggregateOutputOf<TAggregate>>;
@@ -444,7 +488,7 @@ export type PretableDistinctColumnIdOf<TColumns> = TColumns extends readonly (in
     readonly accessor: (...args: never[]) => infer TValue;
 } ? [TValue] extends [
 string | number | bigint | boolean | Date | null | undefined
-] ? TColumnId : never : never : never;
+] ? [TValue] extends [never] ? never : TColumnId : never : never : never;
 
 // @public (undocumented)
 export interface PretableDistinctValueOptions {
@@ -902,7 +946,7 @@ export type PretableRow = Record<string, unknown>;
 export type PretableRowGroupFor<TColumns> = Prettify<(TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: infer TId extends string;
     readonly accessor: (...args: never[]) => infer TValue;
-} ? [TValue] extends [PretableGroupKey] ? {
+} ? [TValue] extends [never] ? never : [TValue] extends [PretableGroupKey] ? {
     readonly columnId: TId;
 } : never : never : never) & {
     readonly direction?: "asc" | "desc";

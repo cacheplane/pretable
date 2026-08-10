@@ -317,7 +317,9 @@ export type PretableDistinctColumnIdOf<TColumns> =
       ? [TValue] extends [
           string | number | bigint | boolean | Date | null | undefined,
         ]
-        ? TColumnId
+        ? [TValue] extends [never]
+          ? never
+          : TColumnId
         : never
       : never
     : never;
