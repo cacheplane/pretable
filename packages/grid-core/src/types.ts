@@ -579,6 +579,11 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
   applyTransaction(transaction: PretableTransaction<TRow>): void;
   setRows(rows: TRow[], meta?: PretableResultMeta): void;
+  /**
+   * Update result metadata without a rows replacement.
+   *
+   * @experimental
+   */
   setResultMeta(meta: PretableResultMeta): void;
 
   // row grouping (v1):
