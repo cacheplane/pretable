@@ -2,7 +2,9 @@
 
 **Date:** 2026-08-09
 
-**Status:** approved in-session; ready for implementation planning after written-spec review
+**Status:** approved
+
+**Next step:** written-spec review, then documentation-only implementation planning
 
 ## Context
 
@@ -83,6 +85,24 @@ The roadmap tracks outcomes, not task checkboxes. Shipped work links to package
 changelogs and API reports rather than relying on unchecked boxes in historical
 plans.
 
+The initial tiers are fixed for this documentation slice:
+
+- **Now — harden and measure:** repair current API/documentation contract drift,
+  finish grouping adoption and option plumbing, and add PMS and financial-
+  planning benchmark profiles.
+- **Next — describe and manipulate financial views:** add the financial field
+  schema, nested headers, view-management surface, saved-view persistence
+  (persistence slice 1), and the typed command foundation with bounded local
+  undo/redo (history slice 2). Saved views precede the command foundation within
+  this tier.
+- **Later — remote scale, analytics, and collaboration:** add the remote/live row
+  model, revisioned mutations (slice 3), parallel PMS analytics and planning-
+  interaction tracks, durable audit history (slice 4), and their production
+  convergence. Slice 3 precedes slice 4.
+- **Not planned:** a hosted Pretable backend, authentication system, finance-
+  domain model, chart/page platform, or persistence of complete runtime
+  snapshots.
+
 ### Documentation index
 
 Create `docs/README.md` to define authority and lifecycle:
@@ -101,9 +121,11 @@ implementation references once shipped. Supported statuses are `draft`,
 
 ### Historical documents
 
-Preserve the April roadmap and `repo-memory.md`, but add prominent historical
-notices pointing to `ROADMAP.md`. Do not rewrite their original content or use
-them as live backlogs.
+Preserve
+`docs/superpowers/specs/2026-04-20-roadmap-fix-then-expand-design.md` and
+`docs/research/repo-memory.md`, but add an additive banner at the top of each
+file marking it historical and pointing to `ROADMAP.md`. Do not rewrite their
+original content or use them as live backlogs.
 
 ### Consumer documentation
 
@@ -252,11 +274,17 @@ the branch.
 ```text
 gesture
 → command + inverse
-→ optional optimistic apply
-→ mutation provider
-→ accepted or rejected result
-→ local history + durable audit event
+├─ local mode → local apply → bounded command history
+└─ provider mode → optional optimistic apply → mutation provider
+   → accepted or rejected result
+   ├─ accepted → bounded command history
+   └─ accepted + audit provider configured → durable audit event
 ```
+
+The mutation and audit providers are independent, optional branches. Local mode
+does not require a revision, mutation provider, or durable audit event. A host
+may also feed provider-authored history events into the audit surface without
+using Pretable's mutation provider.
 
 Providers return a typed result:
 
@@ -386,6 +414,10 @@ streaming continuity.
 
 ## Documentation-slice acceptance criteria
 
+- The documentation-only change set is limited to `ROADMAP.md`,
+  `docs/README.md`, `README.md`, this spec,
+  `docs/superpowers/specs/2026-04-20-roadmap-fix-then-expand-design.md`, and
+  `docs/research/repo-memory.md`.
 - `ROADMAP.md` is the linked canonical prioritization document.
 - `docs/README.md` explains documentation authority and lifecycle.
 - This design captures the approved persistence/history architecture.
@@ -394,7 +426,9 @@ streaming continuity.
 - The roadmap places saved views, command history, revisioned mutations, and
   durable audit history in the broader financial-grade delivery sequence.
 - No consumer documentation presents speculative APIs as shipped.
-- Documentation formatting and link checks pass.
+- `git diff --check` and Prettier pass for all changed Markdown files.
+- Every new repository-relative link resolves to an existing file, verified by
+  explicit path-existence checks recorded in the implementation plan.
 
 ## Risks
 
