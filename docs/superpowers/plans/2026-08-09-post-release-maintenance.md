@@ -475,6 +475,7 @@ If main has no other unconsumed Changesets, branch-delta and full status should 
 Run from the repository root as one shell block:
 
 ```bash
+set -euo pipefail
 pnpm --filter @pretable/react build
 maintenance_pack_dir=$(mktemp -d ./.tmp-react-pack.XXXXXX)
 pnpm --filter @pretable/react pack --pack-destination "$maintenance_pack_dir"
