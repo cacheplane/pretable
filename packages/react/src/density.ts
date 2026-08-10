@@ -2,6 +2,9 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 
 import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
+const FALLBACK_ROW_HEIGHT = 32;
+const FALLBACK_HEADER_HEIGHT = 36;
+
 export type { DensityHeights };
 
 function subscribe(callback: () => void): () => void {
@@ -47,9 +50,8 @@ export function useResolvedHeights(
   }, [rowHeightProp, headerHeightProp]);
 
   const getServerSnapshot = useCallback(() => {
-    const css = getDensityHeights();
-    const rowHeight = rowHeightProp ?? css.rowHeight;
-    const headerHeight = headerHeightProp ?? css.headerHeight;
+    const rowHeight = rowHeightProp ?? FALLBACK_ROW_HEIGHT;
+    const headerHeight = headerHeightProp ?? FALLBACK_HEADER_HEIGHT;
     const prev = cachedServer.current;
     if (
       prev !== null &&
@@ -108,10 +110,11 @@ export function useResolvedPx(
     () => (enabled ? readPx(name, fallback) : fallback),
     [enabled, name, fallback],
   );
+  const getServerSnapshot = useCallback(() => fallback, [fallback]);
 
   return useSyncExternalStore(
     enabled ? subscribe : noopSubscribe,
     getSnapshot,
-    getSnapshot,
+    getServerSnapshot,
   );
 }
