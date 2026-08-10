@@ -52,6 +52,7 @@ export type {
   PretableGridOptions,
   PretableProcessingAuthority,
   PretableProcessingOptions,
+  PretableResultMeta,
   PretableRow,
   PretableVisibleRow,
   PretableSelectionState,

@@ -1,5 +1,6 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
+import { resetDevWarnings } from "../dev-warn";
 import { createGridCore, type PretableProcessingOptions } from "../index";
 
 type Row = { id: string; name: string; score: number };
@@ -65,5 +66,73 @@ describe("matchingTotal under external filter authority", () => {
     expect(
       makeGrid({ filter: "external" }).getSnapshot().matchingTotal,
     ).toEqual({ kind: "unknown" });
+  });
+});
+
+describe("result meta under external filter authority", () => {
+  test("setRows carries the total in the same emit as the rows", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    let emits = 0;
+    grid.subscribe(() => {
+      emits += 1;
+    });
+    grid.setRows(rows.slice(0, 2), { total: { kind: "exact", count: 4120 } });
+    const snap = grid.getSnapshot();
+    expect(emits).toBe(1);
+    expect(snap.loadedRowCount).toBe(2);
+    expect(snap.matchingTotal).toEqual({ kind: "exact", count: 4120 });
+  });
+
+  test("matchingTotal is unknown until a total is supplied", () => {
+    expect(
+      makeGrid({ filter: "external", sort: "external" }).getSnapshot()
+        .matchingTotal,
+    ).toEqual({ kind: "unknown" });
+  });
+
+  test("setResultMeta refines the total without a rows replacement", () => {
+    const grid = makeGrid({ filter: "external" });
+    grid.setRows(rows, { total: { kind: "estimate", count: 5000 } });
+    const rowsBefore = grid.getSnapshot().visibleRows;
+    grid.setResultMeta({ total: { kind: "exact", count: 5032 } });
+    const snap = grid.getSnapshot();
+    expect(snap.matchingTotal).toEqual({ kind: "exact", count: 5032 });
+    expect(snap.visibleRows).toEqual(rowsBefore);
+  });
+
+  test("setResultMeta with an unchanged total does not emit", () => {
+    const grid = makeGrid({ filter: "external" });
+    grid.setRows(rows, { total: { kind: "exact", count: 9 } });
+    let emits = 0;
+    grid.subscribe(() => {
+      emits += 1;
+    });
+    grid.setResultMeta({ total: { kind: "exact", count: 9 } });
+    expect(emits).toBe(0);
+  });
+
+  test("appending is setRows(prev.concat(page)) and preserves selection", () => {
+    const grid = makeGrid({ filter: "external", sort: "external" });
+    grid.setRows(rows.slice(0, 2), { total: { kind: "exact", count: 3 } });
+    grid.toggleRowSelection("a");
+    grid.setRows(rows, { total: { kind: "exact", count: 3 } });
+    const snap = grid.getSnapshot();
+    expect(snap.loadedRowCount).toBe(3);
+    expect(snap.selection.ranges).toHaveLength(1);
+    expect(snap.selection.ranges[0]!.startRowId).toBe("a");
+  });
+
+  test("a supplied total under engine filter authority is ignored, with a warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    resetDevWarnings();
+    const grid = makeGrid();
+    grid.setRows(rows, { total: { kind: "exact", count: 999 } });
+    expect(grid.getSnapshot().matchingTotal).toEqual({
+      kind: "exact",
+      count: 3,
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("resultMeta.total");
+    warn.mockRestore();
   });
 });

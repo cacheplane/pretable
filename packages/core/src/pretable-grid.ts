@@ -8,6 +8,7 @@ import type {
   PretableGridOptions,
   PretableGridSnapshot,
   PretableMoveFocusOptions,
+  PretableResultMeta,
   PretableRow,
   PretableSelectionState,
   PretableSortDirection,
@@ -114,7 +115,14 @@ export interface PretableGrid<TRow extends PretableRow = PretableRow> {
    * references whose rows are no longer present. Suited to high-frequency
    * updates where row identities are stable.
    */
-  setRows(rows: TRow[]): void;
+  setRows(rows: TRow[], meta?: PretableResultMeta): void;
+  /**
+   * Update result metadata without a rows replacement — a late-arriving exact
+   * count, say. Avoids forcing a fake rows-identity change.
+   *
+   * @experimental
+   */
+  setResultMeta(meta: PretableResultMeta): void;
 
   // cell editing (v1)
   beginEdit(

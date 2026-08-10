@@ -27,6 +27,7 @@ export type {
   PretableMoveFocusOptions,
   PretableProcessingAuthority,
   PretableProcessingOptions,
+  PretableResultMeta,
   PretableRow,
   PretableRowRange,
   PretableRowSelectionTriState,

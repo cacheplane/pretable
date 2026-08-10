@@ -6,6 +6,7 @@ import {
   type DeriveVisibleRowsResult,
   type SourceRow,
 } from "./derived-rows";
+import { warnOnce } from "./dev-warn";
 import { isFilterActive } from "./evaluate-filter";
 import { GROUP_COLUMN_ID, resolveEffectiveColumns } from "./group-column";
 import {
@@ -25,6 +26,7 @@ import type {
   PretableProcessingAuthority,
   PretableGridOptions,
   PretableMatchingTotal,
+  PretableResultMeta,
   PretableRow,
   PretableVisibleRow,
   PretableSelectionState,
@@ -48,6 +50,13 @@ const ROW_SELECT_COLUMN_ID = "__pretable_row_select__";
  */
 const NO_FILTERS: Readonly<Record<string, ColumnFilter>> = {};
 const NO_SORT: readonly PretableSortEntry[] = [];
+
+const SUPPLIED_TOTAL_WARN_KEY = "supplied-total-under-engine-filter";
+const SUPPLIED_TOTAL_WARN_MESSAGE =
+  '[pretable] resultMeta.total was supplied while filter authority is "engine". ' +
+  "The engine computes the matching total locally from its own filter pass, so " +
+  "the supplied value is ignored — the two cannot be reconciled. Pass " +
+  'processing: { filter: "external" } if an upstream processor owns filtering.';
 
 /**
  * Group rows: focus targets, never selection or edit targets.
@@ -204,12 +213,12 @@ export function createGridCore<TRow extends PretableRow>(
   const pinnedWidthColumnIds = new Set<string>();
   let cachedSnapshot: PretableGridSnapshot<TRow> | null = null;
   /**
-   * Result metadata supplied from outside, consulted only under external filter
-   * authority. Nothing writes either binding yet, so that arm always falls back
-   * to `{ kind: "unknown" }` and `datasetKey` stays null.
+   * Result metadata supplied from outside. `suppliedTotal` is consulted only
+   * under external filter authority; under engine authority the count comes
+   * from the local filter pass, so a supplied one is refused rather than stored.
    */
-  const suppliedTotal: PretableMatchingTotal | null = null;
-  const datasetKey: string | null = null;
+  let suppliedTotal: PretableMatchingTotal | null = null;
+  let datasetKey: string | null = null;
   /**
    * The visible model and the pre-grouping count behind it. Held as one slot
    * because the count describes that exact flattening: caching them separately
@@ -282,6 +291,23 @@ export function createGridCore<TRow extends PretableRow>(
     height: 0,
     width: 0,
   };
+
+  /** Store the parts of `meta` the current authority can honor. */
+  function applyResultMeta(meta: PretableResultMeta | undefined): void {
+    if (!meta) {
+      return;
+    }
+    if (meta.datasetKey !== undefined) {
+      datasetKey = meta.datasetKey;
+    }
+    if (meta.total !== undefined) {
+      if (filterAuthority === "external") {
+        suppliedTotal = meta.total;
+      } else {
+        warnOnce(SUPPLIED_TOTAL_WARN_KEY, SUPPLIED_TOTAL_WARN_MESSAGE);
+      }
+    }
+  }
 
   const store = {
     get options() {
@@ -1192,7 +1218,8 @@ export function createGridCore<TRow extends PretableRow>(
       reconcileFocusAfterVisibleModelChange(before);
       emit();
     },
-    setRows(nextRows: TRow[]) {
+    setRows(nextRows: TRow[], meta?: PretableResultMeta) {
+      applyResultMeta(meta);
       const before = captureVisibleRowsForFocusReconciliation();
       options = { ...options, rows: nextRows };
       sourceRows = createSourceRows(options);
@@ -1256,6 +1283,28 @@ export function createGridCore<TRow extends PretableRow>(
 
       cachedDerivation = null;
       reconcileFocusAfterVisibleModelChange(before);
+      emit();
+    },
+    setResultMeta(meta: PretableResultMeta) {
+      const nextKey = meta.datasetKey ?? datasetKey;
+      const nextTotal =
+        meta.total !== undefined && filterAuthority === "external"
+          ? meta.total
+          : suppliedTotal;
+
+      if (meta.total !== undefined && filterAuthority !== "external") {
+        warnOnce(SUPPLIED_TOTAL_WARN_KEY, SUPPLIED_TOTAL_WARN_MESSAGE);
+      }
+
+      if (
+        nextKey === datasetKey &&
+        matchingTotalsEqual(nextTotal, suppliedTotal)
+      ) {
+        return;
+      }
+
+      datasetKey = nextKey;
+      suppliedTotal = nextTotal;
       emit();
     },
     setRowGroups(columnIds: readonly string[]) {
@@ -1854,6 +1903,19 @@ export function createGridCore<TRow extends PretableRow>(
       listener();
     }
   }
+}
+
+function matchingTotalsEqual(
+  a: PretableMatchingTotal | null,
+  b: PretableMatchingTotal | null,
+): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "unknown") {
+    return a.atLeast === (b as { atLeast?: number }).atLeast;
+  }
+  return a.count === (b as { count: number }).count;
 }
 
 function clamp(value: number, min: number, max: number): number {

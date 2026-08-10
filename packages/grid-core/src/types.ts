@@ -457,6 +457,32 @@ export type PretableMatchingTotal =
   | { kind: "unknown"; atLeast?: number };
 
 /**
+ * Metadata about the result set the loaded records came from. Supplied
+ * alongside `setRows`, or on its own via `setResultMeta`.
+ *
+ * **Contiguous-from-head contract.** The loaded records must be a prefix of the
+ * result set in result order. That is what makes loaded model index `i` equal
+ * dataset position `i`, which is what lets the renderer publish global
+ * `aria-rowindex` values. Windowed or noncontiguous loading is not
+ * representable here and downgrades the ARIA counts.
+ *
+ * @experimental
+ * @public
+ */
+export interface PretableResultMeta {
+  /** Matching total for the result set the loaded records came from. */
+  total?: PretableMatchingTotal;
+  /**
+   * Dataset identity. When this key CHANGES between calls the loaded records
+   * answer a different question: the engine clears selection, focus,
+   * group-expansion overrides and any in-flight edit. A stable (or omitted) key
+   * preserves all of them — the existing streaming guarantees. The first key
+   * supplied is an assignment, not a change.
+   */
+  datasetKey?: string;
+}
+
+/**
  * Read-only state observed via `PretableGrid.getSnapshot`.
  *
  * @public
@@ -534,7 +560,8 @@ export interface PretableEngine<TRow extends PretableRow = PretableRow> {
   setViewport(viewport: PretableViewportState): void;
   autosizeColumns(autosizeOptions?: AutosizeOptions): void;
   applyTransaction(transaction: PretableTransaction<TRow>): void;
-  setRows(rows: TRow[]): void;
+  setRows(rows: TRow[], meta?: PretableResultMeta): void;
+  setResultMeta(meta: PretableResultMeta): void;
 
   // row grouping (v1):
   /** Replace the grouping levels, outermost first. `[]` ungroups. */
