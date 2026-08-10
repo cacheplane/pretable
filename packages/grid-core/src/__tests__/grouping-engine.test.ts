@@ -1355,3 +1355,242 @@ describe("group rows are focusable but never selectable", () => {
     ]);
   });
 });
+
+interface Expense extends PretableRow {
+  id: string;
+  dept: string;
+  name: string;
+  amount: number;
+}
+
+const EXPENSES: Expense[] = [
+  { id: "e1", dept: "Eng", name: "Ada", amount: 10 },
+  { id: "e2", dept: "Ops", name: "Bob", amount: 20 },
+];
+
+/**
+ * No row-select column, and the grouped column is the LAST drawn one — the two
+ * conditions under which a full-row range loses *both* of its encoded bounds.
+ * With a row-select column present only the last-column case reaches this, which
+ * is why the defect survived review.
+ */
+function makeExpenseGrid() {
+  return createGridCore<Expense>({
+    columns: [
+      { id: "dept", header: "Dept" },
+      { id: "name", header: "Name" },
+      { id: "amount", header: "Amount" },
+    ],
+    rows: EXPENSES.map((row) => ({ ...row })),
+    getRowId: (row) => row.id,
+  });
+}
+
+function selectedIds(grid: ReturnType<typeof makeExpenseGrid>): string[] {
+  const snapshot = grid.getSnapshot();
+  return [
+    ...deriveSelectedRows({
+      visibleRows: snapshot.visibleRows,
+      columns: [...grid.getColumns()],
+      selection: snapshot.selection,
+    }).keys(),
+  ].sort();
+}
+
+describe("selection reconciliation across column-model changes", () => {
+  test("a full-row selection survives grouping by the last drawn column", () => {
+    const grid = makeExpenseGrid();
+    grid.toggleRowSelection("e1");
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "e1",
+        endRowId: "e1",
+        startColumnId: "dept",
+        endColumnId: "amount",
+      },
+    ]);
+
+    grid.setRowGroups(["amount"]);
+
+    const columns = grid.getColumns();
+    expect(columns.map((column) => column.id)).toEqual([
+      GROUP_COLUMN_ID,
+      "dept",
+      "name",
+    ]);
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "e1",
+        endRowId: "e1",
+        startColumnId: GROUP_COLUMN_ID,
+        endColumnId: "name",
+      },
+    ]);
+    expect(selectedIds(grid)).toEqual(["e1"]);
+  });
+
+  test("toggling the same row after grouping deselects instead of appending a second range", () => {
+    const grid = makeExpenseGrid();
+    grid.toggleRowSelection("e1");
+    grid.setRowGroups(["amount"]);
+
+    grid.toggleRowSelection("e1");
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([]);
+    expect(selectedIds(grid)).toEqual([]);
+  });
+
+  test("a grouped selectAll survives ungrouping", () => {
+    const grid = makeExpenseGrid();
+    grid.setRowGroups(["amount"]);
+    grid.selectAll();
+    expect(selectedIds(grid)).toEqual(["e1", "e2"]);
+
+    grid.setRowGroups([]);
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      "dept",
+      "name",
+      "amount",
+    ]);
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "e1",
+        endRowId: "e2",
+        startColumnId: "dept",
+        endColumnId: "amount",
+      },
+    ]);
+    expect(selectedIds(grid)).toEqual(["e1", "e2"]);
+  });
+
+  test("setSelectAllVisible(false) clears a selection made before grouping", () => {
+    const grid = makeExpenseGrid();
+    grid.setSelectAllVisible(true);
+    expect(selectedIds(grid)).toEqual(["e1", "e2"]);
+
+    grid.setRowGroups(["amount"]);
+    grid.setSelectAllVisible(false);
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([]);
+    expect(selectedIds(grid)).toEqual([]);
+  });
+
+  test("the anchor is re-encoded onto the new bounds", () => {
+    const grid = makeExpenseGrid();
+    grid.toggleRowSelection("e1");
+    expect(grid.getSnapshot().selection.anchor).toEqual({
+      rowId: "e1",
+      columnId: "dept",
+    });
+
+    grid.setRowGroups(["amount"]);
+
+    expect(grid.getSnapshot().selection.anchor).toEqual({
+      rowId: "e1",
+      columnId: GROUP_COLUMN_ID,
+    });
+  });
+
+  test("a partial range whose column vanishes is dropped, one that survives is kept", () => {
+    const grid = makeExpenseGrid();
+    grid.setSelection({
+      ranges: [
+        {
+          startRowId: "e1",
+          endRowId: "e1",
+          startColumnId: "amount",
+          endColumnId: "amount",
+        },
+        {
+          startRowId: "e2",
+          endRowId: "e2",
+          startColumnId: "name",
+          endColumnId: "name",
+        },
+      ],
+      anchor: { rowId: "e1", columnId: "amount" },
+    });
+
+    grid.setRowGroups(["amount"]);
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "e2",
+        endRowId: "e2",
+        startColumnId: "name",
+        endColumnId: "name",
+      },
+    ]);
+    expect(grid.getSnapshot().selection.anchor).toBeNull();
+  });
+
+  test("mergeColumnsFromProps re-encodes full-row ranges when a column is removed", () => {
+    const grid = makeExpenseGrid();
+    grid.selectAll();
+
+    grid.mergeColumnsFromProps([
+      { id: "dept", header: "Dept" },
+      { id: "name", header: "Name" },
+    ]);
+
+    expect(grid.getSnapshot().selection.ranges).toEqual([
+      {
+        startRowId: "e1",
+        endRowId: "e2",
+        startColumnId: "dept",
+        endColumnId: "name",
+      },
+    ]);
+    expect(selectedIds(grid)).toEqual(["e1", "e2"]);
+  });
+
+  test("grouping by the FIRST drawn column keeps rows fully selected, not indeterminate", () => {
+    const grid = makeExpenseGrid();
+    grid.selectAll();
+
+    grid.setRowGroups(["dept"]);
+
+    expect(grid.getColumns().map((column) => column.id)).toEqual([
+      GROUP_COLUMN_ID,
+      "name",
+      "amount",
+    ]);
+    const snapshot = grid.getSnapshot();
+    expect(snapshot.selection.ranges).toEqual([
+      {
+        startRowId: "e1",
+        endRowId: "e2",
+        startColumnId: GROUP_COLUMN_ID,
+        endColumnId: "amount",
+      },
+    ]);
+    expect([
+      ...deriveSelectedRows({
+        visibleRows: snapshot.visibleRows,
+        columns: [...grid.getColumns()],
+        selection: snapshot.selection,
+      }).values(),
+    ]).toEqual(["selected", "selected"]);
+  });
+
+  test("a column-model change that redraws the same columns leaves the selection untouched", () => {
+    const grid = makeExpenseGrid();
+    grid.selectAll();
+    const before = grid.getSnapshot().selection;
+    let emissions = 0;
+    const unsubscribe = grid.subscribe(() => {
+      emissions += 1;
+    });
+
+    grid.mergeColumnsFromProps([
+      { id: "dept", header: "Dept" },
+      { id: "name", header: "Name" },
+      { id: "amount", header: "Amount" },
+    ]);
+
+    expect(grid.getSnapshot().selection).toEqual(before);
+    expect(emissions).toBe(0);
+    unsubscribe();
+  });
+});

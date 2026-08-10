@@ -1038,6 +1038,7 @@ export function createGridCore<TRow extends PretableRow>(
       const before = groupingSemanticsChanged
         ? captureVisibleRowsForFocusReconciliation()
         : null;
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       originalColumns = groupColumnsByPin(nextColumns).map((c) => ({ ...c }));
       options = { ...options, columns: grouped };
 
@@ -1056,6 +1057,9 @@ export function createGridCore<TRow extends PretableRow>(
         reconcileFocusAfterVisibleModelChange(before);
       }
 
+      const selectionChanged =
+        reconcileSelectionAfterColumnModelChange(beforeColumns);
+
       // Callers hand us a fresh array whenever `columns` is written inline, so
       // only wake subscribers when something they can observe actually moved.
       // The merged definitions are stored either way, which is what keeps a
@@ -1063,7 +1067,8 @@ export function createGridCore<TRow extends PretableRow>(
       if (
         layoutChanged ||
         groupingSemanticsChanged ||
-        sanitizedGroupingChanged
+        sanitizedGroupingChanged ||
+        selectionChanged
       ) {
         emit();
       }
@@ -1208,11 +1213,13 @@ export function createGridCore<TRow extends PretableRow>(
       }
 
       const before = captureVisibleRowsForFocusReconciliation();
+      const beforeColumns = captureColumnsForSelectionReconciliation();
       rowGroups = next;
       // Expansion ids are path-derived, so changing the levels invalidates
       // them. v1 drops the whole set rather than trying to salvage prefixes.
       groupExpansionOverrides = new Set<string>();
       reconcileFocusAfterVisibleModelChange(before);
+      reconcileSelectionAfterColumnModelChange(beforeColumns);
       emit();
     },
     toggleGroup(groupId: string) {
@@ -1332,6 +1339,143 @@ export function createGridCore<TRow extends PretableRow>(
       preferAncestor: !expanded,
     });
     emit();
+  }
+
+  /** Avoid deriving the old column model when there is no selection to repair. */
+  function captureColumnsForSelectionReconciliation():
+    readonly PretableColumn<TRow>[] | null {
+    return selection.ranges.length === 0 && selection.anchor === null
+      ? null
+      : getColumns();
+  }
+
+  /**
+   * Keep the selection valid after any change to the DERIVED column model.
+   *
+   * `selectAll`, `toggleRowSelection` and `setSelectAllVisible` encode a
+   * full-row range as `getColumns()` first-id → last-id (see the class comment
+   * on {@link isDataRow}), so the instant grouping adds the synthetic column or
+   * hides a grouped one, those ids describe a rectangle the user can no longer
+   * see. Left alone the range is not merely cosmetic: `deriveSelectedRows`
+   * needs both endpoints to resolve, `toggleRowSelection` no longer recognises
+   * its own range and appends a second one, and `copy.ts` degrades a range with
+   * one unresolvable endpoint to a single column.
+   *
+   * A range whose endpoints were the pre-change first/last is re-encoded onto
+   * the post-change first/last, preserving the row span and the drag
+   * orientation. Anything else keeps its columns if they survive and is dropped
+   * if they do not. Returns whether the selection actually changed, so callers
+   * that emit conditionally can include it.
+   */
+  function reconcileSelectionAfterColumnModelChange(
+    before: readonly PretableColumn<TRow>[] | null,
+  ): boolean {
+    if (before === null) {
+      return false;
+    }
+
+    const beforeFirst = before[0];
+    const beforeLast = before[before.length - 1];
+    const after = getColumns();
+    const afterFirst = after[0];
+    const afterLast = after[after.length - 1];
+
+    if (!afterFirst || !afterLast) {
+      // No drawable columns left: nothing can be addressed, so nothing is
+      // selected.
+      selection = { ranges: [], anchor: null };
+      return true;
+    }
+
+    if (!beforeFirst || !beforeLast) {
+      return false;
+    }
+
+    const surviving = new Set(after.map((column) => column.id));
+    const anchor = selection.anchor;
+    let anchorColumnId: string | null = anchor ? anchor.columnId : null;
+    let anchorRemapped = false;
+    let changed = false;
+    const ranges: PretableCellRange[] = [];
+
+    for (const range of selection.ranges) {
+      const forwardFullRow =
+        range.startColumnId === beforeFirst.id &&
+        range.endColumnId === beforeLast.id;
+      // A range dragged right-to-left stores its bounds reversed; re-encoding
+      // has to keep that orientation or the anchor end would flip.
+      const reverseFullRow =
+        !forwardFullRow &&
+        range.startColumnId === beforeLast.id &&
+        range.endColumnId === beforeFirst.id;
+
+      if (forwardFullRow || reverseFullRow) {
+        const startColumnId = forwardFullRow ? afterFirst.id : afterLast.id;
+        const endColumnId = forwardFullRow ? afterLast.id : afterFirst.id;
+
+        if (
+          startColumnId !== range.startColumnId ||
+          endColumnId !== range.endColumnId
+        ) {
+          changed = true;
+        }
+
+        // The anchor is a corner of the range it belongs to, so it follows that
+        // range's re-encoding rather than being remapped on its own — an anchor
+        // that merely happened to sit in the old last column is not a full-row
+        // bound and must not be dragged somewhere the user never clicked.
+        if (
+          anchor &&
+          !anchorRemapped &&
+          (range.startRowId === anchor.rowId || range.endRowId === anchor.rowId)
+        ) {
+          if (anchor.columnId === range.startColumnId) {
+            anchorColumnId = startColumnId;
+            anchorRemapped = true;
+          } else if (anchor.columnId === range.endColumnId) {
+            anchorColumnId = endColumnId;
+            anchorRemapped = true;
+          }
+        }
+
+        ranges.push({ ...range, startColumnId, endColumnId });
+        continue;
+      }
+
+      if (
+        surviving.has(range.startColumnId) &&
+        surviving.has(range.endColumnId)
+      ) {
+        ranges.push(range);
+        continue;
+      }
+
+      changed = true;
+    }
+
+    let nextAnchor = anchor;
+
+    if (anchor) {
+      if (!anchorRemapped && !surviving.has(anchor.columnId)) {
+        // A cell the user can no longer see is not a usable extend-from origin.
+        anchorColumnId = null;
+      }
+
+      if (anchorColumnId === null) {
+        nextAnchor = null;
+        changed = true;
+      } else if (anchorColumnId !== anchor.columnId) {
+        nextAnchor = { ...anchor, columnId: anchorColumnId };
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      return false;
+    }
+
+    selection = { ranges, anchor: nextAnchor };
+    return true;
   }
 
   /** Avoid deriving the old visible model when there is no focus to repair. */
