@@ -256,10 +256,45 @@ imitating and starts having an opinion.
    through `useResolvedHeights` in the same component that calls `measureRenderedRowHeight`. Excel's
    density tiers are 20/24/32px, so under Excel every wrapped row is at least 44px — the wedge
    silently opts out of Excel's entire density model. Under Material's 40/48/56 the floor is inert.
-   Too aggressive for one shipped theme, dead for the other. **Ships immediately as its own small
-   PR**, ahead of the rest of SP5, because it is self-contained and everything else builds on it.
-   Must be checked against the bench: changing the floor changes row heights under the Excel-themed
-   bench, and `row_height_error_p95_px` is a committed gate.
+   Too aggressive for one shipped theme, dead for the other.
+
+   **REVISED 2026-08-10 after a dedicated audit — this is NOT a small PR, and it is deferred.**
+   Four findings changed the picture:
+
+   - **The obvious one-line fix is provably inert.** There are _three_ unlinked `44`s, not one:
+     `row-height.ts:1` (`MIN_ROW_HEIGHT`, the measured floor), `rendering.ts:8`
+     (`DEFAULT_ROW_HEIGHT`, the discard gate at `pretable-surface.tsx:2241`), and
+     `renderer-dom/create-renderer.ts:13` (`DEFAULT_ROW_HEIGHT`, the estimator seed). The gate
+     discards any measurement `<= 44`, so lowering only the floor changes zero rendered pixels.
+     Floor, gate and planner default must move together.
+   - **It has no visible effect where anyone would see it.** The website runs Material standard
+     (`--pretable-row-height: 48px`), so the 44 floor is already inert there. The floor only bites
+     under Excel — i.e. the bench. The change is pure correctness with no design payoff.
+   - **An SSR trap would make it defeat its own purpose.** `useResolvedHeights`'s
+     `getServerSnapshot` returns `FALLBACK_ROW_HEIGHT = 32` during SSR _and the hydration render_
+     (`use-hydrated.ts:26-30`), and the measurement layout effect runs with 32. Under Material a
+     plain row measures ~42-45 — above the 32 fallback, below the 48 token — so it clears the gate,
+     gets cached at content height, and every above-the-fold row plans at ~43 instead of 48. The
+     token the change exists to honour would be silently defeated on first paint. Any implementation
+     must gate on `useHydrated()` or clear caches unconditionally on the first `rowHeight` change.
+   - **The evidence story is broken, and not by this change.** There is **no bench job in CI** —
+     zero workflow files mention it — and `scripts/bench-matrix.mjs` contains no `process.exit`, so
+     failing hypotheses are written into JSON and the process exits 0. `row_height_error_p95_px` is
+     a human-read report line, not a gate. Worse, three website components hardcode benchmark
+     numbers with tests that assert presence rather than correctness:
+     `ReceiptsBand.tsx:33-35` ("0" blank gaps, "9ms" frame p95, "≤1px" row fidelity),
+     `ComparisonTable.tsx:55-100` (pretable `9.07` against MUI `9.14` — a 0.07 ms published margin),
+     and prose in `bench/page.tsx`. Re-capturing milestones would leave the homepage publishing
+     claims no artifact supports, silently. The comparators have also drifted two major versions
+     since capture (AG Grid v33 → 35.3.1, MUI X v7 → 9.10.1), so a re-capture cannot attribute any
+     delta to this change.
+
+   **Consequence for sequencing:** the floor fix is decoupled from the visible wedge work and
+   deferred. When it is done it needs a NEW dated milestone rather than overwriting history, a
+   four-adapter runset with recorded comparator versions, and literal updates to the three hardcoded
+   website readers in the same PR. The one piece of good news: the API delta is exactly one line in
+   `react.api.md`, verified empirically by patching `dist` and running api-extractor.
+
 2. **The estimator is calibrated against a font nothing ships.**
    `packages/renderer-dom/src/create-renderer.ts:21` sets `ROW_LINE_HEIGHT = 24` with a comment
    saying it was calibrated for "Inter Variable at 16px in the bench app" — but the bench ships the
@@ -330,11 +365,13 @@ Two gates added by other work since this spec was written, both of which bite he
 - **Docs tables are test-pinned to the `.api.md` reports** (#280), fail-closed. Any new docs table
   SP2 or SP3 adds — the attribute contract table, the token reference rows — must be registered with
   that guard or the suite breaks. Register it in the same PR that adds the table.
-- **`row_height_error_p95_px` is a committed benchmark gate**, and the bench runs the Excel theme.
-  SP5's row-height floor change moves real row heights under exactly that theme, so it needs bench
-  evidence, not just unit tests. The roadmap's governing principles require this anyway: every major
-  capability gets "an explicit complexity/memory budget, deterministic workload, and committed
-  evidence."
+- **`row_height_error_p95_px` is NOT a gate** — corrected 2026-08-10. No workflow file mentions the
+  bench, and `scripts/bench-matrix.mjs` has no `process.exit`, so a failing hypothesis is recorded
+  as JSON and the run exits 0. Benchmark evidence in this repo is produced and read by humans; CI
+  protects none of it, and `status/` can rot while every check stays green. Any change with bench
+  exposure therefore has to carry its report as PR evidence deliberately — nothing will catch it
+  otherwise. The roadmap's governing principle ("an explicit complexity/memory budget, deterministic
+  workload, and committed evidence") is a human commitment, not an automated one.
 
 ## Open items
 

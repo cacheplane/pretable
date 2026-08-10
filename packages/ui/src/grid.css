@@ -300,6 +300,35 @@
     justify-content: center;
     padding: 0;
   }
+
+  /* Rows containing a wrapped cell top-align every cell, so each column's first
+     line shares a baseline instead of every cell centring independently against
+     a variable row height.
+     `data-pretable-wrap` comes from `column.wrap` — a COLUMN property — so it
+     marks "this column can wrap", not "this cell did wrap". The match is
+     therefore static, and alignment never flips as streaming content changes a
+     row's height. A true per-row signal would flip on every height change; do
+     not add one.
+     Placed AFTER the row-selection rule deliberately: every selector in this
+     file is :where()-flattened to (0,0,0), so source order is the only thing
+     that lets this reach the checkbox cell. Left centred, the checkbox floats
+     far below the row it selects once a cell wraps to three lines. */
+  :where(
+    [data-pretable-row]:has([data-pretable-wrap="true"]) [data-pretable-cell]
+  ) {
+    align-items: flex-start;
+  }
+
+  /* The checkbox cell zeroes its padding to centre a 16px control in the row.
+     Top-aligned it needs that vertical padding back, or it sits above the first
+     line of text instead of on it. */
+  :where(
+    [data-pretable-row]:has([data-pretable-wrap="true"])
+      [data-pretable-cell][data-pretable-row-select-cell="true"]
+  ) {
+    padding-top: var(--pretable-cell-padding-y);
+  }
+
   :where(
     button[data-pretable-row-select],
     button[data-pretable-row-select-all],
