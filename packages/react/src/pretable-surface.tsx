@@ -186,6 +186,7 @@ import { ColumnMenu, type ColumnMenuAction } from "./column-menu/ColumnMenu";
 import { MenuButton } from "./column-menu/MenuButton";
 import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
+import { warnOnce } from "./dev-warn";
 import { OverlayPortal } from "./overlay/OverlayPortal";
 import { popoverStyle } from "./overlay/popover-position";
 import { useHeaderPopover } from "./overlay/useHeaderPopover";
@@ -401,6 +402,17 @@ export interface PretableSurfaceMessages {
    * @experimental
    */
   focusedRowRemovedAnnouncement?: () => string;
+
+  /**
+   * Announced when navigation is refused at the last loaded row while more
+   * matching rows exist. Once per boundary arrival, not once per keypress.
+   *
+   * @experimental
+   */
+  moreRowsBoundaryAnnouncement?: (args: {
+    loadedCount: number;
+    total?: number;
+  }) => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -467,6 +479,10 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
   staleAnnouncement: () => "Updating results…",
   focusedRowRemovedAnnouncement: () =>
     "Focused row is no longer in the results; moved to a nearby row.",
+  moreRowsBoundaryAnnouncement: ({ loadedCount, total }) =>
+    total === undefined
+      ? `End of loaded rows. ${loadedCount} loaded.`
+      : `End of loaded rows. ${total - loadedCount} more available.`,
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -1187,6 +1203,9 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       focusedRowRemovedAnnouncement:
         messages?.focusedRowRemovedAnnouncement ??
         defaultMessages.focusedRowRemovedAnnouncement,
+      moreRowsBoundaryAnnouncement:
+        messages?.moreRowsBoundaryAnnouncement ??
+        defaultMessages.moreRowsBoundaryAnnouncement,
     }),
     [messages],
   );
@@ -1693,6 +1712,34 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       "lifecycle",
     );
   });
+
+  const boundaryAnnouncedForRowIdRef = useRef<string | null>(null);
+
+  // Reset when focus leaves the boundary row, so a second arrival announces
+  // again while sitting there does not.
+  useEffect(() => {
+    if (snapshot.focus.rowId !== boundaryAnnouncedForRowIdRef.current) {
+      boundaryAnnouncedForRowIdRef.current = null;
+    }
+  }, [snapshot.focus.rowId]);
+
+  const announceLoadedBoundary = useCallback(() => {
+    const snap = grid.getSnapshot();
+    const total = snap.matchingTotal;
+    if (!(total.kind === "exact" && total.count > snap.loadedRowCount)) {
+      return;
+    }
+    if (boundaryAnnouncedForRowIdRef.current === snap.focus.rowId) {
+      return;
+    }
+    boundaryAnnouncedForRowIdRef.current = snap.focus.rowId;
+    scheduleAnnouncement(
+      effectiveMessages.moreRowsBoundaryAnnouncement({
+        loadedCount: snap.loadedRowCount,
+        total: total.count,
+      }),
+    );
+  }, [effectiveMessages, grid, scheduleAnnouncement]);
 
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the
   // closures it captures would otherwise go stale across renders. Keep refs to
@@ -3099,6 +3146,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
           columns: columnsInVisualOrder,
           grid,
           onGroupExpansionMutation: mutateGroupExpansion,
+          onLoadedBoundaryReached: announceLoadedBoundary,
           onRowActivate,
           onSelectedRowIdChange,
           selectFocusedRowOnArrowKey,
@@ -4371,9 +4419,21 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               (c) => c.id === filterOpenState.columnId,
             );
             if (!col) return null;
-            const options = resolveColumnOptions(col, () =>
-              grid.distinctColumnValues(filterOpenState.columnId),
-            );
+            const options = resolveColumnOptions(col, () => {
+              // Reaching the fallback under external filter authority means the
+              // funnel is about to offer the distinct values of the LOADED
+              // window as an `isAnyOf` universe — an incomplete one, silently.
+              if (processing?.filter === "external") {
+                warnOnce(
+                  `distinct-values-fallback:${col.id}`,
+                  `[pretable] Column "${col.id}" has no \`options\` and filtering is ` +
+                    "external, so the funnel is offering the distinct values of the " +
+                    "loaded window. That is an incomplete universe for isAnyOf. " +
+                    "Declare `column.options`.",
+                );
+              }
+              return grid.distinctColumnValues(filterOpenState.columnId);
+            });
             return (
               <FilterMenu
                 key={filterOpenState.columnId}
@@ -5022,6 +5082,8 @@ interface SurfaceKeyDownContext<TRow extends PretableRow> {
   columns: PretableColumn<TRow>[];
   grid: PretableGrid<TRow>;
   onGroupExpansionMutation: (groupId: string, mutation: () => void) => void;
+  /** Called when a downward move was refused at the last row of the model. */
+  onLoadedBoundaryReached?: () => void;
   onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   selectFocusedRowOnArrowKey: boolean;
@@ -5037,6 +5099,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     columns: allColumns,
     grid,
     onGroupExpansionMutation,
+    onLoadedBoundaryReached,
     onRowActivate,
     onSelectedRowIdChange,
     selectFocusedRowOnArrowKey,
@@ -5123,6 +5186,19 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       extend: shift,
       jumpToEdge: cmd,
     });
+
+    // A refused downward move at the end of the model is the load-more
+    // boundary. Detecting it here rather than in the engine keeps the engine
+    // ignorant of what "more" means.
+    if (
+      direction === "down" &&
+      onLoadedBoundaryReached &&
+      focus.rowId !== null &&
+      grid.getSnapshot().focus.rowId === focus.rowId &&
+      rows[rows.length - 1]?.id === focus.rowId
+    ) {
+      onLoadedBoundaryReached();
+    }
 
     // Snap off the synthetic row-select column if we landed there.
     const after = grid.getSnapshot();

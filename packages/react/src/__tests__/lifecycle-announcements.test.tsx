@@ -579,3 +579,51 @@ describe("data-driven focus reconciliation", () => {
     expect(viewport.scrollTop).toBe(0);
   });
 });
+
+describe("loaded-boundary announcement", () => {
+  function lastLoadedCell(view: ReturnType<typeof render>): HTMLElement {
+    const cell = view.container.querySelector<HTMLElement>(
+      '[data-pretable-row-id="b"] [data-pretable-column-id="name"]',
+    );
+    if (!cell) throw new Error("no rendered cell for row b");
+    act(() => {
+      cell.focus();
+      fireEvent.click(cell);
+    });
+    return cell;
+  }
+
+  it("announces once when ArrowDown is refused at the last loaded row", () => {
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 5432 }}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe(
+      "End of loaded rows. 5430 more available.",
+    );
+  });
+
+  it("says nothing at the boundary when everything is loaded", () => {
+    const view = render(
+      <Harness
+        rows={page2}
+        dataState={{ phase: "idle" }}
+        total={{ kind: "exact", count: 2 }}
+      />,
+    );
+    const lastCell = lastLoadedCell(view);
+    act(() => {
+      fireEvent.keyDown(lastCell, { key: "ArrowDown" });
+    });
+    flushAnnouncement();
+    expect(liveRegionText(view)).toBe("");
+  });
+});
