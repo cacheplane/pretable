@@ -71,6 +71,91 @@ describe("PersistentMap", () => {
     expect(map.get("low")).toBe(0);
   });
 
+  test("handles signed bitmap slot 31 alongside other slots", () => {
+    const hashes: Record<string, number> = {
+      zero: 0,
+      thirty: 30,
+      thirtyOne: 31,
+      nextFragment: 32,
+    };
+    const map = createPersistentMapForTesting<string, number>(
+      (key) => hashes[key]!,
+    )
+      .set("zero", 0)
+      .set("thirty", 30)
+      .set("thirtyOne", 31)
+      .set("nextFragment", 32)
+      .delete("thirty");
+
+    expect(map.size).toBe(3);
+    expect(map.get("zero")).toBe(0);
+    expect(map.has("thirty")).toBe(false);
+    expect(map.get("thirtyOne")).toBe(31);
+    expect(map.get("nextFragment")).toBe(32);
+  });
+
+  test("hides backing state from runtime property mutation", () => {
+    const map = createPersistentMap<string, number>()
+      .set("alpha", 1)
+      .set("beta", 2);
+
+    expect(Object.keys(map)).toEqual([]);
+    expect(Reflect.get(map, "root")).toBeUndefined();
+    expect(Reflect.get(map, "hash")).toBeUndefined();
+
+    const attacked = map as unknown as Record<string, unknown>;
+    attacked.root = null;
+    attacked.hash = () => 0;
+    expect(() => {
+      attacked.size = 0;
+    }).toThrow(TypeError);
+
+    expect(map.size).toBe(2);
+    expect(map.get("alpha")).toBe(1);
+    expect(map.get("beta")).toBe(2);
+    expect(getPersistentMapPathForTesting(map, "alpha").length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  test("collapses deepest leaf-only paths after persistent deletion", () => {
+    const hash = (key: string) => (key === "left" ? 0 : 0x40000000);
+    const original = createPersistentMapForTesting<string, number>(hash)
+      .set("left", 1)
+      .set("right", 2);
+
+    expect(getPersistentMapPathForTesting(original, "left")).toHaveLength(8);
+    expect(getPersistentMapPathForTesting(original, "right")).toHaveLength(8);
+
+    const onlyRight = original.delete("left");
+    const onlyLeft = original.delete("right");
+
+    expect(onlyRight.get("right")).toBe(2);
+    expect(getPersistentMapPathForTesting(onlyRight, "right")).toHaveLength(1);
+    expect(onlyLeft.get("left")).toBe(1);
+    expect(getPersistentMapPathForTesting(onlyLeft, "left")).toHaveLength(1);
+  });
+
+  test("retains a unary bitmap whose child remains shift-dependent", () => {
+    const hashes: Record<string, number> = {
+      innerLeft: 0,
+      innerRight: 32,
+      outer: 1,
+    };
+    const map = createPersistentMapForTesting<string, number>(
+      (key) => hashes[key]!,
+    )
+      .set("innerLeft", 1)
+      .set("innerRight", 2)
+      .set("outer", 3)
+      .delete("outer");
+
+    expect(map.get("innerLeft")).toBe(1);
+    expect(map.get("innerRight")).toBe(2);
+    expect(getPersistentMapPathForTesting(map, "innerLeft")).toHaveLength(3);
+    expect(getPersistentMapPathForTesting(map, "innerRight")).toHaveLength(3);
+  });
+
   test("returns the same map for semantic no-ops", () => {
     const value = { count: 1 };
     const map = createPersistentMap<string, typeof value>().set("alpha", value);
@@ -115,5 +200,36 @@ describe("PersistentMap", () => {
     expect(updatedAlphaPath.at(-1)).not.toBe(originalAlphaPath.at(-1));
     expect(updatedBetaPath[0]).not.toBe(originalBetaPath[0]);
     expect(updatedBetaPath.at(-1)).toBe(originalBetaPath.at(-1));
+  });
+
+  test("matches a native Map across a seeded operation sequence", () => {
+    let randomState = 0x6d2b79f5;
+    const random = () => {
+      randomState = (Math.imul(randomState, 1_664_525) + 1_013_904_223) >>> 0;
+      return randomState;
+    };
+    let map = createPersistentMap<number, number>();
+    const oracle = new Map<number, number>();
+
+    for (let index = 0; index < 2_000; index += 1) {
+      const key = random() % 257;
+      if ((random() & 3) === 0) {
+        map = map.delete(key);
+        oracle.delete(key);
+      } else {
+        const value = random();
+        map = map.set(key, value);
+        oracle.set(key, value);
+      }
+      expect(map.size).toBe(oracle.size);
+    }
+
+    const byKey = (
+      left: readonly [number, number],
+      right: readonly [number, number],
+    ) => left[0] - right[0];
+    expect([...map.entries()].sort(byKey)).toEqual(
+      [...oracle.entries()].sort(byKey),
+    );
   });
 });

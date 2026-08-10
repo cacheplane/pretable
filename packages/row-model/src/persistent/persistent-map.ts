@@ -3,6 +3,7 @@ import { TransientEditToken, type TransientMap } from "./transient";
 type MapKey = string | number;
 type HashFunction<K extends MapKey> = (key: K) => number;
 type Entry<K extends MapKey, V> = [key: K, value: V];
+const inspectPersistentPath = Symbol("inspectPersistentPath");
 const inspectTransientPath = Symbol("inspectTransientPath");
 
 interface LeafNode<K extends MapKey, V> {
@@ -248,6 +249,9 @@ function deleteNode<K extends MapKey, V>(
   } else {
     updated.children[index] = childChange.node;
   }
+  if (updated.children.length === 1 && updated.children[0]!.kind === "leaf") {
+    return { node: updated.children[0]!, changed: true, sizeDelta: -1 };
+  }
   return { node: updated, changed: true, sizeDelta: -1 };
 }
 
@@ -301,53 +305,65 @@ function* iterateEntries<K extends MapKey, V>(
 }
 
 class PersistentHashMap<K extends MapKey, V> implements PersistentMap<K, V> {
-  constructor(
-    readonly size: number,
-    readonly root: Node<K, V> | null,
-    readonly hash: HashFunction<K>,
-  ) {}
+  readonly #size: number;
+  readonly #root: Node<K, V> | null;
+  readonly #hash: HashFunction<K>;
+
+  constructor(size: number, root: Node<K, V> | null, hash: HashFunction<K>) {
+    this.#size = size;
+    this.#root = root;
+    this.#hash = hash;
+  }
+
+  get size(): number {
+    return this.#size;
+  }
 
   get(key: K): V | undefined {
-    return lookupEntry(this.root, this.hash(key) >>> 0, key)?.[1];
+    return lookupEntry(this.#root, this.#hash(key) >>> 0, key)?.[1];
   }
 
   has(key: K): boolean {
-    return lookupEntry(this.root, this.hash(key) >>> 0, key) !== undefined;
+    return lookupEntry(this.#root, this.#hash(key) >>> 0, key) !== undefined;
   }
 
   set(key: K, value: V): PersistentMap<K, V> {
     const change = setNode(
-      this.root,
+      this.#root,
       0,
-      this.hash(key) >>> 0,
+      this.#hash(key) >>> 0,
       key,
       value,
       null,
     );
     if (!change.changed) return this;
     return new PersistentHashMap(
-      this.size + change.sizeDelta,
+      this.#size + change.sizeDelta,
       change.node,
-      this.hash,
+      this.#hash,
     );
   }
 
   delete(key: K): PersistentMap<K, V> {
-    const change = deleteNode(this.root, 0, this.hash(key) >>> 0, key, null);
+    const change = deleteNode(this.#root, 0, this.#hash(key) >>> 0, key, null);
     if (!change.changed) return this;
     return new PersistentHashMap(
-      this.size + change.sizeDelta,
+      this.#size + change.sizeDelta,
       change.node,
-      this.hash,
+      this.#hash,
     );
   }
 
   asTransient(): TransientMap<K, V> {
-    return new TransientHashMap(this.size, this.root, this.hash);
+    return new TransientHashMap(this.#size, this.#root, this.#hash);
   }
 
   entries(): IterableIterator<readonly [K, V]> {
-    return iterateEntries(this.root);
+    return iterateEntries(this.#root);
+  }
+
+  [inspectPersistentPath](key: K): readonly object[] {
+    return nodePath(this.#root, this.#hash(key) >>> 0);
   }
 }
 
@@ -442,7 +458,7 @@ export function getPersistentMapPathForTesting<K extends MapKey, V>(
     throw new TypeError("Diagnostics require a map created by this module.");
   }
 
-  return nodePath(map.root, map.hash(key) >>> 0);
+  return map[inspectPersistentPath](key);
 }
 
 export function getTransientMapPathForTesting<K extends MapKey, V>(
