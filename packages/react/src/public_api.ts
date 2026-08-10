@@ -24,6 +24,7 @@ export type {
   PretableSurfaceProps,
   RowSelectionColumnConfig,
 } from "./pretable-surface";
+export type { PretableDataState } from "./data-state";
 export type { InspectionGridProps } from "./inspection-grid";
 export type {
   LabeledGridSurfaceFormatValueInput,

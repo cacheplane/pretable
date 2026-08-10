@@ -890,4 +890,37 @@
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
   }
+
+  /* Data-lifecycle body states. Austere by design: no spinner opinion and no
+     animation — a consumer who wants one supplies `renderBodyState`. */
+  :where([data-pretable-data-state-wrapper]) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  :where([data-pretable-body-state]) {
+    box-sizing: border-box;
+    padding: calc(var(--pretable-cell-padding-y) * 4)
+      var(--pretable-cell-padding-x);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-dim);
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    text-align: center;
+  }
+
+  /* Failures read left-aligned like prose, and in the theme's error color. */
+  :where([data-pretable-body-state="error"]),
+  :where([data-pretable-body-state="error-strip"]) {
+    color: var(--pretable-text-error);
+    text-align: start;
+  }
+
+  /* The strip sits above intact rows, so it needs the seam the viewport's own
+     top border would otherwise draw twice. */
+  :where([data-pretable-body-state="error-strip"]) {
+    border: 1px solid var(--pretable-rule-strong);
+    border-bottom: 0;
+    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+  }
 }

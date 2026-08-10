@@ -26,6 +26,7 @@ import type {
   PretableGridOptions,
   PretableGridSnapshot,
   PretableGroupColumnOptions,
+  PretableMatchingTotal,
   PretableProcessingOptions,
   PretableResultMeta,
   PretableRow,
@@ -205,6 +206,7 @@ import {
   resolveDataScope,
   warnOnEngineSortOverPartialWindow,
 } from "./data-scope";
+import { resolveBodyStateKind, type PretableDataState } from "./data-state";
 
 async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -330,6 +332,12 @@ export interface PretableSurfaceMessages {
     childCount: number;
     scope: "all" | "loaded";
   }) => string;
+  /** Body copy for the empty block. Filtered vs unfiltered wording is the consumer's call. @experimental */
+  emptyStateMessage?: () => string;
+  /** Body copy for the loading block. @experimental */
+  loadingStateMessage?: () => string;
+  /** Announced — and rendered as the error block's copy — when Pretable owns the failure UI. @experimental */
+  dataErrorAnnouncement?: (args: { message?: string }) => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -374,6 +382,10 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
   // drop them.
   groupChildCountLabel: ({ childCount, scope }) =>
     scope === "loaded" ? `(${childCount} loaded)` : `(${childCount})`,
+  emptyStateMessage: () => "No results",
+  loadingStateMessage: () => "Loading…",
+  dataErrorAnnouncement: ({ message }) =>
+    message ? `Could not load results. ${message}` : "Could not load results",
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -547,6 +559,26 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
    * @experimental
    */
   ariaDescribedBy?: string;
+  /**
+   * Presentation lifecycle of the loaded records. No default — omit it and the
+   * lifecycle presentation is entirely off.
+   *
+   * @experimental
+   */
+  dataState?: PretableDataState;
+  /**
+   * Override the built-in body-state blocks (loading / empty / error, and the
+   * error strip that renders above intact rows). Return value replaces the
+   * built-in content; the wrapper element and its data attribute stay.
+   *
+   * @experimental
+   */
+  renderBodyState?: (input: {
+    phase: PretableDataState["phase"];
+    errorMessage?: string;
+    loadedRowCount: number;
+    matchingTotal: PretableMatchingTotal;
+  }) => ReactNode;
   overscan?: number;
   /**
    * Called when the user activates a row — a plain click on it, or Enter/Space
@@ -861,6 +893,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   processing,
   resultMeta,
   ariaDescribedBy,
+  dataState,
+  renderBodyState,
   overscan = 6,
   onGridReady,
   onRowActivate,
@@ -1032,6 +1066,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         defaultMessages.groupCollapsedAnnouncement,
       groupChildCountLabel:
         messages?.groupChildCountLabel ?? defaultMessages.groupChildCountLabel,
+      emptyStateMessage:
+        messages?.emptyStateMessage ?? defaultMessages.emptyStateMessage,
+      loadingStateMessage:
+        messages?.loadingStateMessage ?? defaultMessages.loadingStateMessage,
+      dataErrorAnnouncement:
+        messages?.dataErrorAnnouncement ??
+        defaultMessages.dataErrorAnnouncement,
     }),
     [messages],
   );
@@ -1139,6 +1180,40 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // scope from the snapshot they are reporting on, so the scope word and the
   // counts in one sentence are always the same observation.
   const dataScope = resolveDataScope(dataHonestyInput, processing);
+  const bodyStateKind =
+    dataState === undefined
+      ? null
+      : resolveBodyStateKind(dataState.phase, snapshot.loadedRowCount);
+
+  const errorMessage =
+    dataState !== undefined && dataState.phase === "error"
+      ? dataState.message
+      : undefined;
+
+  const bodyStateBlock =
+    dataState === undefined || bodyStateKind === null ? null : (
+      <div
+        data-pretable-body-state={bodyStateKind}
+        // A status role only where the block appears alongside live content;
+        // a full-viewport block is the content, not a status about it.
+        role={bodyStateKind === "error-strip" ? "status" : undefined}
+      >
+        {renderBodyState
+          ? renderBodyState({
+              phase: dataState.phase,
+              errorMessage,
+              loadedRowCount: snapshot.loadedRowCount,
+              matchingTotal: snapshot.matchingTotal,
+            })
+          : bodyStateKind === "loading"
+            ? effectiveMessages.loadingStateMessage()
+            : bodyStateKind === "empty"
+              ? effectiveMessages.emptyStateMessage()
+              : effectiveMessages.dataErrorAnnouncement({
+                  message: errorMessage,
+                })}
+      </div>
+    );
   warnOnEngineSortOverPartialWindow(dataHonestyInput, processing);
   // Every UI-driven grouping change funnels through here: one `setRowGroups`,
   // then report what the engine actually holds. Reading the list back rather
@@ -2392,6 +2467,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       aria-multiselectable="true"
       aria-rowcount={ariaRowCount}
       data-pretable-hydrated={hydrated ? "true" : "false"}
+      data-pretable-data-phase={dataState?.phase}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
       // A grouped grid IS a tree, and the role is what makes Left/Right
@@ -3984,12 +4060,30 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
         )
       : null;
 
+  // The block cannot live inside the viewport: that element carries
+  // role="grid"/"treegrid", whose children must be rows and rowgroups. It gets
+  // a wrapper — created ONLY when `dataState` is supplied, so a local
+  // consumer's DOM, CSS selectors and layout are byte-identical to before this
+  // prop existed.
+  const withBodyState = (content: ReactNode): ReactNode =>
+    dataState === undefined ? (
+      content
+    ) : (
+      <div data-pretable-data-state-wrapper="">
+        {bodyStateKind === "error-strip" ? bodyStateBlock : null}
+        {content}
+        {bodyStateKind !== null && bodyStateKind !== "error-strip"
+          ? bodyStateBlock
+          : null}
+      </div>
+    );
+
   // Without the panel the surface IS the scroll viewport — no wrapper, so a
   // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
   if (!groupPanelEnabled) {
     return (
       <>
-        {scrollViewport}
+        {withBodyState(scrollViewport)}
         {liveRegion}
       </>
     );
@@ -4002,24 +4096,26 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // content, which would scroll the panel sideways with the data.
   return (
     <>
-      <div
-        data-pretable-group-panel-wrapper=""
-        style={getGroupPanelWrapperStyle(viewportHeight)}
-      >
-        <GroupPanel
-          containerRef={groupPanelRef}
-          // Only a header drag reports in from out here; the panel's own chip
-          // drag tracks its insertion index internally.
-          dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
-          emptyMessage={groupPanel?.emptyMessage}
-          focusManagedExternally
-          height={groupPanelHeight}
-          labelForColumn={labelForColumn}
-          onChange={applyRowGroups}
-          rowGroups={snapshot.rowGroups}
-        />
-        {scrollViewport}
-      </div>
+      {withBodyState(
+        <div
+          data-pretable-group-panel-wrapper=""
+          style={getGroupPanelWrapperStyle(viewportHeight)}
+        >
+          <GroupPanel
+            containerRef={groupPanelRef}
+            // Only a header drag reports in from out here; the panel's own chip
+            // drag tracks its insertion index internally.
+            dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
+            emptyMessage={groupPanel?.emptyMessage}
+            focusManagedExternally
+            height={groupPanelHeight}
+            labelForColumn={labelForColumn}
+            onChange={applyRowGroups}
+            rowGroups={snapshot.rowGroups}
+          />
+          {scrollViewport}
+        </div>,
+      )}
       {liveRegion}
     </>
   );
