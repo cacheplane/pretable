@@ -130,6 +130,7 @@ function isDataRow<TRow extends PretableRow>(
 }
 
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
+import { resolveColumnAlign } from "./column-align";
 import { computeColumnDropTarget } from "./column-drag-geometry";
 import { measureRenderedRowHeight } from "./row-height";
 import {
@@ -2795,6 +2796,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
               data-pretable-header-cell=""
               data-pretable-column-id={column.id}
               data-pretable-pinned={plannedCol.pinned}
+              data-pretable-column-type={column.type}
+              data-pretable-column-align={resolveColumnAlign(column)}
               key={column.id}
               role="columnheader"
               onClick={(event) => {
@@ -3465,6 +3468,8 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                     data-pretable-pinned={plannedCol.pinned}
                     data-pretable-cell=""
                     data-pretable-wrap={column.wrap ? "true" : undefined}
+                    data-pretable-column-type={column.type}
+                    data-pretable-column-align={resolveColumnAlign(column)}
                     // A data row's cell in the group column. It carries no
                     // value — it is the hook the stylesheet indents leaf
                     // content by one twisty-width so it lines up with sibling

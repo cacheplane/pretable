@@ -41,7 +41,30 @@ describe("grid.css cascade contract", () => {
     )?.[1];
     expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
     expect(rule).toMatch(
-      /border:\s*0;[\s\S]*border-right:\s*1px solid var\(--pretable-rule\)/,
+      /border:\s*0;[\s\S]*border-right:\s*var\(--pretable-rule-width,\s*1px\)\s*solid\s*var\(--pretable-rule-vertical,\s*var\(--pretable-rule\)\)/,
+    );
+  });
+
+  test("the row hairline and the column divider read different tokens", () => {
+    // The whole point of the split: a theme must be able to drop the vertical
+    // cage without also erasing row separation. If both axes resolve to the
+    // same token again, that capability is silently gone. The fallback chain
+    // on the vertical declarations (`--pretable-rule-vertical, var(--pretable-rule)`)
+    // is deliberate — a theme predating the axis split still needs to fall
+    // back to `--pretable-rule`, not to no vertical token at all — so this
+    // regex checks for the vertical TOKEN NAME appearing at all, which a
+    // collapsed-axis edit (deleting `-vertical` and reusing `--pretable-rule`
+    // outright) would fail.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const cellRule = css.match(
+      /:where\(\[data-pretable-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(cellRule, "no [data-pretable-cell] rule found").toBeDefined();
+    expect(cellRule).toMatch(
+      /border-right:\s*var\(--pretable-rule-width,\s*1px\)\s*solid\s*var\(--pretable-rule-vertical,\s*var\(--pretable-rule\)\)/,
+    );
+    expect(cellRule).toMatch(
+      /border-bottom:\s*var\(--pretable-rule-width,\s*1px\)\s*solid\s*var\(--pretable-rule\);/,
     );
   });
 
@@ -55,6 +78,19 @@ describe("grid.css cascade contract", () => {
     )?.[1];
     expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
     expect(rule).toMatch(/color:\s*var\(--pretable-text-header\)/);
+  });
+
+  test("header cells reset the UA button background", () => {
+    // Header cells are <button> (pretable-surface.tsx). Without this reset the
+    // UA ButtonFace fill paints, and the grid only looks right in apps that
+    // happen to ship a reset — both of ours import Tailwind Preflight, which is
+    // why this went unnoticed. Every other button in the file resets explicitly.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\[data-pretable-header-cell\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no [data-pretable-header-cell] rule found").toBeDefined();
+    expect(rule).toMatch(/background:\s*transparent/);
   });
 
   test("grid.css styles the enum combobox listbox", () => {
@@ -150,6 +186,55 @@ describe("grid.css cascade contract", () => {
     // Cells are absolutely positioned, so an unclipped long value renders on
     // top of its neighbour rather than being cut off at the column edge.
     expect(cellRule).toMatch(/overflow:\s*hidden/);
+  });
+
+  test("alignment uses justify-content, and the trailing edge is safe", () => {
+    // Cells are flex containers (`display: flex`) and an unwrapped cell value is
+    // an anonymous flex item, which `text-align` cannot move — only
+    // `justify-content` can. And plain `flex-end` clips an over-wide value at
+    // its LEADING edge under `overflow: hidden`, rendering 1,234,567 as a
+    // legible, plausible, WRONG 34,567. `safe` falls back to start-alignment
+    // rather than overflowing the start edge.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\s*\[data-pretable-cell\]\[data-pretable-column-align="end"\][\s\S]*?\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no align=end rule found").toBeDefined();
+    expect(rule).toMatch(/justify-content:\s*safe flex-end/);
+    expect(rule).not.toMatch(/text-align/);
+  });
+
+  test("numeric and date cells get tabular figures without changing family", () => {
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).toMatch(/font-variant-numeric:\s*tabular-nums lining-nums/);
+    // The old rule swapped in the mono stack, which put a typographic seam down
+    // every numeric column. One family throughout; the numerals do the aligning.
+    expect(css).not.toMatch(/data-pretable-numeric/);
+  });
+
+  test("the selected-cell rule sets color only, not background", () => {
+    // @pretable/react sets `aria-selected` and `data-pretable-selected` from
+    // the same condition, and :where([role="gridcell"][aria-selected="true"])
+    // follows this rule at equal (0,0,0) specificity — so a `background` here
+    // has never painted. The `color` line HAS: nothing else sets a color on a
+    // selected cell.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const rule = css.match(
+      /:where\(\[data-pretable-cell\]\[data-pretable-selected="true"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(rule, "no selected-cell rule found").toBeDefined();
+    expect(rule).toMatch(/color:\s*var\(--pretable-text-selected\)/);
+    expect(rule).not.toMatch(/background/);
+  });
+
+  test("grid.css styles no element the surface cannot emit", () => {
+    // [data-pretable-toolbar] and [data-pretable-status-bar] were styled from
+    // day one and are emitted by nothing in @pretable/react — verified by grep
+    // across every .ts/.tsx/.mdx in the repo. Dead skin invites consumers to
+    // target a contract that does not exist.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    expect(css).not.toMatch(/data-pretable-toolbar/);
+    expect(css).not.toMatch(/data-pretable-status-bar/);
   });
 
   test("every grid.css rule selector is wrapped in :where()", () => {

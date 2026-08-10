@@ -9,6 +9,9 @@ import { HTMLAttributes } from 'react';
 import * as react from 'react';
 import { ReactNode } from 'react';
 
+// @public (undocumented)
+export type ColumnAlign = "start" | "center" | "end";
+
 // @public
 export interface ColumnFilter {
     // (undocumented)

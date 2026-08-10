@@ -16,6 +16,9 @@ export interface AutosizeOptions {
     minWidthPx?: number;
 }
 
+// @public (undocumented)
+export type ColumnAlign = "start" | "center" | "end";
+
 // @public
 export interface ColumnFilter {
     // (undocumented)
@@ -91,6 +94,7 @@ export interface PretableCellRange {
 // @public
 export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     aggregate?: PretableAggregateSpec;
+    align?: ColumnAlign;
     // (undocumented)
     editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
     // (undocumented)

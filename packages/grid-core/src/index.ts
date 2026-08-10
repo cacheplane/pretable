@@ -29,6 +29,7 @@ export type {
   ColumnFilter,
   FilterOperator,
   ColumnOption,
+  ColumnAlign,
   ColumnType,
   FilterValue,
   PretableAggregateFormatInput,
