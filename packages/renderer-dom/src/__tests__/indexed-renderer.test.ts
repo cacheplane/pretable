@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   createColumnHelper,
   createLocalRowModel,
+  type PretableChangeSet,
   type PretableGroupId,
   type PretableVisibleRowRef,
 } from "@pretable-internal/row-model";
@@ -69,6 +70,16 @@ class ManualScheduler implements RowLayoutScheduler {
       if (count > limit) throw new Error("Manual scheduler did not settle.");
     }
   }
+}
+
+function flushNextLive(scheduler: ManualScheduler): boolean {
+  while (scheduler.tasks.length > 0) {
+    const entry = scheduler.tasks.shift()!;
+    if (entry.cancelled) continue;
+    entry.task();
+    return true;
+  }
+  return false;
 }
 
 function createModel(
@@ -383,6 +394,493 @@ describe("indexed DOM row layout controller", () => {
     expect(diagnostics.replacementSliceCount).toBeGreaterThan(1);
     expect(diagnostics.lastPublishedRangeRows).toBeLessThan(12);
   }, 30_000);
+
+  test("finishes a 100k reset while an ordinary revision arrives after every slice", () => {
+    const model = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    const { controller, scheduler } = createReadyController(model);
+    const beforeStarts =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
+    model.setRows(
+      Array.from({ length: 100_000 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `reset ${index}`,
+      })),
+    );
+
+    let streamed = 0;
+    while (streamed < 2_000 && controller.getState().status.kind !== "ready") {
+      expect(flushNextLive(scheduler)).toBe(true);
+      model.applyTransaction({
+        update: [
+          {
+            id: streamed % 100,
+            changes: { label: `stream ${streamed}` },
+          },
+        ],
+      });
+      streamed += 1;
+      if (streamed === 100) {
+        const retained = model.changesSince(1);
+        expect(retained.kind).toBe("changes");
+        if (retained.kind === "changes") {
+          expect(retained.changes).toHaveLength(100);
+        }
+        const progressing =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(controller.getState()).toMatchObject({
+          observedRevision: 0,
+          status: { kind: "rebuilding", targetRevision: 101 },
+        });
+        expect(progressing.replacementStartCount).toBe(beforeStarts + 1);
+        expect(progressing.pendingCatchUpChangeSetCount).toBe(100);
+        expect(progressing.retainedCatchUpSnapshotCount).toBeGreaterThan(0);
+      }
+    }
+
+    expect(streamed).toBeLessThan(2_000);
+    expect(controller.getState()).toMatchObject({
+      observedRevision: model.getState().snapshot.revision,
+      status: { kind: "ready" },
+    });
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller),
+    ).toMatchObject({
+      replacementStartCount: beforeStarts + 1,
+      pendingCatchUpChangeSetCount: 0,
+      pendingCatchUpOperationCount: 0,
+      retainedCatchUpSnapshotCount: 0,
+      maxCatchUpUnitsPerSlice: 256,
+    });
+  }, 30_000);
+
+  test("supersedes only at a later barrier and queues ordinary revisions after it", () => {
+    const model = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    const { controller, scheduler } = createReadyController(model);
+    const beforeStarts =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
+    model.setRows(
+      Array.from({ length: 10_000 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `first ${index}`,
+      })),
+    );
+    expect(flushNextLive(scheduler)).toBe(true);
+    model.applyTransaction({
+      update: [{ id: 1, changes: { label: "queued before barrier" } }],
+    });
+    model.setRows(
+      Array.from({ length: 10_001 }, (_, index) => ({
+        id: index,
+        team: "C",
+        score: index,
+        label: `barrier ${index}`,
+      })),
+    );
+    for (let revision = 0; revision < 50; revision += 1) {
+      model.applyTransaction({
+        update: [
+          {
+            id: revision,
+            changes: { label: `after barrier ${revision}` },
+          },
+        ],
+      });
+    }
+    const pending = getRowLayoutControllerDiagnosticsForTesting(controller);
+    expect(pending.replacementStartCount).toBe(beforeStarts + 2);
+    expect(pending.pendingCatchUpChangeSetCount).toBe(50);
+    scheduler.flushAll();
+    expect(controller.getState()).toMatchObject({
+      observedRevision: model.getState().snapshot.revision,
+      status: { kind: "ready" },
+    });
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller),
+    ).toMatchObject({
+      pendingCatchUpChangeSetCount: 0,
+      retainedCatchUpSnapshotCount: 0,
+    });
+  });
+
+  test("keeps transition catch-up independent from a capacity-one consumer journal", () => {
+    const model = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+      { journalCapacity: 1 },
+    );
+    const { controller, scheduler } = createReadyController(model);
+    const beforeStarts =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
+    model.setRows(
+      Array.from({ length: 10_000 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `reset ${index}`,
+      })),
+    );
+    for (let revision = 0; revision < 50; revision += 1) {
+      expect(flushNextLive(scheduler)).toBe(true);
+      model.applyTransaction({
+        update: [
+          {
+            id: revision,
+            changes: { label: `stream ${revision}` },
+          },
+        ],
+      });
+    }
+    expect(model.changesSince(1)).toMatchObject({
+      kind: "reset",
+      reason: "journal-evicted",
+    });
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller),
+    ).toMatchObject({
+      replacementStartCount: beforeStarts + 1,
+      pendingCatchUpChangeSetCount: 50,
+    });
+    scheduler.flushAll();
+    expect(controller.getState()).toMatchObject({
+      observedRevision: 51,
+      status: { kind: "ready" },
+    });
+  });
+
+  test("replays one large revision across bounded private slices", () => {
+    const model = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    const { controller, scheduler } = createReadyController(model);
+    const published = controller.getState();
+    model.setRows(
+      Array.from({ length: 10_000 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `reset ${index}`,
+      })),
+    );
+    model.applyTransaction({
+      update: Array.from({ length: 1_000 }, (_, id) => ({
+        id,
+        changes: { label: `updated ${id}` },
+      })),
+    });
+    let slices = 0;
+    while (
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .retainedCandidateRootCount === 0
+    ) {
+      expect(flushNextLive(scheduler)).toBe(true);
+      slices += 1;
+      if (slices > 1_000) throw new Error("Candidate did not finish.");
+    }
+    expect(controller.getState().rowHeights).toBe(published.rowHeights);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .pendingCatchUpOperationCount,
+    ).toBeGreaterThan(0);
+    scheduler.flushAll();
+    expect(controller.getState()).toMatchObject({
+      observedRevision: 2,
+      status: { kind: "ready" },
+    });
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .maxCatchUpUnitsPerSlice,
+    ).toBeLessThanOrEqual(256);
+  });
+
+  test("falls back from a hostile queued change getter without partial publication", () => {
+    const model = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    const { controller, scheduler } = createReadyController(model);
+    const published = controller.getState();
+    const realChangesSince = model.changesSince.bind(model);
+    vi.spyOn(model, "changesSince").mockImplementation((revision) => {
+      const sequence = realChangesSince(revision);
+      if (
+        revision !== 1 ||
+        sequence.kind !== "changes" ||
+        sequence.changes.length === 0
+      ) {
+        return sequence;
+      }
+      const first = sequence.changes[0]!;
+      const hostile = Object.defineProperty(
+        {
+          previousRevision: first.previousRevision,
+          revision: first.revision,
+        },
+        "operations",
+        {
+          enumerable: true,
+          get() {
+            throw new Error("queued operations exploded");
+          },
+        },
+      ) as unknown as PretableChangeSet<Row["id"]>;
+      return { ...sequence, changes: [hostile] };
+    });
+    const beforeStarts =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
+    model.setRows(
+      Array.from({ length: 10_000 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `reset ${index}`,
+      })),
+    );
+    model.applyTransaction({
+      update: [{ id: 1, changes: { label: "latest" } }],
+    });
+    scheduler.flushAll();
+    expect(controller.getState()).toMatchObject({
+      observedRevision: 2,
+      status: { kind: "ready" },
+    });
+    expect(controller.getState().rowHeights).not.toBe(published.rowHeights);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .replacementStartCount,
+    ).toBe(beforeStarts + 2);
+  });
+
+  test("does not regress when final anchor lookup publishes a newer revision reentrantly", () => {
+    const source = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    let reenterOnIndex = false;
+    let revisionOneIndexCalls = 0;
+    const model = new Proxy(source, {
+      get(target, property, receiver) {
+        if (property !== "getState") {
+          return Reflect.get(target, property, receiver);
+        }
+        return () => {
+          const modelState = source.getState();
+          const snapshot = modelState.snapshot;
+          return {
+            ...modelState,
+            snapshot: Object.freeze({
+              ...snapshot,
+              indexOf(ref: PretableVisibleRowRef<Row["id"]>) {
+                if (snapshot.revision === 1) revisionOneIndexCalls += 1;
+                if (
+                  reenterOnIndex &&
+                  snapshot.revision === 1 &&
+                  revisionOneIndexCalls === 2
+                ) {
+                  reenterOnIndex = false;
+                  source.applyTransaction({
+                    update: [{ id: 1, changes: { label: "reentrant latest" } }],
+                  });
+                }
+                return snapshot.indexOf(ref);
+              },
+            }),
+          };
+        };
+      },
+    });
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 44, viewportHeight: 88, overscan: 0 },
+      scheduler,
+      now: () => 0,
+    });
+    scheduler.flushAll();
+    const revisions: number[] = [];
+    controller.subscribe(() => {
+      const revision = controller.getState().observedRevision;
+      if (revision !== null) revisions.push(revision);
+    });
+    reenterOnIndex = true;
+    source.setRows(
+      Array.from({ length: 10_000 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `reset ${index}`,
+      })),
+    );
+    scheduler.flushAll();
+    expect(controller.getState()).toMatchObject({
+      observedRevision: 2,
+      status: { kind: "ready" },
+    });
+    expect(revisions).toEqual(
+      [...revisions].sort((left, right) => left - right),
+    );
+    expect(revisions).not.toContain(1);
+    expect(revisions.at(-1)).toBe(2);
+  });
+
+  test("contains a hostile active target revision getter and rebuilds its latest snapshot", () => {
+    const source = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `old ${index}`,
+      })),
+    );
+    let throwRevisionOnce = false;
+    const model = new Proxy(source, {
+      get(target, property, receiver) {
+        if (property !== "getState") {
+          return Reflect.get(target, property, receiver);
+        }
+        return () => {
+          const modelState = source.getState();
+          if (!throwRevisionOnce || modelState.snapshot.revision !== 2) {
+            return modelState;
+          }
+          throwRevisionOnce = false;
+          return {
+            ...modelState,
+            snapshot: Object.defineProperty(
+              { ...modelState.snapshot },
+              "revision",
+              {
+                enumerable: true,
+                get() {
+                  throw new Error("target revision exploded");
+                },
+              },
+            ),
+          } as typeof modelState;
+        };
+      },
+    });
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
+      scheduler,
+      now: () => 0,
+    });
+    scheduler.flushAll();
+    source.setRows(
+      Array.from({ length: 10_000 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `reset ${index}`,
+      })),
+    );
+    throwRevisionOnce = true;
+    expect(() =>
+      source.applyTransaction({
+        update: [{ id: 1, changes: { label: "latest" } }],
+      }),
+    ).not.toThrow();
+    scheduler.flushAll();
+    expect(controller.getState()).toMatchObject({
+      observedRevision: 2,
+      status: { kind: "ready" },
+    });
+  });
+
+  test("clamps incremental and reset publications to the final scroll extent", () => {
+    const model = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `${index}`,
+      })),
+    );
+    const { controller, scheduler } = createReadyController(model);
+    controller.setViewport({
+      scrollTop: 3_900,
+      viewportHeight: 500,
+      overscan: 0,
+    });
+    model.applyTransaction({
+      remove: Array.from({ length: 11 }, (_, index) => 89 + index),
+    });
+    const shortened = controller.getState();
+    const shortenedMaximum = Math.max(
+      0,
+      shortened.rowHeights.getTotalHeight() - 500,
+    );
+    expect(shortenedMaximum).toBeLessThan(3_900);
+    expect(shortened.scrollTop).toBe(shortenedMaximum);
+    expect(shortened.viewport.scrollTop).toBe(shortenedMaximum);
+    expect(shortened.snapshot?.indexOf(data(88))).toBe(88);
+
+    controller.setViewport({
+      scrollTop: 100.25,
+      viewportHeight: 500.5,
+      overscan: 0,
+    });
+    model.setRows([{ id: 1, team: "B", score: 1, label: "short" }]);
+    scheduler.flushAll();
+    const short = controller.getState();
+    expect(short.rowHeights.getTotalHeight()).toBeLessThan(500.5);
+    expect(short.scrollTop).toBe(0);
+    expect(short.viewport.scrollTop).toBe(0);
+
+    model.setRows([]);
+    scheduler.flushAll();
+    const empty = controller.getState();
+    expect(empty.rowHeights.getTotalHeight()).toBe(0);
+    expect(empty.scrollTop).toBe(0);
+    expect(empty.viewport.scrollTop).toBe(0);
+    expect(empty.range).toEqual({ start: 0, end: 0 });
+  });
 
   test("defers viewport publication during a reset until matching geometry is ready", () => {
     const model = createModel(
@@ -950,7 +1448,15 @@ describe("indexed DOM row layout controller", () => {
     const { controller, scheduler } = createReadyController(model);
     const before = controller.getState();
     model.setRows([{ id: 2, team: "B", score: 2, label: "two reset" }]);
+    const startsAfterReset =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
     controller.measure(data(1), 91);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .replacementStartCount,
+    ).toBe(startsAfterReset);
     expect(controller.getState().rowHeights).toBe(before.rowHeights);
     model.setRows([
       { id: 2, team: "C", score: 2, label: "two superseded" },
@@ -961,6 +1467,85 @@ describe("indexed DOM row layout controller", () => {
     const rank = restored.snapshot!.indexOf(data(1));
     expect(restored.rowHeights.getHeight(rank)).toBe(91);
     expect(restored.rowHeights.hasMeasurement(data(1))).toBe(true);
+  });
+
+  test("invalidates an old-DOM reset measurement on a later exact row update", () => {
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+    ]);
+    const { controller, scheduler } = createReadyController(model);
+    const beforeStarts =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
+    model.setRows([
+      { id: 1, team: "B", score: 1, label: "one reset" },
+      { id: 2, team: "B", score: 2, label: "two reset" },
+    ]);
+    controller.measure(data(1), 99);
+    model.applyTransaction({
+      update: [{ id: 1, changes: { label: "one updated later" } }],
+    });
+    scheduler.flushAll();
+    const ready = controller.getState();
+    const index = ready.snapshot!.indexOf(data(1));
+    expect(ready.rowHeights.getHeight(index)).not.toBe(99);
+    expect(ready.rowHeights.hasMeasurement(data(1))).toBe(false);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .replacementStartCount,
+    ).toBe(beforeStarts + 1);
+  });
+
+  test("releases queued catch-up roots and staged measurements on disposal", () => {
+    const model = createModel(
+      Array.from({ length: 100 }, (_, index) => ({
+        id: index,
+        team: "A",
+        score: index,
+        label: `${index}`,
+      })),
+    );
+    const { controller } = createReadyController(model);
+    model.setRows(
+      Array.from({ length: 10_000 }, (_, index) => ({
+        id: index,
+        team: "B",
+        score: index,
+        label: `reset ${index}`,
+      })),
+    );
+    controller.measure(data(1), 88);
+    for (let revision = 0; revision < 3; revision += 1) {
+      model.applyTransaction({
+        update: [
+          { id: 2 + revision, changes: { label: `queued ${revision}` } },
+        ],
+      });
+    }
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller),
+    ).toMatchObject({
+      pendingCatchUpChangeSetCount: 3,
+      stagedMeasurementCount: 1,
+    });
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .retainedCatchUpSnapshotCount,
+    ).toBeGreaterThan(0);
+    controller.dispose();
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller),
+    ).toMatchObject({
+      scheduledCallbackCount: 0,
+      retainedBuilderCount: 0,
+      retainedCandidateRootCount: 0,
+      pendingCatchUpChangeSetCount: 0,
+      pendingCatchUpOperationCount: 0,
+      retainedCatchUpSnapshotCount: 0,
+      stagedMeasurementCount: 0,
+    });
   });
 
   test("retains a reset-time measurement when the row is removed then inserted later", () => {

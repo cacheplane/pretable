@@ -7,7 +7,9 @@ import {
   type RowHeightReplacementBuilder,
 } from "@pretable-internal/layout-core";
 import type {
+  PretableChangeOperation,
   PretableChangeSequence,
+  PretableChangeSet,
   PretableRowId,
   PretableRowModelSnapshot,
   PretableVisibleRow,
@@ -32,13 +34,24 @@ const DEFAULT_BUDGET_MS = 5;
 const DEFAULT_MAX_UNITS_PER_SLICE = 256;
 const MAX_ESTIMATE_PLAN_PASSES = 256;
 
+class CatchUpSequenceError extends Error {}
+class StaleReplacementPublicationError extends Error {}
+
 export interface RowLayoutControllerDiagnostics {
   readonly replacementSliceCount: number;
   readonly maxReplacementUnitsPerSlice: number;
   readonly scheduledCallbackCount: number;
   readonly retainedBuilderCount: number;
+  readonly retainedCandidateRootCount: number;
   readonly lastPublishedRangeRows: number;
   readonly anchorSearchUnits: number;
+  readonly replacementStartCount: number;
+  readonly pendingCatchUpChangeSetCount: number;
+  readonly pendingCatchUpOperationCount: number;
+  readonly retainedCatchUpSnapshotCount: number;
+  readonly stagedMeasurementCount: number;
+  readonly catchUpUnits: number;
+  readonly maxCatchUpUnitsPerSlice: number;
 }
 
 const controllerDiagnostics = new WeakMap<
@@ -218,13 +231,37 @@ interface ActiveReplacement<
   TColumns,
 > {
   readonly token: object;
-  readonly target: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+  readonly baseTarget: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   readonly builder: RowHeightReplacementBuilder<PretableVisibleRowRef<TRowId>>;
+  latestTarget: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+  capturedRevision: number;
+  capturedWakeVersion: number;
+  appliedRevision: number;
+  readonly pending: Array<
+    | {
+        readonly toRevision: number;
+        readonly changes: readonly PretableChangeSet<TRowId>[];
+      }
+    | undefined
+  >;
+  pendingHead: number;
+  pendingChangeIndex: number;
+  pendingOperationIndex: number;
+  currentOperations: readonly PretableChangeOperation<TRowId>[] | undefined;
+  pendingChangeSetCount: number;
+  pendingOperationCount: number;
+  readonly invalidatedMeasurementKeys: Set<string>;
   anchor: CapturedAnchor<TRowId> | undefined;
   cancelScheduled: (() => void) | undefined;
   candidate: RowHeightIndex<PretableVisibleRowRef<TRowId>> | undefined;
   searchDistance: number;
   searchPrevious: boolean;
+}
+
+interface StagedMeasurement<TRowId extends PretableRowId> {
+  readonly ref: PretableVisibleRowRef<TRowId>;
+  readonly height: number;
+  readonly capturedRevision: number;
 }
 
 export function createRowLayoutController<
@@ -263,15 +300,20 @@ export function createRowLayoutController<
   let drainingActions = false;
   let synchronizing = false;
   let synchronizeAgain = false;
+  let modelWakeVersion = 0;
   const queuedActions: Array<() => void> = [];
   let active: ActiveReplacement<TRow, TRowId, TColumns> | undefined;
-  let stagedRowHeights:
-    RowHeightIndex<PretableVisibleRowRef<TRowId>> | undefined;
+  const stagedMeasurements = new Map<string, StagedMeasurement<TRowId>>();
+  const stagedMeasurementKeys: string[] = [];
+  let stagedMeasurementHead = 0;
   let replacementSliceCount = 0;
   let maxReplacementUnitsPerSlice = 0;
   let scheduledCallbackCount = 0;
   let lastPublishedRangeRows = 0;
   let anchorSearchUnits = 0;
+  let replacementStartCount = 0;
+  let catchUpUnits = 0;
+  let maxCatchUpUnitsPerSlice = 0;
   let deferredViewportWithoutAnchor = false;
   let unsubscribeModel: (() => void) | undefined;
   let detachModelWhenAvailable = false;
@@ -373,6 +415,22 @@ export function createRowLayoutController<
     deferredViewportWithoutAnchor = false;
   };
 
+  const clearStagedMeasurements = (): void => {
+    stagedMeasurements.clear();
+    stagedMeasurementKeys.length = 0;
+    stagedMeasurementHead = 0;
+  };
+
+  const clampScrollTop = (
+    root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
+    requestedViewport: RowLayoutViewport,
+    requestedScrollTop: number,
+  ): number =>
+    Math.min(
+      Math.max(0, requestedScrollTop),
+      Math.max(0, root.getTotalHeight() - requestedViewport.viewportHeight),
+    );
+
   const prepareWindow = (
     snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     initialRoot: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
@@ -380,14 +438,20 @@ export function createRowLayoutController<
     scrollTop: number,
   ): {
     readonly root: RowHeightIndex<PretableVisibleRowRef<TRowId>>;
+    readonly scrollTop: number;
     readonly range: { readonly start: number; readonly end: number };
     readonly window: readonly RowLayoutWindowRow<TRow, TRowId, TColumns>[];
   } => {
     let root = initialRoot;
     const estimated = new Set<string>();
     for (let pass = 0; pass < MAX_ESTIMATE_PLAN_PASSES; pass += 1) {
-      const plan = planViewport({
+      const clampedScrollTop = clampScrollTop(
+        root,
+        requestedViewport,
         scrollTop,
+      );
+      const plan = planViewport({
+        scrollTop: clampedScrollTop,
         viewportHeight: requestedViewport.viewportHeight,
         overscan: requestedViewport.overscan,
         rowMetrics: root,
@@ -442,6 +506,7 @@ export function createRowLayoutController<
       );
       return {
         root,
+        scrollTop: clampedScrollTop,
         range: Object.freeze({ ...plan.range }),
         window: Object.freeze(window),
       };
@@ -456,17 +521,32 @@ export function createRowLayoutController<
     snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
     scrollTop: number,
+    lifecycle?: {
+      readonly isCurrent: () => boolean;
+      readonly commit: () => void;
+    },
   ): void => {
     projecting = true;
     try {
       const prepared = prepareWindow(snapshot, root, viewport, scrollTop);
+      const publishedViewport = Object.freeze({
+        ...viewport,
+        scrollTop: prepared.scrollTop,
+      });
+      if (lifecycle !== undefined) {
+        if (!lifecycle.isCurrent()) {
+          throw new StaleReplacementPublicationError();
+        }
+        lifecycle.commit();
+      }
+      viewport = publishedViewport;
       lastPublishedRangeRows = prepared.window.length;
       state = Object.freeze({
         observedRevision: snapshot.revision,
         snapshot,
         rowHeights: prepared.root,
         viewport,
-        scrollTop,
+        scrollTop: prepared.scrollTop,
         range: prepared.range,
         window: prepared.window,
         status: READY,
@@ -494,12 +574,61 @@ export function createRowLayoutController<
     };
   };
 
+  const applyOperation = (
+    root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
+    operation: PretableChangeOperation<TRowId>,
+    revision: number,
+    invalidatedMeasurementKeys?: Set<string>,
+  ): RowHeightIndex<PretableVisibleRowRef<TRowId>> => {
+    let heightOperation: RowHeightOperation<PretableVisibleRowRef<TRowId>>;
+    if (operation.kind === "insert") {
+      heightOperation = {
+        kind: "insert",
+        ref: operation.ref,
+        index: operation.index,
+      };
+    } else if (operation.kind === "remove") {
+      heightOperation = {
+        kind: "remove",
+        ref: operation.ref,
+        previousIndex: operation.previousIndex,
+      };
+    } else if (operation.kind === "move") {
+      heightOperation = {
+        kind: "move",
+        ref: operation.ref,
+        previousIndex: operation.previousIndex,
+        index: operation.index,
+      };
+    } else {
+      heightOperation = {
+        kind: "update",
+        ref: operation.ref,
+        index: operation.index,
+      };
+      const identity = identityOf(operation.ref);
+      invalidatedMeasurementKeys?.add(identity);
+      const staged = stagedMeasurements.get(identity);
+      if (
+        staged !== undefined &&
+        (invalidatedMeasurementKeys !== undefined ||
+          staged.capturedRevision < revision)
+      ) {
+        stagedMeasurements.delete(identity);
+      }
+    }
+    return root.apply([heightOperation]);
+  };
+
   const resolveAnchorRef = (
     replacement: ActiveReplacement<TRow, TRowId, TColumns>,
     ref: PretableVisibleRowRef<TRowId>,
   ): PretableVisibleRowRef<TRowId> | undefined => {
-    const nearest = replacement.target.nearestVisibleRef(ref);
-    if (nearest === undefined || replacement.target.indexOf(nearest) < 0) {
+    const nearest = replacement.latestTarget.nearestVisibleRef(ref);
+    if (
+      nearest === undefined ||
+      replacement.latestTarget.indexOf(nearest) < 0
+    ) {
       return undefined;
     }
     return nearest;
@@ -516,12 +645,33 @@ export function createRowLayoutController<
     ) {
       return;
     }
-    active = undefined;
+    if (
+      replacement.pending[replacement.pendingHead] !== undefined ||
+      replacement.appliedRevision !== replacement.capturedRevision ||
+      replacement.capturedWakeVersion !== modelWakeVersion ||
+      stagedMeasurements.size > 0
+    ) {
+      scheduleReplacement(replacement);
+      return;
+    }
     const candidate = replacement.candidate;
-    replacement.candidate = undefined;
+    const target = replacement.latestTarget;
+    const expectedWakeVersion = replacement.capturedWakeVersion;
+    const isCurrent = (): boolean =>
+      active === replacement &&
+      replacement.latestTarget === target &&
+      replacement.capturedWakeVersion === expectedWakeVersion &&
+      expectedWakeVersion === modelWakeVersion &&
+      replacement.pending[replacement.pendingHead] === undefined &&
+      replacement.appliedRevision === replacement.capturedRevision &&
+      stagedMeasurements.size === 0;
     let scrollTop = viewport.scrollTop;
     if (replacement.anchor !== undefined && resolvedAnchor !== undefined) {
-      const index = replacement.target.indexOf(resolvedAnchor);
+      const index = target.indexOf(resolvedAnchor);
+      if (!isCurrent()) {
+        scheduleReplacement(replacement);
+        return;
+      }
       if (index >= 0) {
         scrollTop = Math.max(
           0,
@@ -536,11 +686,29 @@ export function createRowLayoutController<
       }
     }
     try {
-      publishReady(replacement.target, candidate, scrollTop);
-      stagedRowHeights = undefined;
-      deferredViewportWithoutAnchor = false;
+      publishReady(target, candidate, scrollTop, {
+        isCurrent,
+        commit() {
+          active = undefined;
+          replacement.candidate = undefined;
+          clearStagedMeasurements();
+          deferredViewportWithoutAnchor = false;
+        },
+      });
     } catch (error) {
-      stagedRowHeights = undefined;
+      if (error instanceof StaleReplacementPublicationError) {
+        synchronize();
+        if (active === replacement && !disposed) {
+          scheduleReplacement(replacement);
+        }
+        return;
+      }
+      if (active === replacement) {
+        active = undefined;
+        replacement.builder.cancel();
+        replacement.candidate = undefined;
+      }
+      clearStagedMeasurements();
       rollbackDeferredViewport();
       publishError(
         "layout-failed",
@@ -556,15 +724,18 @@ export function createRowLayoutController<
     if (active !== replacement || disposed) return;
     replacement.cancelScheduled = undefined;
     scheduledCallbackCount = Math.max(0, scheduledCallbackCount - 1);
+    let replayingCatchUp = false;
     try {
+      replacementSliceCount += 1;
+      const sliceStartedAt = now();
+      let builderUnitsThisSlice = 0;
       if (!replacement.builder.done) {
-        const startedAt = now();
         const progress = replacement.builder.advance({
           maxUnits: maxUnitsPerSlice,
-          deadline: startedAt + budgetMs,
+          deadline: sliceStartedAt + budgetMs,
           now,
         });
-        replacementSliceCount += 1;
+        builderUnitsThisSlice = progress.unitsThisSlice;
         maxReplacementUnitsPerSlice = Math.max(
           maxReplacementUnitsPerSlice,
           progress.unitsThisSlice,
@@ -574,6 +745,125 @@ export function createRowLayoutController<
           return;
         }
         replacement.candidate = replacement.builder.finish();
+        replacement.appliedRevision = replacement.baseTarget.revision;
+      }
+
+      let sliceCatchUpUnits = 0;
+      replayingCatchUp = true;
+      while (
+        sliceCatchUpUnits < maxUnitsPerSlice - builderUnitsThisSlice &&
+        now() - sliceStartedAt < budgetMs
+      ) {
+        const batch = replacement.pending[replacement.pendingHead];
+        if (batch !== undefined) {
+          if (replacement.pendingChangeIndex < batch.changes.length) {
+            const change = batch.changes[replacement.pendingChangeIndex]!;
+            if (replacement.currentOperations === undefined) {
+              if (
+                change.previousRevision !== replacement.appliedRevision ||
+                change.revision !== replacement.appliedRevision + 1
+              ) {
+                throw new CatchUpSequenceError(
+                  "The queued row-layout change sequence is not contiguous.",
+                );
+              }
+              replacement.currentOperations = change.operations;
+              replacement.pendingOperationIndex = 0;
+              replacement.pendingOperationCount += change.operations.length;
+            } else if (
+              replacement.pendingOperationIndex <
+              replacement.currentOperations.length
+            ) {
+              const operation =
+                replacement.currentOperations[
+                  replacement.pendingOperationIndex
+                ]!;
+              replacement.candidate = applyOperation(
+                replacement.candidate!,
+                operation,
+                change.revision,
+                replacement.invalidatedMeasurementKeys,
+              );
+              replacement.pendingOperationIndex += 1;
+              replacement.pendingOperationCount -= 1;
+            } else {
+              replacement.appliedRevision = change.revision;
+              replacement.pendingChangeIndex += 1;
+              replacement.pendingChangeSetCount -= 1;
+              replacement.pendingOperationIndex = 0;
+              replacement.currentOperations = undefined;
+            }
+          } else {
+            if (replacement.appliedRevision !== batch.toRevision) {
+              throw new CatchUpSequenceError(
+                "The queued row-layout change sequence ended at the wrong revision.",
+              );
+            }
+            replacement.pending[replacement.pendingHead] = undefined;
+            replacement.pendingHead += 1;
+            replacement.pendingChangeIndex = 0;
+            if (replacement.pendingHead === replacement.pending.length) {
+              replacement.pending.length = 0;
+              replacement.pendingHead = 0;
+            }
+          }
+          sliceCatchUpUnits += 1;
+          continue;
+        }
+
+        if (replacement.appliedRevision !== replacement.capturedRevision) {
+          throw new CatchUpSequenceError(
+            "The queued row-layout changes do not reach the captured revision.",
+          );
+        }
+        const stagedKey = stagedMeasurementKeys[stagedMeasurementHead];
+        if (stagedKey !== undefined) {
+          const measurement = stagedMeasurements.get(stagedKey);
+          if (measurement !== undefined) {
+            const index = replacement.latestTarget.indexOf(measurement.ref);
+            if (active !== replacement || disposed) return;
+            stagedMeasurementHead += 1;
+            if (index >= 0) {
+              replacement.candidate = replacement.candidate!.measure(
+                index,
+                measurement.ref,
+                measurement.height,
+              );
+            } else {
+              replacement.candidate = replacement.candidate!.retainMeasurement(
+                measurement.ref,
+                measurement.height,
+              );
+            }
+            stagedMeasurements.delete(stagedKey);
+          } else {
+            stagedMeasurementHead += 1;
+          }
+          sliceCatchUpUnits += 1;
+          continue;
+        }
+        stagedMeasurementKeys.length = 0;
+        stagedMeasurementHead = 0;
+        break;
+      }
+      replayingCatchUp = false;
+      catchUpUnits += sliceCatchUpUnits;
+      maxCatchUpUnitsPerSlice = Math.max(
+        maxCatchUpUnitsPerSlice,
+        sliceCatchUpUnits,
+      );
+      if (
+        replacement.pending[replacement.pendingHead] !== undefined ||
+        stagedMeasurementHead < stagedMeasurementKeys.length
+      ) {
+        scheduleReplacement(replacement);
+        return;
+      }
+      const remainingUnits =
+        maxUnitsPerSlice - builderUnitsThisSlice - sliceCatchUpUnits;
+      if (remainingUnits <= 0) {
+        scheduleReplacement(replacement);
+        return;
       }
 
       const anchor = replacement.anchor;
@@ -588,7 +878,6 @@ export function createRowLayoutController<
       }
 
       let units = 0;
-      const startedAt = now();
       do {
         const distance = replacement.searchDistance;
         const candidateIndex = replacement.searchPrevious
@@ -619,14 +908,18 @@ export function createRowLayoutController<
           finishReplacement(replacement, undefined);
           return;
         }
-      } while (units < maxUnitsPerSlice && now() - startedAt < budgetMs);
+      } while (units < remainingUnits && now() - sliceStartedAt < budgetMs);
       scheduleReplacement(replacement);
     } catch (error) {
       if (active !== replacement || disposed) return;
+      if (replayingCatchUp || error instanceof CatchUpSequenceError) {
+        startReplacement(replacement.latestTarget, true);
+        return;
+      }
       active = undefined;
       replacement.builder.cancel();
       replacement.candidate = undefined;
-      stagedRowHeights = undefined;
+      clearStagedMeasurements();
       rollbackDeferredViewport();
       publishError(
         "layout-failed",
@@ -671,7 +964,7 @@ export function createRowLayoutController<
       active = undefined;
       replacement.builder.cancel();
       replacement.candidate = undefined;
-      stagedRowHeights = undefined;
+      clearStagedMeasurements();
       rollbackDeferredViewport();
       publishError(
         "scheduler-failed",
@@ -684,14 +977,15 @@ export function createRowLayoutController<
   const startReplacement = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     shouldNotify: boolean,
-    updateStatus = true,
   ): void => {
     cancelActive();
+    replacementStartCount += 1;
     const anchor = deferredViewportWithoutAnchor ? undefined : captureAnchor();
-    const base = stagedRowHeights ?? state.rowHeights;
     let builder: RowHeightReplacementBuilder<PretableVisibleRowRef<TRowId>>;
+    let targetRevision: number;
     try {
-      builder = base.beginReplacement({
+      targetRevision = target.revision;
+      builder = state.rowHeights.beginReplacement({
         rowCount: target.visibleRowCount,
         entryAt(index) {
           const row = target.rowAt(index);
@@ -705,7 +999,7 @@ export function createRowLayoutController<
         },
       });
     } catch (error) {
-      stagedRowHeights = undefined;
+      clearStagedMeasurements();
       rollbackDeferredViewport();
       publishError(
         "layout-failed",
@@ -716,8 +1010,20 @@ export function createRowLayoutController<
     }
     const replacement: ActiveReplacement<TRow, TRowId, TColumns> = {
       token: {},
-      target,
+      baseTarget: target,
       builder,
+      latestTarget: target,
+      capturedRevision: targetRevision,
+      capturedWakeVersion: modelWakeVersion,
+      appliedRevision: targetRevision,
+      pending: [],
+      pendingHead: 0,
+      pendingChangeIndex: 0,
+      pendingOperationIndex: 0,
+      currentOperations: undefined,
+      pendingChangeSetCount: 0,
+      pendingOperationCount: 0,
+      invalidatedMeasurementKeys: new Set(),
       anchor,
       cancelScheduled: undefined,
       candidate: undefined,
@@ -725,15 +1031,13 @@ export function createRowLayoutController<
       searchPrevious: false,
     };
     active = replacement;
-    if (updateStatus) {
-      state = Object.freeze({
-        ...state,
-        status: Object.freeze({
-          kind: "rebuilding" as const,
-          targetRevision: target.revision,
-        }),
-      });
-    }
+    state = Object.freeze({
+      ...state,
+      status: Object.freeze({
+        kind: "rebuilding" as const,
+        targetRevision,
+      }),
+    });
     if (shouldNotify) notify();
     scheduleReplacement(replacement);
   };
@@ -766,46 +1070,63 @@ export function createRowLayoutController<
     return expected === targetRevision;
   };
 
+  const captureActiveTarget = (
+    replacement: ActiveReplacement<TRow, TRowId, TColumns>,
+    target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  ): boolean => {
+    try {
+      const targetRevision = target.revision;
+      if (targetRevision === replacement.capturedRevision) {
+        replacement.capturedWakeVersion = modelWakeVersion;
+        replacement.latestTarget = target;
+        return true;
+      }
+      const sequence = options.model.changesSince(replacement.capturedRevision);
+      if (
+        sequence.kind !== "changes" ||
+        sequence.fromRevision !== replacement.capturedRevision ||
+        sequence.toRevision !== targetRevision
+      ) {
+        return false;
+      }
+      const changes = sequence.changes;
+      replacement.pending.push({
+        toRevision: sequence.toRevision,
+        changes,
+      });
+      replacement.pendingChangeSetCount += changes.length;
+      replacement.capturedRevision = targetRevision;
+      replacement.capturedWakeVersion = modelWakeVersion;
+      replacement.latestTarget = target;
+      state = Object.freeze({
+        ...state,
+        status: Object.freeze({
+          kind: "rebuilding" as const,
+          targetRevision,
+        }),
+      });
+      notify();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const applyChanges = (
     sequence: Extract<PretableChangeSequence<TRowId>, { kind: "changes" }>,
   ): RowHeightIndex<PretableVisibleRowRef<TRowId>> => {
-    const operations: RowHeightOperation<PretableVisibleRowRef<TRowId>>[] = [];
+    let root = state.rowHeights;
     for (const change of sequence.changes) {
       for (const operation of change.operations) {
-        if (operation.kind === "insert") {
-          operations.push({
-            kind: "insert",
-            ref: operation.ref,
-            index: operation.index,
-          });
-        } else if (operation.kind === "remove") {
-          operations.push({
-            kind: "remove",
-            ref: operation.ref,
-            previousIndex: operation.previousIndex,
-          });
-        } else if (operation.kind === "move") {
-          operations.push({
-            kind: "move",
-            ref: operation.ref,
-            previousIndex: operation.previousIndex,
-            index: operation.index,
-          });
-        } else {
-          // A change record cannot prove that rendered height is unaffected.
-          operations.push({
-            kind: "update",
-            ref: operation.ref,
-            index: operation.index,
-          });
-        }
+        root = applyOperation(root, operation, change.revision);
       }
     }
-    return state.rowHeights.apply(operations);
+    return root;
   };
 
   const synchronize = (): void => {
     if (disposed) return;
+    modelWakeVersion += 1;
     if (synchronizing || notifying || projecting) {
       synchronizeAgain = true;
       return;
@@ -822,8 +1143,14 @@ export function createRowLayoutController<
         }
         const target = modelState.snapshot;
         if (active !== undefined) {
-          if (active.target.revision !== target.revision) {
-            startReplacement(target, true);
+          if (!captureActiveTarget(active, target)) {
+            let replacementTarget = target;
+            try {
+              replacementTarget = options.model.getState().snapshot;
+            } catch {
+              // startReplacement contains hostile snapshot/source access.
+            }
+            startReplacement(replacementTarget, true);
           }
           continue;
         }
@@ -902,7 +1229,7 @@ export function createRowLayoutController<
     if (disposed) return;
     disposed = true;
     cancelActive();
-    stagedRowHeights = undefined;
+    clearStagedMeasurements();
     rollbackDeferredViewport();
     detachModel();
     queuedActions.length = 0;
@@ -988,18 +1315,16 @@ export function createRowLayoutController<
         return;
       }
       if (active !== undefined) {
-        const previousStaged = stagedRowHeights;
-        const base = previousStaged ?? state.rowHeights;
-        try {
-          const measured = base.measure(index, ref, height);
-          if (measured === base) return;
-          stagedRowHeights = measured;
-          const target = active.target;
-          startReplacement(target, false, false);
-        } catch (error) {
-          stagedRowHeights = previousStaged;
-          throw error;
+        const identity = identityOf(ref);
+        if (active.invalidatedMeasurementKeys.has(identity)) return;
+        if (!stagedMeasurements.has(identity)) {
+          stagedMeasurementKeys.push(identity);
         }
+        stagedMeasurements.set(identity, {
+          ref,
+          height,
+          capturedRevision: active.capturedRevision,
+        });
         return;
       }
       const previous = state;
@@ -1033,14 +1358,33 @@ export function createRowLayoutController<
   };
 
   controllerDiagnostics.set(controller, () =>
-    Object.freeze({
-      replacementSliceCount,
-      maxReplacementUnitsPerSlice,
-      scheduledCallbackCount,
-      retainedBuilderCount: active === undefined ? 0 : 1,
-      lastPublishedRangeRows,
-      anchorSearchUnits,
-    }),
+    (() => {
+      const retainedSnapshots = new Set<object>();
+      if (active !== undefined) {
+        retainedSnapshots.add(active.baseTarget);
+        retainedSnapshots.add(active.latestTarget);
+        if (active.anchor !== undefined) {
+          retainedSnapshots.add(active.anchor.oldSnapshot);
+        }
+      }
+      return Object.freeze({
+        replacementSliceCount,
+        maxReplacementUnitsPerSlice,
+        scheduledCallbackCount,
+        retainedBuilderCount:
+          active !== undefined && active.candidate === undefined ? 1 : 0,
+        retainedCandidateRootCount: active?.candidate === undefined ? 0 : 1,
+        lastPublishedRangeRows,
+        anchorSearchUnits,
+        replacementStartCount,
+        pendingCatchUpChangeSetCount: active?.pendingChangeSetCount ?? 0,
+        pendingCatchUpOperationCount: active?.pendingOperationCount ?? 0,
+        retainedCatchUpSnapshotCount: retainedSnapshots.size,
+        stagedMeasurementCount: stagedMeasurements.size,
+        catchUpUnits,
+        maxCatchUpUnitsPerSlice,
+      });
+    })(),
   );
   try {
     const unsubscribe = options.model.subscribe(synchronize);
@@ -1054,7 +1398,7 @@ export function createRowLayoutController<
   } catch (error) {
     disposed = true;
     cancelActive();
-    stagedRowHeights = undefined;
+    clearStagedMeasurements();
     rollbackDeferredViewport();
     queuedActions.length = 0;
     listeners.clear();

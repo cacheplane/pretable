@@ -203,6 +203,30 @@ describe("persistent row-height index", () => {
     expect(reinserted.getHeight(1)).toBe(47);
   });
 
+  test("retains a bounded measurement for a currently absent stable key", () => {
+    const absent = data("absent");
+    const retained = createIndex([], 30, 1).retainMeasurement(absent, 73);
+    expect(retained.hasMeasurement(absent)).toBe(true);
+    expect(getRowHeightIndexDiagnosticsForTesting(retained)).toMatchObject({
+      visibleMeasurementCount: 0,
+      tombstoneCount: 1,
+      measurementCacheCount: 1,
+    });
+    const restored = retained.apply([
+      { kind: "insert", ref: data("absent"), index: 0 },
+    ]);
+    expect(restored.getHeight(0)).toBe(73);
+    expect(() => restored.retainMeasurement(absent, 80)).toThrow(
+      /visible row/i,
+    );
+    const evicted = retained.retainMeasurement(data("newer"), 81);
+    expect(evicted.hasMeasurement(absent)).toBe(false);
+    expect(evicted.hasMeasurement(data("newer"))).toBe(true);
+    const zero = createIndex([], 30, 0);
+    expect(zero.retainMeasurement(absent, 73)).toBe(zero);
+    expect(zero.hasMeasurement(absent)).toBe(false);
+  });
+
   test("keeps equal data and group text distinct and rejects identity collisions", () => {
     const distinct = createIndex([
       entry(data("same"), 20),

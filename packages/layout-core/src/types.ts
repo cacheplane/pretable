@@ -145,6 +145,8 @@ export interface RowHeightIndex<TKey> extends RowMetricsReader {
   keyAt(index: number): TKey | undefined;
   hasMeasurement(ref: TKey): boolean;
   measure(index: number, ref: TKey, height: number): RowHeightIndex<TKey>;
+  /** Retains a bounded measured height for a stable key absent from the view. */
+  retainMeasurement(ref: TKey, height: number): RowHeightIndex<TKey>;
   apply(operations: readonly RowHeightOperation<TKey>[]): RowHeightIndex<TKey>;
   replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey>;
   beginReplacement(

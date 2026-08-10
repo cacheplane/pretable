@@ -1143,6 +1143,58 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     );
   }
 
+  retainMeasurement(ref: TKey, height: number): RowHeightIndex<TKey> {
+    const normalized = normalizeHeight(height, "Measured row height");
+    const identity = this.#identity(ref);
+    const work = createWork(1);
+    if (hashGet(this.#visibleKeys, identity, work) !== undefined) {
+      throw new RangeError(
+        "Cannot retain an absent measurement for a visible row.",
+      );
+    }
+    if (this.#maxRetainedMeasurements === 0) return this;
+
+    let measurements: HashNode<number> | null = hashSet(
+      this.#measurements,
+      identity,
+      normalized,
+      work,
+    );
+    let tombstones: HashNode<number> | null = this.#tombstones;
+    let tombstoneOrder = this.#tombstoneOrder;
+    const previousTicket = hashGet(tombstones, identity, work);
+    if (previousTicket !== undefined) {
+      tombstoneOrder = mapDelete(
+        tombstoneOrder,
+        ticketKey(previousTicket),
+        work,
+      );
+    }
+    const ticket = this.#nextTicket;
+    const nextTicket = takeNextTicket(ticket);
+    tombstones = hashSet(tombstones, identity, ticket, work);
+    tombstoneOrder = mapSet(tombstoneOrder, ticketKey(ticket), identity, work);
+    while (hashCount(tombstones) > this.#maxRetainedMeasurements) {
+      const oldest: KeyMapNode<string> | undefined =
+        minimumMapEntry(tombstoneOrder);
+      if (oldest === undefined) {
+        throw new Error("Removed-measurement retention is inconsistent.");
+      }
+      tombstoneOrder = mapDelete(tombstoneOrder, oldest.key, work);
+      tombstones = hashDelete(tombstones, oldest.value, work);
+      measurements = hashDelete(measurements, oldest.value, work);
+    }
+    return this.#next(
+      this.#root,
+      this.#visibleKeys,
+      measurements,
+      tombstones,
+      tombstoneOrder,
+      nextTicket,
+      work,
+    );
+  }
+
   apply(operations: readonly RowHeightOperation<TKey>[]): RowHeightIndex<TKey> {
     if (operations.length === 0) return this;
     let root = this.#root;
