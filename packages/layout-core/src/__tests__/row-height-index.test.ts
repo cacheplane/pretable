@@ -27,8 +27,14 @@ const entry = (key: Key, estimatedHeight?: number): RowHeightEntry<Key> => ({
 function createIndex(
   rows: readonly RowHeightEntry<Key>[],
   defaultHeight = 30,
+  maxRetainedMeasurements?: number,
 ): RowHeightIndex<Key> {
-  return createRowHeightIndex({ defaultHeight, getKey: stableKey, rows });
+  return createRowHeightIndex({
+    defaultHeight,
+    getKey: stableKey,
+    rows,
+    maxRetainedMeasurements,
+  });
 }
 
 describe("persistent row-height index", () => {
@@ -147,6 +153,33 @@ describe("persistent row-height index", () => {
     expect(primitiveTypes.getTotalHeight()).toBe(30);
   });
 
+  test("keeps distinct stable identities separate when their hash values collide", () => {
+    // These encoded string identities collide under the index's FNV-1a hash.
+    const first = data("k-ielz1d-1wwy");
+    const second = data("k-1i39yng-2umb");
+    const collisionKey = (key: Key) => key.id;
+    let index = createRowHeightIndex({
+      defaultHeight: 30,
+      getKey: collisionKey,
+      rows: [entry(first, 20), entry(second, 40)],
+      maxRetainedMeasurements: 2,
+    });
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(index).identityComparisons,
+    ).toBeGreaterThan(0);
+
+    index = index.measure(0, first, 51).measure(1, second, 52);
+    index = index.apply([{ kind: "remove", ref: first, previousIndex: 0 }]);
+
+    expect(index.keyAt(0)).toEqual(second);
+    expect(index.getHeight(0)).toBe(52);
+    expect(index.hasMeasurement(first)).toBe(true);
+    expect(index.hasMeasurement(second)).toBe(true);
+    expect(
+      index.apply([{ kind: "insert", ref: first, index: 1 }]).getHeight(1),
+    ).toBe(51);
+  });
+
   test("updates invalidate stale measurements while moves leave them intact", () => {
     const key = data("row");
     const measured = createIndex([entry(key, 20)]).measure(0, key, 44);
@@ -261,6 +294,139 @@ describe("persistent row-height index", () => {
         ]),
       ).toThrow(RangeError);
     }
+  });
+
+  test("bounds removed measurement tombstones while preserving visible measurements", () => {
+    const limit = 32;
+    const visible = data("always-visible");
+    let index = createIndex([entry(visible, 20)], 30, limit).measure(
+      0,
+      visible,
+      77,
+    );
+
+    for (let id = 0; id < 2_000; id += 1) {
+      const ref = data(`churn-${id}`);
+      index = index.apply([
+        { kind: "insert", ref, index: 1, estimatedHeight: 10 },
+      ]);
+      index = index.measure(1, ref, 40 + (id % 10));
+      index = index.apply([{ kind: "remove", ref, previousIndex: 1 }]);
+    }
+
+    const diagnostics = getRowHeightIndexDiagnosticsForTesting(index);
+    expect(diagnostics.visibleMeasurementCount).toBe(1);
+    expect(diagnostics.tombstoneCount).toBe(limit);
+    expect(diagnostics.measurementCacheCount).toBe(limit + 1);
+    expect(index.hasMeasurement(visible)).toBe(true);
+    expect(index.hasMeasurement(data("churn-0"))).toBe(false);
+    expect(index.hasMeasurement(data("churn-1999"))).toBe(true);
+
+    const restored = index.apply([
+      {
+        kind: "insert",
+        ref: data("churn-1999"),
+        index: 1,
+        estimatedHeight: 10,
+      },
+    ]);
+    expect(restored.getHeight(1)).toBe(49);
+    expect(getRowHeightIndexDiagnosticsForTesting(restored)).toMatchObject({
+      visibleMeasurementCount: 2,
+      tombstoneCount: limit - 1,
+      measurementCacheCount: limit + 1,
+    });
+  });
+
+  test("supports zero removed-measurement retention and rejects invalid limits", () => {
+    const ref = data("row");
+    let index = createIndex([entry(ref, 20)], 30, 0).measure(0, ref, 55);
+    index = index.apply([{ kind: "remove", ref, previousIndex: 0 }]);
+    expect(index.hasMeasurement(ref)).toBe(false);
+    expect(getRowHeightIndexDiagnosticsForTesting(index)).toMatchObject({
+      visibleMeasurementCount: 0,
+      tombstoneCount: 0,
+      measurementCacheCount: 0,
+    });
+
+    for (const limit of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        createRowHeightIndex({
+          defaultHeight: 30,
+          getKey: stableKey,
+          rows: [],
+          maxRetainedMeasurements: limit,
+        }),
+      ).toThrow(RangeError);
+    }
+  });
+
+  test("reconciles visible measurements and bounded tombstones during replacement", () => {
+    const a = data("a");
+    const b = data("b");
+    const c = data("c");
+    const d = data("d");
+    let index = createIndex([entry(a, 10), entry(b, 10), entry(c, 10)], 30, 2);
+    index = index.measure(0, a, 41).measure(1, b, 42).measure(2, c, 43);
+    index = index.apply([
+      { kind: "remove", ref: b, previousIndex: 1 },
+      { kind: "remove", ref: c, previousIndex: 1 },
+    ]);
+    expect(index.replace([entry(data("a"), 10)])).toBe(index);
+
+    const replaced = index.replace([entry(data("b"), 10), entry(d, 10)]);
+    expect(replaced.getHeight(0)).toBe(42);
+    expect(replaced.hasMeasurement(c)).toBe(true);
+    expect(replaced.hasMeasurement(a)).toBe(true);
+    expect(getRowHeightIndexDiagnosticsForTesting(replaced)).toMatchObject({
+      visibleMeasurementCount: 1,
+      tombstoneCount: 2,
+      measurementCacheCount: 3,
+    });
+  });
+
+  test("replaces 100k rows with explicitly linear identity and measurement work", () => {
+    const count = 100_000;
+    const rows = Array.from({ length: count }, (_, index) =>
+      entry(data(String(index)), 20),
+    );
+    let initial = createIndex(rows, 30, 100_000);
+    for (let index = 0; index < count; index += 1_000) {
+      initial = initial.measure(index, data(String(index)), 25);
+    }
+
+    const replaced = initial.replace([...rows].reverse());
+    const work = getRowHeightIndexDiagnosticsForTesting(replaced);
+    expect(work.entriesVisited).toBe(count);
+    expect(work.measurementEntriesScanned).toBe(100);
+    expect(work.previousEntriesScanned).toBe(count);
+    expect(work.sortComparisons).toBe(0);
+    expect(work.identityLookups).toBeLessThanOrEqual(count * 8 + 1_000);
+    expect(work.identityComparisons).toBeLessThanOrEqual(count * 8 + 1_000);
+    expect(work.nodesCreated).toBeLessThanOrEqual(count * 12);
+    expect(replaced.getHeight(count - 1)).toBe(25);
+  });
+
+  test("leaves cache and sequence roots unchanged when replacement identity fails", () => {
+    const getKey = (key: Key) => {
+      if (key.id === "boom") throw new Error("replacement identity exploded");
+      return stableKey(key);
+    };
+    const ref = data("a");
+    const initial = createRowHeightIndex({
+      defaultHeight: 30,
+      getKey,
+      rows: [entry(ref, 20)],
+      maxRetainedMeasurements: 2,
+    }).measure(0, ref, 44);
+    const before = getRowHeightIndexDiagnosticsForTesting(initial);
+
+    expect(() =>
+      initial.replace([entry(data("b"), 10), entry(data("boom"), 10)]),
+    ).toThrow("replacement identity exploded");
+    expect(initial.keyAt(0)).toEqual(ref);
+    expect(initial.getHeight(0)).toBe(44);
+    expect(getRowHeightIndexDiagnosticsForTesting(initial)).toEqual(before);
   });
 
   test("changes logarithmic paths and viewport planning reads only its bounded window", () => {
@@ -425,6 +591,148 @@ describe("persistent row-height index", () => {
       expect(
         getRowHeightIndexDiagnosticsForTesting(index).treeDepth,
       ).toBeLessThanOrEqual(Math.ceil(2 * Math.log2(index.rowCount + 1)) + 1);
+    }
+  });
+
+  test("matches a bounded measurement-cache oracle through mixed replay", () => {
+    const limit = 8;
+    let randomState = 0x16ca_0e;
+    const random = (upperBound: number) => {
+      randomState = (randomState * 1_664_525 + 1_013_904_223) >>> 0;
+      return randomState % upperBound;
+    };
+    let nextId = 0;
+    type OracleRow = {
+      readonly id: string;
+      readonly estimatedHeight: number;
+    };
+    let rows: OracleRow[] = [];
+    let tombstones: string[] = [];
+    const measurements = new Map<string, number>();
+    const knownIds = new Set<string>();
+    let index = createIndex([], 30, limit);
+
+    const makeFreshRow = (): OracleRow => {
+      const id = `replay-${nextId++}`;
+      knownIds.add(id);
+      return { id, estimatedHeight: 10 + random(30) };
+    };
+    const enforceLimit = () => {
+      while (tombstones.length > limit) {
+        measurements.delete(tombstones.shift()!);
+      }
+    };
+
+    for (let step = 0; step < 500; step += 1) {
+      const action = random(5);
+      if (action === 0 || rows.length === 0) {
+        const tombstoneIndex =
+          tombstones.length > 0 && random(3) === 0
+            ? random(tombstones.length)
+            : -1;
+        const restoredId =
+          tombstoneIndex < 0
+            ? undefined
+            : tombstones.splice(tombstoneIndex, 1)[0];
+        const row =
+          restoredId === undefined
+            ? makeFreshRow()
+            : { id: restoredId, estimatedHeight: 10 + random(30) };
+        const target = random(rows.length + 1);
+        rows.splice(target, 0, row);
+        index = index.apply([
+          {
+            kind: "insert",
+            ref: data(row.id),
+            index: target,
+            estimatedHeight: row.estimatedHeight,
+          },
+        ]);
+      } else if (action === 1) {
+        const target = random(rows.length);
+        const [removed] = rows.splice(target, 1);
+        index = index.apply([
+          {
+            kind: "remove",
+            ref: data(removed!.id),
+            previousIndex: target,
+          },
+        ]);
+        if (measurements.has(removed!.id)) {
+          tombstones.push(removed!.id);
+          enforceLimit();
+        }
+      } else if (action === 2) {
+        const target = random(rows.length);
+        const row = rows[target]!;
+        const height = 40 + random(30);
+        measurements.set(row.id, height);
+        index = index.measure(target, data(row.id), height);
+      } else if (action === 3) {
+        const target = random(rows.length);
+        const current = rows[target]!;
+        const updated = {
+          id: current.id,
+          estimatedHeight: 10 + random(30),
+        };
+        rows[target] = updated;
+        measurements.delete(updated.id);
+        index = index.apply([
+          {
+            kind: "update",
+            ref: data(updated.id),
+            index: target,
+            estimatedHeight: updated.estimatedHeight,
+          },
+        ]);
+      } else {
+        const previousRows = rows;
+        const nextRows = [...rows].reverse();
+        if (nextRows.length > 0 && random(2) === 0) {
+          nextRows.splice(random(nextRows.length), 1);
+        }
+        if (tombstones.length > 0 && random(2) === 0) {
+          const restoredId = tombstones[random(tombstones.length)]!;
+          nextRows.push({
+            id: restoredId,
+            estimatedHeight: 10 + random(30),
+          });
+        }
+        if (nextRows.length < 30 && random(2) === 0) {
+          nextRows.push(makeFreshRow());
+        }
+
+        const nextIds = new Set(nextRows.map((row) => row.id));
+        tombstones = tombstones.filter((id) => !nextIds.has(id));
+        for (const previous of previousRows) {
+          if (measurements.has(previous.id) && !nextIds.has(previous.id)) {
+            tombstones.push(previous.id);
+          }
+        }
+        enforceLimit();
+        rows = nextRows;
+        index = index.replace(
+          rows.map((row) => entry(data(row.id), row.estimatedHeight)),
+        );
+      }
+
+      expect(index.rowCount).toBe(rows.length);
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex]!;
+        expect(index.keyAt(rowIndex)).toEqual(data(row.id));
+        expect(index.getHeight(rowIndex)).toBe(
+          measurements.get(row.id) ?? row.estimatedHeight,
+        );
+      }
+      for (const id of knownIds) {
+        expect(index.hasMeasurement(data(id))).toBe(measurements.has(id));
+      }
+      const diagnostics = getRowHeightIndexDiagnosticsForTesting(index);
+      expect(diagnostics.tombstoneCount).toBe(tombstones.length);
+      expect(diagnostics.measurementCacheCount).toBe(measurements.size);
+      expect(diagnostics.visibleMeasurementCount).toBe(
+        rows.filter((row) => measurements.has(row.id)).length,
+      );
     }
   });
 });

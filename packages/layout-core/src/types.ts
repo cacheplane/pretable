@@ -47,6 +47,8 @@ export interface CreateRowHeightIndexOptions<TKey> {
   readonly defaultHeight: number;
   readonly getKey: (key: TKey) => string | number;
   readonly rows?: readonly RowHeightEntry<TKey>[];
+  /** Maximum measured heights retained for keys that are not currently visible. */
+  readonly maxRetainedMeasurements?: number;
 }
 
 /**

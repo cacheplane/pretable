@@ -9,6 +9,23 @@ import type {
 interface Work {
   nodesCreated: number;
   entriesVisited: number;
+  identityLookups: number;
+  identityComparisons: number;
+  measurementEntriesScanned: number;
+  previousEntriesScanned: number;
+  sortComparisons: number;
+}
+
+function createWork(entriesVisited = 0): Work {
+  return {
+    nodesCreated: 0,
+    entriesVisited,
+    identityLookups: 0,
+    identityComparisons: 0,
+    measurementEntriesScanned: 0,
+    previousEntriesScanned: 0,
+    sortComparisons: 0,
+  };
 }
 
 interface HeightValue<TKey> {
@@ -36,6 +53,27 @@ interface KeyMapNode<TValue> {
   readonly height: number;
 }
 
+interface HashEntry<TValue> {
+  readonly key: string;
+  readonly value: TValue;
+}
+
+interface HashLeaf<TValue> {
+  readonly kind: "leaf";
+  readonly hash: number;
+  readonly entries: readonly HashEntry<TValue>[];
+  readonly count: number;
+}
+
+interface HashBranch<TValue> {
+  readonly kind: "branch";
+  readonly bitmap: number;
+  readonly children: readonly HashNode<TValue>[];
+  readonly count: number;
+}
+
+type HashNode<TValue> = HashLeaf<TValue> | HashBranch<TValue>;
+
 interface RemovedSequenceValue<TKey> {
   readonly root: SequenceNode<TKey> | null;
   readonly value: HeightValue<TKey>;
@@ -51,11 +89,29 @@ interface ExtractedMapMinimum<TValue> {
   readonly minimum: KeyMapNode<TValue>;
 }
 
+const DEFAULT_MAX_RETAINED_MEASUREMENTS = 100_000;
+const TICKET_KEY_WIDTH = String(Number.MAX_SAFE_INTEGER).length;
+
 /** Direct test seam; intentionally not exported from the layout-core barrel. */
 export interface RowHeightIndexDiagnostics {
+  /** Persistent sequence, HAMT, and retention-order nodes allocated by the call. */
   readonly nodesCreated: number;
+  /** Input rows or operations consumed by the call. */
   readonly entriesVisited: number;
   readonly treeDepth: number;
+  /** Explicit persistent-HAMT and ephemeral Map/Set membership operations. */
+  readonly identityLookups: number;
+  /** Exact encoded-key equality checks inside HAMT collision leaves. */
+  readonly identityComparisons: number;
+  /** Cached measurement entries materialized by bulk replacement. */
+  readonly measurementEntriesScanned: number;
+  /** Rows in the prior visible sequence examined by bulk replacement. */
+  readonly previousEntriesScanned: number;
+  /** Comparator calls from sorting; bulk replacement deliberately performs none. */
+  readonly sortComparisons: number;
+  readonly visibleMeasurementCount: number;
+  readonly tombstoneCount: number;
+  readonly measurementCacheCount: number;
 }
 
 function nodeHeight(node: { readonly height: number } | null): number {
@@ -256,6 +312,258 @@ function buildSequence<TKey>(
   );
 }
 
+function forEachSequenceValue<TKey>(
+  root: SequenceNode<TKey> | null,
+  visit: (value: HeightValue<TKey>) => void,
+): void {
+  if (root === null) return;
+  forEachSequenceValue(root.left, visit);
+  visit(root.value);
+  forEachSequenceValue(root.right, visit);
+}
+
+function hashIdentity(identity: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < identity.length; index += 1) {
+    hash ^= identity.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function hashCount<TValue>(root: HashNode<TValue> | null): number {
+  return root?.count ?? 0;
+}
+
+function popCount(value: number): number {
+  let remaining = value >>> 0;
+  remaining -= (remaining >>> 1) & 0x55555555;
+  remaining = (remaining & 0x33333333) + ((remaining >>> 2) & 0x33333333);
+  return (((remaining + (remaining >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+
+function hashFragment(hash: number, shift: number): number {
+  return (hash >>> shift) & 31;
+}
+
+function hashBit(fragment: number): number {
+  return (1 << fragment) >>> 0;
+}
+
+function hashPosition(bitmap: number, bit: number): number {
+  return popCount((bitmap & (bit - 1)) >>> 0);
+}
+
+function hashLeaf<TValue>(
+  hash: number,
+  entries: readonly HashEntry<TValue>[],
+  work: Work,
+): HashLeaf<TValue> {
+  work.nodesCreated += 1;
+  return { kind: "leaf", hash, entries, count: entries.length };
+}
+
+function hashBranch<TValue>(
+  bitmap: number,
+  children: readonly HashNode<TValue>[],
+  work: Work,
+): HashBranch<TValue> {
+  work.nodesCreated += 1;
+  return {
+    kind: "branch",
+    bitmap: bitmap >>> 0,
+    children,
+    count: children.reduce((count, child) => count + child.count, 0),
+  };
+}
+
+function mergeHashLeaves<TValue>(
+  left: HashLeaf<TValue>,
+  right: HashLeaf<TValue>,
+  shift: number,
+  work: Work,
+): HashNode<TValue> {
+  const leftFragment = hashFragment(left.hash, shift);
+  const rightFragment = hashFragment(right.hash, shift);
+  if (leftFragment === rightFragment) {
+    const child = mergeHashLeaves(left, right, shift + 5, work);
+    return hashBranch(hashBit(leftFragment), [child], work);
+  }
+  const leftBit = hashBit(leftFragment);
+  const rightBit = hashBit(rightFragment);
+  return hashBranch(
+    (leftBit | rightBit) >>> 0,
+    leftFragment < rightFragment ? [left, right] : [right, left],
+    work,
+  );
+}
+
+function hashGetNode<TValue>(
+  root: HashNode<TValue> | null,
+  key: string,
+  hash: number,
+  shift: number,
+  work: Work | undefined,
+): TValue | undefined {
+  if (root === null) return undefined;
+  if (root.kind === "leaf") {
+    if (root.hash !== hash) return undefined;
+    for (const entry of root.entries) {
+      if (work !== undefined) work.identityComparisons += 1;
+      if (entry.key === key) return entry.value;
+    }
+    return undefined;
+  }
+  const bit = hashBit(hashFragment(hash, shift));
+  if ((root.bitmap & bit) === 0) return undefined;
+  return hashGetNode(
+    root.children[hashPosition(root.bitmap, bit)]!,
+    key,
+    hash,
+    shift + 5,
+    work,
+  );
+}
+
+function hashGet<TValue>(
+  root: HashNode<TValue> | null,
+  key: string,
+  work?: Work,
+): TValue | undefined {
+  if (work !== undefined) work.identityLookups += 1;
+  return hashGetNode(root, key, hashIdentity(key), 0, work);
+}
+
+function hashSetNode<TValue>(
+  root: HashNode<TValue> | null,
+  key: string,
+  value: TValue,
+  hash: number,
+  shift: number,
+  work: Work,
+): HashNode<TValue> {
+  if (root === null) return hashLeaf(hash, [{ key, value }], work);
+  if (root.kind === "leaf") {
+    if (root.hash !== hash) {
+      return mergeHashLeaves(
+        root,
+        hashLeaf(hash, [{ key, value }], work),
+        shift,
+        work,
+      );
+    }
+    const index = root.entries.findIndex((entry) => {
+      work.identityComparisons += 1;
+      return entry.key === key;
+    });
+    if (index < 0) {
+      return hashLeaf(hash, [...root.entries, { key, value }], work);
+    }
+    if (Object.is(root.entries[index]!.value, value)) return root;
+    const entries = [...root.entries];
+    entries[index] = { key, value };
+    return hashLeaf(hash, entries, work);
+  }
+  const bit = hashBit(hashFragment(hash, shift));
+  const position = hashPosition(root.bitmap, bit);
+  if ((root.bitmap & bit) === 0) {
+    const children = [...root.children];
+    children.splice(position, 0, hashLeaf(hash, [{ key, value }], work));
+    return hashBranch((root.bitmap | bit) >>> 0, children, work);
+  }
+  const child = hashSetNode(
+    root.children[position]!,
+    key,
+    value,
+    hash,
+    shift + 5,
+    work,
+  );
+  if (child === root.children[position]) return root;
+  const children = [...root.children];
+  children[position] = child;
+  return hashBranch(root.bitmap, children, work);
+}
+
+function hashSet<TValue>(
+  root: HashNode<TValue> | null,
+  key: string,
+  value: TValue,
+  work: Work,
+): HashNode<TValue> {
+  work.identityLookups += 1;
+  return hashSetNode(root, key, value, hashIdentity(key), 0, work);
+}
+
+function hashDeleteNode<TValue>(
+  root: HashNode<TValue> | null,
+  key: string,
+  hash: number,
+  shift: number,
+  work: Work,
+): HashNode<TValue> | null {
+  if (root === null) return null;
+  if (root.kind === "leaf") {
+    if (root.hash !== hash) return root;
+    const index = root.entries.findIndex((entry) => {
+      work.identityComparisons += 1;
+      return entry.key === key;
+    });
+    if (index < 0) return root;
+    if (root.entries.length === 1) return null;
+    return hashLeaf(
+      hash,
+      root.entries.filter((_, entryIndex) => entryIndex !== index),
+      work,
+    );
+  }
+  const bit = hashBit(hashFragment(hash, shift));
+  if ((root.bitmap & bit) === 0) return root;
+  const position = hashPosition(root.bitmap, bit);
+  const child = hashDeleteNode(
+    root.children[position]!,
+    key,
+    hash,
+    shift + 5,
+    work,
+  );
+  if (child === root.children[position]) return root;
+  if (child === null) {
+    if (root.children.length === 1) return null;
+    const children = root.children.filter(
+      (_, childIndex) => childIndex !== position,
+    );
+    if (children.length === 1 && children[0]?.kind === "leaf") {
+      return children[0];
+    }
+    return hashBranch((root.bitmap & ~bit) >>> 0, children, work);
+  }
+  const children = [...root.children];
+  children[position] = child;
+  return hashBranch(root.bitmap, children, work);
+}
+
+function hashDelete<TValue>(
+  root: HashNode<TValue> | null,
+  key: string,
+  work: Work,
+): HashNode<TValue> | null {
+  work.identityLookups += 1;
+  return hashDeleteNode(root, key, hashIdentity(key), 0, work);
+}
+
+function forEachHashEntry<TValue>(
+  root: HashNode<TValue> | null,
+  visit: (entry: HashEntry<TValue>) => void,
+): void {
+  if (root === null) return;
+  if (root.kind === "leaf") {
+    for (const entry of root.entries) visit(entry);
+    return;
+  }
+  for (const child of root.children) forEachHashEntry(child, visit);
+}
+
 function mapNode<TValue>(
   key: string,
   value: TValue,
@@ -321,19 +629,6 @@ function rebalanceMap<TValue>(
     );
   }
   return mapNode(key, value, left, right, work);
-}
-
-function mapGet<TValue>(
-  root: KeyMapNode<TValue> | null,
-  key: string,
-): TValue | undefined {
-  let current = root;
-  while (current !== null) {
-    if (key < current.key) current = current.left;
-    else if (key > current.key) current = current.right;
-    else return current.value;
-  }
-  return undefined;
 }
 
 function mapSet<TValue>(
@@ -423,6 +718,26 @@ function buildMap<TValue>(
   );
 }
 
+function minimumMapEntry<TValue>(
+  root: KeyMapNode<TValue> | null,
+): KeyMapNode<TValue> | undefined {
+  let current = root;
+  while (current?.left !== null && current?.left !== undefined) {
+    current = current.left;
+  }
+  return current ?? undefined;
+}
+
+function forEachMapEntry<TValue>(
+  root: KeyMapNode<TValue> | null,
+  visit: (key: string, value: TValue) => void,
+): void {
+  if (root === null) return;
+  forEachMapEntry(root.left, visit);
+  visit(root.key, root.value);
+  forEachMapEntry(root.right, visit);
+}
+
 function normalizeHeight(height: number, label: string): number {
   if (!Number.isFinite(height) || height <= 0) {
     throw new RangeError(`${label} must be a finite number greater than zero.`);
@@ -456,6 +771,23 @@ function assertInsertIndex(index: number, count: number): void {
   }
 }
 
+function ticketKey(ticket: number): string {
+  return String(ticket).padStart(TICKET_KEY_WIDTH, "0");
+}
+
+function takeNextTicket(ticket: number): number {
+  if (
+    !Number.isSafeInteger(ticket) ||
+    ticket < 0 ||
+    ticket >= Number.MAX_SAFE_INTEGER
+  ) {
+    throw new RangeError(
+      "Removed-measurement retention ticket space is exhausted.",
+    );
+  }
+  return ticket + 1;
+}
+
 function equalVisibleRows<TKey>(
   root: SequenceNode<TKey> | null,
   rows: readonly HeightValue<TKey>[],
@@ -481,16 +813,24 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   readonly #defaultHeight: number;
   readonly #getKey: (key: TKey) => string | number;
   readonly #root: SequenceNode<TKey> | null;
-  readonly #visibleKeys: KeyMapNode<true> | null;
-  readonly #measurements: KeyMapNode<number> | null;
+  readonly #visibleKeys: HashNode<true> | null;
+  readonly #measurements: HashNode<number> | null;
+  readonly #tombstones: HashNode<number> | null;
+  readonly #tombstoneOrder: KeyMapNode<string> | null;
+  readonly #nextTicket: number;
+  readonly #maxRetainedMeasurements: number;
   readonly diagnostics: RowHeightIndexDiagnostics;
 
   constructor(options: {
     readonly defaultHeight: number;
     readonly getKey: (key: TKey) => string | number;
     readonly root: SequenceNode<TKey> | null;
-    readonly visibleKeys: KeyMapNode<true> | null;
-    readonly measurements: KeyMapNode<number> | null;
+    readonly visibleKeys: HashNode<true> | null;
+    readonly measurements: HashNode<number> | null;
+    readonly tombstones: HashNode<number> | null;
+    readonly tombstoneOrder: KeyMapNode<string> | null;
+    readonly nextTicket: number;
+    readonly maxRetainedMeasurements: number;
     readonly work: Work;
   }) {
     this.#defaultHeight = options.defaultHeight;
@@ -498,10 +838,23 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     this.#root = options.root;
     this.#visibleKeys = options.visibleKeys;
     this.#measurements = options.measurements;
+    this.#tombstones = options.tombstones;
+    this.#tombstoneOrder = options.tombstoneOrder;
+    this.#nextTicket = options.nextTicket;
+    this.#maxRetainedMeasurements = options.maxRetainedMeasurements;
     this.diagnostics = Object.freeze({
       nodesCreated: options.work.nodesCreated,
       entriesVisited: options.work.entriesVisited,
       treeDepth: nodeHeight(options.root),
+      identityLookups: options.work.identityLookups,
+      identityComparisons: options.work.identityComparisons,
+      measurementEntriesScanned: options.work.measurementEntriesScanned,
+      previousEntriesScanned: options.work.previousEntriesScanned,
+      sortComparisons: options.work.sortComparisons,
+      visibleMeasurementCount:
+        hashCount(options.measurements) - hashCount(options.tombstones),
+      tombstoneCount: hashCount(options.tombstones),
+      measurementCacheCount: hashCount(options.measurements),
     });
   }
 
@@ -568,7 +921,7 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   }
 
   hasMeasurement(ref: TKey): boolean {
-    return mapGet(this.#measurements, this.#identity(ref)) !== undefined;
+    return hashGet(this.#measurements, this.#identity(ref)) !== undefined;
   }
 
   measure(index: number, ref: TKey, height: number): RowHeightIndex<TKey> {
@@ -578,15 +931,28 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     const current = sequenceAt(this.#root, index)!;
     this.#assertIdentity(current, identity);
     if (current.measured && current.height === normalized) return this;
-    const work: Work = { nodesCreated: 0, entriesVisited: 1 };
-    const measurements = mapSet(this.#measurements, identity, normalized, work);
+    const work = createWork(1);
+    const measurements = hashSet(
+      this.#measurements,
+      identity,
+      normalized,
+      work,
+    );
     const root = updateSequence(
       this.#root!,
       index,
       { ...current, height: normalized, measured: true },
       work,
     );
-    return this.#next(root, this.#visibleKeys, measurements, work);
+    return this.#next(
+      root,
+      this.#visibleKeys,
+      measurements,
+      this.#tombstones,
+      this.#tombstoneOrder,
+      this.#nextTicket,
+      work,
+    );
   }
 
   apply(operations: readonly RowHeightOperation<TKey>[]): RowHeightIndex<TKey> {
@@ -594,18 +960,22 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     let root = this.#root;
     let visibleKeys = this.#visibleKeys;
     let measurements = this.#measurements;
-    const work: Work = { nodesCreated: 0, entriesVisited: 0 };
+    let tombstones = this.#tombstones;
+    let tombstoneOrder = this.#tombstoneOrder;
+    let nextTicket = this.#nextTicket;
+    const work = createWork();
 
     for (const operation of operations) {
       work.entriesVisited += 1;
       if (operation.kind === "insert") {
         assertInsertIndex(operation.index, nodeCount(root));
         const identity = this.#identity(operation.ref);
-        if (mapGet(visibleKeys, identity) !== undefined) {
+        if (hashGet(visibleKeys, identity, work) !== undefined) {
           throw new Error(`Duplicate stable row-height key: ${identity}`);
         }
         const estimatedHeight = this.#estimated(operation.estimatedHeight);
-        const measuredHeight = mapGet(measurements, identity);
+        const measuredHeight = hashGet(measurements, identity, work);
+        const retainedTicket = hashGet(tombstones, identity, work);
         root = insertSequence(
           root,
           operation.index,
@@ -618,7 +988,15 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
           },
           work,
         );
-        visibleKeys = mapSet(visibleKeys, identity, true, work);
+        visibleKeys = hashSet(visibleKeys, identity, true, work);
+        if (retainedTicket !== undefined) {
+          tombstones = hashDelete(tombstones, identity, work);
+          tombstoneOrder = mapDelete(
+            tombstoneOrder,
+            ticketKey(retainedTicket),
+            work,
+          );
+        }
         continue;
       }
 
@@ -633,7 +1011,34 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
 
       if (operation.kind === "remove") {
         root = removeSequence(root!, sourceIndex, work).root;
-        visibleKeys = mapDelete(visibleKeys, identity, work);
+        visibleKeys = hashDelete(visibleKeys, identity, work);
+        if (current.measured) {
+          if (this.#maxRetainedMeasurements === 0) {
+            measurements = hashDelete(measurements, identity, work);
+          } else {
+            const ticket = nextTicket;
+            nextTicket = takeNextTicket(nextTicket);
+            tombstones = hashSet(tombstones, identity, ticket, work);
+            tombstoneOrder = mapSet(
+              tombstoneOrder,
+              ticketKey(ticket),
+              identity,
+              work,
+            );
+            while (hashCount(tombstones) > this.#maxRetainedMeasurements) {
+              const oldest: KeyMapNode<string> | undefined =
+                minimumMapEntry(tombstoneOrder);
+              if (oldest === undefined) {
+                throw new Error(
+                  "Removed-measurement retention is inconsistent.",
+                );
+              }
+              tombstoneOrder = mapDelete(tombstoneOrder, oldest.key, work);
+              tombstones = hashDelete(tombstones, oldest.value, work);
+              measurements = hashDelete(measurements, oldest.value, work);
+            }
+          }
+        }
       } else if (operation.kind === "move") {
         assertExistingIndex(
           operation.index,
@@ -656,7 +1061,7 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
         ) {
           continue;
         }
-        measurements = mapDelete(measurements, identity, work);
+        measurements = hashDelete(measurements, identity, work);
         root = updateSequence(
           root!,
           operation.index,
@@ -674,19 +1079,42 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     if (
       root === this.#root &&
       visibleKeys === this.#visibleKeys &&
-      measurements === this.#measurements
+      measurements === this.#measurements &&
+      tombstones === this.#tombstones &&
+      tombstoneOrder === this.#tombstoneOrder &&
+      nextTicket === this.#nextTicket
     ) {
       return this;
     }
-    return this.#next(root, visibleKeys, measurements, work);
+    return this.#next(
+      root,
+      visibleKeys,
+      measurements,
+      tombstones,
+      tombstoneOrder,
+      nextTicket,
+      work,
+    );
   }
 
   replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey> {
-    const work: Work = { nodesCreated: 0, entriesVisited: rows.length };
+    const work = createWork(rows.length);
+    const measurementSnapshot = new Map<string, number>();
+    forEachHashEntry(this.#measurements, (entry) => {
+      work.measurementEntriesScanned += 1;
+      measurementSnapshot.set(entry.key, entry.value);
+    });
+    const identities = new Set<string>();
     const values = rows.map((row) => {
       const identity = this.#identity(row.key);
+      work.identityLookups += 1;
+      if (identities.has(identity)) {
+        throw new Error(`Duplicate stable row-height key: ${identity}`);
+      }
+      identities.add(identity);
       const estimatedHeight = this.#estimated(row.estimatedHeight);
-      const measuredHeight = mapGet(this.#measurements, identity);
+      work.identityLookups += 1;
+      const measuredHeight = measurementSnapshot.get(identity);
       return {
         ref: row.key,
         identity,
@@ -696,24 +1124,74 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       } satisfies HeightValue<TKey>;
     });
     if (equalVisibleRows(this.#root, values)) return this;
-    const identities = values
-      .map((value) => value.identity)
-      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
-    for (let index = 1; index < identities.length; index += 1) {
-      if (identities[index - 1] === identities[index]) {
-        throw new Error(
-          `Duplicate stable row-height key: ${identities[index]}`,
-        );
-      }
+    let visibleKeys: HashNode<true> | null = null;
+    for (const value of values) {
+      visibleKeys = hashSet(visibleKeys, value.identity, true, work);
     }
-    const visibleKeys = buildMap(
-      identities.map((identity) => [identity, true] as const),
+
+    let measurements = this.#measurements;
+    let nextTicket = this.#nextTicket;
+
+    const retainedTombstones: Array<{
+      readonly identity: string;
+      readonly ticket: number;
+    }> = [];
+    forEachMapEntry(this.#tombstoneOrder, (key, identity) => {
+      work.identityLookups += 1;
+      if (!identities.has(identity)) {
+        retainedTombstones.push({ identity, ticket: Number(key) });
+      }
+    });
+
+    forEachSequenceValue(this.#root, (value) => {
+      work.previousEntriesScanned += 1;
+      if (!value.measured) return;
+      work.identityLookups += 1;
+      if (identities.has(value.identity)) return;
+      if (this.#maxRetainedMeasurements === 0) {
+        measurements = hashDelete(measurements, value.identity, work);
+        return;
+      }
+      const ticket = nextTicket;
+      nextTicket = takeNextTicket(nextTicket);
+      retainedTombstones.push({ identity: value.identity, ticket });
+    });
+
+    const evictedCount = Math.max(
       0,
-      identities.length,
+      retainedTombstones.length - this.#maxRetainedMeasurements,
+    );
+    for (let index = 0; index < evictedCount; index += 1) {
+      measurements = hashDelete(
+        measurements,
+        retainedTombstones[index]!.identity,
+        work,
+      );
+    }
+    const keptTombstones = retainedTombstones.slice(evictedCount);
+    let tombstones: HashNode<number> | null = null;
+    const orderEntries: Array<readonly [string, string]> = [];
+    for (const retained of keptTombstones) {
+      tombstones = hashSet(
+        tombstones,
+        retained.identity,
+        retained.ticket,
+        work,
+      );
+      orderEntries.push([ticketKey(retained.ticket), retained.identity]);
+    }
+    const tombstoneOrder = buildMap(orderEntries, 0, orderEntries.length, work);
+
+    const root = buildSequence(values, 0, values.length, work);
+    return this.#next(
+      root,
+      visibleKeys,
+      measurements,
+      tombstones,
+      tombstoneOrder,
+      nextTicket,
       work,
     );
-    const root = buildSequence(values, 0, values.length, work);
-    return this.#next(root, visibleKeys, this.#measurements, work);
   }
 
   captureAnchor(
@@ -766,8 +1244,11 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
 
   #next(
     root: SequenceNode<TKey> | null,
-    visibleKeys: KeyMapNode<true> | null,
-    measurements: KeyMapNode<number> | null,
+    visibleKeys: HashNode<true> | null,
+    measurements: HashNode<number> | null,
+    tombstones: HashNode<number> | null,
+    tombstoneOrder: KeyMapNode<string> | null,
+    nextTicket: number,
     work: Work,
   ): PersistentRowHeightIndex<TKey> {
     return new PersistentRowHeightIndex({
@@ -776,6 +1257,10 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       root,
       visibleKeys,
       measurements,
+      tombstones,
+      tombstoneOrder,
+      nextTicket,
+      maxRetainedMeasurements: this.#maxRetainedMeasurements,
       work,
     });
   }
@@ -788,13 +1273,27 @@ export function createRowHeightIndex<TKey>(
     options.defaultHeight,
     "Default row height",
   );
+  const maxRetainedMeasurements =
+    options.maxRetainedMeasurements ?? DEFAULT_MAX_RETAINED_MEASUREMENTS;
+  if (
+    !Number.isSafeInteger(maxRetainedMeasurements) ||
+    maxRetainedMeasurements < 0
+  ) {
+    throw new RangeError(
+      "maxRetainedMeasurements must be a non-negative safe integer.",
+    );
+  }
   const empty = new PersistentRowHeightIndex<TKey>({
     defaultHeight,
     getKey: options.getKey,
     root: null,
     visibleKeys: null,
     measurements: null,
-    work: { nodesCreated: 0, entriesVisited: 0 },
+    tombstones: null,
+    tombstoneOrder: null,
+    nextTicket: 0,
+    maxRetainedMeasurements,
+    work: createWork(),
   });
   return options.rows === undefined || options.rows.length === 0
     ? empty
