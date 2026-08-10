@@ -365,20 +365,27 @@ export interface PretableSurfaceMessages {
    * count moment, and the filter-result announcement Pretable never had.
    * `added` is present only for a tail extension.
    *
+   * `loaded` counts the loaded records that MATCH; under engine filter
+   * authority that is the post-filter count, not every record held, so it can
+   * never exceed `total`. `scope: "all"` means those records are the whole
+   * matching population and `total` restates `loaded` — say one number.
+   *
    * @experimental
    */
   resultsAnnouncement?: (args: {
     loaded: number;
     total: PretableMatchingTotal;
     added?: number;
+    scope: "all" | "loaded";
   }) => string;
 
   /**
-   * Announced on entering `stale`. This is the ONLY assistive-technology
-   * signal that the visible rows answer the previous query — the
-   * `data-pretable-data-phase` attribute and any consumer dimming are visual
-   * only, so without this a screen-reader user cannot tell that the controls
-   * and the rows disagree (design §4.5, D1-UX-02).
+   * Announced on entering `stale`. The `data-pretable-data-phase` attribute
+   * and any consumer dimming are visual only, so this is the sole AT-facing
+   * signal that the visible rows answer the previous query (design §4.5,
+   * D1-UX-02) — best-effort, not guaranteed: a query that resolves inside the
+   * announcement debounce is superseded by its own result, which is the
+   * better sentence anyway.
    *
    * @experimental
    */
@@ -431,15 +438,17 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
   loadingStateMessage: () => "Loading…",
   dataErrorAnnouncement: ({ message }) =>
     message ? `Could not load results. ${message}` : "Could not load results",
-  resultsAnnouncement: ({ loaded, total, added }) => {
+  resultsAnnouncement: ({ loaded, total, added, scope }) => {
     const population =
-      total.kind === "exact"
-        ? `${loaded} of ${total.count}`
-        : total.kind === "estimate"
-          ? `${loaded} of about ${total.count}`
-          : total.atLeast !== undefined
-            ? `${loaded} of more than ${total.atLeast}`
-            : `${loaded}`;
+      scope === "all"
+        ? `${loaded}`
+        : total.kind === "exact"
+          ? `${loaded} of ${total.count}`
+          : total.kind === "estimate"
+            ? `${loaded} of about ${total.count}`
+            : total.atLeast !== undefined
+              ? `${loaded} of more than ${total.atLeast}`
+              : `${loaded}`;
     return added === undefined
       ? `Showing ${population}`
       : `Loaded ${added} more. ${population} loaded.`;
@@ -1083,20 +1092,40 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const [liveMessage, setLiveMessage] = useState<string>("");
   const announceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingAnnouncementRef = useRef<string | null>(null);
+  const pendingAnnouncementSourceRef = useRef<"user" | "lifecycle">("user");
 
-  const scheduleAnnouncement = useCallback((message: string) => {
-    pendingAnnouncementRef.current = message;
-    if (announceTimerRef.current !== null) {
-      clearTimeout(announceTimerRef.current);
-    }
-    announceTimerRef.current = setTimeout(() => {
-      if (pendingAnnouncementRef.current !== null) {
-        setLiveMessage(pendingAnnouncementRef.current);
-        pendingAnnouncementRef.current = null;
+  /**
+   * One slot, trailing edge, last wins — but only between equals. A data
+   * lifecycle transition arrives on its own schedule, so a poll resolving
+   * inside the window must not replace the confirmation of the keystroke the
+   * user just pressed; the user has no way to ask for it again. Two lifecycle
+   * messages still supersede each other, so a resolution overrides its own
+   * "Updating results…".
+   */
+  const scheduleAnnouncement = useCallback(
+    (message: string, source: "user" | "lifecycle" = "user") => {
+      if (
+        source === "lifecycle" &&
+        pendingAnnouncementRef.current !== null &&
+        pendingAnnouncementSourceRef.current === "user"
+      ) {
+        return;
       }
-      announceTimerRef.current = null;
-    }, ANNOUNCE_DEBOUNCE_MS);
-  }, []);
+      pendingAnnouncementRef.current = message;
+      pendingAnnouncementSourceRef.current = source;
+      if (announceTimerRef.current !== null) {
+        clearTimeout(announceTimerRef.current);
+      }
+      announceTimerRef.current = setTimeout(() => {
+        if (pendingAnnouncementRef.current !== null) {
+          setLiveMessage(pendingAnnouncementRef.current);
+          pendingAnnouncementRef.current = null;
+        }
+        announceTimerRef.current = null;
+      }, ANNOUNCE_DEBOUNCE_MS);
+    },
+    [],
+  );
 
   useEffect(() => {
     return () => {
@@ -1277,14 +1306,27 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   const previousPhaseRef = useRef<PretableDataState["phase"] | undefined>(
     undefined,
   );
+  const previousErrorMessageRef = useRef<string | undefined>(undefined);
   const loadedBeforeLoadMoreRef = useRef(0);
+  const refreshBaselineRef = useRef<string | null>(null);
 
   useEffect(() => {
     const phase = dataState?.phase;
     const previousPhase = previousPhaseRef.current;
+    const previousErrorMessage = previousErrorMessageRef.current;
     previousPhaseRef.current = phase;
+    previousErrorMessageRef.current = errorMessage;
 
-    if (phase === undefined || phase === previousPhase) {
+    if (phase === undefined) {
+      return;
+    }
+
+    // A refined message under a held `error` phase is a new fact, not a
+    // repeat: the de-dup rule is what would be SAID, not the phase alone.
+    if (
+      phase === previousPhase &&
+      !(phase === "error" && errorMessage !== previousErrorMessage)
+    ) {
       return;
     }
 
@@ -1296,10 +1338,34 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     // previous page's counts, and the corrected commit that follows carries an
     // unchanged phase, which the guard above drops.
     const live = grid.getSnapshot();
+    const scope = resolveDataScope(live, processing);
+    // Under engine filter authority `loadedRowCount` counts every record held,
+    // including the ones the filter excluded, while `matchingTotal` is already
+    // post-filter: pairing the two says "Showing 10 of 1", and says "10" about
+    // a body rendering the "no results" block. The matching count is the one
+    // number that describes what the user is looking at in both authorities.
+    const loaded =
+      processing?.filter !== "external" && live.matchingTotal.kind === "exact"
+        ? live.matchingTotal.count
+        : live.loadedRowCount;
+    const resultsMessage = (added?: number) =>
+      effectiveMessages.resultsAnnouncement({
+        loaded,
+        total: live.matchingTotal,
+        added,
+        scope,
+      });
 
     if (phase === "loading-more") {
       // Remember the baseline so the resolution can report the delta.
-      loadedBeforeLoadMoreRef.current = live.loadedRowCount;
+      loadedBeforeLoadMoreRef.current = loaded;
+      return;
+    }
+
+    if (phase === "refreshing") {
+      // Remember what the poll started with, so its resolution can tell a
+      // changed result from a metronome tick.
+      refreshBaselineRef.current = resultsMessage();
       return;
     }
 
@@ -1308,7 +1374,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       // once on entry (the phase-value guard above makes repeats impossible
       // within a settling burst); the resolution's resultsAnnouncement
       // supersedes it through the last-wins scheduler.
-      scheduleAnnouncement(effectiveMessages.staleAnnouncement());
+      scheduleAnnouncement(effectiveMessages.staleAnnouncement(), "lifecycle");
       return;
     }
 
@@ -1319,6 +1385,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       // "error", so double-speak is impossible by construction.
       scheduleAnnouncement(
         effectiveMessages.dataErrorAnnouncement({ message: errorMessage }),
+        "lifecycle",
       );
       return;
     }
@@ -1327,23 +1394,39 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
       return;
     }
 
-    // A 2 s poll must not produce a metronome, and the very first commit is not
-    // a transition anyone asked to hear about.
-    if (previousPhase === undefined || previousPhase === "refreshing") {
+    // The very first commit is not a transition anyone asked to hear about.
+    if (previousPhase === undefined) {
       return;
     }
 
-    scheduleAnnouncement(
-      effectiveMessages.resultsAnnouncement({
-        loaded: live.loadedRowCount,
-        total: live.matchingTotal,
-        added:
-          previousPhase === "loading-more"
-            ? live.loadedRowCount - loadedBeforeLoadMoreRef.current
-            : undefined,
-      }),
+    // A tail that SHRANK is not a tail extension — the records were replaced
+    // under the request — so it reports the population instead of a negative
+    // delta. Zero stays a delta: "loaded 0 more" is how the end of the data
+    // announces itself.
+    const delta = loaded - loadedBeforeLoadMoreRef.current;
+    const message = resultsMessage(
+      previousPhase === "loading-more" && delta >= 0 ? delta : undefined,
     );
-  }, [dataState, effectiveMessages, errorMessage, grid, scheduleAnnouncement]);
+
+    // A 2 s poll must not produce a metronome: a resolved refresh speaks only
+    // when what it would say has changed. Row churn under identical counts is
+    // deliberately silent — repeating the same sentence IS the metronome.
+    if (
+      previousPhase === "refreshing" &&
+      message === refreshBaselineRef.current
+    ) {
+      return;
+    }
+
+    scheduleAnnouncement(message, "lifecycle");
+  }, [
+    dataState,
+    effectiveMessages,
+    errorMessage,
+    grid,
+    processing,
+    scheduleAnnouncement,
+  ]);
 
   const bodyStateBlock =
     dataState === undefined || bodyStateKind === null ? null : (
