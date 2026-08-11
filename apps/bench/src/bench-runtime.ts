@@ -1,5 +1,6 @@
 import type { ScenarioDataset } from "@pretable-internal/scenario-data";
 import type {
+  BenchErrorPayload,
   BenchMetricId,
   BenchRunRequest,
   BenchRunSummary,
@@ -130,23 +131,61 @@ export interface InteractionBenchRunResult {
   notes: string[];
 }
 
+/**
+ * What `measureBenchDataUpdateRun` hands back. No `partial`: bench-runner refuses to
+ * record one for `replace`/`append` (a partial there owes only `dom_nodes_peak`, so it
+ * would file a run that measured nothing under a name the ledger reads as a
+ * measurement), and every way this measurement can stop short is a stop with a known
+ * cause. Carrying that cause out as an error is what lets the caller file a failed run
+ * that says why instead of one that says only that the status was wrong.
+ */
+export type DataUpdateBenchRunResult =
+  | {
+      status: "completed";
+      metrics: Partial<Record<BenchMetricId, number>>;
+      notes: string[];
+    }
+  | {
+      status: "failed";
+      metrics: Partial<Record<BenchMetricId, number>>;
+      notes: string[];
+      error: BenchErrorPayload;
+    };
+
 interface BenchInteractionState {
   focusedRowId: string | null;
   resultRowCount: number;
   selectedRowId: string | null;
 }
 
-interface ScrollRuntimeProfile {
+export interface ScrollRuntimeProfile {
   viewportSelector: string;
   rowSelector: string;
   cellSelector: string;
   rowIdAttribute?: string;
+  /**
+   * Attribute carrying a body cell's column id. Read only by
+   * `createVisibleContentSignature`; when a profile omits it that signature falls
+   * back to each row's first cell, which is a weaker probe but never a wrong one.
+   */
+  cellColumnIdAttribute?: string;
   rowIndexAttribute: string;
   maxSettleFrames: number;
   measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
 }
 
-const scrollRuntimeProfiles: Record<
+/**
+ * How the harness finds each adapter's scrolling DOM.
+ *
+ * Exported so `__tests__/comparator-dom-contract.test.tsx` can hold every entry
+ * against the adapter it describes by MOUNTING it. Two of these selector sets
+ * belong to third-party libraries, and a selector a library has deleted does
+ * not fail loudly here — `measureBenchScroll` returns `status: "partial"`
+ * having scrolled nothing, which reads as an implausibly cheap comparator
+ * rather than a broken harness. That is exactly what AG Grid 36 did to
+ * `.ag-body-viewport` (#306).
+ */
+export const scrollRuntimeProfiles: Record<
   BenchQueryState["adapterId"],
   ScrollRuntimeProfile
 > = {
@@ -188,6 +227,7 @@ const scrollRuntimeProfiles: Record<
     rowSelector: "[data-pretable-row], [data-pretable-group-row]",
     cellSelector: "[data-pretable-cell]",
     rowIdAttribute: "data-pretable-row-id",
+    cellColumnIdAttribute: "data-pretable-column-id",
     rowIndexAttribute: "data-pretable-row-index",
     maxSettleFrames: 3,
     measureRowHeightError: (row, renderedHeight) =>
@@ -406,18 +446,113 @@ export function measurePretableScrollRun(
   return measureBenchScrollRun(root, "pretable");
 }
 
-export async function measureBenchInteractionRun(
-  root: HTMLElement,
-  adapterId: BenchQueryState["adapterId"],
-  mode: BenchInteractionMode,
-  interactionPlan: {
-    focusedRowId: string | null;
+interface RowSetMeasurementPlan {
+  focusedRowId: string | null;
+  resultRowCount: number;
+  selectedRowId: string | null;
+}
+
+interface RowSetSample {
+  signature: string;
+  state: BenchInteractionState;
+  visibleRows: VisibleRowSample[];
+}
+
+/**
+ * What "the surface is not moving" means, in one place, so the gate that decides when
+ * to OPEN the window and the detector that decides when the update has SETTLED cannot
+ * disagree. Selection and focus are in it because the row-set scripts apply both during
+ * setup: a gate blind to them can call the surface still one frame before the selection
+ * lands, and the window then opens onto it.
+ */
+function createStabilityKey(sample: RowSetSample) {
+  return [
+    sample.signature,
+    sample.state.resultRowCount,
+    sample.state.selectedRowId,
+    sample.state.focusedRowId,
+  ].join("§");
+}
+
+interface RowSetMeasurementOptions {
+  root: HTMLElement;
+  adapterId: BenchQueryState["adapterId"];
+  /** Carried by every outcome, e.g. `interaction mode: sort`. */
+  label: string;
+  maxFrames: number;
+  /**
+   * Frames of an unchanging surface required BEFORE the window opens, judged by the
+   * SAME predicate the settle detector uses on the way out (`createStabilityKey`). A
+   * surface still in motion when the baseline is taken latches its own tail motion as
+   * the trigger's first painted frame and reports the one-frame floor — the
+   * artificially perfect answer. 0 keeps the caller's own sequencing.
+   */
+  quietFrames: number;
+  plan: RowSetMeasurementPlan;
+  createSignature: (input: {
+    profile: ScrollRuntimeProfile;
     resultRowCount: number;
-    selectedRowId: string | null;
-  },
-  readInteractionStateOverride: (() => BenchInteractionState) | undefined,
-  trigger: () => void,
-): Promise<InteractionBenchRunResult> {
+    viewport: HTMLElement;
+    visibleRows: VisibleRowSample[];
+  }) => string;
+  readInteractionStateOverride: (() => BenchInteractionState) | undefined;
+  trigger: () => void;
+}
+
+type RowSetMeasurement =
+  | {
+      status: "partial";
+      notes: string[];
+      metrics: Partial<Record<BenchMetricId, number>>;
+      /**
+       * Why the loop produced no measurement, as a sentence. The notes carry the label
+       * and the viewport policy but not this — and the frame-budget exit below has no
+       * note of its own at all, so a caller that must report the stop has nothing to
+       * report without it.
+       */
+      reason: string;
+    }
+  | {
+      status: "completed";
+      notes: string[];
+      metrics: Partial<Record<BenchMetricId, number>>;
+      baselineRenderedRowIds: string[];
+      finalState: BenchInteractionState;
+      finalRenderedRowIds: string[];
+      scrollTopBefore: number;
+      viewport: HTMLElement;
+    };
+
+/**
+ * The frame loop both row-set measurements run: open a window on a quiet surface, fire
+ * the trigger, latch the first frame whose signature moved, then wait for the signature
+ * to hold still for a settle window.
+ *
+ * Parametrized rather than copied. The two callers differ in four details — the
+ * signature they watch, the note they label, the frame budget, and the metrics they add
+ * — and a second copy of the settle rule is a second place every future fix to it has to
+ * land.
+ *
+ * Both `interaction_latency_ms` and `settle_duration_ms` are differences between rAF
+ * timestamps, so both are integer multiples of the display's frame interval: latency
+ * cannot resolve below one frame and settle cannot report less than
+ * `maxSettleFrames - 1` frames. The frame-count notes below exist so a reader can tell
+ * a measurement from that floor.
+ */
+async function measureRowSetChange(
+  options: RowSetMeasurementOptions,
+): Promise<RowSetMeasurement> {
+  const {
+    adapterId,
+    createSignature,
+    label,
+    maxFrames,
+    plan,
+    quietFrames,
+    readInteractionStateOverride,
+    root,
+    trigger,
+  } = options;
   const profile = scrollRuntimeProfiles[adapterId];
   const viewport = await waitForScrollViewport(root, profile.viewportSelector);
   const viewportPolicyNotes = viewport
@@ -429,24 +564,42 @@ export async function measureBenchInteractionRun(
       status: "partial",
       notes: [
         ...viewportPolicyNotes,
-        `interaction mode: ${mode}`,
-        `interaction viewport unavailable for ${adapterId} in current runtime`,
+        label,
+        `viewport unavailable for ${adapterId} in current runtime`,
       ],
       metrics: {
         dom_nodes_peak: root.querySelectorAll("*").length,
       },
+      reason: `viewport unavailable for ${adapterId} in current runtime`,
     };
   }
 
-  const baselineState = readBenchInteractionState(
-    root,
-    readInteractionStateOverride,
-  );
-  const baselineVisibleRows = sampleVisibleRows(viewport, profile);
-  const baselineSignature = createVisibleRowSignature(
-    baselineVisibleRows,
-    baselineState.resultRowCount,
-  );
+  const sample = (): RowSetSample => {
+    const state = readBenchInteractionState(root, readInteractionStateOverride);
+    const visibleRows = sampleVisibleRows(viewport, profile);
+
+    return {
+      signature: createSignature({
+        profile,
+        resultRowCount: state.resultRowCount,
+        viewport,
+        visibleRows,
+      }),
+      state,
+      visibleRows,
+    };
+  };
+
+  const baseline = await waitForQuietSurface({
+    maxFrames,
+    quietFrames,
+    sample,
+  });
+  const baselineSignature = baseline.signature;
+  const baselineState = baseline.state;
+  const baselineVisibleRows = baseline.visibleRows;
+  const baselineRenderedRowIds = readRenderedRowIds(viewport, profile);
+  const scrollTopBefore = viewport.scrollTop;
   const startTimestamp = await waitForAnimationFrame();
 
   performance.mark("pretable.interaction.start");
@@ -456,33 +609,25 @@ export async function measureBenchInteractionRun(
   let renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
   let renderedCellsPeak = root.querySelectorAll(profile.cellSelector).length;
   let firstChangedAt: number | null = null;
+  let firstChangedFrame = 0;
   let settledAt: number | null = null;
+  let settledFrame = 0;
   let blankGapFrames = 0;
   const rowHeightErrors: number[] = [];
   const anchorShifts: number[] = [];
+  const frameTimestamps: number[] = [startTimestamp];
   let previousVisibleRows = baselineVisibleRows;
   let previousScrollTop = viewport.scrollTop;
-  let previousSignature = baselineSignature;
-  let previousState = baselineState;
+  let previousStabilityKey = createStabilityKey(baseline);
   let stableFrames = 0;
-  const maxInteractionFrames = getMaxInteractionFrames(
-    profile.maxSettleFrames,
-    mode,
-  );
 
-  for (let frame = 0; frame < maxInteractionFrames; frame += 1) {
+  for (let frame = 1; frame <= maxFrames; frame += 1) {
     const timestamp = await waitForAnimationFrame();
-    const visibleRows = sampleVisibleRows(viewport, profile);
-    const interactionState = readBenchInteractionState(
-      root,
-      readInteractionStateOverride,
-    );
-    const signature = createVisibleRowSignature(
-      visibleRows,
-      interactionState.resultRowCount,
-    );
-    const hasBlankGap = detectBlankGapFrame(viewport, profile.rowSelector);
+    const currentSample = sample();
+    const { signature, state, visibleRows } = currentSample;
+    const stabilityKey = createStabilityKey(currentSample);
 
+    frameTimestamps.push(timestamp);
     domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
     renderedRowsPeak = Math.max(
       renderedRowsPeak,
@@ -496,67 +641,57 @@ export async function measureBenchInteractionRun(
     const isFirstChangedFrame =
       firstChangedAt === null &&
       (signature !== baselineSignature ||
-        interactionState.resultRowCount !== baselineState.resultRowCount);
+        state.resultRowCount !== baselineState.resultRowCount);
 
     if (isFirstChangedFrame) {
       firstChangedAt = timestamp;
+      firstChangedFrame = frame;
       performance.mark("pretable.interaction.firstFrame");
     }
 
-    if (firstChangedAt === null) {
-      previousVisibleRows = visibleRows;
-      previousScrollTop = viewport.scrollTop;
-      previousSignature = signature;
-      previousState = interactionState;
-      continue;
-    }
+    // The trigger's own frame is neither a blank-gap sample nor an anchor-shift
+    // sample: the surface is mid-change by definition, and counting it would charge
+    // the update for the movement it was asked to make.
+    if (firstChangedAt !== null && !isFirstChangedFrame) {
+      if (detectBlankGapFrame(viewport, profile.rowSelector)) {
+        blankGapFrames += 1;
+      }
 
-    if (isFirstChangedFrame) {
-      previousVisibleRows = visibleRows;
-      previousScrollTop = viewport.scrollTop;
-      previousSignature = signature;
-      previousState = interactionState;
-      stableFrames = 0;
-      continue;
-    }
+      rowHeightErrors.push(
+        ...visibleRows
+          .map((row) => row.heightError)
+          .filter((value) => value > 0),
+      );
 
-    if (hasBlankGap) {
-      blankGapFrames += 1;
-    }
+      const anchorShift = measureAnchorShift({
+        previousVisibleRows,
+        previousScrollTop,
+        nextVisibleRows: visibleRows,
+        nextScrollTop: viewport.scrollTop,
+      });
 
-    rowHeightErrors.push(
-      ...visibleRows.map((row) => row.heightError).filter((value) => value > 0),
-    );
+      if (anchorShift !== null) {
+        anchorShifts.push(anchorShift);
+      }
 
-    const anchorShift = measureAnchorShift({
-      previousVisibleRows,
-      previousScrollTop,
-      nextVisibleRows: visibleRows,
-      nextScrollTop: viewport.scrollTop,
-    });
-
-    if (anchorShift !== null) {
-      anchorShifts.push(anchorShift);
-    }
-
-    if (
-      signature === previousSignature &&
-      interactionState.resultRowCount === previousState.resultRowCount &&
-      interactionState.selectedRowId === previousState.selectedRowId &&
-      interactionState.focusedRowId === previousState.focusedRowId
-    ) {
-      stableFrames += 1;
-    } else {
-      stableFrames = 0;
+      if (stabilityKey === previousStabilityKey) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+      }
     }
 
     previousVisibleRows = visibleRows;
     previousScrollTop = viewport.scrollTop;
-    previousSignature = signature;
-    previousState = interactionState;
+    previousStabilityKey = stabilityKey;
 
-    if (stableFrames >= Math.max(0, profile.maxSettleFrames - 1)) {
+    if (
+      firstChangedAt !== null &&
+      !isFirstChangedFrame &&
+      stableFrames >= Math.max(0, profile.maxSettleFrames - 1)
+    ) {
       settledAt = timestamp;
+      settledFrame = frame;
       performance.mark("pretable.interaction.settled");
       break;
     }
@@ -565,12 +700,18 @@ export async function measureBenchInteractionRun(
   if (firstChangedAt === null || settledAt === null) {
     return {
       status: "partial",
-      notes: [...viewportPolicyNotes, `interaction mode: ${mode}`],
+      notes: [...viewportPolicyNotes, label],
       metrics: {
         dom_nodes_peak: domNodesPeak,
         rendered_rows_peak: renderedRowsPeak,
         rendered_cells_peak: renderedCellsPeak,
       },
+      // Which of the two exits this was decides where to look: nothing moved at all
+      // means the trigger or the signature, still moving at the end means the budget.
+      reason:
+        firstChangedAt === null
+          ? `no frame changed the watched signature within ${maxFrames} frames after the trigger`
+          : `the surface never held still for ${Math.max(0, profile.maxSettleFrames - 1)} frames within ${maxFrames} frames after the trigger`,
     };
   }
 
@@ -581,7 +722,21 @@ export async function measureBenchInteractionRun(
 
   return {
     status: "completed",
-    notes: [...viewportPolicyNotes, `interaction mode: ${mode}`],
+    notes: [
+      ...viewportPolicyNotes,
+      label,
+      // Both timings below are frame counts times this interval. Published so a
+      // reader cannot mistake the one-frame floor for a resolved measurement.
+      `frame interval median ms: ${percentile(
+        diffFrameTimestamps(frameTimestamps),
+        0.5,
+      ).toFixed(2)}`,
+      `frames to first change: ${firstChangedFrame}`,
+      `frames to settle: ${settledFrame - firstChangedFrame} (floor ${Math.max(
+        0,
+        profile.maxSettleFrames - 1,
+      )})`,
+    ],
     metrics: {
       interaction_latency_ms: firstChangedAt - startTimestamp,
       settle_duration_ms: settledAt - firstChangedAt,
@@ -593,12 +748,290 @@ export async function measureBenchInteractionRun(
       ),
       result_row_count: finalState.resultRowCount,
       selected_row_preserved:
-        finalState.selectedRowId === interactionPlan.selectedRowId ? 1 : 0,
+        finalState.selectedRowId === plan.selectedRowId ? 1 : 0,
       focused_row_preserved:
-        finalState.focusedRowId === interactionPlan.focusedRowId ? 1 : 0,
+        finalState.focusedRowId === plan.focusedRowId ? 1 : 0,
       dom_nodes_peak: domNodesPeak,
       rendered_rows_peak: renderedRowsPeak,
       rendered_cells_peak: renderedCellsPeak,
+    },
+    baselineRenderedRowIds,
+    finalState,
+    finalRenderedRowIds: readRenderedRowIds(viewport, profile),
+    scrollTopBefore,
+    viewport,
+  };
+}
+
+/**
+ * Ids of every row in the DOM, including rows rendered into the overscan below the
+ * fold. Wider than `sampleVisibleRows` on purpose: an append is measured from a
+ * viewport parked at the tail of the resident set, so its new rows land just past the
+ * viewport edge — counting only what intersects the viewport rect would report that
+ * nothing rendered.
+ */
+function readRenderedRowIds(
+  viewport: HTMLElement,
+  profile: ScrollRuntimeProfile,
+): string[] {
+  return [...viewport.querySelectorAll<HTMLElement>(profile.rowSelector)].map(
+    (row) =>
+      row.getAttribute(profile.rowIdAttribute ?? "") ??
+      getRowIdentityFallback(
+        row,
+        profile.cellSelector,
+        Number(row.getAttribute(profile.rowIndexAttribute)),
+      ),
+  );
+}
+
+/**
+ * Spins until the surface holds still for `quietFrames` consecutive frames and returns
+ * the sample that becomes the measurement's baseline. With `quietFrames` at 0 it
+ * samples once and returns immediately.
+ *
+ * Runs out its budget rather than throwing when the surface never stops: the
+ * measurement that follows will find nothing it can attribute to the trigger and
+ * report `partial`, which is the honest outcome and one bench-runner refuses to record
+ * for the row-set scripts.
+ */
+async function waitForQuietSurface(input: {
+  maxFrames: number;
+  quietFrames: number;
+  sample: () => RowSetSample;
+}): Promise<RowSetSample> {
+  let current = input.sample();
+
+  if (input.quietFrames <= 0) {
+    return current;
+  }
+
+  let previousKey = createStabilityKey(current);
+  let stableFrames = 0;
+
+  for (let frame = 0; frame < input.maxFrames; frame += 1) {
+    await waitForAnimationFrame();
+    current = input.sample();
+
+    const key = createStabilityKey(current);
+
+    if (key === previousKey) {
+      stableFrames += 1;
+
+      if (stableFrames >= input.quietFrames) {
+        return current;
+      }
+    } else {
+      previousKey = key;
+      stableFrames = 0;
+    }
+  }
+
+  return current;
+}
+
+export async function measureBenchInteractionRun(
+  root: HTMLElement,
+  adapterId: BenchQueryState["adapterId"],
+  mode: BenchInteractionMode,
+  interactionPlan: {
+    focusedRowId: string | null;
+    resultRowCount: number;
+    selectedRowId: string | null;
+  },
+  readInteractionStateOverride: (() => BenchInteractionState) | undefined,
+  trigger: () => void,
+): Promise<InteractionBenchRunResult> {
+  const measurement = await measureRowSetChange({
+    adapterId,
+    createSignature: ({ resultRowCount, visibleRows }) =>
+      createVisibleRowSignature(visibleRows, resultRowCount),
+    label: `interaction mode: ${mode}`,
+    maxFrames: getMaxInteractionFrames(
+      scrollRuntimeProfiles[adapterId].maxSettleFrames,
+      mode,
+    ),
+    plan: interactionPlan,
+    // These scripts change display state on an already-settled grid, and the caller
+    // sequences the settling itself.
+    quietFrames: 0,
+    readInteractionStateOverride,
+    root,
+    trigger,
+  });
+
+  return {
+    status: measurement.status,
+    notes: measurement.notes,
+    metrics: measurement.metrics,
+  };
+}
+
+/**
+ * Replace/append measurement. Reuses the `pretable.interaction.*` marks so
+ * `scripts/analyze-cdp.mjs --window=interaction` slices these runs exactly as it slices
+ * a sort or filter — the trigger-to-first-frame window, not the whole trace, which is
+ * dominated by initial-mount work that does not count against the budget.
+ *
+ * The signature carries a content digest the interaction signature does not:
+ * `createVisibleRowSignature` is result row count + row id + row top, and a replacement
+ * of the SAME ids over an equal-length resident set moves none of the three. Without
+ * the probe column's rendered text every replace run would run out its frame budget and
+ * abort.
+ *
+ * Every abort below is `failed` with the cause attached rather than `partial`: these two
+ * scripts have no partial credit (see `DataUpdateBenchRunResult`), and a caller handed a
+ * bare `partial` can only file a run whose recorded error is that the status was wrong.
+ */
+export async function measureBenchDataUpdateRun(
+  root: HTMLElement,
+  adapterId: BenchQueryState["adapterId"],
+  mode: "replace" | "append",
+  plan: {
+    focusedRowId: string | null;
+    probeColumnId: string;
+    resultRowCount: number;
+    selectedRowId: string | null;
+  },
+  readInteractionStateOverride: (() => BenchInteractionState) | undefined,
+  readGridInstanceId: () => string | null,
+  trigger: () => void,
+): Promise<DataUpdateBenchRunResult> {
+  const label = `data update mode: ${mode}`;
+  // Read before anything else: `grid_instance_reconstructed` is the metric §11's
+  // replace budget rests on, and a probe that cannot see the id would otherwise
+  // compare two identical misses and report 0 — a PASS produced by a broken reader.
+  const gridInstanceBefore = readGridInstanceId();
+
+  if (gridInstanceBefore === null) {
+    return failedDataUpdateRun({
+      label,
+      metrics: { dom_nodes_peak: root.querySelectorAll("*").length },
+      notes: [label],
+      reason:
+        "grid instance id unavailable before the update: the reconstruction probe has no baseline",
+    });
+  }
+
+  const profile = scrollRuntimeProfiles[adapterId];
+  // Built once per run: the signature below runs on every frame inside the measurement
+  // loop, and rebuilding the selector there would put the harness's own string work on
+  // the same order as the work being measured.
+  const contentCellSelector = createContentCellSelector(
+    profile,
+    plan.probeColumnId,
+  );
+  const measurement = await measureRowSetChange({
+    adapterId,
+    createSignature: ({ resultRowCount, viewport, visibleRows }) =>
+      `${createVisibleRowSignature(visibleRows, resultRowCount)}#${createVisibleContentSignature(
+        viewport,
+        profile.rowSelector,
+        contentCellSelector,
+      )}`,
+    label,
+    // Six settle windows: generous enough that a slow machine reports a real number
+    // rather than a `partial`, bounded enough that a hung run still ends.
+    maxFrames: Math.max(profile.maxSettleFrames * 6, 60),
+    plan,
+    // Controlled focus scrolls the probe row into view and selection lands a frame
+    // later, so the surface is still in flight when the caller hands over. Three
+    // unchanging frames is the same stability the settle detector demands on the way
+    // out, judged by the same key.
+    quietFrames: 3,
+    readInteractionStateOverride,
+    root,
+    trigger,
+  });
+
+  if (measurement.status === "partial") {
+    return failedDataUpdateRun({
+      label,
+      metrics: measurement.metrics,
+      notes: measurement.notes,
+      reason: measurement.reason,
+    });
+  }
+
+  const gridInstanceAfter = readGridInstanceId();
+
+  if (gridInstanceAfter === null) {
+    return failedDataUpdateRun({
+      label,
+      metrics: measurement.metrics,
+      notes: measurement.notes,
+      reason:
+        "grid instance id unavailable after the update: reconstruction is undecided",
+    });
+  }
+
+  // The change detector only needs SOME change, so an update that landed half its rows
+  // would still latch a frame and report a good latency. For append the row count is
+  // the only change signal there is, which makes this check nearly free and the run
+  // meaningless without it.
+  if (measurement.finalState.resultRowCount !== plan.resultRowCount) {
+    return failedDataUpdateRun({
+      label,
+      metrics: measurement.metrics,
+      notes: measurement.notes,
+      reason: `result row count settled at ${measurement.finalState.resultRowCount}, not the ${plan.resultRowCount} rows the plan handed the surface`,
+    });
+  }
+
+  const baselineRowIds = new Set(measurement.baselineRenderedRowIds);
+  const arrivedRowCount = measurement.finalRenderedRowIds.filter(
+    (rowId) => !baselineRowIds.has(rowId),
+  ).length;
+
+  return {
+    status: "completed",
+    notes: [
+      ...measurement.notes,
+      // Whether the update put anything on screen. An append measured from a viewport
+      // parked away from the seam renders none of its new rows, and then blank-gap
+      // frames, anchor shift and row-height error are all computed over rows the
+      // update never touched — zero by construction rather than by quality.
+      `rendered rows before the update: ${measurement.baselineRenderedRowIds.length}`,
+      `rendered rows after the update: ${measurement.finalRenderedRowIds.length}`,
+      `rows newly rendered by the update: ${arrivedRowCount}`,
+    ],
+    metrics: {
+      ...measurement.metrics,
+      // The append budget's "zero scroll movement" clause, as a raw number: the
+      // viewport's own offset before vs after. Anchor shift measures CONTENT movement
+      // and is a different claim.
+      scroll_position_drift_px: Math.abs(
+        measurement.viewport.scrollTop - measurement.scrollTopBefore,
+      ),
+      // 0 = the same engine absorbed the change, which is what §11's replace budget
+      // requires. Inverted relative to the two preservation metrics above, which pass
+      // at 1 — see the polarity test in __tests__/bench-runtime.test.ts.
+      grid_instance_reconstructed:
+        gridInstanceAfter === gridInstanceBefore ? 0 : 1,
+    },
+  };
+}
+
+/**
+ * One aborted row-set run, recorded twice: as the artifact's last note, where a reader
+ * of the run sees it in sequence after the label and whatever the loop got through, and
+ * as the error `message`, which is the only field a `failed` summary keeps besides the
+ * notes — `FailedBenchRunSummary` has no `metrics`, so anything the loop measured before
+ * it stopped survives only as prose.
+ */
+function failedDataUpdateRun(input: {
+  label: string;
+  metrics: Partial<Record<BenchMetricId, number>>;
+  notes: string[];
+  reason: string;
+}): DataUpdateBenchRunResult {
+  return {
+    status: "failed",
+    notes: [...input.notes, input.reason],
+    metrics: input.metrics,
+    error: {
+      name: "BenchDataUpdateAbort",
+      message: `${input.label}: ${input.reason}`,
     },
   };
 }
@@ -1035,6 +1468,14 @@ function percentile(values: number[], ratio: number) {
   return sorted[index] ?? 0;
 }
 
+/** Gaps between consecutive rAF timestamps — the quantum both interaction timings are
+ *  reported in. */
+function diffFrameTimestamps(timestamps: number[]) {
+  return timestamps
+    .slice(1)
+    .map((timestamp, index) => timestamp - timestamps[index]);
+}
+
 async function* waitForSettledScrollSample(
   viewport: HTMLElement,
   profile: ScrollRuntimeProfile,
@@ -1128,6 +1569,42 @@ function measureAnchorShift(input: {
   return Math.abs(nextMatch.top - expectedTop);
 }
 
+/**
+ * Selector for the one cell per row whose text the data-update measurement watches.
+ * Interpolated unescaped: scenario column ids are generated as `col_<index>` by
+ * @pretable-internal/scenario-data, so they hold nothing an attribute selector would
+ * need quoted.
+ */
+function createContentCellSelector(
+  profile: ScrollRuntimeProfile,
+  columnId: string,
+) {
+  if (profile.cellColumnIdAttribute === undefined) {
+    return profile.cellSelector;
+  }
+
+  return `${profile.cellSelector}[${profile.cellColumnIdAttribute}="${columnId}"]`;
+}
+
+/**
+ * The rendered text of the probe column across every row currently in the viewport.
+ *
+ * Scoped to one column on purpose: it runs once per frame inside the measurement
+ * loop, and digesting every cell would put the harness's own DOM reads on the same
+ * order as the work being measured.
+ */
+function createVisibleContentSignature(
+  viewport: HTMLElement,
+  rowSelector: string,
+  cellSelector: string,
+) {
+  return [...viewport.querySelectorAll<HTMLElement>(rowSelector)]
+    .map(
+      (row) => row.querySelector<HTMLElement>(cellSelector)?.textContent ?? "",
+    )
+    .join("|");
+}
+
 function createVisibleRowSignature(
   rows: VisibleRowSample[],
   resultRowCount: number,
@@ -1145,6 +1622,27 @@ function getRowIdentityFallback(
   const firstCell = row.querySelector<HTMLElement>(cellSelector);
 
   return firstCell?.textContent?.trim() || `row-${rowIndex}`;
+}
+
+/**
+ * Ids come from a pre-incremented sequence, so the first real one is 1 and any other
+ * shape — attribute absent, empty, 0, non-numeric — means no instance was ever
+ * recorded. Those have to read as null rather than as an id: `measureBenchDataUpdateRun`
+ * compares the read before the update against the read after, so a placeholder that
+ * survives as a value would compare equal to itself and score
+ * `grid_instance_reconstructed: 0`, the value §11's replace budget treats as proof that
+ * no reconstruction happened.
+ */
+export function readBenchGridInstanceId(
+  root: ParentNode | null,
+): string | null {
+  const published = (
+    root?.querySelector("[data-bench-grid-instance-id]") as HTMLElement | null
+  )?.dataset.benchGridInstanceId;
+
+  return published !== undefined && /^[1-9][0-9]*$/.test(published)
+    ? published
+    : null;
 }
 
 function readBenchInteractionState(
@@ -1197,7 +1695,9 @@ function measureWrappedCellRowHeightError(
 }
 
 export interface KeySequenceBenchRunResult {
-  status: "completed" | "partial" | "failed";
+  // No "failed": this measurement has no abort path that carries a reason, and a status
+  // it can never return would let it be assigned where a reason is required.
+  status: "completed" | "partial";
   notes: string[];
   metrics: {
     interaction_latency_ms?: number;
@@ -1331,7 +1831,8 @@ export async function measureBenchKeySequenceRun(
 }
 
 export interface AutosizeBenchRunResult {
-  status: "completed" | "partial" | "failed";
+  // See KeySequenceBenchRunResult: "failed" was never returned here either.
+  status: "completed" | "partial";
   notes: string[];
   metrics: { interaction_latency_ms?: number; dom_nodes_peak?: number };
 }

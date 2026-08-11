@@ -6,6 +6,7 @@ import {
   benchAdapterFamilies as sharedBenchAdapterFamilies,
   getBenchAdapterFamily as getSharedBenchAdapterFamily,
 } from "../../../shared/bench-adapter-families.js";
+import type { BenchAdapterVersionsRecord } from "../../../shared/bench-adapter-packages.js";
 
 export type BenchAdapterId = "pretable" | "ag-grid" | "tanstack" | "mui";
 
@@ -53,7 +54,16 @@ export type BenchMetricId =
   | "frame_budget_overruns_count"
   | "long_tasks_max_ms"
   | "scroll_position_drift_px"
-  | "visible_row_count_drift";
+  | "visible_row_count_drift"
+  /** 1 when the adapter created a NEW grid instance during the run, 0 when the same
+   *  instance absorbed the change. §11's replace budget says "no grid reconstruction",
+   *  and an instance identity is the only thing that can prove it.
+   *
+   *  PASSES AT 0, like every other drift/error metric above — but UNLIKE the
+   *  `selected_row_preserved` / `focused_row_preserved` pair it is required
+   *  alongside, which pass at 1. An evaluator copied from those two (see
+   *  scripts/bench-matrix.mjs' `median >= 1` checks) inverts this one silently. */
+  | "grid_instance_reconstructed";
 
 export type BenchScriptName =
   | "initial"
@@ -72,7 +82,13 @@ export type BenchScriptName =
   | "group"
   | "group-expand"
   | "group-updates"
-  | "group-updates-stable-keys";
+  | "group-updates-stable-keys"
+  /** One `setRows` of a fresh window over an equal-length resident set — the poll
+   *  refresh path. Measured SEPARATELY from `append` (D1-PERF-04): they exercise
+   *  different engine work and conflating them hides a regression in either. */
+  | "replace"
+  /** One `setRows` of resident ++ a new window — the load-more path. */
+  | "append";
 
 export interface BenchViewport {
   width: number;
@@ -123,6 +139,18 @@ export interface BenchRunSummaryBase {
   fontStack: string;
   deviceScaleFactor: number;
   notes: string[];
+  /**
+   * Resolved versions of the packages this run measured through — the
+   * comparator's own version is what a comparative number is a claim about.
+   *
+   * Optional in the type and absent in the browser, because the measurement
+   * runs in the page and a page cannot read a package manifest. The Playwright
+   * spec that writes the `.summary.json`
+   * (`apps/bench/tests/bench.spec.ts`) stamps it from disk before writing, so
+   * every artifact on disk carries it even though nothing in the browser can
+   * produce one.
+   */
+  adapterVersions?: BenchAdapterVersionsRecord;
 }
 
 export interface CompletedBenchRunSummary extends BenchRunSummaryBase {
@@ -213,6 +241,7 @@ export const benchMetricIds: readonly BenchMetricId[] = [
   "long_tasks_max_ms",
   "scroll_position_drift_px",
   "visible_row_count_drift",
+  "grid_instance_reconstructed",
 ];
 
 export const benchScriptNames: readonly BenchScriptName[] = [
@@ -233,6 +262,8 @@ export const benchScriptNames: readonly BenchScriptName[] = [
   "group-expand",
   "group-updates",
   "group-updates-stable-keys",
+  "replace",
+  "append",
 ];
 
 export function validateSupportedP0aRequest(
@@ -266,7 +297,19 @@ export function validateSupportedP0aRequest(
     };
   }
 
-  const interactionScripts = ["sort", "filter-metadata", "filter-text"];
+  // Every allowlist below is ANNOTATED `readonly BenchScriptName[]` rather than
+  // left to infer `string[]`, so a name outside the union — a typo, or a script
+  // added to `BenchScriptName` and forgotten here — fails typecheck instead of
+  // rejecting the request at runtime with "Unsupported script for P0a".
+  //
+  // Annotation, not `satisfies`: `satisfies` narrows each array to its own
+  // literal union, and `.includes(request.scriptName)` then fails to compile
+  // because the argument is the full `BenchScriptName`.
+  const interactionScripts: readonly BenchScriptName[] = [
+    "sort",
+    "filter-metadata",
+    "filter-text",
+  ];
   // B2 follow-up #5b: sort + filter-metadata + filter-text are supported
   // across all four adapters on S2/S7. Each adapter wires its native
   // sort/filter API in apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx
@@ -275,12 +318,12 @@ export function validateSupportedP0aRequest(
   // apiRef.setSortModel + setFilterModel). The bench-app dispatch is
   // adapter-agnostic via measureBenchInteractionRun's DOM-default state
   // reader (telemetry override is pretable-only).
-  const selectionNavScripts = [
+  const selectionNavScripts: readonly BenchScriptName[] = [
     "select-range-extend",
     "keyboard-nav-row",
     "select-all",
   ];
-  const cellRendererScripts = [
+  const cellRendererScripts: readonly BenchScriptName[] = [
     "scroll-with-format",
     "scroll-with-render",
     "scroll-with-heavy-render",
@@ -299,16 +342,22 @@ export function validateSupportedP0aRequest(
   // MeasureBenchUpdatesOptions.excludeColumnIds.
   //
   // All four are pretable-only — see the adapter gate below.
-  const groupingInteractionScripts = ["group", "group-expand"];
-  const groupingStreamingScripts = [
+  const groupingInteractionScripts: readonly BenchScriptName[] = [
+    "group",
+    "group-expand",
+  ];
+  const groupingStreamingScripts: readonly BenchScriptName[] = [
     "group-updates",
     "group-updates-stable-keys",
   ];
-  const groupingScripts = [
+  const groupingScripts: readonly BenchScriptName[] = [
     ...groupingInteractionScripts,
     ...groupingStreamingScripts,
   ];
-  const supportedScripts = [
+  // Both change the ROW SET rather than display state, which is why they gate
+  // together here. Why they are two names rather than one is on BenchScriptName.
+  const rowSetChangeScripts: readonly BenchScriptName[] = ["replace", "append"];
+  const supportedScripts: readonly BenchScriptName[] = [
     "initial",
     "scroll",
     "updates",
@@ -317,6 +366,7 @@ export function validateSupportedP0aRequest(
     ...selectionNavScripts,
     ...cellRendererScripts,
     ...groupingScripts,
+    ...rowSetChangeScripts,
   ];
 
   if (!supportedScripts.includes(request.scriptName)) {
@@ -405,6 +455,18 @@ export function validateSupportedP0aRequest(
       return {
         ok: false,
         reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (row grouping is AG Grid Enterprise / MUI X Premium and absent from TanStack Table; pretable-only, not a comparative claim)`,
+      };
+    }
+  }
+
+  if (rowSetChangeScripts.includes(request.scriptName)) {
+    // `setRows(rows, meta)` with a preserved grid instance is a pretable
+    // primitive; the other three adapters have no equivalent path to measure,
+    // so these numbers are ABSOLUTE and never a competitive claim.
+    if (request.adapterId !== "pretable") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (server-authority setRows is pretable-only, not a comparative claim)`,
       };
     }
   }
@@ -654,6 +716,56 @@ function assertRequiredMetrics(
       "result_row_count",
       "selected_row_preserved",
       "focused_row_preserved",
+    ] satisfies readonly BenchMetricId[]) {
+      if (metrics[metricId] === undefined) {
+        throw new Error(`Missing required metric: ${metricId}`);
+      }
+    }
+  }
+
+  if (scriptName === "replace" || scriptName === "append") {
+    // No partial credit for these two. D1-PERF-04 asks for a number per path and
+    // §11's ceilings stay proposals until one exists, but a `partial` owes only
+    // `dom_nodes_peak` — so it records a run that measured nothing while still
+    // producing an artifact under a name the ledger reads as a measurement.
+    //
+    // `replace` is the path that made this necessary. A same-ids replacement over
+    // an equal-length resident set moves none of `createVisibleRowSignature`'s
+    // three components, so row identity alone cannot see it; the settle detector
+    // in apps/bench/src/bench-runtime.ts therefore folds
+    // `createVisibleContentSignature` in alongside it, which is what lets replace
+    // latch at all. Without that composition it would run out its frame budget
+    // and land here as a partial that measured nothing.
+    //
+    // `measureBenchDataUpdateRun` is what keeps this unreachable: it returns
+    // `failed` with the cause attached at every point it can stop short, so the
+    // stop is recorded WITH its reason rather than converted into a status this
+    // refuses. The throw is the backstop for a caller that has not done that —
+    // and it is a throw, not a recorded status, because the alternative is an
+    // artifact under a measured script's name that no reader can tell from one.
+    if (status === "partial") {
+      throw new Error(
+        `Partial runs cannot substantiate the ${scriptName} budget: record it as failed with the reason the measurement stopped`,
+      );
+    }
+
+    for (const metricId of [
+      // The interaction set above, in the same order, so the two blocks read
+      // against each other.
+      "interaction_latency_ms",
+      "settle_duration_ms",
+      "post_interaction_blank_gap_frames",
+      "post_interaction_anchor_shift_px",
+      "post_interaction_row_height_error_p95_px",
+      "result_row_count",
+      "selected_row_preserved",
+      "focused_row_preserved",
+      // Then the two this family is budgeted on: append's ceiling is worded as
+      // "zero scroll movement", which is the viewport's own offset (drift), not
+      // the content movement anchor shift measures; and replace's is worded as
+      // "no grid reconstruction".
+      "scroll_position_drift_px",
+      "grid_instance_reconstructed",
     ] satisfies readonly BenchMetricId[]) {
       if (metrics[metricId] === undefined) {
         throw new Error(`Missing required metric: ${metricId}`);

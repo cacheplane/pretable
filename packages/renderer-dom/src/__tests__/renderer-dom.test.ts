@@ -648,6 +648,94 @@ describe("renderer-dom", () => {
     expect(layout.columns.map((c) => c.left)).toEqual([0, 100, 200, 300]);
   });
 
+  describe("planColumnLayout and flex columns", () => {
+    // Both consumers of this plan compare it against RENDERED pixels — drag
+    // hit-testing turns a cursor position into a drop index, and
+    // `scrollLeftToReveal` turns a column's `left` into a scroll offset. A flex
+    // column is drawn at its distributed share of the leftover viewport, not at
+    // `resolveColumnWidth`'s fallback, so resolving it at the fallback puts
+    // every column after it at an offset nothing on screen has.
+    const FLEX_COLUMNS = [
+      { id: "a", header: "A", widthPx: 200 },
+      { id: "flexy", header: "Flexy", flex: 1 },
+      { id: "b", header: "B", widthPx: 140 },
+      { id: "c", header: "C", widthPx: 140 },
+    ];
+
+    test("resolves a flex column at the width it is DRAWN at", () => {
+      // Fixed columns take 200 + 140 + 140 = 480, so the flex column is drawn
+      // at 1000 - 480 = 520 — not at the 140px unsized fallback.
+      const layout = planColumnLayout(FLEX_COLUMNS, 1000);
+
+      expect(layout.columns.map((c) => c.id)).toEqual(["a", "flexy", "b", "c"]);
+      expect(layout.columns.map((c) => c.width)).toEqual([200, 520, 140, 140]);
+      expect(layout.columns.map((c) => c.left)).toEqual([0, 200, 720, 860]);
+      expect(layout.totalWidth).toBe(1000);
+    });
+
+    test("agrees with the render plan's geometry for the same viewport", () => {
+      // The header cells are positioned from `createDomRenderSnapshot`'s plan.
+      // Any column whose `left` or `width` differs between the two plans is a
+      // column the drag indicator and the drop index disagree about.
+      const grid = createGridCore({
+        columns: FLEX_COLUMNS,
+        rows: [{ id: "row-0", a: "a", flexy: "f", b: "b", c: "c" }],
+        getRowId: (row) => String(row.id),
+      });
+      const render = createDomRenderSnapshot({
+        columns: grid.options.columns,
+        snapshot: grid.getSnapshot(),
+        scrollTop: 0,
+        scrollLeft: 0,
+        viewportHeight: 320,
+        viewportWidth: 1000,
+        overscan: 0,
+      });
+      const layout = planColumnLayout(grid.options.columns, 1000);
+      const geometryById = (columns: typeof layout.columns) =>
+        Object.fromEntries(
+          columns.map((column) => [
+            column.id,
+            { left: column.left, width: column.width },
+          ]),
+        );
+
+      expect(render.columns).toHaveLength(FLEX_COLUMNS.length);
+      expect(geometryById(layout.columns)).toEqual(
+        geometryById(render.columns),
+      );
+      expect(layout.totalWidth).toBe(render.totalWidth);
+    });
+
+    test("keeps the flex column pinned-group-aware", () => {
+      // The flex share is computed over every column, pinned or not, exactly as
+      // the render plan computes it — then the plan reorders into
+      // [left-pinned, scrollable, right-pinned].
+      const layout = planColumnLayout(
+        [
+          { id: "a", header: "A", widthPx: 200 },
+          { id: "flexy", header: "Flexy", flex: 1 },
+          { id: "pinned", header: "Pinned", widthPx: 100, pinned: "left" },
+        ],
+        800,
+      );
+
+      expect(layout.columns.map((c) => c.id)).toEqual(["pinned", "a", "flexy"]);
+      expect(layout.columns.map((c) => c.width)).toEqual([100, 200, 500]);
+      expect(layout.columns.map((c) => c.left)).toEqual([0, 100, 300]);
+    });
+
+    test("falls back to declared widths when the viewport is unmeasured", () => {
+      // SSR and the first commit, before the surface reads the scrollport.
+      // There is no leftover to share, so a flex column keeps the renderer's
+      // own fallback and the plan is exactly what it always was.
+      const layout = planColumnLayout(FLEX_COLUMNS);
+
+      expect(layout.columns.map((c) => c.width)).toEqual([200, 140, 140, 140]);
+      expect(layout.totalWidth).toBe(620);
+    });
+  });
+
   describe("row-height estimates for flex columns", () => {
     const FLEX_WRAP_TEXT =
       "A wrapped flex column whose resolved width is decided by the viewport and by its sibling columns, not by a constant.";

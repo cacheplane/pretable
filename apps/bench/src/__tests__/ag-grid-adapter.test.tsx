@@ -51,10 +51,11 @@ describe("AgGridAdapter", () => {
       <AgGridAdapter dataset={dataset as never} runKey={0} />,
     );
 
-    // AG Grid in jsdom doesn't fully populate the virtualized
-    // .ag-grid-viewport / .ag-row tree (no real layout). The smoke test
-    // here just confirms the grid mounts to its root wrapper — full
-    // selector coverage is exercised by the matrix run in Chromium.
+    // A smoke test that the grid mounts at all. The harness's own selectors
+    // (.ag-grid-viewport / .ag-row / .ag-cell and the row-id/index attributes)
+    // are held against this same real adapter in
+    // comparator-dom-contract.test.tsx, which is what catches a library bump
+    // moving them.
     await waitFor(() => {
       expect(container.querySelector(".ag-root-wrapper")).not.toBeNull();
     });

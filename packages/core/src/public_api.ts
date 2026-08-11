@@ -8,6 +8,8 @@
 
 export { createGrid } from "./create-grid";
 export type { PretableGrid } from "./pretable-grid";
+export { numberFormats } from "./number-formats";
+export type { PretableCurrencyFormatOptions } from "./number-formats";
 export { GROUP_COLUMN_ID } from "@pretable-internal/grid-core";
 
 export type {

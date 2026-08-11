@@ -131,6 +131,21 @@ The honest current framing: non-streaming wrapped-text and interaction claims
 are strong; streaming is implemented and measured, but some comparative
 streaming hypotheses remain directional rather than fully satisfied.
 
+### Reading comparative evidence
+
+A number measured against a competitor is a claim about a _version_ of that
+competitor, so every artifact that names one carries an `adapterVersions` block
+recording the resolved version of each package it measured through. The harness
+writes it from the installed manifests; it is never typed by hand.
+
+When a comparator moves on and a committed number has not been re-measured, the
+artifact says so in `adapterVersions.superseded` — the numbers still stand for
+the versions named in the same block. Every comparative file measured before
+2026-08-11 is currently marked this way: they were taken against
+`ag-grid-community` 33.3.2 and `@mui/x-data-grid` 7.29.13, and the tree has
+since moved three and two majors past those. `pnpm test` fails if a committed
+comparative number disagrees with the installed comparator and is not marked.
+
 ## Repository Layout
 
 ```text
@@ -178,6 +193,7 @@ shared packages and can contend with each other when launched in parallel.
 - Product site and docs: [pretable.ai](https://pretable.ai)
 - Getting started: [pretable.ai/docs/getting-started](https://pretable.ai/docs/getting-started)
 - Grid API reference: [pretable.ai/docs/grid/api-reference](https://pretable.ai/docs/grid/api-reference)
+- Number formatting: [locale-aware decimal, money, and accounting](https://pretable.ai/docs/grid/number-formatting) across cells, aggregates, and clipboard.
 - Streaming docs: [pretable.ai/docs/streaming](https://pretable.ai/docs/streaming)
 
 ## Contributing

@@ -869,10 +869,22 @@ describe("column-model reconciliation invariant", () => {
     ).toEqual(NON_METHOD_KEYS.slice().sort());
   });
 
-  // 150 seeds x 3 passes x every mutator is genuinely ~6.5-10.5s of work,
-  // not a hang, so it blows the 5s default deterministically whenever the
-  // machine is under load. Raise the ceiling rather than trimming the sweep:
-  // the exhaustive ordering is the entire point of the invariant.
+  // 150 seeds x 3 passes x every mutator is real work, not a hang: measured
+  // 1.9s on a quiet machine and 12.4s at load average ~260, i.e. it sails past
+  // vitest's 5s default deterministically whenever the box is busy, which is
+  // why the ceiling below is 30s rather than a re-run.
+  //
+  // Why the sweep is not simply made cheaper instead: each of the 15 reconcile
+  // call sites was removed in turn and the sweep re-run to find the first seed
+  // that catches it. 14 are caught, and the WORST needs seed 11 — but the
+  // distribution has a tail (nine caught at seed 0-1, then 2, 3, 9, 11), so
+  // there is no saturation point to cut at, only a fit to the defects already
+  // known. Three of them are caught solely in pass 2, so the third pass is
+  // load-bearing too. Trimming to "enough for today's 14" would buy ~10s and
+  // silently cost the tail, and the failure mode of an undersized sweep is
+  // green. The 15th (`clearFilters`, which only ever widens the visible row
+  // set) is caught by nothing in this package and looks unreachable by
+  // construction rather than undertested.
   test("selection and focus survive every mutator, in every order", () => {
     for (let seed = 0; seed < 150; seed += 1) {
       const rnd = mulberry(seed * 7919 + 13);
@@ -892,7 +904,10 @@ describe("column-model reconciliation invariant", () => {
             before,
             grid,
             spec,
-            `seed=${seed}\n${trace.slice(-8).join("\n")}`,
+            // The pass index is part of the repro, not decoration: several
+            // reconcile defects are only reachable once earlier passes have
+            // built up pinning/grouping state, so they surface in pass 2 alone.
+            `seed=${seed} pass=${pass}\n${trace.slice(-8).join("\n")}`,
           );
         }
       }

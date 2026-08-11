@@ -19,6 +19,8 @@ import {
   createBenchRunSummary,
   createRunArtifactFileStem,
   validateSupportedP0aRequest,
+  type BenchErrorPayload,
+  type BenchMetricId,
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
 
@@ -29,13 +31,19 @@ import {
   createPretableTelemetryNotes,
   createBenchRequest,
   measureBenchAutosizeRun,
+  measureBenchDataUpdateRun,
   measureBenchInteractionRun,
   measureBenchKeySequenceRun,
   measureBenchScrollRun,
   measureBenchUpdatesRun,
   publishBenchResult,
+  readBenchGridInstanceId,
 } from "./bench-runtime";
 import { AgGridAdapter } from "./ag-grid-adapter";
+import {
+  type BenchDataUpdatePlan,
+  createBenchDataUpdatePlan,
+} from "./data-update-plan";
 import {
   benchUpdatesExcludedColumnIds,
   createBenchInteractionPlan,
@@ -49,6 +57,26 @@ export interface BenchAppProps {
   search: string;
   browserVersion: string;
 }
+
+/** What every `measureBench*Run` helper hands back. Named here so the run-selection
+ *  table below can hold them in one list.
+ *
+ *  Split on `failed` rather than carrying an optional error: `createBenchRunSummary`
+ *  refuses a failed run without one, and the measurement that stopped is the only place
+ *  the reason exists. As a union, a measurement that reports `failed` cannot compile
+ *  without saying why. */
+type BenchMeasuredRun =
+  | {
+      status: "completed" | "partial";
+      metrics: Partial<Record<BenchMetricId, number>>;
+      notes: string[];
+    }
+  | {
+      status: "failed";
+      metrics: Partial<Record<BenchMetricId, number>>;
+      notes: string[];
+      error: BenchErrorPayload;
+    };
 
 const allScenarios = listScenarios();
 const adapterRegistry = {
@@ -99,6 +127,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     plan: ReturnType<typeof createBenchInteractionPlan>;
     search: string;
   } | null>(null);
+  const [dataUpdatePlanOverride, setDataUpdatePlanOverride] = useState<{
+    plan: BenchDataUpdatePlan | null;
+    search: string;
+  } | null>(null);
   const [result, setResult] = useState<BenchRunSummary | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const autorunRef = useRef(false);
@@ -127,9 +159,27 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     },
     [],
   );
+  /**
+   * Adapter-agnostic entry point for handing the surface a new row array. Only
+   * pretable wires it: `setRows` with a preserved grid instance is the primitive
+   * these scripts measure, and bench-runner gates them to that adapter.
+   */
+  const dataApiRef = useRef<((rows: readonly ScenarioRow[]) => void) | null>(
+    null,
+  );
+  const handleDataApiReady = useCallback(
+    (apply: (rows: readonly ScenarioRow[]) => void) => {
+      dataApiRef.current = apply;
+    },
+    [],
+  );
   const interactionPlan =
     interactionPlanOverride?.search === search
       ? interactionPlanOverride.plan
+      : null;
+  const dataUpdatePlan =
+    dataUpdatePlanOverride?.search === search
+      ? dataUpdatePlanOverride.plan
       : null;
 
   useEffect(() => {
@@ -198,6 +248,57 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     );
   }
 
+  /**
+   * Setup barrier for the row-set change scripts: hand over only once the resident
+   * window is mounted and the surface has stopped moving.
+   *
+   * Not a substitute for the measurement's own quiet gate, and not redundant with it.
+   * `measureBenchDataUpdateRun` resolves the scroll viewport ONCE and samples that
+   * element every frame, so the row-set swap and the remount it rides on have to be
+   * finished before it starts — afterwards the captured element is detached and every
+   * sample reads a dead node. What that function's gate then owns is the part this one
+   * cannot see: holding the window shut until selection and focus settle, judged by
+   * the same predicate its settle detector uses.
+   */
+  async function waitForQuietViewport(maxFrames = 120) {
+    const viewport = viewportRef.current?.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+
+    if (!viewport) {
+      for (let frame = 0; frame < 12; frame += 1) {
+        await waitForNextAnimationFrame();
+      }
+      return;
+    }
+
+    let previousSignature: string | null = null;
+    let stableFrames = 0;
+
+    for (let frame = 0; frame < maxFrames; frame += 1) {
+      await waitForNextAnimationFrame();
+      const telemetry = pretableTelemetryRef.current;
+      const signature = [
+        viewport.scrollTop,
+        viewport.querySelectorAll("[data-pretable-row]").length,
+        telemetry?.rowModelRowCount ?? -1,
+        telemetry?.visibleRowRange.start ?? -1,
+        telemetry?.visibleRowRange.end ?? -1,
+      ].join(":");
+
+      if (signature === previousSignature) {
+        stableFrames += 1;
+
+        if (stableFrames >= 3) {
+          return;
+        }
+      } else {
+        previousSignature = signature;
+        stableFrames = 0;
+      }
+    }
+  }
+
   function countGroupRows() {
     const snapshot = pretableGridRef.current?.getSnapshot();
 
@@ -231,11 +332,44 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       return;
     }
 
+    const dataUpdateScriptName =
+      scriptName === "replace" || scriptName === "append" ? scriptName : null;
+
+    // No adapter guard here: `validateSupportedP0aRequest` above already rejects
+    // replace/append on anything but pretable, so only pretable reaches this line and a
+    // second check would be unreachable.
+    const dataUpdatePlanResult = dataUpdateScriptName
+      ? createBenchDataUpdatePlan(dataset, dataUpdateScriptName)
+      : null;
+    const nextDataUpdatePlan = dataUpdatePlanResult?.plan ?? null;
+
+    if (dataUpdatePlanResult && !dataUpdatePlanResult.plan) {
+      // The scenario cannot host the resident window these scripts describe. Falling
+      // through would publish mount-only metrics under the script's name — a run that
+      // measured something else while looking like a measurement of this. The reason
+      // comes from the builder, which knows which of its gates rejected the dataset.
+      const unsupportedResult = createBenchRunSummary({
+        request,
+        status: "unsupported",
+        timestamp,
+        reason: `Unsupported scenario for ${dataUpdateScriptName} script: ${request.scenarioId}/${request.scale} ${dataUpdatePlanResult.reason}`,
+      });
+      setResult(unsupportedResult);
+      publishBenchResult(unsupportedResult);
+      return;
+    }
+
     try {
       const startedAt = performance.now();
       pretableTelemetryRef.current = null;
       setInteractionPlanOverride({
         plan: null,
+        search,
+      });
+      // Set before the remount so the fresh adapter mounts already holding the
+      // resident window rather than the whole scenario.
+      setDataUpdatePlanOverride({
+        plan: nextDataUpdatePlan,
         search,
       });
 
@@ -244,6 +378,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       // onReady callbacks.
       updateApiRef.current = null;
       autosizeApiRef.current = null;
+      dataApiRef.current = null;
 
       setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
@@ -388,6 +523,55 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         );
       }
 
+      // SETUP for the row-set change scripts — outside the measurement window.
+      // The probe row has to be selected and focused before the update lands, or
+      // `selected_row_preserved` / `focused_row_preserved` compare a plan against a
+      // grid that never held either.
+      if (dataUpdateScriptName && nextDataUpdatePlan) {
+        setInteractionPlanOverride({
+          plan: {
+            focusedRowId: nextDataUpdatePlan.focusedRowId,
+            filters: {},
+            mode: dataUpdateScriptName,
+            probeColumnId: nextDataUpdatePlan.probeColumnId,
+            resultRowCount: nextDataUpdatePlan.initialRows.length,
+            rows: nextDataUpdatePlan.initialRows,
+            rowGroups: [],
+            selectedRowId: nextDataUpdatePlan.selectedRowId,
+            sort: [],
+          },
+          search,
+        });
+
+        for (let frame = 0; frame < 60 && !dataApiRef.current; frame += 1) {
+          await waitForNextAnimationFrame();
+        }
+
+        await waitForQuietViewport();
+      }
+
+      const dataUpdateRun =
+        dataUpdateScriptName && nextDataUpdatePlan
+          ? await measureBenchDataUpdateRun(
+              viewportRef.current ?? document.body,
+              query.adapterId,
+              dataUpdateScriptName,
+              nextDataUpdatePlan,
+              () =>
+                createBenchInteractionStateFromTelemetry(
+                  pretableTelemetryRef.current,
+                  // The PRE-update count. Falling back to the expected post-update
+                  // count would make the measurement's row-count check compare the
+                  // expectation against itself whenever telemetry is missing.
+                  nextDataUpdatePlan.initialRows.length,
+                ),
+              () => readBenchGridInstanceId(viewportRef.current),
+              () => {
+                dataApiRef.current?.(nextDataUpdatePlan.nextRows);
+              },
+            )
+          : null;
+
       const keySequenceRun =
         scriptName === "select-range-extend"
           ? query.adapterId === "pretable"
@@ -510,96 +694,80 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         );
       }
 
-      const nextResult =
-        (scriptName === "scroll" ||
-          scriptName === "scroll-with-format" ||
-          scriptName === "scroll-with-render" ||
-          scriptName === "scroll-with-heavy-render") &&
-        scrollRun
-          ? createBenchRunSummary({
-              request,
-              status: scrollRun.status,
-              timestamp,
-              tracePath,
-              notes: [
-                ...scrollRun.notes,
-                ...createPretableTelemetryNotes(pretableTelemetryRef.current),
-              ],
-              metrics: scrollRun.metrics,
-            })
-          : (scriptName === "select-range-extend" ||
-                scriptName === "keyboard-nav-row" ||
-                scriptName === "select-all") &&
-              keySequenceRun
-            ? createBenchRunSummary({
-                request,
-                status: keySequenceRun.status,
-                timestamp,
-                tracePath,
-                notes: [
-                  ...keySequenceRun.notes,
-                  ...createPretableTelemetryNotes(pretableTelemetryRef.current),
-                ],
-                metrics: keySequenceRun.metrics,
-              })
-            : isUpdatesScript && updatesRun
-              ? createBenchRunSummary({
-                  request,
-                  status: updatesRun.status,
-                  timestamp,
-                  tracePath,
-                  notes: [
-                    ...updatesRun.notes,
-                    ...groupingNotes,
-                    ...createPretableTelemetryNotes(
-                      pretableTelemetryRef.current,
-                    ),
-                  ],
-                  metrics: updatesRun.metrics,
-                })
-              : scriptName === "autosize" && autosizeRun
-                ? createBenchRunSummary({
-                    request,
-                    status: autosizeRun.status,
-                    timestamp,
-                    tracePath,
-                    notes: [
-                      ...autosizeRun.notes,
-                      ...createPretableTelemetryNotes(
-                        pretableTelemetryRef.current,
-                      ),
-                    ],
-                    metrics: autosizeRun.metrics,
-                  })
-                : interactionRun
-                  ? createBenchRunSummary({
-                      request,
-                      status: interactionRun.status,
-                      timestamp,
-                      tracePath,
-                      notes: [
-                        ...interactionRun.notes,
-                        ...groupingNotes,
-                        ...createPretableTelemetryNotes(
-                          pretableTelemetryRef.current,
-                        ),
-                      ],
-                      metrics: interactionRun.metrics,
-                    })
-                  : createBenchRunSummary({
-                      request,
-                      status: "completed",
-                      timestamp,
-                      tracePath,
-                      notes: createPretableTelemetryNotes(
-                        pretableTelemetryRef.current,
-                      ),
-                      metrics: {
-                        mount_ms: performance.now() - startedAt,
-                        first_stable_viewport_ms: performance.now() - startedAt,
-                        dom_nodes_peak: domNodesPeak,
-                      },
-                    });
+      const dataUpdateNotes =
+        dataUpdateScriptName && nextDataUpdatePlan
+          ? [
+              // The artifact is filed under the scenario's own scale, but these
+              // scripts hold a WINDOW of it, not the whole thing. Without this a
+              // dashboard row reads "replace @ S1/dev" and invites exactly the
+              // misreading the pair exists to prevent.
+              `resident rows: ${nextDataUpdatePlan.initialRows.length} to ${nextDataUpdatePlan.resultRowCount} (scenario holds ${dataset.rows.length})`,
+              `probe column: ${nextDataUpdatePlan.probeColumnId}`,
+            ]
+          : [];
+
+      // Ordered, first match wins — the same precedence the nested conditional
+      // below it used to express. Every entry pairs the run with the notes only
+      // that script owes, so adding a script is one row rather than one more
+      // level of indentation.
+      const measuredRuns: readonly {
+        matches: boolean;
+        run: BenchMeasuredRun | null;
+        notes?: readonly string[];
+      }[] = [
+        {
+          matches:
+            scriptName === "scroll" ||
+            scriptName === "scroll-with-format" ||
+            scriptName === "scroll-with-render" ||
+            scriptName === "scroll-with-heavy-render",
+          run: scrollRun,
+        },
+        {
+          matches:
+            scriptName === "select-range-extend" ||
+            scriptName === "keyboard-nav-row" ||
+            scriptName === "select-all",
+          run: keySequenceRun,
+        },
+        { matches: isUpdatesScript, run: updatesRun, notes: groupingNotes },
+        { matches: scriptName === "autosize", run: autosizeRun },
+        { matches: true, run: interactionRun, notes: groupingNotes },
+        { matches: true, run: dataUpdateRun, notes: dataUpdateNotes },
+      ];
+      const measured = measuredRuns.find((entry) => entry.matches && entry.run);
+
+      const nextResult = measured?.run
+        ? createBenchRunSummary({
+            request,
+            status: measured.run.status,
+            timestamp,
+            tracePath,
+            notes: [
+              ...measured.run.notes,
+              ...(measured.notes ?? []),
+              ...createPretableTelemetryNotes(pretableTelemetryRef.current),
+            ],
+            metrics: measured.run.metrics,
+            // A measurement that stopped short reaches here as `failed` with its own
+            // cause attached. Dropping it would leave the summary builder to throw for
+            // want of an error payload, and the catch below would then file the run
+            // under that throw instead of under what actually happened.
+            error:
+              measured.run.status === "failed" ? measured.run.error : undefined,
+          })
+        : createBenchRunSummary({
+            request,
+            status: "completed",
+            timestamp,
+            tracePath,
+            notes: createPretableTelemetryNotes(pretableTelemetryRef.current),
+            metrics: {
+              mount_ms: performance.now() - startedAt,
+              first_stable_viewport_ms: performance.now() - startedAt,
+              dom_nodes_peak: domNodesPeak,
+            },
+          });
 
       setResult(nextResult);
       publishBenchResult(nextResult);
@@ -736,9 +904,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             {query.adapterId === "pretable" ? (
               <PretableAdapter
                 dataset={dataset}
+                initialRows={dataUpdatePlan?.initialRows}
                 interactionPlan={interactionPlan}
                 key={runKey}
                 onAutosizeReady={handleAutosizeApiReady}
+                onDataApiReady={handleDataApiReady}
                 onGridReady={(grid) => {
                   pretableGridRef.current = grid;
                 }}

@@ -32,6 +32,7 @@ export interface LabeledGridSurfaceFormatValueInput<
   TRow extends PretableRow = PretableRow,
 > {
   column: PretableColumn<TRow>;
+  formattedValue: string;
   row: TRow;
   value: unknown;
 }
@@ -62,6 +63,7 @@ export interface LabeledGridSurfaceProps<
    */
   getRowId: PretableGridOptions<TRow>["getRowId"];
   headerCellClassName?: string;
+  locale?: PretableSurfaceProps<TRow>["locale"];
   state?: PretableSurfaceProps<TRow>["state"];
   labelClassName?: string;
   overscan?: number;
@@ -101,6 +103,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   getHeaderCellProps,
   getRowId,
   headerCellClassName,
+  locale,
   state,
   labelClassName,
   overscan,
@@ -137,12 +140,13 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   );
   const getFormattedValue = ({
     column,
+    formattedValue,
     row,
     value,
   }: LabeledGridSurfaceFormatValueInput<TRow>) =>
     formatValue
-      ? formatValue({ column, row, value })
-      : formatDefaultValue(value);
+      ? formatValue({ column, formattedValue, row, value })
+      : formattedValue;
 
   return (
     <PretableSurface
@@ -162,6 +166,7 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       getHeaderCellProps={getHeaderCellProps}
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
+      locale={locale}
       state={state}
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
@@ -172,12 +177,13 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       onColumnOrderChange={onColumnOrderChange}
       onColumnPinnedChange={onColumnPinnedChange}
       onTelemetryChange={onTelemetryChange}
-      renderBodyCell={({ column, row, value }) => (
+      renderBodyCell={({ column, formattedValue, row, value }) => (
         <>
           <span className={labelClassName}>{column.header ?? column.id}</span>
           <span className={valueClassName}>
             {getFormattedValue({
               column,
+              formattedValue,
               row,
               value,
             })}
@@ -209,12 +215,4 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ") || undefined;
-}
-
-function formatDefaultValue(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.join(", ");
-  }
-
-  return String(value ?? "");
 }

@@ -27,6 +27,8 @@ export interface BenchQueryState {
     | "group-expand"
     | "group-updates"
     | "group-updates-stable-keys"
+    | "replace"
+    | "append"
   >;
   autorun: boolean;
   /**

@@ -302,6 +302,53 @@ test("shared adapter-family source covers benchmark adapters", async () => {
   assert.equal(benchAdapterFamilies.mui, "full-grid");
 });
 
+test("createAdapterVersionsRecord reads resolved versions off the installed manifests", async () => {
+  const { createAdapterVersionsRecord, readInstalledPackageVersion } =
+    await import("../../shared/bench-adapter-packages.js");
+
+  const record = createAdapterVersionsRecord(["mui", "ag-grid"], {
+    recordedAt: "2026-08-11T00:00:00.000Z",
+  });
+
+  assert.deepEqual(Object.keys(record.adapters), ["ag-grid", "mui"]);
+  assert.equal(record.recordedAt, "2026-08-11T00:00:00.000Z");
+  assert.match(record.source, /installed package manifests/);
+  // Not a pinned literal: the point is that the value comes off disk, so the
+  // record must agree with the manifest rather than with a string in a test.
+  assert.equal(
+    record.adapters["ag-grid"]["ag-grid-community"],
+    readInstalledPackageVersion("ag-grid-community"),
+  );
+  assert.match(record.adapters.mui["@mui/x-data-grid"], /^\d+\.\d+\.\d+/);
+});
+
+test("createAdapterVersionsRecord refuses an adapter it cannot name packages for", async () => {
+  const { createAdapterVersionsRecord } =
+    await import("../../shared/bench-adapter-packages.js");
+
+  assert.throws(
+    () => createAdapterVersionsRecord(["not-an-adapter"]),
+    /Unknown bench adapter "not-an-adapter"/,
+  );
+});
+
+test("createHypothesisReport carries the adapter versions it was given", () => {
+  const adapterVersions = {
+    source: "installed package manifests under apps/bench/node_modules",
+    recordedAt: "2026-08-11T00:00:00.000Z",
+    adapters: { "ag-grid": { "ag-grid-community": "36.1.0" } },
+  };
+  const report = createHypothesisReport({
+    runsetId: "2026-08-11t00-00-00-000z",
+    generatedAt: "2026-08-11T00:00:00.000Z",
+    adapterVersions,
+    entries: [],
+    runs: [],
+  });
+
+  assert.deepEqual(report.adapterVersions, adapterVersions);
+});
+
 test("createHypothesisReport distinguishes directional evidence from missing proof", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-10t14-00-00-000z",

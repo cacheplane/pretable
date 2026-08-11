@@ -1,5 +1,7 @@
 # @pretable/stream-adapter
 
+## 0.4.0
+
 ## 0.3.2
 
 ## 0.3.1
@@ -10,7 +12,8 @@
 
 ## 0.1.1
 
-## 0.1.0
+This version was assigned in the repository but was never published. The next
+published `@pretable/stream-adapter` version was `0.2.0`.
 
 ## 0.0.14
 
@@ -52,13 +55,6 @@
 - Updated dependencies []:
   - @cacheplane/json-stream@0.0.4
 
-> **Versioning note.** `0.1.0` was published to npm on 2026-08-06 from a
-> changeset cut as a minor. Every other package in the org is on the `0.0.x`
-> line, so this package rejoins it at `0.0.3`. Entries below are newest-first by
-> release date, which is why `0.0.3` sits above `0.1.0`. npm never reuses a
-> published version, so `0.1.0` stays on the registry as a deprecated release
-> rather than being renumbered here.
-
 ## 0.0.3
 
 ### Patch Changes
@@ -71,7 +67,9 @@
 
 ## 0.1.0
 
-Published to npm in error; superseded by `0.0.3`, which carries the same code.
+This version was published to npm in error and then withdrawn. It is no longer
+installable, and npm permanently reserves the version so it cannot be reused.
+`0.0.3` carries the same code.
 
 ### Minor Changes
 
