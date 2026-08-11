@@ -12,6 +12,10 @@ const cssExports = {
     types: "./dist/themes/material.css.d.ts",
     default: "./dist/themes/material.css",
   },
+  "./themes/pretable.css": {
+    types: "./dist/themes/pretable.css.d.ts",
+    default: "./dist/themes/pretable.css",
+  },
   "./grid.css": {
     types: "./dist/grid.css.d.ts",
     default: "./dist/grid.css",
@@ -27,7 +31,7 @@ const cssExports = {
 };
 
 const lintPackagingScript =
-  "publint --strict && attw --pack --exclude-entrypoints ./themes/excel.css ./themes/material.css ./grid.css ./tailwind.css ./tokens.css";
+  "publint --strict && attw --pack --exclude-entrypoints ./themes/excel.css ./themes/material.css ./themes/pretable.css ./grid.css ./tailwind.css ./tokens.css";
 
 it("publishes dual ESM and CJS entrypoints with matching declarations", async () => {
   const manifestRaw = await readFile(
