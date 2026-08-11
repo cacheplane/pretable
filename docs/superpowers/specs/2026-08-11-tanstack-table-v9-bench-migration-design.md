@@ -20,11 +20,11 @@ This is preferred over the deprecated `@tanstack/react-table/legacy` bridge beca
 - Preserve controlled sorting, programmatic column filtering, stable row IDs, virtualization settings, column widths, update behavior, and result-row-count reporting.
 - Preserve the current filter semantics, including `equalsString` for metadata filters and automatic string filtering otherwise.
 - Keep header and cell rendering behavior unchanged.
-- Update live benchmark copy from “TanStack Table v8” to “TanStack Table v9”. Historical research records and old implementation plans remain unchanged.
+- Update live benchmark copy from “TanStack Table v8” to “TanStack Table v9”. Historical measured values and research content remain unchanged. When an installed comparator major drifts, a status milestone may receive provenance-only `adapterVersions.superseded` metadata without changing any measured value or non-provenance field.
 
 ## Files and data flow
 
-`apps/bench/src/tanstack-adapter.tsx` owns the v9 feature set and adapter migration. `apps/bench/src/bench-app.tsx` and the live website benchmark description update their version labels. `apps/bench/package.json` and `pnpm-lock.yaml` retain Dependabot's v9 dependency update.
+`apps/bench/src/tanstack-adapter.tsx` owns the v9 feature set and adapter migration. `apps/bench/src/bench-app.tsx` and the live website benchmark description update their version labels. `apps/bench/package.json` and `pnpm-lock.yaml` retain Dependabot's v9 dependency update. `status/milestones/2026-08-11-comparative-rebaseline-structural.json` receives only an `adapterVersions.superseded` marker explaining that its structural counts describe TanStack Table 8.21.3 rather than the current 9.1.0 tree; its measured values and all non-provenance fields remain unchanged.
 
 The interaction plan continues to write sort and filter state through the latest table instance. TanStack's registered row models transform the controlled data, and the existing virtualizer consumes `table.getRowModel().rows` exactly as before.
 
@@ -40,5 +40,6 @@ The interaction plan continues to write sort and filter state through the latest
 3. Migrate the adapter and verify focused tests, benchmark typecheck, and benchmark build.
 4. Assert the adapter imports neither `@tanstack/react-table/legacy` nor `stockFeatures`.
 5. Assert the live adapter, benchmark registry, and website benchmark description contain no v8 label and do identify TanStack Table v9; exclude historical research and implementation-plan files from this source check.
-6. Run repository test, typecheck, lint, build, formatting, and diff gates.
-7. Push to PR #277, enable squash auto-merge, and monitor PR and post-merge workflows to terminal success.
+6. Add the provenance-only superseded marker to the structural milestone, prove no other JSON field changed, and verify the focused comparator-provenance suite passes 3/3.
+7. Run repository test, typecheck, lint, build, formatting, and diff gates.
+8. Push to PR #277, enable squash auto-merge, and monitor PR and post-merge workflows to terminal success.
