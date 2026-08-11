@@ -4,6 +4,7 @@ import type { HTMLAttributes } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LabeledGridSurface } from "../labeled-grid-surface";
+import { SortAscIcon, SortDescIcon } from "../icons";
 
 // `data-*` keys have no counterpart in `HTMLAttributes`, so an object literal
 // carrying one has no overlap with it. `InspectionGrid` widens the same way for
@@ -121,7 +122,8 @@ describe("LabeledGridSurface", () => {
 
     fireEvent.click(timestampHeader);
 
-    expect(timestampHeader).toHaveTextContent("Timestamp▼");
+    expect(timestampHeader).toHaveAttribute("aria-sort", "descending");
+    expect(timestampHeader.querySelector(".sort-indicator")).not.toBeNull();
   }, 15_000);
 
   it("applies pinnedClassName for columns pinned through the engine only", () => {
@@ -195,6 +197,15 @@ describe("LabeledGridSurface", () => {
   });
 
   it("shows sort direction glyphs in header cells", () => {
+    // The indicators are SVG now, so there is no text to match. Compare against
+    // what the icon components themselves render rather than hard-coding path
+    // data: reshaping an arrow then moves both sides together, but flipping the
+    // ternary in LabeledGridSurface still fails.
+    const ascGlyph = render(<SortAscIcon />).container.innerHTML;
+    const descGlyph = render(<SortDescIcon />).container.innerHTML;
+    const glyphOf = (header: Element) =>
+      header.querySelector(".sort-indicator")?.innerHTML ?? null;
+
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
@@ -217,9 +228,9 @@ describe("LabeledGridSurface", () => {
       name: "Sort Severity",
     });
 
-    expect(timestampHeader).toHaveTextContent("Timestamp▼");
-    expect(severityHeader).not.toHaveTextContent("▼");
-    expect(severityHeader).not.toHaveTextContent("▲");
+    expect(timestampHeader).toHaveTextContent("Timestamp");
+    expect(glyphOf(timestampHeader)).toBe(descGlyph);
+    expect(glyphOf(severityHeader)).toBeNull();
 
     view.rerender(
       <LabeledGridSurface
@@ -236,7 +247,7 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    expect(timestampHeader).toHaveTextContent("Timestamp▲");
+    expect(glyphOf(timestampHeader)).toBe(ascGlyph);
   });
 
   it("applies a filter-active class to header cells for filtered columns", () => {

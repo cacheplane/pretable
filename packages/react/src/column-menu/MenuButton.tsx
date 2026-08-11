@@ -1,5 +1,6 @@
 // packages/react/src/column-menu/MenuButton.tsx
 import type { CSSProperties } from "react";
+import { OverflowIcon } from "../icons";
 
 /**
  * The `⋮` that opens a column's menu. It joins the funnel in the header's
@@ -43,17 +44,7 @@ export function MenuButton({
         onToggle(columnId, e.currentTarget);
       }}
     >
-      <svg
-        viewBox="0 0 16 16"
-        width="11"
-        height="11"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <circle cx="8" cy="3" r="1.4" fill="currentColor" />
-        <circle cx="8" cy="8" r="1.4" fill="currentColor" />
-        <circle cx="8" cy="13" r="1.4" fill="currentColor" />
-      </svg>
+      <OverflowIcon />
     </button>
   );
 }

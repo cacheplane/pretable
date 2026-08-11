@@ -1,5 +1,6 @@
 // packages/react/src/filter-menu/FunnelButton.tsx
 import type { CSSProperties } from "react";
+import { FunnelIcon } from "../icons";
 
 export function FunnelButton({
   columnId,
@@ -38,15 +39,7 @@ export function FunnelButton({
         onToggle(columnId, e.currentTarget);
       }}
     >
-      <svg
-        viewBox="0 0 16 16"
-        width="11"
-        height="11"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path d="M1.5 2.5h13l-5 6v4l-3 1.5v-5.5l-5-6z" fill="currentColor" />
-      </svg>
+      <FunnelIcon />
     </button>
   );
 }

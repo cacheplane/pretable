@@ -231,7 +231,9 @@ describe("PretableSurface", () => {
     fireEvent.click(severityButton);
 
     expect(severityButton).toHaveAttribute("aria-sort", "descending");
-    expect(severityButton).toHaveTextContent("▼");
+    expect(
+      severityButton.querySelector("[data-pretable-sort-indicator]"),
+    ).toHaveAttribute("data-pretable-sort-indicator", "desc");
     expect(
       view
         .getAllByTestId("pretable-row")
@@ -241,7 +243,9 @@ describe("PretableSurface", () => {
     fireEvent.click(severityButton);
 
     expect(severityButton).toHaveAttribute("aria-sort", "ascending");
-    expect(severityButton).toHaveTextContent("▲");
+    expect(
+      severityButton.querySelector("[data-pretable-sort-indicator]"),
+    ).toHaveAttribute("data-pretable-sort-indicator", "asc");
     expect(
       view
         .getAllByTestId("pretable-row")

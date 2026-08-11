@@ -28,6 +28,22 @@
     border: 0;
   }
 
+  /* Every glyph in the set draws on a 16px grid in currentColor and takes its
+     size from here, so one token moves all of them. `flex: none` because most
+     sit inside flex containers that would otherwise squash them.
+
+     The literal fallback is load-bearing, for the same reason as
+     --pretable-group-indent below: an SVG with a viewBox and no width has no
+     useful intrinsic size, so against a third-party theme that predates the
+     token these collapse to `width: auto` and the chip grip alone inflates
+     from 16px to 54px, taking the drag-to-group strip's height with it. 16px
+     because that is the grid the set is authored on. */
+  :where([data-pretable-icon]) {
+    flex: none;
+    width: var(--pretable-icon-size, 16px);
+    height: var(--pretable-icon-size, 16px);
+  }
+
   /* Outer viewport (scrollable container) */
   :where([data-pretable-scroll-viewport]) {
     background: var(--pretable-bg-grid);
@@ -147,10 +163,17 @@
     );
   }
 
+  /* Sized from the icon token rather than 1em: the twisty is an SVG now, so a
+     font-relative box no longer tracks the glyph inside it. `rotate` below
+     turns about the BUTTON's centre, so the box has to hug the glyph or the
+     collapsed chevron swings off its own axis. */
   :where([data-pretable-group-twisty]) {
     flex: none;
-    width: 1em;
-    height: 1em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--pretable-icon-size, 16px);
+    height: var(--pretable-icon-size, 16px);
     padding: 0;
     border: 0;
     background: none;
@@ -612,14 +635,11 @@
     cursor: grabbing;
   }
 
-  /* Grip dots, drawn rather than added to the DOM — the handle is an empty,
-     aria-hidden span so it costs no accessible content. */
+  /* The grip is a GripIcon from the set, so its size comes from
+     --pretable-icon-size via [data-pretable-icon] and only the tint is left
+     here. It used to be a tiled radial-gradient on an empty span, which could
+     not share a weight or an optical size with any other glyph. */
   :where([data-pretable-chip-handle]) {
-    flex: none;
-    width: 5px;
-    height: 12px;
-    background-image: radial-gradient(currentColor 40%, transparent 45%);
-    background-size: 3px 4px;
     color: var(--pretable-text-dim);
   }
 

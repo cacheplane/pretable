@@ -47,6 +47,7 @@ const TOKENS = [
   "pretable-shadow-seam",
   "pretable-edit-bg",
   "pretable-text-error",
+  "pretable-icon-size",
 ];
 
 /**

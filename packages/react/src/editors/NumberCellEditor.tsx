@@ -36,6 +36,17 @@ export function NumberCellEditor({ input }: { input: PretableEditorInput }) {
         }}
       />
       {/* keep focus in the input; a focused stepper would blur-commit the edit */}
+      {/* The one place that stays Unicode rather than using the icon set. These
+          two buttons are dimensioned around an 8px text glyph (`font-size: 8px`
+          in a `padding: 2px 4px` box in grid.css), and a stacked pair of them
+          has to fit inside a cell-height editor. Swapping in chevrons at 10px —
+          the smallest size at which the set's 1.5 stroke still reads — was
+          measured: the stepper column went 14.36px -> 18px, the editor box
+          22px -> 19px, and the buttons overflowed their container by 9px
+          instead of 2px. Shrinking the glyph to ~6px to hold the geometry puts
+          its scaled stroke under 1px, which is a hairline, not a member of this
+          set. So the column would have to be redesigned first; that is a sizing
+          decision, not a glyph swap. */}
       <span
         data-pretable-number-steppers=""
         onMouseDown={(e) => e.preventDefault()}
