@@ -669,20 +669,22 @@ export async function measureBenchUpdatesRun(
   }
 
   let totalUpdates = 0;
-  const longTaskDurations: number[] = [];
-  const observer = createLongTaskObserver(longTaskDurations);
-  const layoutShiftValues: number[] = [];
-  const layoutShiftObserver = createLayoutShiftObserver(layoutShiftValues);
   const frameDurations: number[] = [];
   let previousFrameTimestamp: number | null = null;
 
   // Snapshot the viewport's pre-streaming pose so we can detect drift.
   // scrollTop drift signals an unwanted scroll caused by row mutations;
   // visible-row-count drift signals the surface had to re-virtualize.
-  const scrollTopBefore = viewport.scrollTop;
-  const visibleRowCountBefore = root.querySelectorAll(
+  const visibleRowCountBefore = await waitForRenderedRowBaseline(
+    root,
     profile.rowSelector,
-  ).length;
+  );
+  const scrollTopBefore = viewport.scrollTop;
+  // Initial mount/layout is setup, not part of the streaming interaction.
+  const longTaskDurations: number[] = [];
+  const observer = createLongTaskObserver(longTaskDurations);
+  const layoutShiftValues: number[] = [];
+  const layoutShiftObserver = createLayoutShiftObserver(layoutShiftValues);
 
   const rafHandle = { running: true, id: 0 };
   let interactionProbeActive = false;
@@ -955,6 +957,28 @@ function waitForAnimationFrame() {
       resolve(timestamp);
     });
   });
+}
+
+/** Waits for the initial virtual window instead of sampling a transient zero. */
+export async function waitForRenderedRowBaseline(
+  root: HTMLElement,
+  rowSelector: string,
+  maxFrames = 120,
+): Promise<number> {
+  let previous = -1;
+  let stableFrames = 0;
+  for (let frame = 0; frame < maxFrames; frame += 1) {
+    await waitForAnimationFrame();
+    const count = root.querySelectorAll(rowSelector).length;
+    if (count > 0 && count === previous) {
+      stableFrames += 1;
+      if (stableFrames >= 2) return count;
+    } else {
+      stableFrames = 0;
+    }
+    previous = count;
+  }
+  return Math.max(0, previous);
 }
 
 function detectScrollAnchoringNote(viewport: HTMLElement) {

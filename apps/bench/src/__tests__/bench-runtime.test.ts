@@ -15,10 +15,36 @@ import {
   measureBenchScrollRun,
   measurePretableScrollRun,
   publishBenchResult,
+  waitForRenderedRowBaseline,
 } from "../bench-runtime";
 import type { BenchQueryState } from "../bench-types";
 
 describe("bench runtime", () => {
+  test("waits for a stable rendered-row baseline instead of sampling zero", async () => {
+    document.body.innerHTML = `<div data-testid="root"></div>`;
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]')!;
+    let frame = 0;
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        frame += 1;
+        if (frame === 1) {
+          root.innerHTML = Array.from(
+            { length: 8 },
+            (_, index) => `<div data-pretable-row="${index}"></div>`,
+          ).join("");
+        }
+        callback(frame * 16);
+        return frame;
+      },
+    });
+
+    await expect(
+      waitForRenderedRowBaseline(root, "[data-pretable-row]", 10),
+    ).resolves.toBe(8);
+    expect(frame).toBe(3);
+  });
+
   test("creates a reproducible bench request from query state and scenario data", () => {
     const dataset = createScenarioDataset("S1", { scale: "dev" });
     const query: BenchQueryState = {
