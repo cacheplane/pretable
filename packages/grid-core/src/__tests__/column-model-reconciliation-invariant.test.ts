@@ -869,6 +869,10 @@ describe("column-model reconciliation invariant", () => {
     ).toEqual(NON_METHOD_KEYS.slice().sort());
   });
 
+  // 150 seeds x 3 passes x every mutator is genuinely ~6.5-10.5s of work,
+  // not a hang, so it blows the 5s default deterministically whenever the
+  // machine is under load. Raise the ceiling rather than trimming the sweep:
+  // the exhaustive ordering is the entire point of the invariant.
   test("selection and focus survive every mutator, in every order", () => {
     for (let seed = 0; seed < 150; seed += 1) {
       const rnd = mulberry(seed * 7919 + 13);
@@ -893,5 +897,5 @@ describe("column-model reconciliation invariant", () => {
         }
       }
     }
-  });
+  }, 30_000);
 });
