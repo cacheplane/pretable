@@ -131,7 +131,7 @@ describe("cooperative query and derivation transitions", () => {
         return false;
       }),
     ).toBe(false);
-    expect(steps).toBe(2);
+    expect(steps).toBe(1);
   });
 
   test("internally observes an unawaited transition rejected by automatic supersession", async () => {
