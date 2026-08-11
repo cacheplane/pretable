@@ -90,10 +90,15 @@ export function CloseIcon(props: IconProps) {
   );
 }
 
+/* The stem is 3.5 units wide, not the 2.5 it reads best at on paper: two 1.5
+   strokes facing each other across 2.5 units merge into a solid wedge, so the
+   funnel came out heavier than the chevron and dots beside it. At 3.5 the stem
+   stays an outline like the cone above it, and it still closes cleanly at the
+   Excel theme's 12px rather than going hollow. */
 export function FunnelIcon(props: IconProps) {
   return (
     <Glyph {...props}>
-      <path d="M2.75 3.5h10.5L9.25 8.75v4L6.75 11.5V8.75z" />
+      <path d="M2.75 3.5h10.5L9.75 8.75v4L6.25 11.5V8.75z" />
     </Glyph>
   );
 }
