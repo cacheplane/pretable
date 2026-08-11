@@ -1,5 +1,5 @@
 /**
- * The grid's icon set. Nine glyphs on one 16px grid, 1.5px stroke, rounded
+ * The grid's icon set. Eleven glyphs on one 16px grid, 1.5px stroke, rounded
  * caps and joins, drawn in `currentColor` and sized from `--pretable-icon-size`.
  *
  * Deliberately not a dependency: the whole set is a few hundred bytes, and an
@@ -59,6 +59,37 @@ export function SortDescIcon(props: IconProps) {
   return (
     <Glyph {...props}>
       <path d="M4 6.5 8 10.5 12 6.5" />
+    </Glyph>
+  );
+}
+
+/* The signed-delta direction markers. Deliberately NOT SortAsc/SortDescIcon
+   reused: those are the header's sort affordance, and a reader who has learned
+   that a caret in this grid means "sorted by this column" should not meet the
+   identical shape inside a cell meaning something else. Narrower and more
+   upright than the sort carets for the same reason they differ at all — these
+   sit inline between digits at ~0.85em, where the sort caret's 8x4 span reads
+   as a wide, flat wedge rather than a direction. 6 wide by 4.5 tall, measured
+   against a screenshot: the first pass at 7x4 rendered as a faint accent mark
+   beside a 14px figure rather than as an arrow.
+
+   Stroked, like the rest of the set. A filled triangle (which is what the
+   reference designs use, and what `▲` would have given) carries more optical
+   weight than the tabular digits beside it, so the marker would out-shout the
+   number it qualifies. FunnelIcon already proves a 1.5px stroke closes cleanly
+   at the Excel theme's 12px, which is the size these render at. */
+export function DeltaUpIcon(props: IconProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M5 10.25 8 5.75 11 10.25" />
+    </Glyph>
+  );
+}
+
+export function DeltaDownIcon(props: IconProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M5 5.75 8 10.25 11 5.75" />
     </Glyph>
   );
 }

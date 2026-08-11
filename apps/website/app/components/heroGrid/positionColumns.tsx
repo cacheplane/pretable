@@ -1,3 +1,4 @@
+import { PretableDelta } from "@pretable/react";
 import type { PretableColumn, PretableEditInput } from "@pretable/react";
 import { fmtPrice, fmtSignedUsd, fmtPct, fmtCompactUsd } from "./format";
 import { parseQty, sanityCheckQty, breachesGuardrail } from "./qty-edit";
@@ -109,11 +110,18 @@ export function makePositionColumns(
       widthPx: 120,
       type: "number",
       value: (row) => row.dayPnl,
+      // The library's presentation, not a hand-rolled `.up`/`.down` pair: it
+      // follows the active theme's semantic ramp, and it adds the direction
+      // marker the hand-rolled version never had — the old one said "loss" in
+      // red and nothing else, which is nothing at all to a reader who cannot
+      // separate it from the green above it.
+      // The delta wraps the FIGURE only; the percentage is a sibling below it.
+      // See `.pnl` in cells.module.css for why the stack is not inside it.
       render: ({ row }) => (
-        <span
-          className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}
-        >
-          {fmtSignedUsd(row.dayPnl)}
+        <span className={styles.pnl}>
+          <PretableDelta value={row.dayPnl}>
+            {fmtSignedUsd(row.dayPnl)}
+          </PretableDelta>
           <span className={styles.subline}>{fmtPct(row.dayPnlPct)}</span>
         </span>
       ),

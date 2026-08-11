@@ -272,7 +272,14 @@ it("measures rendered row height from the tallest cell plus row chrome", () => {
   expect(measureRenderedRowHeight(row)).toBe(141);
 });
 
-it("prefers wrapped cells when measuring rendered row height", () => {
+it("measures every cell, not only the wrapped ones", () => {
+  // The row height used to be measured from `[data-pretable-wrap="true"]` cells
+  // alone whenever any existed, falling back to every cell only when none did.
+  // So a taller NON-wrap cell — a two-line presentation like a signed delta
+  // stacked over its percentage — sitting in a row that also happens to carry a
+  // wrap column was measured at the wrap cell's height and silently clipped.
+  // jsdom cannot see the clipping; only a browser can. `Math.max` over every
+  // cell is the correct definition of a row's content height.
   const row = document.createElement("div");
   row.innerHTML = `
     <div data-pretable-cell="" data-pretable-wrap="true"></div>
@@ -300,7 +307,8 @@ it("prefers wrapped cells when measuring rendered row height", () => {
       }) satisfies Partial<CSSStyleDeclaration>,
   });
 
-  expect(measureRenderedRowHeight(row)).toBe(141);
+  // The taller non-wrap cell drives the row: 240 + 20 padding + 1 border.
+  expect(measureRenderedRowHeight(row)).toBe(261);
 });
 
 it("measures a wrapped cell's content via a Range, ignoring the stretched box", () => {

@@ -116,6 +116,27 @@
      covers both directions. */
   --pretable-accent: #3f5a7a;
 
+  /* --- The semantic ramp ------------------------------------------------ */
+  /* The one hue above means "interactive". These four mean STATE, and they are
+     the only other colours the theme admits: a signed delta's direction, a
+     status dot's state. They are meaning, never decoration — nothing here
+     paints a surface or chrome.
+
+     NOT copied from the reference designs. Their own hues fail AA as text on a
+     grid surface: their green #16a34a is 3.30:1 against every theme's grid
+     ground and their amber #d97706 is 3.19:1, both under the 4.5 floor. They
+     read fine in the screenshots because they sit inside chips and bold
+     glyphs, not as 14px text. Re-derived at similar saturation but darker, and
+     verified against this theme's #ffffff paper:
+       positive 5.02:1   negative 4.83:1   warning 4.92:1   info 5.17:1
+     Held within 4.83–5.17 of each other on purpose: spread them and one state
+     starts reading as more urgent than another purely because its hue is
+     darker, which is a lie the data did not tell. */
+  --pretable-positive: #15803d;
+  --pretable-negative: #dc2626;
+  --pretable-warning: #a16207;
+  --pretable-info: #2563eb;
+
   /* --- Grid controls --------------------------------------------------- */
   /* Written as literals rather than var() aliases so the dark block can move
      them independently — aliasing checkbox-border to rule-strong is what lets
@@ -250,6 +271,16 @@
 
   /* The one hue */
   --pretable-accent: #8fb2d9;
+
+  /* The semantic ramp, dark. The light set does not survive the inversion —
+     #15803d is 1.85:1 on this theme's dark paper, i.e. illegible. These are
+     the same hues lightened until they clear the 4.5 floor from the other
+     side, and again held close together:
+       positive 9.78:1   negative 8.98:1   warning 10.21:1   info 8.29:1 */
+  --pretable-positive: #4ade80;
+  --pretable-negative: #fca5a5;
+  --pretable-warning: #fbbf24;
+  --pretable-info: #93b4ff;
 
   /* Grid controls */
   --pretable-selection-bg: rgba(138, 176, 255, 0.16);

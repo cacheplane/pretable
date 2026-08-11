@@ -14,12 +14,31 @@
      inside it too, or the percentage hangs left of the dollar figure above it. */
   text-align: right;
 }
-.up {
-  color: var(--pt-sev-ok);
+/* `.up` / `.down` used to live here, hand-tinting Day P&L from the site's own
+   --pt-sev-* pair. Day P&L now uses <PretableDelta>, which reads the active
+   theme's semantic ramp and adds a direction marker, so the site no longer
+   carries its own copy of that decision. The --pt-sev-* tokens are still used
+   below by the tick flash and the analyst pills. */
+
+/* Day P&L's two-line stack. The delta wraps the FIGURE only and this element
+   stacks the percentage under it — deliberately, rather than putting both lines
+   inside one delta.
+   Measured: a delta lays its marker out beside the whole of its children, so
+   with the stack inside, the marker slid ~11px left whenever the percentage was
+   the wider of the two lines. That is exactly what happens at $0 / 0.00%, so a
+   position crossing zero made the marker jump sideways — in a grid taking 60
+   ticks a second, on every row that touches flat.
+   It also keeps the theme's semantic colour at the opacity its contrast was
+   computed for: `.subline` is 55% opaque, and a 55% --pretable-positive is a
+   long way from the 5:1 the ramp promises. The figure carries the hue; the
+   percentage below it is secondary and reads as such. */
+.pnl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
 }
-.down {
-  color: var(--pt-sev-err);
-}
+
 /* Tick flash.
    Sized against the actual data rate, which is the whole trick here. The book
    ticks ~60x/s across 14 rows, so with the original 1s fade every cell in the
@@ -59,10 +78,17 @@
 .analyst {
   line-height: 1.45;
 }
+/* Secondary by SIZE, not by opacity.
+   At 55% opaque this line rendered ~#7eb994 over white — 2.27:1, a clear AA
+   failure, and sitting inside the one column whose whole premise is that its
+   colours were computed rather than eyeballed. Opacity cannot reach 4.5:1 while
+   still reading as secondary, so the differentiation moves to type size and
+   position: the percentage keeps the full-strength ramp colour it inherits
+   (5.02:1) and is subordinate because it is smaller and sits beneath the
+   figure. */
 .subline {
   display: block;
   font-size: 11px;
-  opacity: 0.55;
 }
 .pill {
   display: inline-block;
