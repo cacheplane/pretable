@@ -301,7 +301,7 @@ export default function BenchPage() {
           <code>apps/bench</code>
         </a>{" "}
         — pretable against three real third-party grids: AG Grid Community,
-        TanStack Table v8 with TanStack Virtual, and MUI X DataGrid Community.
+        TanStack Table v9 with TanStack Virtual, and MUI X DataGrid Community.
         We measure scroll frame timings, blank gaps under scroll, row-height
         fidelity for wrapped text, and anchor stability across rebuilds. All raw
         data is in the repo; this page renders one milestone JSON file.
