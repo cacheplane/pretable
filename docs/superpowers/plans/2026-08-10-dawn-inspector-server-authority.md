@@ -1086,12 +1086,29 @@ Append to `packages/inspector/test/components/memory-grid.test.tsx`, inside the 
       <MemoryGrid records={[record({ id: "a" }), record({ id: "b" })]} onSelect={vi.fn()} onSortChange={onSortChange} />,
     )
     fireEvent.click(headerFor(container, "content"))
+    // `onSortChange` never firing is the real discriminator. `aria-sort` is NOT:
+    // @pretable/react 0.3.0 emits it unconditionally ("none" when unsorted), so
+    // asserting null here would contradict both the shipped behavior and this
+    // file's own sibling test "browse headers do not sort — the rows are a
+    // server-selected sample". Pinning "none" documents what actually ships.
     expect(onSortChange).not.toHaveBeenCalled()
-    expect(headerFor(container, "content").getAttribute("aria-sort")).toBeNull()
+    expect(headerFor(container, "content").getAttribute("aria-sort")).toBe("none")
   })
 ```
 
 Add `within` to the `@testing-library/react` import at the top of the file if it is not already there.
+
+> **`sortable: false` on `content` breaks three pre-existing tests, not one.**
+> Verified by isolating the single line (copy the file aside, remove it, run,
+> restore — never `git stash`): with it removed 19/20 pass. The casualties are
+> `clicking a column header sorts the rows by that column`, `keeps the sort when
+> a poll hands down a fresh records array`, and `is untouched when dataState is
+> omitted`. All three drive sorting through the `content` header, which the
+> server cannot order by — `BrowseSortField` in `packages/memory/src/types.ts`
+> is `updatedAt | createdAt | confidence | namespace | kind | status`, with no
+> `content`. Repair each by driving the same behavior through a **sortable**
+> column (`updated` or `confidence`) rather than deleting the coverage; the
+> point of each test is unrelated to which column carries the click.
 
 - [ ] **Step 2: Run and see them fail**
 
