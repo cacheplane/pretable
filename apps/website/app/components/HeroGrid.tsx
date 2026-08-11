@@ -75,12 +75,19 @@ export function HeroGrid() {
   const pasteSummaryTimerRef = useRef<number | null>(null);
   const editedQtyByIdRef = useRef<Map<string, number>>(new Map());
 
-  const surfaceRef = useRef<HTMLDivElement>(null);
+  // Measured on `.heroGridPane` — the box the GRID gets — not on
+  // `.heroSurface`, which also has to hold the affordance legend beneath it.
+  // `viewportHeight` pins the grid's height exactly, so handing it the surface's
+  // height left no room for the legend and pushed it past the bezel, which is
+  // `overflow: hidden`. The pane is `flex: 1 1 0` under a `flex: 0 0 auto`
+  // legend, so what we measure here is already net of the legend and cannot be
+  // grown by the grid we size from it.
+  const gridPaneRef = useRef<HTMLDivElement>(null);
   const [viewportHeight, setViewportHeight] = useState(
     FALLBACK_VIEWPORT_HEIGHT,
   );
   useLayoutEffect(() => {
-    const el = surfaceRef.current;
+    const el = gridPaneRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const measure = () => {
       const next = Math.max(
@@ -286,32 +293,34 @@ export function HeroGrid() {
     <section className={`hero ${styles.heroBackdrop}`}>
       <div className={styles.heroBezel} data-testid="hero-bezel">
         <div className={styles.heroSplit}>
-          <div className={styles.heroSurface} ref={surfaceRef}>
-            <PretableSurface<PositionRow>
-              ariaLabel="Live portfolio positions"
-              columns={columns}
-              copyWithHeaders
-              getRowId={(row) => row.id}
-              // Enabled but EMPTY on arrival. First paint stays the flat
-              // streaming book — the hero's actual job — and the panel's own
-              // "Drag a column here to group by it" invites the gesture, so a
-              // visitor discovers grouping by performing it. The strip consumes
-              // from `viewportHeight` rather than adding to it, so the bezel
-              // below is bit-for-bit where it was.
-              groupPanel={{ enabled: true }}
-              onCellEdit={handleCellEdit}
-              onGridReady={(g) => {
-                gridRef.current = g;
-              }}
-              onPaste={handlePaste}
-              onSelectionChange={handleSelectionChange}
-              onSortChange={(entries) => setUserSort(entries)}
-              rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
-              rows={sortedRows}
-              state={{ sort: userSort }}
-              viewportHeight={viewportHeight}
-            />
-            <p className={styles.legend}>
+          <div className={styles.heroSurface}>
+            <div className={styles.heroGridPane} ref={gridPaneRef}>
+              <PretableSurface<PositionRow>
+                ariaLabel="Live portfolio positions"
+                columns={columns}
+                copyWithHeaders
+                getRowId={(row) => row.id}
+                // Enabled but EMPTY on arrival. First paint stays the flat
+                // streaming book — the hero's actual job — and the panel's own
+                // "Drag a column here to group by it" invites the gesture, so a
+                // visitor discovers grouping by performing it. The strip consumes
+                // from `viewportHeight` rather than adding to it, so the bezel
+                // below is bit-for-bit where it was.
+                groupPanel={{ enabled: true }}
+                onCellEdit={handleCellEdit}
+                onGridReady={(g) => {
+                  gridRef.current = g;
+                }}
+                onPaste={handlePaste}
+                onSelectionChange={handleSelectionChange}
+                onSortChange={(entries) => setUserSort(entries)}
+                rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
+                rows={sortedRows}
+                state={{ sort: userSort }}
+                viewportHeight={viewportHeight}
+              />
+            </div>
+            <p className={styles.legend} data-testid="hero-legend">
               double-click to edit · drag to select · ⌘C copy · ⌘V paste into
               Qty · funnel to filter · drag a header up to group
             </p>
