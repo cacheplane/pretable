@@ -44,7 +44,7 @@ const TOKENS = [
   "pretable-reorder-drop-indicator",
   "pretable-shadow-overlay",
   "pretable-shadow-card",
-  "pretable-shadow-seam",
+  "pretable-seam-color",
   "pretable-edit-bg",
   "pretable-text-error",
   "pretable-icon-size",

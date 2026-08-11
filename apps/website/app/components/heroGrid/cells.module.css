@@ -9,6 +9,10 @@
 }
 .num {
   font-variant-numeric: tabular-nums;
+  /* The cell right-aligns the span, but a span is only as wide as its widest
+     line — so a two-line stack like Day P&L needs the shorter line right-aligned
+     inside it too, or the percentage hangs left of the dollar figure above it. */
+  text-align: right;
 }
 .up {
   color: var(--pretable-pos, #1a8f50);
@@ -84,7 +88,10 @@
 :global([data-pretable-cell][data-pretable-column-id="qty"]):hover::after {
   content: "✎";
   position: absolute;
-  right: 4px;
+  /* Parked on the LEFT: Qty is a number column now, so its digits sit against
+     the trailing edge and a pencil at `right: 4px` would land on top of them.
+     The leading side is the empty one. */
+  left: 4px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 10px;

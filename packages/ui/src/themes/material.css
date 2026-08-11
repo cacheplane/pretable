@@ -77,9 +77,14 @@
   --pretable-shadow-overlay: 0 4px 12px rgb(0 0 0 / 0.12);
   /* No card shadow: this theme draws a frame instead. pretable.css uses it. */
   --pretable-shadow-card: none;
-  /* The frozen-column edge. Spread must be <= -blur/2 or the blur bleeds above
-     and below each pinned cell and paints a dark band at every row boundary. */
-  --pretable-shadow-seam: 6px 0 10px -8px rgb(0 0 0 / 0.18);
+  /* The frozen-column edge, as a COLOUR rather than a whole shadow: the right
+     edge needs the mirror of the left one's offset, and a single shadow value
+     cannot be flipped. grid.css owns the geometry — which is structural — and
+     the theme owns the strength. `transparent` opts out.
+     Material opts out: like Excel it marks the frozen edge with a tone step on
+     --pretable-bg-pinned plus a vertical rule, so a shadow would be a third
+     signal and a change to a compatibility skin's look. */
+  --pretable-seam-color: transparent;
 
   /* Density — natural default = standard */
   --pretable-row-height: 48px;
