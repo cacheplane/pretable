@@ -227,6 +227,18 @@ export interface PretableAggregator<TAcc = unknown, TOut = unknown> {
 }
 
 // @public
+export function PretableBadge(input: PretableBadgeProps): react.JSX.Element;
+
+// @public
+export interface PretableBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+    children?: ReactNode;
+    tone?: PretableBadgeTone;
+}
+
+// @public
+export type PretableBadgeTone = "positive" | "negative" | "warning" | "info";
+
+// @public
 export interface PretableBaseColumn<TRow extends PretableRow = PretableRow> {
     aggregate?: PretableAggregateSpec;
     align?: ColumnAlign;
@@ -429,6 +441,15 @@ export interface PretableEditState {
 
 // @public
 export type PretableEditStatus = "checking" | "editing" | "validating" | "saving" | "error";
+
+// @public
+export function PretableEntity(input: PretableEntityProps): react.JSX.Element;
+
+// @public
+export interface PretableEntityProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+    primary: ReactNode;
+    secondary?: ReactNode;
+}
 
 // @public
 export type PretableFocusDirection = "up" | "down" | "left" | "right";

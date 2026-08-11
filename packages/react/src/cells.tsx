@@ -13,10 +13,10 @@
  * second for no gain.
  *
  * Each also carries its meaning on a channel that is NOT colour: the delta has
- * a direction marker, the status has its label. About 8% of men cannot reliably
- * separate the red from the green these use, and a printed or greyscale grid
- * has no hue at all — so a presentation that spoke only in colour would simply
- * not say anything to those readers.
+ * a direction marker, and the status and the badge have their labels. About 8%
+ * of men cannot reliably separate the red from the green these use, and a
+ * printed or greyscale grid has no hue at all — so a presentation that spoke
+ * only in colour would simply not say anything to those readers.
  */
 import type { HTMLAttributes, ReactNode } from "react";
 
@@ -155,6 +155,121 @@ export function PretableStatus({
   return (
     <span {...spanProps} data-pretable-status={tone}>
       {children}
+    </span>
+  );
+}
+
+/**
+ * The tones a {@link PretableBadge} can carry, drawn from the theme's semantic
+ * ramp.
+ *
+ * There is no `neutral` member: a badge with no tone IS the neutral one, and it
+ * is what the prop's absence already produces. A second spelling of the same
+ * state would be a value the stylesheet has no rule for.
+ *
+ * @public
+ */
+export type PretableBadgeTone = "positive" | "negative" | "warning" | "info";
+
+/**
+ * Props for {@link PretableBadge}.
+ *
+ * @public
+ */
+export interface PretableBadgeProps extends Omit<
+  HTMLAttributes<HTMLSpanElement>,
+  "children"
+> {
+  /**
+   * Which tone the label takes. Omit it for a plain chip in the cell's own ink.
+   */
+  tone?: PretableBadgeTone;
+  /** The badge's label. A chip with nothing in it says nothing. */
+  children?: ReactNode;
+}
+
+/**
+ * A short label in a chip: a category, a flag, a state that is a noun rather
+ * than a measurement.
+ *
+ * ```tsx
+ * render: ({ row }) => (
+ *   <PretableBadge tone={row.flag === "risk" ? "negative" : "warning"}>
+ *     {row.flag}
+ *   </PretableBadge>
+ * )
+ * ```
+ *
+ * The chip never tints its own fill, which is a contrast decision rather than a
+ * stylistic one — see the rule in `@pretable/ui`'s `grid.css`. Tone rides on the
+ * label's colour, and the label itself is the signal that survives greyscale.
+ *
+ * @public
+ */
+export function PretableBadge({
+  tone,
+  children,
+  ...spanProps
+}: PretableBadgeProps) {
+  return (
+    // Both attributes follow the spread: they are this component's contract
+    // with grid.css, not inputs. `data-pretable-tone` is left off entirely when
+    // there is no tone — the base rule is the neutral badge.
+    <span {...spanProps} data-pretable-badge="" data-pretable-tone={tone}>
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Props for {@link PretableEntity}.
+ *
+ * @public
+ */
+export interface PretableEntityProps extends Omit<
+  HTMLAttributes<HTMLSpanElement>,
+  "children"
+> {
+  /** The identifying line — a ticker, an ID, a name. */
+  primary: ReactNode;
+  /**
+   * The qualifying line beneath it. Omitted, the element is not rendered at
+   * all: an empty one still claims a line box and would grow every row in the
+   * column.
+   */
+  secondary?: ReactNode;
+}
+
+/**
+ * An identity: a primary line with a quieter one beneath it, the shape almost
+ * every grid's first column takes.
+ *
+ * ```tsx
+ * render: ({ row }) => (
+ *   <PretableEntity primary={row.symbol} secondary={row.name} />
+ * )
+ * ```
+ *
+ * The secondary line is subordinated by a token and a type size, never by an
+ * opacity — a translucent secondary cannot reach 4.5:1 and still read as
+ * secondary, which is how every hand-rolled version of this pattern has failed.
+ *
+ * @public
+ */
+export function PretableEntity({
+  primary,
+  secondary,
+  ...spanProps
+}: PretableEntityProps) {
+  return (
+    <span {...spanProps} data-pretable-entity="">
+      <span data-pretable-entity-primary="">{primary}</span>
+      {/* An explicit null check, not `secondary && …`: 0 and "" are values a
+          secondary line legitimately holds — a count, a code — and a falsy
+          guard would silently drop them. */}
+      {secondary === undefined || secondary === null ? null : (
+        <span data-pretable-entity-secondary="">{secondary}</span>
+      )}
     </span>
   );
 }
