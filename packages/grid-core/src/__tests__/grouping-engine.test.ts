@@ -1723,3 +1723,131 @@ describe("selection reconciliation across column-model changes", () => {
     unsubscribe();
   });
 });
+
+describe("expansion does not re-derive what it cannot change", () => {
+  /**
+   * The tree and the aggregates are invariant under expand/collapse — only the
+   * flatten reads the override set. These tests pin that the engine actually
+   * exploits it, because the cost of not doing so is invisible to every other
+   * assertion in this file: a toggle that rebuilds the whole model still
+   * produces exactly the right rows, just far slower at scale.
+   *
+   * `accumulate` runs once per descendant leaf per ancestor level, so a
+   * counting aggregator is a direct probe for "did the engine re-fold?".
+   */
+  function makeCountingGrid() {
+    let accumulateCalls = 0;
+
+    const grid = createGridCore<Holding>({
+      columns: [
+        { id: "sector", header: "Sector" },
+        { id: "analyst", header: "Analyst" },
+        {
+          id: "qty",
+          header: "Qty",
+          type: "number",
+          aggregate: {
+            init: () => 0,
+            accumulate: (acc: number, value: unknown) => {
+              accumulateCalls += 1;
+              return typeof value === "number" ? acc + value : acc;
+            },
+            merge: (a: number, b: number) => a + b,
+            finalize: (acc: number) => acc,
+          },
+        },
+      ],
+      rows: HOLDINGS,
+      getRowId: (row) => row.id,
+    });
+
+    grid.setRowGroups(["sector", "analyst"]);
+    grid.getSnapshot();
+
+    return { grid, calls: () => accumulateCalls };
+  }
+
+  test("collapsing re-flattens without re-folding the aggregates", () => {
+    const { grid, calls } = makeCountingGrid();
+    const foldsAfterGrouping = calls();
+    const expandedRowCount = grid.getSnapshot().visibleRows.length;
+
+    expect(foldsAfterGrouping).toBeGreaterThan(0);
+
+    grid.setGroupExpanded(SECTOR_TECH, false);
+    const collapsedRowCount = grid.getSnapshot().visibleRows.length;
+
+    // Not vacuous: the flatten really did produce a different model.
+    expect(collapsedRowCount).toBeLessThan(expandedRowCount);
+    expect(calls()).toBe(foldsAfterGrouping);
+
+    grid.setGroupExpanded(SECTOR_TECH, true);
+
+    expect(grid.getSnapshot().visibleRows.length).toBe(expandedRowCount);
+    expect(calls()).toBe(foldsAfterGrouping);
+  });
+
+  test("collapseAll and expandAll reuse the model too", () => {
+    const { grid, calls } = makeCountingGrid();
+    const foldsAfterGrouping = calls();
+    const expandedRowCount = grid.getSnapshot().visibleRows.length;
+
+    grid.collapseAll();
+
+    expect(grid.getSnapshot().visibleRows.length).toBeLessThan(
+      expandedRowCount,
+    );
+    expect(calls()).toBe(foldsAfterGrouping);
+
+    grid.expandAll();
+
+    expect(grid.getSnapshot().visibleRows.length).toBe(expandedRowCount);
+    expect(calls()).toBe(foldsAfterGrouping);
+  });
+
+  test("the reused aggregates still read correctly", () => {
+    const { grid } = makeCountingGrid();
+    const energyTotal = () =>
+      grid
+        .getSnapshot()
+        .visibleRows.find(
+          (entry): entry is PretableGroupRow =>
+            entry.kind === "group" && entry.id === SECTOR_ENERGY,
+        )?.aggregates.qty;
+
+    expect(energyTotal()).toBe(18);
+
+    grid.setGroupExpanded(SECTOR_TECH, false);
+
+    expect(energyTotal()).toBe(18);
+  });
+
+  test.each([
+    [
+      "a sort change",
+      (grid: ReturnType<typeof makeCountingGrid>["grid"]) =>
+        grid.setSort("qty", "desc"),
+    ],
+    [
+      "a grouping change",
+      (grid: ReturnType<typeof makeCountingGrid>["grid"]) =>
+        grid.setRowGroups(["analyst"]),
+    ],
+    [
+      "replaced rows",
+      (grid: ReturnType<typeof makeCountingGrid>["grid"]) =>
+        grid.setRows([
+          ...HOLDINGS,
+          { id: "h9", sector: "Tech", analyst: "Ada", qty: 5 },
+        ]),
+    ],
+  ])("%s still re-folds — the cache is not over-broad", (_label, mutate) => {
+    const { grid, calls } = makeCountingGrid();
+    const before = calls();
+
+    mutate(grid);
+    grid.getSnapshot();
+
+    expect(calls()).toBeGreaterThan(before);
+  });
+});
