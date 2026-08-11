@@ -120,9 +120,9 @@ describe("native value formatting", () => {
     };
     const formatters = compileNumberFormatters([column], "en-US");
 
-    expect(
-      formatDataCellValue(column, row, -12, formatters, fallback),
-    ).toBe("custom:-12");
+    expect(formatDataCellValue(column, row, -12, formatters, fallback)).toBe(
+      "custom:-12",
+    );
   });
 
   it("formats only number and bigint values without coercion", () => {
@@ -139,15 +139,15 @@ describe("native value formatting", () => {
     const row: Row = { id: "row-1", amount: -12 };
     const formatters = compileNumberFormatters([column], "en-US");
 
-    expect(
-      formatDataCellValue(column, row, -12, formatters, fallback),
-    ).toBe("($12.00)");
+    expect(formatDataCellValue(column, row, -12, formatters, fallback)).toBe(
+      "($12.00)",
+    );
     expect(
       formatDataCellValue(column, row, BigInt(12), formatters, fallback),
     ).toBe("$12.00");
-    expect(
-      formatDataCellValue(column, row, "-12", formatters, fallback),
-    ).toBe("fallback:-12");
+    expect(formatDataCellValue(column, row, "-12", formatters, fallback)).toBe(
+      "fallback:-12",
+    );
   });
 
   it("leaves nullish values blank and non-numbers on supplied fallback", () => {
@@ -158,15 +158,15 @@ describe("native value formatting", () => {
     const row: Row = { id: "row-1", amount: null };
     const formatters = compileNumberFormatters([column], "en-US");
 
-    expect(
-      formatDataCellValue(column, row, null, formatters, fallback),
-    ).toBe("");
+    expect(formatDataCellValue(column, row, null, formatters, fallback)).toBe(
+      "",
+    );
     expect(
       formatDataCellValue(column, row, undefined, formatters, fallback),
     ).toBe("");
-    expect(
-      formatDataCellValue(column, row, false, formatters, fallback),
-    ).toBe("fallback:false");
+    expect(formatDataCellValue(column, row, false, formatters, fallback)).toBe(
+      "fallback:false",
+    );
     expect(
       formatDataCellValue(column, row, { amount: 12 }, formatters, fallback),
     ).toBe("fallback:[object Object]");
