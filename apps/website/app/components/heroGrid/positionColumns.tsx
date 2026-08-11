@@ -50,6 +50,7 @@ export function makePositionColumns(
       id: "qty",
       header: "Qty",
       widthPx: 96,
+      type: "number",
       value: (row) => row.qty,
       format: ({ value }) => (value as number).toLocaleString("en-US"),
       editable: true,
@@ -73,6 +74,7 @@ export function makePositionColumns(
       id: "last",
       header: "Last",
       widthPx: 96,
+      type: "number",
       value: (row) => row.last,
       render: ({ row }) => {
         const dirClass =
@@ -97,6 +99,7 @@ export function makePositionColumns(
       id: "mktValue",
       header: "Mkt Val",
       widthPx: 96,
+      type: "number",
       value: (row) => row.mktValue,
       format: ({ value }) => fmtCompactUsd(value as number),
     },
@@ -104,6 +107,7 @@ export function makePositionColumns(
       id: "dayPnl",
       header: "Day P&L",
       widthPx: 120,
+      type: "number",
       value: (row) => row.dayPnl,
       render: ({ row }) => (
         <span
@@ -118,6 +122,7 @@ export function makePositionColumns(
       id: "weight",
       header: "Wt",
       widthPx: 64,
+      type: "number",
       value: (row) => row.weight,
       format: ({ value }) => `${(value as number).toFixed(1)}%`,
     },
