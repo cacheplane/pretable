@@ -28,7 +28,7 @@ For tailwind users, swap `grid.css` for `tailwind.css` (both work; `tailwind.css
 
 ## CSS API (v1 contract)
 
-`@pretable/ui` ships five CSS entrypoints. Their selectors and CSS variables form the v1 styling contract — pretable's React components (`<Pretable>`, `<PretableSurface>`, `<InspectionGrid>`, `<LabeledGridSurface>`) emit the data attributes these stylesheets target.
+`@pretable/ui` ships five CSS entrypoints. Their selectors and CSS variables form the v1 styling contract — pretable's React components (`<Pretable>`, `<PretableSurface>`, `<LabeledGridSurface>`) emit the data attributes these stylesheets target.
 
 ### Entrypoints
 

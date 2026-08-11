@@ -8,7 +8,7 @@ The React surface for [pretable](https://pretable.dev/). Ships three components 
 - **`<PretableSurface>`** — controlled. Pass `state` to drive sort, filter, selection, focus, or column layout from the outside. Best for production apps.
 - **`usePretable`** — the hook. Returns `{ grid, snapshot, renderSnapshot, telemetry }` for custom rendering. Best when you need more control than `<PretableSurface>` provides — e.g., a non-default DOM layout or a different framework.
 
-`<InspectionGrid>` and `<LabeledGridSurface>` are special-purpose surfaces tagged `@beta` — they work, but expect shape changes pre-1.0.
+`<LabeledGridSurface>` is a special-purpose surface tagged `@beta` — it works, but expect shape changes pre-1.0.
 
 ## Install
 

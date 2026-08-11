@@ -15,7 +15,8 @@ import type { PretableDataRow, PretableVisibleRow } from "@pretable/core";
  * must not disagree about it. Before this was enforced there were three
  * behaviours across four doors: `<Pretable>` guessed `row.id` then fell back to
  * the array index, `<PretableSurface>` and `<LabeledGridSurface>` fell through
- * to the engine's index, and `<InspectionGrid>` hardcoded a real id.
+ * to the engine's index, and a since-removed `<InspectionGrid>` preset
+ * hardcoded a real id.
  *
  * The fixture row type carries `sku`, not `id`, so nothing can quietly guess.
  */
