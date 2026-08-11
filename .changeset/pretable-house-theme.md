@@ -24,5 +24,9 @@ Ships all 45 contract tokens at `:root` plus `--pretable-group-indent`, a `[data
 that restates every colour rather than aliasing, and three `[data-density]` tiers. Default density is
 standard: 48px rows under a 52px header.
 
-Existing themes are untouched, and the new file is purely additive — nothing changes unless you
-import it.
+Existing themes are untouched. One change reaches beyond the new file: `--pretable-shadow-card` was
+declared by every theme and consumed by nothing, so the grid's container now actually applies it.
+That lets a theme separate the grid from the host page with elevation instead of a drawn frame —
+which the frame alone cannot do, because `--pretable-rule-strong` is also the sticky header's
+underline and owes 3:1 there. Excel and Material set it to `none` and are visually unchanged; a
+third-party theme that already declared a real value will now see it paint.
