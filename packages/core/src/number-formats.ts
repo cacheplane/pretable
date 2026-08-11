@@ -1,3 +1,8 @@
+/**
+ * Options for Pretable's currency number-format presets.
+ *
+ * @public
+ */
 export type PretableCurrencyFormatOptions = Omit<
   Intl.NumberFormatOptions,
   "style" | "currency" | "currencySign"
@@ -17,6 +22,11 @@ function currencyOptions(
   };
 }
 
+/**
+ * Native number-format presets for money and accounting presentation.
+ *
+ * @public
+ */
 export const numberFormats = {
   money(options: PretableCurrencyFormatOptions): Intl.NumberFormatOptions {
     return currencyOptions(options, "standard");
