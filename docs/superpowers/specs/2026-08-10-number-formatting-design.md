@@ -88,6 +88,10 @@ interface PretableSurfaceProps<TRow> {
   locale?: Intl.LocalesArgument;
 }
 
+interface LabeledGridSurfaceProps<TRow> {
+  locale?: Intl.LocalesArgument;
+}
+
 interface SerializeRangesArgs<TRow> {
   locale?: Intl.LocalesArgument;
 }
@@ -301,6 +305,27 @@ grid-level body renderer to display `formattedValue`, not `String(value)`. It
 may still show its current header label, but it must not bypass column
 formatting. `PretableSurface` remains the lower-level authoritative renderer.
 
+`LabeledGridSurface` is also a public wrapper with a grid-level body renderer.
+It gains and forwards `locale`. Its `LabeledGridSurfaceFormatValueInput` gains
+`formattedValue`, and the wrapper follows this precedence:
+
+1. `PretableSurface` resolves `column.format` → native `numberFormat` → its
+   display fallback into `formattedValue`.
+2. If `LabeledGridSurface.formatValue` exists, it receives both raw `value` and
+   `formattedValue`; its return string is the wrapper's explicit final display
+   override.
+3. Otherwise the labeled value slot displays `formattedValue` directly.
+
+The wrapper-specific override does not change clipboard output, matching the
+existing rule that React renderers are display-only. A consumer that needs
+custom display and clipboard strings uses the column-level `format` callback.
+This keeps `LabeledGridSurface` from bypassing native formatting by default
+without silently changing the meaning of its explicit `formatValue` prop.
+
+`InspectionGrid` uses fixed inspection columns and an intentional
+`formatValue` override, so it does not gain a locale prop in this feature. Its
+display-only override and existing clipboard behavior remain unchanged.
+
 A future export API must use the same resolution contract. Building that API is
 not part of this feature.
 
@@ -350,11 +375,12 @@ navigation. It covers:
 - numeric strings and decimal-object callbacks;
 - the absence of Excel format codes, dash-for-zero, and symbol alignment.
 
-Update the API reference, grouping guide, clipboard guide, `Pretable` and
-`PretableSurface` prop references, package API reports, and package changelogs.
-The root README gains one concise finance-capable feature bullet and links to
-the number-formatting guide; it does not turn the first-grid example or homepage
-into a financial application showcase.
+Update the API reference, grouping guide, clipboard guide, `Pretable`,
+`PretableSurface`, and `LabeledGridSurface` prop references, package API
+reports, and package changelogs. The root README gains one concise
+finance-capable feature bullet and links to the number-formatting guide; it does
+not turn the first-grid example or homepage into a financial application
+showcase.
 
 ## Verification
 
@@ -377,8 +403,11 @@ into a financial application showcase.
 - Nullish, non-numeric, `bigint`, `NaN`, and infinite values follow the contract.
 - Column and grid-level renderers receive the resolved `formattedValue`.
 - `Pretable` and `PretableSurface` show the same formatted value.
+- `LabeledGridSurface` forwards locale, uses `formattedValue` by default, and
+  gives its explicit `formatValue` the final display-only override with access
+  to both raw and formatted values.
 - Displayed values, group aggregates, and both clipboard flavors agree whenever
-  a callback or native number formatter applies.
+  a column-level callback or native number formatter applies.
 - A locale prop change updates output without replacing raw grid state.
 - Explicit-locale server rendering and client hydration agree.
 - Invalid locale or option configuration fails with the column id and native
