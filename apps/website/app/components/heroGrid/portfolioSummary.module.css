@@ -27,10 +27,10 @@
   font-variant-numeric: tabular-nums;
 }
 .up {
-  color: var(--pretable-pos, #1a8f50);
+  color: var(--pt-sev-ok);
 }
 .down {
-  color: var(--pretable-neg, #c0392b);
+  color: var(--pt-sev-err);
 }
 .alloc {
   display: flex;
