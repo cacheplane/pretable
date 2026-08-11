@@ -334,4 +334,303 @@ describe("UI-only grid core", () => {
     expect(grid.getState()).toBe(before);
     expect(listener).not.toHaveBeenCalled();
   });
+
+  test("queues reentrant viewport, focus, selection, and edit commands until observation commits", () => {
+    const { rowModel } = make();
+    const sourceState = rowModel.getState();
+    const gridHolder: {
+      grid?: PretableGridUiCore<Row, number, typeof modelColumns>;
+    } = {};
+    let reentered = false;
+    const hostileSnapshot = {
+      ...sourceState.snapshot,
+      indexOf(ref: Parameters<typeof sourceState.snapshot.indexOf>[0]) {
+        if (!reentered) {
+          reentered = true;
+          gridHolder.grid!.setViewport({
+            scrollTop: 10,
+            scrollLeft: 0,
+            width: 800,
+            height: 500,
+          });
+          gridHolder.grid!.setFocus({ ref: null, columnId: null });
+          gridHolder.grid!.setSelection({
+            rows: { kind: "explicit", rowIds: new Set([1]) },
+            ranges: [],
+            anchor: null,
+          });
+          gridHolder.grid!.beginEdit({
+            rowId: 1,
+            columnId: "quantity",
+            value: 2,
+          });
+        }
+        return sourceState.snapshot.indexOf(ref);
+      },
+    };
+    const hostileModel = {
+      ...rowModel,
+      getState: () => ({ ...sourceState, snapshot: hostileSnapshot }),
+    } as typeof rowModel;
+    const grid = createGridUiCore({
+      rowModel: hostileModel,
+      columns: visualColumns,
+    });
+    gridHolder.grid = grid;
+    grid.setFocus({ ref: { kind: "data", rowId: 1 }, columnId: "name" });
+    const publications: Array<{
+      readonly revision: number | null;
+      readonly scrollTop: number;
+      readonly focused: boolean;
+      readonly selected: number;
+      readonly editing: boolean;
+    }> = [];
+    grid.subscribe(() => {
+      const current = grid.getState();
+      publications.push({
+        revision: current.observedRowModelRevision,
+        scrollTop: current.viewport.scrollTop,
+        focused: current.focus.ref !== null,
+        selected:
+          current.selection.rows.kind === "explicit"
+            ? current.selection.rows.rowIds.size
+            : -1,
+        editing: current.editing !== null,
+      });
+    });
+
+    grid.observeRowModelRevision(0);
+
+    expect(publications).toEqual([
+      { revision: 0, scrollTop: 0, focused: true, selected: 0, editing: false },
+      {
+        revision: 0,
+        scrollTop: 10,
+        focused: true,
+        selected: 0,
+        editing: false,
+      },
+      {
+        revision: 0,
+        scrollTop: 10,
+        focused: false,
+        selected: 0,
+        editing: false,
+      },
+      {
+        revision: 0,
+        scrollTop: 10,
+        focused: false,
+        selected: 1,
+        editing: false,
+      },
+      {
+        revision: 0,
+        scrollTop: 10,
+        focused: false,
+        selected: 1,
+        editing: true,
+      },
+    ]);
+  });
+
+  test("drops reentrant UI commands when hostile reconciliation aborts", () => {
+    const { rowModel } = make();
+    const sourceState = rowModel.getState();
+    const gridHolder: {
+      grid?: PretableGridUiCore<Row, number, typeof modelColumns>;
+    } = {};
+    const hostileSnapshot = {
+      ...sourceState.snapshot,
+      indexOf() {
+        gridHolder.grid!.setViewport({
+          scrollTop: 10,
+          scrollLeft: 0,
+          width: 800,
+          height: 500,
+        });
+        throw new Error("abort projection");
+      },
+    };
+    const hostileModel = {
+      ...rowModel,
+      getState: () => ({ ...sourceState, snapshot: hostileSnapshot }),
+    } as typeof rowModel;
+    const grid = createGridUiCore({
+      rowModel: hostileModel,
+      columns: visualColumns,
+    });
+    gridHolder.grid = grid;
+    grid.setFocus({ ref: { kind: "data", rowId: 1 }, columnId: "name" });
+    const before = grid.getState();
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    expect(() => grid.observeRowModelRevision(0)).toThrowError(
+      expect.objectContaining({ code: "row-model-observation-failed" }),
+    );
+    expect(grid.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  test("disposal during reconciliation wins and prevents the outer observation commit", () => {
+    const { rowModel } = make();
+    const sourceState = rowModel.getState();
+    const gridHolder: {
+      grid?: PretableGridUiCore<Row, number, typeof modelColumns>;
+    } = {};
+    let disposed = false;
+    const hostileSnapshot = {
+      ...sourceState.snapshot,
+      indexOf(ref: Parameters<typeof sourceState.snapshot.indexOf>[0]) {
+        if (!disposed) {
+          disposed = true;
+          gridHolder.grid!.dispose();
+        }
+        return sourceState.snapshot.indexOf(ref);
+      },
+    };
+    const hostileModel = {
+      ...rowModel,
+      getState: () => ({ ...sourceState, snapshot: hostileSnapshot }),
+    } as typeof rowModel;
+    const grid = createGridUiCore({
+      rowModel: hostileModel,
+      columns: visualColumns,
+    });
+    gridHolder.grid = grid;
+    grid.setFocus({ ref: { kind: "data", rowId: 1 }, columnId: "name" });
+    const before = grid.getState();
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    expect(() => grid.observeRowModelRevision(0)).not.toThrow();
+    expect(grid.getState()).toBe(before);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(() =>
+      grid.setViewport({ ...grid.getState().viewport, scrollTop: 1 }),
+    ).toThrowError(expect.objectContaining({ code: "disposed-grid-ui" }));
+  });
+
+  test("wraps a throwing snapshot revision getter without publishing", () => {
+    const { rowModel } = make();
+    const sourceState = rowModel.getState();
+    const hostileSnapshot = { ...sourceState.snapshot };
+    Object.defineProperty(hostileSnapshot, "revision", {
+      get() {
+        throw new Error("hostile revision");
+      },
+    });
+    const hostileModel = {
+      ...rowModel,
+      getState: () => ({ ...sourceState, snapshot: hostileSnapshot }),
+    } as typeof rowModel;
+    const grid = createGridUiCore({
+      rowModel: hostileModel,
+      columns: visualColumns,
+    });
+    const before = grid.getState();
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    expect(() => grid.observeRowModelRevision(0)).toThrowError(
+      expect.objectContaining({
+        code: "row-model-observation-failed",
+        cause: expect.objectContaining({ message: "hostile revision" }),
+      }),
+    );
+    expect(grid.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  test("wraps nearest-visible and navigation failures without partial publication", () => {
+    const { rowModel } = make();
+    const sourceState = rowModel.getState();
+    const nearestHostile = {
+      ...sourceState.snapshot,
+      indexOf: () => -1,
+      nearestVisibleRef() {
+        throw new Error("hostile nearest");
+      },
+    };
+    const nearestModel = {
+      ...rowModel,
+      getState: () => ({ ...sourceState, snapshot: nearestHostile }),
+    } as typeof rowModel;
+    const nearestGrid = createGridUiCore({
+      rowModel: nearestModel,
+      columns: visualColumns,
+    });
+    nearestGrid.setFocus({
+      ref: { kind: "data", rowId: 999 },
+      columnId: "name",
+    });
+    const nearestBefore = nearestGrid.getState();
+    expect(() => nearestGrid.observeRowModelRevision(0)).toThrowError(
+      expect.objectContaining({
+        code: "row-model-observation-failed",
+        cause: expect.objectContaining({ message: "hostile nearest" }),
+      }),
+    );
+    expect(nearestGrid.getState()).toBe(nearestBefore);
+
+    const navigationHostile = {
+      ...sourceState.snapshot,
+      rowAt() {
+        throw new Error("hostile navigation");
+      },
+    };
+    const navigationModel = {
+      ...rowModel,
+      getState: () => ({ ...sourceState, snapshot: navigationHostile }),
+    } as typeof rowModel;
+    const navigationGrid = createGridUiCore({
+      rowModel: navigationModel,
+      columns: visualColumns,
+    });
+    navigationGrid.observeRowModelRevision(0);
+    const navigationBefore = navigationGrid.getState();
+    const listener = vi.fn();
+    navigationGrid.subscribe(listener);
+
+    expect(() => navigationGrid.moveFocus("down")).toThrowError(
+      expect.objectContaining({
+        code: "row-model-observation-failed",
+        cause: expect.objectContaining({ message: "hostile navigation" }),
+      }),
+    );
+    expect(navigationGrid.getState()).toBe(navigationBefore);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  test("rejects a model snapshot that changes before observation assignment", () => {
+    const firstModel = createLocalRowModel({
+      rows: [{ id: 1, name: "one", quantity: 1 }],
+      columns: modelColumns,
+    });
+    const secondModel = createLocalRowModel({
+      rows: [{ id: 2, name: "two", quantity: 2 }],
+      columns: modelColumns,
+    });
+    const firstState = firstModel.getState();
+    const secondState = secondModel.getState();
+    let reads = 0;
+    const changingModel = {
+      ...firstModel,
+      getState: () => (reads++ === 0 ? firstState : secondState),
+    } as typeof firstModel;
+    const grid = createGridUiCore({
+      rowModel: changingModel,
+      columns: visualColumns,
+    });
+    const before = grid.getState();
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    expect(() => grid.observeRowModelRevision(0)).toThrowError(
+      expect.objectContaining({ code: "row-model-observation-failed" }),
+    );
+    expect(grid.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
 });

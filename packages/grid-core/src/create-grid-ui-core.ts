@@ -221,7 +221,10 @@ export function createGridUiCore<
   options: CreateGridUiCoreOptions<TRow, TRowId, TColumns>,
 ): PretableGridUiCore<TRow, TRowId, TColumns> {
   const listeners = new Set<() => void>();
-  const queuedActions: Array<() => void> = [];
+  const queuedActions: Array<{
+    readonly action: () => void;
+    readonly projectionToken?: object;
+  }> = [];
   const columnLayout = normalizeColumns(options.columns);
   const initialColumnIds = Object.freeze(
     columnLayout.map((column) => column.id),
@@ -231,6 +234,8 @@ export function createGridUiCore<
   let disposed = false;
   let notifying = false;
   let draining = false;
+  let projecting = false;
+  let activeProjectionToken: object | undefined;
   let observedSnapshot:
     PretableRowModelSnapshot<TRow, TRowId, TColumns> | undefined;
   let state: PretableGridUiState<TRowId, TColumns> = Object.freeze({
@@ -254,12 +259,12 @@ export function createGridUiCore<
   };
 
   const drain = (): void => {
-    if (notifying || draining || disposed) return;
+    if (notifying || draining || projecting || disposed) return;
     draining = true;
     try {
       while (queuedActions.length > 0 && !disposed) {
         try {
-          queuedActions.shift()!();
+          queuedActions.shift()!.action();
         } catch {
           // Reentrant commands have no synchronous error channel after listener return.
         }
@@ -293,12 +298,34 @@ export function createGridUiCore<
 
   const command = (action: () => void): void => {
     assertActive();
-    if (notifying || draining) {
-      queuedActions.push(action);
+    if (notifying || draining || projecting) {
+      queuedActions.push({
+        action,
+        ...(projecting && activeProjectionToken !== undefined
+          ? { projectionToken: activeProjectionToken }
+          : {}),
+      });
       return;
     }
     action();
   };
+
+  const discardProjectionActions = (token: object): void => {
+    for (let index = queuedActions.length - 1; index >= 0; index -= 1) {
+      if (queuedActions[index]!.projectionToken === token) {
+        queuedActions.splice(index, 1);
+      }
+    }
+  };
+
+  const observationError = (
+    message: string,
+    cause: unknown,
+  ): PretableGridUiError =>
+    cause instanceof PretableGridUiError &&
+    cause.code === "row-model-observation-failed"
+      ? cause
+      : new PretableGridUiError("row-model-observation-failed", message, cause);
 
   const snapshotForInteraction = () => {
     try {
@@ -325,6 +352,7 @@ export function createGridUiCore<
   const performDispose = (): void => {
     if (disposed) return;
     disposed = true;
+    activeProjectionToken = undefined;
     queuedActions.length = 0;
     const captured = Array.from(listeners);
     listeners.clear();
@@ -369,13 +397,21 @@ export function createGridUiCore<
     },
     moveFocus(movement: PretableIndexedFocusMovement, moveOptions) {
       command(() => {
-        const next = moveIndexedFocus({
-          snapshot: snapshotForInteraction(),
-          columns: navigationColumnIds(),
-          focus: state.focus,
-          movement,
-          pageRows: moveOptions?.pageRows,
-        });
+        let next: typeof state.focus;
+        try {
+          next = moveIndexedFocus({
+            snapshot: snapshotForInteraction(),
+            columns: navigationColumnIds(),
+            focus: state.focus,
+            movement,
+            pageRows: moveOptions?.pageRows,
+          });
+        } catch (cause) {
+          throw observationError(
+            "Indexed focus navigation could not be completed atomically.",
+            cause,
+          );
+        }
         if (sameFocus(state.focus, next)) return;
         publish({ ...state, focus: next });
       });
@@ -398,21 +434,37 @@ export function createGridUiCore<
     },
     toggleRowSelection(rowId) {
       command(() => {
-        const next = toggleIndexedRowSelection(
-          state.selection,
-          rowId,
-          snapshotForInteraction(),
-        );
+        let next: typeof state.selection;
+        try {
+          next = toggleIndexedRowSelection(
+            state.selection,
+            rowId,
+            snapshotForInteraction(),
+          );
+        } catch (cause) {
+          throw observationError(
+            "Indexed selection could not be updated atomically.",
+            cause,
+          );
+        }
         if (next === state.selection) return;
         publish({ ...state, selection: next });
       });
     },
     selectAllVisibleRows() {
       command(() => {
-        const next = selectAllVisibleRows(
-          state.selection,
-          snapshotForInteraction(),
-        );
+        let next: typeof state.selection;
+        try {
+          next = selectAllVisibleRows(
+            state.selection,
+            snapshotForInteraction(),
+          );
+        } catch (cause) {
+          throw observationError(
+            "Indexed select-all could not be updated atomically.",
+            cause,
+          );
+        }
         if (next === state.selection) return;
         publish({ ...state, selection: next });
       });
@@ -447,10 +499,20 @@ export function createGridUiCore<
       }) as PretableIndexedEditingState<TRowId, TColumns>;
       command(() => {
         const snapshot = observedSnapshot;
+        let visible = false;
+        try {
+          visible =
+            snapshot !== undefined &&
+            snapshot.indexOf({ kind: "data", rowId: input.rowId }) >= 0;
+        } catch (cause) {
+          throw observationError(
+            "The edit target could not be resolved atomically.",
+            cause,
+          );
+        }
         if (
-          snapshot === undefined ||
-          !state.columnLayout.some((column) => column.id === input.columnId) ||
-          snapshot.indexOf({ kind: "data", rowId: input.rowId }) < 0
+          !visible ||
+          !state.columnLayout.some((column) => column.id === input.columnId)
         ) {
           throw new PretableGridUiError(
             "invalid-ui-state",
@@ -535,55 +597,87 @@ export function createGridUiCore<
     },
     observeRowModelRevision(revision) {
       command(() => {
-        let snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+        const token = {};
+        activeProjectionToken = token;
+        projecting = true;
+        let committed = false;
         try {
-          snapshot = options.rowModel.getState().snapshot;
-        } catch (cause) {
-          throw new PretableGridUiError(
-            "row-model-observation-failed",
-            "The row-model snapshot could not be observed atomically.",
-            cause,
+          const modelState = options.rowModel.getState();
+          const snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns> =
+            modelState.snapshot;
+          const capturedRevision = snapshot.revision;
+          if (!Number.isSafeInteger(capturedRevision) || capturedRevision < 0) {
+            throw new TypeError(
+              "The row-model snapshot revision must be a non-negative safe integer.",
+            );
+          }
+          if (
+            capturedRevision !== revision ||
+            state.observedRowModelRevision === revision
+          ) {
+            return;
+          }
+          const focus = reconcileIndexedFocus(state.focus, snapshot);
+          const selection = reconcileIndexedSelection(
+            state.selection,
+            snapshot,
           );
-        }
-        if (
-          snapshot.revision !== revision ||
-          state.observedRowModelRevision === revision
-        ) {
-          return;
-        }
-        let focus: typeof state.focus;
-        let selection: typeof state.selection;
-        let editing = state.editing;
-        try {
-          focus = reconcileIndexedFocus(state.focus, snapshot);
-          selection = reconcileIndexedSelection(state.selection, snapshot);
+          let editing = state.editing;
           if (
             editing !== null &&
             snapshot.indexOf({ kind: "data", rowId: editing.rowId }) < 0
           ) {
             editing = null;
           }
+
+          if (disposed || activeProjectionToken !== token) return;
+          const currentModelState = options.rowModel.getState();
+          const currentSnapshot = currentModelState.snapshot;
+          const currentRevision = currentSnapshot.revision;
+          if (
+            currentSnapshot !== snapshot ||
+            currentRevision !== capturedRevision ||
+            currentRevision !== revision
+          ) {
+            throw new Error(
+              "The row-model snapshot changed during atomic UI reconciliation.",
+            );
+          }
+          if (disposed || activeProjectionToken !== token) return;
+
+          observedSnapshot = snapshot;
+          committed = true;
+          publish({
+            ...state,
+            focus,
+            selection,
+            editing,
+            observedRowModelRevision: revision,
+          });
         } catch (cause) {
-          throw new PretableGridUiError(
-            "row-model-observation-failed",
-            "The row-model revision could not be reconciled atomically.",
+          if (disposed || activeProjectionToken !== token) return;
+          throw observationError(
+            "The row-model revision could not be observed atomically.",
             cause,
           );
+        } finally {
+          if (!committed) discardProjectionActions(token);
+          if (activeProjectionToken === token) {
+            activeProjectionToken = undefined;
+          }
+          projecting = false;
+          drain();
         }
-        observedSnapshot = snapshot;
-        publish({
-          ...state,
-          focus,
-          selection,
-          editing,
-          observedRowModelRevision: revision,
-        });
       });
     },
     dispose() {
       if (disposed) return;
+      if (projecting && !notifying) {
+        performDispose();
+        return;
+      }
       if (notifying || draining) {
-        queuedActions.push(performDispose);
+        queuedActions.push({ action: performDispose });
         return;
       }
       performDispose();
