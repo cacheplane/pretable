@@ -54,7 +54,7 @@ describe("usePretable rows-mode query ownership", () => {
           grid = next;
         }}
         rows={rows}
-        state={{ focus: { rowId: null, columnId: null } }}
+        state={{ focus: { ref: null, columnId: null } }}
         viewportHeight={88}
       />,
     );

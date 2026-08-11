@@ -1,6 +1,16 @@
 import type { RowModelLike, StreamConnection } from "./types";
 import { createBatcher } from "./create-batcher";
 
+function sameValueZero<T extends string | number>(left: T, right: T): boolean {
+  return (
+    left === right ||
+    (typeof left === "number" &&
+      typeof right === "number" &&
+      Number.isNaN(left) &&
+      Number.isNaN(right))
+  );
+}
+
 /**
  * Options for {@link connectPartialStream}. `rowId` is the fixed target for
  * every partial update. Unknown targets are reported through `onIssue`; an
@@ -48,7 +58,8 @@ export function connectPartialStream<
       for (const issue of result.issues) {
         if (
           issue.code !== "unknown-update-id" ||
-          issue.rowId !== options.rowId
+          issue.rowId === undefined ||
+          !sameValueZero(issue.rowId, options.rowId)
         ) {
           continue;
         }
@@ -64,7 +75,7 @@ export function connectPartialStream<
         const combinedChanges: Partial<TRow> = {};
         let hasTargetUpdate = false;
         for (const update of updates) {
-          if (update.id !== options.rowId) continue;
+          if (!sameValueZero(update.id, options.rowId)) continue;
           Object.assign(combinedChanges, update.changes);
           hasTargetUpdate = true;
         }
@@ -91,30 +102,41 @@ export function connectPartialStream<
   // observe the rejection — attaching `.catch` here doesn't consume it.
   done.catch(() => undefined);
 
-  (async () => {
+  let settled = false;
+  const settle = (failure?: { readonly error: unknown }) => {
+    if (settled) return;
+    settled = true;
+    disposed = true;
+    let finalFailure = failure;
+    try {
+      batcher.flush();
+    } catch (error) {
+      finalFailure ??= { error };
+    } finally {
+      batcher.dispose();
+    }
+    if (finalFailure === undefined) resolveDone();
+    else rejectDone(finalFailure.error);
+  };
+
+  void (async () => {
     try {
       for await (const partial of stream) {
         if (disposed) break;
         batcher.update([{ id: options.rowId, changes: partial }]);
       }
-      batcher.flush();
-      batcher.dispose();
-      resolveDone();
+      settle();
     } catch (err) {
-      batcher.flush();
-      batcher.dispose();
-      rejectDone(err);
+      settle({ error: err });
     }
-  })();
+  })().catch((error: unknown) => settle({ error }));
 
   return {
     done,
     dispose() {
       if (disposed) return;
       disposed = true;
-      batcher.flush();
-      batcher.dispose();
-      resolveDone();
+      settle();
     },
   };
 }

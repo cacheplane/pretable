@@ -33,7 +33,7 @@ interface PretableCellAddress {
 A few invariants worth knowing:
 
 - **IDs, not indices.** Ranges reference rows and columns by stable id (`getRowId`, `column.id`). Sort, filter, and column reorder do not invalidate the selection — the cells you selected stay selected even when their visual position changes.
-- **Focus has its own slice.** `PretableFocusState` is `{ rowId, columnId }`. The focused cell is always part of some range; there is no "focused with empty selection" state. Collapsing selection (Esc, plain click) reduces ranges to a single cell at the focused address.
+- **Focus has its own slice.** Surface focus is `{ ref, columnId }`, where `ref` is discriminated as `{ kind: "data", rowId }` or `{ kind: "group", groupId }`. A focused data cell is part of a range; group focus remains unambiguous even if a data row has the same serialized id. Collapsing selection (Esc, plain click) reduces data-cell ranges to a single cell at the focused address.
 - **Multiple ranges allowed.** Cmd/Ctrl+click adds discontiguous ranges. The anchor moves to the most recent range start.
 
 ## Click + drag

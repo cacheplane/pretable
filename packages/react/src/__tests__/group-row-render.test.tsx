@@ -159,6 +159,13 @@ describe("group row rendering", () => {
     });
     await expect.poll(() => view.queryByRole("treegrid")).toBeInTheDocument();
     await expect
+      .poll(() =>
+        [...view.container.querySelectorAll("[data-pretable-header-cell]")].map(
+          (cell) => cell.getAttribute("data-pretable-column-id"),
+        ),
+      )
+      .toEqual([GROUP_COLUMN_ID, "name", "qty"]);
+    await expect
       .poll(
         () =>
           view.container.querySelectorAll("[data-pretable-group-row]").length,
@@ -171,6 +178,13 @@ describe("group row rendering", () => {
       readyGrid.setQuery({ filters: [], sort: [], rowGroups: [] });
     });
     await expect.poll(() => view.queryByRole("grid")).toBeInTheDocument();
+    await expect
+      .poll(() =>
+        [...view.container.querySelectorAll("[data-pretable-header-cell]")].map(
+          (cell) => cell.getAttribute("data-pretable-column-id"),
+        ),
+      )
+      .toEqual(["sector", "name", "qty"]);
   });
 
   it("reads aria-expanded true when expanded and false when collapsed", async () => {
@@ -322,6 +336,60 @@ describe("group row rendering", () => {
     await expect
       .poll(() => grid!.getState().focus.ref)
       .toEqual({ kind: "data", rowId: collisionId });
+
+    view.rerender(
+      <Grid
+        onGridReady={(readyGrid) => {
+          grid = readyGrid;
+        }}
+        rows={[
+          ...groupedRows,
+          {
+            id: collisionId,
+            sector: "Energy",
+            name: "collision",
+            qty: 5,
+          },
+        ]}
+        state={{
+          rowGroups: ["sector"],
+          focus: {
+            ref: { kind: "group", groupId: collisionId },
+            columnId: GROUP_COLUMN_ID,
+          },
+        }}
+      />,
+    );
+    await expect
+      .poll(() => grid!.getState().focus.ref)
+      .toEqual({ kind: "group", groupId: collisionId });
+
+    view.rerender(
+      <Grid
+        onGridReady={(readyGrid) => {
+          grid = readyGrid;
+        }}
+        rows={[
+          ...groupedRows,
+          {
+            id: collisionId,
+            sector: "Energy",
+            name: "collision",
+            qty: 5,
+          },
+        ]}
+        state={{
+          rowGroups: ["sector"],
+          focus: {
+            ref: { kind: "data", rowId: collisionId },
+            columnId: "name",
+          },
+        }}
+      />,
+    );
+    await expect
+      .poll(() => grid!.getState().focus.ref)
+      .toEqual({ kind: "data", rowId: collisionId });
   });
 
   it("double-clicking the group cell toggles, ignoring the twisty", async () => {
@@ -332,7 +400,9 @@ describe("group row rendering", () => {
     expect(view.getAllByTestId("pretable-row").length).toBeLessThan(before);
 
     fireEvent.doubleClick(groupCells(view)[0]!);
-    expect(view.getAllByTestId("pretable-row")).toHaveLength(before);
+    await expect
+      .poll(() => view.getAllByTestId("pretable-row").length)
+      .toBe(before);
   });
 
   it("a fast double-click on the twisty leaves the group collapsed", async () => {
@@ -349,7 +419,9 @@ describe("group row rendering", () => {
 
     // Two clicks = collapse then expand; the dblclick must not toggle a third
     // time, so the row count is back to its starting value.
-    expect(view.getAllByTestId("pretable-row")).toHaveLength(before);
+    await expect
+      .poll(() => view.getAllByTestId("pretable-row").length)
+      .toBe(before);
   });
 
   it("hides the grouped column and leads with the group column", async () => {

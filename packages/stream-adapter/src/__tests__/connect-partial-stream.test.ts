@@ -264,4 +264,91 @@ describe("connectPartialStream", () => {
     await connection.done;
     expect(calls[0]?.update).toEqual([{ id: 42, changes: { value: "next" } }]);
   });
+
+  test("matches issue IDs with SameValueZero semantics", async () => {
+    type NumericRow = { id: string | number; value: string };
+    const cases = [
+      { issueId: Number.NaN, targetId: Number.NaN, matches: true },
+      { issueId: -0, targetId: +0, matches: true },
+      { issueId: "1", targetId: 1, matches: false },
+    ] as const;
+
+    for (const { issueId, targetId, matches } of cases) {
+      const onIssue = vi.fn();
+      const createRow = vi.fn(
+        (partial: Partial<NumericRow>, id: string | number): NumericRow => ({
+          id,
+          value: String(partial.value ?? ""),
+        }),
+      );
+      const rowModel: RowModelLike<NumericRow, string | number> = {
+        applyTransaction(transaction) {
+          if (transaction.update !== undefined) {
+            return {
+              issues: [{ code: "unknown-update-id", rowId: issueId }] as const,
+            };
+          }
+          return { issues: [] };
+        },
+      };
+      async function* partials(): AsyncIterable<Partial<NumericRow>> {
+        yield { value: "created" };
+      }
+
+      const connection = connectPartialStream(rowModel, partials(), {
+        rowId: targetId,
+        createRow,
+        onIssue,
+      });
+      await vi.advanceTimersToNextTimerAsync();
+      await connection.done;
+
+      expect(onIssue).toHaveBeenCalledTimes(matches ? 1 : 0);
+      expect(createRow).toHaveBeenCalledTimes(matches ? 1 : 0);
+    }
+  });
+
+  test("settles once with the source error when catch-path flushing throws", async () => {
+    const sourceError = new Error("partial source failed");
+    const flushError = new Error("partial flush failed");
+    const rowModel: RowModelLike<TestRow, string> = {
+      applyTransaction() {
+        throw flushError;
+      },
+    };
+    async function* throwing(): AsyncIterable<Partial<TestRow>> {
+      yield { name: "buffered" };
+      throw sourceError;
+    }
+    const unhandled: unknown[] = [];
+    const onUnhandled = (error: unknown) => unhandled.push(error);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const connection = connectPartialStream(rowModel, throwing(), {
+        rowId: "row-1",
+      });
+      let settlements = 0;
+      const outcome = connection.done.then(
+        () => {
+          settlements += 1;
+          return { kind: "resolved" as const };
+        },
+        (error) => {
+          settlements += 1;
+          return { kind: "rejected" as const, error };
+        },
+      );
+      await vi.advanceTimersByTimeAsync(100);
+      const timed = await Promise.race([
+        outcome,
+        Promise.resolve({ kind: "pending" as const }),
+      ]);
+
+      expect(timed).toEqual({ kind: "rejected", error: sourceError });
+      expect(settlements).toBe(1);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });

@@ -120,4 +120,46 @@ describe("connectElementStream", () => {
     const allAdds = grid.calls.flatMap((c) => c.add ?? []);
     expect(allAdds).toHaveLength(3);
   });
+
+  test("settles once with the source error when catch-path flushing throws", async () => {
+    const sourceError = new Error("element source failed");
+    const flushError = new Error("element flush failed");
+    const rowModel: RowModelLike<TestRow, string> = {
+      applyTransaction() {
+        throw flushError;
+      },
+    };
+    async function* throwing(): AsyncIterable<TestRow> {
+      yield { id: "1", name: "buffered" };
+      throw sourceError;
+    }
+    const unhandled: unknown[] = [];
+    const onUnhandled = (error: unknown) => unhandled.push(error);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const connection = connectElementStream(rowModel, throwing());
+      let settlements = 0;
+      const outcome = connection.done.then(
+        () => {
+          settlements += 1;
+          return { kind: "resolved" as const };
+        },
+        (error) => {
+          settlements += 1;
+          return { kind: "rejected" as const, error };
+        },
+      );
+      await vi.advanceTimersByTimeAsync(100);
+      const timed = await Promise.race([
+        outcome,
+        Promise.resolve({ kind: "pending" as const }),
+      ]);
+
+      expect(timed).toEqual({ kind: "rejected", error: sourceError });
+      expect(settlements).toBe(1);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
 });

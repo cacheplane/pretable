@@ -213,7 +213,9 @@ export interface UseIndexedPretableOptions<
   TColumns,
 > {
   readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
-  readonly columns: readonly DomLayoutColumn<TRow>[];
+  readonly columns:
+    | readonly DomLayoutColumn<TRow>[]
+    | ((query: PretableQueryFor<TColumns>) => readonly DomLayoutColumn<TRow>[]);
   readonly viewportHeight: number;
   readonly viewportWidth?: number;
   readonly overscan?: number;
@@ -323,21 +325,25 @@ export function usePretableModelInternal<
 >(
   options: UseIndexedPretableOptions<TRow, TRowId, TColumns>,
 ): PretableModel<TRow, TRowId, TColumns> {
-  const columns = options.columns;
+  const columnSource = options.columns;
   const rowModel = options.rowModel;
   const onQueryChange = options.onQueryChange;
+  const initialColumns =
+    typeof columnSource === "function"
+      ? columnSource(rowModel.getState().snapshot.query)
+      : columnSource;
   const [queryChangeChannel] = useState(() =>
     createLatestValueChannel(onQueryChange),
   );
-  const presentationColumnsRef = useRef(columns);
+  const presentationColumnsRef = useRef(initialColumns);
   const schemaColumns = rowModel.getColumns() as readonly {
     readonly id: string;
   }[];
   const schemaIds = new Set(schemaColumns.map((column) => column.id));
-  for (const column of columns) schemaIds.delete(column.id);
+  for (const column of initialColumns) schemaIds.delete(column.id);
   if (
     !options.allowVisualExtras &&
-    (schemaIds.size !== 0 || columns.length !== schemaColumns.length)
+    (schemaIds.size !== 0 || initialColumns.length !== schemaColumns.length)
   ) {
     throw new TypeError(
       "Pretable presentation columns must match the row model schema exactly.",
@@ -351,7 +357,7 @@ export function usePretableModelInternal<
     >;
     const gridCore = createGridUiCore<TRow, TRowId, TColumns>({
       rowModel: internalModel,
-      columns: columns as never,
+      columns: initialColumns as never,
       viewport: {
         scrollTop: 0,
         scrollLeft: 0,
@@ -359,9 +365,9 @@ export function usePretableModelInternal<
         width: options.viewportWidth ?? 0,
       },
     });
-    const autoWidths = createAutoWidthStore(columns);
+    const autoWidths = createAutoWidthStore(initialColumns);
     const initialRenderColumns = mergeRenderColumns(
-      columns,
+      initialColumns,
       gridCore.getState().columnLayout,
       autoWidths.getState(),
     );
@@ -410,20 +416,13 @@ export function usePretableModelInternal<
     };
     return facade as PretableReactGrid<TRow, TRowId, TColumns>;
   }, [
+    presentationColumnsRef,
     queryChangeChannel,
     rowModel,
     stores.autoWidths,
     stores.controller.measure,
     stores.gridCore,
   ]);
-
-  // Effect Events cannot back this public imperative method because callers
-  // also invoke it outside Effects. An insertion effect publishes only the
-  // committed render's callback before any descendant layout effect can act.
-  useInsertionEffect(() => {
-    presentationColumnsRef.current = columns;
-    queryChangeChannel.set(onQueryChange);
-  }, [columns, onQueryChange, queryChangeChannel]);
 
   const [pendingDisposals] = useState(() => new Set<typeof stores>());
   useLayoutEffect(() => {
@@ -459,6 +458,34 @@ export function usePretableModelInternal<
     stores.autoWidths.getState,
     stores.autoWidths.getState,
   );
+  const observedQuery =
+    renderControllerSnapshot.snapshot?.query ?? rowModelState.snapshot.query;
+  const columns = useMemo(
+    () =>
+      typeof columnSource === "function"
+        ? columnSource(observedQuery)
+        : columnSource,
+    [columnSource, observedQuery],
+  );
+  const observedSchemaIds = new Set(schemaColumns.map((column) => column.id));
+  for (const column of columns) observedSchemaIds.delete(column.id);
+  if (
+    !options.allowVisualExtras &&
+    (observedSchemaIds.size !== 0 || columns.length !== schemaColumns.length)
+  ) {
+    throw new TypeError(
+      "Pretable presentation columns must match the row model schema exactly.",
+    );
+  }
+
+  // Effect Events cannot back this public imperative method because callers
+  // also invoke it outside Effects. An insertion effect publishes only the
+  // committed render's callback before any descendant layout effect can act.
+  useInsertionEffect(() => {
+    presentationColumnsRef.current = columns;
+    queryChangeChannel.set(onQueryChange);
+  }, [columns, onQueryChange, queryChangeChannel]);
+
   const renderColumns = useMemo(
     () => mergeRenderColumns(columns, gridSnapshot.columnLayout, autoWidthIds),
     [autoWidthIds, columns, gridSnapshot.columnLayout],
@@ -493,7 +520,7 @@ export function usePretableModelInternal<
     }
     for (const column of columns) {
       const prior = previous.get(column.id);
-      if (prior?.widthPx !== column.widthPx) {
+      if (prior === undefined || prior.widthPx !== column.widthPx) {
         stores.gridCore.setColumnWidth(
           column.id as never,
           column.widthPx ?? 160,

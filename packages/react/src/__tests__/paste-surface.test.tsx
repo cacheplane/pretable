@@ -47,7 +47,7 @@ const COLUMNS: PretableColumn<Row>[] = [
 
 function cellSelection(rowId: string, columnId: string): PretableSurfaceState {
   return {
-    focus: { rowId, columnId },
+    focus: { ref: { kind: "data", rowId }, columnId },
     selection: {
       ranges: [
         {
@@ -69,7 +69,10 @@ function rangeSelection(
   endColumnId: string,
 ): PretableSurfaceState {
   return {
-    focus: { rowId: startRowId, columnId: startColumnId },
+    focus: {
+      ref: { kind: "data", rowId: startRowId },
+      columnId: startColumnId,
+    },
     selection: {
       ranges: [{ startRowId, endRowId, startColumnId, endColumnId }],
       anchor: { rowId: startRowId, columnId: startColumnId },

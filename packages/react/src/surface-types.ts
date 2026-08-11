@@ -2,6 +2,7 @@ import type {
   ColumnFilter,
   PretableGroupId,
   PretableRowId,
+  PretableVisibleRowRef,
 } from "@pretable/core";
 
 /** Column id accepted by a surface backed by `TColumns`. @public */
@@ -52,7 +53,7 @@ export interface PretableSurfaceFocusState<
   TRowId extends PretableRowId = string,
   TColumns = readonly { readonly id: string }[],
 > {
-  rowId: TRowId | PretableGroupId | null;
+  ref: PretableVisibleRowRef<TRowId> | null;
   columnId: PretableSurfaceInteractionColumnId<TColumns> | null;
 }
 

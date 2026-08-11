@@ -158,11 +158,19 @@ interface PretableSortEntry {
   direction: "asc" | "desc";
 }
 
+type PretableVisibleRowRef<TRowId> =
+  { kind: "data"; rowId: TRowId } | { kind: "group"; groupId: string };
+
+interface PretableSurfaceFocusState<TRowId = string> {
+  ref: PretableVisibleRowRef<TRowId> | null;
+  columnId: string | null;
+}
+
 interface PretableSurfaceState {
   sort?: PretableSortEntry[];
   filters?: Record<string, ColumnFilter>;
   selection?: PretableSelectionState;
-  focus?: PretableFocusState;
+  focus?: PretableSurfaceFocusState;
   columnWidths?: Record<string, number>;
   columnOrder?: readonly string[];
   columnPinned?: Record<string, "left" | "right" | null>;
@@ -333,14 +341,14 @@ interface UsePretableOptions<TRow> {
   state?: PretableSurfaceState | null;
   measuredHeights?: Record<string, number>;
   onSelectionChange?: (next: PretableSelectionState) => void;
-  onFocusChange?: (next: PretableFocusState) => void;
+  onFocusChange?: (next: PretableSurfaceFocusState) => void;
 }
 
 interface PretableSurfaceState {
   sort?: PretableSortEntry[];
   filters?: Record<string, ColumnFilter>;
   selection?: PretableSelectionState;
-  focus?: PretableFocusState;
+  focus?: PretableSurfaceFocusState;
   columnWidths?: Record<string, number>;
   columnOrder?: readonly string[];
   columnPinned?: Record<string, "left" | "right" | null>;

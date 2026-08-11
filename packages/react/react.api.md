@@ -1723,7 +1723,7 @@ export interface PretableSurfaceFocusState<TRowId extends PretableRowId = string
     // (undocumented)
     columnId: PretableSurfaceInteractionColumnId<TColumns> | null;
     // (undocumented)
-    rowId: TRowId | PretableGroupId | null;
+    ref: PretableVisibleRowRef<TRowId> | null;
 }
 
 // @public

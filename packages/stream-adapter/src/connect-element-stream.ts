@@ -33,30 +33,41 @@ export function connectElementStream<
   // observe the rejection — attaching `.catch` here doesn't consume it.
   done.catch(() => undefined);
 
-  (async () => {
+  let settled = false;
+  const settle = (failure?: { readonly error: unknown }) => {
+    if (settled) return;
+    settled = true;
+    disposed = true;
+    let finalFailure = failure;
+    try {
+      batcher.flush();
+    } catch (error) {
+      finalFailure ??= { error };
+    } finally {
+      batcher.dispose();
+    }
+    if (finalFailure === undefined) resolveDone();
+    else rejectDone(finalFailure.error);
+  };
+
+  void (async () => {
     try {
       for await (const element of stream) {
         if (disposed) break;
         batcher.add([element]);
       }
-      batcher.flush();
-      batcher.dispose();
-      resolveDone();
+      settle();
     } catch (err) {
-      batcher.flush();
-      batcher.dispose();
-      rejectDone(err);
+      settle({ error: err });
     }
-  })();
+  })().catch((error: unknown) => settle({ error }));
 
   return {
     done,
     dispose() {
       if (disposed) return;
       disposed = true;
-      batcher.flush();
-      batcher.dispose();
-      resolveDone();
+      settle();
     },
   };
 }

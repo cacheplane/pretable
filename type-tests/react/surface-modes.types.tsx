@@ -1,12 +1,14 @@
 import {
   createColumnHelper,
   createLocalRowModel,
+  type PretableGroupId,
   type PretableQueryFor,
 } from "@pretable/core";
 import {
   PretableSurface,
   usePretable,
   type PretableRowChange,
+  type PretableSurfaceFocusState,
   type PretableSurfaceRowsProps,
 } from "@pretable/react";
 import type { Equal, Expect, IsAny } from "../shared/assert";
@@ -72,7 +74,13 @@ const surfaceProps: PretableSurfaceRowsProps<Holding, number, typeof columns> =
     rows,
     viewportHeight: 320,
     state: {
-      focus: { rowId: 1, columnId: "__pretable_group__" },
+      focus: {
+        ref: {
+          kind: "group",
+          groupId: "group_fixture" as PretableGroupId,
+        },
+        columnId: "__pretable_group__",
+      },
       selection: {
         ranges: [
           {
@@ -114,6 +122,13 @@ const surfaceProps: PretableSurfaceRowsProps<Holding, number, typeof columns> =
         | "__pretable_group__"
         | "__pretable_row_select__"
         | null = focus.columnId;
+      if (focus.ref?.kind === "data") {
+        const rowId: number = focus.ref.rowId;
+        void rowId;
+      } else if (focus.ref?.kind === "group") {
+        const groupId: PretableGroupId = focus.ref.groupId;
+        void groupId;
+      }
       void columnId;
     },
     onColumnOrderChange(order) {
@@ -137,6 +152,14 @@ const surfaceProps: PretableSurfaceRowsProps<Holding, number, typeof columns> =
   };
 const surface = <PretableSurface {...surfaceProps} />;
 void surface;
+
+const ambiguousSurfaceFocus: PretableSurfaceFocusState<number, typeof columns> =
+  {
+    // @ts-expect-error controlled surface focus requires a discriminated row ref
+    rowId: 1,
+    columnId: "symbol",
+  };
+void ambiguousSurfaceFocus;
 
 // @ts-expect-error controlled query requires onQueryChange
 usePretable({ rows, columns, query, viewportHeight: 320 });

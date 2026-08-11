@@ -243,7 +243,11 @@ export function usePretable(rawOptions: unknown): unknown {
     | (PretableViewportOptions & {
         readonly model: PretableRowModel<object, PretableRowId, unknown>;
         readonly columns?: readonly { readonly id: string }[];
-        readonly ɵvisualColumns?: readonly { readonly id: string }[];
+        readonly ɵvisualColumns?:
+          | readonly { readonly id: string }[]
+          | ((query: PretableQueryFor<unknown>) => readonly {
+              readonly id: string;
+            }[]);
       })
     | (PretableViewportOptions & {
         readonly rows: readonly object[];
@@ -256,7 +260,11 @@ export function usePretable(rawOptions: unknown): unknown {
         readonly onQueryChange?: (query: PretableQueryFor<unknown>) => void;
         readonly initialExpansion?: PretableExpansionDefault;
         readonly aggregateFilteredRows?: boolean;
-        readonly ɵvisualColumns?: readonly { readonly id: string }[];
+        readonly ɵvisualColumns?:
+          | readonly { readonly id: string }[]
+          | ((query: PretableQueryFor<unknown>) => readonly {
+              readonly id: string;
+            }[]);
       });
   const modelOption = "model" in options ? options.model : undefined;
   const mode = modelOption === undefined ? "rows" : "model";

@@ -13,9 +13,10 @@ import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import {
   createColumnHelper,
   createLocalRowModel,
-  type PretableGroupId,
+  GROUP_COLUMN_ID,
   type PretableRowModel,
   type PretableRowModelSnapshot,
+  type PretableVisibleRowRef,
 } from "@pretable/core";
 
 import {
@@ -154,6 +155,131 @@ afterEach(() => {
 });
 
 describe("indexed PretableSurface", () => {
+  test("explicit-model query transitions update grouped presentation columns", async () => {
+    const owned = createLocalRowModel({ rows: rows.slice(0, 20), columns });
+    const view = render(
+      <PretableSurface
+        ariaLabel="explicit grouped presentation"
+        model={owned}
+        overscan={0}
+        viewportHeight={168}
+      />,
+    );
+    const headerIds = () =>
+      [...view.container.querySelectorAll("[data-pretable-header-cell]")].map(
+        (cell) => cell.getAttribute("data-pretable-column-id"),
+      );
+
+    await expect
+      .poll(headerIds)
+      .toEqual(["group", "name", "quantity", "price"]);
+    act(() => {
+      owned.setQuery({
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "group" }],
+      });
+    });
+    await expect.poll(() => view.queryByRole("treegrid")).toBeInTheDocument();
+    await expect
+      .poll(headerIds)
+      .toEqual([GROUP_COLUMN_ID, "name", "quantity", "price"]);
+
+    act(() => {
+      owned.setQuery({ filters: [], sort: [], rowGroups: [] });
+    });
+    await expect
+      .poll(headerIds)
+      .toEqual(["group", "name", "quantity", "price"]);
+    owned.dispose();
+  });
+
+  test("a schema column revealed after initial grouping keeps auto width", async () => {
+    const owned = createLocalRowModel({
+      rows: rows.slice(0, 20),
+      columns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "group" }],
+      },
+    });
+    const view = render(
+      <PretableSurface
+        ariaLabel="initially grouped presentation"
+        model={owned}
+        overscan={0}
+        viewportHeight={168}
+      />,
+    );
+    await expect
+      .poll(() =>
+        view.container.querySelector(
+          `[data-pretable-header-cell][data-pretable-column-id="${GROUP_COLUMN_ID}"]`,
+        ),
+      )
+      .toBeTruthy();
+
+    act(() => {
+      owned.setQuery({ filters: [], sort: [], rowGroups: [] });
+    });
+    const revealed = await waitFor(() => {
+      const cell = view.container.querySelector<HTMLElement>(
+        '[data-pretable-header-cell][data-pretable-column-id="group"]',
+      );
+      expect(cell).toBeTruthy();
+      return cell!;
+    });
+
+    expect(revealed.style.width).toBe("140px");
+    owned.dispose();
+  });
+
+  test("controlled query transitions update grouped presentation columns", async () => {
+    const emptyQuery = { filters: [], sort: [], rowGroups: [] } as const;
+    const groupedQuery = {
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "group" }],
+    } as const;
+    const Harness = (props: { readonly grouped: boolean }) => (
+      <PretableSurface
+        ariaLabel="controlled grouped presentation"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onQueryChange={() => undefined}
+        overscan={0}
+        query={props.grouped ? groupedQuery : emptyQuery}
+        rows={rows.slice(0, 20)}
+        viewportHeight={168}
+      />
+    );
+    const view = render(<Harness grouped={false} />);
+    const headerIds = () =>
+      [...view.container.querySelectorAll("[data-pretable-header-cell]")].map(
+        (cell) => cell.getAttribute("data-pretable-column-id"),
+      );
+
+    await expect
+      .poll(headerIds)
+      .toEqual(["group", "name", "quantity", "price"]);
+    view.rerender(<Harness grouped />);
+    await expect
+      .poll(headerIds)
+      .toEqual([GROUP_COLUMN_ID, "name", "quantity", "price"]);
+    await expect
+      .poll(
+        () =>
+          view.container.querySelectorAll("[data-pretable-group-row]").length,
+      )
+      .toBeGreaterThan(0);
+
+    view.rerender(<Harness grouped={false} />);
+    await expect
+      .poll(headerIds)
+      .toEqual(["group", "name", "quantity", "price"]);
+  });
+
   test("public rows-mode callbacks preserve numeric IDs and column values", () => {
     expectTypeOf<
       PretableColumnValue<(typeof columns)[2]>
@@ -163,9 +289,9 @@ describe("indexed PretableSurface", () => {
       columns,
       getRowId: (row) => row.id,
       onFocusChange: (focus) => {
-        expectTypeOf(focus.rowId).toEqualTypeOf<
-          number | PretableGroupId | null
-        >();
+        expectTypeOf(
+          focus.ref,
+        ).toEqualTypeOf<PretableVisibleRowRef<number> | null>();
         expectTypeOf(focus.columnId).toEqualTypeOf<
           | "group"
           | "name"
@@ -202,7 +328,10 @@ describe("indexed PretableSurface", () => {
       },
       rows: rows.slice(0, 1),
       state: {
-        focus: { rowId: 0, columnId: "quantity" },
+        focus: {
+          ref: { kind: "data", rowId: 0 },
+          columnId: "quantity",
+        },
         selection: {
           ranges: [
             {
@@ -218,7 +347,7 @@ describe("indexed PretableSurface", () => {
       viewportHeight: 168,
     };
 
-    expect(props.state?.focus?.rowId).toBe(0);
+    expect(props.state?.focus?.ref).toEqual({ kind: "data", rowId: 0 });
   });
 
   test("controlled selection preserves numeric row ID zero", async () => {

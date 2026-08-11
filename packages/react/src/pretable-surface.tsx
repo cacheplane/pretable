@@ -937,10 +937,14 @@ export function PretableSurface<
   onCellEdit,
   onPaste,
 }: PretableSurfaceProps<TRow, TRowId, TColumns>) {
-  const emitFocusChange = (next: PretableFocusState) => {
-    onFocusChange?.(
-      next as unknown as PretableSurfaceFocusState<TRowId, TColumns>,
-    );
+  const emitFocusChange = (
+    ref: PretableVisibleRowRef<PretableRowId> | null,
+    columnId: string | null,
+  ) => {
+    onFocusChange?.({
+      ref: ref as PretableVisibleRowRef<TRowId> | null,
+      columnId: columnId as PretableSurfaceInteractionColumnId<TColumns> | null,
+    });
   };
   const emitSelectionChange = (next: PretableSelectionState) => {
     onSelectionChange?.(
@@ -1118,72 +1122,56 @@ export function PretableSurface<
       } as PretableColumn<TRow>;
     });
   }, [columns, model]);
-  const controlledRowGroups = query?.rowGroups as
-    readonly { readonly columnId: string }[] | undefined;
-  const requestedRowGroups = useMemo(
-    () =>
-      controlledRowGroups?.map((entry) => entry.columnId) ??
-      state?.rowGroups ??
-      (model === undefined
-        ? []
-        : (
-            model as unknown as {
-              getState(): {
-                snapshot: {
-                  query: { rowGroups: readonly { columnId: string }[] };
-                };
-              };
-            }
-          )
-            .getState()
-            .snapshot.query.rowGroups.map((entry) => entry.columnId)),
-    [controlledRowGroups, model, state?.rowGroups],
+  const resolveEffectiveColumns = useCallback(
+    (currentQuery: { readonly rowGroups: readonly { columnId: string }[] }) => {
+      const requestedRowGroups = currentQuery.rowGroups.map(
+        (entry) => entry.columnId,
+      );
+      const groupedIds = new Set(requestedRowGroups);
+      const visibleAuthoritative =
+        requestedRowGroups.length === 0 || hideGroupedColumns === false
+          ? authoritativeColumns
+          : authoritativeColumns.filter((column) => !groupedIds.has(column.id));
+      const base =
+        requestedRowGroups.length === 0
+          ? visibleAuthoritative
+          : [
+              {
+                id: GROUP_COLUMN_ID,
+                header: groupColumn?.header ?? "Group",
+                type: "text" as const,
+                value: () => "",
+                widthPx: groupColumn?.widthPx ?? 220,
+                ...(groupColumn?.pinned === undefined
+                  ? {}
+                  : { pinned: groupColumn.pinned }),
+                sortable: false,
+                filterable: false,
+              } satisfies PretableColumn<TRow>,
+              ...visibleAuthoritative,
+            ];
+      if (!rowSelectEnabled) return base;
+      const synth: PretableColumn<TRow> = {
+        id: ROW_SELECT_COLUMN_ID,
+        header: "",
+        type: "text",
+        value: () => "",
+        widthPx: rowSelectWidth ?? 36,
+        sortable: false,
+        filterable: false,
+        ...((rowSelectPinned ?? true) ? { pinned: "left" } : {}),
+      };
+      return [synth, ...base];
+    },
+    [
+      authoritativeColumns,
+      groupColumn,
+      hideGroupedColumns,
+      rowSelectEnabled,
+      rowSelectWidth,
+      rowSelectPinned,
+    ],
   );
-  const effectiveColumns = useMemo<PretableColumn<TRow>[]>(() => {
-    const groupedIds = new Set(requestedRowGroups);
-    const visibleAuthoritative =
-      requestedRowGroups.length === 0 || hideGroupedColumns === false
-        ? authoritativeColumns
-        : authoritativeColumns.filter((column) => !groupedIds.has(column.id));
-    const base =
-      requestedRowGroups.length === 0
-        ? visibleAuthoritative
-        : [
-            {
-              id: GROUP_COLUMN_ID,
-              header: groupColumn?.header ?? "Group",
-              type: "text" as const,
-              value: () => "",
-              widthPx: groupColumn?.widthPx ?? 220,
-              ...(groupColumn?.pinned === undefined
-                ? {}
-                : { pinned: groupColumn.pinned }),
-              sortable: false,
-              filterable: false,
-            } satisfies PretableColumn<TRow>,
-            ...visibleAuthoritative,
-          ];
-    if (!rowSelectEnabled) return base;
-    const synth: PretableColumn<TRow> = {
-      id: ROW_SELECT_COLUMN_ID,
-      header: "",
-      type: "text",
-      value: () => "",
-      widthPx: rowSelectWidth ?? 36,
-      sortable: false,
-      filterable: false,
-      ...((rowSelectPinned ?? true) ? { pinned: "left" } : {}),
-    };
-    return [synth, ...base];
-  }, [
-    authoritativeColumns,
-    groupColumn,
-    hideGroupedColumns,
-    requestedRowGroups,
-    rowSelectEnabled,
-    rowSelectWidth,
-    rowSelectPinned,
-  ]);
   const [initialLegacyQuery] = useState(() =>
     state !== null &&
     state !== undefined &&
@@ -1216,7 +1204,7 @@ export function PretableSurface<
           viewportWidth: viewportWidth || undefined,
           overscan,
           ...(query === undefined ? {} : { onQueryChange }),
-          ɵvisualColumns: effectiveColumns,
+          ɵvisualColumns: resolveEffectiveColumns,
         }
       : {
           model,
@@ -1224,7 +1212,7 @@ export function PretableSurface<
           viewportHeight: bodyViewportHeight,
           viewportWidth: viewportWidth || undefined,
           overscan,
-          ɵvisualColumns: effectiveColumns,
+          ɵvisualColumns: resolveEffectiveColumns,
         }) as never,
   ) as unknown as PretableModel<
     TRow,
@@ -1232,6 +1220,12 @@ export function PretableSurface<
     readonly PretableColumn<TRow>[]
   >;
   const { renderSnapshot, rowModelSnapshot } = indexed;
+  const presentationQuery =
+    renderSnapshot.modelSnapshot?.query ?? rowModelSnapshot.query;
+  const effectiveColumns = useMemo(
+    () => resolveEffectiveColumns(presentationQuery),
+    [presentationQuery, resolveEffectiveColumns],
+  );
   const indexedGrid = indexed.grid;
   useEffect(() => {
     if (autosize) indexedGrid.autosizeColumns();
@@ -1264,21 +1258,15 @@ export function PretableSurface<
       }
     }
     if (state.focus !== undefined) {
-      const rowId = state.focus.rowId;
-      if (rowId === null || state.focus.columnId === null) {
+      const ref = state.focus.ref;
+      if (ref === null || state.focus.columnId === null) {
         indexedGrid.setFocus({ ref: null, columnId: null });
       } else {
-        const dataRef = { kind: "data" as const, rowId };
-        const groupRef = { kind: "group" as const, groupId: rowId as never };
-        const ref =
-          rowModelSnapshot.indexOf(dataRef) >= 0
-            ? dataRef
-            : rowModelSnapshot.indexOf(groupRef) >= 0
-              ? groupRef
-              : null;
+        const visibleRef = rowModelSnapshot.indexOf(ref) >= 0 ? ref : null;
         indexedGrid.setFocus({
-          ref,
-          columnId: ref === null ? null : (state.focus.columnId as never),
+          ref: visibleRef,
+          columnId:
+            visibleRef === null ? null : (state.focus.columnId as never),
         });
       }
     }
@@ -3156,11 +3144,11 @@ export function PretableSurface<
               }),
             );
           }
-          if (
-            before.focus.rowId !== after.focus.rowId ||
-            before.focus.columnId !== after.focus.columnId
-          ) {
-            emitFocusChange(after.focus as unknown as PretableFocusState);
+          if (surfaceFocusChanged(before.focus, after.focus)) {
+            const afterFocus = after.focus as PretableFocusState & {
+              readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+            };
+            emitFocusChange(afterFocus.ref, afterFocus.columnId);
           }
           if (
             JSON.stringify(before.selection) !== JSON.stringify(after.selection)
@@ -3917,7 +3905,7 @@ export function PretableSurface<
                     ref: renderRow.ref,
                     columnId: columnId as never,
                   });
-                  emitFocusChange({ rowId: group.groupId, columnId });
+                  emitFocusChange(renderRow.ref, columnId);
                 }}
                 onToggle={() => {
                   grid.toggleGroup(group.groupId);
@@ -4159,13 +4147,11 @@ export function PretableSurface<
                         column.id,
                       );
                       const after = grid.getSnapshot();
-                      if (
-                        before.focus.rowId !== after.focus.rowId ||
-                        before.focus.columnId !== after.focus.columnId
-                      ) {
-                        emitFocusChange(
-                          after.focus as unknown as PretableFocusState,
-                        );
+                      if (surfaceFocusChanged(before.focus, after.focus)) {
+                        const afterFocus = after.focus as PretableFocusState & {
+                          readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+                        };
+                        emitFocusChange(afterFocus.ref, afterFocus.columnId);
                       }
                       if (
                         JSON.stringify(before.selection) !==
@@ -4572,7 +4558,10 @@ interface HandleCellClickArgs<TRow extends PretableRow> {
   columnId: string;
   columns: PretableColumn<TRow>[];
   grid: PretableGrid<TRow>;
-  onFocusChange?: (next: PretableFocusState) => void;
+  onFocusChange?: (
+    ref: PretableVisibleRowRef<PretableRowId> | null,
+    columnId: string | null,
+  ) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
   rowId: string;
@@ -4628,11 +4617,17 @@ function handleCellClick<TRow extends PretableRow>(
 
   const after = grid.getSnapshot();
 
+  const beforeFocus = before.focus as PretableFocusState & {
+    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+  };
+  const afterFocus = after.focus as PretableFocusState & {
+    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+  };
   if (
-    before.focus.rowId !== after.focus.rowId ||
-    before.focus.columnId !== after.focus.columnId
+    !nullableVisibleRowRefsEqual(beforeFocus.ref, afterFocus.ref) ||
+    beforeFocus.columnId !== afterFocus.columnId
   ) {
-    onFocusChange?.(after.focus);
+    onFocusChange?.(afterFocus.ref, afterFocus.columnId);
   }
 
   const selectionChanged =
@@ -5046,6 +5041,31 @@ function visibleRowRefsEqual(
   return left.kind === "group"
     ? right.kind === "group" && left.groupId === right.groupId
     : right.kind === "data" && left.rowId === right.rowId;
+}
+
+function nullableVisibleRowRefsEqual(
+  left: PretableVisibleRowRef<PretableRowId> | null,
+  right: PretableVisibleRowRef<PretableRowId> | null,
+): boolean {
+  return left === null || right === null
+    ? left === right
+    : visibleRowRefsEqual(left, right);
+}
+
+function surfaceFocusChanged(
+  left: {
+    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+    readonly columnId: string | null;
+  },
+  right: {
+    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+    readonly columnId: string | null;
+  },
+): boolean {
+  return (
+    !nullableVisibleRowRefsEqual(left.ref, right.ref) ||
+    left.columnId !== right.columnId
+  );
 }
 
 function setSurfaceFocusRef<TRow extends PretableRow>(

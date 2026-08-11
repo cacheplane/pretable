@@ -357,8 +357,11 @@ function planToState(
       : { ranges: [], anchor: null };
 
   const focus: PretableSurfaceState["focus"] = plan.focusedRowId
-    ? { rowId: plan.focusedRowId, columnId: firstColumnId }
-    : { rowId: null, columnId: null };
+    ? {
+        ref: { kind: "data", rowId: plan.focusedRowId },
+        columnId: firstColumnId,
+      }
+    : { ref: null, columnId: null };
 
   return {
     focus,
