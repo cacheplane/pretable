@@ -51,8 +51,8 @@ describe("AgGridAdapter", () => {
       <AgGridAdapter dataset={dataset as never} runKey={0} />,
     );
 
-    // AG Grid v33 in jsdom doesn't fully populate the virtualized
-    // .ag-body-viewport / .ag-row tree (no real layout). The smoke test
+    // AG Grid in jsdom doesn't fully populate the virtualized
+    // .ag-grid-viewport / .ag-row tree (no real layout). The smoke test
     // here just confirms the grid mounts to its root wrapper — full
     // selector coverage is exercised by the matrix run in Chromium.
     await waitFor(() => {

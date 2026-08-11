@@ -151,7 +151,16 @@ const scrollRuntimeProfiles: Record<
   ScrollRuntimeProfile
 > = {
   "ag-grid": {
-    viewportSelector: ".ag-body-viewport",
+    // AG Grid 36 replaced the old multi-container body DOM (9+ nested
+    // containers, scroller = `.ag-body-viewport`) with a single scrolling
+    // container, `.ag-grid-viewport` — the element carrying `overflow: auto`
+    // in the shipped theme CSS. `.ag-body-viewport` no longer exists in 36,
+    // and a stale selector here does NOT fail loudly: `measureBenchScroll`
+    // reports `status: "partial"` with zero scroll work done, which reads as
+    // an implausibly cheap AG Grid rather than a broken harness. Keep this in
+    // sync with the `.ag-grid-viewport` rule in app.css, which is what
+    // disables scroll anchoring for this adapter.
+    viewportSelector: ".ag-grid-viewport",
     rowSelector: ".ag-row",
     cellSelector: ".ag-cell",
     rowIdAttribute: "row-id",

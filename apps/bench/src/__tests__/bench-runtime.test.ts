@@ -856,7 +856,7 @@ describe("bench runtime", () => {
     document.body.innerHTML = `
         <div data-testid="root">
         <div aria-label="AG Grid Community adapter">
-          <div class="ag-body-viewport">
+          <div class="ag-grid-viewport">
             <div class="ag-row" data-row-index="0" data-row-height="60">
               <div class="ag-cell">row 0</div>
             </div>
@@ -869,7 +869,7 @@ describe("bench runtime", () => {
     `;
 
     const root = document.querySelector<HTMLElement>('[data-testid="root"]');
-    const viewport = root?.querySelector<HTMLElement>(".ag-body-viewport");
+    const viewport = root?.querySelector<HTMLElement>(".ag-grid-viewport");
     const rows = [...root!.querySelectorAll<HTMLElement>(".ag-row")];
     const rafTimestamps = [0, 16, 32, 48, 64, 80];
     let rafIndex = 0;

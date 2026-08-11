@@ -249,7 +249,7 @@ body {
 }
 
 [data-pretable-bench-tanstack-viewport],
-.ag-body-viewport,
+.ag-grid-viewport,
 .MuiDataGrid-virtualScroller {
   overscroll-behavior: contain;
   overflow-anchor: none;
