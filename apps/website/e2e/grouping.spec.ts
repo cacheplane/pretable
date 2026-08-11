@@ -1116,3 +1116,89 @@ test("a chip label wider than its cap ellipses rather than clipping", async ({
   expect(measured.whiteSpace).toBe("nowrap");
   expect(measured.overflow).toBe("hidden");
 });
+
+/* -------------------------------------------------------------------------
+ * The hero — the adoption itself.
+ *
+ * Everything above proves grouping works on a fixture built to exercise it.
+ * Nothing proved it works where it actually ships, on a live streaming grid
+ * whose rows arrive over seconds and whose heights change under wrapped text.
+ * The hero is also the one place the derived column model has a CONSUMER
+ * downstream of it — the cockpit sidebar — so the drawn-order invariant is
+ * asserted here end to end rather than only inside the package.
+ * ---------------------------------------------------------------------- */
+
+test("the hero arrives ungrouped and groups when a header is dragged onto the panel", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+  // The book streams in; grouping an empty grid would prove nothing.
+  await expect
+    .poll(() => page.locator("[data-pretable-row]").count(), {
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(5);
+
+  // Ungrouped on arrival — the streaming first impression is untouched — with
+  // the panel up and empty, inviting the gesture.
+  await expect(panel(page)).toBeVisible();
+  expect(await chipIds(page)).toEqual([]);
+  await expect(page.locator("[data-pretable-group-row]")).toHaveCount(0);
+  expect(await headerIds(page)).toContain("sector");
+
+  const panelBox = (await panel(page).boundingBox())!;
+  const headerBox = (await headerCell(page, "sector").boundingBox())!;
+  // Same premise as the fixture's drop test: two disjoint boxes, panel above.
+  expect(panelBox.height).toBeGreaterThan(8);
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(headerBox.y + 1);
+
+  await grabHeader(page, "sector");
+  await page.mouse.move(panelBox.x + 40, panelBox.y + panelBox.height / 2, {
+    steps: 10,
+  });
+  await expect(panel(page)).toHaveAttribute(
+    "data-pretable-group-panel-active",
+    "",
+  );
+  await page.mouse.up();
+
+  await expect.poll(() => chipIds(page)).toEqual(["sector"]);
+  // Grouped, not reordered: the column left the header row and depth exists.
+  expect(await headerIds(page)).not.toContain("sector");
+  await expect(groupRowAtLevel(page, 1).first()).toBeVisible();
+
+  // --- and the cockpit still tells the truth about the grouped grid ---
+  //
+  // `summarizeSelection` resolves a selection range against a column order. A
+  // whole-row range is encoded as drawn-first-id → drawn-last-id, and the drawn
+  // list starts with the synthetic row-select column, which is in no prop — so
+  // read against the hero's own `columns` array the range is unresolvable and
+  // the panel reports nothing at all. That was already true ungrouped (⌘A and
+  // the row checkboxes both went silent); grouping compounds it, since the
+  // drawn list now also carries the derived group column and has dropped the
+  // grouped one, so the count itself moves.
+  await page
+    .locator('[data-pretable-row] [data-pretable-column-id="symbol"]')
+    .first()
+    .click();
+  await page.keyboard.press(platformShortcut("a"));
+
+  const selection = page.getByRole("region", { name: "Selection" });
+  await expect(selection).toContainText(/selected · ⌘C to copy/);
+  // Every drawn column except the selector, derived from the header row rather
+  // than hard-coded so adding a hero column does not silently pass.
+  const drawnDataColumns =
+    (await page.locator("[data-pretable-header-cell]").count()) - 1;
+  expect(drawnDataColumns).toBeGreaterThan(1);
+  const [rows, cols] = (await selection.innerText())
+    .match(/(\d+) × (\d+) selected/)!
+    .slice(1)
+    .map(Number);
+  expect(cols).toBe(drawnDataColumns);
+  // Group headers are inside the rectangle ⌘C copies, so they count: more rows
+  // than there are sectors, and more than the leaves alone.
+  expect(rows).toBeGreaterThan(
+    await page.locator("[data-pretable-group-row]").count(),
+  );
+});

@@ -13,7 +13,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { PretableSelectionState } from "@pretable/core";
+import type { PretableGrid, PretableSelectionState } from "@pretable/core";
 
 import { useControlState } from "./heroGrid/controlState";
 import { makePositionColumns } from "./heroGrid/positionColumns";
@@ -49,7 +49,10 @@ export function HeroGrid() {
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
-  const sortedRowsRef = useRef<PositionRow[]>([]);
+  // The live engine, captured on ready. Anything that resolves a column or row
+  // SPAN has to read the drawn model off this rather than off the props above —
+  // see `summarizeSelection`.
+  const gridRef = useRef<PretableGrid<PositionRow> | null>(null);
 
   // Stable columns — created once so the grid instance is never recreated under streaming.
   // The getRows closure captures the ref *object* (not .current) so it always reads the
@@ -63,9 +66,6 @@ export function HeroGrid() {
   /* eslint-enable react-hooks/refs */
 
   const sortedRows = useMemo(() => applySort(rows, userSort), [rows, userSort]);
-  useEffect(() => {
-    sortedRowsRef.current = sortedRows;
-  }, [sortedRows]);
 
   // Selection / copy state (filtering is uncontrolled — the built-in header
   // funnel menus own it)
@@ -239,15 +239,25 @@ export function HeroGrid() {
     [],
   );
 
-  // onSelectionChange → summarize into row/col counts
-  const handleSelectionChange = useCallback(
-    (next: PretableSelectionState) => {
-      const colOrder = columns.map((c) => c.id);
-      const rowOrder = sortedRowsRef.current.map((r) => r.id);
-      setSelection(summarizeSelection(next, colOrder, rowOrder));
-    },
-    [columns],
-  );
+  // onSelectionChange → summarize into row/col counts.
+  //
+  // Both orders come off the engine, never off `columns`/`sortedRows`: a range
+  // is a pair of boundary ids resolved against the DRAWN model, and the two
+  // diverge the moment the grid draws a column the props do not carry. The
+  // synthetic row-select column already did that (every whole-row range is
+  // bounded by it), and the group panel now adds the derived group column and
+  // takes the grouped column away.
+  const handleSelectionChange = useCallback((next: PretableSelectionState) => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    setSelection(
+      summarizeSelection(
+        next,
+        grid.getColumns().map((c) => c.id),
+        grid.getSnapshot().visibleRows.map((r) => r.id),
+      ),
+    );
+  }, []);
 
   // Copy feedback — transient "Copied ✓" toast when ⌘/Ctrl+C fires with a selection
   useEffect(() => {
@@ -282,7 +292,17 @@ export function HeroGrid() {
               columns={columns}
               copyWithHeaders
               getRowId={(row) => row.id}
+              // Enabled but EMPTY on arrival. First paint stays the flat
+              // streaming book — the hero's actual job — and the panel's own
+              // "Drag a column here to group by it" invites the gesture, so a
+              // visitor discovers grouping by performing it. The strip consumes
+              // from `viewportHeight` rather than adding to it, so the bezel
+              // below is bit-for-bit where it was.
+              groupPanel={{ enabled: true }}
               onCellEdit={handleCellEdit}
+              onGridReady={(g) => {
+                gridRef.current = g;
+              }}
               onPaste={handlePaste}
               onSelectionChange={handleSelectionChange}
               onSortChange={(entries) => setUserSort(entries)}
@@ -293,7 +313,7 @@ export function HeroGrid() {
             />
             <p className={styles.legend}>
               double-click to edit · drag to select · ⌘C copy · ⌘V paste into
-              Qty · funnel to filter
+              Qty · funnel to filter · drag a header up to group
             </p>
           </div>
           <div className={styles.heroSidebar}>
