@@ -1491,6 +1491,35 @@ cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/m
 
 ## Task 7: Wire the list page to the mapped query, and delete the ValueSet layer
 
+> **This task also owns the query WIDENING, which Task 4 was supposed to and did
+> not.** Verified against the repo: `packages/inspector/src/browse/canonical-query.ts`
+> defines `CanonicalBrowseQuery` as `{view, namespace, status[], kind[], since}` —
+> no `filters`, no `orderBy`, no `cursor` — and `browseSearchParams` emits repeated
+> `status`/`kind` plus `limit`/`offset`, not the route's JSON `filters`/`orderBy`.
+> Slice 3 was right to leave it that way; slice 4 is where it grows.
+>
+> Three changes, and the third is a correctness gate, not plumbing:
+> 1. `CanonicalBrowseQuery` grows `filters` and `orderBy` (and `cursor` when Task 9
+>    lands keyset paging).
+> 2. `browseSearchParams` emits them in the shape
+>    `packages/inspector/app/api/memory/list/route.ts` already parses.
+> 3. **`datasetKeyOf` must hash them.** It currently hashes only the five original
+>    fields, so a filter or sort change would NOT pivot the dataset key — the
+>    pivot would never fire, and a selection made under one query would survive
+>    into a different one. That is the exact corruption `datasetKey` exists to
+>    prevent, and no existing test would catch it.
+>
+> Required test, and it must fail before the change: two canonical queries
+> differing ONLY in `filters` (then only in `orderBy`) must produce different
+> `datasetKeyOf` output; two identical ones must produce the same.
+>
+> **Also restore one lost assertion here** (flagged in Task 3's review): after
+> `browse-window.test.ts`'s duplicate cases were removed, `dedupeById`'s
+> resident-copy-wins semantics is pinned nowhere — `browse-reconcile.test.ts`
+> asserts ids only. Strengthen those assertions to compare payloads, so a
+> next-page copy silently replacing a resident row would fail.
+
+
 **Files:**
 - Modify: `packages/inspector/src/components/memory/list-page.tsx`
 - Delete: `packages/inspector/src/components/memory/column-filters.ts`
