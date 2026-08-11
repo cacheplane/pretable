@@ -39,19 +39,19 @@ The light set is deliberately tight (4.83–5.17) so no one colour reads heavier
 
 `packages/react/src/row-height.ts` measures **only** `[data-pretable-wrap="true"]` cells when any exist, falling back to all cells only when none do. So a two-line presentation in a normal column, in a row that also has a wrap column, is measured at single-line height and clipped — in browsers only, invisible to jsdom. Every multi-line primitive in this plan trips it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `packages/react/src/__tests__/`, add a test that builds a row containing one `[data-pretable-wrap="true"]` cell with a short single-line content height and one non-wrap cell with a taller content height, then asserts `measureRenderedRowHeight` returns the height driven by the **taller** cell. Stub `getComputedStyle` and the cell measurement the way the existing `row-height` tests do — copy their harness rather than inventing one.
 
-- [ ] **Step 2: Run it and confirm it fails** — the returned height will reflect the short wrap cell.
+- [x] **Step 2: Run it and confirm it fails** — the returned height will reflect the short wrap cell.
 
-- [ ] **Step 3: Measure every cell**
+- [x] **Step 3: Measure every cell**
 
 Replace the conditional with an unconditional query of all `[data-pretable-cell]` in the row. The wrap-preference was an optimisation, and it is wrong: `Math.max` over every cell is the correct definition of a row's content height, and the cells are already being walked.
 
 Leave a comment recording that preferring wrap cells silently clipped any taller non-wrap cell.
 
-- [ ] **Step 4: Verify and commit**
+- [x] **Step 4: Verify and commit**
 
 `pnpm --filter @pretable/react test`. Commit as `fix(react): measure every cell when sizing a row, not only wrapped ones`.
 
@@ -59,7 +59,7 @@ Leave a comment recording that preferring wrap cells silently clipped any taller
 
 ### Task 2: The semantic ramp, with its consumers
 
-- [ ] **Step 1: Add the four tokens to the contract (failing test)**
+- [x] **Step 1: Add the four tokens to the contract (failing test)**
 
 In `packages/ui/src/__tests__/contract.test.ts`, add to `TOKENS`:
 
@@ -72,11 +72,11 @@ In `packages/ui/src/__tests__/contract.test.ts`, add to `TOKENS`:
 
 Count goes 45 → 49. Run `pnpm --filter @pretable/ui test -- contract` and confirm it fails for all three themes.
 
-- [ ] **Step 2: Define them**
+- [x] **Step 2: Define them**
 
 Add to the `:root` of `excel.css`, `material.css` and `pretable.css` using the light values from the table above, and to the `[data-theme="dark"]` blocks of `material.css` and `pretable.css` using the dark values. Comment the block with the fact that the reference's own hues fail AA at text sizes and these are re-derived — that reasoning is the whole justification for the values and will otherwise be lost.
 
-- [ ] **Step 3: Add the two presentation rules to `grid.css`**
+- [x] **Step 3: Add the two presentation rules to `grid.css`**
 
 Placed with the other cell rules, `:where()`-wrapped like everything else:
 
@@ -146,11 +146,32 @@ Placed with the other cell rules, `:where()`-wrapped like everything else:
 
 **Note on the glyphs:** these are Unicode characters, which SP2b deliberately removed elsewhere. That is a real tension. Resolve it by using the icon set instead if the components can supply it — the components render the markup, so they can emit `<SortAscIcon>`-style glyphs rather than relying on `::before`. **Decide and report which you did and why**; do not silently ship Unicode after a whole sub-project removed it.
 
-- [ ] **Step 4: Guard**
+> **RESOLVED (implementation): the icon set, not Unicode.** Two new glyphs
+> (`DeltaUpIcon`, `DeltaDownIcon`) plus the existing `MinusIcon` for flat.
+> `▲`/`▼` are named *by SP2b itself* as characters that shifted weight and
+> baseline between Excel's Aptos Narrow and Material's Roboto, and on most UI
+> stacks they are absent from the font and fall through to a platform symbol
+> font — so re-adding them would reinstate a defect a prior sub-project had
+> already measured. The `::before` saved one DOM node per cell, but
+> virtualization already bounds that to the visible rows (tens, not thousands).
+> The status dot **stayed** a `::before`: it is a `border-radius` box with
+> `content: ""`, so it has no font to re-render in and none of the objection
+> applies.
+>
+> **Two corrections to the CSS above, both verified in a browser:**
+> 1. `:where([data-pretable-delta]::before)` is invalid — `:where()` takes a
+>    complex-selector-list and a pseudo-element is not one, so the browser drops
+>    the rule. Shipped as `:where([data-pretable-status])::before`. Measured in
+>    Chromium: the `:where(x::before)` form computes a transparent background,
+>    the `:where(x)::before` form paints. Pinned by a test.
+> 2. `font-size: 0.85em` on the marker was too light beside a 14px figure;
+>    shipped at `1em` with a 6×4.5-unit caret after looking at a screenshot.
+
+- [x] **Step 4: Guard**
 
 Add a `css-cascade.test.ts` test asserting both rules exist, that they read the semantic tokens, and that direction is conveyed by something other than colour alone. Add a `contract.test.ts` assertion that all four tokens are actually referenced by `grid.css` — the reverse check this project keeps needing.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 `pnpm --filter @pretable/ui test`. Commit as `feat(ui): add the semantic ramp and the delta and status presentations`.
 
@@ -158,39 +179,39 @@ Add a `css-cascade.test.ts` test asserting both rules exist, that they read the 
 
 ### Task 3: The React components
 
-- [ ] **Step 1: Write failing tests** in `packages/react/src/__tests__/cells.test.tsx` covering: a positive value renders `data-pretable-delta="up"`, a negative one `"down"`, zero `"flat"`; the formatted text is the caller's, not invented; a status renders its tone and its label text.
+- [x] **Step 1: Write failing tests** in `packages/react/src/__tests__/cells.test.tsx` covering: a positive value renders `data-pretable-delta="up"`, a negative one `"down"`, zero `"flat"`; the formatted text is the caller's, not invented; a status renders its tone and its label text.
 
-- [ ] **Step 2: Create `packages/react/src/cells.tsx`**
+- [x] **Step 2: Create `packages/react/src/cells.tsx`**
 
 Two components. `PretableDelta` takes a `value: number` and a `children` (the already-formatted string) and picks the direction from the sign — it must **not** format the number itself, because formatting is the consumer's concern and locale-dependent. `PretableStatus` takes `tone: "positive" | "negative" | "warning" | "info" | "neutral"` and children.
 
 Keep them presentational: no state, no effects, no measurement.
 
-- [ ] **Step 3: Export publicly**
+- [x] **Step 3: Export publicly**
 
 Add both, and their prop types, to `packages/react/src/public_api.ts`. Unlike the icon set, these ARE for consumers.
 
-- [ ] **Step 4: Regenerate the API report** — `pnpm build && pnpm api`, then `pnpm api:check`. Building first is mandatory. Expect a real diff this time.
+- [x] **Step 4: Regenerate the API report** — `pnpm build && pnpm api`, then `pnpm api:check`. Building first is mandatory. Expect a real diff this time.
 
-- [ ] **Step 5: Commit** as `feat(react): add the delta and status cell presentations`.
+- [x] **Step 5: Commit** as `feat(react): add the delta and status cell presentations`.
 
 ---
 
 ### Task 4: Adopt them in the hero
 
-- [ ] **Step 1:** In `apps/website/app/components/heroGrid/positionColumns.tsx`, replace the hand-rolled Day P&L `.up`/`.down` spans with `PretableDelta`. The two-line stack keeps its sub-line.
-- [ ] **Step 2:** Delete the now-unused `.up`/`.down` rules from `cells.module.css` and confirm nothing else references them.
-- [ ] **Step 3:** Confirm in a browser that the P&L column still reads correctly, now follows the theme, and that the delta direction is legible.
-- [ ] **Step 4:** Commit as `feat(website): use the library's delta presentation for Day P&L`.
+- [x] **Step 1:** In `apps/website/app/components/heroGrid/positionColumns.tsx`, replace the hand-rolled Day P&L `.up`/`.down` spans with `PretableDelta`. The two-line stack keeps its sub-line.
+- [x] **Step 2:** Delete the now-unused `.up`/`.down` rules from `cells.module.css` and confirm nothing else references them.
+- [x] **Step 3:** Confirm in a browser that the P&L column still reads correctly, now follows the theme, and that the delta direction is legible.
+- [x] **Step 4:** Commit as `feat(website): use the library's delta presentation for Day P&L`.
 
 ---
 
 ### Task 5: Verification
 
-- [ ] `pnpm --filter @pretable/ui test`, `pnpm --filter @pretable/react test`, `pnpm --filter @pretable/app-website test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm api:check`.
-- [ ] The Playwright cascade gate.
-- [ ] Website e2e. **Use the ROOT playwright binary** — `apps/website/node_modules/.bin/playwright` is a stale 1.60 shim that shadows the 1.62 the specs need and fails with a misleading "No tests found". Serve a production build and pass `BASE_URL`.
-- [ ] Look at the hero and report what the delta actually looks like.
+- [x] `pnpm --filter @pretable/ui test`, `pnpm --filter @pretable/react test`, `pnpm --filter @pretable/app-website test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm api:check`.
+- [x] The Playwright cascade gate.
+- [x] Website e2e. **Use the ROOT playwright binary** — `apps/website/node_modules/.bin/playwright` is a stale 1.60 shim that shadows the 1.62 the specs need and fails with a misleading "No tests found". Serve a production build and pass `BASE_URL`.
+- [x] Look at the hero and report what the delta actually looks like.
 
 ## Self-review
 
