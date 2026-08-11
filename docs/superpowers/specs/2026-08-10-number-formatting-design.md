@@ -328,10 +328,6 @@ custom display and clipboard strings uses the column-level `format` callback.
 This keeps `LabeledGridSurface` from bypassing native formatting by default
 without silently changing the meaning of its explicit `formatValue` prop.
 
-`InspectionGrid` uses fixed inspection columns and an intentional
-`formatValue` override, so it does not gain a locale prop in this feature. Its
-display-only override and existing clipboard behavior remain unchanged.
-
 A future export API must use the same resolution contract. Building that API is
 not part of this feature.
 
