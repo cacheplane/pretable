@@ -369,6 +369,18 @@ export type PretableDataState =
 };
 
 // @public
+export function PretableDelta(input: PretableDeltaProps): react.JSX.Element;
+
+// @public
+export type PretableDeltaDirection = "up" | "down" | "flat";
+
+// @public
+export interface PretableDeltaProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+    children?: ReactNode;
+    value: number;
+}
+
+// @public
 export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     column: PretableBaseColumn<TRow>;
@@ -766,6 +778,18 @@ export interface PretableSortEntry {
     // (undocumented)
     direction: "asc" | "desc";
 }
+
+// @public
+export function PretableStatus(input: PretableStatusProps): react.JSX.Element;
+
+// @public
+export interface PretableStatusProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+    children?: ReactNode;
+    tone: PretableStatusTone;
+}
+
+// @public
+export type PretableStatusTone = "positive" | "negative" | "warning" | "info" | "neutral";
 
 // @public
 export function PretableSurface<TRow extends PretableRow = PretableRow>(input: PretableSurfaceProps<TRow>): react.JSX.Element;

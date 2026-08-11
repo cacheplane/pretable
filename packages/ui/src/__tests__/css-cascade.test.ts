@@ -429,6 +429,128 @@ describe("grid.css cascade contract", () => {
     expect(dark).toMatch(/--pretable-shadow-overlay:/);
   });
 
+  test("the delta presentation carries direction by more than colour", () => {
+    // Comments stripped first: this file's prose names ▲ and ▼ (explaining why
+    // they are NOT used), which would otherwise satisfy the very check below.
+    const css = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+
+    // Colour, from the ramp.
+    expect(
+      css.match(/:where\(\[data-pretable-delta="up"\]\)\s*\{([\s\S]*?)\}/)?.[1],
+      "no delta=up rule",
+    ).toMatch(/color:\s*var\(--pretable-positive\)/);
+    expect(
+      css.match(
+        /:where\(\[data-pretable-delta="down"\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1],
+      "no delta=down rule",
+    ).toMatch(/color:\s*var\(--pretable-negative\)/);
+    expect(
+      css.match(
+        /:where\(\[data-pretable-delta="flat"\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1],
+      "no delta=flat rule",
+    ).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+
+    // ...AND a marker, so direction survives greyscale, colour-blindness and a
+    // printed page. Red/green is the worst possible pair for the commonest
+    // deficiency, so colour alone would be no signal at all for those readers.
+    // The marker is an element from the icon set emitted by PretableDelta —
+    // cells.test.tsx asserts one appears per direction; grid.css's half of the
+    // contract is sizing a slot for it.
+    expect(css, "grid.css reserves no marker slot inside a delta").toMatch(
+      /:where\(\[data-pretable-delta\] \[data-pretable-icon\]\)\s*\{/,
+    );
+
+    // And the marker must NOT be a font-rendered glyph. SP2b removed ▲ and ▼
+    // from this grid because a text glyph re-renders in whatever font the
+    // active theme picked — weight, size and baseline all move between Excel's
+    // Aptos Narrow, Material's Roboto and pretable's own stack, and on most UI
+    // stacks the characters are absent entirely and fall through to a platform
+    // symbol font. No rule scoped to a delta may declare `content:`.
+    const deltaRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
+      m[1].includes("data-pretable-delta"),
+    );
+    expect(deltaRules.length, "no delta rules at all").toBeGreaterThan(0);
+    for (const [, selector, body] of deltaRules) {
+      expect(
+        body,
+        `delta rule "${selector.trim()}" declares generated text content; the direction marker is an element, not a font glyph`,
+      ).not.toMatch(/content:/);
+    }
+  });
+
+  test("the status presentation carries state by dot AND label", () => {
+    const css = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const base = css.match(
+      /:where\(\[data-pretable-status\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(base, "no status rule").toBeDefined();
+    // The label is the signal that survives greyscale, so it must render in the
+    // ordinary cell ink — tint it and the state is back to being colour alone.
+    expect(base).toMatch(/color:\s*var\(--pretable-text-cell\)/);
+
+    const dot = css.match(
+      /:where\(\[data-pretable-status\]\)::before\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(dot, "no status dot rule").toBeDefined();
+    // Empty content: the dot is a shape, not invented text. That is also why it
+    // is allowed to be generated content when the delta's marker is not — a
+    // border-radius box has no font to re-render in.
+    expect(dot).toMatch(/content:\s*""/);
+    expect(dot).toMatch(/border-radius:\s*50%/);
+    expect(dot).toMatch(/background:\s*var\(--pretable-text-dim\)/);
+
+    for (const tone of ["positive", "negative", "warning", "info"]) {
+      const rule = css.match(
+        new RegExp(
+          `:where\\(\\[data-pretable-status="${tone}"\\]\\)::before\\s*\\{([\\s\\S]*?)\\}`,
+        ),
+      )?.[1];
+      expect(rule, `no status=${tone} rule`).toBeDefined();
+      expect(rule).toMatch(
+        new RegExp(`background:\\s*var\\(--pretable-${tone}\\)`),
+      );
+    }
+  });
+
+  test("pseudo-element rules keep ::before outside the :where()", () => {
+    // `:where([x]::before)` is INVALID: :where() takes a complex-selector-list
+    // and a pseudo-element is not one, so a browser drops the entire rule and
+    // the status dot silently never paints. Nothing else would catch it —
+    // jsdom's parser is lenient, the token-resolution contract still passes
+    // (the var is still textually referenced), and the :where()-wrapping test
+    // above is satisfied either way. Write `:where([x])::before`.
+    const css = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    // Paren DEPTH, not a regex: `:where([x])::before` and `:where([x]::before)`
+    // differ only in where the `::` falls relative to the closing paren, which
+    // no flat pattern can tell apart once selectors nest (`:not()`, `:has()`).
+    const offenders = [...css.matchAll(/([^{}]+)\{/g)]
+      .map((m) => m[1].trim())
+      .filter((sel) => sel && !sel.startsWith("@"))
+      .filter((sel) => {
+        let depth = 0;
+        for (let i = 0; i < sel.length; i += 1) {
+          if (sel[i] === "(") depth += 1;
+          else if (sel[i] === ")") depth -= 1;
+          else if (sel[i] === ":" && sel[i + 1] === ":" && depth > 0)
+            return true;
+        }
+        return false;
+      });
+    expect(
+      offenders,
+      `pseudo-element inside :where() — a browser drops these rules entirely: ${offenders.join(", ")}`,
+    ).toEqual([]);
+  });
+
   test("every grid.css rule selector is wrapped in :where()", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
