@@ -1,10 +1,10 @@
 /**
- * The grid's icon set. Eight glyphs on one 16px grid, 1.5px stroke, rounded
+ * The grid's icon set. Nine glyphs on one 16px grid, 1.5px stroke, rounded
  * caps and joins, drawn in `currentColor` and sized from `--pretable-icon-size`.
  *
  * Deliberately not a dependency: the whole set is a few hundred bytes, and an
  * icon library would be a bundle, licensing and tree-shaking commitment for
- * eight shapes. Deliberately not Unicode text either — `▲`, `▾`, `✓` and `✕`
+ * nine shapes. Deliberately not Unicode text either — `▲`, `▾`, `✓` and `✕`
  * re-render in whatever font the active theme picked, so their weight, size and
  * baseline shifted between Excel's Aptos Narrow and Material's Roboto.
  *
