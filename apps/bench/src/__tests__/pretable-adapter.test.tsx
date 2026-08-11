@@ -82,15 +82,15 @@ describe("PretableAdapter", () => {
     // A surface that never publishes a grid. `onGridReady` is what hands out the id,
     // so this is the state every run passes through before the engine exists — and
     // the state the reconstruction probe must be able to tell apart from a real id.
-    vi.spyOn(pretableReactInternal, "PretableSurface").mockImplementation(
-      (props) => (
+    const surfaceSpy = vi
+      .spyOn(pretableReactInternal, "PretableSurface")
+      .mockImplementation((props) => (
         <div
           aria-label={props.ariaLabel}
           data-pretable-scroll-viewport=""
           role="grid"
         />
-      ),
-    );
+      ));
 
     render(<PretableAdapter dataset={dataset} runKey={1} />);
 
@@ -102,6 +102,11 @@ describe("PretableAdapter", () => {
     // The seam, end to end: what the adapter leaves in the DOM before readiness must
     // read as unavailable to the runtime probe, not as instance 0.
     expect(readBenchGridInstanceId(adapter?.parentElement ?? null)).toBeNull();
+
+    // The file's other spies restore in-test; without this one doing the same, a
+    // stub PretableSurface leaks into every test declared after it and the suite
+    // passes only because two later tests happen to call mockRestore().
+    surfaceSpy.mockRestore();
   });
 
   test("derives interaction preservation markers from actual telemetry instead of the requested plan", async () => {

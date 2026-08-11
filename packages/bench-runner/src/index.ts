@@ -716,11 +716,13 @@ function assertRequiredMetrics(
     // `dom_nodes_peak` — so it records a run that measured nothing while still
     // producing an artifact under a name the ledger reads as a measurement.
     //
-    // This matters most for `replace`. Its change is invisible to the settle
-    // detector in apps/bench/src/bench-runtime.ts: createVisibleRowSignature is
-    // `resultRowCount:rowId@top|…`, and a same-ids replacement over an
-    // equal-length resident set moves none of the three. `append` grows the row
-    // count and latches; `replace` runs out its frame budget.
+    // `replace` is the path that made this necessary. A same-ids replacement over
+    // an equal-length resident set moves none of `createVisibleRowSignature`'s
+    // three components, so row identity alone cannot see it; the settle detector
+    // in apps/bench/src/bench-runtime.ts therefore folds
+    // `createVisibleContentSignature` in alongside it, which is what lets replace
+    // latch at all. Without that composition it would run out its frame budget
+    // and land here as a partial that measured nothing.
     //
     // `measureBenchDataUpdateRun` is what keeps this unreachable: it returns
     // `failed` with the cause attached at every point it can stop short, so the
