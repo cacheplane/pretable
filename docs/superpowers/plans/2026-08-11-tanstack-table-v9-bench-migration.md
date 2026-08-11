@@ -215,12 +215,14 @@ rg -n 'TanStack Table v9' \
   apps/bench/src/tanstack-adapter.tsx \
   apps/bench/src/bench-app.tsx \
   apps/website/app/bench/page.tsx
-test "$(rg -c 'TanStack Table v8' apps/website/app/bench/page.tsx)" -eq 1
-rg -n 'TanStack Table v8 \+ TanStack Virtual runs' \
+test "$(perl -0ne '$count = () = /TanStack\s+Table\s+v8/g; print $count' apps/website/app/bench/page.tsx)" -eq 2
+rg -n -U 'archived runset displayed below was recorded with\s+TanStack Table v8' \
+  apps/website/app/bench/page.tsx
+rg -n -U 'TanStack\s+Table v8 \+ TanStack Virtual runs' \
   apps/website/app/bench/page.tsx
 ```
 
-Expected: no v8 match in the live adapter/registry, exactly three v9 matches across the live surfaces, and exactly one retained v8 match in the website's historical performance paragraph.
+Expected: no v8 match in the live adapter/registry, exactly three v9 matches across the live surfaces, and exactly two explicitly historical v8 matches on the website: the introduction's archived-runset provenance sentence and the later measured-results sentence beginning `TanStack Table v8 + TanStack Virtual runs`.
 
 - [ ] **Step 3: Run focused tests and static checks**
 
