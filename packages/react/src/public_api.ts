@@ -10,7 +10,6 @@
 // Components
 export { Pretable } from "./pretable";
 export { PretableSurface } from "./pretable-surface";
-export { InspectionGrid } from "./inspection-grid";
 export { LabeledGridSurface } from "./labeled-grid-surface";
 
 // Hooks
@@ -28,12 +27,6 @@ export type {
   RowSelectionColumnConfig,
 } from "./pretable-surface";
 export type { PretableBodyStateKind, PretableDataState } from "./data-state";
-export type {
-  InspectionFilterableColumnId,
-  InspectionGridProps,
-  InspectionRow,
-  InspectionSeverity,
-} from "./inspection-grid";
 export type {
   LabeledGridSurfaceFormatValueInput,
   LabeledGridSurfaceProps,

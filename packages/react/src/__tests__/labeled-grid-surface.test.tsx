@@ -7,8 +7,7 @@ import { LabeledGridSurface } from "../labeled-grid-surface";
 import { SortAscIcon, SortDescIcon } from "../icons";
 
 // `data-*` keys have no counterpart in `HTMLAttributes`, so an object literal
-// carrying one has no overlap with it. `InspectionGrid` widens the same way for
-// the same reason — see the `filterable*Props` constants in `inspection-grid.tsx`.
+// carrying one has no overlap with it — hence the widening cast.
 const filterableBodyProps = {
   "data-filterable": "true",
 } as HTMLAttributes<HTMLDivElement>;

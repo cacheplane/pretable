@@ -295,14 +295,13 @@ Key tips:
 - **Cap the buffer.** Sliding window of `~200` rows keeps memory + render cost bounded while still feeling alive.
 - **Use `wrap: true`** on text columns — multi-line cells with variable heights are the wedge. The grid's measurement reconciliation handles them without layout thrash.
 
-## Sibling presets
+## Sibling preset
 
-`@pretable/react` ships two more opinionated presets on top of `<PretableSurface>`:
+`@pretable/react` ships one more opinionated preset on top of `<PretableSurface>`:
 
-- **`<InspectionGrid>`** — label-above-value cell layout, monospace, fixed 460px viewport. Good for log-style data where each cell is a `{label, value}` pair.
-- **`<LabeledGridSurface>`** — like `<InspectionGrid>` but lets you customize the value formatter.
+- **`<LabeledGridSurface>`** — renders each cell as a label above its value instead of a bare value, and gives you class-name hooks (`labelClassName`, `valueClassName`, `bodyCellClassName`, `headerCellClassName`, `rowClassName`, `pinnedClassName`) plus a `formatValue` override. Good for log- or record-style data where a cell means nothing without its field name. It ships no CSS of its own — the layout is yours to write against those class names.
 
-If your use case looks like log inspection, start with `<InspectionGrid>`. Otherwise the bare `<PretableSurface>` is the right primitive.
+If your rows read as `{label, value}` pairs, start with `<LabeledGridSurface>`. Otherwise the bare `<PretableSurface>` is the right primitive.
 
 ## Where to go next
 

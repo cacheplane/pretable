@@ -28,10 +28,6 @@ export default defineConfig({
         __dirname,
         "../renderer-dom/src/index.ts",
       ),
-      "@pretable-internal/scenario-data": resolve(
-        __dirname,
-        "../scenario-data/src/index.ts",
-      ),
       "@pretable-internal/text-core": resolve(
         __dirname,
         "../text-core/src/index.ts",
