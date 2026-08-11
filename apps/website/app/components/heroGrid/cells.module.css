@@ -1,12 +1,9 @@
-.symbol {
-  font-weight: 700;
-}
-.symbolSub {
-  display: block;
-  font-size: 11px;
-  opacity: 0.55;
-  font-weight: 400;
-}
+/* `.symbol` / `.symbolSub` used to live here, hand-rolling the Symbol column's
+   two-line stack. They are now <PretableEntity>. The deletion is the fix for a
+   real failure and not a tidy-up: `.symbolSub` dimmed the company name with
+   `opacity: 0.55`, which rendered ~#818184 over the grid — 3.88:1, below AA, on
+   every row of the pinned column. The library's secondary line takes
+   --pretable-text-dim (7.72:1) and a smaller type size instead. */
 .num {
   font-variant-numeric: tabular-nums;
   /* The cell right-aligns the span, but a span is only as wide as its widest
@@ -17,8 +14,9 @@
 /* `.up` / `.down` used to live here, hand-tinting Day P&L from the site's own
    --pt-sev-* pair. Day P&L now uses <PretableDelta>, which reads the active
    theme's semantic ramp and adds a direction marker, so the site no longer
-   carries its own copy of that decision. The --pt-sev-* tokens are still used
-   below by the tick flash and the analyst pills. */
+   carries its own copy of that decision. The only --pt-sev-* consumer left in
+   this file is the tick flash, which is a 520ms animation rather than ink and
+   so is not carrying any of the meaning the ramp does. */
 
 /* Day P&L's two-line stack. The delta wraps the FIGURE only and this element
    stacks the percentage under it — deliberately, rather than putting both lines
@@ -90,26 +88,18 @@
   display: block;
   font-size: 11px;
 }
-.pill {
-  display: inline-block;
+/* `.pill` and its four tone variants used to live here. They are now
+   <PretableBadge>, and the deletion is an accessibility fix: each variant
+   tinted its own fill with `color-mix(… 14%, transparent)` of the very colour
+   the label was drawn in, and tinting a chip's background toward its own text
+   is exactly how contrast is lost. Measured against the site's --pt-sev-*
+   pair that put the four tones at 3.89:1–4.24:1, all of them under AA, and no
+   shallower tint rescues it — 10% still only reaches 4.13–4.49. The library's
+   chip does not tint at all: the fill stays the grid surface, the boundary is a
+   hairline, and the tone rides on the label.
+   All that survives is the gap between the analyst's prose and the chip. */
+.analystFlag {
   margin-left: 6px;
-  padding: 1px 7px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 600;
-}
-.pillTrim,
-.pillWatch {
-  background: color-mix(in srgb, var(--pt-sev-warn) 14%, transparent);
-  color: var(--pt-sev-warn);
-}
-.pillRisk {
-  background: color-mix(in srgb, var(--pt-sev-err) 14%, transparent);
-  color: var(--pt-sev-err);
-}
-.pillHold {
-  background: color-mix(in srgb, var(--pt-sev-ok) 14%, transparent);
-  color: var(--pt-sev-ok);
 }
 @media (prefers-reduced-motion: reduce) {
   .flashUp,
