@@ -3,7 +3,7 @@
  *
  * Both the pointer paths (drag a header in, drag a chip along) and the
  * keyboard paths (Shift+arrow, Delete) reduce to exactly one of these
- * functions followed by a single `grid.setRowGroups`. They live apart from the
+ * functions followed by one complete query update. They live apart from the
  * component so the two never drift and so they can be tested without a DOM —
  * jsdom would add nothing to a question about arrays.
  *

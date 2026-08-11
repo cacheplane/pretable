@@ -4,9 +4,10 @@
  */
 
 import type {
-  PretableCellAddress,
   PretableRow,
-  PretableGridVisibleRow,
+  PretableRowId,
+  PretableRowModelSnapshot,
+  PretableVisibleRowRef,
 } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
@@ -124,8 +125,15 @@ export function parseTsv(text: string): string[][] {
  *
  * @public
  */
-export interface PastedCell<TRow extends PretableRow = PretableRow> {
-  rowId: string;
+export interface PastedCell<
+  TRow extends PretableRow = PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+> {
+  rowId: TRowId;
   columnId: string;
   /** Coerced value, ready to write. */
   value: unknown;
@@ -141,8 +149,10 @@ export interface PastedCell<TRow extends PretableRow = PretableRow> {
  *
  * @public
  */
-export interface RejectedPasteCell {
-  rowId: string;
+export interface RejectedPasteCell<
+  TRowId extends PretableRowId = PretableRowId,
+> {
+  rowId: TRowId;
   columnId: string;
   raw: string;
   /**
@@ -159,11 +169,18 @@ export interface RejectedPasteCell {
  *
  * @public
  */
-export interface PastePayload<TRow extends PretableRow = PretableRow> {
+export interface PastePayload<
+  TRow extends PretableRow = PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+> {
   /** Cells to apply, in row-major order. */
-  cells: PastedCell<TRow>[];
+  cells: PastedCell<TRow, TRowId>[];
   /** Cells that were skipped, with the reason. */
-  rejected: RejectedPasteCell[];
+  rejected: RejectedPasteCell<TRowId>[];
   /** Shape of the parsed clipboard block (`columns` = the widest row). */
   source: { rows: number; columns: number };
   /**
@@ -186,11 +203,22 @@ export interface PastePayload<TRow extends PretableRow = PretableRow> {
  *
  * @internal
  */
-export interface MapPasteArgs<TRow extends PretableRow> {
+export interface MapPasteArgs<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+  TColumns = readonly PretableColumn<TRow>[],
+> {
   /** Clipboard block, as returned by {@link parseTsv}. May be ragged. */
   matrix: string[][];
   /** Top-left of the selection, or the focused cell when nothing is selected. */
-  anchor: PretableCellAddress;
+  anchor: {
+    readonly ref: PretableVisibleRowRef<TRowId>;
+    readonly columnId: string;
+  };
   /**
    * Selection extent; `1 x 1` when a single cell is selected. `rows` counts
    * **data** rows, matching the target space below — a selection that spans a
@@ -199,7 +227,7 @@ export interface MapPasteArgs<TRow extends PretableRow> {
    */
   selectionSize: { rows: number; columns: number };
   /** Group rows are excluded from the target space; see {@link mapPasteToTargets}. */
-  visibleRows: readonly PretableGridVisibleRow<TRow>[];
+  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   /** Effective columns; the synthetic row-select column may be present and is ignored. */
   columns: readonly PretableColumn<TRow>[];
 }
@@ -209,8 +237,8 @@ export interface MapPasteArgs<TRow extends PretableRow> {
  *
  * @internal
  */
-export interface PasteTarget {
-  rowId: string;
+export interface PasteTarget<TRowId extends PretableRowId = PretableRowId> {
+  rowId: TRowId;
   columnId: string;
   raw: string;
 }
@@ -220,9 +248,9 @@ export interface PasteTarget {
  *
  * @internal
  */
-export interface PasteTargetMap {
+export interface PasteTargetMap<TRowId extends PretableRowId = PretableRowId> {
   /** Targets in row-major order. */
-  cells: PasteTarget[];
+  cells: PasteTarget<TRowId>[];
   /**
    * Rows/columns of the target area (the block **after** tiling) that fell past
    * the grid's last row/column and were dropped. Under tiling this can exceed
@@ -265,10 +293,19 @@ export interface PasteTargetMap {
  *
  * @internal
  */
-export function mapPasteToTargets<TRow extends PretableRow>(
-  args: MapPasteArgs<TRow>,
-): PasteTargetMap {
-  const empty: PasteTargetMap = { cells: [], clipped: { rows: 0, columns: 0 } };
+export function mapPasteToTargets<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+  TColumns = readonly PretableColumn<TRow>[],
+>(args: MapPasteArgs<TRow, TRowId, TColumns>): PasteTargetMap<TRowId> {
+  const empty: PasteTargetMap<TRowId> = {
+    cells: [],
+    clipped: { rows: 0, columns: 0 },
+  };
 
   const blockRows = args.matrix.length;
   if (blockRows === 0) return empty;
@@ -279,19 +316,15 @@ export function mapPasteToTargets<TRow extends PretableRow>(
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
   if (dataColumns.length === 0) return empty;
 
-  // The target row space is the data rows alone. Collect them, and locate the
-  // anchor within that compacted space in the same pass: at the moment the
-  // anchor row is seen, `dataRowIds.length` is the index the next data row will
-  // take — which is the anchor's own index when it is a data row, and the index
-  // of the following data row when it is a group header. An anchor with no data
-  // row at or after it lands past the end and pastes nothing.
-  const dataRowIds: string[] = [];
-  let anchorRow = -1;
-  for (const row of args.visibleRows) {
-    if (row.id === args.anchor.rowId) anchorRow = dataRowIds.length;
-    if (row.kind === "data") dataRowIds.push(row.id);
+  const snapshot = args.rowModelSnapshot;
+  let targetRowId: TRowId | undefined;
+  if (args.anchor.ref.kind === "data") {
+    if (snapshot.indexOf(args.anchor.ref) < 0) return empty;
+    targetRowId = args.anchor.ref.rowId;
+  } else {
+    targetRowId = snapshot.nextDataRow(args.anchor.ref)?.rowId;
+    if (targetRowId === undefined) return empty;
   }
-  if (anchorRow < 0 || anchorRow >= dataRowIds.length) return empty;
   // A row-select anchor means "start of the row" — translate to the first data column.
   const anchorCol =
     args.anchor.columnId === ROW_SELECT_COLUMN_ID
@@ -304,7 +337,7 @@ export function mapPasteToTargets<TRow extends PretableRow>(
   const targetRows = extent(args.selectionSize.rows, blockRows);
   const targetCols = extent(args.selectionSize.columns, blockCols);
 
-  const cells: PasteTarget[] = [];
+  const cells: PasteTarget<TRowId>[] = [];
   let clippedRows = 0;
   let clippedColumns = 0;
 
@@ -313,12 +346,11 @@ export function mapPasteToTargets<TRow extends PretableRow>(
   }
 
   for (let r = 0; r < targetRows; r += 1) {
-    const rowIdx = anchorRow + r;
-    if (rowIdx >= dataRowIds.length) {
+    if (targetRowId === undefined) {
       clippedRows += 1;
       continue;
     }
-    const rowId = dataRowIds[rowIdx]!;
+    const rowId: TRowId = targetRowId;
     const sourceRow = args.matrix[r % blockRows]!;
     for (let c = 0; c < targetCols; c += 1) {
       const colIdx = anchorCol + c;
@@ -326,6 +358,9 @@ export function mapPasteToTargets<TRow extends PretableRow>(
       const raw = sourceRow[c % blockCols];
       if (raw === undefined) continue; // ragged source row: leave the cell alone
       cells.push({ rowId, columnId: dataColumns[colIdx]!.id, raw });
+    }
+    if (r + 1 < targetRows) {
+      targetRowId = snapshot.nextDataRow({ kind: "data", rowId })?.rowId;
     }
   }
 

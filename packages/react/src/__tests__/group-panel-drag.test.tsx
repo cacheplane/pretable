@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -169,7 +169,7 @@ afterEach(() => {
 });
 
 describe("header → panel drag", () => {
-  it("a header released over the panel groups by that column", () => {
+  it("a header released over the panel groups by that column", async () => {
     const onRowGroupsChange = vi.fn();
     const view = render(<MirroredGrid onRowGroupsChange={onRowGroupsChange} />);
 
@@ -178,7 +178,7 @@ describe("header → panel drag", () => {
     endDrag(header(view, "Name"));
 
     expect(onRowGroupsChange).toHaveBeenCalledWith(["name"]);
-    expect(chipIds(view)).toEqual(["name"]);
+    await waitFor(() => expect(chipIds(view)).toEqual(["name"]));
   });
 
   it("a grouping drop does not also reorder the column", () => {
@@ -339,7 +339,7 @@ function dropChip(to: { x: number; y: number }) {
 }
 
 describe("chip reorder by drag", () => {
-  it("dragging a chip past the next one reorders and reports the new list", () => {
+  it("dragging a chip past the next one reorders and reports the new list", async () => {
     const onRowGroupsChange = vi.fn();
     const view = render(
       <MirroredGrid
@@ -353,7 +353,7 @@ describe("chip reorder by drag", () => {
     dropChip({ x: 180, y: 18 });
 
     expect(onRowGroupsChange).toHaveBeenCalledWith(["industry", "sector"]);
-    expect(chipIds(view)).toEqual(["industry", "sector"]);
+    await waitFor(() => expect(chipIds(view)).toEqual(["industry", "sector"]));
   });
 
   it("captures the pointer on the panel container, never on the chip", () => {

@@ -11,4 +11,8 @@ export { connectPartialStream } from "./connect-partial-stream";
 export type { PartialStreamOptions } from "./connect-partial-stream";
 export { parseElementStream } from "./parse-element-stream";
 export { parsePartialStream } from "./parse-partial-stream";
-export type { GridLike, StreamConnection, TransactionBatcher } from "./types";
+export type {
+  RowModelLike,
+  StreamConnection,
+  TransactionBatcher,
+} from "./types";

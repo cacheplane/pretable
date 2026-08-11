@@ -1,8 +1,6 @@
 import {
-  createRowMetricsIndex,
   distributeFlexWidths,
   planColumns,
-  planViewport,
 } from "@pretable-internal/layout-core";
 import type { ColumnPlan } from "@pretable-internal/layout-core";
 import type { PretableColumn, PretableRow } from "@pretable-internal/grid-core";
@@ -11,8 +9,6 @@ import { layoutPreparedText, prepareText } from "@pretable-internal/text-core";
 
 import { groupRenderId } from "./types";
 import type {
-  DomRenderInput,
-  DomRenderSnapshot,
   DomLayoutColumn,
   IndexedDomRenderInput,
   IndexedDomRenderSnapshot,
@@ -40,148 +36,6 @@ const estimatedRowHeightCache = new WeakMap<
 >();
 
 export function createDomRenderSnapshot<
-  TRow extends object,
-  TRowId extends PretableRowId,
-  TColumns,
->(
-  input: IndexedDomRenderInput<TRow, TRowId, TColumns>,
-): IndexedDomRenderSnapshot<TRow, TRowId, TColumns>;
-export function createDomRenderSnapshot<TRow extends PretableRow>(
-  input: DomRenderInput<TRow>,
-): DomRenderSnapshot<TRow>;
-export function createDomRenderSnapshot(
-  input: unknown,
-):
-  | DomRenderSnapshot<PretableRow>
-  | IndexedDomRenderSnapshot<object, PretableRowId, unknown> {
-  if (
-    typeof input === "object" &&
-    input !== null &&
-    "controllerState" in input
-  ) {
-    return createIndexedDomRenderSnapshot(
-      input as IndexedDomRenderInput<object, PretableRowId, unknown>,
-    );
-  }
-  return createLegacyDomRenderSnapshot(input as DomRenderInput<PretableRow>);
-}
-
-/** Explicit compatibility entry retained until the React surface moves in Task 20. */
-export function createLegacyDomRenderSnapshot<TRow extends PretableRow>(
-  input: DomRenderInput<TRow>,
-): DomRenderSnapshot<TRow> {
-  const rowHeights = input.snapshot.visibleRows.map((entry) => {
-    const measuredHeight = input.measuredHeights?.[entry.id];
-
-    if (measuredHeight !== undefined) {
-      return measuredHeight;
-    }
-
-    // Group headers have no source row to measure wrapped text against, so they
-    // estimate at the unwrapped default. Sub-project 2 owns their real chrome.
-    return entry.kind === "group"
-      ? DEFAULT_ROW_HEIGHT
-      : estimateDomRowHeight(entry.row, input.columns);
-  });
-  const rowMetrics = createRowMetricsIndex(rowHeights);
-  const viewportPlan = planViewport({
-    scrollTop: input.scrollTop,
-    viewportHeight: input.viewportHeight,
-    overscan: input.overscan,
-    rowMetrics,
-    pinnedLeft: input.columns
-      .filter((column) => column.pinned === "left")
-      .map((column) => ({
-        columnId: column.id,
-        width: resolveColumnWidth(column),
-      })),
-  });
-  const rows = viewportPlan.rows.flatMap((plannedRow) => {
-    const entry = input.snapshot.visibleRows[plannedRow.index];
-
-    if (!entry) {
-      return [];
-    }
-
-    const geometry = {
-      id: entry.id,
-      rowIndex: plannedRow.index,
-      top: plannedRow.top,
-      height: plannedRow.height,
-    };
-
-    // Group rows pass THROUGH the render snapshot rather than being filtered
-    // out: the renderer's job is placement, and a surface that skips drawing
-    // them still needs their geometry to keep `rowIndex` aligned with
-    // `snapshot.visibleRows`.
-    return [
-      entry.kind === "group"
-        ? { ...geometry, kind: "group" as const, group: entry }
-        : { ...geometry, kind: "data" as const, row: entry.row },
-    ];
-  });
-
-  // `flex` columns take a share of whatever the fixed ones leave over, so the
-  // row ends at the viewport edge. Only meaningful once the viewport has been
-  // measured, and only for columns without an explicit `widthPx` — a width the
-  // consumer set, or that a resize drag produced, outranks a computed one.
-  const flexWidths = distributeFlexWidths({
-    columns: input.columns.map((col) => ({
-      id: col.id,
-      width: resolveColumnWidth(col),
-      ...(col.widthPx === undefined && col.flex !== undefined
-        ? { flex: col.flex }
-        : {}),
-      ...(col.minWidthPx === undefined ? {} : { minWidthPx: col.minWidthPx }),
-      ...(col.maxWidthPx === undefined ? {} : { maxWidthPx: col.maxWidthPx }),
-    })),
-    viewportWidth: input.viewportWidth ?? Number.POSITIVE_INFINITY,
-  });
-
-  const columnInputs = input.columns.map((col) => ({
-    id: col.id,
-    width: flexWidths[col.id] ?? resolveColumnWidth(col),
-    pinned: col.pinned,
-  }));
-
-  // No `viewportWidth` means "not measured yet": SSR, and the first committed
-  // render before the surface's layout effect reads the scrollport. There is no
-  // virtualization window to compute, so every column renders — expressed as an
-  // infinitely wide viewport at scrollLeft 0, which makes planColumns' forward
-  // walk consume the whole scrollable run and its overscan clamp a no-op.
-  //
-  // This case used to be a hand-rolled plan built inline. It drifted: that
-  // version accumulated `left` across ALL columns in declaration order and
-  // never reordered into [left-pinned, scrollable, right-pinned], so a
-  // prop-declared left pin on a non-leading column got its content offset as a
-  // sticky inset instead of its offset within the left-pinned group. Delegating
-  // is what keeps the two paths from disagreeing again.
-  const columnPlan: ColumnPlan = planColumns({
-    columns: columnInputs,
-    scrollLeft: input.viewportWidth !== undefined ? (input.scrollLeft ?? 0) : 0,
-    viewportWidth: input.viewportWidth ?? Number.POSITIVE_INFINITY,
-    overscan: input.overscan,
-  });
-
-  return {
-    frame: {
-      snapshot: input.snapshot,
-    },
-    rows,
-    columns: columnPlan.columns,
-    // Passed through, not rebuilt: this index was already constructed above over
-    // every visible row (not just the windowed ones), so exposing it is free and
-    // keeps unrendered-row geometry on the single layout-core source of truth.
-    rowMetrics,
-    nodeCount: rows.length * columnPlan.columns.length,
-    totalHeight: viewportPlan.totalHeight,
-    totalWidth: columnPlan.totalWidth,
-    pinnedLeftWidth: columnPlan.pinnedLeftWidth,
-    pinnedRightWidth: columnPlan.pinnedRightWidth,
-  };
-}
-
-function createIndexedDomRenderSnapshot<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,

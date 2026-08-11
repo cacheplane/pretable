@@ -1,32 +1,60 @@
 import { useMemo } from "react";
 
 import type {
-  PretableCellAddress,
   PretableColumn,
   PretableEditInput,
   PretableFocusDirection,
-  PretableGrid,
   PretableRow,
+  PretableRowId,
 } from "@pretable/core";
 
 import { parseDraftForType } from "./editors/type-parsing";
 
-export interface CellEditController {
-  begin(addr: PretableCellAddress, initialDraft?: unknown): Promise<void>;
+export interface CellEditController<TRowId extends PretableRowId = string> {
+  begin(
+    addr: { readonly rowId: TRowId; readonly columnId: string },
+    initialDraft?: unknown,
+  ): Promise<void>;
   commit(moveDirection?: PretableFocusDirection): Promise<void>;
   cancel(): void;
 }
 
-export interface CellEditControllerOptions<TRow extends PretableRow> {
-  grid: PretableGrid<TRow>;
+export interface CellEditControllerOptions<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = string,
+> {
+  grid: {
+    beginEdit(
+      addr: { readonly rowId: TRowId; readonly columnId: string },
+      edit?: {
+        readonly draft?: unknown;
+        readonly status?: "checking" | "editing";
+      },
+    ): void;
+    getSnapshot(): {
+      readonly editing: {
+        readonly rowId: TRowId;
+        readonly columnId: string;
+        readonly draft: unknown;
+      } | null;
+    };
+    markEditing(): void;
+    markEditValidating(): void;
+    markEditSaving(): void;
+    markEditInvalid(message: string): void;
+    markEditError(message: string): void;
+    commitEditSucceeded(): void;
+    cancelEdit(): void;
+    moveFocus(direction: PretableFocusDirection): void;
+  };
   getColumns: () => PretableColumn<TRow>[];
-  getRowById: (rowId: string) => TRow | null;
+  getRowById: (rowId: TRowId) => TRow | null;
   onCellEdit?: (payload: {
-    rowId: string;
+    rowId: TRowId;
     columnId: string;
     value: unknown;
     row: TRow;
-  }) => void | Promise<void>;
+  }) => void | "keep-open" | Promise<void | "keep-open">;
 }
 
 function errorMessage(err: unknown): string {
@@ -34,22 +62,30 @@ function errorMessage(err: unknown): string {
 }
 
 // Stand-alone factory (tested directly). `useCellEditController` wraps it in useMemo.
-export function createCellEditController<TRow extends PretableRow>(
-  opts: CellEditControllerOptions<TRow>,
-): CellEditController {
+export function createCellEditController<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = string,
+>(opts: CellEditControllerOptions<TRow, TRowId>): CellEditController<TRowId> {
   const { grid, getColumns, getRowById, onCellEdit } = opts;
   // Monotonic token: every begin()/cancel() bumps it, so a stale async
   // resolution (editable/commit) can detect it is no longer the active edit.
   let token = 0;
 
-  const inputFor = (
-    addr: PretableCellAddress,
-  ): PretableEditInput<TRow> | null => {
+  const inputFor = (addr: {
+    readonly rowId: TRowId;
+    readonly columnId: string;
+  }): PretableEditInput<TRow> | null => {
     const column = getColumns().find((c) => c.id === addr.columnId);
     const row = getRowById(addr.rowId);
     if (!column || !row) return null;
     const value = column.value ? column.value(row) : row[addr.columnId];
-    return { rowId: addr.rowId, columnId: addr.columnId, row, column, value };
+    return {
+      rowId: addr.rowId as unknown as string,
+      columnId: addr.columnId,
+      row,
+      column,
+      value,
+    };
   };
 
   return {
@@ -111,13 +147,14 @@ export function createCellEditController<TRow extends PretableRow>(
 
       grid.markEditSaving();
       try {
-        await onCellEdit?.({
+        const result = await onCellEdit?.({
           rowId: addr.rowId,
           columnId: addr.columnId,
           value,
           row: input.row,
         });
         if (myToken !== token) return; // stale
+        if (result === "keep-open") return;
         grid.commitEditSucceeded();
         if (moveDirection) grid.moveFocus(moveDirection);
       } catch (err) {
@@ -133,9 +170,10 @@ export function createCellEditController<TRow extends PretableRow>(
   };
 }
 
-export function useCellEditController<TRow extends PretableRow>(
-  opts: CellEditControllerOptions<TRow>,
-): CellEditController {
+export function useCellEditController<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = string,
+>(opts: CellEditControllerOptions<TRow, TRowId>): CellEditController<TRowId> {
   // grid identity is stable for the life of the surface; other opts read via
   // closures that always see latest. Recreate only if grid changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps

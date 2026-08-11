@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
-import type { PretableGrid } from "@pretable/core";
+import type { PretableSurfaceGrid } from "../pretable-surface";
 
 afterEach(cleanup);
 
@@ -33,7 +33,8 @@ interface Row extends Record<string, unknown> {
 const ROWS: Row[] = [{ id: "r1", a: "1", b: "2", c: "3", d: "4" }];
 
 function mount(columns: PretableColumn<Row>[], withRowSelect = false) {
-  let captured: PretableGrid<Row> | null = null;
+  type Grid = PretableSurfaceGrid<Row, string, readonly PretableColumn<Row>[]>;
+  let captured: Grid | null = null;
   const view = render(
     <PretableSurface<Row>
       ariaLabel="order-invariant"
@@ -49,7 +50,7 @@ function mount(columns: PretableColumn<Row>[], withRowSelect = false) {
   );
 
   return {
-    grid: captured as unknown as PretableGrid<Row>,
+    grid: captured as unknown as Grid,
     /** Column ids in rendered order. The synthetic header carries no
      *  column-id attribute, so it is identified by its own marker. */
     drawn: () =>
@@ -60,7 +61,7 @@ function mount(columns: PretableColumn<Row>[], withRowSelect = false) {
           ? ROW_SELECT_COLUMN_ID
           : el.getAttribute("data-pretable-column-id"),
       ),
-    engine: () => captured!.options.columns.map((c) => c.id),
+    engine: () => captured!.getState().columnLayout.map((c) => c.id),
   };
 }
 
@@ -123,7 +124,7 @@ describe("engine column order is the drawn order", () => {
       { id: "c", header: "C" },
       { id: "d", header: "D", pinned: "right" },
     ]);
-    act(() => h.grid.moveColumn("d", 0));
+    act(() => h.grid.setColumnOrder(["d", "a", "b", "c"]));
     expectAgreement(h);
   });
 

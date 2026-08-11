@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -88,7 +88,7 @@ describe("onRowSelectionChange", () => {
     expect(lastCall(onRowSelectionChange)).toEqual([]);
   });
 
-  it("reports every visible row for the header select-all", () => {
+  it("does not materialize every row id for symbolic select-all", () => {
     const onRowSelectionChange = vi.fn();
     const { container } = renderGrid(onRowSelectionChange);
 
@@ -98,10 +98,10 @@ describe("onRowSelectionChange", () => {
     if (!selectAll) throw new Error("no select-all checkbox");
     fireEvent.click(selectAll);
 
-    expect(lastCall(onRowSelectionChange)).toEqual(["a", "b", "c"]);
+    expect(onRowSelectionChange).not.toHaveBeenCalled();
   });
 
-  it("follows the sorted order, not the source order", () => {
+  it("orders explicit selections by the indexed visible order", async () => {
     const onRowSelectionChange = vi.fn();
     const { container } = renderGrid(onRowSelectionChange);
 
@@ -110,15 +110,17 @@ describe("onRowSelectionChange", () => {
     ].find((el) => el.getAttribute("aria-label") === "Sort Name");
     if (!nameHeader) throw new Error("no Name header");
     fireEvent.click(nameHeader); // desc: Zulu, Bravo, Alpha
-    fireEvent.click(nameHeader); // asc:  Alpha, Bravo, Zulu
-
-    const selectAll = container.querySelector(
-      "button[data-pretable-row-select-all]",
+    await waitFor(() =>
+      expect(
+        [...container.querySelectorAll("[data-pretable-row-id]")].map((row) =>
+          row.getAttribute("data-pretable-row-id"),
+        ),
+      ).toEqual(["a", "c", "b"]),
     );
-    fireEvent.click(selectAll as HTMLElement);
+    fireEvent.click(rowCheckbox(container, "b"));
+    fireEvent.click(rowCheckbox(container, "a"));
 
-    // Alpha=b, Bravo=c, Zulu=a
-    expect(lastCall(onRowSelectionChange)).toEqual(["b", "c", "a"]);
+    expect(lastCall(onRowSelectionChange)).toEqual(["a", "b"]);
   });
 
   it("stays quiet when a re-render does not change the checked set", () => {

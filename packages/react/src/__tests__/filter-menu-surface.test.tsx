@@ -4,6 +4,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  waitFor,
   within,
 } from "@testing-library/react";
 import * as React from "react";
@@ -268,29 +269,29 @@ describe("PretableSurface — built-in filter funnel", () => {
     expect(ids).toEqual(["b1", "b3"]);
   });
 
-  it("enum options come from distinctColumnValues when options is absent", () => {
+  it("loads enum options from the row model when options are absent", async () => {
     const view = renderSurface();
 
     fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
     const dialog = view.getByRole("dialog", { name: "Filter Severity" });
     const group = within(dialog).getByRole("group");
-    const labels = within(group)
-      .getAllByRole("checkbox")
-      .map((cb) => cb.closest("label")?.textContent?.trim());
+    const labels = (await within(group).findAllByRole("checkbox")).map((cb) =>
+      cb.closest("label")?.textContent?.trim(),
+    );
 
     // Distinct values across the rows: "high" and "low".
     expect(new Set(labels)).toEqual(new Set(["high", "low"]));
   });
 
-  it("checking enum values fires onFiltersChange and narrows rows", () => {
+  it("checking enum values fires onFiltersChange and narrows rows", async () => {
     const onFiltersChange = vi.fn();
     const view = renderSurface({ onFiltersChange });
 
     fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
     const dialog = view.getByRole("dialog", { name: "Filter Severity" });
-    const highCheckbox = within(dialog)
-      .getAllByRole("checkbox")
-      .find((cb) => cb.closest("label")?.textContent?.includes("high"))!;
+    const highCheckbox = (await within(dialog).findAllByRole("checkbox")).find(
+      (cb) => cb.closest("label")?.textContent?.includes("high"),
+    )!;
 
     fireEvent.click(highCheckbox);
 
@@ -302,10 +303,12 @@ describe("PretableSurface — built-in filter funnel", () => {
       operator: "isAnyOf",
       value: ["high"],
     });
-    const ids = view
-      .getAllByTestId("pretable-row")
-      .map((r) => r.getAttribute("data-pretable-row-id"));
-    expect(ids).toEqual(["b1", "b3"]);
+    await waitFor(() => {
+      const ids = view
+        .getAllByTestId("pretable-row")
+        .map((r) => r.getAttribute("data-pretable-row-id"));
+      expect(ids).toEqual(["b1", "b3"]);
+    });
   });
 
   it("controlled state.filters lights the funnel active and hydrates the dialog", () => {
@@ -346,7 +349,7 @@ describe("PretableSurface — built-in filter funnel", () => {
     expect(dialog.closest("body")).not.toBeNull();
   });
 
-  it("Clear resets the filter and fires onFiltersChange with the column removed", () => {
+  it("Clear resets the filter and fires onFiltersChange with the column removed", async () => {
     const onFiltersChange = vi.fn();
     const view = renderSurface({
       onFiltersChange,
@@ -357,11 +360,13 @@ describe("PretableSurface — built-in filter funnel", () => {
     // debounce; instead clear from a hydrated controlled-less state by typing).
     fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
     const dialog = view.getByRole("dialog", { name: "Filter Severity" });
-    const highCheckbox = within(dialog)
-      .getAllByRole("checkbox")
-      .find((cb) => cb.closest("label")?.textContent?.includes("high"))!;
+    const highCheckbox = (await within(dialog).findAllByRole("checkbox")).find(
+      (cb) => cb.closest("label")?.textContent?.includes("high"),
+    )!;
     fireEvent.click(highCheckbox);
-    expect(view.getAllByTestId("pretable-row")).toHaveLength(2);
+    await waitFor(() =>
+      expect(view.getAllByTestId("pretable-row")).toHaveLength(2),
+    );
 
     // Clear.
     fireEvent.click(within(dialog).getByText("Clear"));
@@ -370,6 +375,8 @@ describe("PretableSurface — built-in filter funnel", () => {
       ColumnFilter
     >;
     expect(lastFilters.severity).toBeUndefined();
-    expect(view.getAllByTestId("pretable-row")).toHaveLength(3);
+    await waitFor(() =>
+      expect(view.getAllByTestId("pretable-row")).toHaveLength(3),
+    );
   });
 });

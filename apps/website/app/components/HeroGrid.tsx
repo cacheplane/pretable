@@ -5,6 +5,8 @@ import {
   type PastePayload,
   type PretableSortEntry,
 } from "@pretable/react";
+import { createLocalRowModel } from "@pretable/core";
+import { createBatcher } from "@pretable/stream-adapter";
 import {
   useCallback,
   useEffect,
@@ -61,6 +63,13 @@ export function HeroGrid() {
     [],
   ); // empty deps — created once on purpose
   /* eslint-enable react-hooks/refs */
+  const [rowModel] = useState(() =>
+    createLocalRowModel({
+      rows: [] as PositionRow[],
+      columns,
+      getRowId: (row: PositionRow) => row.id,
+    }),
+  );
 
   const sortedRows = useMemo(() => applySort(rows, userSort), [rows, userSort]);
   useEffect(() => {
@@ -104,55 +113,68 @@ export function HeroGrid() {
       // book so the hero isn't blank. One-time seed: it can't be a lazy
       // useState initializer because the media query is client-only and would
       // hydration-mismatch the server's empty render.
+      const settled = withDerivedWeights(startingPositions());
+      rowsRef.current = settled;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot snapshot, runs once then returns
-      setRows(withDerivedWeights(startingPositions()));
+      setRows(settled);
+      rowModel.applyTransaction({ add: settled });
       return;
     }
+
+    const batcher = createBatcher(rowModel);
 
     const replay = createPortfolioReplay({
       recording: PORTFOLIO_RECORDING,
       ratePerSec,
       isPlaying,
       onTransaction: (tx) => {
-        setRows((prev) => {
-          let next = prev;
-          if (tx.add) {
-            next = [...next, ...tx.add];
-            next = withDerivedWeights(next);
+        const previous = rowsRef.current;
+        let next = previous;
+        if (tx.add) {
+          next = [...next, ...tx.add];
+          next = withDerivedWeights(next);
+        }
+        if (tx.update) {
+          const byId = new Map<string, Partial<PositionRow>>();
+          for (const p of tx.update) {
+            const id = (p as { id?: string }).id;
+            if (typeof id !== "string") continue;
+            byId.set(id, { ...byId.get(id), ...p });
           }
-          if (tx.update) {
-            const byId = new Map<string, Partial<PositionRow>>();
-            for (const p of tx.update) {
-              const id = (p as { id?: string }).id;
-              if (typeof id !== "string") continue;
-              byId.set(id, { ...byId.get(id), ...p });
+          next = next.map((row) => {
+            const patch = byId.get(row.id);
+            if (!patch) return row;
+            const merged: PositionRow = { ...row, ...patch };
+            // Compute flash direction + bump tickSeq when price changes.
+            if (typeof patch.last === "number" && patch.last !== row.last) {
+              merged.lastDir = patch.last > row.last ? "up" : "down";
+              merged.tickSeq = (row.tickSeq ?? 0) + 1;
             }
-            next = next.map((row) => {
-              const patch = byId.get(row.id);
-              if (!patch) return row;
-              const merged: PositionRow = { ...row, ...patch };
-              // Compute flash direction + bump tickSeq when price changes.
-              if (typeof patch.last === "number" && patch.last !== row.last) {
-                merged.lastDir = patch.last > row.last ? "up" : "down";
-                merged.tickSeq = (row.tickSeq ?? 0) + 1;
-              }
-              // Apply edited qty override so user changes survive streaming ticks
-              const editedQty = editedQtyByIdRef.current.get(row.id);
-              if (editedQty !== undefined) {
-                merged.qty = editedQty;
-                merged.mktValue = Math.round(editedQty * merged.last);
-              }
-              return merged;
-            });
-            next = withDerivedWeights(next);
-          }
-          return next;
-        });
+            // Apply edited qty override so user changes survive streaming ticks
+            const editedQty = editedQtyByIdRef.current.get(row.id);
+            if (editedQty !== undefined) {
+              merged.qty = editedQty;
+              merged.mktValue = Math.round(editedQty * merged.last);
+            }
+            return merged;
+          });
+          next = withDerivedWeights(next);
+        }
+        rowsRef.current = next;
+        setRows(next);
+        const previousIds = new Set(previous.map((row) => row.id));
+        batcher.add(next.filter((row) => !previousIds.has(row.id)));
+        batcher.update(
+          next
+            .filter((row) => previousIds.has(row.id))
+            .map((row) => ({ id: row.id, changes: row })),
+        );
       },
     });
     replayRef.current = replay;
     return () => {
       replay.dispose();
+      batcher.dispose();
       replayRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-once; rate/playing go through separate effects
@@ -165,59 +187,43 @@ export function HeroGrid() {
     replayRef.current?.setPlaying(isPlaying);
   }, [isPlaying]);
 
-  // onCellEdit — simulated order submission with deterministic desk rejection
-  const handleCellEdit = useCallback(
-    async ({
-      rowId,
-      columnId,
-      value,
-    }: {
-      rowId: string;
-      columnId: string;
-      value: unknown;
-      row: PositionRow;
-    }) => {
-      if (columnId !== "qty") return;
-      const qty = value as number;
-      await new Promise<void>((r) => setTimeout(r, 700)); // simulated order submission (status = saving)
-      if (isDeskRejected(rowId, qty)) {
-        throw new Error("Rejected by trading desk");
+  useEffect(() => () => rowModel.dispose(), [rowModel]);
+
+  const handleBeforeRowChange = useCallback(
+    async (
+      changes: readonly {
+        readonly rowId: string;
+        readonly columnId: string;
+        readonly changes: Partial<PositionRow>;
+      }[],
+    ) => {
+      for (const change of changes) {
+        if (change.columnId !== "qty") continue;
+        const qty = change.changes.qty;
+        if (qty === undefined) continue;
+        await new Promise<void>((r) => setTimeout(r, 700)); // simulated order submission (status = saving)
+        if (isDeskRejected(change.rowId, qty)) {
+          throw new Error("Rejected by trading desk");
+        }
+        editedQtyByIdRef.current.set(change.rowId, qty);
       }
-      editedQtyByIdRef.current.set(rowId, qty);
-      setRows((prev) =>
-        withDerivedWeights(
-          prev.map((r) =>
-            r.id === rowId
-              ? { ...r, qty, mktValue: Math.round(qty * r.last) }
-              : r,
-          ),
-        ),
+      const next = withDerivedWeights(
+        rowsRef.current.map((row) => {
+          const change = changes.find((entry) => entry.rowId === row.id);
+          return change === undefined ? row : { ...row, ...change.changes };
+        }),
       );
+      rowsRef.current = next;
+      setRows(next);
     },
     [],
   );
 
-  // onPaste — one bulk callback per clipboard paste. The grid gates every cell
-  // through the qty column's `editable` + `validate` (the same 7% guardrail and
-  // sanity rules an inline edit runs), so `rejected` arrives populated: cells in
-  // any other column are `"not-editable"`, and a quantity the desk's rules
-  // refuse is `"invalid"`. Survivors go through the SAME edited-qty override map
-  // `onCellEdit` writes, so pasted quantities survive streaming ticks.
+  // onPaste reports one completed clipboard batch. `beforeRowChange` owns the
+  // accepted row patches; this callback uses the complete payload (including
+  // rejected cells) only for the transient sidebar summary.
   const handlePaste = useCallback((payload: PastePayload<PositionRow>) => {
-    const { qtyById, summary } = planQtyPaste(payload);
-    if (qtyById.size > 0) {
-      for (const [id, qty] of qtyById) editedQtyByIdRef.current.set(id, qty);
-      setRows((prev) =>
-        withDerivedWeights(
-          prev.map((r) => {
-            const qty = qtyById.get(r.id);
-            return qty === undefined
-              ? r
-              : { ...r, qty, mktValue: Math.round(qty * r.last) };
-          }),
-        ),
-      );
-    }
+    const { summary } = planQtyPaste(payload);
     // Transient, like the "Copied ✓" flash — but held longer, since the line
     // carries counts worth reading. A second paste restarts the clock.
     setPasteSummary(summary);
@@ -277,18 +283,16 @@ export function HeroGrid() {
       <div className={styles.heroBezel} data-testid="hero-bezel">
         <div className={styles.heroSplit}>
           <div className={styles.heroSurface} ref={surfaceRef}>
-            <PretableSurface<PositionRow>
+            <PretableSurface
               ariaLabel="Live portfolio positions"
+              beforeRowChange={handleBeforeRowChange}
               columns={columns}
               copyWithHeaders
-              getRowId={(row) => row.id}
-              onCellEdit={handleCellEdit}
+              model={rowModel}
               onPaste={handlePaste}
               onSelectionChange={handleSelectionChange}
               onSortChange={(entries) => setUserSort(entries)}
               rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
-              rows={sortedRows}
-              state={{ sort: userSort }}
               viewportHeight={viewportHeight}
             />
             <p className={styles.legend}>

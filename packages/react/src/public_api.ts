@@ -22,8 +22,15 @@ export { usePretableColumns } from "./use-pretable-columns";
 export type { PretableProps } from "./pretable";
 export type {
   PretableRowActivateInput,
+  PretableSurfaceCellEdit,
+  PretableSurfaceGrid,
   PretableSurfaceMessages,
+  PretableSurfaceModelProps,
   PretableSurfaceProps,
+  PretableSurfaceQueryColumns,
+  PretableSurfaceRowChange,
+  PretableSurfaceRowsProps,
+  PretableSurfaceSharedProps,
   RowSelectionColumnConfig,
 } from "./pretable-surface";
 export type { InspectionGridProps } from "./inspection-grid";
@@ -40,6 +47,13 @@ export type {
   PretableModel,
   PretableRowForColumns,
   PretableRowsModeBaseOptions,
+  PretableSurfaceCellAddress,
+  PretableSurfaceCellRange,
+  PretableSurfaceColumnId,
+  PretableSurfaceFocusState,
+  PretableSurfaceInteractionColumnId,
+  PretableSurfaceSelectionState,
+  PretableSurfaceSortEntry,
   PretableSurfaceState,
   PretableTelemetry,
   PretableViewportOptions,
@@ -55,7 +69,7 @@ export type {
   PretableGridUiSnapshot,
   PretableIndexedRenderSnapshot,
   PretableReactGrid,
-} from "./use-indexed-pretable";
+} from "./pretable-model";
 
 // React-extended column type + render-input shapes
 export type {

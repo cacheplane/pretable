@@ -1,17 +1,12 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, renderHook } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  GROUP_COLUMN_ID,
-  type PretableGridGroupRow,
-  type PretableRow,
-} from "@pretable/core";
+import { GROUP_COLUMN_ID, type PretableRow } from "@pretable/core";
 
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
-import { useLegacyPretable } from "../use-legacy-pretable";
 
 interface Holding extends PretableRow {
   id: string;
@@ -35,18 +30,6 @@ const COLUMNS: PretableColumn<Holding>[] = [
 const getRowId = (row: Holding) => row.id;
 
 afterEach(cleanup);
-
-function groupByValue(
-  rows: readonly (PretableGridGroupRow | { kind: "data" })[],
-  value: string,
-): PretableGridGroupRow {
-  const group = rows.find(
-    (row): row is PretableGridGroupRow =>
-      row.kind === "group" && row.value === value,
-  );
-  if (!group) throw new Error(`No group for ${value}`);
-  return group;
-}
 
 function HoldingSurface({
   aggregateFilteredRows,
@@ -92,9 +75,9 @@ describe("PretableSurface grouping construction options", () => {
     const filteredOnly = render(
       <HoldingSurface aggregateFilteredRows={false} filtered />,
     );
-    const filteredTech = [...filteredOnly.container.querySelectorAll(
-      "[data-pretable-group-row]",
-    )].find((row) => row.textContent?.includes("Tech"));
+    const filteredTech = [
+      ...filteredOnly.container.querySelectorAll("[data-pretable-group-row]"),
+    ].find((row) => row.textContent?.includes("Tech"));
 
     expect(
       filteredTech?.querySelector('[data-pretable-column-id="qty"]'),
@@ -104,9 +87,9 @@ describe("PretableSurface grouping construction options", () => {
     const allRows = render(
       <HoldingSurface aggregateFilteredRows={true} filtered />,
     );
-    const allTech = [...allRows.container.querySelectorAll(
-      "[data-pretable-group-row]",
-    )].find((row) => row.textContent?.includes("Tech"));
+    const allTech = [
+      ...allRows.container.querySelectorAll("[data-pretable-group-row]"),
+    ].find((row) => row.textContent?.includes("Tech"));
 
     expect(
       allTech?.querySelector('[data-pretable-column-id="qty"]'),
@@ -143,58 +126,5 @@ describe("PretableSurface grouping construction options", () => {
     expect(
       headers.map((header) => header.getAttribute("data-pretable-column-id")),
     ).toContain("sector");
-  });
-});
-
-describe("usePretable grouping option identity", () => {
-  it("keys group-column construction by primitive values while reconciling rows", () => {
-    const { result, rerender } = renderHook(
-      ({ header, rows }: { header: string; rows: Holding[] }) =>
-        useLegacyPretable<Holding>({
-          columns: COLUMNS,
-          rows,
-          getRowId,
-          groupColumn: { header },
-          viewportHeight: 200,
-        }),
-      { initialProps: { header: "Group", rows: HOLDINGS } },
-    );
-
-    const firstGrid = result.current.grid;
-    act(() => firstGrid.setRowGroups(["sector"]));
-
-    rerender({ header: "Group", rows: HOLDINGS });
-
-    expect(result.current.grid).toBe(firstGrid);
-    expect(result.current.grid.getSnapshot().rowGroups).toEqual(["sector"]);
-
-    rerender({ header: "Bucket", rows: HOLDINGS });
-
-    const bucketGrid = result.current.grid;
-    expect(bucketGrid).not.toBe(firstGrid);
-    act(() => bucketGrid.setRowGroups(["sector"]));
-    expect(bucketGrid.getColumns()[0]?.header).toBe("Bucket");
-
-    const equalRows = HOLDINGS.map((row) => ({ ...row }));
-    rerender({ header: "Bucket", rows: equalRows });
-
-    expect(result.current.grid).toBe(bucketGrid);
-    expect(result.current.grid.getSnapshot().rowGroups).toEqual(["sector"]);
-    expect(
-      groupByValue(result.current.grid.getSnapshot().visibleRows, "Tech")
-        .aggregates.qty,
-    ).toBe(30);
-
-    const changedRows = equalRows.map((row) =>
-      row.id === "h1" ? { ...row, qty: 12 } : row,
-    );
-    rerender({ header: "Bucket", rows: changedRows });
-
-    expect(result.current.grid).toBe(bucketGrid);
-    expect(result.current.grid.getSnapshot().rowGroups).toEqual(["sector"]);
-    expect(
-      groupByValue(result.current.grid.getSnapshot().visibleRows, "Tech")
-        .aggregates.qty,
-    ).toBe(32);
   });
 });

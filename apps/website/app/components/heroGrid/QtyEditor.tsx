@@ -1,12 +1,15 @@
-import type { PretableEditorInput } from "@pretable/react";
-import type { PositionRow } from "./types";
 import styles from "./qtyEditor.module.css";
 
-export function QtyEditor({
-  input,
-}: {
-  input: PretableEditorInput<PositionRow>;
-}) {
+interface QtyEditorInput {
+  readonly status: "checking" | "editing" | "validating" | "saving" | "error";
+  readonly error?: string;
+  readonly draft: number | string;
+  readonly setDraft: (value: number | string) => void;
+  readonly commit: (direction?: "up" | "down" | "left" | "right") => void;
+  readonly cancel: () => void;
+}
+
+export function QtyEditor({ input }: { input: QtyEditorInput }) {
   const { status, error } = input;
   const pending = status === "validating" || status === "saving";
 

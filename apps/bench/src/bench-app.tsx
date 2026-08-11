@@ -6,14 +6,12 @@ import {
   useRef,
   useState,
 } from "react";
-import type { PretableGrid } from "@pretable/react";
 import type { PretableTelemetry } from "@pretable/react";
 
 import {
   createScenarioDataset,
   getScenarioById,
   listScenarios,
-  type ScenarioRow,
 } from "@pretable-internal/scenario-data";
 import {
   createBenchRunSummary,
@@ -100,7 +98,6 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const autorunRef = useRef(false);
   const pretableTelemetryRef = useRef<PretableTelemetry | null>(null);
-  const pretableGridRef = useRef<PretableGrid<ScenarioRow> | null>(null);
   /**
    * Adapter-agnostic update API ref. Each adapter wires its idiomatic
    * streaming pattern (Pretable: stream-adapter batcher → applyTransaction;
@@ -543,9 +540,6 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 interactionPlan={interactionPlan}
                 key={runKey}
                 onAutosizeReady={handleAutosizeApiReady}
-                onGridReady={(grid) => {
-                  pretableGridRef.current = grid;
-                }}
                 onTelemetryChange={(telemetry) => {
                   pretableTelemetryRef.current = telemetry;
                 }}

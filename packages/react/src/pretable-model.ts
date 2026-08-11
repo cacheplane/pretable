@@ -70,6 +70,11 @@ export type PretableReactGrid<
     readonly columnId: TColumnId;
     readonly value: ColumnValueOf<TColumns, TColumnId>;
   }) => void;
+  readonly setEditDraft: (value: unknown) => void;
+  readonly setEditStatus: (
+    status: "editing" | "validating" | "saving" | "error",
+    error?: string,
+  ) => void;
   readonly cancelEdit: () => void;
   readonly setColumnWidth: (
     columnId: ColumnIdOf<TColumns>,
@@ -80,6 +85,12 @@ export type PretableReactGrid<
     pinned: "left" | "right" | null,
   ) => void;
   readonly setColumnOrder: (columnIds: readonly ColumnIdOf<TColumns>[]) => void;
+  readonly autosizeColumns: () => void;
+  /** Reports a measured visible-row height to the indexed layout. */
+  readonly measureRow: (
+    ref: PretableVisibleRowRef<TRowId>,
+    height: number,
+  ) => void;
   readonly dispose: () => void;
   readonly setQuery: (
     query: PretableQueryFor<TColumns>,
@@ -207,6 +218,8 @@ export interface UseIndexedPretableOptions<
   readonly viewportWidth?: number;
   readonly overscan?: number;
   readonly onQueryChange?: (query: PretableQueryFor<TColumns>) => void;
+  /** @internal Synthetic surface columns may exist outside the model schema. */
+  readonly allowVisualExtras?: boolean;
 }
 
 function mergeRenderColumns<TRow extends object>(
@@ -219,7 +232,20 @@ function mergeRenderColumns<TRow extends object>(
   autoWidthIds: ReadonlySet<string>,
 ): readonly DomLayoutColumn<TRow>[] {
   const byId = new Map(columns.map((column) => [column.id, column]));
-  return layout.map((entry) => {
+  const hasSameIds =
+    layout.length === columns.length &&
+    layout.every((entry) => byId.has(entry.id));
+  const effectiveLayout = hasSameIds
+    ? layout
+    : columns.map(
+        (column) =>
+          layout.find((entry) => entry.id === column.id) ?? {
+            id: column.id,
+            widthPx: column.widthPx ?? 160,
+            ...(column.pinned === undefined ? {} : { pinned: column.pinned }),
+          },
+      );
+  return effectiveLayout.map((entry) => {
     const presentation = byId.get(entry.id);
     if (presentation === undefined) {
       throw new TypeError(`Missing presentation column: ${entry.id}`);
@@ -289,8 +315,8 @@ export interface PretableModel<
   readonly status: PretableRowModelStatus;
 }
 
-/** Temporary indexed React plumbing; the public overloads delegate here. */
-export function useIndexedPretable<
+/** Internal indexed implementation shared by the public ownership overloads. */
+export function usePretableModelInternal<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
@@ -303,14 +329,15 @@ export function useIndexedPretable<
   const [queryChangeChannel] = useState(() =>
     createLatestValueChannel(onQueryChange),
   );
+  const presentationColumnsRef = useRef(columns);
   const schemaColumns = rowModel.getColumns() as readonly {
     readonly id: string;
   }[];
   const schemaIds = new Set(schemaColumns.map((column) => column.id));
+  for (const column of columns) schemaIds.delete(column.id);
   if (
-    columns.length !== schemaColumns.length ||
-    columns.some((column) => !schemaIds.delete(column.id)) ||
-    schemaIds.size !== 0
+    !options.allowVisualExtras &&
+    (schemaIds.size !== 0 || columns.length !== schemaColumns.length)
   ) {
     throw new TypeError(
       "Pretable presentation columns must match the row model schema exactly.",
@@ -342,6 +369,7 @@ export function useIndexedPretable<
       model: internalModel,
       columns: initialRenderColumns,
       deferActivation: true,
+      eagerInitialRowLimit: 32,
       viewport: {
         scrollTop: 0,
         viewportHeight: options.viewportHeight,
@@ -367,22 +395,35 @@ export function useIndexedPretable<
       void transition.finished.catch(() => undefined);
       return transition;
     };
-    return Object.assign(Object.create(stores.gridCore) as object, {
-      rowModel,
-      setQuery,
-      setColumnWidth: (columnId: ColumnIdOf<TColumns>, width: number) => {
-        stores.gridCore.setColumnWidth(columnId, width);
-        stores.autoWidths.setAuto(columnId, false);
-      },
-    }) as PretableReactGrid<TRow, TRowId, TColumns>;
-  }, [queryChangeChannel, rowModel, stores.autoWidths, stores.gridCore]);
+    const facade = Object.create(stores.gridCore) as Record<string, unknown>;
+    facade.rowModel = rowModel;
+    facade.setQuery = setQuery;
+    facade.autosizeColumns = () => {
+      for (const column of presentationColumnsRef.current) {
+        stores.autoWidths.setAuto(column.id, true);
+      }
+    };
+    facade.measureRow = stores.controller.measure;
+    facade.setColumnWidth = (columnId: ColumnIdOf<TColumns>, width: number) => {
+      stores.gridCore.setColumnWidth(columnId, width);
+      stores.autoWidths.setAuto(columnId, false);
+    };
+    return facade as PretableReactGrid<TRow, TRowId, TColumns>;
+  }, [
+    queryChangeChannel,
+    rowModel,
+    stores.autoWidths,
+    stores.controller.measure,
+    stores.gridCore,
+  ]);
 
   // Effect Events cannot back this public imperative method because callers
   // also invoke it outside Effects. An insertion effect publishes only the
   // committed render's callback before any descendant layout effect can act.
   useInsertionEffect(() => {
+    presentationColumnsRef.current = columns;
     queryChangeChannel.set(onQueryChange);
-  }, [onQueryChange, queryChangeChannel]);
+  }, [columns, onQueryChange, queryChangeChannel]);
 
   const [pendingDisposals] = useState(() => new Set<typeof stores>());
   useLayoutEffect(() => {
@@ -442,7 +483,12 @@ export function useIndexedPretable<
       (column) => column.id,
     );
     const nextOrder = columns.map((column) => column.id);
-    if (previousOrder.some((id, index) => id !== nextOrder[index])) {
+    const sameIds =
+      previousOrder.length === nextOrder.length &&
+      previousOrder.every((id) => nextOrder.includes(id));
+    if (!sameIds) {
+      stores.gridCore.setColumns(columns as never);
+    } else if (previousOrder.some((id, index) => id !== nextOrder[index])) {
       stores.gridCore.setColumnOrder(nextOrder as never);
     }
     for (const column of columns) {

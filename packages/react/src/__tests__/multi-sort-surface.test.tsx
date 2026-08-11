@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -67,12 +67,19 @@ function rowIds(view: ReturnType<typeof render>) {
     .map((row) => row.getAttribute("data-pretable-row-id"));
 }
 
+async function expectRowIds(
+  view: ReturnType<typeof render>,
+  expected: readonly string[],
+) {
+  await waitFor(() => expect(rowIds(view)).toEqual(expected));
+}
+
 function badge(view: ReturnType<typeof render>, label: string) {
   return header(view, label).querySelector("[data-pretable-sort-priority]");
 }
 
 describe("PretableSurface multi-column sort", () => {
-  it("plain click cycles desc → asc → none and replaces a multi-entry list", () => {
+  it("plain click cycles desc → asc → none and replaces a multi-entry list", async () => {
     const onSortChange = vi.fn();
     const view = renderGrid({ onSortChange });
 
@@ -92,17 +99,18 @@ describe("PretableSurface multi-column sort", () => {
     ]);
     expect(header(view, "Group")).toHaveAttribute("aria-sort", "none");
     expect(header(view, "Score")).toHaveAttribute("aria-sort", "none");
-    expect(rowIds(view)).toEqual(["r1", "r2", "r3", "r4"]); // name desc: d,c,b,a
+    await expectRowIds(view, ["r1", "r2", "r3", "r4"]); // name desc: d,c,b,a
+    expect(header(view, "Name")).toHaveAttribute("aria-sort", "descending");
 
     fireEvent.click(header(view, "Name"));
     expect(onSortChange).toHaveBeenLastCalledWith([
       { columnId: "name", direction: "asc" },
     ]);
-    expect(rowIds(view)).toEqual(["r4", "r3", "r2", "r1"]);
+    await expectRowIds(view, ["r4", "r3", "r2", "r1"]);
 
     fireEvent.click(header(view, "Name"));
     expect(onSortChange).toHaveBeenLastCalledWith([]);
-    expect(rowIds(view)).toEqual(["r1", "r2", "r3", "r4"]); // source order
+    await expectRowIds(view, ["r1", "r2", "r3", "r4"]); // source order
     expect(onSortChange).toHaveBeenCalledTimes(3);
   });
 
@@ -127,7 +135,7 @@ describe("PretableSurface multi-column sort", () => {
     expect(rowIds(view)).toEqual(["r1", "r2", "r3", "r4"]); // source order
   });
 
-  it("shift-click appends desc, flips to asc in place, then removes only that entry", () => {
+  it("shift-click appends desc, flips to asc in place, then removes only that entry", async () => {
     const onSortChange = vi.fn();
     const view = renderGrid({ onSortChange });
 
@@ -136,7 +144,7 @@ describe("PretableSurface multi-column sort", () => {
     expect(onSortChange).toHaveBeenLastCalledWith([
       { columnId: "group", direction: "desc" },
     ]);
-    expect(rowIds(view)).toEqual(["r1", "r4", "r2", "r3"]); // group desc, stable
+    await expectRowIds(view, ["r1", "r4", "r2", "r3"]); // group desc, stable
 
     // Second unsorted column → appended after (order preserved).
     fireEvent.click(header(view, "Score"), { shiftKey: true });
@@ -144,7 +152,7 @@ describe("PretableSurface multi-column sort", () => {
       { columnId: "group", direction: "desc" },
       { columnId: "score", direction: "desc" },
     ]);
-    expect(rowIds(view)).toEqual(["r1", "r4", "r3", "r2"]); // score breaks group ties
+    await expectRowIds(view, ["r1", "r4", "r3", "r2"]); // score breaks group ties
 
     // Shift-click a present desc entry → flips to asc in place (stays first).
     fireEvent.click(header(view, "Group"), { shiftKey: true });
@@ -154,7 +162,7 @@ describe("PretableSurface multi-column sort", () => {
     ]);
     expect(header(view, "Group")).toHaveAttribute("aria-sort", "ascending");
     expect(header(view, "Score")).toHaveAttribute("aria-sort", "descending");
-    expect(rowIds(view)).toEqual(["r3", "r2", "r1", "r4"]);
+    await expectRowIds(view, ["r3", "r2", "r1", "r4"]);
 
     // Shift-click a present asc entry → removed; other entries keep positions.
     fireEvent.click(header(view, "Group"), { shiftKey: true });
@@ -162,36 +170,46 @@ describe("PretableSurface multi-column sort", () => {
       { columnId: "score", direction: "desc" },
     ]);
     expect(header(view, "Group")).toHaveAttribute("aria-sort", "none");
-    expect(rowIds(view)).toEqual(["r3", "r1", "r2", "r4"]); // score desc, r2/r4 stable
+    await expectRowIds(view, ["r3", "r1", "r2", "r4"]); // score desc, r2/r4 stable
   });
 
-  it("renders 1-based priority badges only when two or more columns are sorted", () => {
+  it("renders 1-based priority badges only when two or more columns are sorted", async () => {
     const view = renderGrid();
 
     fireEvent.click(header(view, "Group"), { shiftKey: true });
+    await waitFor(() =>
+      expect(header(view, "Group")).toHaveAttribute("aria-sort", "descending"),
+    );
     expect(badge(view, "Group")).toBeNull(); // single entry → no badge
 
     fireEvent.click(header(view, "Score"), { shiftKey: true });
-    expect(badge(view, "Group")?.textContent).toBe("1");
+    await waitFor(() => expect(badge(view, "Group")?.textContent).toBe("1"));
     expect(badge(view, "Score")?.textContent).toBe("2");
     expect(badge(view, "Name")).toBeNull();
 
     fireEvent.click(header(view, "Name"), { shiftKey: true });
+    await waitFor(() => expect(badge(view, "Name")?.textContent).toBe("3"));
     expect(badge(view, "Group")?.textContent).toBe("1");
     expect(badge(view, "Score")?.textContent).toBe("2");
     expect(badge(view, "Name")?.textContent).toBe("3");
 
     // Remove the first entry (desc → asc → removed); badge numbers shift.
     fireEvent.click(header(view, "Group"), { shiftKey: true });
+    await waitFor(() =>
+      expect(header(view, "Group")).toHaveAttribute("aria-sort", "ascending"),
+    );
     fireEvent.click(header(view, "Group"), { shiftKey: true });
-    expect(badge(view, "Group")).toBeNull();
+    await waitFor(() => expect(badge(view, "Group")).toBeNull());
     expect(badge(view, "Score")?.textContent).toBe("1");
     expect(badge(view, "Name")?.textContent).toBe("2");
 
     // Down to a single entry → badge disappears.
     fireEvent.click(header(view, "Score"), { shiftKey: true });
+    await waitFor(() =>
+      expect(header(view, "Score")).toHaveAttribute("aria-sort", "ascending"),
+    );
     fireEvent.click(header(view, "Score"), { shiftKey: true });
-    expect(badge(view, "Score")).toBeNull();
+    await waitFor(() => expect(badge(view, "Score")).toBeNull());
     expect(badge(view, "Name")).toBeNull();
   });
 

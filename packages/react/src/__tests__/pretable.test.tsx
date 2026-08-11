@@ -4,7 +4,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 
 import { Pretable } from "../index";
-import { useLegacyPretable as usePretable } from "../use-legacy-pretable";
+import { usePretable } from "../use-pretable";
+import { createColumnHelper } from "@pretable/core";
 import { measureRenderedRowHeight } from "../row-height";
 
 afterEach(() => {
@@ -153,7 +154,7 @@ it("measures wrapped rows and applies the measured height back to data-pretable-
   });
 });
 
-it("renders a scrollable viewport and virtualizes rows on scroll", () => {
+it("renders a scrollable viewport and virtualizes rows on scroll", async () => {
   const rows = Array.from({ length: 100 }, (_, index) => ({
     id: `row-${index}`,
     message: `Row ${index}`,
@@ -173,7 +174,7 @@ it("renders a scrollable viewport and virtualizes rows on scroll", () => {
 
   const viewport = view.getByRole("grid", { name: "Pretable React adapter" });
 
-  expect(view.getByText("Row 0")).toBeInTheDocument();
+  expect(await view.findByText("Row 0")).toBeInTheDocument();
   expect(view.queryByText("Row 99")).not.toBeInTheDocument();
 
   fireEvent.scroll(viewport, {
@@ -182,7 +183,7 @@ it("renders a scrollable viewport and virtualizes rows on scroll", () => {
     },
   });
 
-  expect(view.getByText("Row 90")).toBeInTheDocument();
+  expect(await view.findByText("Row 90")).toBeInTheDocument();
 });
 
 it("uses caller-provided row ids in the public component path", () => {
@@ -335,19 +336,18 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
     id: `row-${index}`,
     message: index === 0 ? "Short row" : `Row ${index}`,
   }));
+  const column = createColumnHelper<(typeof rows)[number]>();
   const columns = [
-    {
-      id: "message",
+    column.accessor("message", {
       header: "Message",
+      type: "text",
       wrap: true,
       widthPx: 220,
-    },
-  ];
-  const getRowId = (row: { id: string }) => row.id;
+    }),
+  ] as const;
   const HookProbe = () => {
     const model = usePretable({
       columns,
-      getRowId,
       rows,
       viewportHeight: 88,
       overscan: 0,
@@ -364,15 +364,20 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
 
     return (
       <output
-        data-first-row-id={model.renderSnapshot.rows[0]?.id ?? ""}
+        data-first-row-id={
+          model.renderSnapshot.rows[0]?.ref.kind === "data"
+            ? model.renderSnapshot.rows[0].ref.rowId
+            : ""
+        }
         data-rendered-row-ids={model.renderSnapshot.rows
-          .map((row) => row.id)
+          .map((row) =>
+            row.ref.kind === "data" ? row.ref.rowId : row.ref.groupId,
+          )
           .join(",")}
-        data-kind={model.grid.kind}
         data-rendered-row-count={model.renderSnapshot.rows.length}
         data-total-height={model.renderSnapshot.totalHeight}
         data-total-width={model.renderSnapshot.totalWidth}
-        data-total-rows={model.snapshot.totalRowCount}
+        data-total-rows={model.rowModelSnapshot.sourceRowCount}
       />
     );
   };
@@ -380,7 +385,6 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
   const view = render(<HookProbe />);
   const output = view.container.querySelector("output");
 
-  expect(output).toHaveAttribute("data-kind", "pretable-grid");
   expect(output).toHaveAttribute("data-total-rows", "12");
   expect(output).toHaveAttribute("data-total-width", "220");
   expect(output).toHaveAttribute("data-first-row-id", "row-4");
@@ -394,18 +398,14 @@ it("plans and reports visible rows from the provided body viewport height", () =
     id: `row-${index}`,
     message: `Row ${index}`,
   }));
+  const column = createColumnHelper<(typeof rows)[number]>();
   const columns = [
-    {
-      id: "message",
-      header: "Message",
-    },
-  ];
-  const getRowId = (row: { id: string }) => row.id;
+    column.accessor("message", { header: "Message", type: "text" }),
+  ] as const;
 
   const HookProbe = () => {
     const model = usePretable({
       columns,
-      getRowId,
       rows,
       viewportHeight: 80,
       overscan: 0,
@@ -413,10 +413,14 @@ it("plans and reports visible rows from the provided body viewport height", () =
 
     return (
       <output
-        data-first-row-id={model.renderSnapshot.rows[0]?.id ?? ""}
+        data-first-row-id={
+          model.renderSnapshot.rows[0]?.ref.kind === "data"
+            ? model.renderSnapshot.rows[0].ref.rowId
+            : ""
+        }
         data-rendered-row-count={model.renderSnapshot.rows.length}
-        data-visible-row-count={model.telemetry.visibleRowCount}
-        data-visible-row-range={`${model.telemetry.visibleRowRange.start}:${model.telemetry.visibleRowRange.end}`}
+        data-visible-row-count={model.renderSnapshot.rows.length}
+        data-visible-row-range={`${model.renderSnapshot.rows[0]?.rowIndex ?? 0}:${(model.renderSnapshot.rows.at(-1)?.rowIndex ?? -1) + 1}`}
       />
     );
   };

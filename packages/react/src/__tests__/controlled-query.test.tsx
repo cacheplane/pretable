@@ -10,16 +10,17 @@ import {
 } from "@pretable/core";
 
 import { usePretable } from "../use-pretable";
+import { PretableSurface } from "../pretable-surface";
 import {
-  useIndexedPretable,
+  usePretableModelInternal,
   type PretableReactGrid,
-} from "../use-indexed-pretable";
+} from "../pretable-model";
 
-interface Row {
+type Row = {
   id: number;
   label: string;
   score: number;
-}
+};
 
 const column = createColumnHelper<Row>();
 const columns = [
@@ -42,6 +43,56 @@ const sortedQuery = {
 } as const;
 
 describe("usePretable rows-mode query ownership", () => {
+  test("legacy controlled UI slices leave omitted query slices live", async () => {
+    let grid: PretableReactGrid<Row, number, typeof columns> | null = null;
+    const view = render(
+      <PretableSurface<Row, number, typeof columns>
+        ariaLabel="partially controlled grid"
+        columns={columns}
+        getRowId={(row: Row) => row.id}
+        onGridReady={(next) => {
+          grid = next;
+        }}
+        rows={rows}
+        state={{ focus: { rowId: null, columnId: null } }}
+        viewportHeight={88}
+      />,
+    );
+    await expect.poll(() => grid).not.toBeNull();
+
+    await act(async () => {
+      await grid!.setQuery(sortedQuery)?.finished;
+    });
+    await expect
+      .poll(() => grid!.rowModel.getState().snapshot.query)
+      .toEqual(sortedQuery);
+
+    view.rerender(
+      <PretableSurface<Row, number, typeof columns>
+        ariaLabel="partially controlled grid"
+        columns={columns}
+        getRowId={(row: Row) => row.id}
+        onGridReady={(next) => {
+          grid = next;
+        }}
+        rows={rows}
+        state={{ selection: { anchor: null, ranges: [] } }}
+        viewportHeight={88}
+      />,
+    );
+    const filteredAndGrouped = {
+      filters: [{ columnId: "label", operator: "contains", value: "o" }],
+      sort: sortedQuery.sort,
+      rowGroups: [{ columnId: "label" }],
+    } as const;
+    await act(async () => {
+      await grid!.setQuery(filteredAndGrouped)?.finished;
+    });
+    await expect
+      .poll(() => grid!.rowModel.getState().snapshot.query)
+      .toEqual(filteredAndGrouped);
+  });
+
   test("treats an explicit undefined model exclusion as rows mode", () => {
     const { result } = renderHook(() =>
       usePretable({
@@ -217,7 +268,7 @@ describe("usePretable rows-mode query ownership", () => {
       callback?: (query: PretableQueryFor<typeof columns>) => void;
       proposal: PretableQueryFor<typeof columns>;
     }) {
-      const table = useIndexedPretable({
+      const table = usePretableModelInternal({
         rowModel: model,
         columns,
         viewportHeight: 88,

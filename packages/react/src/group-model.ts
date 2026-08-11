@@ -1,8 +1,9 @@
 import type {
   PretableGridSnapshot,
-  PretableGridGroupRow,
-  PretableRow,
-  PretableGridVisibleRow,
+  PretableGroupRow,
+  PretableRowId,
+  PretableRowModelSnapshot,
+  PretableVisibleRowRef,
 } from "@pretable/core";
 
 import { formatCellValue } from "./rendering";
@@ -35,30 +36,18 @@ export function isGroupExpanded(
 }
 
 /**
- * The group row one level out from the entry at `index`, or `null` at the top
- * level. Backed by the flat visible list, so it is exactly the row `Left` on a
- * collapsed group navigates to.
+ * The group row one level out from `ref`, or `null` at the top level. This is
+ * exactly the row `Left` on a collapsed group navigates to.
  */
-export function findParentGroupRow<TRow extends PretableRow>(
-  visibleRows: readonly PretableGridVisibleRow<TRow>[],
-  index: number,
-): PretableGridGroupRow | null {
-  const entry = visibleRows[index];
-
-  if (!entry) return null;
-
-  for (let i = index - 1; i >= 0; i -= 1) {
-    const candidate = visibleRows[i];
-    if (
-      candidate &&
-      candidate.kind === "group" &&
-      candidate.depth < entry.depth
-    ) {
-      return candidate;
-    }
-  }
-
-  return null;
+export function findParentGroupRow<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  ref: PretableVisibleRowRef<TRowId>,
+): PretableGroupRow<TColumns> | null {
+  return rowModelSnapshot.parentGroupOf(ref) ?? null;
 }
 
 /** The label a group row shows for its key value. */

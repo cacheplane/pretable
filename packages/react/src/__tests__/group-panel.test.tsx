@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -104,7 +104,7 @@ describe("group panel — wrapper and height accounting", () => {
 });
 
 describe("group panel — chips", () => {
-  it("is role=presentation when empty and role=listbox when it has chips", () => {
+  it("is role=presentation when empty and role=listbox when it has chips", async () => {
     // A listbox with zero options fails axe, which is why this flips rather
     // than being statically `listbox`.
     const view = renderGrid({ groupPanel: { enabled: true } });
@@ -113,10 +113,10 @@ describe("group panel — chips", () => {
     view.rerender(
       <Grid groupPanel={{ enabled: true }} state={{ rowGroups: ["sector"] }} />,
     );
-    expect(panel(view)).toHaveAttribute("role", "listbox");
+    await waitFor(() => expect(panel(view)).toHaveAttribute("role", "listbox"));
   });
 
-  it("shows the empty message only when ungrouped", () => {
+  it("shows the empty message only when ungrouped", async () => {
     const view = renderGrid({
       groupPanel: { enabled: true, emptyMessage: "Drop here" },
     });
@@ -128,7 +128,7 @@ describe("group panel — chips", () => {
         state={{ rowGroups: ["sector"] }}
       />,
     );
-    expect(view.queryByText("Drop here")).toBeNull();
+    await waitFor(() => expect(view.queryByText("Drop here")).toBeNull());
   });
 
   it("falls back to a default empty message", () => {
@@ -213,7 +213,7 @@ describe("group panel — chips", () => {
     expect(onRowGroupsChange).toHaveBeenCalledWith(["industry"]);
   });
 
-  it("does not fire onRowGroupsChange for programmatic grouping", () => {
+  it("does not fire onRowGroupsChange for programmatic grouping", async () => {
     const onRowGroupsChange = vi.fn();
     const view = renderGrid({
       groupPanel: { enabled: true },
@@ -228,7 +228,7 @@ describe("group panel — chips", () => {
       />,
     );
 
-    expect(view.getAllByRole("option")).toHaveLength(1);
+    expect(await view.findAllByRole("option")).toHaveLength(1);
     expect(onRowGroupsChange).not.toHaveBeenCalled();
   });
 });
@@ -338,7 +338,7 @@ describe("group panel — keyboard model", () => {
     expect(chipIds(view)).toEqual(["sector", "industry"]);
   });
 
-  it("focus follows the moved chip, so a repeated Shift+ArrowRight walks it along", () => {
+  it("focus follows the moved chip, so a repeated Shift+ArrowRight walks it along", async () => {
     // CAVEAT: jsdom does NOT drop focus when React re-inserts a keyed node to
     // reorder it, but browsers do — so the `refocusRef` layout effect in
     // GroupPanel cannot be proven necessary here (its negative control does
@@ -354,16 +354,20 @@ describe("group panel — keyboard model", () => {
     chips[0].focus();
 
     fireEvent.keyDown(chips[0], { key: "ArrowRight", shiftKey: true });
-    expect(chipIds(view)).toEqual(["industry", "sector", "name"]);
-    expect(activeChipId()).toBe("sector");
+    await waitFor(() =>
+      expect(chipIds(view)).toEqual(["industry", "sector", "name"]),
+    );
+    await waitFor(() => expect(activeChipId()).toBe("sector"));
     expect(view.getAllByRole("option")[1]).toHaveAttribute("tabindex", "0");
 
     fireEvent.keyDown(document.activeElement!, {
       key: "ArrowRight",
       shiftKey: true,
     });
-    expect(chipIds(view)).toEqual(["industry", "name", "sector"]);
-    expect(activeChipId()).toBe("sector");
+    await waitFor(() =>
+      expect(chipIds(view)).toEqual(["industry", "name", "sector"]),
+    );
+    await waitFor(() => expect(activeChipId()).toBe("sector"));
     expect(view.getAllByRole("option")[2]).toHaveAttribute("tabindex", "0");
   });
 
@@ -410,7 +414,7 @@ describe("group panel — keyboard model", () => {
     ).not.toBeNull();
   });
 
-  it("leaves focus on a chip after a removal, so the strip stays keyboard-usable", () => {
+  it("leaves focus on a chip after a removal, so the strip stays keyboard-usable", async () => {
     const view = render(
       <MirroredGrid initialRowGroups={["sector", "industry", "name"]} />,
     );
@@ -419,7 +423,7 @@ describe("group panel — keyboard model", () => {
 
     fireEvent.keyDown(chips[1], { key: "Delete" });
 
-    expect(chipIds(view)).toEqual(["sector", "name"]);
-    expect(activeChipId()).toBe("name");
+    await waitFor(() => expect(chipIds(view)).toEqual(["sector", "name"]));
+    await waitFor(() => expect(activeChipId()).toBe("name"));
   });
 });

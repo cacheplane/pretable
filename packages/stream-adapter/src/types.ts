@@ -1,17 +1,27 @@
 /**
- * Structural type for any grid that supports `applyTransaction`. Avoids
- * hard coupling to `@pretable-internal/grid-core` so consumers can wire
- * up streaming against a custom grid implementation that conforms to the
- * same shape.
+ * Structural contract for a row model that accepts atomic row transactions.
+ * The adapter depends only on this ID-generic shape, so callers may pass a
+ * Pretable row model or a compatible custom implementation.
  *
  * @public
  */
-export interface GridLike<TRow extends Record<string, unknown>> {
-  applyTransaction(transaction: {
+export interface RowModelLike<
+  TRow extends object,
+  TRowId extends string | number,
+> {
+  readonly applyTransaction: (transaction: {
     add?: TRow[];
-    update?: Partial<TRow>[];
-    remove?: string[];
-  }): void;
+    update?: {
+      id: TRowId;
+      changes: Partial<TRow>;
+    }[];
+    remove?: TRowId[];
+  }) => void | {
+    readonly issues?: readonly {
+      readonly code: string;
+      readonly rowId?: TRowId;
+    }[];
+  };
 }
 
 /**
@@ -23,12 +33,20 @@ export interface GridLike<TRow extends Record<string, unknown>> {
  *
  * @public
  */
-export interface TransactionBatcher<TRow extends Record<string, unknown>> {
-  add(rows: TRow[]): void;
-  update(patches: Partial<TRow>[]): void;
-  remove(ids: string[]): void;
-  flush(): void;
-  dispose(): void;
+export interface TransactionBatcher<
+  TRow extends object,
+  TRowId extends string | number,
+> {
+  readonly add: (rows: readonly TRow[]) => void;
+  readonly update: (
+    patches: readonly {
+      readonly id: TRowId;
+      readonly changes: Partial<TRow>;
+    }[],
+  ) => void;
+  readonly remove: (ids: readonly TRowId[]) => void;
+  readonly flush: () => void;
+  readonly dispose: () => void;
 }
 
 /**
@@ -39,6 +57,6 @@ export interface TransactionBatcher<TRow extends Record<string, unknown>> {
  * @public
  */
 export interface StreamConnection {
-  done: Promise<void>;
-  dispose(): void;
+  readonly done: Promise<void>;
+  readonly dispose: () => void;
 }

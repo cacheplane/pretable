@@ -1,7 +1,7 @@
 "use client";
 
 import { PretableSurface, type PretableColumn } from "@pretable/react";
-import { useMemo } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 
 /**
  * Test fixture for `apps/website/e2e/grouping.spec.ts`.
@@ -59,8 +59,8 @@ function makeRows(): HoldingRow[] {
 }
 
 const COLUMNS: PretableColumn<HoldingRow>[] = [
-  { id: "sector", header: "Sector", rowGroup: true },
-  { id: "industry", header: "Industry", rowGroup: true },
+  { id: "sector", header: "Sector" },
+  { id: "industry", header: "Industry" },
   { id: "region", header: "Region", widthPx: 140 },
   { id: "name", header: "Name", widthPx: 220 },
   {
@@ -76,6 +76,13 @@ const COLUMNS: PretableColumn<HoldingRow>[] = [
 export default function GroupingFixturePage() {
   const rows = useMemo(() => makeRows(), []);
   const columns = useMemo(() => COLUMNS, []);
+  const [query, setQuery] = useState<
+    NonNullable<ComponentProps<typeof PretableSurface<HoldingRow>>["query"]>
+  >({
+    filters: [],
+    sort: [],
+    rowGroups: [{ columnId: "sector" }, { columnId: "industry" }],
+  });
   return (
     <main style={{ padding: 24 }}>
       <h1 style={{ marginBottom: 12 }}>Grouping fixture</h1>
@@ -84,6 +91,8 @@ export default function GroupingFixturePage() {
         columns={columns}
         getRowId={(row) => row.id}
         groupPanel={{ enabled: true }}
+        query={query}
+        onQueryChange={setQuery}
         rows={rows}
         viewportHeight={400}
       />

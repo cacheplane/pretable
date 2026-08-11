@@ -1,8 +1,8 @@
 import type {
   ColumnType,
-  PretableCellRange,
   PretableRow,
-  PretableGridVisibleRow,
+  PretableRowId,
+  PretableRowModelSnapshot,
 } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
@@ -50,9 +50,20 @@ function cellStyleAttr(type: ColumnType | undefined): string {
  *
  * @public
  */
-export interface SerializeRangesArgs<TRow extends PretableRow> {
-  ranges: readonly PretableCellRange[];
-  visibleRows: readonly PretableGridVisibleRow<TRow>[];
+export interface SerializeRangesArgs<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+  TColumns = readonly PretableColumn<TRow>[],
+> {
+  ranges: readonly {
+    readonly start: { readonly rowId: TRowId; readonly columnId: string };
+    readonly end: { readonly rowId: TRowId; readonly columnId: string };
+  }[];
+  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
 }
@@ -156,22 +167,36 @@ interface RangeBounds {
  * "start of the visible row", so it translates to the first data column. A
  * range whose *both* ends are the synthetic column has no data to emit.
  */
-function resolveRangeBounds(
-  range: PretableCellRange,
-  rowIndex: ReadonlyMap<string, number>,
+function resolveRangeBounds<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+  TColumns = readonly PretableColumn<TRow>[],
+>(
+  range: SerializeRangesArgs<TRow, TRowId, TColumns>["ranges"][number],
+  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   colIndex: ReadonlyMap<string, number>,
   dataColumnCount: number,
 ): RangeBounds | null {
-  const startRow = rowIndex.get(range.startRowId);
-  const endRow = rowIndex.get(range.endRowId);
-  if (startRow === undefined || endRow === undefined) return null;
+  const startRow = rowModelSnapshot.indexOf({
+    kind: "data",
+    rowId: range.start.rowId,
+  });
+  const endRow = rowModelSnapshot.indexOf({
+    kind: "data",
+    rowId: range.end.rowId,
+  });
+  if (startRow < 0 || endRow < 0) return null;
   const rowLo = Math.min(startRow, endRow);
   const rowHi = Math.max(startRow, endRow);
 
-  const startIsSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
-  const endIsSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
-  const startCol = colIndex.get(range.startColumnId);
-  const endCol = colIndex.get(range.endColumnId);
+  const startIsSynth = range.start.columnId === ROW_SELECT_COLUMN_ID;
+  const endIsSynth = range.end.columnId === ROW_SELECT_COLUMN_ID;
+  const startCol = colIndex.get(range.start.columnId);
+  const endCol = colIndex.get(range.end.columnId);
 
   let colLo: number;
   let colHi: number;
@@ -222,16 +247,16 @@ function resolveRangeBounds(
  *
  * @public
  */
-export function serializeRanges<TRow extends PretableRow>(
-  args: SerializeRangesArgs<TRow>,
-): CopyPayload | null {
+export function serializeRanges<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId,
+  TColumns,
+>(args: SerializeRangesArgs<TRow, TRowId, TColumns>): CopyPayload | null {
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
   if (dataColumns.length === 0) return null;
 
   const colIndex = new Map<string, number>();
   dataColumns.forEach((c, i) => colIndex.set(c.id, i));
-  const rowIndex = new Map<string, number>();
-  args.visibleRows.forEach((r, i) => rowIndex.set(r.id, i));
 
   const textBlocks: string[] = [];
   const htmlTables: string[] = [];
@@ -239,7 +264,7 @@ export function serializeRanges<TRow extends PretableRow>(
   for (const range of args.ranges) {
     const bounds = resolveRangeBounds(
       range,
-      rowIndex,
+      args.rowModelSnapshot,
       colIndex,
       dataColumns.length,
     );
@@ -264,9 +289,8 @@ export function serializeRanges<TRow extends PretableRow>(
     }
 
     let bodyHtml = "";
-    for (let r = rowLo; r <= rowHi; r += 1) {
-      const row = args.visibleRows[r]!;
-
+    const selectedRows = args.rowModelSnapshot.range(rowLo, rowHi + 1);
+    for (const row of selectedRows) {
       // TODO(sub-project 2): decide what a copied group header emits — its
       // label, its aggregates, or nothing. Until that shape is defined a group
       // row inside the range is simply omitted, which keeps the emitted block

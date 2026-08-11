@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createInspectionDataset,
@@ -87,7 +93,7 @@ describe("InspectionGrid", () => {
     ]);
   });
 
-  it("preserves the shared row and cell DOM contract across inspection dataset scales", () => {
+  it("preserves the shared row and cell DOM contract across inspection dataset scales", async () => {
     const tiny = createInspectionDataset("tiny");
     const stress = createInspectionDataset("stress");
     const view = render(
@@ -115,12 +121,13 @@ describe("InspectionGrid", () => {
       />,
     );
 
-    const firstStressRow = view.getAllByTestId("pretable-row")[0]!;
-
-    expect(firstStressRow).toHaveAttribute(
-      "data-pretable-row-id",
-      "evt-stress-0000",
+    await waitFor(() =>
+      expect(view.getAllByTestId("pretable-row")[0]).toHaveAttribute(
+        "data-pretable-row-id",
+        "evt-stress-0000",
+      ),
     );
+    const firstStressRow = view.getAllByTestId("pretable-row")[0]!;
     expect(
       firstStressRow.querySelector("[data-pretable-cell]"),
     ).toHaveAttribute("data-pretable-cell", "");

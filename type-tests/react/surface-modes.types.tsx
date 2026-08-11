@@ -3,10 +3,16 @@ import {
   createLocalRowModel,
   type PretableQueryFor,
 } from "@pretable/core";
-import { usePretable, type PretableRowChange } from "@pretable/react";
+import {
+  PretableSurface,
+  usePretable,
+  type PretableRowChange,
+  type PretableSurfaceRowsProps,
+} from "@pretable/react";
 import type { Equal, Expect, IsAny } from "../shared/assert";
 
 interface Holding {
+  [key: string]: unknown;
   id: number;
   symbol: string;
   quantity: number;
@@ -58,6 +64,79 @@ const controlled = usePretable({
   viewportHeight: 320,
 });
 void controlled;
+
+const surfaceProps: PretableSurfaceRowsProps<Holding, number, typeof columns> =
+  {
+    ariaLabel: "typed surface",
+    columns,
+    rows,
+    viewportHeight: 320,
+    state: {
+      focus: { rowId: 1, columnId: "__pretable_group__" },
+      selection: {
+        ranges: [
+          {
+            startRowId: 1,
+            endRowId: 1,
+            startColumnId: "__pretable_row_select__",
+            endColumnId: "quantity",
+          },
+        ],
+        anchor: { rowId: 1, columnId: "symbol" },
+      },
+    },
+    onRowChange(change) {
+      const rowId: number = change.rowId;
+      if (change.columnId === "quantity") {
+        const value: number = change.value;
+        void value;
+      }
+      void rowId;
+    },
+    onCellEdit(edit) {
+      if (edit.columnId === "symbol") {
+        const value: string = edit.value;
+        void value;
+      }
+    },
+    onSortChange(sort) {
+      const columnId: "symbol" | "quantity" | undefined = sort[0]?.columnId;
+      void columnId;
+    },
+    onRowGroupsChange(groups) {
+      const columnId: "symbol" | "quantity" | undefined = groups[0];
+      void columnId;
+    },
+    onFocusChange(focus) {
+      const columnId:
+        | "symbol"
+        | "quantity"
+        | "__pretable_group__"
+        | "__pretable_row_select__"
+        | null = focus.columnId;
+      void columnId;
+    },
+    onColumnOrderChange(order) {
+      const columnId:
+        | "symbol"
+        | "quantity"
+        | "__pretable_group__"
+        | "__pretable_row_select__"
+        | undefined = order[0];
+      void columnId;
+    },
+    renderBodyCell(input) {
+      const rowId: number = input.rowId;
+      if (input.columnId === "quantity") {
+        const value: number = input.value;
+        void value;
+      }
+      void rowId;
+      return null;
+    },
+  };
+const surface = <PretableSurface {...surfaceProps} />;
+void surface;
 
 // @ts-expect-error controlled query requires onQueryChange
 usePretable({ rows, columns, query, viewportHeight: 320 });

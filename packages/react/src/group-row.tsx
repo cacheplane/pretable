@@ -1,9 +1,5 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
-import {
-  GROUP_COLUMN_ID,
-  type PretableGridGroupRow,
-  type PretableRow,
-} from "@pretable/core";
+import { GROUP_COLUMN_ID, type PretableRow } from "@pretable/core";
 import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 
 import { groupLabel } from "./group-model";
@@ -19,7 +15,16 @@ export interface GroupRowProps<TRow extends PretableRow> {
   columnsById: ReadonlyMap<string, PretableColumn<TRow>>;
   expanded: boolean;
   focusedColumnId: string | null;
-  group: PretableGridGroupRow;
+  group: {
+    readonly kind: "group";
+    readonly groupId: string;
+    readonly depth: number;
+    readonly columnId: string;
+    readonly value: unknown;
+    readonly childCount: number;
+    readonly aggregates: Readonly<Record<string, unknown>>;
+    readonly expanded: boolean;
+  };
   height: number;
   isFocused: boolean;
   /** Width override while a resize drag is live, so cells track the header. */
@@ -27,7 +32,9 @@ export interface GroupRowProps<TRow extends PretableRow> {
   onCellClick: (columnId: string, event: ReactMouseEvent) => void;
   onToggle: () => void;
   registerCell: (key: string, node: HTMLDivElement | null) => void;
-  /** Index into `snapshot.visibleRows`, as the data-row path uses. */
+  /** Discriminated renderer identity used only for internal node lookup. */
+  renderId: string;
+  /** Logical row-model index, shared with the indexed data-row path. */
   rowIndex: number;
   top: number;
   viewportWidth: number;
@@ -54,6 +61,7 @@ export function GroupRow<TRow extends PretableRow>({
   onCellClick,
   onToggle,
   registerCell,
+  renderId,
   rowIndex,
   top,
   viewportWidth,
@@ -72,7 +80,7 @@ export function GroupRow<TRow extends PretableRow>({
       data-pretable-focused={isFocused ? "true" : "false"}
       data-pretable-group-row=""
       data-pretable-row-height={height}
-      data-pretable-row-id={group.id}
+      data-pretable-row-id={group.groupId}
       data-pretable-row-index={rowIndex}
       role="row"
       style={getRowStyle(top, height)}
@@ -130,7 +138,7 @@ export function GroupRow<TRow extends PretableRow>({
               onToggle();
             }}
             ref={(node) => {
-              registerCell(`${group.id}::${plannedCol.id}`, node);
+              registerCell(`${renderId}::${plannedCol.id}`, node);
             }}
             role="gridcell"
             style={style}
@@ -165,7 +173,11 @@ export function GroupRow<TRow extends PretableRow>({
               </>
             ) : hasAggregate ? (
               column?.formatAggregate ? (
-                column.formatAggregate({ value: aggregate, column, group })
+                column.formatAggregate({
+                  value: aggregate,
+                  column,
+                  group: { ...group, id: group.groupId },
+                })
               ) : (
                 formatCellValue(aggregate)
               )

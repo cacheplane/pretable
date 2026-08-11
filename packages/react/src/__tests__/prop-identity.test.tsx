@@ -1,12 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
 
 /**
- * `rows` is already reconciled in place (grid.setRows). `columns` was not: a
+ * `rows` is already reconciled in place. `columns` was not: a
  * new array identity recreated the grid and took every slice it owns with it.
  * An inline `columns={[...]}` is a new identity on every render, so the advice
  * to "keep columns a stable reference" was load-bearing rather than an
@@ -70,15 +70,17 @@ function header(container: HTMLElement, label: string): HTMLElement {
 afterEach(cleanup);
 
 describe("columns prop identity", () => {
-  it("keeps the sort when the columns array identity changes", () => {
+  it("keeps the sort when the columns array identity changes", async () => {
     const rows = seed();
     const { container, rerender } = render(
       <Grid columns={freshColumns()} rows={rows} />,
     );
 
     fireEvent.click(header(container, "Name"));
+    await waitFor(() =>
+      expect(renderedOrder(container)).not.toEqual(["a", "b", "c"]),
+    );
     const sorted = renderedOrder(container);
-    expect(sorted).not.toEqual(["a", "b", "c"]);
 
     rerender(<Grid columns={freshColumns()} rows={rows} />);
 

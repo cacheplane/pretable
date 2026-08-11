@@ -5,25 +5,13 @@
 ```ts
 
 // @public
-export function connectElementStream<TRow extends Record<string, unknown>>(grid: GridLike<TRow>, stream: AsyncIterable<TRow>): StreamConnection;
+export function connectElementStream<TRow extends object, TRowId extends string | number>(rowModel: RowModelLike<TRow, TRowId>, stream: AsyncIterable<TRow>): StreamConnection;
 
 // @public
-export function connectPartialStream<TRow extends Record<string, unknown> & {
-    id: string;
-}>(grid: GridLike<TRow>, stream: AsyncIterable<Partial<TRow>>, options: PartialStreamOptions): StreamConnection;
+export function connectPartialStream<TRow extends object, TRowId extends string | number>(rowModel: RowModelLike<TRow, TRowId>, stream: AsyncIterable<Partial<TRow>>, options: PartialStreamOptions<TRow, TRowId>): StreamConnection;
 
 // @public
-export function createBatcher<TRow extends Record<string, unknown>>(grid: GridLike<TRow>): TransactionBatcher<TRow>;
-
-// @public
-export interface GridLike<TRow extends Record<string, unknown>> {
-    // (undocumented)
-    applyTransaction(transaction: {
-        add?: TRow[];
-        update?: Partial<TRow>[];
-        remove?: string[];
-    }): void;
-}
+export function createBatcher<TRow extends object, TRowId extends string | number>(rowModel: RowModelLike<TRow, TRowId>): TransactionBatcher<TRow, TRowId>;
 
 // @public
 export function parseElementStream<TRow>(stream: AsyncIterable<string>): AsyncIterable<TRow>;
@@ -32,31 +20,59 @@ export function parseElementStream<TRow>(stream: AsyncIterable<string>): AsyncIt
 export function parsePartialStream<TRow>(stream: AsyncIterable<string>): AsyncIterable<Partial<TRow>>;
 
 // @public
-export interface PartialStreamOptions {
+export interface PartialStreamOptions<TRow extends object, TRowId extends string | number> {
     // (undocumented)
-    rowId: string;
+    readonly createRow?: (partial: Partial<TRow>, id: TRowId) => TRow;
+    // (undocumented)
+    readonly onIssue?: (issue: {
+        readonly code: "unknown-update-id";
+        readonly rowId: TRowId;
+    }) => void;
+    // (undocumented)
+    readonly rowId: TRowId;
+}
+
+// @public
+export interface RowModelLike<TRow extends object, TRowId extends string | number> {
+    // (undocumented)
+    readonly applyTransaction: (transaction: {
+        add?: TRow[];
+        update?: {
+            id: TRowId;
+            changes: Partial<TRow>;
+        }[];
+        remove?: TRowId[];
+    }) => void | {
+        readonly issues?: readonly {
+            readonly code: string;
+            readonly rowId?: TRowId;
+        }[];
+    };
 }
 
 // @public
 export interface StreamConnection {
     // (undocumented)
-    dispose(): void;
+    readonly dispose: () => void;
     // (undocumented)
-    done: Promise<void>;
+    readonly done: Promise<void>;
 }
 
 // @public
-export interface TransactionBatcher<TRow extends Record<string, unknown>> {
+export interface TransactionBatcher<TRow extends object, TRowId extends string | number> {
     // (undocumented)
-    add(rows: TRow[]): void;
+    readonly add: (rows: readonly TRow[]) => void;
     // (undocumented)
-    dispose(): void;
+    readonly dispose: () => void;
     // (undocumented)
-    flush(): void;
+    readonly flush: () => void;
     // (undocumented)
-    remove(ids: string[]): void;
+    readonly remove: (ids: readonly TRowId[]) => void;
     // (undocumented)
-    update(patches: Partial<TRow>[]): void;
+    readonly update: (patches: readonly {
+        readonly id: TRowId;
+        readonly changes: Partial<TRow>;
+    }[]) => void;
 }
 
 // (No @packageDocumentation comment for this package)

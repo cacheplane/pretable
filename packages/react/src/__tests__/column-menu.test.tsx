@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -156,7 +156,7 @@ describe("column menu in the surface", () => {
     expect(menuButtons(view)).toEqual([]);
   });
 
-  it("Group by this column appends the level and reports it", () => {
+  it("Group by this column appends the level and reports it", async () => {
     const onRowGroupsChange = vi.fn();
     const view = renderGrid({ onRowGroupsChange });
 
@@ -166,9 +166,11 @@ describe("column menu in the surface", () => {
     );
 
     expect(onRowGroupsChange).toHaveBeenCalledWith(["industry"]);
-    expect(
-      view.container.querySelectorAll("[data-pretable-group-chip]"),
-    ).toHaveLength(1);
+    await waitFor(() =>
+      expect(
+        view.container.querySelectorAll("[data-pretable-group-chip]"),
+      ).toHaveLength(1),
+    );
   });
 
   it("groups a second level onto the end of the existing list", () => {

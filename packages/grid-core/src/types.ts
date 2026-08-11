@@ -669,7 +669,16 @@ export interface PretableGridUiCore<
     readonly columnId: TColumnId;
     readonly value: ColumnValueOf<TColumns, TColumnId>;
   }) => void;
+  readonly setEditDraft: (value: unknown) => void;
+  readonly setEditStatus: (
+    status: "editing" | "validating" | "saving" | "error",
+    error?: string,
+  ) => void;
   readonly cancelEdit: () => void;
+  /** Reconciles the current visual column set without changing row schema. */
+  readonly setColumns: (
+    columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[],
+  ) => void;
   readonly setColumnWidth: (
     columnId: ColumnIdOf<TColumns>,
     width: number,

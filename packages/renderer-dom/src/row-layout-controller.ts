@@ -278,6 +278,10 @@ export function createRowLayoutController<
     256,
     options.maxUnitsPerSlice ?? DEFAULT_MAX_UNITS_PER_SLICE,
   );
+  const eagerInitialRowLimit = Math.min(
+    maxUnitsPerSlice - 1,
+    Math.max(0, options.eagerInitialRowLimit ?? 0),
+  );
   validateRuntime({ budgetMs, maxUnitsPerSlice });
   let viewport = normalizeViewport(options.viewport);
   const defaultRowHeight = options.defaultRowHeight ?? DEFAULT_ROW_HEIGHT;
@@ -717,6 +721,7 @@ export function createRowLayoutController<
 
   const runReplacementSlice = (
     replacement: ActiveReplacement<TRow, TRowId, TColumns>,
+    ignoreDeadline = false,
   ): void => {
     if (active !== replacement || disposed) return;
     replacement.cancelScheduled = undefined;
@@ -729,7 +734,9 @@ export function createRowLayoutController<
       if (!replacement.builder.done) {
         const progress = replacement.builder.advance({
           maxUnits: maxUnitsPerSlice,
-          deadline: sliceStartedAt + budgetMs,
+          deadline: ignoreDeadline
+            ? Number.MAX_VALUE
+            : sliceStartedAt + budgetMs,
           now,
         });
         builderUnitsThisSlice = progress.unitsThisSlice;
@@ -749,7 +756,7 @@ export function createRowLayoutController<
       replayingCatchUp = true;
       while (
         sliceCatchUpUnits < maxUnitsPerSlice - builderUnitsThisSlice &&
-        now() - sliceStartedAt < budgetMs
+        (ignoreDeadline || now() - sliceStartedAt < budgetMs)
       ) {
         const batch = replacement.pending[replacement.pendingHead];
         if (batch !== undefined) {
@@ -908,7 +915,10 @@ export function createRowLayoutController<
           finishReplacement(replacement, undefined);
           return;
         }
-      } while (units < remainingUnits && now() - sliceStartedAt < budgetMs);
+      } while (
+        units < remainingUnits &&
+        (ignoreDeadline || now() - sliceStartedAt < budgetMs)
+      );
       scheduleReplacement(replacement);
     } catch (error) {
       if (active !== replacement || disposed) return;
@@ -1039,7 +1049,14 @@ export function createRowLayoutController<
       }),
     });
     if (shouldNotify) notify();
-    scheduleReplacement(replacement);
+    if (
+      state.observedRevision === null &&
+      target.visibleRowCount <= eagerInitialRowLimit
+    ) {
+      runReplacementSlice(replacement, true);
+    } else {
+      scheduleReplacement(replacement);
+    }
   };
 
   const validateChanges = (

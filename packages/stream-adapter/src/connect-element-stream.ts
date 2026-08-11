@@ -1,8 +1,8 @@
-import type { GridLike, StreamConnection } from "./types";
+import type { RowModelLike, StreamConnection } from "./types";
 import { createBatcher } from "./create-batcher";
 
 /**
- * Drive a grid from an `AsyncIterable<TRow>`. Each yielded row is added
+ * Drive a row model from an `AsyncIterable<TRow>`. Each yielded row is added
  * via a {@link createBatcher | RAF batcher}; the returned
  * {@link StreamConnection} resolves `done` when the stream ends and
  * supports `dispose()` for early cancellation.
@@ -12,11 +12,14 @@ import { createBatcher } from "./create-batcher";
  *
  * @public
  */
-export function connectElementStream<TRow extends Record<string, unknown>>(
-  grid: GridLike<TRow>,
+export function connectElementStream<
+  TRow extends object,
+  TRowId extends string | number,
+>(
+  rowModel: RowModelLike<TRow, TRowId>,
   stream: AsyncIterable<TRow>,
 ): StreamConnection {
-  const batcher = createBatcher(grid);
+  const batcher = createBatcher(rowModel);
   let disposed = false;
 
   let resolveDone!: () => void;

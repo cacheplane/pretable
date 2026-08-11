@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type {
   PretableCellRenderInput,
   PretableColumn,
-  PretableGrid,
+  PretableSurfaceGrid,
   PretableRow,
+  PretableQueryFor,
   PretableSurfaceState,
   PretableTelemetry,
 } from "@pretable/react";
@@ -85,7 +86,13 @@ function applyCellRendererFlavor<TRow extends PretableRow>(
 export interface PretableAdapterProps {
   dataset: ScenarioDataset;
   interactionPlan?: BenchInteractionPlan | null;
-  onGridReady?: (grid: PretableGrid<ScenarioRow>) => void;
+  onGridReady?: (
+    grid: PretableSurfaceGrid<
+      ScenarioRow,
+      string,
+      readonly PretableColumn<ScenarioRow>[]
+    >,
+  ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   /**
    * Called once the adapter has wired up its update mechanism. Pretable
@@ -154,15 +161,41 @@ export function PretableAdapter({
       : flavoredColumns;
   }, [baseColumns, groupedUpdates, scriptName]);
   const surfaceState = useMemo<PretableSurfaceState | null>(() => {
-    const interaction = planToState(interactionPlan, surfaceColumns);
-    return groupedUpdates
-      ? { ...(interaction ?? {}), rowGroups: ["col_1"] }
-      : interaction;
-  }, [groupedUpdates, interactionPlan, surfaceColumns]);
+    return planToState(interactionPlan, surfaceColumns);
+  }, [interactionPlan, surfaceColumns]);
+  const surfaceQuery = useMemo<
+    PretableQueryFor<
+      readonly {
+        readonly id: string;
+        readonly accessor: (row: ScenarioRow) => string | number;
+        readonly type: "text" | "number" | "date" | "boolean" | "enum";
+      }[]
+    >
+  >(
+    () => ({
+      filters: Object.entries(interactionPlan?.filters ?? {}).map(
+        ([columnId, filter]) => ({ columnId, ...filter }),
+      ) as PretableQueryFor<
+        readonly {
+          readonly id: string;
+          readonly accessor: (row: ScenarioRow) => string | number;
+          readonly type: "text" | "number" | "date" | "boolean" | "enum";
+        }[]
+      >["filters"],
+      sort: interactionPlan?.sort ?? [],
+      rowGroups: groupedUpdates ? [{ columnId: "col_1" }] : [],
+    }),
+    [groupedUpdates, interactionPlan],
+  );
   const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
   const autosize = dataset.scenario.autosize_all_columns === true;
+  const ignoreQueryChange = useCallback(() => undefined, []);
 
-  const gridRef = useRef<PretableGrid<ScenarioRow> | null>(null);
+  const gridRef = useRef<PretableSurfaceGrid<
+    ScenarioRow,
+    string,
+    readonly PretableColumn<ScenarioRow>[]
+  > | null>(null);
   const onGridReadyRef = useRef(onGridReady);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onGridReadyRef.current = onGridReady;
@@ -173,13 +206,14 @@ export function PretableAdapter({
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onAutosizeReadyRef.current = onAutosizeReady;
 
-  const handleGridReady = useCallback((grid: PretableGrid<ScenarioRow>) => {
-    gridRef.current = grid;
-    onGridReadyRef.current?.(grid);
-    onAutosizeReadyRef.current?.(() => {
-      grid.autosizeColumns();
-    });
-  }, []);
+  const handleGridReady = useCallback(
+    (grid: NonNullable<typeof gridRef.current>) => {
+      gridRef.current = grid;
+      onGridReadyRef.current?.(grid);
+      onAutosizeReadyRef.current?.(grid.autosizeColumns);
+    },
+    [],
+  );
 
   // Wire updates through the stream-adapter batcher (RAF-aligned), the
   // same path real consumers use for LLM-rate streaming. The batcher is
@@ -187,9 +221,24 @@ export function PretableAdapter({
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
-    const batcher = createBatcher<ScenarioRow>(grid);
+    const batcher = createBatcher<ScenarioRow, string>(grid.rowModel);
     const apply: ApplyBenchUpdates = (patches) => {
-      batcher.update(patches as Partial<ScenarioRow>[]);
+      batcher.update(
+        patches.flatMap((patch) => {
+          const id = patch.id;
+          if (typeof id !== "string" && typeof id !== "number") return [];
+          const changes: Record<string, string | number> = {};
+          for (const [key, value] of Object.entries(patch)) {
+            if (
+              key !== "id" &&
+              (typeof value === "string" || typeof value === "number")
+            ) {
+              changes[key] = value;
+            }
+          }
+          return [{ id: String(id), changes }];
+        }),
+      );
     };
     onUpdateApiReadyRef.current?.(apply);
     return () => {
@@ -266,6 +315,8 @@ export function PretableAdapter({
         getRowId={getScenarioRowId}
         state={surfaceState}
         onGridReady={handleGridReady}
+        query={surfaceQuery}
+        onQueryChange={ignoreQueryChange}
         onTelemetryChange={handleTelemetryChange}
         overscan={4}
         renderBodyCell={({ value }) => String(value ?? "")}
@@ -310,9 +361,7 @@ function planToState(
     : { rowId: null, columnId: null };
 
   return {
-    filters: plan.filters,
     focus,
     selection,
-    sort: plan.sort,
   };
 }

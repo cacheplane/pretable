@@ -17,9 +17,9 @@ import type {
   PretableReactColumns,
   PretableRowChange,
 } from "./types";
-import { type PretableModel, useIndexedPretable } from "./use-indexed-pretable";
+import { type PretableModel, usePretableModelInternal } from "./pretable-model";
 
-export type { PretableModel } from "./use-indexed-pretable";
+export type { PretableModel } from "./pretable-model";
 
 type ModelSchemaColumn<TRow extends object = object> = {
   readonly id: string;
@@ -243,6 +243,7 @@ export function usePretable(rawOptions: unknown): unknown {
     | (PretableViewportOptions & {
         readonly model: PretableRowModel<object, PretableRowId, unknown>;
         readonly columns?: readonly { readonly id: string }[];
+        readonly ɵvisualColumns?: readonly { readonly id: string }[];
       })
     | (PretableViewportOptions & {
         readonly rows: readonly object[];
@@ -255,6 +256,7 @@ export function usePretable(rawOptions: unknown): unknown {
         readonly onQueryChange?: (query: PretableQueryFor<unknown>) => void;
         readonly initialExpansion?: PretableExpansionDefault;
         readonly aggregateFilteredRows?: boolean;
+        readonly ɵvisualColumns?: readonly { readonly id: string }[];
       });
   const modelOption = "model" in options ? options.model : undefined;
   const mode = modelOption === undefined ? "rows" : "model";
@@ -373,25 +375,26 @@ export function usePretable(rawOptions: unknown): unknown {
             options.columns as readonly ModelPresentationColumn[],
           )
         : options.columns;
-  return useIndexedPretable({
+  return usePretableModelInternal({
     rowModel,
-    columns: presentationColumns,
+    columns: options.ɵvisualColumns ?? presentationColumns,
     viewportHeight: options.viewportHeight,
     viewportWidth: options.viewportWidth,
     overscan: options.overscan,
     onQueryChange:
       "onQueryChange" in options ? options.onQueryChange : undefined,
+    allowVisualExtras: options.ɵvisualColumns !== undefined,
   });
 }
 
-// Private Task 20 bridge types for still-unmigrated internal consumers.
 export type {
-  PretableRenderDataRow,
-  PretableRenderGroupRow,
-  PretableRenderRow,
-  PretableRenderRowGeometry,
-  PretableRenderSnapshot,
+  PretableSurfaceCellAddress,
+  PretableSurfaceCellRange,
+  PretableSurfaceColumnId,
+  PretableSurfaceFocusState,
+  PretableSurfaceInteractionColumnId,
+  PretableSurfaceSelectionState,
+  PretableSurfaceSortEntry,
   PretableSurfaceState,
   PretableTelemetry,
-  UsePretableOptions,
-} from "./use-legacy-pretable";
+} from "./surface-types";

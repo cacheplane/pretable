@@ -112,29 +112,38 @@ function normalizeColumns<TColumnId extends string>(
   columns: readonly PretableGridUiColumn<TColumnId>[],
 ): readonly Readonly<PretableGridUiColumnLayout<TColumnId>>[] {
   const ids = new Set<TColumnId>();
-  return Object.freeze(
-    columns.map((column) => {
-      if (ids.has(column.id)) {
-        throw new PretableGridUiError(
-          "invalid-ui-state",
-          `Duplicate visual column id: ${column.id}`,
-        );
-      }
-      const widthPx = column.widthPx ?? DEFAULT_COLUMN_WIDTH_PX;
-      if (!Number.isFinite(widthPx) || widthPx <= 0) {
-        throw new PretableGridUiError(
-          "invalid-ui-state",
-          `Visual column width must be positive for: ${column.id}`,
-        );
-      }
-      ids.add(column.id);
-      return Object.freeze({
-        id: column.id,
-        widthPx,
-        ...(column.pinned === undefined ? {} : { pinned: column.pinned }),
-      });
-    }),
-  );
+  const normalized = columns.map((column) => {
+    if (ids.has(column.id)) {
+      throw new PretableGridUiError(
+        "invalid-ui-state",
+        `Duplicate visual column id: ${column.id}`,
+      );
+    }
+    const widthPx = column.widthPx ?? DEFAULT_COLUMN_WIDTH_PX;
+    if (!Number.isFinite(widthPx) || widthPx <= 0) {
+      throw new PretableGridUiError(
+        "invalid-ui-state",
+        `Visual column width must be positive for: ${column.id}`,
+      );
+    }
+    ids.add(column.id);
+    return Object.freeze({
+      id: column.id,
+      widthPx,
+      ...(column.pinned === undefined ? {} : { pinned: column.pinned }),
+    });
+  });
+  return Object.freeze(orderPinnedColumns(normalized));
+}
+
+function orderPinnedColumns<T extends { readonly pinned?: "left" | "right" }>(
+  columns: readonly T[],
+): T[] {
+  return [
+    ...columns.filter((column) => column.pinned === "left"),
+    ...columns.filter((column) => column.pinned === undefined),
+    ...columns.filter((column) => column.pinned === "right"),
+  ];
 }
 
 function copySelection<TRowId extends PretableRowId, TColumnId extends string>(
@@ -522,10 +531,84 @@ export function createGridUiCore<
         publish({ ...state, editing });
       });
     },
+    setEditDraft(value) {
+      command(() => {
+        if (state.editing === null || Object.is(state.editing.value, value))
+          return;
+        publish({
+          ...state,
+          editing: Object.freeze({
+            ...state.editing,
+            value,
+            status: "editing" as const,
+            error: undefined,
+          }) as PretableIndexedEditingState<TRowId, TColumns>,
+        });
+      });
+    },
+    setEditStatus(status, error) {
+      command(() => {
+        if (state.editing === null) return;
+        if (state.editing.status === status && state.editing.error === error)
+          return;
+        publish({
+          ...state,
+          editing: Object.freeze({
+            ...state.editing,
+            status,
+            ...(error === undefined ? { error: undefined } : { error }),
+          }) as PretableIndexedEditingState<TRowId, TColumns>,
+        });
+      });
+    },
     cancelEdit() {
       command(() => {
         if (state.editing === null) return;
         publish({ ...state, editing: null });
+      });
+    },
+    setColumns(columns) {
+      const nextLayout = normalizeColumns(columns);
+      command(() => {
+        const same =
+          nextLayout.length === state.columnLayout.length &&
+          nextLayout.every((column, index) => {
+            const current = state.columnLayout[index];
+            return (
+              current?.id === column.id &&
+              current.widthPx === column.widthPx &&
+              current.pinned === column.pinned
+            );
+          });
+        if (same) return;
+        const ids = new Set(nextLayout.map((column) => column.id));
+        const focus =
+          state.focus.columnId === null || ids.has(state.focus.columnId)
+            ? state.focus
+            : Object.freeze({ ref: null, columnId: null });
+        const ranges = state.selection.ranges.filter(
+          (range) =>
+            ids.has(range.start.columnId) && ids.has(range.end.columnId),
+        );
+        const anchor =
+          state.selection.anchor !== null &&
+          ids.has(state.selection.anchor.columnId)
+            ? state.selection.anchor
+            : null;
+        const selection =
+          ranges === state.selection.ranges && anchor === state.selection.anchor
+            ? state.selection
+            : Object.freeze({ ...state.selection, ranges, anchor });
+        publish({
+          ...state,
+          columnLayout: nextLayout,
+          focus,
+          selection,
+          editing:
+            state.editing !== null && ids.has(state.editing.columnId)
+              ? state.editing
+              : null,
+        });
       });
     },
     setColumnWidth(columnId, width) {
@@ -542,7 +625,10 @@ export function createGridUiCore<
         if (index < 0 || state.columnLayout[index]!.widthPx === width) return;
         const next = state.columnLayout.slice();
         next[index] = Object.freeze({ ...next[index]!, widthPx: width });
-        publish({ ...state, columnLayout: Object.freeze(next) });
+        publish({
+          ...state,
+          columnLayout: Object.freeze(orderPinnedColumns(next)),
+        });
       });
     },
     setColumnPinned(columnId, pinned) {
@@ -559,7 +645,10 @@ export function createGridUiCore<
             ? { id: current.id, widthPx: current.widthPx }
             : { ...current, pinned },
         );
-        publish({ ...state, columnLayout: Object.freeze(next) });
+        publish({
+          ...state,
+          columnLayout: Object.freeze(orderPinnedColumns(next)),
+        });
       });
     },
     setColumnOrder(nextColumnIds) {
@@ -590,9 +679,12 @@ export function createGridUiCore<
             "Column order must contain every visual column exactly once.",
           );
         }
-        if (next.every((column, index) => column === state.columnLayout[index]))
+        const ordered = orderPinnedColumns(next);
+        if (
+          ordered.every((column, index) => column === state.columnLayout[index])
+        )
           return;
-        publish({ ...state, columnLayout: Object.freeze(next) });
+        publish({ ...state, columnLayout: Object.freeze(ordered) });
       });
     },
     observeRowModelRevision(revision) {

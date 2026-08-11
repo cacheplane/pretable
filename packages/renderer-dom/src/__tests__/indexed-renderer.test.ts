@@ -7,8 +7,13 @@ import {
   type PretableGroupId,
   type PretableVisibleRowRef,
 } from "@pretable-internal/row-model";
+import * as textCore from "@pretable-internal/text-core";
 
-import { createDomRenderSnapshot } from "../create-renderer";
+import {
+  createDomRenderSnapshot,
+  estimateDomRowHeight,
+  planColumnLayout,
+} from "../create-renderer";
 import {
   createRowLayoutController,
   getRowLayoutControllerDiagnosticsForTesting,
@@ -16,12 +21,12 @@ import {
 } from "../row-layout-controller";
 import type { RowLayoutController } from "../types";
 
-interface Row {
+type Row = {
   id: number | string;
   team: string;
   score: number;
   label: string;
-}
+};
 
 const helper = createColumnHelper<Row>();
 const modelColumns = [
@@ -126,6 +131,99 @@ function createReadyController(
 }
 
 describe("indexed DOM row layout controller", () => {
+  test("retains calibrated wrapped-height estimates across column identities", () => {
+    const prepareText = vi.spyOn(textCore, "prepareText");
+    const row = {
+      id: "S2-row-0",
+      team: "A",
+      score: 24.1,
+      label:
+        "Bonjour depuis Pretable token-231 Bonjour depuis Pretable token-232 Bonjour depuis Pretable token-233 Bonjour depuis Pretable token-234",
+    };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 220,
+        value: (entry: Row) => entry.label,
+      },
+    ] as const;
+
+    const first = estimateDomRowHeight(row, columns);
+    const callsAfterFirst = prepareText.mock.calls.length;
+    const second = estimateDomRowHeight(row, [...columns]);
+
+    expect(first).toBeGreaterThan(44);
+    expect(second).toBe(first);
+    expect(prepareText).toHaveBeenCalledTimes(callsAfterFirst);
+  });
+
+  test("plans complete left, scrollable and right column regions with fallback widths", () => {
+    const plan = planColumnLayout<Row>([
+      { id: "a", header: "A", widthPx: 150 },
+      { id: "b", header: "B", widthPx: 100, pinned: "left" },
+      { id: "c", header: "C", wrap: true },
+      { id: "d", header: "D", widthPx: 60, pinned: "left" },
+      { id: "e", header: "E", widthPx: 80, pinned: "right" },
+    ]);
+
+    expect(plan.columns.map((column) => column.id)).toEqual([
+      "b",
+      "d",
+      "a",
+      "c",
+      "e",
+    ]);
+    expect(plan.columns.map((column) => column.left)).toEqual([
+      0, 100, 160, 310, 530,
+    ]);
+    expect(plan.totalWidth).toBe(610);
+    expect(plan.pinnedLeftWidth).toBe(160);
+    expect(plan.pinnedRightWidth).toBe(80);
+  });
+
+  test("virtualizes horizontal columns while retaining both pinned regions", () => {
+    const model = createModel([{ id: 1, team: "A", score: 1, label: "one" }]);
+    const columns = [
+      { id: "left", widthPx: 100, pinned: "left" as const },
+      ...Array.from({ length: 20 }, (_, index) => ({
+        id: `column-${index}`,
+        widthPx: 140,
+      })),
+      { id: "right", widthPx: 80, pinned: "right" as const },
+    ];
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+    });
+    scheduler.flushAll();
+
+    const render = createDomRenderSnapshot({
+      controllerState: controller.getState(),
+      columns,
+      scrollLeft: 1_500,
+      viewportWidth: 400,
+    });
+
+    expect(render.columns.length).toBeLessThan(columns.length);
+    expect(render.columns[0]).toMatchObject({ id: "left", pinned: "left" });
+    expect(render.columns.at(-1)).toMatchObject({
+      id: "right",
+      pinned: "right",
+      right: 0,
+    });
+    expect(render.totalWidth).toBe(2_980);
+    expect(render.pinnedLeftWidth).toBe(100);
+    expect(render.pinnedRightWidth).toBe(80);
+    expect(render.nodeCount).toBe(render.rows.length * render.columns.length);
+    controller.dispose();
+    model.dispose();
+  });
+
   test("keeps controller row, ID, and column inference invariant", () => {
     if (false) {
       const literal = null as unknown as RowLayoutController<

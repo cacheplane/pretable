@@ -3,8 +3,8 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { PretableSurface } from "../pretable-surface";
-import type { PretableGrid } from "@pretable/core";
+import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
+import type { PretableColumn } from "../types";
 
 // jsdom has no layout: every element reports clientWidth 0. Right-pinning is
 // expressed as a sticky `left` inset resolved against the scrollport's width
@@ -17,6 +17,12 @@ const VIEWPORT_WIDTH = 600;
 let clientWidth = VIEWPORT_WIDTH;
 let originalClientWidth: PropertyDescriptor | undefined;
 let resizeCallbacks: ResizeObserverCallback[] = [];
+
+type IndexedPinGrid = PretableSurfaceGrid<
+  PinRow,
+  string,
+  readonly PretableColumn<PinRow>[]
+>;
 
 beforeEach(() => {
   clientWidth = VIEWPORT_WIDTH;
@@ -482,7 +488,7 @@ describe("right-pinned columns — surface sticky sites", () => {
   });
 
   it("controlled state.columnPinned round-trips 'right' into the engine and into the DOM", () => {
-    let capturedGrid: PretableGrid<PinRow> | null = null;
+    let capturedGrid: IndexedPinGrid | null = null;
     const { container } = render(
       <PretableSurface
         ariaLabel="controlled-pin-grid"
@@ -496,7 +502,7 @@ describe("right-pinned columns — surface sticky sites", () => {
         ]}
         getRowId={(row: PinRow) => row.id}
         onGridReady={(g) => {
-          capturedGrid = g;
+          capturedGrid = g as unknown as IndexedPinGrid;
         }}
         overscan={0}
         rows={rows}
@@ -505,7 +511,7 @@ describe("right-pinned columns — surface sticky sites", () => {
       />,
     );
 
-    const cols = capturedGrid!.options.columns;
+    const cols = capturedGrid!.getState().columnLayout;
     expect(cols.find((col) => col.id === "actions")?.pinned).toBe("right");
     expect(cols.find((col) => col.id === "first")?.pinned).toBe("left");
     expect(cols.find((col) => col.id === "c")?.pinned).toBeUndefined();
@@ -599,14 +605,14 @@ describe("pin state applied through the engine only", () => {
   });
 
   it("unpinning a prop-pinned column through the engine drops the sticky style and the attribute", () => {
-    let capturedGrid: PretableGrid<PinRow> | null = null;
+    let capturedGrid: IndexedPinGrid | null = null;
     const { container } = render(
       <PretableSurface
         ariaLabel="engine-unpin"
         columns={columns}
         getRowId={(row: PinRow) => row.id}
         onGridReady={(g) => {
-          capturedGrid = g;
+          capturedGrid = g as unknown as IndexedPinGrid;
         }}
         overscan={0}
         rows={rows}
@@ -634,7 +640,7 @@ describe("pin state applied through the engine only", () => {
   });
 
   it("left-pin offsets follow engine widths, not the prop widths", () => {
-    let capturedGrid: PretableGrid<PinRow> | null = null;
+    let capturedGrid: IndexedPinGrid | null = null;
     const { container } = render(
       <PretableSurface
         ariaLabel="engine-left-pin-widths"
@@ -653,7 +659,7 @@ describe("pin state applied through the engine only", () => {
         ]}
         getRowId={(row: PinRow) => row.id}
         onGridReady={(g) => {
-          capturedGrid = g;
+          capturedGrid = g as unknown as IndexedPinGrid;
         }}
         overscan={0}
         rows={rows}

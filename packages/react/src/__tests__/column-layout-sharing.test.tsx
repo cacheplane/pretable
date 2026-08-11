@@ -3,8 +3,6 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { PretableGrid } from "@pretable/core";
-
 // ---------------------------------------------------------------------------
 // One plan, two consumers.
 //
@@ -60,7 +58,8 @@ vi.mock("../column-drag-geometry", async (importOriginal) => {
 
 // Imported after the `vi.mock` calls only for readability — vitest hoists them
 // above every import in this file regardless.
-import { PretableSurface } from "../pretable-surface";
+import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
+import type { PretableColumn } from "../types";
 
 const VIEWPORT_WIDTH = 300;
 let clientWidth = VIEWPORT_WIDTH;
@@ -121,14 +120,14 @@ const columns = [
 const rows: Row[] = [{ id: "r1", pin: "p", b: "b", c: "c", far: "f" }];
 
 it("hands scroll-into-view and reorder hit-testing the same column plan", () => {
-  let grid!: PretableGrid<Row>;
+  let grid!: PretableSurfaceGrid<Row, string, readonly PretableColumn<Row>[]>;
   const view = render(
     <PretableSurface<Row>
       ariaLabel="shared-plan-grid"
       columns={columns}
       getRowId={(row) => row.id}
       onGridReady={(g) => {
-        grid = g as PretableGrid<Row>;
+        grid = g;
       }}
       overscan={0}
       rows={rows}
@@ -140,7 +139,10 @@ it("hands scroll-into-view and reorder hit-testing the same column plan", () => 
   // reveal. (That it scrolls at all is covered in focus-scroll.test.tsx; here
   // it just has to run.)
   act(() => {
-    grid.setFocus({ rowId: "r1", columnId: "far" });
+    grid.setFocus({
+      ref: { kind: "data", rowId: "r1" },
+      columnId: "far",
+    });
   });
 
   // Consumer 2: start a reorder drag, which hit-tests the cursor.

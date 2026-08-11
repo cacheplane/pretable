@@ -1,22 +1,22 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { connectElementStream } from "../connect-element-stream";
-import type { GridLike } from "../types";
+import type { RowModelLike } from "../types";
 
 type TestRow = {
   id: string;
   name: string;
 };
 
-function createMockGrid(): GridLike<TestRow> & {
+function createMockGrid(): RowModelLike<TestRow, string> & {
   calls: Array<{
     add?: TestRow[];
-    update?: Partial<TestRow>[];
+    update?: { id: string; changes: Partial<TestRow> }[];
     remove?: string[];
   }>;
 } {
   const calls: Array<{
     add?: TestRow[];
-    update?: Partial<TestRow>[];
+    update?: { id: string; changes: Partial<TestRow> }[];
     remove?: string[];
   }> = [];
   return {

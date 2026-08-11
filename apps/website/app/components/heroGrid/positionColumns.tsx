@@ -1,4 +1,4 @@
-import type { PretableColumn, PretableEditInput } from "@pretable/react";
+import { createColumnHelper } from "@pretable/core";
 import { fmtPrice, fmtSignedUsd, fmtPct, fmtCompactUsd } from "./format";
 import { parseQty, sanityCheckQty, breachesGuardrail } from "./qty-edit";
 import { computeNav } from "./positions-math";
@@ -21,41 +21,40 @@ export interface PositionColumnsDeps {
   getRows: () => readonly PositionRow[];
 }
 
-export function makePositionColumns(
-  deps: PositionColumnsDeps,
-): PretableColumn<PositionRow>[] {
+const column = createColumnHelper<PositionRow>();
+
+export function makePositionColumns(deps: PositionColumnsDeps) {
   return [
-    {
-      id: "symbol",
+    column.accessor("symbol", (row) => `${row.symbol} ${row.name}`, {
       header: "Symbol",
       widthPx: 150,
       pinned: "left",
       type: "text",
-      value: (row) => `${row.symbol} ${row.name}`,
       render: ({ row }) => (
         <span className={styles.symbol}>
           {row.symbol}
           <span className={styles.symbolSub}>{row.name}</span>
         </span>
       ),
-    },
-    {
-      id: "sector",
+    }),
+    column.accessor("sector", {
       header: "Sector",
       widthPx: 110,
       type: "enum",
-      value: (row) => row.sector,
-    },
-    {
-      id: "qty",
+    }),
+    column.accessor("qty", {
       header: "Qty",
       widthPx: 96,
-      value: (row) => row.qty,
-      format: ({ value }) => (value as number).toLocaleString("en-US"),
+      setValue: ({ row, value }) => ({
+        qty: value,
+        mktValue: Math.round(value * row.last),
+      }),
+      type: "number",
+      format: ({ value }) => value.toLocaleString("en-US"),
       editable: true,
       parseEditValue: (raw) => parseQty(raw),
-      validate: async (value, input: PretableEditInput<PositionRow>) => {
-        const qty = value as number;
+      validate: async (value, input) => {
+        const qty = value;
         const sanity = sanityCheckQty(qty, input.row.qty);
         if (sanity !== true) return sanity;
         await sleep(COMPLIANCE_DELAY_MS);
@@ -68,12 +67,11 @@ export function makePositionColumns(
         return true;
       },
       renderEditor: (input) => <QtyEditor input={input} />,
-    },
-    {
-      id: "last",
+    }),
+    column.accessor("last", {
       header: "Last",
       widthPx: 96,
-      value: (row) => row.last,
+      type: "number",
       render: ({ row }) => {
         const dirClass =
           row.lastDir === "up"
@@ -92,19 +90,17 @@ export function makePositionColumns(
           </span>
         );
       },
-    },
-    {
-      id: "mktValue",
+    }),
+    column.accessor("mktValue", {
       header: "Mkt Val",
       widthPx: 96,
-      value: (row) => row.mktValue,
-      format: ({ value }) => fmtCompactUsd(value as number),
-    },
-    {
-      id: "dayPnl",
+      type: "number",
+      format: ({ value }) => fmtCompactUsd(value),
+    }),
+    column.accessor("dayPnl", {
       header: "Day P&L",
       widthPx: 120,
-      value: (row) => row.dayPnl,
+      type: "number",
       render: ({ row }) => (
         <span
           className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}
@@ -113,31 +109,31 @@ export function makePositionColumns(
           <span className={styles.subline}>{fmtPct(row.dayPnlPct)}</span>
         </span>
       ),
-    },
-    {
-      id: "weight",
+    }),
+    column.accessor("weight", {
       header: "Wt",
       widthPx: 64,
-      value: (row) => row.weight,
-      format: ({ value }) => `${(value as number).toFixed(1)}%`,
-    },
+      type: "number",
+      format: ({ value }) => `${value.toFixed(1)}%`,
+    }),
     {
-      id: "analyst",
-      header: "AI Analyst",
-      widthPx: 320,
-      wrap: true,
+      ...column.accessor("analyst", {
+        header: "AI Analyst",
+        widthPx: 320,
+        wrap: true,
+        type: "text",
+        render: ({ row }) => (
+          <span className={styles.analyst}>
+            {row.analyst}
+            {row.analyst.length > 0 && (
+              <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>
+                {row.flag}
+              </span>
+            )}
+          </span>
+        ),
+      }),
       sortable: false,
-      value: (row) => row.analyst,
-      render: ({ row }) => (
-        <span className={styles.analyst}>
-          {row.analyst}
-          {row.analyst.length > 0 && (
-            <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>
-              {row.flag}
-            </span>
-          )}
-        </span>
-      ),
     },
-  ];
+  ] as const;
 }

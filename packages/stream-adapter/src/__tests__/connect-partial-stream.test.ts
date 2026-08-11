@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { connectPartialStream } from "../connect-partial-stream";
-import type { GridLike } from "../types";
+import type { RowModelLike } from "../types";
 
 type TestRow = {
   id: string;
@@ -8,22 +8,34 @@ type TestRow = {
   score: number;
 };
 
-function createMockGrid(): GridLike<TestRow> & {
+function createMockGrid(existing = new Set<string>(["row-1"])): RowModelLike<
+  TestRow,
+  string
+> & {
   calls: Array<{
     add?: TestRow[];
-    update?: Partial<TestRow>[];
+    update?: { id: string; changes: Partial<TestRow> }[];
     remove?: string[];
   }>;
 } {
   const calls: Array<{
     add?: TestRow[];
-    update?: Partial<TestRow>[];
+    update?: { id: string; changes: Partial<TestRow> }[];
     remove?: string[];
   }> = [];
   return {
     calls,
     applyTransaction(tx) {
       calls.push(tx);
+      const update = tx.update ?? [];
+      const unknown = update.filter(({ id }) => !existing.has(id));
+      for (const row of tx.add ?? []) existing.add(row.id);
+      return {
+        issues: unknown.map(({ id }) => ({
+          code: "unknown-update-id" as const,
+          rowId: id,
+        })),
+      };
     },
   };
 }
@@ -53,8 +65,14 @@ describe("connectPartialStream", () => {
 
     const allUpdates = grid.calls.flatMap((c) => c.update ?? []);
     expect(allUpdates).toHaveLength(3);
-    expect(allUpdates[0]).toEqual({ id: "row-1", name: "Al" });
-    expect(allUpdates[2]).toEqual({ id: "row-1", name: "Alice", score: 100 });
+    expect(allUpdates[0]).toEqual({
+      id: "row-1",
+      changes: { id: "row-1", name: "Al" },
+    });
+    expect(allUpdates[2]).toEqual({
+      id: "row-1",
+      changes: { id: "row-1", name: "Alice", score: 100 },
+    });
   });
 
   test("rowId is injected into each partial", async () => {
@@ -139,5 +157,111 @@ describe("connectPartialStream", () => {
     expect(totalUpdates).toBeLessThan(100);
 
     await conn.done;
+  });
+
+  test("reports a missing target ID and never fabricates a full row", async () => {
+    const rowModel = createMockGrid(new Set());
+    const onIssue = vi.fn();
+    async function* partials(): AsyncIterable<Partial<TestRow>> {
+      yield { name: "partial only" };
+    }
+
+    const connection = connectPartialStream(rowModel, partials(), {
+      rowId: "missing",
+      onIssue,
+    });
+    await vi.advanceTimersToNextTimerAsync();
+    await connection.done;
+
+    expect(rowModel.calls.flatMap((call) => call.add ?? [])).toEqual([]);
+    expect(onIssue).toHaveBeenCalledWith({
+      code: "unknown-update-id",
+      rowId: "missing",
+    });
+  });
+
+  test("uses createRow to add a complete row after a missing-ID issue", async () => {
+    const rowModel = createMockGrid(new Set());
+    const createRow = vi.fn(
+      (partial: Partial<TestRow>, id: string): TestRow => ({
+        id,
+        name: String(partial.name ?? ""),
+        score: Number(partial.score ?? 0),
+      }),
+    );
+    async function* partials(): AsyncIterable<Partial<TestRow>> {
+      yield { name: "created", score: 4 };
+    }
+
+    const connection = connectPartialStream(rowModel, partials(), {
+      rowId: "new-row",
+      createRow,
+    });
+    await vi.advanceTimersToNextTimerAsync();
+    await connection.done;
+
+    expect(createRow).toHaveBeenCalledWith(
+      { name: "created", score: 4 },
+      "new-row",
+    );
+    expect(rowModel.calls.flatMap((call) => call.add ?? [])).toContainEqual({
+      id: "new-row",
+      name: "created",
+      score: 4,
+    });
+  });
+
+  test("coalesces every same-frame partial before creating a missing row", async () => {
+    const rowModel = createMockGrid(new Set());
+    const createRow = vi.fn(
+      (partial: Partial<TestRow>, id: string): TestRow => ({
+        id,
+        name: String(partial.name ?? ""),
+        score: Number(partial.score ?? 0),
+      }),
+    );
+    async function* partials(): AsyncIterable<Partial<TestRow>> {
+      yield { name: "created" };
+      yield { score: 9 };
+    }
+
+    const connection = connectPartialStream(rowModel, partials(), {
+      rowId: "new-row",
+      createRow,
+    });
+    await vi.advanceTimersToNextTimerAsync();
+    await connection.done;
+
+    expect(createRow).toHaveBeenCalledOnce();
+    expect(createRow).toHaveBeenCalledWith(
+      { name: "created", score: 9 },
+      "new-row",
+    );
+    expect(rowModel.calls.flatMap((call) => call.add ?? [])).toEqual([
+      { id: "new-row", name: "created", score: 9 },
+    ]);
+  });
+
+  test("preserves numeric target IDs", async () => {
+    type NumericRow = { id: number; value: string };
+    const calls: Array<{
+      update?: { id: number; changes: Partial<NumericRow> }[];
+    }> = [];
+    const rowModel: RowModelLike<NumericRow, number> = {
+      applyTransaction(transaction) {
+        calls.push(transaction);
+        return { issues: [] };
+      },
+    };
+    async function* partials(): AsyncIterable<Partial<NumericRow>> {
+      yield { value: "next" };
+    }
+
+    const connection = connectPartialStream(rowModel, partials(), {
+      rowId: 42,
+    });
+    await vi.advanceTimersToNextTimerAsync();
+    await connection.done;
+    expect(calls[0]?.update).toEqual([{ id: 42, changes: { value: "next" } }]);
   });
 });

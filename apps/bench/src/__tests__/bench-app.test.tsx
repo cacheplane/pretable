@@ -119,7 +119,9 @@ describe("BenchApp", () => {
     expect(
       adapter?.querySelector("[data-pretable-scroll-viewport]"),
     ).toBeTruthy();
-    expect(adapter?.querySelector("[data-pretable-row]")).toBeTruthy();
+    await waitFor(() =>
+      expect(adapter?.querySelector("[data-pretable-row]")).toBeTruthy(),
+    );
   });
 
   test("publishes a failed terminal result when scroll measurement throws", async () => {

@@ -1,18 +1,8 @@
-export {
-  createDomRenderSnapshot,
-  createLegacyDomRenderSnapshot,
-  planColumnLayout,
-} from "./create-renderer";
+export { createDomRenderSnapshot, planColumnLayout } from "./create-renderer";
 export { createRowLayoutController } from "./row-layout-controller";
 export type {
   CreateRowLayoutControllerOptions,
   DomLayoutColumn,
-  DomRenderDataRow,
-  DomRenderGroupRow,
-  DomRenderInput,
-  DomRenderRow,
-  DomRenderRowGeometry,
-  DomRenderSnapshot,
   IndexedDomRenderDataRow,
   IndexedDomRenderGroupRow,
   IndexedDomRenderInput,

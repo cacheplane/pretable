@@ -156,6 +156,7 @@ describe("UI-only grid core", () => {
   test("focus navigation follows the current visual column order", () => {
     const { grid } = make();
     grid.observeRowModelRevision(0);
+    grid.setColumnPinned("quantity", null);
     grid.setColumnOrder(["quantity", "name"]);
     grid.setFocus({ ref: { kind: "data", rowId: 1 }, columnId: "name" });
 

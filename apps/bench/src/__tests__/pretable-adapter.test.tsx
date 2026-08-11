@@ -11,16 +11,24 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
 import * as pretableReactInternal from "@pretable/react";
+import type { PretableColumn, PretableSurfaceRowsProps } from "@pretable/react";
+import type { ScenarioRow } from "@pretable-internal/scenario-data";
 
 import { createBenchInteractionPlan } from "../interaction-plan";
 import { PretableAdapter } from "../pretable-adapter";
+
+type SurfaceProps = PretableSurfaceRowsProps<
+  ScenarioRow,
+  string,
+  readonly PretableColumn<ScenarioRow>[]
+>;
 
 describe("PretableAdapter", () => {
   afterEach(() => {
     cleanup();
   });
 
-  test("keeps the shared renderer contract with raw body values and label-only headers", () => {
+  test("keeps the shared renderer contract with raw body values and label-only headers", async () => {
     const dataset = createScenarioDataset("S2", { scale: "smoke" });
     const firstRowValue = String(dataset.rows[0]?.col_0 ?? "");
 
@@ -32,7 +40,7 @@ describe("PretableAdapter", () => {
     const headerButton = screen.getByRole("columnheader", {
       name: "Sort Message 1",
     });
-    const firstRow = screen.getAllByTestId("pretable-row")[0];
+    const firstRow = (await screen.findAllByTestId("pretable-row"))[0]!;
 
     expect(adapter).toHaveAttribute("data-benchmark-adapter", "pretable");
     expect(
@@ -46,14 +54,14 @@ describe("PretableAdapter", () => {
     expect(within(firstRow).getByText(firstRowValue)).toBeInTheDocument();
   });
 
-  test("marks wrapped benchmark cells so row-height measurement can stay scoped", () => {
+  test("marks wrapped benchmark cells so row-height measurement can stay scoped", async () => {
     const dataset = createScenarioDataset("S2", { scale: "smoke" });
 
     render(<PretableAdapter dataset={dataset} runKey={1} />);
 
-    const firstWrappedCell = screen
-      .getAllByTestId("pretable-row")[0]
-      ?.querySelector('[data-pretable-cell][data-pretable-wrap="true"]');
+    const firstWrappedCell = (
+      await screen.findAllByTestId("pretable-row")
+    )[0]?.querySelector('[data-pretable-cell][data-pretable-wrap="true"]');
 
     expect(firstWrappedCell).toBeTruthy();
   });
@@ -85,10 +93,11 @@ describe("PretableAdapter", () => {
       />,
     );
 
-    const groupedProps = surfaceSpy.mock.calls.at(-1)?.[0];
-    expect(groupedProps?.state?.rowGroups).toEqual(["col_1"]);
+    const groupedProps = surfaceSpy.mock.calls.at(-1)?.[0] as
+      SurfaceProps | undefined;
+    expect(groupedProps?.query?.rowGroups).toEqual([{ columnId: "col_1" }]);
     expect(
-      groupedProps?.columns.find((column) => column.id === "col_3"),
+      groupedProps?.columns?.find((column) => column.id === "col_3"),
     ).toMatchObject({ aggregate: "sum" });
     expect(groupedProps?.groupPanel).toBeUndefined();
 
@@ -99,11 +108,12 @@ describe("PretableAdapter", () => {
       <PretableAdapter dataset={dataset} runKey={2} scriptName="updates" />,
     );
 
-    const updatesProps = surfaceSpy.mock.calls.at(-1)?.[0];
-    expect(updatesProps?.state?.rowGroups).toBeUndefined();
+    const updatesProps = surfaceSpy.mock.calls.at(-1)?.[0] as
+      SurfaceProps | undefined;
+    expect(updatesProps?.query?.rowGroups).toEqual([]);
     expect(
-      updatesProps?.columns.find((column) => column.id === "col_3")?.aggregate,
-    ).toBeUndefined();
+      updatesProps?.columns?.find((column) => column.id === "col_3"),
+    ).not.toHaveProperty("aggregate");
     expect(updatesProps?.groupPanel).toBeUndefined();
     expect(dataset.columns).toEqual(originalColumns);
 
@@ -115,7 +125,7 @@ describe("PretableAdapter", () => {
     const interactionPlan = createBenchInteractionPlan(dataset, "sort");
     const surfaceSpy = vi
       .spyOn(pretableReactInternal, "PretableSurface")
-      .mockImplementation((props) => {
+      .mockImplementation((props: SurfaceProps) => {
         function MockSurface() {
           useEffect(() => {
             props.onTelemetryChange?.({
@@ -185,7 +195,7 @@ describe("PretableAdapter", () => {
     const dataset = createScenarioDataset("S2", { scale: "smoke" });
     const surfaceSpy = vi
       .spyOn(pretableReactInternal, "PretableSurface")
-      .mockImplementation((props) => {
+      .mockImplementation((props: SurfaceProps) => {
         function MockSurface() {
           useEffect(() => {
             props.onTelemetryChange?.({

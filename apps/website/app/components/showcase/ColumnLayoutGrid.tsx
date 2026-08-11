@@ -2,11 +2,7 @@
 
 import { PretableSurface } from "@pretable/react";
 import { useMemo, useState } from "react";
-import {
-  LAYOUT_ROWS,
-  type LayoutRow,
-  makeLayoutColumns,
-} from "./columnLayoutData";
+import { LAYOUT_ROWS, makeLayoutColumns } from "./columnLayoutData";
 import { useInView } from "./useInView";
 
 const VIEWPORT_HEIGHT = 360;
@@ -48,7 +44,7 @@ function ColumnLayoutGridLive() {
         </button>
       </div>
       <div className="overflow-hidden rounded-[8px] border border-rule">
-        <PretableSurface<LayoutRow>
+        <PretableSurface
           key={resetKey}
           ariaLabel="Resizable, reorderable columns"
           columns={columns}
