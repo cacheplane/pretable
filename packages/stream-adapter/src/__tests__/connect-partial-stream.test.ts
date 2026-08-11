@@ -47,6 +47,67 @@ describe("connectPartialStream", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  test("rejects done and closes the source when a scheduled transaction fails", async () => {
+    const scheduled: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        scheduled.push(callback);
+        return scheduled.length;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const applyError = new Error("scheduled partial transaction failed");
+    const applyTransaction = vi.fn(() => {
+      throw applyError;
+    });
+    let read = false;
+    const sourceReturn = vi.fn(async () => ({
+      done: true as const,
+      value: undefined,
+    }));
+    const iterator: AsyncIterator<Partial<TestRow>> &
+      AsyncIterable<Partial<TestRow>> = {
+      async next() {
+        if (!read) {
+          read = true;
+          return { done: false as const, value: { name: "buffered" } };
+        }
+        return new Promise(() => undefined);
+      },
+      return: sourceReturn,
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+    };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (error: unknown) => unhandled.push(error);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const connection = connectPartialStream({ applyTransaction }, iterator, {
+        rowId: "row-1",
+      });
+      await vi.waitFor(() => expect(scheduled).toHaveLength(1));
+      const callback = scheduled[0]!;
+
+      expect(() => callback(0)).not.toThrow();
+      connection.dispose();
+      await expect(connection.done).rejects.toBe(applyError);
+      expect(sourceReturn).toHaveBeenCalledOnce();
+      expect(applyTransaction).toHaveBeenCalledOnce();
+
+      expect(() => callback(1)).not.toThrow();
+      connection.dispose();
+      expect(sourceReturn).toHaveBeenCalledOnce();
+      expect(applyTransaction).toHaveBeenCalledOnce();
+      await Promise.resolve();
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 
   test("progressive partials are batched as updates", async () => {

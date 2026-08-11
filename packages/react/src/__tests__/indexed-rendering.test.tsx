@@ -96,6 +96,12 @@ function poisonUnboundedReads(model: Model, maxSpan = 256) {
       ref: Parameters<typeof snapshot.parentGroupOf>[0],
     ) => snapshot.parentGroupOf(ref),
   );
+  const dataIndexOf = vi.fn(
+    (
+      snapshot: PretableRowModelSnapshot<Row, number, typeof columns>,
+      ref: Parameters<typeof snapshot.dataIndexOf>[0],
+    ) => snapshot.dataIndexOf(ref),
+  );
   let sourceState = model.getState();
   let wrappedState: ReturnType<Model["getState"]> | undefined;
   const wrapState = () => {
@@ -122,6 +128,7 @@ function poisonUnboundedReads(model: Model, maxSpan = 256) {
         rowAt: delegate(snapshot.rowAt),
         range: (start: number, end: number) => range(snapshot, start, end),
         indexOf: delegate(snapshot.indexOf),
+        dataIndexOf: (ref) => dataIndexOf(snapshot, ref),
         dataRowAt: delegate(snapshot.dataRowAt),
         firstDataRow: delegate(snapshot.firstDataRow),
         lastDataRow: delegate(snapshot.lastDataRow),
@@ -146,7 +153,7 @@ function poisonUnboundedReads(model: Model, maxSpan = 256) {
       return bound;
     },
   }) as Model;
-  return { model: spy, parentGroupOf, range };
+  return { dataIndexOf, model: spy, parentGroupOf, range };
 }
 
 afterEach(() => {
@@ -510,6 +517,66 @@ describe("indexed PretableSurface", () => {
     owned.dispose();
   }, 20_000);
 
+  test("shift-checking a 100k row span is one bounded symbolic selection", async () => {
+    const owned = createLocalRowModel({ rows, columns });
+    const guarded = poisonUnboundedReads(owned);
+    const onRowSelectionChange = vi.fn();
+    let grid: PretableSurfaceGrid<Row, number, typeof columns> | null = null;
+    const view = render(
+      <PretableSurface
+        ariaLabel="bounded row range selection"
+        model={guarded.model}
+        onGridReady={(next) => {
+          grid = next;
+        }}
+        onRowSelectionChange={onRowSelectionChange}
+        overscan={0}
+        rowSelectionColumn={{ enabled: true }}
+        viewportHeight={168}
+      />,
+    );
+    const rowCheckbox = (rowId: number) =>
+      view.container.querySelector<HTMLElement>(
+        `[data-pretable-row-id="${rowId}"] button[data-pretable-row-select]`,
+      );
+    await waitFor(() => expect(rowCheckbox(0)).toBeTruthy(), {
+      timeout: 15_000,
+    });
+    fireEvent.click(rowCheckbox(0)!);
+
+    act(() => grid!.scrollToRow(99_999));
+    await waitFor(() => expect(rowCheckbox(99_999)).toBeTruthy(), {
+      timeout: 15_000,
+    });
+    const listener = vi.fn();
+    const unsubscribe = grid!.subscribe(listener);
+    onRowSelectionChange.mockClear();
+    guarded.dataIndexOf.mockClear();
+
+    fireEvent.click(rowCheckbox(99_999)!, { shiftKey: true });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(onRowSelectionChange).not.toHaveBeenCalled();
+    const selectedRows = grid!.getState().selection.rows;
+    expect(selectedRows.kind).toBe("explicit");
+    if (selectedRows.kind !== "explicit") throw new Error("expected explicit");
+    expect(Array.from(selectedRows.ranges ?? [])).toEqual([
+      { startRowId: 0, endRowId: 99_999 },
+    ]);
+    expect(
+      view.getByRole("checkbox", { name: "Select all rows" }),
+    ).toHaveAttribute("aria-checked", "true");
+    expect(
+      guarded.range.mock.calls.every(([, start, end]) => end - start <= 256),
+    ).toBe(true);
+    expect(guarded.dataIndexOf.mock.calls.length).toBeGreaterThan(0);
+    expect(guarded.dataIndexOf.mock.calls.length).toBeLessThan(64);
+
+    unsubscribe();
+    view.unmount();
+    owned.dispose();
+  }, 20_000);
+
   test("group parent focus, collapse and scroll-to-row use indexed lookups", async () => {
     const owned = createLocalRowModel({
       rows: rows.slice(0, 100),
@@ -711,6 +778,140 @@ describe("indexed PretableSurface", () => {
     owned.dispose();
   });
 
+  test("explicit-model editing discards a gated transaction after cancel", async () => {
+    const owned = createLocalRowModel({ rows: [rows[0]!], columns });
+    const gate = deferred();
+    let surfaceGrid:
+      PretableSurfaceGrid<Row, number, typeof columns> | undefined;
+    const view = render(
+      <PretableSurface
+        ariaLabel="cancelled explicit edit grid"
+        beforeRowChange={() => gate.promise}
+        model={owned}
+        onGridReady={(next) => {
+          surfaceGrid = next;
+        }}
+        overscan={0}
+        viewportHeight={168}
+      />,
+    );
+    const beforeRevision = owned.getState().snapshot.revision;
+    await commitQuantity(view, "43");
+    await waitFor(() =>
+      expect(view.getByRole("textbox")).toHaveAttribute("aria-busy", "true"),
+    );
+
+    act(() => surfaceGrid!.cancelEdit());
+    await act(async () => gate.resolve());
+
+    expect(owned.getState().snapshot.revision).toBe(beforeRevision);
+    expect(owned.getState().snapshot.dataRowAt(0)?.row.quantity).toBe(0);
+    owned.dispose();
+  });
+
+  test("explicit-model editing never lets an older gate overwrite a newer edit", async () => {
+    const owned = createLocalRowModel({ rows: [rows[0]!], columns });
+    const firstGate = deferred();
+    const secondGate = deferred();
+    const gates = [firstGate, secondGate];
+    let call = 0;
+    let surfaceGrid:
+      PretableSurfaceGrid<Row, number, typeof columns> | undefined;
+    const view = render(
+      <PretableSurface
+        ariaLabel="superseded explicit edit grid"
+        beforeRowChange={() => gates[call++]!.promise}
+        model={owned}
+        onGridReady={(next) => {
+          surfaceGrid = next;
+        }}
+        overscan={0}
+        viewportHeight={168}
+      />,
+    );
+    const beforeRevision = owned.getState().snapshot.revision;
+    await commitQuantity(view, "43");
+    await waitFor(() => expect(call).toBe(1));
+    act(() => surfaceGrid!.cancelEdit());
+    await commitQuantity(view, "44");
+    await waitFor(() => expect(call).toBe(2));
+
+    await act(async () => secondGate.resolve());
+    await waitFor(() =>
+      expect(owned.getState().snapshot.dataRowAt(0)?.row.quantity).toBe(44),
+    );
+    await act(async () => firstGate.resolve());
+
+    expect(owned.getState().snapshot.revision).toBe(beforeRevision + 1);
+    expect(owned.getState().snapshot.dataRowAt(0)?.row.quantity).toBe(44);
+    owned.dispose();
+  });
+
+  test("explicit-model editing discards a gated transaction after unmount", async () => {
+    const owned = createLocalRowModel({ rows: [rows[0]!], columns });
+    const gate = deferred();
+    const view = render(
+      <PretableSurface
+        ariaLabel="unmounted explicit edit grid"
+        beforeRowChange={() => gate.promise}
+        model={owned}
+        overscan={0}
+        viewportHeight={168}
+      />,
+    );
+    const beforeRevision = owned.getState().snapshot.revision;
+    await commitQuantity(view, "43");
+    await waitFor(() =>
+      expect(view.getByRole("textbox")).toHaveAttribute("aria-busy", "true"),
+    );
+
+    view.unmount();
+    await act(async () => gate.resolve());
+
+    expect(owned.getState().snapshot.revision).toBe(beforeRevision);
+    expect(owned.getState().snapshot.dataRowAt(0)?.row.quantity).toBe(0);
+    owned.dispose();
+  });
+
+  test("explicit-model editing discards a gated transaction after model replacement", async () => {
+    const first = createLocalRowModel({ rows: [rows[0]!], columns });
+    const second = createLocalRowModel({ rows: [rows[0]!], columns });
+    const gate = deferred();
+    const view = render(
+      <PretableSurface
+        ariaLabel="replaced explicit edit grid"
+        beforeRowChange={() => gate.promise}
+        model={first}
+        overscan={0}
+        viewportHeight={168}
+      />,
+    );
+    const firstRevision = first.getState().snapshot.revision;
+    const secondRevision = second.getState().snapshot.revision;
+    await commitQuantity(view, "43");
+    await waitFor(() =>
+      expect(view.getByRole("textbox")).toHaveAttribute("aria-busy", "true"),
+    );
+
+    view.rerender(
+      <PretableSurface
+        ariaLabel="replaced explicit edit grid"
+        beforeRowChange={() => gate.promise}
+        model={second}
+        overscan={0}
+        viewportHeight={168}
+      />,
+    );
+    await act(async () => gate.resolve());
+
+    expect(first.getState().snapshot.revision).toBe(firstRevision);
+    expect(first.getState().snapshot.dataRowAt(0)?.row.quantity).toBe(0);
+    expect(second.getState().snapshot.revision).toBe(secondRevision);
+    expect(second.getState().snapshot.dataRowAt(0)?.row.quantity).toBe(0);
+    first.dispose();
+    second.dispose();
+  });
+
   test("explicit-model rejection keeps the revision and restores edit error state", async () => {
     const owned = createLocalRowModel({ rows: [rows[0]!], columns });
     const gate = deferred();
@@ -777,4 +978,89 @@ describe("indexed PretableSurface", () => {
     view.unmount();
     owned.dispose();
   }, 20_000);
+
+  test("explicit paste cannot commit to a replaced model after its gate resolves in layout", async () => {
+    const gate = deferred();
+    const beforeRowChange = vi.fn(() => gate.promise);
+    const first = createLocalRowModel({ rows: rows.slice(0, 3), columns });
+    const replacement = createLocalRowModel({
+      rows: rows.slice(0, 3),
+      columns,
+    });
+    const Harness = (props: {
+      readonly current: Model;
+      readonly resolveInLayout?: () => void;
+    }) => {
+      const { current, resolveInLayout } = props;
+      React.useLayoutEffect(() => {
+        resolveInLayout?.();
+      }, [resolveInLayout]);
+      return (
+        <PretableSurface
+          ariaLabel="paste replacement race"
+          beforeRowChange={beforeRowChange}
+          model={current}
+          overscan={0}
+          viewportHeight={168}
+        />
+      );
+    };
+    const view = render(<Harness current={first} />);
+    await waitFor(() => expect(quantityCell(view)).toBeTruthy());
+    fireEvent.click(quantityCell(view));
+    fireEvent.paste(view.getByRole("grid"), {
+      clipboardData: { getData: () => "41" },
+    });
+    await waitFor(() => expect(beforeRowChange).toHaveBeenCalledOnce());
+    const firstRevision = first.getState().snapshot.revision;
+    const replacementRevision = replacement.getState().snapshot.revision;
+
+    view.rerender(
+      <Harness current={replacement} resolveInLayout={gate.resolve} />,
+    );
+    await act(async () => Promise.resolve());
+
+    expect(first.getState().snapshot.revision).toBe(firstRevision);
+    expect(replacement.getState().snapshot.revision).toBe(replacementRevision);
+    first.dispose();
+    replacement.dispose();
+  });
+
+  test("explicit paste cannot commit after unmount when its gate resolves in layout", async () => {
+    const gate = deferred();
+    const beforeRowChange = vi.fn(() => gate.promise);
+    const owned = createLocalRowModel({ rows: rows.slice(0, 3), columns });
+    const Harness = (props: {
+      readonly show: boolean;
+      readonly resolveInLayout?: () => void;
+    }) => {
+      const { resolveInLayout, show } = props;
+      React.useLayoutEffect(() => {
+        resolveInLayout?.();
+      }, [resolveInLayout]);
+      return show ? (
+        <PretableSurface
+          ariaLabel="paste unmount race"
+          beforeRowChange={beforeRowChange}
+          model={owned}
+          overscan={0}
+          viewportHeight={168}
+        />
+      ) : null;
+    };
+    const view = render(<Harness show />);
+    await waitFor(() => expect(quantityCell(view)).toBeTruthy());
+    fireEvent.click(quantityCell(view));
+    fireEvent.paste(view.getByRole("grid"), {
+      clipboardData: { getData: () => "41" },
+    });
+    await waitFor(() => expect(beforeRowChange).toHaveBeenCalledOnce());
+    const revision = owned.getState().snapshot.revision;
+
+    view.rerender(<Harness show={false} resolveInLayout={gate.resolve} />);
+    await act(async () => Promise.resolve());
+
+    expect(owned.getState().snapshot.revision).toBe(revision);
+    owned.dispose();
+  });
 });

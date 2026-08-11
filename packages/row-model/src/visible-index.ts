@@ -147,6 +147,8 @@ export function createFlatSnapshot<
         visibleRange(grouped, policy, start, end),
       indexOf: (ref: PretableVisibleRowRef<TRowId>) =>
         visibleIndexOf(grouped, policy, ref),
+      dataIndexOf: (ref: PretableVisibleRowRef<TRowId>) =>
+        dataRankAtRef(grouped, policy, ref) ?? -1,
       dataRowAt: refAtDataRank,
       firstDataRow: () => refAtDataRank(0),
       lastDataRow: () => refAtDataRank(dataCount - 1),
@@ -188,6 +190,7 @@ export function createFlatSnapshot<
           .filter((row): row is NonNullable<typeof row> => row !== undefined),
       ),
     indexOf: (ref: PretableVisibleRowRef<TRowId>) => lookupRank(ref) ?? -1,
+    dataIndexOf: (ref: PretableVisibleRowRef<TRowId>) => lookupRank(ref) ?? -1,
     dataRowAt: publicRowAt,
     firstDataRow: () => publicRowAt(0),
     lastDataRow: () => publicRowAt(visible.size - 1),

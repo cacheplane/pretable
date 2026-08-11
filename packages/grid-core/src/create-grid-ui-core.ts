@@ -10,8 +10,11 @@ import type {
 import { moveIndexedFocus, reconcileIndexedFocus } from "./indexed-focus";
 import {
   createEmptyIndexedSelection,
+  getIndexedSelectionSummary,
+  isIndexedRowSelected,
   reconcileIndexedSelection,
   selectAllVisibleRows,
+  selectIndexedRowRange,
   toImmutableIndexedSet,
   toggleIndexedRowSelection,
 } from "./indexed-selection";
@@ -23,6 +26,7 @@ import type {
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
   PretableIndexedFocusState,
+  PretableIndexedRowRangeIndex,
   PretableIndexedSelectionState,
   PretableViewportState,
 } from "./types";
@@ -154,10 +158,18 @@ function copySelection<TRowId extends PretableRowId, TColumnId extends string>(
       ? Object.freeze({
           kind: "explicit" as const,
           rowIds: toImmutableIndexedSet(selection.rows.rowIds),
+          ...(selection.rows.ranges === undefined
+            ? {}
+            : { ranges: selection.rows.ranges }),
+          ...(selection.rows.excludedRanges === undefined
+            ? {}
+            : { excludedRanges: selection.rows.excludedRanges }),
         })
       : Object.freeze({
           kind: "all" as const,
-          excludedRowIds: toImmutableIndexedSet(selection.rows.excludedRowIds),
+          ...(selection.rows.excludedRanges === undefined
+            ? {}
+            : { excludedRanges: selection.rows.excludedRanges }),
         });
   return Object.freeze({
     rows,
@@ -189,17 +201,47 @@ function sameSet<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
   return true;
 }
 
+function sameRowRanges<TRowId extends PretableRowId>(
+  left: PretableIndexedRowRangeIndex<TRowId> | undefined,
+  right: PretableIndexedRowRangeIndex<TRowId> | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left?.size !== right?.size) return false;
+  const leftIterator = left?.[Symbol.iterator]();
+  const rightIterator = right?.[Symbol.iterator]();
+  if (leftIterator === undefined || rightIterator === undefined) return false;
+  for (;;) {
+    const leftNext = leftIterator.next();
+    const rightNext = rightIterator.next();
+    if (leftNext.done || rightNext.done)
+      return leftNext.done === rightNext.done;
+    if (
+      !sameValueZero(leftNext.value.startRowId, rightNext.value.startRowId) ||
+      !sameValueZero(leftNext.value.endRowId, rightNext.value.endRowId)
+    )
+      return false;
+  }
+}
+
 function sameSelection<TRowId extends PretableRowId, TColumnId extends string>(
   left: PretableIndexedSelectionState<TRowId, TColumnId>,
   right: PretableIndexedSelectionState<TRowId, TColumnId>,
 ): boolean {
   if (left.rows.kind !== right.rows.kind) return false;
-  const sameRows =
-    left.rows.kind === "explicit" && right.rows.kind === "explicit"
-      ? sameSet(left.rows.rowIds, right.rows.rowIds)
-      : left.rows.kind === "all" && right.rows.kind === "all"
-        ? sameSet(left.rows.excludedRowIds, right.rows.excludedRowIds)
-        : false;
+  let sameRows = false;
+  if (left.rows.kind === "explicit" && right.rows.kind === "explicit") {
+    const leftRows = left.rows;
+    const rightRows = right.rows;
+    sameRows =
+      sameSet(leftRows.rowIds, rightRows.rowIds) &&
+      sameRowRanges(leftRows.excludedRanges, rightRows.excludedRanges) &&
+      sameRowRanges(leftRows.ranges, rightRows.ranges);
+  } else if (left.rows.kind === "all" && right.rows.kind === "all") {
+    sameRows = sameRowRanges(
+      left.rows.excludedRanges,
+      right.rows.excludedRanges,
+    );
+  }
   if (!sameRows || left.ranges.length !== right.ranges.length) return false;
   for (let index = 0; index < left.ranges.length; index += 1) {
     const leftRange = left.ranges[index]!;
@@ -459,6 +501,53 @@ export function createGridUiCore<
         if (next === state.selection) return;
         publish({ ...state, selection: next });
       });
+    },
+    selectRowRange(startRowId, endRowId) {
+      command(() => {
+        let next: typeof state.selection;
+        try {
+          next = selectIndexedRowRange(
+            state.selection,
+            startRowId,
+            endRowId,
+            snapshotForInteraction(),
+          );
+        } catch (cause) {
+          throw observationError(
+            "Indexed row range selection could not be updated atomically.",
+            cause,
+          );
+        }
+        if (next === state.selection) return;
+        publish({ ...state, selection: next });
+      });
+    },
+    isRowSelected(rowId) {
+      try {
+        return isIndexedRowSelected(
+          state.selection,
+          { kind: "data", rowId },
+          snapshotForInteraction(),
+        );
+      } catch (cause) {
+        throw observationError(
+          "Indexed row selection could not be observed atomically.",
+          cause,
+        );
+      }
+    },
+    getSelectionSummary() {
+      try {
+        return getIndexedSelectionSummary(
+          state.selection,
+          snapshotForInteraction(),
+        );
+      } catch (cause) {
+        throw observationError(
+          "Indexed row selection summary could not be observed atomically.",
+          cause,
+        );
+      }
     },
     selectAllVisibleRows() {
       command(() => {

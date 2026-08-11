@@ -37,6 +37,10 @@ export interface TransactionBatcher<
   TRow extends object,
   TRowId extends string | number,
 > {
+  /** Rejects with the exact model error from a scheduled RAF transaction. */
+  readonly error: Promise<never>;
+  /** Observes a scheduled model failure synchronously before later races. */
+  readonly subscribeError: (listener: (error: unknown) => void) => () => void;
   readonly add: (rows: readonly TRow[]) => void;
   readonly update: (
     patches: readonly {

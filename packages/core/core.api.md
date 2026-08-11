@@ -1048,6 +1048,7 @@ export type PretableRowModelOperation = "set-rows" | "apply-transaction" | "set-
 
 // @public (undocumented)
 export interface PretableRowModelSnapshot<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    dataIndexOf(ref: PretableVisibleRowRef<TRowId>): number;
     dataRowAt(index: number): PretableDataRow<TRow, TRowId> | undefined;
     // (undocumented)
     readonly expansion: Readonly<PretableExpansionState>;

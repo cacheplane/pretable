@@ -541,15 +541,30 @@ export interface PretableIndexedCellRange<
   readonly end: PretableIndexedCellAddress<TRowId, TColumnId>;
 }
 
+/** Inclusive data-row span stored by its stable endpoint IDs. @public */
+export interface PretableIndexedRowRange<TRowId extends IndexedPretableRowId> {
+  readonly startRowId: TRowId;
+  readonly endRowId: TRowId;
+}
+
+/** Immutable normalized interval index for symbolic row selections. @public */
+export interface PretableIndexedRowRangeIndex<
+  TRowId extends IndexedPretableRowId,
+> extends Iterable<PretableIndexedRowRange<TRowId>> {
+  readonly size: number;
+}
+
 /** Sparse row-checkbox state. Select-all never materializes the data population. @public */
 export type PretableIndexedRowSelection<TRowId extends IndexedPretableRowId> =
   | {
       readonly kind: "explicit";
       readonly rowIds: ReadonlySet<TRowId>;
+      readonly ranges?: PretableIndexedRowRangeIndex<TRowId>;
+      readonly excludedRanges?: PretableIndexedRowRangeIndex<TRowId>;
     }
   | {
       readonly kind: "all";
-      readonly excludedRowIds: ReadonlySet<TRowId>;
+      readonly excludedRanges?: PretableIndexedRowRangeIndex<TRowId>;
     };
 
 /** Data-only selection owned by the indexed UI layer. @public */
@@ -662,6 +677,9 @@ export interface PretableGridUiCore<
     selection: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>,
   ) => void;
   readonly toggleRowSelection: (rowId: TRowId) => void;
+  readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
+  readonly isRowSelected: (rowId: TRowId) => boolean;
+  readonly getSelectionSummary: () => PretableIndexedSelectionSummary;
   readonly selectAllVisibleRows: () => void;
   readonly clearSelection: () => void;
   readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {

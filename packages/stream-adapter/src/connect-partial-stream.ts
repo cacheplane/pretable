@@ -49,6 +49,7 @@ export function connectPartialStream<
   stream: AsyncIterable<Partial<TRow>>,
   options: PartialStreamOptions<TRow, TRowId>,
 ): StreamConnection {
+  const iterator = stream[Symbol.asyncIterator]();
   const issueAwareRowModel: RowModelLike<TRow, TRowId> = {
     applyTransaction(transaction) {
       const result = rowModel.applyTransaction(transaction);
@@ -90,6 +91,7 @@ export function connectPartialStream<
   };
   const batcher = createBatcher(issueAwareRowModel);
   let disposed = false;
+  let sourceClosed = false;
 
   let resolveDone!: () => void;
   let rejectDone!: (err: unknown) => void;
@@ -102,32 +104,58 @@ export function connectPartialStream<
   // observe the rejection — attaching `.catch` here doesn't consume it.
   done.catch(() => undefined);
 
+  const closeSource = () => {
+    if (sourceClosed) return;
+    sourceClosed = true;
+    try {
+      const closing = iterator.return?.();
+      if (closing !== undefined)
+        void Promise.resolve(closing).catch(() => undefined);
+    } catch {
+      // Source closure is best-effort; preserve the exact primary failure.
+    }
+  };
+
   let settled = false;
-  const settle = (failure?: { readonly error: unknown }) => {
+  const settle = (
+    failure?: { readonly error: unknown },
+    flush = true,
+    close = failure !== undefined,
+  ) => {
     if (settled) return;
     settled = true;
     disposed = true;
+    if (close) closeSource();
     let finalFailure = failure;
-    try {
-      batcher.flush();
-    } catch (error) {
-      finalFailure ??= { error };
-    } finally {
-      batcher.dispose();
+    if (flush) {
+      try {
+        batcher.flush();
+      } catch (error) {
+        finalFailure ??= { error };
+      }
     }
+    batcher.dispose();
     if (finalFailure === undefined) resolveDone();
     else rejectDone(finalFailure.error);
   };
 
+  batcher.subscribeError((error: unknown) => {
+    settle({ error }, false, true);
+  });
+
   void (async () => {
     try {
-      for await (const partial of stream) {
-        if (disposed) break;
-        batcher.update([{ id: options.rowId, changes: partial }]);
+      while (!disposed) {
+        const result = await iterator.next();
+        if (disposed) return;
+        if (result.done) {
+          settle();
+          return;
+        }
+        batcher.update([{ id: options.rowId, changes: result.value }]);
       }
-      settle();
     } catch (err) {
-      settle({ error: err });
+      settle({ error: err }, true, true);
     }
   })().catch((error: unknown) => settle({ error }));
 
@@ -135,8 +163,7 @@ export function connectPartialStream<
     done,
     dispose() {
       if (disposed) return;
-      disposed = true;
-      settle();
+      settle(undefined, true, true);
     },
   };
 }

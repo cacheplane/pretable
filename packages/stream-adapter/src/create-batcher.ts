@@ -28,12 +28,52 @@ export function createBatcher<
   let removeBuffer: TRowId[] = [];
   let rafId: number | null = null;
   let disposed = false;
+  let rejectError!: (error: unknown) => void;
+  const errorListeners = new Set<(error: unknown) => void>();
+  let failed = false;
+  let failure: unknown;
+  const error = new Promise<never>((_resolve, reject) => {
+    rejectError = reject;
+  });
+  // A connector may attach after the RAF callback fires. Keep that race from
+  // surfacing as an unhandled rejection while preserving the rejection for
+  // every consumer that awaits the public channel.
+  error.catch(() => undefined);
+
+  function fail(error: unknown): void {
+    if (disposed) return;
+    disposed = true;
+    failed = true;
+    failure = error;
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    addBuffer = [];
+    updateBuffer = [];
+    removeBuffer = [];
+    const listeners = [...errorListeners];
+    errorListeners.clear();
+    for (const listener of listeners) {
+      try {
+        listener(error);
+      } catch {
+        // A hostile observer cannot replace the exact model failure.
+      }
+    }
+    rejectError(error);
+  }
 
   function scheduleFlush(): void {
     if (rafId !== null || disposed) return;
     rafId = requestAnimationFrame(() => {
       rafId = null;
-      applyBuffered();
+      if (disposed) return;
+      try {
+        applyBuffered();
+      } catch (error) {
+        fail(error);
+      }
     });
   }
 
@@ -76,6 +116,20 @@ export function createBatcher<
   }
 
   return {
+    error,
+    subscribeError(listener) {
+      if (failed) {
+        try {
+          listener(failure);
+        } catch {
+          // Keep the exact model failure on `error` observable.
+        }
+        return () => undefined;
+      }
+      if (disposed) return () => undefined;
+      errorListeners.add(listener);
+      return () => errorListeners.delete(listener);
+    },
     add(rows) {
       if (disposed) return;
       addBuffer.push(...rows);
@@ -109,6 +163,7 @@ export function createBatcher<
       addBuffer = [];
       updateBuffer = [];
       removeBuffer = [];
+      errorListeners.clear();
     },
   };
 }

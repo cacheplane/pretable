@@ -14,6 +14,7 @@ import {
   isIndexedRowSelected,
   reconcileIndexedSelection,
   selectAllVisibleRows,
+  selectIndexedRowRange,
   toggleIndexedRowSelection,
 } from "../indexed-selection";
 
@@ -90,7 +91,7 @@ describe("indexed row selection", () => {
 
     expect(selection.rows.kind).toBe("all");
     if (selection.rows.kind === "all") {
-      expect(selection.rows.excludedRowIds.size).toBe(0);
+      expect(selection.rows.excludedRanges?.size ?? 0).toBe(0);
     }
     expect(indexedReads).toBe(0);
 
@@ -99,6 +100,418 @@ describe("indexed row selection", () => {
       isIndexedRowSelected(excluded, { kind: "data", rowId: 0 }, snapshot),
     ).toBe(false);
     expect(indexedReads).toBeLessThanOrEqual(2);
+  });
+
+  test("represents a 100k row range symbolically with bounded indexed reads", () => {
+    const source = createModel().getState().snapshot;
+    let dataIndexReads = 0;
+    const snapshot = {
+      ...source,
+      visibleRowCount: 100_000,
+      visibleDataRowCount: 100_000,
+      indexOf(ref: Parameters<typeof source.indexOf>[0]) {
+        if (ref.kind !== "data" || typeof ref.rowId !== "number") return -1;
+        return ref.rowId >= 0 && ref.rowId < 100_000 ? ref.rowId : -1;
+      },
+      dataIndexOf(ref: Parameters<typeof source.dataIndexOf>[0]) {
+        dataIndexReads += 1;
+        if (ref.kind !== "data" || typeof ref.rowId !== "number") return -1;
+        return ref.rowId >= 0 && ref.rowId < 100_000 ? ref.rowId : -1;
+      },
+      dataRowAt(): never {
+        throw new Error("range selection must not materialize rows");
+      },
+      rowAt(): never {
+        throw new Error("range selection must not materialize rows");
+      },
+      range(): never {
+        throw new Error("range selection must not scan rows");
+      },
+    };
+
+    let selection = selectIndexedRowRange(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      0,
+      99_999,
+      snapshot,
+    );
+
+    expect(selection.rows.kind).toBe("explicit");
+    if (selection.rows.kind !== "explicit")
+      throw new Error("expected explicit");
+    expect(Array.from(selection.rows.ranges ?? [])).toEqual([
+      { startRowId: 0, endRowId: 99_999 },
+    ]);
+    expect(
+      isIndexedRowSelected(
+        selection,
+        { kind: "data", rowId: 50_000 },
+        snapshot,
+      ),
+    ).toBe(true);
+    expect(getIndexedSelectionSummary(selection, snapshot)).toEqual({
+      state: "all",
+      selectedCount: 100_000,
+      visibleCount: 100_000,
+    });
+
+    selection = toggleIndexedRowSelection(selection, 50_000, snapshot);
+
+    expect(
+      isIndexedRowSelected(
+        selection,
+        { kind: "data", rowId: 50_000 },
+        snapshot,
+      ),
+    ).toBe(false);
+    expect(getIndexedSelectionSummary(selection, snapshot).selectedCount).toBe(
+      99_999,
+    );
+    expect(dataIndexReads).toBeLessThan(64);
+  });
+
+  test("collapses or drops symbolic row ranges when endpoints disappear", () => {
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, team: "a", score: 1 },
+        { id: 2, team: "a", score: 2 },
+        { id: 3, team: "a", score: 3 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const selected = selectIndexedRowRange(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      1,
+      3,
+      model.getState().snapshot,
+    );
+
+    model.applyTransaction({ remove: [3] });
+    const oneEndpoint = reconcileIndexedSelection(
+      selected,
+      model.getState().snapshot,
+    );
+    expect(oneEndpoint.rows.kind).toBe("explicit");
+    if (oneEndpoint.rows.kind !== "explicit")
+      throw new Error("expected explicit");
+    expect(Array.from(oneEndpoint.rows.ranges ?? [])).toEqual([
+      { startRowId: 1, endRowId: 1 },
+    ]);
+
+    model.applyTransaction({ remove: [1] });
+    const noEndpoints = reconcileIndexedSelection(
+      oneEndpoint,
+      model.getState().snapshot,
+    );
+    expect(noEndpoints.rows).toMatchObject({ kind: "explicit" });
+    if (noEndpoints.rows.kind !== "explicit")
+      throw new Error("expected explicit");
+    expect(noEndpoints.rows.ranges?.size ?? 0).toBe(0);
+  });
+
+  test("counts externally supplied overlapping row ranges only once", () => {
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, team: "a", score: 1 },
+        { id: 2, team: "a", score: 2 },
+        { id: 3, team: "a", score: 3 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    let selection = selectIndexedRowRange(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      1,
+      3,
+      model.getState().snapshot,
+    );
+    selection = selectIndexedRowRange(
+      selection,
+      2,
+      3,
+      model.getState().snapshot,
+    );
+
+    expect(
+      getIndexedSelectionSummary(selection, model.getState().snapshot),
+    ).toEqual({ state: "all", selectedCount: 3, visibleCount: 3 });
+  });
+
+  test("preserves holes in earlier ranges when adding a disjoint span", () => {
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 6 }, (_, index) => ({
+        id: index + 1,
+        team: "a",
+        score: index,
+      })),
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const snapshot = model.getState().snapshot;
+    let selection = selectIndexedRowRange(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      1,
+      3,
+      snapshot,
+    );
+    selection = toggleIndexedRowSelection(selection, 2, snapshot);
+    selection = selectIndexedRowRange(selection, 5, 6, snapshot);
+
+    expect(
+      isIndexedRowSelected(selection, { kind: "data", rowId: 2 }, snapshot),
+    ).toBe(false);
+    expect(
+      isIndexedRowSelected(selection, { kind: "data", rowId: 5 }, snapshot),
+    ).toBe(true);
+    selection = selectIndexedRowRange(selection, 2, 2, snapshot);
+    expect(
+      isIndexedRowSelected(selection, { kind: "data", rowId: 2 }, snapshot),
+    ).toBe(true);
+  });
+
+  test("reselects an excluded endpoint even when another exclusion is adjacent", () => {
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 24 }, (_, id) => ({
+        id,
+        team: "a",
+        score: id,
+      })),
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const snapshot = model.getState().snapshot;
+    let selection = selectAllVisibleRows(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      snapshot,
+    );
+    selection = toggleIndexedRowSelection(selection, 3, snapshot);
+    selection = toggleIndexedRowSelection(selection, 1, snapshot);
+
+    selection = selectIndexedRowRange(selection, 3, 2, snapshot);
+
+    expect(
+      isIndexedRowSelected(selection, { kind: "data", rowId: 3 }, snapshot),
+    ).toBe(true);
+    expect(getIndexedSelectionSummary(selection, snapshot).selectedCount).toBe(
+      23,
+    );
+  });
+
+  test("preserves a surviving exclusion endpoint after its neighbor disappears", () => {
+    const model = createLocalRowModel({
+      rows: [1, 2, 3].map((id) => ({ id, team: "a", score: id })),
+      columns,
+      getRowId: (row) => row.id,
+    });
+    let selection = selectAllVisibleRows(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      model.getState().snapshot,
+    );
+    selection = toggleIndexedRowSelection(
+      selection,
+      1,
+      model.getState().snapshot,
+    );
+    selection = toggleIndexedRowSelection(
+      selection,
+      2,
+      model.getState().snapshot,
+    );
+
+    model.applyTransaction({ remove: [1] });
+    selection = reconcileIndexedSelection(selection, model.getState().snapshot);
+
+    expect(
+      isIndexedRowSelected(
+        selection,
+        { kind: "data", rowId: 2 },
+        model.getState().snapshot,
+      ),
+    ).toBe(false);
+    expect(
+      getIndexedSelectionSummary(selection, model.getState().snapshot),
+    ).toEqual({ state: "some", selectedCount: 1, visibleCount: 2 });
+  });
+
+  test("preserves an interior excluded identity when both neighbors disappear", () => {
+    const model = createLocalRowModel({
+      rows: [1, 2, 3, 4].map((id) => ({ id, team: "a", score: id })),
+      columns,
+      getRowId: (row) => row.id,
+    });
+    let selection = selectAllVisibleRows(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      model.getState().snapshot,
+    );
+    for (const rowId of [1, 2, 3])
+      selection = toggleIndexedRowSelection(
+        selection,
+        rowId,
+        model.getState().snapshot,
+      );
+
+    model.applyTransaction({ remove: [1, 3] });
+    selection = reconcileIndexedSelection(selection, model.getState().snapshot);
+
+    expect(
+      isIndexedRowSelected(
+        selection,
+        { kind: "data", rowId: 2 },
+        model.getState().snapshot,
+      ),
+    ).toBe(false);
+    expect(
+      getIndexedSelectionSummary(selection, model.getState().snapshot),
+    ).toEqual({ state: "some", selectedCount: 1, visibleCount: 2 });
+  });
+
+  test("reconciles exclusion identities through reorder and filtering", async () => {
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, team: "a", score: 1 },
+        { id: 2, team: "b", score: 2 },
+        { id: 3, team: "b", score: 3 },
+        { id: 4, team: "a", score: 4 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    let selection = selectAllVisibleRows(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      model.getState().snapshot,
+    );
+    selection = toggleIndexedRowSelection(
+      selection,
+      1,
+      model.getState().snapshot,
+    );
+    selection = toggleIndexedRowSelection(
+      selection,
+      3,
+      model.getState().snapshot,
+    );
+
+    await model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    }).finished;
+    selection = reconcileIndexedSelection(selection, model.getState().snapshot);
+    expect(
+      isIndexedRowSelected(
+        selection,
+        { kind: "data", rowId: 1 },
+        model.getState().snapshot,
+      ),
+    ).toBe(false);
+    expect(
+      isIndexedRowSelected(
+        selection,
+        { kind: "data", rowId: 3 },
+        model.getState().snapshot,
+      ),
+    ).toBe(false);
+
+    await model.setQuery({
+      filters: [{ columnId: "team", operator: "equals", value: "b" }],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    }).finished;
+    selection = reconcileIndexedSelection(selection, model.getState().snapshot);
+    expect(
+      isIndexedRowSelected(
+        selection,
+        { kind: "data", rowId: 3 },
+        model.getState().snapshot,
+      ),
+    ).toBe(false);
+    expect(
+      getIndexedSelectionSummary(selection, model.getState().snapshot),
+    ).toEqual({ state: "some", selectedCount: 1, visibleCount: 2 });
+  });
+
+  test("adds to 25k disjoint intervals with only the new endpoint lookups", () => {
+    const source = createModel().getState().snapshot;
+    let dataIndexReads = 0;
+    const snapshot = {
+      ...source,
+      visibleRowCount: 50_000,
+      visibleDataRowCount: 50_000,
+      indexOf(ref: Parameters<typeof source.indexOf>[0]) {
+        return ref.kind === "data" &&
+          typeof ref.rowId === "number" &&
+          ref.rowId >= 0 &&
+          ref.rowId < 50_000
+          ? ref.rowId
+          : -1;
+      },
+      dataIndexOf(ref: Parameters<typeof source.dataIndexOf>[0]) {
+        dataIndexReads += 1;
+        return ref.kind === "data" &&
+          typeof ref.rowId === "number" &&
+          ref.rowId >= 0 &&
+          ref.rowId < 50_000
+          ? ref.rowId
+          : -1;
+      },
+    };
+    let selection = createEmptyIndexedSelection<Row["id"], "team" | "score">();
+    for (let rowId = 0; rowId < 50_000; rowId += 2) {
+      selection = selectIndexedRowRange(selection, rowId, rowId, snapshot);
+    }
+    dataIndexReads = 0;
+
+    selection = selectIndexedRowRange(selection, 49_999, 49_999, snapshot);
+
+    expect(dataIndexReads).toBe(2);
+    expect(selection.rows.kind).toBe("explicit");
+    if (selection.rows.kind !== "explicit")
+      throw new Error("expected explicit");
+    expect(selection.rows.ranges?.size).toBe(25_000);
+  });
+
+  test("drops a covered subtree of 50k disjoint exclusions without scanning it", () => {
+    const source = createModel().getState().snapshot;
+    let dataIndexReads = 0;
+    const snapshot = {
+      ...source,
+      visibleRowCount: 100_000,
+      visibleDataRowCount: 100_000,
+      indexOf(ref: Parameters<typeof source.indexOf>[0]) {
+        return ref.kind === "data" &&
+          typeof ref.rowId === "number" &&
+          ref.rowId >= 0 &&
+          ref.rowId < 100_000
+          ? ref.rowId
+          : -1;
+      },
+      dataIndexOf(ref: Parameters<typeof source.dataIndexOf>[0]) {
+        dataIndexReads += 1;
+        return ref.kind === "data" &&
+          typeof ref.rowId === "number" &&
+          ref.rowId >= 0 &&
+          ref.rowId < 100_000
+          ? ref.rowId
+          : -1;
+      },
+    };
+    let selection = selectAllVisibleRows(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      snapshot,
+    );
+    for (let rowId = 0; rowId < 100_000; rowId += 2)
+      selection = toggleIndexedRowSelection(selection, rowId, snapshot);
+    dataIndexReads = 0;
+
+    const next = selectIndexedRowRange(selection, 0, 99_999, snapshot);
+
+    expect(dataIndexReads).toBe(2);
+    expect(getIndexedSelectionSummary(next, snapshot)).toEqual({
+      state: "all",
+      selectedCount: 100_000,
+      visibleCount: 100_000,
+    });
   });
 
   test("counts only currently visible data rows and reports header tri-state sublinearly", async () => {
@@ -256,6 +669,11 @@ describe("indexed row selection", () => {
         kind: fc.constant("toggle" as const),
         rowId: fc.integer({ min: 0, max: 31 }),
       }),
+      fc.record({
+        kind: fc.constant("range" as const),
+        start: fc.integer({ min: 0, max: 31 }),
+        end: fc.integer({ min: 0, max: 31 }),
+      }),
     );
 
     fc.assert(
@@ -269,7 +687,7 @@ describe("indexed row selection", () => {
           if (current.kind === "all") {
             selection = selectAllVisibleRows(selection, snapshot);
             oracle = new Set(Array.from({ length: 32 }, (_, id) => id));
-          } else {
+          } else if (current.kind === "toggle") {
             selection = toggleIndexedRowSelection(
               selection,
               current.rowId,
@@ -277,6 +695,16 @@ describe("indexed row selection", () => {
             );
             if (oracle.has(current.rowId)) oracle.delete(current.rowId);
             else oracle.add(current.rowId);
+          } else {
+            selection = selectIndexedRowRange(
+              selection,
+              current.start,
+              current.end,
+              snapshot,
+            );
+            const lo = Math.min(current.start, current.end);
+            const hi = Math.max(current.start, current.end);
+            for (let rowId = lo; rowId <= hi; rowId += 1) oracle.add(rowId);
           }
           for (let rowId = 0; rowId < 32; rowId += 1) {
             expect(

@@ -134,6 +134,30 @@ describe("UI-only grid core", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  test("publishes one atomic wake for symbolic row-range selection", () => {
+    const rowModel = createLocalRowModel({
+      rows: [
+        { id: 1, name: "one", quantity: 1 },
+        { id: 2, name: "two", quantity: 2 },
+        { id: 3, name: "three", quantity: 3 },
+      ],
+      columns: modelColumns,
+    });
+    const grid = createGridUiCore({ rowModel, columns: visualColumns });
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    grid.selectRowRange(1, 3);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const selectedRows = grid.getState().selection.rows;
+    expect(selectedRows.kind).toBe("explicit");
+    if (selectedRows.kind !== "explicit") throw new Error("expected explicit");
+    expect(Array.from(selectedRows.ranges ?? [])).toEqual([
+      { startRowId: 1, endRowId: 3 },
+    ]);
+  });
+
   test("updates visual pinning without leaking derivation column state", () => {
     const { grid } = make();
     const listener = vi.fn();

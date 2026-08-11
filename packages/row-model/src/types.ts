@@ -88,6 +88,8 @@ export interface PretableRowModelSnapshot<
   ): readonly PretableVisibleRow<TRow, TRowId, TColumns>[];
   /** Returns the visible rank of `ref`, or `-1` when it is absent. */
   indexOf(ref: PretableVisibleRowRef<TRowId>): number;
+  /** Returns the data-only rank of `ref`, or `-1` when it is absent. */
+  dataIndexOf(ref: PretableVisibleRowRef<TRowId>): number;
   /**
    * Returns the data row at a data-only rank. Group rows do not consume an
    * index; an out-of-bounds rank returns `undefined`.

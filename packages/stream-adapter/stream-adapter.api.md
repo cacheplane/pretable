@@ -64,10 +64,12 @@ export interface TransactionBatcher<TRow extends object, TRowId extends string |
     readonly add: (rows: readonly TRow[]) => void;
     // (undocumented)
     readonly dispose: () => void;
+    readonly error: Promise<never>;
     // (undocumented)
     readonly flush: () => void;
     // (undocumented)
     readonly remove: (ids: readonly TRowId[]) => void;
+    readonly subscribeError: (listener: (error: unknown) => void) => () => void;
     // (undocumented)
     readonly update: (patches: readonly {
         readonly id: TRowId;

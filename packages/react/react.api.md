@@ -1088,9 +1088,11 @@ export interface PretableGridUiSnapshot<TRowId extends PretableRowId, TColumns> 
         readonly rows: {
             readonly kind: "explicit";
             readonly rowIds: ReadonlySet<TRowId>;
+            readonly ranges?: PretableReactRowRangeIndex<TRowId>;
+            readonly excludedRanges?: PretableReactRowRangeIndex<TRowId>;
         } | {
             readonly kind: "all";
-            readonly excludedRowIds: ReadonlySet<TRowId>;
+            readonly excludedRanges?: PretableReactRowRangeIndex<TRowId>;
         };
         readonly ranges: readonly {
             readonly start: {
@@ -1406,6 +1408,13 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
     }) => void;
     readonly setSelection: (selection: PretableGridUiSnapshot<TRowId, TColumns>["selection"]) => void;
     readonly toggleRowSelection: (rowId: TRowId) => void;
+    readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
+    readonly isRowSelected: (rowId: TRowId) => boolean;
+    readonly getSelectionSummary: () => Readonly<{
+        readonly state: "none" | "some" | "all";
+        readonly selectedCount: number;
+        readonly visibleCount: number;
+    }>;
     readonly selectAllVisibleRows: () => void;
     readonly clearSelection: () => void;
     readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
@@ -1424,6 +1433,20 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
     readonly dispose: () => void;
     readonly setQuery: (query: PretableQueryFor<TColumns>) => PretableQueryTransition<TColumns> | void;
 };
+
+// @public
+export interface PretableReactRowRange<TRowId extends PretableRowId> {
+    // (undocumented)
+    readonly endRowId: TRowId;
+    // (undocumented)
+    readonly startRowId: TRowId;
+}
+
+// @public
+export interface PretableReactRowRangeIndex<TRowId extends PretableRowId> extends Iterable<PretableReactRowRange<TRowId>> {
+    // (undocumented)
+    readonly size: number;
+}
 
 // @public
 export type PretableRow = Record<string, unknown>;
@@ -1545,6 +1568,7 @@ export type PretableRowModelOperation = "set-rows" | "apply-transaction" | "set-
 
 // @public (undocumented)
 export interface PretableRowModelSnapshot<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    dataIndexOf(ref: PretableVisibleRowRef<TRowId>): number;
     dataRowAt(index: number): PretableDataRow<TRow, TRowId> | undefined;
     // (undocumented)
     readonly expansion: Readonly<PretableExpansionState>;
@@ -2173,7 +2197,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:1065:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:1083:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

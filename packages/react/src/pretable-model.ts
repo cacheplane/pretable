@@ -26,6 +26,19 @@ import {
   useSyncExternalStore,
 } from "react";
 
+/** Inclusive symbolic data-row span exposed by the indexed React grid. @public */
+export interface PretableReactRowRange<TRowId extends PretableRowId> {
+  readonly startRowId: TRowId;
+  readonly endRowId: TRowId;
+}
+
+/** Immutable normalized row-range index exposed by the indexed React grid. @public */
+export interface PretableReactRowRangeIndex<
+  TRowId extends PretableRowId,
+> extends Iterable<PretableReactRowRange<TRowId>> {
+  readonly size: number;
+}
+
 /** Framework-independent indexed grid actions exposed by `usePretable`. @public */
 export type PretableReactGrid<
   TRow extends object,
@@ -63,6 +76,13 @@ export type PretableReactGrid<
     selection: PretableGridUiSnapshot<TRowId, TColumns>["selection"],
   ) => void;
   readonly toggleRowSelection: (rowId: TRowId) => void;
+  readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
+  readonly isRowSelected: (rowId: TRowId) => boolean;
+  readonly getSelectionSummary: () => Readonly<{
+    readonly state: "none" | "some" | "all";
+    readonly selectedCount: number;
+    readonly visibleCount: number;
+  }>;
   readonly selectAllVisibleRows: () => void;
   readonly clearSelection: () => void;
   readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
@@ -114,10 +134,15 @@ export interface PretableGridUiSnapshot<
   }>;
   readonly selection: Readonly<{
     readonly rows:
-      | { readonly kind: "explicit"; readonly rowIds: ReadonlySet<TRowId> }
+      | {
+          readonly kind: "explicit";
+          readonly rowIds: ReadonlySet<TRowId>;
+          readonly ranges?: PretableReactRowRangeIndex<TRowId>;
+          readonly excludedRanges?: PretableReactRowRangeIndex<TRowId>;
+        }
       | {
           readonly kind: "all";
-          readonly excludedRowIds: ReadonlySet<TRowId>;
+          readonly excludedRanges?: PretableReactRowRangeIndex<TRowId>;
         };
     readonly ranges: readonly {
       readonly start: {

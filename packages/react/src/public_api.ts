@@ -69,6 +69,8 @@ export type {
   PretableGridUiSnapshot,
   PretableIndexedRenderSnapshot,
   PretableReactGrid,
+  PretableReactRowRange,
+  PretableReactRowRangeIndex,
 } from "./pretable-model";
 
 // React-extended column type + render-input shapes

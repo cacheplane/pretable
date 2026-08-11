@@ -11,6 +11,7 @@ export {
   isIndexedRowSelected,
   reconcileIndexedSelection,
   selectAllVisibleRows,
+  selectIndexedRowRange,
   toggleIndexedRowSelection,
 } from "./indexed-selection";
 export {
@@ -85,6 +86,8 @@ export type {
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
   PretableIndexedFocusState,
+  PretableIndexedRowRange,
+  PretableIndexedRowRangeIndex,
   PretableIndexedRowSelection,
   PretableIndexedSelectionState,
   PretableIndexedSelectionSummary,
