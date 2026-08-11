@@ -17,10 +17,18 @@ export { LabeledGridSurface } from "./labeled-grid-surface";
 // the presentation rules in @pretable/ui's grid.css, and a consumer who
 // hand-rolled the same data attributes would be writing against a contract that
 // only these components are tested to keep.
-export { PretableDelta, PretableStatus } from "./cells";
+export {
+  PretableBadge,
+  PretableDelta,
+  PretableEntity,
+  PretableStatus,
+} from "./cells";
 export type {
+  PretableBadgeProps,
+  PretableBadgeTone,
   PretableDeltaDirection,
   PretableDeltaProps,
+  PretableEntityProps,
   PretableStatusProps,
   PretableStatusTone,
 } from "./cells";
