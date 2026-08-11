@@ -46,6 +46,7 @@ const stableAggregateFormatter = ({ value }: { value: unknown }) =>
 
 interface GridProps {
   columns?: PretableColumn<GroupedRow>[];
+  locale?: Intl.LocalesArgument;
   rows?: GroupedRow[];
   state: PretableSurfaceState;
   onFocusChange?: (next: PretableFocusState) => void;
@@ -55,6 +56,7 @@ interface GridProps {
 
 function Grid({
   columns,
+  locale,
   rows,
   state,
   onFocusChange,
@@ -66,6 +68,7 @@ function Grid({
       ariaLabel="grouped-grid"
       columns={columns ?? groupedColumns}
       getRowId={(row: GroupedRow) => row.id}
+      locale={locale}
       onFocusChange={onFocusChange}
       onSelectedRowIdChange={onSelectedRowIdChange}
       onSelectionChange={onSelectionChange}
@@ -344,6 +347,59 @@ describe("group row rendering", () => {
     expect(qtyCell).toHaveTextContent("Σ 3");
   });
 
+  it("inherits numberFormat for an aggregate without formatAggregate", () => {
+    const view = renderGrouped({
+      columns: [
+        groupedColumns[0]!,
+        groupedColumns[1]!,
+        {
+          id: "qty",
+          header: "Qty",
+          widthPx: 100,
+          aggregate: "sum",
+          numberFormat: {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          },
+        },
+      ],
+      locale: "en-US",
+      state: { rowGroups: ["sector"] },
+    });
+
+    const tech = groupRows(view)[1]!;
+    expect(
+      tech.querySelector('[data-pretable-column-id="qty"]'),
+    ).toHaveTextContent("3.00");
+  });
+
+  it("keeps formatAggregate above inherited numberFormat", () => {
+    const view = renderGrouped({
+      columns: [
+        groupedColumns[0]!,
+        groupedColumns[1]!,
+        {
+          id: "qty",
+          header: "Qty",
+          widthPx: 100,
+          aggregate: "sum",
+          numberFormat: {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          },
+          formatAggregate: ({ value }) => `aggregate:${String(value)}`,
+        },
+      ],
+      locale: "en-US",
+      state: { rowGroups: ["sector"] },
+    });
+
+    const tech = groupRows(view)[1]!;
+    expect(
+      tech.querySelector('[data-pretable-column-id="qty"]'),
+    ).toHaveTextContent("aggregate:3");
+  });
+
   /**
    * Nothing here is hand-built. The old version of this test constructed its
    * own `PretableGroupRow` — with an id that was not even `makeGroupId`'s
@@ -525,6 +581,7 @@ describe("a group with no children left", () => {
         group={childless}
         height={32}
         isFocused={false}
+        numberFormatters={new Map()}
         onCellClick={() => {}}
         onToggle={() => {}}
         registerCell={() => {}}
