@@ -42,4 +42,4 @@ The interaction plan continues to write sort and filter state through the latest
 5. Assert the live adapter, benchmark registry, and website benchmark description contain no v8 label and do identify TanStack Table v9; exclude historical research and implementation-plan files from this source check.
 6. Add the provenance-only superseded marker to the structural milestone, prove no other JSON field changed, and verify the focused comparator-provenance suite passes 3/3.
 7. Run repository test, typecheck, lint, build, formatting, and diff gates.
-8. Push to PR #277, enable squash auto-merge, and monitor PR and post-merge workflows to terminal success.
+8. Push the verified head and update PR #277, wait for every expected check on that head to reach terminal success (allowing only the documented Dependabot preview skips), then squash-merge that exact head with the head-match guard and monitor post-merge workflows.
