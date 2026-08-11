@@ -6,6 +6,7 @@ import {
   benchAdapterFamilies as sharedBenchAdapterFamilies,
   getBenchAdapterFamily as getSharedBenchAdapterFamily,
 } from "../../../shared/bench-adapter-families.js";
+import type { BenchAdapterVersionsRecord } from "../../../shared/bench-adapter-packages.js";
 
 export type BenchAdapterId = "pretable" | "ag-grid" | "tanstack" | "mui";
 
@@ -138,6 +139,18 @@ export interface BenchRunSummaryBase {
   fontStack: string;
   deviceScaleFactor: number;
   notes: string[];
+  /**
+   * Resolved versions of the packages this run measured through — the
+   * comparator's own version is what a comparative number is a claim about.
+   *
+   * Optional in the type and absent in the browser, because the measurement
+   * runs in the page and a page cannot read a package manifest. The Playwright
+   * spec that writes the `.summary.json`
+   * (`apps/bench/tests/bench.spec.ts`) stamps it from disk before writing, so
+   * every artifact on disk carries it even though nothing in the browser can
+   * produce one.
+   */
+  adapterVersions?: BenchAdapterVersionsRecord;
 }
 
 export interface CompletedBenchRunSummary extends BenchRunSummaryBase {

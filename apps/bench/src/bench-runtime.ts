@@ -158,7 +158,7 @@ interface BenchInteractionState {
   selectedRowId: string | null;
 }
 
-interface ScrollRuntimeProfile {
+export interface ScrollRuntimeProfile {
   viewportSelector: string;
   rowSelector: string;
   cellSelector: string;
@@ -174,7 +174,18 @@ interface ScrollRuntimeProfile {
   measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
 }
 
-const scrollRuntimeProfiles: Record<
+/**
+ * How the harness finds each adapter's scrolling DOM.
+ *
+ * Exported so `__tests__/comparator-dom-contract.test.tsx` can hold every entry
+ * against the adapter it describes by MOUNTING it. Two of these selector sets
+ * belong to third-party libraries, and a selector a library has deleted does
+ * not fail loudly here — `measureBenchScroll` returns `status: "partial"`
+ * having scrolled nothing, which reads as an implausibly cheap comparator
+ * rather than a broken harness. That is exactly what AG Grid 36 did to
+ * `.ag-body-viewport` (#306).
+ */
+export const scrollRuntimeProfiles: Record<
   BenchQueryState["adapterId"],
   ScrollRuntimeProfile
 > = {

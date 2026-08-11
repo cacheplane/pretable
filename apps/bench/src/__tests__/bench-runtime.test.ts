@@ -854,6 +854,14 @@ describe("bench runtime", () => {
     expect(result.metrics.blank_gap_frames).toBe(0);
   });
 
+  // This fixture is hand-built, and that is fine for what it measures — the
+  // scroll ALGORITHM, which needs a DOM whose scrollTop, rects and rAF timing
+  // are all controllable. It is not, and must not be read as, a check that AG
+  // Grid still emits these class names: a fixture this file constructs will
+  // keep passing for a selector the library has deleted, which is exactly what
+  // happened when AG Grid 36 dropped `.ag-body-viewport` (#306). The selectors
+  // are held against the real installed adapter in
+  // `comparator-dom-contract.test.tsx`.
   test("measures AG Grid scroll runs from the live viewport and row selectors", async () => {
     document.body.innerHTML = `
         <div data-testid="root">
