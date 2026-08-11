@@ -1687,15 +1687,27 @@ Both specs inject faults with `page.route()` on `**/api/memory/list*`. That is t
       await openBrowse(page)
       await page.getByLabel("Search memories").fill("acme")
 
-      const funnel = page.getByRole("button", { name: "Filter status", exact: true })
-      await expect(funnel).toHaveAttribute("aria-disabled", "true")
-      // Still focusable: `disabled` would remove it from the tab order and hide the
-      // reason from exactly the users who need it.
-      await funnel.focus()
-      await expect(funnel).toBeFocused()
-      const describedBy = await funnel.getAttribute("aria-describedby")
-      expect(describedBy).toBeTruthy()
-      await expect(page.locator(`#${describedBy}`)).toContainText(/not applied to search/i)
+      // NOTE (corrected after slice 4 shipped): slice 4 chose to keep the browse
+      // grid MOUNTED but `hidden` across view switches, rather than disabling its
+      // funnels in place. So during search the funnel is not merely aria-disabled
+      // — it is inside a hidden region and not reachable at all. Assert the
+      // structure that actually ships:
+      //   1. the browse region is hidden while a search is active,
+      //   2. no funnel is reachable from it (hidden content is out of the tab
+      //      order and out of the accessibility tree),
+      //   3. the scope note still tells the user why.
+      // If a future slice reverts to in-place disabling, restore the
+      // aria-disabled + focusable + aria-describedby assertions below, which are
+      // the right shape for THAT structure:
+      //   await expect(funnel).toHaveAttribute("aria-disabled", "true")
+      //   await funnel.focus(); await expect(funnel).toBeFocused()
+      await expect(page.getByTestId(TEST_IDS.browseRegion)).toBeHidden()
+      await expect(
+        page.getByRole("button", { name: "Filter status", exact: true }),
+      ).toHaveCount(0)
+      // And no popover survived the hide: pretable portals them to document.body,
+      // so an open funnel would otherwise float over the search results.
+      await expect(page.getByRole("dialog")).toHaveCount(0)
       await expect(page.getByTestId(TEST_IDS.searchScopeNote)).toBeVisible()
     })
 
