@@ -509,6 +509,27 @@
     color: var(--pretable-info);
   }
 
+  /* A toned badge also carries a dot, so tone survives peripheral vision.
+     Dropping the tinted fill fixed the contrast but cost something real: with
+     every chip on the same neutral hairline and white ground, the only tone
+     channel left was ~12px of label ink, so scanning a column for "which rows
+     are flagged" became reading rather than spotting. The dot restores that as
+     shape AND colour without touching the label's contrast at all — it is a
+     graphical object, which owes 3:1, and the ramp clears 4.83 everywhere.
+     `currentColor` so it tracks the tone with no extra rule per tone, and the
+     base rule's `gap` already reserved the space.
+     Note the pseudo-element sits OUTSIDE :where() — `:where(x::before)` is
+     invalid and the engine silently keeps it as an empty :where() that matches
+     nothing, so it would look present in cssRules and never paint. */
+  :where([data-pretable-badge][data-pretable-tone])::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
   /* Entity: a primary line with a quieter secondary beneath it — the identity
      column pattern. The secondary takes --pretable-text-dim rather than an
      opacity, because every hand-rolled version of this reached for opacity and
