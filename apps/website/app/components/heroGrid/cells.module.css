@@ -20,31 +20,40 @@
 .down {
   color: var(--pt-sev-err);
 }
+/* Tick flash.
+   Sized against the actual data rate, which is the whole trick here. The book
+   ticks ~60x/s across 14 rows, so with the original 1s fade every cell in the
+   Last column was mid-flash at every instant — measured, 14 of 14. A signal
+   that never stops is not a signal, it is a background fill, and a 24% block
+   behind a number cancels out the tabular figures it sits on.
+   Now: short enough to land between updates so the flash reads as an event,
+   and light enough that overlapping ones stay quiet. Underlined rather than
+   filled — the tint sits beneath the digits instead of behind them, so the
+   number stays the most legible thing in its own cell. */
 .flash {
   display: inline-block;
-  padding: 0 2px;
-  border-radius: 3px;
+  padding: 0 1px 1px;
 }
 .flashUp {
-  animation: flashUp 1s ease-out;
+  animation: flashUp 520ms ease-out;
 }
 .flashDown {
-  animation: flashDown 1s ease-out;
+  animation: flashDown 520ms ease-out;
 }
 @keyframes flashUp {
   from {
-    background: color-mix(in srgb, var(--pt-sev-ok) 24%, transparent);
+    box-shadow: inset 0 -2px 0 0 var(--pt-sev-ok);
   }
   to {
-    background: transparent;
+    box-shadow: inset 0 -2px 0 0 transparent;
   }
 }
 @keyframes flashDown {
   from {
-    background: color-mix(in srgb, var(--pt-sev-err) 24%, transparent);
+    box-shadow: inset 0 -2px 0 0 var(--pt-sev-err);
   }
   to {
-    background: transparent;
+    box-shadow: inset 0 -2px 0 0 transparent;
   }
 }
 .analyst {
