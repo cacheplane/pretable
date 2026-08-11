@@ -1,5 +1,11 @@
 # @pretable/core
 
+## 0.4.0
+
+### Minor Changes
+
+- Add opt-in native number formatting with locale-aware money and accounting presets, aggregate inheritance, and matching clipboard output. ([#317](https://github.com/cacheplane/pretable/pull/317))
+
 ## 0.3.2
 
 ## 0.3.1
