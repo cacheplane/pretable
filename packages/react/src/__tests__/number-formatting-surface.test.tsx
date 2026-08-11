@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PretableGrid } from "@pretable/core";
 
+import type { CopyPayload, SerializeRangesArgs } from "../copy";
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
 import type { PretableSurfaceState } from "../use-pretable";
@@ -57,12 +58,14 @@ function NumberGrid({
   gridRows = rows,
   state,
   onGridReady,
+  onCopy,
 }: {
   columns: PretableColumn<NumberRow>[];
   locale?: Intl.LocalesArgument;
   gridRows?: NumberRow[];
   state?: PretableSurfaceState;
   onGridReady?: (grid: PretableGrid<NumberRow>) => void;
+  onCopy?: (args: SerializeRangesArgs<NumberRow>) => CopyPayload | null;
 }) {
   return (
     <PretableSurface
@@ -70,6 +73,7 @@ function NumberGrid({
       columns={columns}
       getRowId={getRowId}
       locale={locale}
+      onCopy={onCopy}
       onGridReady={onGridReady}
       overscan={0}
       rows={gridRows}
@@ -90,6 +94,40 @@ describe("PretableSurface native number formatting", () => {
     expect(getCell(view.container, "row-1", "amount")).toHaveTextContent(
       "1,234.5",
     );
+  });
+
+  it("passes locale through unchanged to the onCopy override", () => {
+    const onCopy = vi.fn((args: SerializeRangesArgs<NumberRow>) => {
+      expect(args.locale).toBe("en-US");
+      return null;
+    });
+    const columns: PretableColumn<NumberRow>[] = [
+      { id: "amount", widthPx: 120, numberFormat: oneDecimal },
+    ];
+    const view = render(
+      <NumberGrid
+        columns={columns}
+        locale="en-US"
+        onCopy={onCopy}
+        state={{
+          selection: {
+            ranges: [
+              {
+                startRowId: "row-1",
+                endRowId: "row-1",
+                startColumnId: "amount",
+                endColumnId: "amount",
+              },
+            ],
+            anchor: { rowId: "row-1", columnId: "amount" },
+          },
+        }}
+      />,
+    );
+
+    fireEvent.keyDown(view.getByRole("grid"), { key: "c", metaKey: true });
+
+    expect(onCopy).toHaveBeenCalledTimes(1);
   });
 
   it("does not format a column configured with type number alone", () => {

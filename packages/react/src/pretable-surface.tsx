@@ -198,7 +198,7 @@ import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
-  serializeRanges,
+  serializeRangesWithNumberFormatters,
 } from "./copy";
 import {
   mapPasteToTargets,
@@ -3079,12 +3079,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             // changes which columns fall inside the range.
             columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
+            locale,
             // Re-derived from `snap`, the same observation the rows and ranges
             // above come from — the committed render's scope can describe an
             // older one.
             scope: resolveDataScope(snap, processing),
           };
-          const payload = onCopy ? onCopy(args) : serializeRanges(args);
+          const payload = onCopy
+            ? onCopy(args)
+            : serializeRangesWithNumberFormatters(args, numberFormatters);
           if (payload) {
             const extent = computeCopyExtent(
               snap.selection.ranges,

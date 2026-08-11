@@ -8,8 +8,14 @@ import {
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import { groupLabel } from "./group-model";
-import { formatAggregateValue } from "./rendering";
+import { formatCellValue } from "./rendering";
 import type { PretableColumn } from "./types";
+import {
+  compileNumberFormatters,
+  formatAggregateValue,
+  formatDataCellValue,
+  type NumberFormatterRegistry,
+} from "./value-formatting";
 
 // The Blob written by defaultCopyToClipboard carries `type: "text/html"` with
 // no charset parameter, so state it in the payload itself.
@@ -58,6 +64,11 @@ export interface SerializeRangesArgs<TRow extends PretableRow> {
   visibleRows: readonly PretableVisibleRow<TRow>[];
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
+  /**
+   * Locale used by native `Intl.NumberFormat` clipboard formatting. When
+   * omitted, the runtime's default locale is used.
+   */
+  locale?: Intl.LocalesArgument;
   /**
    * Aggregate scope for copied group rows. Defaults to `"all"` so a manual
    * caller that does not know about partial windows cannot accidentally
@@ -236,6 +247,21 @@ function resolveRangeBounds(
 export function serializeRanges<TRow extends PretableRow>(
   args: SerializeRangesArgs<TRow>,
 ): CopyPayload | null {
+  return serializeRangesWithNumberFormatters(
+    args,
+    compileNumberFormatters(args.columns, args.locale),
+  );
+}
+
+/**
+ * Serialize ranges with an already-compiled number formatter registry.
+ *
+ * @internal
+ */
+export function serializeRangesWithNumberFormatters<TRow extends PretableRow>(
+  args: SerializeRangesArgs<TRow>,
+  numberFormatters: NumberFormatterRegistry,
+): CopyPayload | null {
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
   if (dataColumns.length === 0) return null;
 
@@ -290,7 +316,13 @@ export function serializeRanges<TRow extends PretableRow>(
           } else if (
             Object.prototype.hasOwnProperty.call(row.aggregates, col.id)
           ) {
-            text = formatAggregateValue(col, row, args.scope ?? "all");
+            text = formatAggregateValue({
+              column: col,
+              group: row,
+              scope: args.scope ?? "all",
+              numberFormatters,
+              fallback: formatCellValue,
+            });
           } else {
             text = "";
           }
@@ -298,9 +330,13 @@ export function serializeRanges<TRow extends PretableRow>(
           const raw = col.value
             ? col.value(row.row)
             : (row.row as Record<string, unknown>)[col.id];
-          text = col.format
-            ? col.format({ value: raw, row: row.row, column: col })
-            : defaultCoerceForCopy(raw);
+          text = formatDataCellValue({
+            value: raw,
+            row: row.row,
+            column: col,
+            numberFormatters,
+            fallback: defaultCoerceForCopy,
+          });
         }
         cells.push(escapeTsvField(text));
         rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
