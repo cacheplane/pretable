@@ -406,12 +406,17 @@
   }
 
   /* The marker rides the TEXT size, not --pretable-icon-size: it sits inline
-     beside digits rather than inside a control, and a fixed 16px next to 14px
-     text reads as a bullet. Declared after the shared icon rule so it wins on
-     source order — everything here is :where()-flattened to (0,0,0). */
+     beside digits rather than inside a control, and a control-sized glyph next
+     to a cell's text reads as a bullet. `1em`, measured against a screenshot —
+     the first pass at 0.85em put a 1.1px stroke beside a 14px figure's ~1.4px
+     stems and the caret read as an accent mark rather than an arrow. The BOX is
+     1em; the caret inside it occupies 4.5 of 16 units, so what a reader sees is
+     a mark about a third of the text height, not a 14px blob.
+     Declared after the shared icon rule so it wins on source order —
+     everything here is :where()-flattened to (0,0,0). */
   :where([data-pretable-delta] [data-pretable-icon]) {
-    width: 0.85em;
-    height: 0.85em;
+    width: 1em;
+    height: 1em;
   }
 
   /* The colour rides the direction. These sit on the presentation element, not
