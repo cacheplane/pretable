@@ -101,6 +101,25 @@ describe("HeroGrid", () => {
     renderHeroGrid();
     expect(screen.getByText(/⌘V paste into\s+Qty/i)).toBeInTheDocument();
   });
+
+  it("offers grouping, and arrives ungrouped", () => {
+    renderHeroGrid();
+    // The panel is up and empty on first paint: the streaming book is the
+    // hero's job, and grouping is something the visitor performs.
+    expect(
+      document.querySelector("[data-pretable-group-panel]"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/drag a column here to group by it/i),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector("[data-pretable-group-row]"),
+    ).not.toBeInTheDocument();
+    // ...and the legend says so, in the same voice as the other affordances.
+    expect(
+      screen.getByText(/drag a header up to\s+group/i),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("HeroGrid paste", () => {
@@ -120,8 +139,15 @@ describe("HeroGrid paste", () => {
     renderHeroGrid();
     // The book is ranked by weight, not roster order, so read the neighbour the
     // block's second row will land on from the DOM rather than assuming it.
+    //
+    // The anchor sits mid-book on purpose. A paste changes both names' market
+    // values, which RE-RANKS the book, and the grid renders a window — an
+    // anchor near the bottom of that window can push its own neighbour out of
+    // it, and the assertion below then fails on a missing node rather than on a
+    // wrong quantity. These two are adjacent, comfortably inside the window,
+    // and stay adjacent under the re-rank these values cause.
     const order = visibleRowIds();
-    const anchorId = "XOM";
+    const anchorId = "AMZN";
     const nextId = order[order.indexOf(anchorId) + 1]!;
     const anchor = qtyCell(anchorId);
     expect(anchor).toBeTruthy();
@@ -129,7 +155,7 @@ describe("HeroGrid paste", () => {
 
     // 2×1 block: the anchor row and the one below it. Both quantities are
     // within the 10× sanity rule and keep the name under the 7% guardrail.
-    firePaste(anchor, "23000\n5300");
+    firePaste(anchor, "19000\n11500");
 
     await waitFor(
       () => {
@@ -139,8 +165,14 @@ describe("HeroGrid paste", () => {
       },
       { timeout: 3000 },
     );
-    expect(qtyCell(anchorId)).toHaveTextContent("23,000");
-    expect(qtyCell(nextId)).toHaveTextContent("5,300");
+    expect(qtyCell(anchorId)).toHaveTextContent("19,000");
+    // Stated as a premise so a future window change fails as "the neighbour
+    // scrolled out", not as an unexplained null.
+    expect(
+      qtyCell(nextId),
+      `${nextId} left the rendered window after the paste`,
+    ).toBeTruthy();
+    expect(qtyCell(nextId)).toHaveTextContent("11,500");
   });
 
   it("reports cells the grid refused (Last is not editable)", async () => {
