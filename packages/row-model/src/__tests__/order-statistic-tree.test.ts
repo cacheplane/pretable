@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   PoisonedTransientOrderStatisticTreeError,
+  createDeferredMeasureTransientOrderStatisticTree,
   createOrderStatisticTree,
   getOrderStatisticTreeDiagnosticsForTesting,
   type OrderStatisticTree,
@@ -94,6 +95,89 @@ function assertDraftReadsPoisoned(
 }
 
 describe("OrderStatisticTree", () => {
+  test("seals deferred measures one node at a time and preserves persistent semantics", () => {
+    let combines = 0;
+    const empty = createOrderStatisticTree<number, Item, number>({
+      getId: (entry) => entry.id as number,
+      compare: (left, right) => left.score - right.score,
+      measure: {
+        empty: 0,
+        fromEntry: (entry) => entry.weight,
+        combine: (left, right) => {
+          combines += 1;
+          return left + right;
+        },
+      },
+    });
+    const entries = Array.from({ length: 257 }, (_, id) =>
+      item(id, adversarialOrder(id), id + 1),
+    );
+    let ordinary = empty;
+    const deferred = createDeferredMeasureTransientOrderStatisticTree(empty);
+    for (const entry of entries) {
+      ordinary = ordinary.insertOrReplace(entry);
+      deferred.insertOrReplace(entry);
+    }
+    const ordinaryCombines = combines;
+
+    expect(deferred.pendingMeasureCount).toBe(entries.length);
+    expect(() => deferred.measure).toThrow(/must seal/);
+    expect(() => deferred.freeze()).toThrow(/must seal/);
+    expect(() =>
+      createDeferredMeasureTransientOrderStatisticTree(
+        empty.insertOrReplace(entries[0]!),
+      ),
+    ).toThrow(/empty tree/);
+
+    const beforeFirst = deferred.pendingMeasureCount;
+    expect(deferred.sealMeasureStep()).toBe(false);
+    expect(deferred.pendingMeasureCount).toBe(beforeFirst - 1);
+    expect(() => deferred.insertOrReplace(item(999, 999))).toThrow(
+      /sealing started/,
+    );
+    while (deferred.pendingMeasureCount > 0) {
+      const before = deferred.pendingMeasureCount;
+      const done = deferred.sealMeasureStep();
+      expect(deferred.pendingMeasureCount).toBe(before - 1);
+      expect(done).toBe(deferred.pendingMeasureCount === 0);
+    }
+    expect(deferred.pendingMeasureCount).toBe(0);
+    expect(combines - ordinaryCombines).toBeLessThanOrEqual(entries.length * 2);
+
+    const frozen = deferred.freeze();
+    expect([...frozen.entries()]).toEqual([...ordinary.entries()]);
+    expect(frozen.measure).toBe(ordinary.measure);
+    expect(frozen.rankOf(128)).toBe(ordinary.rankOf(128));
+    expect(frozen.range(70, 90)).toEqual(ordinary.range(70, 90));
+    const updated = frozen.remove(128).insertOrReplace(item(999, -1, 5));
+    expect(frozen.get(128)).toBe(entries[128]);
+    expect(frozen.get(999)).toBeUndefined();
+    expect(updated.get(128)).toBeUndefined();
+    expect(updated.get(999)?.weight).toBe(5);
+  });
+
+  test("poisons a deferred draft when measure sealing fails", () => {
+    const failure = new Error("deferred combine exploded");
+    const empty = createOrderStatisticTree<number, Item, number>({
+      getId: (entry) => entry.id as number,
+      compare: (left, right) => left.score - right.score,
+      measure: {
+        empty: 0,
+        fromEntry: (entry) => entry.weight,
+        combine: () => {
+          throw failure;
+        },
+      },
+    });
+    const deferred = createDeferredMeasureTransientOrderStatisticTree(empty);
+    deferred.insertOrReplace(item(1, 1, 1));
+
+    expect(() => deferred.sealMeasureStep()).toThrow(failure);
+    expectPoisoned(() => deferred.size);
+    expectPoisoned(() => deferred.sealMeasureStep());
+    expectPoisoned(() => deferred.freeze());
+  });
+
   test("orders by the comparator and totalizes special mixed IDs", () => {
     const tree = createTree()
       .insertOrReplace(item("a", 1))

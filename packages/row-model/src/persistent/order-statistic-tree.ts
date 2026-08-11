@@ -4,6 +4,7 @@ import type { TransientMap } from "./transient";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
 
 const attachInstrumentation = Symbol("attachOrderInstrumentation");
+const createDeferredMeasureDraft = Symbol("createDeferredMeasureDraft");
 
 export type OrderStatisticTreeId = string | number;
 
@@ -69,6 +70,16 @@ export interface TransientOrderStatisticTree<
   insertOrReplace(entry: TEntry): this;
   remove(id: TId): this;
   freeze(): OrderStatisticTree<TId, TEntry, TMeasure>;
+}
+
+export interface DeferredMeasureTransientOrderStatisticTree<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+> extends TransientOrderStatisticTree<TId, TEntry, TMeasure> {
+  readonly pendingMeasureCount: number;
+  /** Recomputes at most one traversal or measure unit. */
+  sealMeasureStep(): boolean;
 }
 
 interface TreeContext<TId extends OrderStatisticTreeId, TEntry, TMeasure> {
@@ -225,12 +236,37 @@ function refreshNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
 ): void {
   node.count = (node.left?.count ?? 0) + 1 + (node.right?.count ?? 0);
   node.height = 1 + Math.max(nodeHeight(node.left), nodeHeight(node.right));
+  refreshNodeMeasure(node, context);
+}
+
+function refreshNodeMeasure<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
+  node: TreeNode<TId, TEntry, TMeasure>,
+  context: TreeContext<TId, TEntry, TMeasure>,
+): void {
   const left = node.left?.measure ?? context.measure.empty;
   const right = node.right?.measure ?? context.measure.empty;
   node.measure = context.measure.combine(
     context.measure.combine(left, node.ownMeasure),
     right,
   );
+}
+
+function refreshNodeStructure<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+>(node: TreeNode<TId, TEntry, TMeasure>): void {
+  node.count = (node.left?.count ?? 0) + 1 + (node.right?.count ?? 0);
+  node.height = 1 + Math.max(nodeHeight(node.left), nodeHeight(node.right));
+}
+
+function refreshForMode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
+  node: TreeNode<TId, TEntry, TMeasure>,
+  context: TreeContext<TId, TEntry, TMeasure>,
+  deferMeasure: boolean,
+): void {
+  if (deferMeasure) refreshNodeStructure(node);
+  else refreshNode(node, context);
 }
 
 function balanceFactor<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
@@ -243,13 +279,14 @@ function rotateRight<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   root: TreeNode<TId, TEntry, TMeasure>,
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
+  deferMeasure = false,
 ): TreeNode<TId, TEntry, TMeasure> {
   const lower = editableNode(root, edit, context.instrumentation);
   const pivot = editableNode(lower.left!, edit, context.instrumentation);
   lower.left = pivot.right;
-  refreshNode(lower, context);
+  refreshForMode(lower, context, deferMeasure);
   pivot.right = lower;
-  refreshNode(pivot, context);
+  refreshForMode(pivot, context, deferMeasure);
   return pivot;
 }
 
@@ -257,13 +294,14 @@ function rotateLeft<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   root: TreeNode<TId, TEntry, TMeasure>,
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
+  deferMeasure = false,
 ): TreeNode<TId, TEntry, TMeasure> {
   const lower = editableNode(root, edit, context.instrumentation);
   const pivot = editableNode(lower.right!, edit, context.instrumentation);
   lower.right = pivot.left;
-  refreshNode(lower, context);
+  refreshForMode(lower, context, deferMeasure);
   pivot.left = lower;
-  refreshNode(pivot, context);
+  refreshForMode(pivot, context, deferMeasure);
   return pivot;
 }
 
@@ -271,20 +309,21 @@ function rebalance<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   root: TreeNode<TId, TEntry, TMeasure>,
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
+  deferMeasure = false,
 ): TreeNode<TId, TEntry, TMeasure> {
-  refreshNode(root, context);
+  refreshForMode(root, context, deferMeasure);
   const balance = balanceFactor(root);
   if (balance > 1) {
     if (balanceFactor(root.left!) < 0) {
-      root.left = rotateLeft(root.left!, context, edit);
+      root.left = rotateLeft(root.left!, context, edit, deferMeasure);
     }
-    return rotateRight(root, context, edit);
+    return rotateRight(root, context, edit, deferMeasure);
   }
   if (balance < -1) {
     if (balanceFactor(root.right!) > 0) {
-      root.right = rotateRight(root.right!, context, edit);
+      root.right = rotateRight(root.right!, context, edit, deferMeasure);
     }
-    return rotateLeft(root, context, edit);
+    return rotateLeft(root, context, edit, deferMeasure);
   }
   return root;
 }
@@ -294,6 +333,7 @@ function insertNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   inserted: TreeNode<TId, TEntry, TMeasure>,
   context: TreeContext<TId, TEntry, TMeasure>,
   edit: TreeEditToken | null,
+  deferMeasure = false,
 ): TreeNode<TId, TEntry, TMeasure> {
   if (root === null) return inserted;
   const comparison = compareEntries(
@@ -307,11 +347,23 @@ function insertNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
 
   const updated = editableNode(root, edit, context.instrumentation);
   if (comparison < 0) {
-    updated.left = insertNode(updated.left, inserted, context, edit);
+    updated.left = insertNode(
+      updated.left,
+      inserted,
+      context,
+      edit,
+      deferMeasure,
+    );
   } else {
-    updated.right = insertNode(updated.right, inserted, context, edit);
+    updated.right = insertNode(
+      updated.right,
+      inserted,
+      context,
+      edit,
+      deferMeasure,
+    );
   }
-  return rebalance(updated, context, edit);
+  return rebalance(updated, context, edit, deferMeasure);
 }
 
 function extractMinimum<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
@@ -571,6 +623,23 @@ class PersistentOrderStatisticTree<
       this.#root,
       this.#byId.asTransient(),
       this.#context,
+      false,
+    );
+  }
+
+  [createDeferredMeasureDraft](): DeferredMeasureTransientOrderStatisticTree<
+    TId,
+    TEntry,
+    TMeasure
+  > {
+    if (this.size !== 0) {
+      throw new Error("Deferred measure drafts require an empty tree.");
+    }
+    return new TransientOrderStatisticTreeImpl(
+      this.#root,
+      this.#byId.asTransient(),
+      this.#context,
+      true,
     );
   }
 
@@ -604,12 +673,20 @@ class TransientOrderStatisticTreeImpl<
   TId extends OrderStatisticTreeId,
   TEntry,
   TMeasure,
-> implements TransientOrderStatisticTree<TId, TEntry, TMeasure> {
+> implements DeferredMeasureTransientOrderStatisticTree<TId, TEntry, TMeasure> {
   #root: TreeNode<TId, TEntry, TMeasure> | null;
   readonly #byId: TransientMap<TId, TEntry>;
   readonly #context: TreeContext<TId, TEntry, TMeasure>;
   readonly #edit = new TreeEditToken();
+  readonly #deferredMeasure: boolean;
   #frozen: OrderStatisticTree<TId, TEntry, TMeasure> | undefined;
+  #measureFrames:
+    | Array<{
+        readonly node: TreeNode<TId, TEntry, TMeasure>;
+        readonly exit: boolean;
+      }>
+    | undefined;
+  #pendingMeasureCount = 0;
   #poisoned = false;
   #poisonCause: unknown;
 
@@ -617,10 +694,12 @@ class TransientOrderStatisticTreeImpl<
     root: TreeNode<TId, TEntry, TMeasure> | null,
     byId: TransientMap<TId, TEntry>,
     context: TreeContext<TId, TEntry, TMeasure>,
+    deferredMeasure: boolean,
   ) {
     this.#root = root;
     this.#byId = byId;
     this.#context = context;
+    this.#deferredMeasure = deferredMeasure;
   }
 
   #assertHealthy(): void {
@@ -651,6 +730,9 @@ class TransientOrderStatisticTreeImpl<
 
   get measure(): TMeasure {
     this.#assertHealthy();
+    if (this.#deferredMeasure && this.#pendingMeasureCount > 0) {
+      throw new Error("Deferred tree measures must seal before they are read.");
+    }
     return this.#root?.measure ?? this.#context.measure.empty;
   }
 
@@ -680,6 +762,9 @@ class TransientOrderStatisticTreeImpl<
 
   insertOrReplace(entry: TEntry): this {
     this.#assertMutable();
+    if (this.#measureFrames !== undefined) {
+      throw new Error("Cannot insert after deferred measure sealing started.");
+    }
     return this.#guard(() => {
       const id = this.#context.getId(entry);
       const previous = this.#byId.get(id);
@@ -703,15 +788,20 @@ class TransientOrderStatisticTreeImpl<
         createNode(entry, id, this.#context, this.#edit),
         this.#context,
         this.#edit,
+        this.#deferredMeasure,
       );
       this.#root = root;
       this.#byId.set(id, entry);
+      if (this.#deferredMeasure) this.#pendingMeasureCount = this.size;
       return this;
     });
   }
 
   remove(id: TId): this {
     this.#assertMutable();
+    if (this.#deferredMeasure) {
+      throw new Error("Deferred measure drafts do not support removal.");
+    }
     return this.#guard(() => {
       const entry = this.#byId.get(id);
       if (entry === undefined && !this.#byId.has(id)) return this;
@@ -731,6 +821,9 @@ class TransientOrderStatisticTreeImpl<
 
   freeze(): OrderStatisticTree<TId, TEntry, TMeasure> {
     this.#assertHealthy();
+    if (this.#deferredMeasure && this.#pendingMeasureCount > 0) {
+      throw new Error("Deferred tree measures must seal before freezing.");
+    }
     if (this.#frozen !== undefined) return this.#frozen;
     this.#edit.freeze();
     this.#frozen = new PersistentOrderStatisticTree(
@@ -744,6 +837,39 @@ class TransientOrderStatisticTreeImpl<
   entries(): IterableIterator<TEntry> {
     this.#assertHealthy();
     return iterateTransientEntries(this.#root, () => this.#assertHealthy());
+  }
+
+  get pendingMeasureCount(): number {
+    this.#assertHealthy();
+    return this.#deferredMeasure ? this.#pendingMeasureCount : 0;
+  }
+
+  sealMeasureStep(): boolean {
+    this.#assertMutable();
+    if (!this.#deferredMeasure || this.#pendingMeasureCount === 0) return true;
+    return this.#guard(() => {
+      if (this.#measureFrames === undefined) {
+        this.#measureFrames =
+          this.#root === null ? [] : [{ node: this.#root, exit: false }];
+      }
+      for (;;) {
+        const frame = this.#measureFrames.pop()!;
+        if (frame.exit) {
+          refreshNodeMeasure(frame.node, this.#context);
+          break;
+        } else {
+          this.#measureFrames.push({ node: frame.node, exit: true });
+          if (frame.node.right !== null) {
+            this.#measureFrames.push({ node: frame.node.right, exit: false });
+          }
+          if (frame.node.left !== null) {
+            this.#measureFrames.push({ node: frame.node.left, exit: false });
+          }
+        }
+      }
+      this.#pendingMeasureCount -= 1;
+      return this.#pendingMeasureCount === 0;
+    });
   }
 }
 
@@ -769,6 +895,22 @@ export function createOrderStatisticTree<
     createPersistentMap<TId, TEntry>(),
     context,
   );
+}
+
+/** Internal bulk-build primitive; deliberately omitted from the package index. */
+export function createDeferredMeasureTransientOrderStatisticTree<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+>(
+  tree: OrderStatisticTree<TId, TEntry, TMeasure>,
+): DeferredMeasureTransientOrderStatisticTree<TId, TEntry, TMeasure> {
+  if (!(tree instanceof PersistentOrderStatisticTree)) {
+    throw new TypeError(
+      "Deferred measure drafts require a tree created by this module.",
+    );
+  }
+  return tree[createDeferredMeasureDraft]();
 }
 
 export function instrumentOrderStatisticTree<

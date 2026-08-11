@@ -4,9 +4,11 @@ import type { LocalRowModelInstrumentation } from "./diagnostics";
 import {
   attachGroupIndex,
   createGroupIndex,
+  createGroupIndexBuildDraft,
   getGroupIndex,
   setGroupOverride,
   updateGroupIndex,
+  type GroupIndexBuildDraft,
   type GroupIndexRoot,
 } from "./group-index";
 import type {
@@ -18,6 +20,7 @@ import {
   createPersistentMap,
   instrumentPersistentMap,
 } from "./persistent/persistent-map";
+import type { TransientMap } from "./persistent/transient";
 import { instrumentOrderStatisticTree } from "./persistent/order-statistic-tree";
 import type { PretableGroupId } from "./types";
 import { createFlatVisibleTree } from "./visible-index";
@@ -339,15 +342,34 @@ export function createCooperativeTransitionCandidate<
 }): CooperativeTransitionCandidate<TRow, TRowId, TColumns> {
   const operation = options.operation;
   const instrumentation = options.instrumentation;
+  const grouped = options.queryPlan.query.rowGroups.length > 0;
+  const builtinAggregatesOnly = (
+    options.queryPlan.derivations as unknown as readonly {
+      readonly aggregate?: unknown;
+    }[]
+  ).every(
+    (derivation) =>
+      derivation.aggregate === undefined ||
+      typeof derivation.aggregate === "string",
+  );
+  const useBulkGroupBuilder = grouped && builtinAggregatesOnly;
+  const initialRows = instrumentPersistentMap(
+    createPersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>(),
+    instrumentation,
+  );
   let retained:
     | {
         captured: RevisionRoot<TRow, TRowId, TColumns>;
         queryPlan: CompiledQuery<TColumns>;
         rows: RevisionRoot<TRow, TRowId, TColumns>["rows"];
+        rowBuilder:
+          TransientMap<TRowId, RowRecord<TRow, TRowId, TColumns>> | undefined;
         sourceOrder: RevisionRoot<TRow, TRowId, TColumns>["sourceOrder"];
         expansion: RevisionRoot<TRow, TRowId, TColumns>["expansion"];
         flatRows: VisibleIndexRoot<TRow, TRowId, TColumns>["rows"];
         groups: GroupIndexRoot<TRow, TRowId, TColumns> | undefined;
+        groupBuilder: GroupIndexBuildDraft<TRow, TRowId, TColumns> | undefined;
+        groupSealRemaining: number;
         iterator: Iterator<
           Readonly<{ readonly rowId: TRowId; readonly sourceOrder: number }>
         > | null;
@@ -375,10 +397,8 @@ export function createCooperativeTransitionCandidate<
     | undefined = {
     captured: options.captured,
     queryPlan: options.queryPlan,
-    rows: instrumentPersistentMap(
-      createPersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>(),
-      instrumentation,
-    ),
+    rows: initialRows,
+    rowBuilder: useBulkGroupBuilder ? initialRows.asTransient() : undefined,
     sourceOrder: options.captured.sourceOrder,
     expansion: options.captured.expansion,
     flatRows: instrumentOrderStatisticTree(
@@ -391,9 +411,8 @@ export function createCooperativeTransitionCandidate<
       instrumentation,
     ),
     groups:
-      options.queryPlan.query.rowGroups.length === 0
-        ? undefined
-        : createGroupIndex(
+      grouped && !useBulkGroupBuilder
+        ? createGroupIndex(
             [],
             options.queryPlan,
             options.aggregateFilteredRows,
@@ -401,7 +420,19 @@ export function createCooperativeTransitionCandidate<
             operation,
             getGroupIndex(options.captured.visible),
             instrumentation,
-          ),
+          )
+        : undefined,
+    groupBuilder: !useBulkGroupBuilder
+      ? undefined
+      : createGroupIndexBuildDraft({
+          queryPlan: options.queryPlan,
+          aggregateFilteredRows: options.aggregateFilteredRows,
+          operation,
+          reusable: getGroupIndex(options.captured.visible),
+          overrides: options.captured.expansion.overrides,
+          instrumentation,
+        }),
+    groupSealRemaining: 0,
     iterator: options.captured.sourceOrder.entries(),
     deltas: [],
     appliedOverrides: createPersistentMap(),
@@ -534,8 +565,12 @@ export function createCooperativeTransitionCandidate<
       sourceOrder: source.sourceOrder,
     }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
     const record = Object.freeze({ ...source, metadata });
-    state.rows = state.rows.set(record.rowId, record);
-    if (state.groups === undefined) {
+    if (state.rowBuilder !== undefined)
+      state.rowBuilder.set(record.rowId, record);
+    else state.rows = state.rows.set(record.rowId, record);
+    if (state.groupBuilder !== undefined) {
+      state.groupBuilder.insert(record);
+    } else if (state.groups === undefined) {
       if (metadata.filterPasses) {
         state.flatRows = state.flatRows.insertOrReplace(record);
       }
@@ -589,6 +624,30 @@ export function createCooperativeTransitionCandidate<
           return false;
         }
         state.iterator = null;
+        if (state.groupBuilder !== undefined) {
+          state.groupSealRemaining =
+            state.groupBuilder.pendingFinalizationCount;
+          totalRows += state.groupSealRemaining;
+        }
+      }
+
+      if (state.groupBuilder !== undefined) {
+        const builder = state.groupBuilder;
+        const complete = builder.sealStep();
+        if (state.groupSealRemaining > 0) {
+          state.groupSealRemaining -= 1;
+          completedRows += 1;
+        }
+        if (complete) {
+          state.groups = builder.finish();
+          builder.release();
+          state.groupBuilder = undefined;
+          state.rows = state.rowBuilder!.freeze();
+          state.rowBuilder = undefined;
+          state.appliedOverrides = state.captured.expansion.overrides;
+          state.reconciledExpansion = state.captured.expansion;
+        }
+        return false;
       }
 
       while (deltaIndex < state.deltas.length) {
@@ -621,8 +680,9 @@ export function createCooperativeTransitionCandidate<
       if (state === undefined)
         throw new Error("Released transition candidate.");
       if (
-        state.groups !== undefined &&
-        state.reconciledExpansion !== state.expansion
+        state.groupBuilder !== undefined ||
+        (state.groups !== undefined &&
+          state.reconciledExpansion !== state.expansion)
       ) {
         throw new Error("Transition expansion overrides are not reconciled.");
       }
@@ -648,6 +708,10 @@ export function createCooperativeTransitionCandidate<
       if (state === undefined) return;
       released = true;
       state.iterator = null;
+      state.groupBuilder?.release();
+      state.groupBuilder = undefined;
+      state.rowBuilder = undefined;
+      state.groupSealRemaining = 0;
       state.deltas.fill(null);
       state.deltas.length = 0;
       state.overrideReconciliation = undefined;
@@ -670,7 +734,8 @@ export function createCooperativeTransitionCandidate<
       hasSourceOrder: retained !== undefined,
       hasExpansion: retained !== undefined,
       hasFlatRows: retained !== undefined,
-      hasGroups: retained?.groups !== undefined,
+      hasGroups:
+        retained?.groups !== undefined || retained?.groupBuilder !== undefined,
       deltaSlotCount: retained?.deltas.length ?? 0,
       processedDeltaCount: retained === undefined ? 0 : deltaIndex,
       retainedDeltaRootCount:

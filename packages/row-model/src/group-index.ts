@@ -9,16 +9,19 @@ import {
 import type { RowRecord, VisibleIndexRoot } from "./internal-types";
 import {
   createAggregateTree,
+  createDeferredMeasureTransientAggregateTree,
   instrumentAggregateTree,
   type AggregateTree,
   type AggregateTreeLeaf,
   type BuiltinAggregatorName,
+  type DeferredMeasureTransientAggregateTree,
 } from "./persistent/aggregate-tree";
 import type { PretableAggregator } from "./column-types";
 import {
   createOrderStatisticTree,
   instrumentOrderStatisticTree,
   type OrderStatisticTree,
+  type TransientOrderStatisticTree,
 } from "./persistent/order-statistic-tree";
 import {
   createPersistentMap,
@@ -1412,6 +1415,451 @@ function rootFromState<
   if (context.instrumentation !== undefined)
     groupIndexInstrumentation.set(root, context.instrumentation);
   return root;
+}
+
+type AnyTransientAggregateTree = DeferredMeasureTransientAggregateTree<
+  PretableRowId,
+  object,
+  unknown,
+  unknown,
+  unknown
+>;
+
+interface MutableAggregateRoots {
+  readonly all: Map<string, AnyTransientAggregateTree>;
+  readonly filtered: Map<string, AnyTransientAggregateTree>;
+}
+
+interface MutableBuildNode<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+> {
+  readonly groupId: PretableGroupId;
+  readonly path: readonly CompiledGroupKey<TColumns>[];
+  readonly pathKeys: readonly string[];
+  readonly depth: number;
+  readonly columnId: string;
+  readonly value: unknown;
+  readonly key: string;
+  readonly parentGroupId: PretableGroupId | undefined;
+  readonly override: boolean | undefined;
+  readonly childrenByKey: Map<string, MutableBuildNode<TRow, TRowId, TColumns>>;
+  readonly leaves: TransientOrderStatisticTree<
+    TRowId,
+    RowRecord<TRow, TRowId, TColumns>,
+    number
+  >;
+  readonly aggregateRoots: MutableAggregateRoots;
+  filteredCount: number;
+  allCount: number;
+  triggerRowId: TRowId | undefined;
+  finished: GroupNode<TRow, TRowId, TColumns> | undefined;
+}
+
+export interface GroupIndexBuildDraft<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+> {
+  readonly pendingFinalizationCount: number;
+  insert(record: RowRecord<TRow, TRowId, TColumns>): void;
+  /** Performs at most one aggregate-seal, child-edge, or node-finalize unit. */
+  sealStep(): boolean;
+  finish(): GroupIndexRoot<TRow, TRowId, TColumns>;
+  release(): void;
+}
+
+/**
+ * Candidate-only grouped index builder. It owns transient leaves, aggregate
+ * trees, and membership maps for the unpublished initial rebuild, then seals
+ * group nodes bottom-up one cooperative unit at a time. Published revisions
+ * continue to use the persistent changed-path updater below.
+ */
+export function createGroupIndexBuildDraft<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(options: {
+  readonly queryPlan: CompiledQuery<TColumns>;
+  readonly aggregateFilteredRows: boolean;
+  readonly operation: PretableRowModelOperation;
+  readonly reusable?: GroupIndexRoot<TRow, TRowId, TColumns>;
+  readonly overrides: PersistentMap<PretableGroupId, boolean>;
+  readonly instrumentation?: LocalRowModelInstrumentation;
+}): GroupIndexBuildDraft<TRow, TRowId, TColumns> {
+  const { queryPlan, aggregateFilteredRows, operation, instrumentation } =
+    options;
+  const levelCount = queryPlan.query.rowGroups.length;
+  const rootsByKey = new Map<
+    string,
+    MutableBuildNode<TRow, TRowId, TColumns>
+  >();
+  const nodes: MutableBuildNode<TRow, TRowId, TColumns>[] = [];
+  const rowParents = instrumentPersistentMap(
+    createPersistentMap<TRowId, PretableGroupId>(),
+    instrumentation,
+  ).asTransient();
+  const groups = instrumentPersistentMap(
+    createPersistentMap<PretableGroupId, GroupNode<TRow, TRowId, TColumns>>(),
+    instrumentation,
+  ).asTransient();
+  const context: FinishContext<TRow, TRowId, TColumns> = {
+    queryPlan,
+    levelCount,
+    aggregateFilteredRows,
+    reusable: options.reusable?.groups ?? createPersistentMap(),
+    operation,
+    instrumentation,
+  };
+  let root: GroupIndexRoot<TRow, TRowId, TColumns> | undefined;
+  let released = false;
+  let sealingStarted = false;
+  let pendingUnits = 0;
+  let activeNode: MutableBuildNode<TRow, TRowId, TColumns> | undefined;
+  let activeChildIterator:
+    | Iterator<readonly [string, MutableBuildNode<TRow, TRowId, TColumns>]>
+    | undefined;
+  let activeAggregatePhase: "all" | "filtered" | undefined;
+  let activeAggregateIterator:
+    Iterator<readonly [string, AnyTransientAggregateTree]> | undefined;
+  let activeAggregate: readonly [string, AnyTransientAggregateTree] | undefined;
+  let activeChildrenByKey:
+    | ReturnType<
+        PersistentMap<string, GroupNode<TRow, TRowId, TColumns>>["asTransient"]
+      >
+    | undefined;
+  let activeMeasuredChildren:
+    MeasuredGroupTree<TRow, TRowId, TColumns> | undefined;
+  let rootIterator:
+    | Iterator<readonly [string, MutableBuildNode<TRow, TRowId, TColumns>]>
+    | undefined;
+  let persistentRootsByKey:
+    | ReturnType<
+        PersistentMap<string, GroupNode<TRow, TRowId, TColumns>>["asTransient"]
+      >
+    | undefined;
+  let measuredRoots: MeasuredGroupTree<TRow, TRowId, TColumns> | undefined;
+
+  const assertActive = () => {
+    if (released) throw new Error("Released grouped index build draft.");
+  };
+
+  const createMutableNode = (
+    path: readonly CompiledGroupKey<TColumns>[],
+    pathKeys: readonly string[],
+    parentGroupId: PretableGroupId | undefined,
+  ): MutableBuildNode<TRow, TRowId, TColumns> => {
+    const entry = path[path.length - 1]!;
+    const node: MutableBuildNode<TRow, TRowId, TColumns> = {
+      groupId: makeGroupId(path),
+      path,
+      pathKeys,
+      depth: path.length - 1,
+      columnId: entry.columnId,
+      value: entry.value,
+      key: pathKeys[pathKeys.length - 1]!,
+      parentGroupId,
+      override: options.overrides.get(makeGroupId(path)),
+      childrenByKey: new Map(),
+      leaves: instrumentOrderStatisticTree(
+        createLeafTree<TRow, TRowId, TColumns>(queryPlan),
+        instrumentation,
+      ).asTransient(),
+      aggregateRoots: { all: new Map(), filtered: new Map() },
+      filteredCount: 0,
+      allCount: 0,
+      triggerRowId: undefined,
+      finished: undefined,
+    };
+    nodes.push(node);
+    // One unit seals this node and one installs its parent/root edge.
+    pendingUnits += 2;
+    return node;
+  };
+
+  const updateMutableAggregates = (
+    node: MutableBuildNode<TRow, TRowId, TColumns>,
+    record: RowRecord<TRow, TRowId, TColumns>,
+  ): void => {
+    for (const leaf of record.metadata
+      .aggregateLeaves as unknown as readonly RuntimeAggregateLeaf[]) {
+      try {
+        let all = node.aggregateRoots.all.get(leaf.columnId);
+        if (all === undefined) {
+          all = createDeferredMeasureTransientAggregateTree(
+            instrumentAggregateTree(
+              emptyAggregateTree(queryPlan, leaf),
+              instrumentation,
+            ),
+          ) as AnyTransientAggregateTree;
+          node.aggregateRoots.all.set(leaf.columnId, all);
+        }
+        const allSize = all.size;
+        all.insertOrReplace(leaf.allLeaf);
+        if (all.size > allSize) pendingUnits += 1;
+        let filtered = node.aggregateRoots.filtered.get(leaf.columnId);
+        if (filtered === undefined) {
+          filtered = createDeferredMeasureTransientAggregateTree(
+            instrumentAggregateTree(
+              emptyAggregateTree(queryPlan, leaf),
+              instrumentation,
+            ),
+          ) as AnyTransientAggregateTree;
+          node.aggregateRoots.filtered.set(leaf.columnId, filtered);
+        }
+        if (leaf.filteredLeaf !== undefined) {
+          const filteredSize = filtered.size;
+          filtered.insertOrReplace(leaf.filteredLeaf);
+          if (filtered.size > filteredSize) pendingUnits += 1;
+        }
+      } catch (cause) {
+        if (cause instanceof PretableRowModelError) throw cause;
+        throw new PretableRowModelError(
+          "aggregator-failed",
+          `The aggregate for column ${leaf.columnId} failed.`,
+          {
+            operation,
+            rowId: record.rowId,
+            columnId: leaf.columnId,
+            cause,
+          },
+        );
+      }
+    }
+  };
+
+  const finishRoot = (): GroupIndexRoot<TRow, TRowId, TColumns> =>
+    rootFromState(
+      {
+        rootsByKey: persistentRootsByKey!.freeze(),
+        roots: measuredRoots!,
+        groups: groups.freeze(),
+        rowParents: rowParents.freeze(),
+      },
+      context,
+    );
+
+  const finalizeActiveNode = (): void => {
+    const mutable = activeNode!;
+    const aggregateRoots: AggregateRoots = Object.freeze({
+      all: new Map(
+        [...mutable.aggregateRoots.all].map(([columnId, tree]) => [
+          columnId,
+          tree.freeze() as AnyAggregateTree,
+        ]),
+      ),
+      filtered: new Map(
+        [...mutable.aggregateRoots.filtered].map(([columnId, tree]) => [
+          columnId,
+          tree.freeze() as AnyAggregateTree,
+        ]),
+      ),
+    });
+    const finished = finishNode(
+      {
+        groupId: mutable.groupId,
+        path: mutable.path,
+        pathKeys: mutable.pathKeys,
+        depth: mutable.depth,
+        columnId: mutable.columnId,
+        value: mutable.value,
+        key: mutable.key,
+        parentGroupId: mutable.parentGroupId,
+        override: mutable.override,
+        childrenByKey: activeChildrenByKey!.freeze(),
+        children: activeMeasuredChildren!,
+        leaves: mutable.leaves.freeze(),
+        filteredCount: mutable.filteredCount,
+        allCount: mutable.allCount,
+        aggregateRoots,
+      },
+      context,
+      mutable.triggerRowId,
+    );
+    mutable.finished = finished;
+    groups.set(finished.groupId, finished);
+    activeNode = undefined;
+    activeAggregatePhase = undefined;
+    activeAggregateIterator = undefined;
+    activeAggregate = undefined;
+    activeChildIterator = undefined;
+    activeChildrenByKey = undefined;
+    activeMeasuredChildren = undefined;
+  };
+
+  const sealActiveAggregate = (): boolean => {
+    const mutable = activeNode!;
+    for (;;) {
+      if (activeAggregate !== undefined) {
+        const [columnId, tree] = activeAggregate;
+        if (tree.pendingMeasureCount > 0) {
+          try {
+            tree.sealMeasureStep();
+          } catch (cause) {
+            if (cause instanceof PretableRowModelError) throw cause;
+            throw new GroupAggregatorError(
+              operation,
+              mutable.triggerRowId,
+              columnId,
+              mutable.groupId,
+              mutable.path.map((entry) => entry.value),
+              cause,
+            );
+          }
+          pendingUnits -= 1;
+          return true;
+        }
+        activeAggregate = undefined;
+      }
+      const next = activeAggregateIterator!.next();
+      if (!next.done) {
+        activeAggregate = next.value;
+        continue;
+      }
+      if (activeAggregatePhase === "all") {
+        activeAggregatePhase = "filtered";
+        activeAggregateIterator = mutable.aggregateRoots.filtered.entries();
+        continue;
+      }
+      return false;
+    }
+  };
+
+  const draft: GroupIndexBuildDraft<TRow, TRowId, TColumns> = {
+    get pendingFinalizationCount() {
+      return pendingUnits;
+    },
+    insert(record) {
+      assertActive();
+      if (sealingStarted)
+        throw new Error("Cannot insert after grouped index sealing started.");
+      const path = record.metadata.groupPath;
+      if (path.length === 0) return;
+      const pathKeys = path.map((entry) =>
+        encodeGroupValue(entry.value, {
+          operation,
+          rowId: record.rowId,
+          columnId: entry.columnId,
+        }),
+      );
+      let children = rootsByKey;
+      let parentGroupId: PretableGroupId | undefined;
+      let current: MutableBuildNode<TRow, TRowId, TColumns> | undefined;
+      for (let depth = 0; depth < path.length; depth += 1) {
+        const key = pathKeys[depth]!;
+        current = children.get(key);
+        if (current === undefined) {
+          current = createMutableNode(
+            Object.freeze(path.slice(0, depth + 1)),
+            Object.freeze(pathKeys.slice(0, depth + 1)),
+            parentGroupId,
+          );
+          children.set(key, current);
+        }
+        current.allCount += 1;
+        if (record.metadata.filterPasses) current.filteredCount += 1;
+        updateMutableAggregates(current, record);
+        current.triggerRowId = record.rowId;
+        parentGroupId = current.groupId;
+        children = current.childrenByKey;
+      }
+      if (record.metadata.filterPasses) current!.leaves.insertOrReplace(record);
+      rowParents.set(record.rowId, current!.groupId);
+    },
+    sealStep() {
+      assertActive();
+      sealingStarted = true;
+      if (root !== undefined) return true;
+      if (activeNode !== undefined) {
+        if (sealActiveAggregate()) return false;
+        const next = activeChildIterator!.next();
+        if (!next.done) {
+          const [key, child] = next.value;
+          const finished = child.finished;
+          if (finished === undefined)
+            throw new Error("Grouped index children must seal before parents.");
+          activeChildrenByKey!.set(key, finished);
+          if (finished.filteredCount > 0) {
+            activeMeasuredChildren =
+              activeMeasuredChildren!.insertOrReplace(finished);
+          }
+          pendingUnits -= 1;
+          return false;
+        }
+        finalizeActiveNode();
+        pendingUnits -= 1;
+        return false;
+      }
+
+      const mutable = nodes.pop();
+      if (mutable !== undefined) {
+        activeNode = mutable;
+        activeAggregatePhase = "all";
+        activeAggregateIterator = mutable.aggregateRoots.all.entries();
+        activeAggregate = undefined;
+        activeChildIterator = mutable.childrenByKey.entries();
+        activeMeasuredChildren = createChildTree<TRow, TRowId, TColumns>(
+          queryPlan,
+          mutable.depth + 1,
+          instrumentation,
+        );
+        activeChildrenByKey = instrumentPersistentMap(
+          createPersistentMap<string, GroupNode<TRow, TRowId, TColumns>>(),
+          instrumentation,
+        ).asTransient();
+        return draft.sealStep();
+      }
+
+      if (rootIterator === undefined) {
+        rootIterator = rootsByKey.entries();
+        measuredRoots = createChildTree<TRow, TRowId, TColumns>(
+          queryPlan,
+          0,
+          instrumentation,
+        );
+        persistentRootsByKey = instrumentPersistentMap(
+          createPersistentMap<string, GroupNode<TRow, TRowId, TColumns>>(),
+          instrumentation,
+        ).asTransient();
+      }
+      const next = rootIterator.next();
+      if (!next.done) {
+        const [key, mutableRoot] = next.value;
+        const finished = mutableRoot.finished!;
+        persistentRootsByKey!.set(key, finished);
+        if (finished.filteredCount > 0)
+          measuredRoots = measuredRoots!.insertOrReplace(finished);
+        pendingUnits -= 1;
+        return false;
+      }
+      root = finishRoot();
+      return true;
+    },
+    finish() {
+      assertActive();
+      if (root === undefined)
+        throw new Error("Grouped index build draft is not sealed.");
+      return root;
+    },
+    release() {
+      released = true;
+      rootsByKey.clear();
+      nodes.length = 0;
+      activeNode = undefined;
+      activeAggregatePhase = undefined;
+      activeAggregateIterator = undefined;
+      activeAggregate = undefined;
+      activeChildIterator = undefined;
+      activeChildrenByKey = undefined;
+      activeMeasuredChildren = undefined;
+      rootIterator = undefined;
+      persistentRootsByKey = undefined;
+      measuredRoots = undefined;
+      root = undefined;
+    },
+  };
+  return draft;
 }
 
 export function createGroupIndex<

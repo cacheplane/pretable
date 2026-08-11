@@ -2,14 +2,17 @@ import type { AggregatorLawValidator } from "../aggregator-law";
 import type { PretableAggregator } from "../column-types";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
 import {
+  createDeferredMeasureTransientOrderStatisticTree,
   createOrderStatisticTree,
   instrumentMeasuredOrderStatisticTree,
   type OrderStatisticTree,
   type OrderStatisticTreeId,
+  type DeferredMeasureTransientOrderStatisticTree,
   type TransientOrderStatisticTree,
 } from "./order-statistic-tree";
 
 const attachInstrumentation = Symbol("attachAggregateInstrumentation");
+const createDeferredMeasureDraft = Symbol("createDeferredMeasureDraft");
 
 const DEVELOPMENT = process.env.NODE_ENV !== "production";
 
@@ -79,6 +82,17 @@ export interface TransientAggregateTree<
   remove(id: TId): this;
   finalize(): TOutput;
   freeze(): AggregateTree<TId, TRow, TValue, TDependency, TOutput>;
+}
+
+export interface DeferredMeasureTransientAggregateTree<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+  TOutput,
+> extends TransientAggregateTree<TId, TRow, TValue, TDependency, TOutput> {
+  readonly pendingMeasureCount: number;
+  sealMeasureStep(): boolean;
 }
 
 export interface CustomAggregateTreeOptions<
@@ -677,6 +691,20 @@ class PersistentAggregateTree<
     );
   }
 
+  [createDeferredMeasureDraft](): DeferredMeasureTransientAggregateTree<
+    TId,
+    TRow,
+    TValue,
+    TDependency,
+    TOutput
+  > {
+    return new TransientAggregateTreeImpl(
+      createDeferredMeasureTransientOrderStatisticTree(this.#tree),
+      this.#context,
+      this.#cache,
+    );
+  }
+
   [attachInstrumentation](instrumentation: LocalRowModelInstrumentation) {
     if (this.#context.instrumentation === instrumentation) return this;
     const tree = instrumentMeasuredOrderStatisticTree(
@@ -788,6 +816,53 @@ class TransientAggregateTreeImpl<
     );
     return this.#frozen;
   }
+
+  get pendingMeasureCount(): number {
+    return "pendingMeasureCount" in this.#tree
+      ? (
+          this.#tree as DeferredMeasureTransientOrderStatisticTree<
+            TId,
+            AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
+            TAccumulator
+          >
+        ).pendingMeasureCount
+      : 0;
+  }
+
+  sealMeasureStep(): boolean {
+    if (!("sealMeasureStep" in this.#tree)) return true;
+    return (
+      this.#tree as DeferredMeasureTransientOrderStatisticTree<
+        TId,
+        AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
+        TAccumulator
+      >
+    ).sealMeasureStep();
+  }
+}
+
+/** Internal bulk-build primitive; deliberately omitted from the package index. */
+export function createDeferredMeasureTransientAggregateTree<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+  TOutput,
+>(
+  tree: AggregateTree<TId, TRow, TValue, TDependency, TOutput>,
+): DeferredMeasureTransientAggregateTree<
+  TId,
+  TRow,
+  TValue,
+  TDependency,
+  TOutput
+> {
+  if (!(tree instanceof PersistentAggregateTree)) {
+    throw new TypeError(
+      "Deferred measure drafts require an aggregate tree created by this module.",
+    );
+  }
+  return tree[createDeferredMeasureDraft]();
 }
 
 export function createAggregateTree<

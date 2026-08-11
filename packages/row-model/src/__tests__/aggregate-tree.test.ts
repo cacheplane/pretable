@@ -5,6 +5,7 @@ import {
   type AggregateTreeLeaf,
   type PretableAggregator,
 } from "..";
+import { createDeferredMeasureTransientAggregateTree } from "../persistent/aggregate-tree";
 
 interface Row {
   readonly name: string;
@@ -93,6 +94,10 @@ function permutations<T>(values: readonly T[]): readonly (readonly T[])[] {
   );
 }
 
+function adversarialOrderForAggregate(id: number): number {
+  return (id * 73) % 257;
+}
+
 type NumericBuiltinName = "sum" | "avg" | "min" | "max";
 type NumericValue = number | null | undefined;
 
@@ -126,6 +131,56 @@ function builtinTree(name: NumericBuiltinName | "count") {
 }
 
 describe("AggregateTree", () => {
+  test("bulk-seals every built-in with exact ordinary-tree parity", () => {
+    const values = [
+      Number.NaN,
+      Infinity,
+      -Infinity,
+      +0,
+      -0,
+      7,
+      -3,
+      null,
+      undefined,
+    ] as const;
+    for (const name of ["sum", "avg", "min", "max", "count"] as const) {
+      const initial = builtinTree(name) as AggregateTree<
+        string | number,
+        Row,
+        unknown,
+        number,
+        number | null
+      >;
+      let ordinary = initial;
+      const deferred = createDeferredMeasureTransientAggregateTree(initial);
+      values.forEach((value, index) => {
+        const entry = leaf(index, value, adversarialOrderForAggregate(index));
+        ordinary = ordinary.insertOrReplace(entry);
+        deferred.insertOrReplace(entry);
+      });
+
+      expect(deferred.pendingMeasureCount).toBe(values.length);
+      while (!deferred.sealMeasureStep()) {
+        // One cached subtree measure is published per cooperative unit.
+      }
+      const frozen = deferred.freeze();
+      const expected = ordinary.finalize();
+      const actual = frozen.finalize();
+      expect(
+        Object.is(actual, expected) ||
+          (typeof actual === "number" &&
+            typeof expected === "number" &&
+            Number.isNaN(actual) &&
+            Number.isNaN(expected)),
+      ).toBe(true);
+
+      const updated = frozen.remove(0).insertOrReplace(leaf("later", 11, -1));
+      expect(frozen.size).toBe(values.length);
+      expect(updated.size).toBe(values.length);
+      expect(updated.firstId()).toBe("later");
+    }
+  });
+
   test("inserts, replaces, removes, and preserves semantic no-op identity", () => {
     const alpha = leaf("1", 4, 1);
     const original = builtinTree("sum")

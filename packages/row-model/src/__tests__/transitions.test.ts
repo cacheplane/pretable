@@ -490,6 +490,46 @@ describe("cooperative query and derivation transitions", () => {
     ]);
   });
 
+  test("removes a captured group override changed while the grouped build seals", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 1_000 }, (_, id) => ({
+        id,
+        team: id % 2 === 0 ? "A" : "B",
+        score: id,
+      })),
+      columns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      },
+      initialExpansion: { kind: "collapsed" },
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+    });
+    const groupA = "__group__:team=s:A" as PretableGroupId;
+    model.setGroupExpanded(groupA, true);
+
+    const transition = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [{ columnId: "team" }],
+    });
+    model.setGroupExpanded(groupA, false);
+
+    scheduler.flushAll();
+    await transition.finished;
+
+    const snapshot = model.getState().snapshot;
+    expect(snapshot.expansion.overrideCount).toBe(0);
+    expect(snapshot.isGroupExpanded(groupA)).toBe(false);
+    expect(snapshot.range(0, 10).map((row) => row.kind)).toEqual([
+      "group",
+      "group",
+    ]);
+  });
+
   test("keeps 5k grouped overrides inside the permanent per-slice work cap", async () => {
     interface OverrideRow {
       id: number;
@@ -541,10 +581,12 @@ describe("cooperative query and derivation transitions", () => {
     expect(getLocalRowModelActiveTransitionCandidateForTesting(model)).toBe(
       candidate,
     );
+    expect(candidate.completedRows).toBe(5_120);
     expect(
       getCooperativeTransitionCandidateDiagnosticsForTesting(candidate),
     ).toMatchObject({
-      overrideReconciliationRemaining: 4_880,
+      released: false,
+      hasGroups: true,
     });
 
     scheduler.flushAll();
