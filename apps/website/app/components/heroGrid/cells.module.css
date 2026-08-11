@@ -78,10 +78,17 @@
 .analyst {
   line-height: 1.45;
 }
+/* Secondary by SIZE, not by opacity.
+   At 55% opaque this line rendered ~#7eb994 over white — 2.27:1, a clear AA
+   failure, and sitting inside the one column whose whole premise is that its
+   colours were computed rather than eyeballed. Opacity cannot reach 4.5:1 while
+   still reading as secondary, so the differentiation moves to type size and
+   position: the percentage keeps the full-strength ramp colour it inherits
+   (5.02:1) and is subordinate because it is smaller and sits beneath the
+   figure. */
 .subline {
   display: block;
   font-size: 11px;
-  opacity: 0.55;
 }
 .pill {
   display: inline-block;
