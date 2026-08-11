@@ -110,6 +110,28 @@ it("renders accessor-driven values correctly through the public wrapper", () => 
   expect(view.getByText("Ada Lovelace")).toBeInTheDocument();
 });
 
+it("forwards locale and displays the surface-formatted value", () => {
+  const view = render(
+    <Pretable
+      columns={[
+        {
+          id: "amount",
+          header: "Amount",
+          numberFormat: {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          },
+        },
+      ]}
+      getRowId={(row) => row.id}
+      locale="de-DE"
+      rows={[{ id: "row-0", amount: 1234.5 }]}
+    />,
+  );
+
+  expect(view.getByText("1.234,5")).toBeInTheDocument();
+});
+
 it("measures wrapped rows and applies the measured height back to data-pretable-row-height", async () => {
   vi.spyOn(window, "getComputedStyle").mockReturnValue({
     borderBottomWidth: "1px",

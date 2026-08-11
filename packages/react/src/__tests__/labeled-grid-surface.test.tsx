@@ -62,6 +62,101 @@ const rows: DemoRow[] = [
 ];
 
 describe("LabeledGridSurface", () => {
+  it("uses the surface-formatted value when formatValue is absent", () => {
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Number grid"
+        columns={[
+          {
+            id: "amount",
+            header: "Amount",
+            numberFormat: {
+              minimumFractionDigits: 1,
+              maximumFractionDigits: 1,
+            },
+          },
+        ]}
+        getRowId={(row) => row.id}
+        locale="de-DE"
+        rows={[{ id: "row-1", amount: 1234.5 }]}
+        viewportHeight={132}
+      />,
+    );
+
+    expect(view.getByText("1.234,5")).toBeInTheDocument();
+  });
+
+  it("passes raw and surface-formatted values to formatValue and uses its result", () => {
+    const formatValue = vi.fn(
+      ({ formattedValue }: { formattedValue: string }) =>
+        `wrapper:${formattedValue}`,
+    );
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Number grid"
+        columns={[
+          {
+            id: "amount",
+            header: "Amount",
+            numberFormat: {
+              minimumFractionDigits: 1,
+              maximumFractionDigits: 1,
+            },
+          },
+        ]}
+        formatValue={formatValue}
+        getRowId={(row) => row.id}
+        locale="en-US"
+        rows={[{ id: "row-1", amount: 1234.5 }]}
+        viewportHeight={132}
+      />,
+    );
+
+    expect(view.getByText("wrapper:1,234.5")).toBeInTheDocument();
+    expect(formatValue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        formattedValue: "1,234.5",
+        value: 1234.5,
+      }),
+    );
+  });
+
+  it("lets column.render outrank formatValue while receiving the native formatted value", () => {
+    const formatValue = vi.fn(() => "wrapper");
+    const renderCell = vi.fn(
+      ({ formattedValue }: { formattedValue: string }) => (
+        <output data-testid="rendered-amount">{formattedValue}</output>
+      ),
+    );
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Number grid"
+        columns={[
+          {
+            id: "amount",
+            header: "Amount",
+            numberFormat: {
+              minimumFractionDigits: 1,
+              maximumFractionDigits: 1,
+            },
+            render: renderCell,
+          },
+        ]}
+        formatValue={formatValue}
+        getRowId={(row) => row.id}
+        locale="de-DE"
+        rows={[{ id: "row-1", amount: 1234.5 }]}
+        viewportHeight={132}
+      />,
+    );
+
+    expect(view.getByTestId("rendered-amount")).toHaveTextContent("1.234,5");
+    expect(renderCell).toHaveBeenCalledWith(
+      expect.objectContaining({ formattedValue: "1.234,5" }),
+    );
+    expect(formatValue).not.toHaveBeenCalled();
+  });
+
   it("provides shared labeled-cell rendering and pinned-column presentation hooks", () => {
     const view = render(
       <LabeledGridSurface
