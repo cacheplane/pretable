@@ -344,21 +344,21 @@ describe("BenchApp", () => {
       rowGroups: ["col_5"],
     });
   }, 20_000);
-  test("mounts the resident window, and hands the measurement the row it must select", async () => {
-    // Two separate obligations, and only the first is the app's.
+  test("paints and selects the resident window BEFORE the replace window opens", async () => {
+    // Everything the app owes the measurement is owed by the time it is invoked, so
+    // all of it is read at call time: the adapter must be holding the 200-row resident
+    // window rather than S1/dev's 2 000, and the plan's probe row must already be the
+    // selected row. `selected_row_preserved` is only a claim about the update if
+    // something was selected before it landed; with no selection it compares two nulls
+    // and scores 1.
     //
-    // The app owes the resident WINDOW: the adapter must be holding 200 rows, not
-    // S1/dev's 2 000, before the measurement is invoked — asserted at call time below,
-    // because nothing downstream can recover a run that measured the wrong row set.
-    //
-    // Settling the SELECTION is the measurement's own job. `measureBenchDataUpdateRun`
-    // holds the window shut until selection and focus stop moving (see
-    // `createStabilityKey`), which is a gate this test cannot observe because it
-    // replaces that function wholesale. It is covered directly in
-    // bench-runtime.test.ts ("waits for a surface still in motion at hand-over") and
-    // end-to-end by the `selected_row_preserved: 1` assertion in tests/bench.spec.ts.
+    // What this test cannot see is the measurement's own quiet gate — it holds the
+    // window shut until selection and focus stop MOVING (`createStabilityKey`), and
+    // this test replaces `measureBenchDataUpdateRun` wholesale. That gate is covered
+    // in bench-runtime.test.ts ("waits for a surface still in motion at hand-over").
     let modeAtCallTime: string | null = null;
     let residentRowCountAtCallTime: string | null = null;
+    let selectedRowIdAtCallTime: string | null = null;
     let planAtCallTime: unknown = null;
 
     vi.spyOn(benchRuntime, "measureBenchDataUpdateRun").mockImplementation(
@@ -370,6 +370,7 @@ describe("BenchApp", () => {
         planAtCallTime = plan;
         residentRowCountAtCallTime =
           adapter?.dataset.benchResultRowCount ?? null;
+        selectedRowIdAtCallTime = adapter?.dataset.benchSelectedRowId ?? null;
 
         return {
           status: "completed",
@@ -419,12 +420,15 @@ describe("BenchApp", () => {
     expect(modeAtCallTime).toBe("replace");
     // The resident window, not S1 dev's 2 000 rows.
     expect(residentRowCountAtCallTime).toBe("200");
-    // The plan must name a row for the measurement to select and then verify; a plan
-    // with no probe row makes `selected_row_preserved` a comparison of two nulls.
     expect(planAtCallTime).toMatchObject({ mode: "replace" });
+    // Asserted before the comparison below, which an empty id on both sides would
+    // otherwise satisfy without either a probe row or a selection existing.
     expect(
       (planAtCallTime as { selectedRowId: string | null }).selectedRowId,
     ).toBeTruthy();
+    expect(selectedRowIdAtCallTime).toBe(
+      (planAtCallTime as { selectedRowId: string }).selectedRowId,
+    );
   }, 30_000);
 
   test("reports a dataset too small for either row-set shape as unsupported", async () => {
