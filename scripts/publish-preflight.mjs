@@ -148,6 +148,15 @@ function assertUniqueWorkspacePackageNames(workspacePackages) {
   }
 }
 
+function isPlainObject(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype
+  );
+}
+
 function validateDependencyFields(workspacePackage) {
   const { manifest, manifestPath } = workspacePackage;
 
@@ -156,12 +165,7 @@ function validateDependencyFields(workspacePackage) {
     if (dependencies === undefined) {
       continue;
     }
-    if (
-      dependencies === null ||
-      typeof dependencies !== "object" ||
-      Array.isArray(dependencies) ||
-      Object.getPrototypeOf(dependencies) !== Object.prototype
-    ) {
+    if (!isPlainObject(dependencies)) {
       throw new Error(
         `Workspace package ${String(manifest.name)} has invalid ${field} in ${manifestPath}: expected a plain object`,
       );
@@ -174,7 +178,7 @@ function registryPackageUrl(registryUrl, packageName) {
   return new URL(encodeURIComponent(packageName), baseUrl);
 }
 
-async function readRegistryVersions(
+async function readRegistryPackageState(
   packageName,
   registryUrl,
   fetchImpl,
@@ -200,7 +204,10 @@ async function readRegistryVersions(
   }
 
   if (response.status === 404) {
-    return [];
+    return {
+      activeVersions: new Set(),
+      historicalVersions: new Set(),
+    };
   }
   if (!response.ok) {
     throw new Error(
@@ -223,19 +230,25 @@ async function readRegistryVersions(
     );
   }
 
-  if (
-    !metadata ||
-    typeof metadata !== "object" ||
-    !metadata.versions ||
-    typeof metadata.versions !== "object" ||
-    Array.isArray(metadata.versions)
-  ) {
+  if (!isPlainObject(metadata) || !isPlainObject(metadata.versions)) {
     throw new Error(
       `Registry metadata was invalid for ${packageName}: expected a versions object`,
     );
   }
+  if (metadata.time !== undefined && !isPlainObject(metadata.time)) {
+    throw new Error(
+      `Registry metadata was invalid for ${packageName}: expected a time object`,
+    );
+  }
 
-  return Object.keys(metadata.versions);
+  return {
+    activeVersions: new Set(Object.keys(metadata.versions)),
+    historicalVersions: new Set(
+      Object.keys(metadata.time ?? {}).filter((version) =>
+        semver.valid(version),
+      ),
+    ),
+  };
 }
 
 function dependencyEdges(workspacePackage) {
@@ -275,11 +288,11 @@ export async function runPublishPreflight(options = {}) {
   }
 
   const registryCache = new Map();
-  const registryVersions = (packageName) => {
+  const registryPackageState = (packageName) => {
     if (!registryCache.has(packageName)) {
       registryCache.set(
         packageName,
-        readRegistryVersions(
+        readRegistryPackageState(
           packageName,
           registryUrl,
           fetchImpl,
@@ -291,12 +304,31 @@ export async function runPublishPreflight(options = {}) {
   };
 
   const sameBatchPackages = new Set();
+  const withdrawnPackages = [];
   for (const workspacePackage of publicPackages) {
     const { name, version } = workspacePackage.manifest;
-    const publishedVersions = await registryVersions(name);
-    if (!publishedVersions.includes(version)) {
-      sameBatchPackages.add(`${name}@${version}`);
+    const { activeVersions, historicalVersions } =
+      await registryPackageState(name);
+    if (activeVersions.has(version)) {
+      continue;
     }
+    if (historicalVersions.has(version)) {
+      withdrawnPackages.push(`${name}@${version}`);
+      continue;
+    }
+    sameBatchPackages.add(`${name}@${version}`);
+  }
+
+  if (withdrawnPackages.length > 0) {
+    throw new Error(
+      `Publish version preflight failed:\n${withdrawnPackages
+        .sort()
+        .map(
+          (packageVersion) =>
+            `- ${packageVersion} was previously published and is no longer active; published versions cannot be reused. Choose a new version.`,
+        )
+        .join("\n")}`,
+    );
   }
 
   const violations = [];
@@ -330,9 +362,9 @@ export async function runPublishPreflight(options = {}) {
         continue;
       }
 
-      const publishedVersions = await registryVersions(dependencyName);
+      const { activeVersions } = await registryPackageState(dependencyName);
       if (
-        publishedVersions.some((version) =>
+        [...activeVersions].some((version) =>
           semver.satisfies(version, normalizedSpec),
         )
       ) {
