@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import type { BenchMetricId } from "../index";
 import {
   benchMetricIds,
   benchScriptNames,
@@ -99,43 +100,108 @@ describe("bench-runner contract", () => {
     }
   });
 
-  // §11 budgets replace at "no grid reconstruction". A run that omits the
-  // instance-identity metric cannot substantiate that, so it is not a
-  // completed run.
-  test("rejects a replace run that cannot prove the grid instance survived", () => {
-    const metrics = {
-      dom_nodes_peak: 1,
-      interaction_latency_ms: 12,
-      settle_duration_ms: 18,
-      post_interaction_anchor_shift_px: 0,
-      post_interaction_row_height_error_p95_px: 0,
-      result_row_count: 200,
-      selected_row_preserved: 1,
-      focused_row_preserved: 1,
-    } as const;
+  // Everything a completed replace or append owes, so a test can drop exactly
+  // one entry and watch that one be named.
+  const rowSetChangeMetrics = {
+    dom_nodes_peak: 1,
+    interaction_latency_ms: 12,
+    settle_duration_ms: 18,
+    post_interaction_blank_gap_frames: 0,
+    post_interaction_anchor_shift_px: 0,
+    post_interaction_row_height_error_p95_px: 0,
+    result_row_count: 200,
+    selected_row_preserved: 1,
+    focused_row_preserved: 1,
+    scroll_position_drift_px: 0,
+    grid_instance_reconstructed: 0,
+  } satisfies Partial<Record<BenchMetricId, number>>;
 
-    expect(() =>
-      createBenchRunSummary({
-        request: { ...baseRequest, scriptName: "replace" },
-        status: "completed",
+  // Dropping ONE metric at a time is the only shape that pins the whole list.
+  // A single object missing everything proves only that the FIRST entry throws,
+  // so every entry after it could be deleted with the suite still green.
+  test("names every replace/append metric that goes missing on its own", () => {
+    for (const scriptName of ["replace", "append"] as const) {
+      const request = { ...baseRequest, scriptName };
+      const input = {
+        request,
+        status: "completed" as const,
         timestamp: "2026-08-10T00:00:00.000Z",
-        tracePath: "traces/replace.json",
-        metrics,
+        tracePath: `traces/${scriptName}.json`,
         notes: [],
-      }),
-    ).toThrow(/Missing required metric: grid_instance_reconstructed/);
+      };
 
-    // 0 is the passing value, and it must survive metric compaction.
+      expect(
+        createBenchRunSummary({ ...input, metrics: rowSetChangeMetrics }),
+      ).toMatchObject({ status: "completed", scriptName });
+
+      for (const metricId of Object.keys(rowSetChangeMetrics)) {
+        expect(() =>
+          createBenchRunSummary({
+            ...input,
+            metrics: Object.fromEntries(
+              Object.entries(rowSetChangeMetrics).filter(
+                ([id]) => id !== metricId,
+              ),
+            ) as Partial<Record<BenchMetricId, number>>,
+          }),
+        ).toThrow(`Missing required metric: ${metricId}`);
+      }
+    }
+  });
+
+  // 0 is the PASSING value for grid_instance_reconstructed and for
+  // scroll_position_drift_px — the opposite of the *_preserved pair they are
+  // required alongside. compactMetrics drops undefined, not falsy, so a passing
+  // run must still carry both rather than reading as a run that omitted them.
+  test("keeps the passing zero of both replace/append budget metrics", () => {
     expect(
       createBenchRunSummary({
         request: { ...baseRequest, scriptName: "replace" },
         status: "completed",
         timestamp: "2026-08-10T00:00:00.000Z",
         tracePath: "traces/replace.json",
-        metrics: { ...metrics, grid_instance_reconstructed: 0 },
+        metrics: rowSetChangeMetrics,
         notes: [],
       }),
-    ).toMatchObject({ metrics: { grid_instance_reconstructed: 0 } });
+    ).toMatchObject({
+      metrics: { grid_instance_reconstructed: 0, scroll_position_drift_px: 0 },
+    });
+  });
+
+  // A `partial` owes only dom_nodes_peak, and scripts/check-bench-budgets.mjs
+  // skips every non-completed run — so a partial replace would let a budget
+  // report come back green having measured nothing. Refusing the status is what
+  // makes an unmeasurable run stop the bench instead of quietly thinning the
+  // ledger.
+  test("refuses a partial replace or append rather than banking an unmeasured run", () => {
+    for (const scriptName of ["replace", "append"] as const) {
+      expect(() =>
+        createBenchRunSummary({
+          request: { ...baseRequest, scriptName },
+          status: "partial",
+          timestamp: "2026-08-10T00:00:00.000Z",
+          tracePath: `traces/${scriptName}.json`,
+          metrics: rowSetChangeMetrics,
+          notes: [],
+        }),
+      ).toThrow(
+        `Partial runs cannot substantiate the ${scriptName} budget: record it as failed`,
+      );
+    }
+
+    // Deliberate asymmetry, not a new global rule: the interaction family still
+    // banks a partial, because its numbers are comparative rather than a single
+    // budgeted figure.
+    expect(
+      createBenchRunSummary({
+        request: { ...baseRequest, scriptName: "sort", scenarioId: "S2" },
+        status: "partial",
+        timestamp: "2026-08-10T00:00:00.000Z",
+        tracePath: "traces/sort.json",
+        metrics: { dom_nodes_peak: 1 },
+        notes: [],
+      }),
+    ).toMatchObject({ status: "partial", scriptName: "sort" });
   });
 
   test("enforces the explicit P0a support matrix", () => {
