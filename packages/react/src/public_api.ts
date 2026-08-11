@@ -12,6 +12,19 @@ export { Pretable } from "./pretable";
 export { PretableSurface } from "./pretable-surface";
 export { LabeledGridSurface } from "./labeled-grid-surface";
 
+// Cell presentations. Unlike the icon set — which is internal, because it is
+// this grid's own chrome — these ARE for consumers: they are the markup half of
+// the presentation rules in @pretable/ui's grid.css, and a consumer who
+// hand-rolled the same data attributes would be writing against a contract that
+// only these components are tested to keep.
+export { PretableDelta, PretableStatus } from "./cells";
+export type {
+  PretableDeltaDirection,
+  PretableDeltaProps,
+  PretableStatusProps,
+  PretableStatusTone,
+} from "./cells";
+
 // Hooks
 export { usePretable } from "./use-pretable";
 
