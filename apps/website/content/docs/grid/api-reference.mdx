@@ -24,8 +24,9 @@ A column definition. Generic over your row type.
 | `type`            | `ColumnType`                                            | no       | Declares what the column holds. Drives three things at once: the [filter operators](/docs/grid/filtering#operators) offered, the [typed editor](/docs/grid/editing#typed-editors) rendered, and the [clipboard type hint](/docs/grid/clipboard#type-hints). Untyped columns fall back to text behavior everywhere but receive no clipboard hint.                                                                                                                                                                                                                                                                                       |
 | `options`         | `ColumnOption[]`                                        | no       | The allowed values for an `enum` column. Drives the combobox editor and the `isAnyOf` / `isNoneOf` filter operators. Ignored for other types.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `value`           | `(row: TRow) => unknown`                                | no       | Extract the cell value from the row. If omitted, the column has no sortable/filterable value.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `format`          | `(input: PretableFormatInput<TRow>) => string`          | no       | Per-cell string formatter. Drives display and copy. See [Cell renderers](/docs/grid/cell-renderers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `render`          | `(input: PretableCellRenderInput<TRow>) => ReactNode`   | no       | Per-cell ReactNode renderer. Receives `formattedValue` from `format`. See [Cell renderers](/docs/grid/cell-renderers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `format`          | `(input: PretableFormatInput<TRow>) => string`          | no       | Per-cell string formatter. Drives display and copy, and outranks `numberFormat`. See [Cell renderers](/docs/grid/cell-renderers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `numberFormat`    | `Intl.NumberFormatOptions`                              | no       | Opt-in native formatting for `number` and `bigint` values. Reused by display, inherited aggregates, and copy with the surface `locale`. See [Number formatting](/docs/grid/number-formatting).                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `render`          | `(input: PretableCellRenderInput<TRow>) => ReactNode`   | no       | Per-cell ReactNode renderer. Receives the resolved callback, native-number, or fallback string as `formattedValue`. See [Cell renderers](/docs/grid/cell-renderers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `renderHeader`    | `(input: PretableHeaderRenderInput<TRow>) => ReactNode` | no       | Per-column header renderer. See [Cell renderers](/docs/grid/cell-renderers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `renderEditor`    | `(input: PretableEditorInput<TRow>) => ReactNode`       | no       | Replace the built-in editor for this column. See [Custom editors](/docs/grid/editing#custom-editors).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `minWidthPx`      | `number`                                                | no       | Per-column minimum width clamp. Applied during resize and autosize. Engine default min is 40.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
@@ -39,11 +40,11 @@ A column definition. Generic over your row type.
 
 See [Row grouping](/docs/grid/grouping).
 
-| Field             | Type                                                    | Description                                                                                                                                                                                      |
-| ----------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `rowGroup`        | `boolean`                                               | Group rows by this column; levels follow column order. A **seed only** — read once when the grid is created. Changing it later does nothing; use `state.rowGroups` or `grid.setRowGroups`.       |
-| `aggregate`       | `PretableAggregateSpec`                                 | The aggregate shown for this column on group rows: `"sum" \| "avg" \| "min" \| "max" \| "count"`, or a custom `PretableAggregator`.                                                              |
-| `formatAggregate` | `(input: PretableAggregateFormatInput<TRow>) => string` | Formats this column's aggregate on a group row. **Not `format`** — `PretableFormatInput.row` is non-optional and a group row has no row, so a cell formatter is not a legal aggregate formatter. |
+| Field             | Type                                                    | Description                                                                                                                                                                                |
+| ----------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rowGroup`        | `boolean`                                               | Group rows by this column; levels follow column order. A **seed only** — read once when the grid is created. Changing it later does nothing; use `state.rowGroups` or `grid.setRowGroups`. |
+| `aggregate`       | `PretableAggregateSpec`                                 | The aggregate shown for this column on group rows: `"sum" \| "avg" \| "min" \| "max" \| "count"`, or a custom `PretableAggregator`.                                                        |
+| `formatAggregate` | `(input: PretableAggregateFormatInput<TRow>) => string` | Formats this column's aggregate on a group row and outranks inherited `numberFormat`. **Not `format`** — `PretableFormatInput.row` is non-optional and a group row has no row.             |
 
 ### Cell editing fields
 
@@ -69,6 +70,32 @@ interface ColumnOption {
 ```
 
 One `type` declaration drives filtering, editing, and clipboard behavior together — you do not configure them separately. `options` is only meaningful when `type` is `"enum"`.
+
+### Number formatting exports
+
+```ts
+type PretableCurrencyFormatOptions = Omit<
+  Intl.NumberFormatOptions,
+  "style" | "currency" | "currencySign"
+> & {
+  currency: string;
+};
+
+const numberFormats: {
+  readonly money: (
+    options: PretableCurrencyFormatOptions,
+  ) => Intl.NumberFormatOptions;
+  readonly accounting: (
+    options: PretableCurrencyFormatOptions,
+  ) => Intl.NumberFormatOptions;
+};
+```
+
+`numberFormats.money` produces native currency options with a standard sign;
+`numberFormats.accounting` produces native currency options with an accounting
+sign. Both exports are available from `@pretable/react` and `@pretable/core`.
+See [Number formatting](/docs/grid/number-formatting) for precedence, locale,
+and raw-value boundaries.
 
 ## `PretableRow`
 
@@ -188,6 +215,7 @@ interface PretableAggregateFormatInput<TRow extends PretableRow = PretableRow> {
   value: unknown;
   column: PretableColumn<TRow>;
   group: PretableGroupRow;
+  scope: "all" | "loaded";
 }
 ```
 
@@ -199,7 +227,9 @@ the prop. It is normalized to `null` when the column is unpinned, unlike
 
 `PretableCoreColumn<TRow>` is the engine-level (React-free) column type re-exported from `@pretable/core`. `PretableColumn<TRow>` extends it with the React-only `render` and `renderHeader` fields. Most consumers import `PretableColumn` from `@pretable/react`.
 
-`PretableAggregateFormatInput` is exported from `@pretable/core` only — writing a `formatAggregate` inline on a `PretableColumn` infers it, so you rarely need the name.
+`PretableAggregateFormatInput` is exported from both `@pretable/core` and
+`@pretable/react` — writing a `formatAggregate` inline on a `PretableColumn`
+infers it, so you rarely need the name.
 
 - `PretableCellAddress` — a single cell, identified by stable row + column id.
 - `PretableCellRange` — a rectangular range over ids; survives sort/filter/reorder.
@@ -282,6 +312,8 @@ interface SerializeRangesArgs<TRow> {
   visibleRows: readonly PretableVisibleRow<TRow>[];
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
+  locale?: Intl.LocalesArgument;
+  scope?: "all" | "loaded";
 }
 ```
 

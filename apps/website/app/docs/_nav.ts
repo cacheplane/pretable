@@ -35,6 +35,10 @@ export const docsNav: DocsNavSection[] = [
       { title: "Editing", href: "/docs/grid/editing" },
       { title: "Sorting", href: "/docs/grid/sorting" },
       { title: "Filtering", href: "/docs/grid/filtering" },
+      {
+        title: "Number formatting",
+        href: "/docs/grid/number-formatting",
+      },
       { title: "Row grouping", href: "/docs/grid/grouping" },
       { title: "Column layout", href: "/docs/grid/column-layout" },
       { title: "Cell renderers", href: "/docs/grid/cell-renderers" },

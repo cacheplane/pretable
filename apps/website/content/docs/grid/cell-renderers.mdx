@@ -5,22 +5,34 @@ nav: Grid
 order: 8
 ---
 
-Pretable supports per-column display customization through three optional hooks on `PretableColumn<TRow>`: `format` (value → string), `render` (returns `ReactNode`), and `renderHeader` (returns `ReactNode`). The pipeline runs `format` first, then `render` if provided, with sensible defaults for both. Every cell is wrapped in `React.memo` with a custom equality check, so unchanged cells skip re-render even when other parts of the grid update.
+Pretable supports per-column display customization through native
+`numberFormat` configuration and three optional hooks on
+`PretableColumn<TRow>`: `format` (value → string), `render` (returns
+`ReactNode`), and `renderHeader` (returns `ReactNode`). A `format` callback wins
+over native number formatting, and the resolved string reaches `render` as
+`formattedValue`. Every cell is wrapped in `React.memo` with a custom equality
+check, so unchanged cells skip re-render even when other parts of the grid
+update.
 
 ## Pipeline
 
 For every visible body cell, on every render:
 
 1. **value extraction**: `value = column.value ? column.value(row) : row[column.id]`.
-2. **format**: `formattedValue = column.format ? column.format({ value, row, column }) : defaultFormat(value)`. The default joins arrays with `", "` and stringifies everything else.
+2. **format**: a column `format` callback wins. Otherwise a compiled
+   `numberFormat` handles `number` or `bigint` values. Values not handled by
+   either path use the default, which joins arrays with `", "` and stringifies
+   everything else.
 3. **render**: if `column.render` is present, it returns the cell's ReactNode. Otherwise the grid-level `renderBodyCell` prop on `<PretableSurface>` applies. Otherwise `formattedValue` is rendered as plain text.
 
 ## `format`
 
-Per-column string formatter. Use it for date / number / status formatting that doesn't need JSX.
+Per-column string formatter. Use it for dates, statuses, and custom domain
+values that don't need JSX. For JavaScript `number` and `bigint` values, prefer
+the compiled [`numberFormat`](/docs/grid/number-formatting) column option.
 
 ```tsx
-import type { PretableColumn } from "@pretable/react";
+import { numberFormats, type PretableColumn } from "@pretable/react";
 
 interface Order {
   id: string;
@@ -33,11 +45,7 @@ const columns: PretableColumn<Order>[] = [
   {
     id: "total",
     header: "Total",
-    format: ({ value }) =>
-      new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-      }).format(value as number),
+    numberFormat: numberFormats.money({ currency: "USD" }),
   },
   {
     id: "placedAt",
@@ -63,7 +71,10 @@ const columns: PretableColumn<Order>[] = [
 ];
 ```
 
-`format` is also used by `Cmd+C` copy serialization — set it once and both display and clipboard get consistent output.
+`format` is also used by `Cmd+C` copy serialization — set it once and both
+display and clipboard get consistent output. It outranks `numberFormat` when a
+column supplies both. Native number formatting is likewise shared by display
+and copy without constructing a formatter inside the per-cell callback.
 
 ## `render`
 
@@ -87,7 +98,14 @@ const columns: PretableColumn<Order>[] = [
 ];
 ```
 
-`render` receives `{ value, row, column, formattedValue, rowId, rowIndex, isFocused, isSelected, pinned }`. The `formattedValue` is the result of `format` (or the default formatter if `format` was not provided), so most renderers don't need to call `format` themselves. `pinned` is the column's live pin side (`"left" | "right" | null`) taken from the engine's column plan — use it instead of `column.pinned`, which only reflects what the `columns` prop declared and goes stale once a pin is set through controlled state, `grid.setColumnPinned`, or drag-to-pin.
+`render` receives `{ value, row, column, formattedValue, rowId, rowIndex,
+isFocused, isSelected, pinned }`. The `formattedValue` is the resolved string
+from `format`, native `numberFormat`, or the default formatter, so renderers do
+not need to repeat formatting. `pinned` is the column's live pin side (`"left" |
+"right" | null`) taken from the engine's column plan — use it instead of
+`column.pinned`, which only reflects what the `columns` prop declared and goes
+stale once a pin is set through controlled state, `grid.setColumnPinned`, or
+drag-to-pin.
 
 ## `renderHeader`
 
@@ -111,22 +129,24 @@ const columns: PretableColumn<Order>[] = [
 
 Every cell is wrapped in `React.memo` with a custom equality check. The cell skips re-render when the following are all reference-equal between renders:
 
-| Field               | Source                                              |
-| ------------------- | --------------------------------------------------- |
-| `rowId`             | the row's id                                        |
-| `columnId`          | the column's id                                     |
-| `value`             | result of `column.value(row)` (or `row[column.id]`) |
-| `formattedValue`    | result of `column.format(...)` (or default)         |
-| `isFocused`         | engine focus state for this cell                    |
-| `isSelected`        | derived from selection ranges                       |
-| `pinned`            | pin side from the engine's column plan              |
-| `renderRef`         | `column.render` reference (or `null`)               |
-| `fallbackRenderRef` | grid-level `renderBodyCell` reference (or `null`)   |
+| Field               | Source                                                   |
+| ------------------- | -------------------------------------------------------- |
+| `rowId`             | the row's id                                             |
+| `columnId`          | the column's id                                          |
+| `value`             | result of `column.value(row)` (or `row[column.id]`)      |
+| `formattedValue`    | result of `format`, compiled `numberFormat`, or fallback |
+| `isFocused`         | engine focus state for this cell                         |
+| `isSelected`        | derived from selection ranges                            |
+| `pinned`            | pin side from the engine's column plan                   |
+| `renderRef`         | `column.render` reference (or `null`)                    |
+| `fallbackRenderRef` | grid-level `renderBodyCell` reference (or `null`)        |
 
 `format` and `column.value` are **not** in the memo key. They run unconditionally at the parent every render — but their cost is bounded by the cheapness contract:
 
 - `column.value` is typically a property access. Nanoseconds.
-- `column.format` is typically `Intl.NumberFormat.format(value)` or `(value as Date).toISOString()`. Microseconds.
+- `column.format` is typically a status lookup or a date/domain conversion.
+  Native number formatter instances are compiled per configured column, not
+  constructed inside the per-cell callback.
 
 The memo bails out further down: if value didn't change AND `format` is pure, `formattedValue` is the same string, and the cell DOM is not re-rendered.
 
@@ -157,22 +177,23 @@ function MyGrid({ orders }) {
   return <PretableSurface columns={columns} rows={orders} /* ... */ />;
 }
 
-// ✅ also stable — useMemo when columns depend on props
+// ✅ also stable — the surface compiles the column option for its locale
+const moneyColumns: PretableColumn<Order>[] = [
+  {
+    id: "total",
+    numberFormat: numberFormats.money({ currency: "USD" }),
+  },
+];
+
 function MyGrid({ orders, locale }: { orders: Order[]; locale: string }) {
-  const columns = React.useMemo<PretableColumn<Order>[]>(
-    () => [
-      {
-        id: "total",
-        format: ({ value }) =>
-          new Intl.NumberFormat(locale, {
-            style: "currency",
-            currency: "USD",
-          }).format(value as number),
-      },
-    ],
-    [locale],
+  return (
+    <PretableSurface
+      columns={moneyColumns}
+      locale={locale}
+      rows={orders}
+      /* ... */
+    />
   );
-  return <PretableSurface columns={columns} rows={orders} /* ... */ />;
 }
 ```
 
@@ -188,7 +209,11 @@ Header memoization is parallel: `<MemoizedHeaderContent>` keyed on `(columnId, l
 
 Same for headers (`column.renderHeader` → `renderHeaderCell` → default label + sort indicator).
 
-`<LabeledGridSurface>` (the labeled cell variant) continues to use grid-level `renderBodyCell` for its label/value structure. No migration is required.
+`<LabeledGridSurface>` uses this exact precedence: `column.render` first, then
+the wrapper's label/value renderer. Inside that wrapper, `formatValue` wins when
+present and otherwise the wrapper prints `formattedValue`. Its `formatValue`
+input includes raw `value`, `row`, and `column` alongside the already resolved
+`formattedValue`, so it can decorate the display without losing either form.
 
 ## Synthetic row-select column
 

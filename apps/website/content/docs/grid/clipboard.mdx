@@ -1,6 +1,6 @@
 ---
 title: Clipboard
-description: "Cmd+C copy with TSV and HTML clipboard flavors, per-column format, grid-level onCopy override."
+description: "Cmd+C copy with TSV and HTML clipboard flavors, per-column formatting, grid-level onCopy override."
 nav: Grid
 order: 6
 ---
@@ -9,14 +9,21 @@ order: 6
 
 ## Default TSV format
 
-The default serializer emits tab-separated cells, newline-separated rows, with a blank line between blocks for multi-range selections. Default cell coercion:
+The default serializer emits tab-separated cells, newline-separated rows, with
+a blank line between blocks for multi-range selections. A column `format`
+callback wins first; otherwise a configured native `numberFormat` handles
+`number` and `bigint` values with the surface `locale`. With neither, clipboard
+keeps its channel-specific default coercion:
 
 - `null` / `undefined` → `""`
 - `Date` → `value.toISOString()`
 - `string` / `number` / `boolean` / `bigint` → `String(value)`
 - plain object → `JSON.stringify(value)` (best-effort fallback)
 
-A range that spans [group rows](/docs/grid/grouping) serializes them too: the group's label in the derived group column, each column's `formatAggregate` output where it has an aggregate, and an empty cell everywhere else.
+A range that spans [group rows](/docs/grid/grouping) serializes them too: the
+group's label in the derived group column, each aggregate column's
+`formatAggregate` output or inherited native `numberFormat`, and an empty cell
+everywhere else.
 
 ### Escaping
 
@@ -30,7 +37,10 @@ This matters for wrapped/multi-line cells: a cell holding a newline would otherw
 
 This matches what Excel and Sheets accept on paste, so a copy out of a Pretable grid pastes cleanly into a spreadsheet even when only the plain-text flavor survives — though in practice a spreadsheet takes the [HTML flavor](#html-flavor) instead.
 
-Escaping is applied after your per-column [`format`](#per-column-format) runs, so a `format` that returns text containing a tab or newline is still safe — don't pre-quote in `format`, or the quotes get escaped as literal content. If you write a fully custom serializer, you own the escaping.
+Escaping is applied after your per-column [`format`](#per-column-format) or
+native `numberFormat` runs, so output containing a tab or newline is still safe
+— don't pre-quote in `format`, or the quotes get escaped as literal content. If
+you write a fully custom serializer, you own the escaping.
 
 ## HTML flavor
 
@@ -58,8 +68,12 @@ The `white-space:pre-wrap` on the table is not cosmetic. HTML collapses runs of 
 Cell and header text is escaped — `&`, `<`, `>`, and `"` become entities — and then line breaks become `<br>`. Text is never interpreted as markup:
 
 - A cell value of `<b>x</b>` copies those literal characters. It does not paste as bold text.
-- The same holds for [`format`](#per-column-format) output. `format` returns **text**, not HTML. Returning `"<b>x</b>"` from it gets escaped exactly like any other value.
-- [`render`](/docs/grid/cell-renderers) is not consulted at all. It returns a `ReactNode` for on-screen display; the clipboard uses `format` (or the default coercion) for both flavors.
+- The same holds for [`format`](#per-column-format) and native `numberFormat`
+  output. A `format` callback returns **text**, not HTML. Returning `"<b>x</b>"`
+  from it gets escaped exactly like any other value.
+- [`render`](/docs/grid/cell-renderers) is not consulted at all. It returns a
+  `ReactNode` for on-screen display; the clipboard uses `format`, native
+  `numberFormat`, or its fallback coercion for both flavors.
 
 ### Type hints
 
@@ -95,7 +109,9 @@ To write TSV only, drop the `html` field in [`onCopy`](#grid-level-oncopy-overri
 
 ## Per-column `format`
 
-For domain-specific formatting (a Date that should copy as `YYYY-MM-DD` instead of full ISO, a number with grouping separators, a status enum that should copy as a label), supply `format` on the column:
+For domain-specific formatting (a Date that should copy as `YYYY-MM-DD` instead
+of full ISO, or a status enum that should copy as a label), supply `format` on
+the column:
 
 ```tsx
 const columns: PretableColumn<Event>[] = [
@@ -110,7 +126,18 @@ const columns: PretableColumn<Event>[] = [
 ];
 ```
 
-`format({ value, row, column })` is called per cell before the default coercion runs. Return a string. The same `format` function drives [display rendering](/docs/grid/cell-renderers) and copy serialization, so a single definition keeps the on-screen text and the clipboard text in sync. If you don't supply one, the default coercion above applies.
+`format({ value, row, column })` is called per cell before native formatting or
+default coercion runs. Return a string. The same callback drives
+[display rendering](/docs/grid/cell-renderers) and copy serialization, so a
+single definition keeps both channels in sync.
+
+For native decimal, money, or accounting display, put `numberFormat` on the
+column and pass `locale` to the surface. The built-in serializer uses the same
+configuration and locale as display. If neither callback nor native
+configuration applies, the unformatted fallback remains channel-specific:
+clipboard keeps the coercion listed above, which is not promised to equal the
+renderer fallback for every object or array. See
+[Number formatting](/docs/grid/number-formatting).
 
 ## Grid-level `onCopy` override
 
@@ -125,7 +152,7 @@ import { serializeRanges } from "@pretable/react";
   rows={rows}
   getRowId={(row) => row.id}
   onCopy={(args) => {
-    // args is SerializeRangesArgs: { ranges, visibleRows, columns, copyWithHeaders }
+    // args also includes locale, copyWithHeaders, and aggregate scope
     const tsv = serializeRanges(args);
     if (!tsv) return null; // empty selection → cancel the copy
     // Reuse the built-in TSV, but write CSV instead. Returning only `text`
@@ -154,18 +181,28 @@ import { serializeRanges } from "@pretable/react";
 | `visibleRows`     | `readonly PretableVisibleRow<T>[]`    | the currently materialized rows                                                              |
 | `columns`         | `readonly PretableColumn<T>[]`        | column defs (the row-select column is among them)                                            |
 | `copyWithHeaders` | `boolean`                             | mirror of the `copyWithHeaders` prop                                                         |
+| `locale`          | `Intl.LocalesArgument`                | public presentation locale used by native number formatting                                  |
 | `scope`           | `"all" \| "loaded"` _(@experimental)_ | whether the copied group-row aggregates fold every matching record or only the loaded window |
 
 `scope` only matters when the copied selection contains group rows. It is the same scope the grid shows on screen, forwarded so a custom serializer cannot label a partial figure as a whole one: `"loaded"` means the aggregates fold only the records currently loaded, which is what a [server-filtered grid](/docs/grid/pretable-surface#server-applied-filtering-and-sorting) holding a window onto a larger result set has. `serializeRanges` passes it to each column's `formatAggregate`, so the copied text matches the rendered group row. It defaults to `"all"` — a serializer you call by hand, outside the grid, is copying everything it was given.
 
-`defaultCoerceForCopy(value)` is the fallback value→string coercion (the `null` / `Date` / primitive / object rules listed under [Default TSV format](#default-tsv-format)). Reach for it in a custom serializer so values without a per-column `format` still stringify consistently:
+`locale` is optional and public on both `SerializeRangesArgs` and
+`serializeRanges`. The surface supplies its own `locale` to `onCopy`; pass an
+explicit value yourself when calling `serializeRanges` outside a surface if the
+output must be deterministic across runtimes.
+
+`defaultCoerceForCopy(value)` is the fallback value→string coercion (the `null`
+/ `Date` / primitive / object rules listed under
+[Default TSV format](#default-tsv-format)). Reach for it after any custom
+formatting branches to preserve the built-in fallback. A hand-written
+serializer owns native formatting itself; call `serializeRanges(args)` when you
+want Pretable to compile and apply each column's `numberFormat` with
+`args.locale`:
 
 ```tsx
 import { defaultCoerceForCopy } from "@pretable/react";
 
-const text = column.format
-  ? column.format({ value, row, column })
-  : defaultCoerceForCopy(value);
+const fallbackText = defaultCoerceForCopy(value);
 ```
 
 ## `copyToClipboard` override

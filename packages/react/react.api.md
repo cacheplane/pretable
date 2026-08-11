@@ -76,6 +76,8 @@ export interface LabeledGridSurfaceFormatValueInput<TRow extends PretableRow = P
     // (undocumented)
     column: PretableColumn<TRow>;
     // (undocumented)
+    formattedValue: string;
+    // (undocumented)
     row: TRow;
     // (undocumented)
     value: unknown;
@@ -107,6 +109,8 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
     headerCellClassName?: string;
     // (undocumented)
     labelClassName?: string;
+    // (undocumented)
+    locale?: PretableSurfaceProps<TRow>["locale"];
     // (undocumented)
     messages?: PretableSurfaceProps<TRow>["messages"];
     // (undocumented)
@@ -148,6 +152,12 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
     // (undocumented)
     viewportHeight: number;
 }
+
+// @public
+export const numberFormats: {
+    readonly money: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
+    readonly accounting: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
+};
 
 // @public
 export function parseTsv(text: string): string[][];
@@ -239,6 +249,7 @@ export interface PretableBaseColumn<TRow extends PretableRow = PretableRow> {
     maxWidthPx?: number;
     // (undocumented)
     minWidthPx?: number;
+    numberFormat?: Intl.NumberFormatOptions;
     // (undocumented)
     options?: ColumnOption[];
     // (undocumented)
@@ -312,6 +323,11 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> extends 
     // (undocumented)
     renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
 }
+
+// @public
+export type PretableCurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency" | "currencySign"> & {
+    currency: string;
+};
 
 // @public
 export interface PretableDataRow<TRow extends PretableRow = PretableRow> {
@@ -635,6 +651,8 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
     copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
     getRowId: PretableGridOptions<TRow>["getRowId"];
     // (undocumented)
+    locale?: PretableSurfaceProps<TRow>["locale"];
+    // (undocumented)
     messages?: PretableSurfaceProps<TRow>["messages"];
     // (undocumented)
     onCellEdit?: PretableSurfaceProps<TRow>["onCellEdit"];
@@ -867,6 +885,7 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
     };
     groupsDefaultExpanded?: boolean;
     hideGroupedColumns?: boolean;
+    locale?: Intl.LocalesArgument;
     messages?: PretableSurfaceMessages;
     onCellEdit?: (payload: {
         rowId: string;
@@ -1052,6 +1071,7 @@ export interface SerializeRangesArgs<TRow extends PretableRow> {
     columns: readonly PretableColumn<TRow>[];
     // (undocumented)
     copyWithHeaders?: boolean;
+    locale?: Intl.LocalesArgument;
     // (undocumented)
     ranges: readonly PretableCellRange[];
     scope?: "all" | "loaded";

@@ -18,6 +18,22 @@ test("docs page renders sidebar with active state", async ({ page }) => {
   await expect(active).toHaveAttribute("href", "/docs/grid/pretable-component");
 });
 
+test("number formatting page renders its active nav entry", async ({
+  page,
+}) => {
+  await page.goto("/docs/grid/number-formatting", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Number formatting",
+  );
+  const active = page.locator(
+    'nav[aria-label="Docs sections"] a[aria-current="page"]',
+  );
+  await expect(active).toHaveCount(1);
+  await expect(active).toHaveAttribute("href", "/docs/grid/number-formatting");
+});
+
 test("row grouping page renders its nav entry and live example", async ({
   page,
 }) => {

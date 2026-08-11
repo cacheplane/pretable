@@ -51,6 +51,12 @@ export type FilterValue = string | number | readonly [number, number] | readonly
 export const GROUP_COLUMN_ID = "__pretable_group__";
 
 // @public
+export const numberFormats: {
+    readonly money: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
+    readonly accounting: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
+};
+
+// @public
 export interface PretableAggregateFormatInput<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     column: PretableColumn<TRow>;
@@ -115,6 +121,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     maxWidthPx?: number;
     // (undocumented)
     minWidthPx?: number;
+    numberFormat?: Intl.NumberFormatOptions;
     // (undocumented)
     options?: ColumnOption[];
     // (undocumented)
@@ -140,6 +147,11 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     wrap?: boolean;
 }
+
+// @public
+export type PretableCurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency" | "currencySign"> & {
+    currency: string;
+};
 
 // @public
 export interface PretableDataRow<TRow extends PretableRow = PretableRow> {
