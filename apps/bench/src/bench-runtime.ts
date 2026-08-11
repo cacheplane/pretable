@@ -1554,6 +1554,27 @@ function getRowIdentityFallback(
   return firstCell?.textContent?.trim() || `row-${rowIndex}`;
 }
 
+/**
+ * Ids come from a pre-incremented sequence, so the first real one is 1 and any other
+ * shape — attribute absent, empty, 0, non-numeric — means no instance was ever
+ * recorded. Those have to read as null rather than as an id: `measureBenchDataUpdateRun`
+ * compares the read before the update against the read after, so a placeholder that
+ * survives as a value would compare equal to itself and score
+ * `grid_instance_reconstructed: 0`, the value §11's replace budget treats as proof that
+ * no reconstruction happened.
+ */
+export function readBenchGridInstanceId(
+  root: ParentNode | null,
+): string | null {
+  const published = (
+    root?.querySelector("[data-bench-grid-instance-id]") as HTMLElement | null
+  )?.dataset.benchGridInstanceId;
+
+  return published !== undefined && /^[1-9][0-9]*$/.test(published)
+    ? published
+    : null;
+}
+
 function readBenchInteractionState(
   root: HTMLElement,
   readInteractionStateOverride?: () => BenchInteractionState,

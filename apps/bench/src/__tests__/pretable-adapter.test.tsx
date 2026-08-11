@@ -16,6 +16,7 @@ import {
 } from "@pretable-internal/scenario-data";
 import * as pretableReactInternal from "@pretable/react";
 
+import { readBenchGridInstanceId } from "../bench-runtime";
 import { createBenchInteractionPlan } from "../interaction-plan";
 import { PretableAdapter } from "../pretable-adapter";
 
@@ -74,6 +75,33 @@ describe("PretableAdapter", () => {
       }),
       undefined,
     );
+  });
+
+  test("presents no instance id until a grid publishes one", () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+    // A surface that never publishes a grid. `onGridReady` is what hands out the id,
+    // so this is the state every run passes through before the engine exists — and
+    // the state the reconstruction probe must be able to tell apart from a real id.
+    vi.spyOn(pretableReactInternal, "PretableSurface").mockImplementation(
+      (props) => (
+        <div
+          aria-label={props.ariaLabel}
+          data-pretable-scroll-viewport=""
+          role="grid"
+        />
+      ),
+    );
+
+    render(<PretableAdapter dataset={dataset} runKey={1} />);
+
+    const adapter = screen
+      .getByRole("grid", { name: "Pretable React adapter" })
+      .closest("[data-benchmark-adapter]");
+
+    expect(adapter).not.toHaveAttribute("data-bench-grid-instance-id");
+    // The seam, end to end: what the adapter leaves in the DOM before readiness must
+    // read as unavailable to the runtime probe, not as instance 0.
+    expect(readBenchGridInstanceId(adapter?.parentElement ?? null)).toBeNull();
   });
 
   test("derives interaction preservation markers from actual telemetry instead of the requested plan", async () => {
@@ -225,12 +253,17 @@ describe("PretableAdapter", () => {
 
     // `initialRows` wins over the dataset's own 120 rows.
     expect(screen.getAllByTestId("pretable-row")).toHaveLength(3);
+    // Waited for through the runtime's own reader, not for the attribute to exist:
+    // a placeholder would satisfy presence and leave the comparison below running
+    // against a value no engine ever published.
     await waitFor(() => {
-      expect(adapter).not.toHaveAttribute("data-bench-grid-instance-id", "0");
+      expect(
+        readBenchGridInstanceId(adapter?.parentElement ?? null),
+      ).not.toBeNull();
     });
 
-    const instanceIdBefore = adapter?.getAttribute(
-      "data-bench-grid-instance-id",
+    const instanceIdBefore = readBenchGridInstanceId(
+      adapter?.parentElement ?? null,
     );
 
     expect(apply).not.toBeNull();
@@ -245,9 +278,8 @@ describe("PretableAdapter", () => {
     });
     // Same engine absorbed the new array — this is the property
     // `grid_instance_reconstructed` reads.
-    expect(adapter).toHaveAttribute(
-      "data-bench-grid-instance-id",
-      instanceIdBefore ?? "",
+    expect(readBenchGridInstanceId(adapter?.parentElement ?? null)).toBe(
+      instanceIdBefore,
     );
   });
 });

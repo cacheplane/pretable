@@ -17,6 +17,7 @@ import {
   measureBenchUpdatesRun,
   measurePretableScrollRun,
   publishBenchResult,
+  readBenchGridInstanceId,
 } from "../bench-runtime";
 import { benchUpdatesExcludedColumnIds } from "../interaction-plan";
 import type { BenchQueryState } from "../bench-types";
@@ -1430,6 +1431,57 @@ function installFrameStub(pending: {
     });
   };
 }
+
+describe("readBenchGridInstanceId", () => {
+  function createProbeRoot(markup: string) {
+    document.body.innerHTML = `<div data-testid="root">${markup}</div>`;
+
+    return document.querySelector<HTMLElement>('[data-testid="root"]')!;
+  }
+
+  test("reads an id the adapter published", () => {
+    const root = createProbeRoot(
+      `<section data-benchmark-adapter="pretable" data-bench-grid-instance-id="7"></section>`,
+    );
+
+    expect(readBenchGridInstanceId(root)).toBe("7");
+  });
+
+  test("reports unavailable when no element carries the attribute", () => {
+    const root = createProbeRoot(
+      `<section data-benchmark-adapter="pretable"></section>`,
+    );
+
+    expect(readBenchGridInstanceId(root)).toBeNull();
+  });
+
+  test("refuses 0, the value that means no instance was ever recorded", () => {
+    const root = createProbeRoot(
+      `<section data-benchmark-adapter="pretable" data-bench-grid-instance-id="0"></section>`,
+    );
+
+    // Ids are handed out from a sequence that pre-increments, so the first real one
+    // is 1 and 0 can only mean "nothing published yet". Accepting it would let
+    // measureBenchDataUpdateRun compare 0 against 0 and score
+    // grid_instance_reconstructed: 0 — §11's PASS value — on a run whose engine was
+    // never observed at all.
+    expect(readBenchGridInstanceId(root)).toBeNull();
+  });
+
+  test("refuses values that cannot be an id from the sequence", () => {
+    for (const value of ["", " ", "-1", "00", "1.5", "x", "01"]) {
+      const root = createProbeRoot(
+        `<section data-benchmark-adapter="pretable" data-bench-grid-instance-id="${value}"></section>`,
+      );
+
+      expect(readBenchGridInstanceId(root)).toBeNull();
+    }
+  });
+
+  test("reports unavailable for a missing root rather than throwing mid-run", () => {
+    expect(readBenchGridInstanceId(null)).toBeNull();
+  });
+});
 
 describe("bench data update runtime", () => {
   test("times a same-ids replacement, which moves no row id, top or count", async () => {

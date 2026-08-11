@@ -36,6 +36,7 @@ import {
   measureBenchScrollRun,
   measureBenchUpdatesRun,
   publishBenchResult,
+  readBenchGridInstanceId,
 } from "./bench-runtime";
 import { AgGridAdapter } from "./ag-grid-adapter";
 import {
@@ -551,12 +552,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                   // expectation against itself whenever telemetry is missing.
                   nextDataUpdatePlan.initialRows.length,
                 ),
-              () =>
-                (
-                  viewportRef.current?.querySelector(
-                    "[data-bench-grid-instance-id]",
-                  ) as HTMLElement | null
-                )?.dataset.benchGridInstanceId ?? null,
+              () => readBenchGridInstanceId(viewportRef.current),
               () => {
                 dataApiRef.current?.(nextDataUpdatePlan.nextRows);
               },

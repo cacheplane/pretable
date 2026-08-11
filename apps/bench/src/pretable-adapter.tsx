@@ -238,12 +238,21 @@ export function PretableAdapter({
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onAutosizeReadyRef.current = onAutosizeReady;
 
-  const gridInstanceIdRef = useRef("0");
+  // null until a grid publishes one. The attribute stays off the element until then,
+  // so `readBenchGridInstanceId` sees an absence it can report as unavailable — a
+  // placeholder value would be read as a real id and make an unobserved engine look
+  // like an engine that survived.
+  const gridInstanceIdRef = useRef<string | null>(null);
   const publishGridInstanceId = useCallback(() => {
     const el = adapterRef.current;
+    const gridInstanceId = gridInstanceIdRef.current;
 
-    if (el && el.dataset.benchGridInstanceId !== gridInstanceIdRef.current) {
-      el.dataset.benchGridInstanceId = gridInstanceIdRef.current;
+    if (
+      el &&
+      gridInstanceId !== null &&
+      el.dataset.benchGridInstanceId !== gridInstanceId
+    ) {
+      el.dataset.benchGridInstanceId = gridInstanceId;
     }
   }, []);
   const handleGridReady = useCallback(
@@ -335,7 +344,6 @@ export function PretableAdapter({
       data-benchmark-adapter="pretable"
       data-bench-focused-row-id=""
       data-bench-focused-row-preserved="false"
-      data-bench-grid-instance-id="0"
       data-bench-result-row-count={String(dataset.rows.length)}
       data-bench-selected-row-id=""
       data-bench-selected-row-preserved="false"
