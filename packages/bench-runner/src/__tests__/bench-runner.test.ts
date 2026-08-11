@@ -57,6 +57,7 @@ describe("bench-runner contract", () => {
         "scroll_anchor_shift_px",
         "scroll_anchor_shift_forward_p95_px",
         "scroll_anchor_shift_backward_p95_px",
+        "grid_instance_reconstructed",
       ]),
     );
 
@@ -78,7 +79,63 @@ describe("bench-runner contract", () => {
       "group-expand",
       "group-updates",
       "group-updates-stable-keys",
+      "replace",
+      "append",
     ]);
+  });
+
+  test("requires the replace/append metrics D1-PERF-04 measures separately", () => {
+    for (const scriptName of ["replace", "append"] as const) {
+      expect(() =>
+        createBenchRunSummary({
+          request: { ...baseRequest, scriptName },
+          status: "completed",
+          timestamp: "2026-08-10T00:00:00.000Z",
+          tracePath: "traces/row-set-change.json",
+          metrics: { dom_nodes_peak: 1 },
+          notes: [],
+        }),
+      ).toThrow(/Missing required metric: interaction_latency_ms/);
+    }
+  });
+
+  // §11 budgets replace at "no grid reconstruction". A run that omits the
+  // instance-identity metric cannot substantiate that, so it is not a
+  // completed run.
+  test("rejects a replace run that cannot prove the grid instance survived", () => {
+    const metrics = {
+      dom_nodes_peak: 1,
+      interaction_latency_ms: 12,
+      settle_duration_ms: 18,
+      post_interaction_anchor_shift_px: 0,
+      post_interaction_row_height_error_p95_px: 0,
+      result_row_count: 200,
+      selected_row_preserved: 1,
+      focused_row_preserved: 1,
+    } as const;
+
+    expect(() =>
+      createBenchRunSummary({
+        request: { ...baseRequest, scriptName: "replace" },
+        status: "completed",
+        timestamp: "2026-08-10T00:00:00.000Z",
+        tracePath: "traces/replace.json",
+        metrics,
+        notes: [],
+      }),
+    ).toThrow(/Missing required metric: grid_instance_reconstructed/);
+
+    // 0 is the passing value, and it must survive metric compaction.
+    expect(
+      createBenchRunSummary({
+        request: { ...baseRequest, scriptName: "replace" },
+        status: "completed",
+        timestamp: "2026-08-10T00:00:00.000Z",
+        tracePath: "traces/replace.json",
+        metrics: { ...metrics, grid_instance_reconstructed: 0 },
+        notes: [],
+      }),
+    ).toMatchObject({ metrics: { grid_instance_reconstructed: 0 } });
   });
 
   test("enforces the explicit P0a support matrix", () => {
@@ -387,6 +444,23 @@ describe("bench-runner contract", () => {
         ok: false,
         reason: expect.stringContaining("scenario"),
       });
+    }
+
+    // replace/append drive `setRows(rows, meta)` on a preserved instance —
+    // a pretable primitive, so no other adapter can run them.
+    for (const scriptName of ["replace", "append"] as const) {
+      expect(
+        validateSupportedP0aRequest({ ...baseRequest, scriptName }),
+      ).toEqual({ ok: true });
+
+      for (const adapterId of ["ag-grid", "tanstack", "mui"] as const) {
+        expect(
+          validateSupportedP0aRequest({ ...baseRequest, adapterId, scriptName }),
+        ).toEqual({
+          ok: false,
+          reason: expect.stringContaining("pretable-only"),
+        });
+      }
     }
 
     expect(

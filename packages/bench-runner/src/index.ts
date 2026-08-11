@@ -53,7 +53,11 @@ export type BenchMetricId =
   | "frame_budget_overruns_count"
   | "long_tasks_max_ms"
   | "scroll_position_drift_px"
-  | "visible_row_count_drift";
+  | "visible_row_count_drift"
+  /** 1 when the adapter created a NEW grid instance during the run, 0 when the same
+   *  instance absorbed the change. §11's replace budget says "no grid reconstruction",
+   *  and an instance identity is the only thing that can prove it. */
+  | "grid_instance_reconstructed";
 
 export type BenchScriptName =
   | "initial"
@@ -72,7 +76,13 @@ export type BenchScriptName =
   | "group"
   | "group-expand"
   | "group-updates"
-  | "group-updates-stable-keys";
+  | "group-updates-stable-keys"
+  /** One `setRows` of a fresh window over an equal-length resident set — the poll
+   *  refresh path. Measured SEPARATELY from `append` (D1-PERF-04): they exercise
+   *  different engine work and conflating them hides a regression in either. */
+  | "replace"
+  /** One `setRows` of resident ++ a new window — the load-more path. */
+  | "append";
 
 export interface BenchViewport {
   width: number;
@@ -213,6 +223,7 @@ export const benchMetricIds: readonly BenchMetricId[] = [
   "long_tasks_max_ms",
   "scroll_position_drift_px",
   "visible_row_count_drift",
+  "grid_instance_reconstructed",
 ];
 
 export const benchScriptNames: readonly BenchScriptName[] = [
@@ -233,6 +244,8 @@ export const benchScriptNames: readonly BenchScriptName[] = [
   "group-expand",
   "group-updates",
   "group-updates-stable-keys",
+  "replace",
+  "append",
 ];
 
 export function validateSupportedP0aRequest(
@@ -308,6 +321,11 @@ export function validateSupportedP0aRequest(
     ...groupingInteractionScripts,
     ...groupingStreamingScripts,
   ];
+  // D1-PERF-04's pair. Both change the ROW SET rather than display state, and
+  // §11 budgets them apart (replace < 20 ms, append < 30 ms) because the engine
+  // work differs: replace reconciles a fresh window over an equal-length
+  // resident set, append re-reconciles O(loaded) rows.
+  const rowSetChangeScripts = ["replace", "append"];
   const supportedScripts = [
     "initial",
     "scroll",
@@ -317,6 +335,7 @@ export function validateSupportedP0aRequest(
     ...selectionNavScripts,
     ...cellRendererScripts,
     ...groupingScripts,
+    ...rowSetChangeScripts,
   ];
 
   if (!supportedScripts.includes(request.scriptName)) {
@@ -405,6 +424,18 @@ export function validateSupportedP0aRequest(
       return {
         ok: false,
         reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (row grouping is AG Grid Enterprise / MUI X Premium and absent from TanStack Table; pretable-only, not a comparative claim)`,
+      };
+    }
+  }
+
+  if (rowSetChangeScripts.includes(request.scriptName)) {
+    // `setRows(rows, meta)` with a preserved grid instance is a pretable
+    // primitive; the other three adapters have no equivalent path to measure,
+    // so these numbers are ABSOLUTE and never a competitive claim.
+    if (request.adapterId !== "pretable") {
+      return {
+        ok: false,
+        reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (server-authority setRows is pretable-only, not a comparative claim)`,
       };
     }
   }
@@ -654,6 +685,26 @@ function assertRequiredMetrics(
       "result_row_count",
       "selected_row_preserved",
       "focused_row_preserved",
+    ] satisfies readonly BenchMetricId[]) {
+      if (metrics[metricId] === undefined) {
+        throw new Error(`Missing required metric: ${metricId}`);
+      }
+    }
+  }
+
+  if (
+    status === "completed" &&
+    (scriptName === "replace" || scriptName === "append")
+  ) {
+    for (const metricId of [
+      "interaction_latency_ms",
+      "settle_duration_ms",
+      "post_interaction_anchor_shift_px",
+      "post_interaction_row_height_error_p95_px",
+      "result_row_count",
+      "selected_row_preserved",
+      "focused_row_preserved",
+      "grid_instance_reconstructed",
     ] satisfies readonly BenchMetricId[]) {
       if (metrics[metricId] === undefined) {
         throw new Error(`Missing required metric: ${metricId}`);
