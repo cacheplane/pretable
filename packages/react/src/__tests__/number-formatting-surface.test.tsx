@@ -23,6 +23,10 @@ const oneDecimal: Intl.NumberFormatOptions = {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 };
+const usdCurrency: Intl.NumberFormatOptions = {
+  style: "currency",
+  currency: "USD",
+};
 const rows: NumberRow[] = [{ id: "row-1", amount: 1234.5, count: 12.5 }];
 const getRowId = (row: NumberRow) => row.id;
 
@@ -59,6 +63,7 @@ function NumberGrid({
   state,
   onGridReady,
   onCopy,
+  onCellEdit,
 }: {
   columns: PretableColumn<NumberRow>[];
   locale?: Intl.LocalesArgument;
@@ -66,6 +71,9 @@ function NumberGrid({
   state?: PretableSurfaceState;
   onGridReady?: (grid: PretableGrid<NumberRow>) => void;
   onCopy?: (args: SerializeRangesArgs<NumberRow>) => CopyPayload | null;
+  onCellEdit?: React.ComponentProps<
+    typeof PretableSurface<NumberRow>
+  >["onCellEdit"];
 }) {
   return (
     <PretableSurface
@@ -73,6 +81,7 @@ function NumberGrid({
       columns={columns}
       getRowId={getRowId}
       locale={locale}
+      onCellEdit={onCellEdit}
       onCopy={onCopy}
       onGridReady={onGridReady}
       overscan={0}
@@ -84,6 +93,138 @@ function NumberGrid({
 }
 
 describe("PretableSurface native number formatting", () => {
+  it("sorts currency-formatted numbers by their raw numeric values", () => {
+    const gridRows: NumberRow[] = [
+      { id: "ten", amount: 10 },
+      { id: "two", amount: 2 },
+    ];
+    const columns: PretableColumn<NumberRow>[] = [
+      {
+        id: "amount",
+        header: "Amount",
+        widthPx: 120,
+        type: "number",
+        numberFormat: usdCurrency,
+      },
+    ];
+    const view = render(
+      <NumberGrid columns={columns} gridRows={gridRows} locale="en-US" />,
+    );
+    const renderedRowIds = () =>
+      view
+        .getAllByTestId("pretable-row")
+        .map((row) => row.getAttribute("data-pretable-row-id"));
+    const header = view.getByRole("columnheader", { name: "Sort Amount" });
+
+    fireEvent.click(header);
+    fireEvent.click(header);
+
+    expect(renderedRowIds()).toEqual(["two", "ten"]);
+  });
+
+  it("applies numeric filters to raw values rather than currency strings", () => {
+    const gridRows: NumberRow[] = [
+      { id: "two", amount: 2 },
+      { id: "ten", amount: 10 },
+    ];
+    const columns: PretableColumn<NumberRow>[] = [
+      {
+        id: "amount",
+        header: "Amount",
+        widthPx: 120,
+        type: "number",
+        numberFormat: usdCurrency,
+      },
+    ];
+    const view = render(
+      <NumberGrid
+        columns={columns}
+        gridRows={gridRows}
+        locale="en-US"
+        state={{ filters: { amount: { operator: "gt", value: 5 } } }}
+      />,
+    );
+
+    expect(
+      view
+        .getAllByTestId("pretable-row")
+        .map((row) => row.getAttribute("data-pretable-row-id")),
+    ).toEqual(["ten"]);
+  });
+
+  it("seeds the number editor from the raw value", () => {
+    const gridRows: NumberRow[] = [{ id: "two", amount: 2 }];
+    const columns: PretableColumn<NumberRow>[] = [
+      {
+        id: "amount",
+        header: "Amount",
+        widthPx: 120,
+        type: "number",
+        editable: true,
+        numberFormat: usdCurrency,
+      },
+    ];
+    const view = render(
+      <NumberGrid columns={columns} gridRows={gridRows} locale="en-US" />,
+    );
+    const cell = getCell(view.container, "two", "amount")!;
+
+    expect(cell).toHaveTextContent("$2.00");
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+
+    expect(view.getByRole("textbox")).toHaveValue("2");
+  });
+
+  it("validates and commits the parsed number rather than its currency display", async () => {
+    const validate = vi
+      .fn<(value: unknown, input: unknown) => true>()
+      .mockReturnValue(true);
+    const onCellEdit = vi.fn();
+    const gridRows: NumberRow[] = [{ id: "two", amount: 2 }];
+    const columns: PretableColumn<NumberRow>[] = [
+      {
+        id: "amount",
+        header: "Amount",
+        widthPx: 120,
+        type: "number",
+        editable: true,
+        numberFormat: usdCurrency,
+        validate,
+      },
+    ];
+    const view = render(
+      <NumberGrid
+        columns={columns}
+        gridRows={gridRows}
+        locale="en-US"
+        onCellEdit={onCellEdit}
+      />,
+    );
+    const cell = getCell(view.container, "two", "amount")!;
+
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    fireEvent.change(view.getByRole("textbox"), {
+      target: { value: "3.5" },
+    });
+    fireEvent.keyDown(view.getByRole("textbox"), { key: "Enter" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(validate).toHaveBeenCalledWith(
+      3.5,
+      expect.objectContaining({ rowId: "two", columnId: "amount", value: 2 }),
+    );
+    expect(onCellEdit).toHaveBeenCalledWith({
+      rowId: "two",
+      columnId: "amount",
+      value: 3.5,
+      row: gridRows[0],
+    });
+    expect(typeof validate.mock.calls[0]![0]).toBe("number");
+    expect(typeof onCellEdit.mock.calls[0]![0].value).toBe("number");
+  });
+
   it("formats a numeric cell with an explicit locale and native options", () => {
     const columns: PretableColumn<NumberRow>[] = [
       { id: "amount", widthPx: 120, numberFormat: oneDecimal },

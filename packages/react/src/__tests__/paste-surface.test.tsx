@@ -179,6 +179,33 @@ describe("PretableSurface paste", () => {
     expect(payload.cells[0]!.raw).toBe("42");
   });
 
+  it("keeps pasted numbers raw when the editable column formats currency", async () => {
+    const onPaste = vi.fn();
+    renderPasteGrid({
+      columns: [
+        ...COLUMNS.slice(0, 3),
+        {
+          id: "qty",
+          header: "Qty",
+          type: "number",
+          editable: true,
+          numberFormat: { style: "currency", currency: "USD" },
+        },
+      ],
+      state: cellSelection("r1", "qty"),
+      onPaste,
+    });
+
+    firePaste(grid(), "3.5");
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<Row>;
+    expect(payload.cells).toHaveLength(1);
+    expect(payload.cells[0]!.raw).toBe("3.5");
+    expect(payload.cells[0]!.value).toBe(3.5);
+    expect(typeof payload.cells[0]!.value).toBe("number");
+  });
+
   it("prefers the column's parseEditValue and receives the edit input", async () => {
     const onPaste = vi.fn();
     const parseEditValue = vi.fn((raw: string) => Number(raw) * 10);
