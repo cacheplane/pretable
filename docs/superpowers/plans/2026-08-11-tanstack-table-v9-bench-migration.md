@@ -4,7 +4,7 @@
 
 **Goal:** Make Dependabot PR #277 a native TanStack Table v9 benchmark migration that preserves the existing adapter contract and merges only after all local and GitHub checks pass.
 
-**Architecture:** Keep the adapter headless and virtualized, but replace v8's bundled hook/row-model API with one static v9 `tableFeatures` configuration containing only column filtering and row sorting. Preserve heterogeneous auto filter/sort behavior with the exported `filterFns` and `sortFns` registries, use core cells instead of registering unused visibility/sizing features, and leave historical benchmark records unchanged.
+**Architecture:** Keep the adapter headless and virtualized, but replace v8's bundled hook/row-model API with one static v9 `tableFeatures` configuration containing only column filtering and row sorting. Preserve heterogeneous auto filter/sort behavior with the exported `filterFns` and `sortFns` registries, use core cells instead of registering unused visibility/sizing features, and preserve historical benchmark records except for the exact superseded provenance annotation required when a recorded comparator version drifts from the current tree.
 
 **Tech Stack:** React 19, TypeScript 6, TanStack Table 9.1, TanStack Virtual 3, Vitest, Testing Library, Vite, pnpm, GitHub Actions.
 
@@ -17,7 +17,10 @@
 - Modify `apps/bench/src/bench-app.tsx`: update the live comparator description to v9.
 - Modify `apps/website/app/bench/page.tsx`: update the live benchmark-page description to v9.
 - Preserve `apps/bench/package.json` and `pnpm-lock.yaml`: retain Dependabot's 9.1.0 dependency update.
-- Preserve historical `docs/research`, `docs/superpowers`, status milestone, and `ComparisonTable` v8 references because they describe actual v8 runsets.
+- Preserve `docs/superpowers/specs/2026-08-11-tanstack-table-v9-bench-migration-design.md`: retain the approved design unchanged.
+- Modify `docs/superpowers/plans/2026-08-11-tanstack-table-v9-bench-migration.md`: document the nine-file integration scope and provenance verification.
+- Modify `status/milestones/2026-08-11-comparative-rebaseline-structural.json`: add only the exact `adapterVersions.superseded` provenance annotation required by the comparator-drift guard; preserve all measured values and every other recorded field.
+- Preserve all other historical `docs/research`, `docs/superpowers`, status milestone, and `ComparisonTable` v8 references because they describe actual v8 runsets.
 
 ### Task 1: Add native-v9 compatibility regressions
 
@@ -251,7 +254,7 @@ git commit -m "docs: label TanStack benchmark as v9"
 
 **Files:**
 
-- Verify only; no expected edits.
+- Verify the nine approved files only, including the provenance-only milestone annotation; no other edits are expected.
 
 - [ ] **Step 1: Confirm dependency and scope**
 
@@ -261,9 +264,17 @@ rg -n "'@tanstack/react-table@9\.1\.0':" pnpm-lock.yaml
 git diff --name-only origin/main...HEAD
 ```
 
-Expected: manifest range is exactly `^9.1.0`, lockfile resolution is exactly 9.1.0, and branch scope contains the dependency/lock updates, approved spec/plan, adapter tests/implementation, and live-copy files only.
+Expected: manifest range is exactly `^9.1.0`, lockfile resolution is exactly 9.1.0, and branch scope contains exactly nine approved files: the dependency/lock updates, approved spec/plan, adapter tests/implementation, live-copy files, and `status/milestones/2026-08-11-comparative-rebaseline-structural.json` with only its provenance annotation added.
 
-- [ ] **Step 2: Run repository gates independently**
+- [ ] **Step 2: Run the focused provenance regression**
+
+```bash
+pnpm exec node --test scripts/__tests__/bench-comparator-provenance.test.mjs
+```
+
+Expected: all provenance tests pass, including the guard that requires a drifted milestone to be marked superseded.
+
+- [ ] **Step 3: Run repository gates independently**
 
 Run each command and stop on the first failure:
 
@@ -282,11 +293,11 @@ git diff --check origin/main...HEAD
 
 Expected: every command exits 0. Record known baseline warnings separately; do not suppress or repair unrelated warnings.
 
-- [ ] **Step 3: Review the full branch diff**
+- [ ] **Step 4: Review the full branch diff**
 
-Confirm there are no legacy imports, `stockFeatures`, generated build artifacts, unrelated dependency changes, or changes to historical benchmark evidence.
+Confirm there are no legacy imports, `stockFeatures`, generated build artifacts, unrelated dependency changes, or changes to historical benchmark evidence other than adding `adapterVersions.superseded` to `status/milestones/2026-08-11-comparative-rebaseline-structural.json`. Compare that milestone before and after while deleting only `adapterVersions.superseded` in memory; all comparator versions, counts, timings, run IDs, environment, scenarios, hypotheses, and other recorded fields must remain structurally equal.
 
-- [ ] **Step 4: Request independent code review**
+- [ ] **Step 5: Request independent code review**
 
 Use `superpowers:requesting-code-review` with base `origin/main`, head `HEAD`, the approved design, and this plan. Resolve all Critical and Important findings, then rerun affected gates.
 
