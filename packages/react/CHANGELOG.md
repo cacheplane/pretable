@@ -1,5 +1,13 @@
 # @pretable/react
 
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [[`afdaf45`](https://github.com/cacheplane/pretable/commit/afdaf451d09bb5fd841a70efc15f41b34cf1880b)]:
+  - @pretable/ui@0.3.2
+  - @pretable/core@0.3.2
+
 ## 0.3.1
 
 ### Patch Changes
