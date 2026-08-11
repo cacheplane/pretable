@@ -176,9 +176,9 @@ Pretable preset version to migrate.
 
 ## Locale ownership
 
-Locale is presentation context supplied to `Pretable`, `PretableSurface`, or a
-standalone `serializeRanges` call. It is not grid engine state and is not part
-of the column document.
+Locale is presentation context supplied to `Pretable`, `PretableSurface`,
+`LabeledGridSurface`, or a standalone `serializeRanges` call. It is not grid
+engine state and is not part of the column document.
 
 - Omitting `locale` passes `undefined` to `Intl.NumberFormat`, selecting the
   runtime's default locale.
@@ -307,14 +307,18 @@ formatting. `PretableSurface` remains the lower-level authoritative renderer.
 
 `LabeledGridSurface` is also a public wrapper with a grid-level body renderer.
 It gains and forwards `locale`. Its `LabeledGridSurfaceFormatValueInput` gains
-`formattedValue`, and the wrapper follows this precedence:
+`formattedValue`, and the existing renderer precedence remains authoritative:
 
 1. `PretableSurface` resolves `column.format` → native `numberFormat` → its
-   display fallback into `formattedValue`.
-2. If `LabeledGridSurface.formatValue` exists, it receives both raw `value` and
-   `formattedValue`; its return string is the wrapper's explicit final display
-   override.
-3. Otherwise the labeled value slot displays `formattedValue` directly.
+   display fallback into `formattedValue` for every ordinary data cell.
+2. If `column.render` exists, it renders the cell with raw `value` and resolved
+   `formattedValue`; the wrapper's grid-level renderer and `formatValue` are not
+   called.
+3. Otherwise `LabeledGridSurface`'s grid-level renderer owns the labeled cell.
+   If its `formatValue` exists, the callback receives raw `value` and resolved
+   `formattedValue` and returns the value slot's final display string.
+4. Without `formatValue`, the labeled value slot displays `formattedValue`
+   directly.
 
 The wrapper-specific override does not change clipboard output, matching the
 existing rule that React renderers are display-only. A consumer that needs
@@ -406,6 +410,8 @@ showcase.
 - `LabeledGridSurface` forwards locale, uses `formattedValue` by default, and
   gives its explicit `formatValue` the final display-only override with access
   to both raw and formatted values.
+- A column-level `render` continues to outrank the `LabeledGridSurface` wrapper
+  renderer, receives `formattedValue`, and prevents `formatValue` from running.
 - Displayed values, group aggregates, and both clipboard flavors agree whenever
   a column-level callback or native number formatter applies.
 - A locale prop change updates output without replacing raw grid state.
