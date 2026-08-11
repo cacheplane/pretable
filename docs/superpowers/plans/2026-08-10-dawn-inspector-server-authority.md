@@ -31,6 +31,7 @@
 4. **Never `git stash`.** The stash stack is shared across every worktree on this machine and a parallel session's `pop` can steal your entry. Commit a WIP instead, or write a patch file.
 5. **This machine runs concurrent sessions at load 55–160.** A vitest timeout at the 5 s default is usually load, not a bug. Re-run the single file with `--testTimeout=20000` before believing a failure.
 6. **Re-check `origin/main` between tasks.** `git fetch origin && git log --oneline -5 origin/main`. Another session may have landed work in `packages/inspector`.
+7. **Every command in this plan runs in the WORKTREE, `/Users/blove/repos/dawn/.worktrees/inspector-server-authority`.** `/Users/blove/repos/dawn` is the plain checkout, sitting on `main` without a single commit of this slice — running a test there is the one mistake that returns *green for code you did not write*. Tasks 1–5 were reviewed after being run against the wrong tree at least once; every `cd` below was corrected on 2026-08-11.
 
 ### What is already shipped (verified, do not re-derive)
 
@@ -151,7 +152,7 @@ export function useMemoryBrowse(input: UseMemoryBrowseInput): UseMemoryBrowseRes
 - [ ] **Step 1: Sync both repos and record the commits**
 
 ```bash
-cd /Users/blove/repos/dawn && git fetch origin && git log --oneline -3 origin/main
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git fetch origin && git log --oneline -3 origin/main
 ```
 
 Expected: `origin/main` at `8398c908` or later, and the slice-3 commit ("orchestration", `useMemoryBrowse`) present. Write both hashes into your working notes. If slice 3 is **not** on `origin/main`, stop and report — this plan depends on it.
@@ -159,7 +160,7 @@ Expected: `origin/main` at `8398c908` or later, and the slice-3 commit ("orchest
 - [ ] **Step 2: Confirm the Pretable pin**
 
 ```bash
-cd /Users/blove/repos/dawn && node -p "JSON.stringify(require('./packages/inspector/package.json').dependencies,null,1)" | grep pretable
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && node -p "JSON.stringify(require('./packages/inspector/package.json').dependencies,null,1)" | grep pretable
 ```
 
 Expected: `"@pretable/core": "0.3.0"`, `"@pretable/react": "0.3.0"`, `"@pretable/ui": "0.3.0"`. If it still reads `0.0.8`, slice 3 did not land its version bump: set all three to `0.3.0`, run `pnpm install`, and commit that alone before continuing.
@@ -167,7 +168,7 @@ Expected: `"@pretable/core": "0.3.0"`, `"@pretable/react": "0.3.0"`, `"@pretable
 - [ ] **Step 3: Prove the external-authority symbols exist in the installed package**
 
 ```bash
-cd /Users/blove/repos/dawn && grep -c "PretableProcessingOptions\|filterOperators\|datasetKey" packages/inspector/node_modules/@pretable/react/dist/index.d.ts
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && grep -c "PretableProcessingOptions\|filterOperators\|datasetKey" packages/inspector/node_modules/@pretable/react/dist/index.d.ts
 ```
 
 Expected: a count of **3 or more** (Task 1 observed **6**). A `0` means the install is stale — run `pnpm install --force` and retry.
@@ -177,7 +178,7 @@ The path is `packages/inspector/node_modules/`, **not** the root one — pnpm ho
 - [ ] **Step 4: Read the slice-3 hook and reconcile its names**
 
 ```bash
-cd /Users/blove/repos/dawn && grep -n "export interface UseMemoryBrowse\|export function useMemoryBrowse\|hasMore\|loadMore\|continuation\|resultMeta\|dataState" packages/inspector/src/browse/use-memory-browse.ts
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && grep -n "export interface UseMemoryBrowse\|export function useMemoryBrowse\|hasMore\|loadMore\|continuation\|resultMeta\|dataState" packages/inspector/src/browse/use-memory-browse.ts
 ```
 
 Compare against the seam table in the Preamble. For every name that differs, rename **in slice 3's file** (and its tests) to the name this plan uses, then run `pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000` and confirm slice 3's own tests still pass. Commit any rename separately:
@@ -189,7 +190,7 @@ git add packages/inspector && git commit -m "refactor(inspector): align useMemor
 - [ ] **Step 5: Build the memory package so typechecks are meaningful**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/memory build && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/memory build && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: both succeed with no output. A failure here is pre-existing and must be fixed or reported before any task below.
@@ -230,7 +231,7 @@ describe("memory domain sets", () => {
 - [ ] **Step 2: Run it and see it fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-domain.test.ts --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-domain.test.ts --testTimeout=20000
 ```
 
 Expected: FAIL — `Failed to resolve import "../../src/components/memory/memory-domain"`.
@@ -271,7 +272,7 @@ export function isMemoryKind(value: string): value is MemoryKind {
 - [ ] **Step 4: Run the test and see it pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-domain.test.ts --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-domain.test.ts --testTimeout=20000
 ```
 
 Expected: PASS, 2 tests.
@@ -311,7 +312,7 @@ import { MemoryGrid } from "./memory-grid"
 - [ ] **Step 7: Run the whole component suite and typecheck**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: all component tests pass; typecheck silent.
@@ -319,7 +320,7 @@ Expected: all component tests pass; typecheck silent.
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/memory-domain.ts packages/inspector/test/components/memory-domain.test.ts packages/inspector/src/components/memory/memory-grid.tsx packages/inspector/src/components/memory/list-page.tsx && git commit -m "refactor(inspector): give the status and kind universes one home"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector/src/components/memory/memory-domain.ts packages/inspector/test/components/memory-domain.test.ts packages/inspector/src/components/memory/memory-grid.tsx packages/inspector/src/components/memory/list-page.tsx && git commit -m "refactor(inspector): give the status and kind universes one home"
 ```
 
 ---
@@ -427,7 +428,7 @@ describe("loadMoreState", () => {
 - [ ] **Step 2: Run it and see it fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/browse-window.test.ts --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/browse-window.test.ts --testTimeout=20000
 ```
 
 Expected: FAIL — `Failed to resolve import "../../src/components/memory/browse-window"`.
@@ -473,7 +474,7 @@ export function loadMoreState(input: {
 - [ ] **Step 4: Run the test and see it pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/browse-window.test.ts --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/browse-window.test.ts --testTimeout=20000
 ```
 
 Expected: PASS, 12 tests.
@@ -481,7 +482,7 @@ Expected: PASS, 12 tests.
 - [ ] **Step 5: Route the slice-3 hook through the shared constants and dedupe**
 
 ```bash
-cd /Users/blove/repos/dawn && grep -n "200\|1000\|concat\|\.\.\.prev\|records\]" packages/inspector/src/browse/browse-machine.ts
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && grep -n "200\|1000\|concat\|\.\.\.prev\|records\]" packages/inspector/src/browse/browse-machine.ts
 ```
 
 **Task 1 correction: this step is already satisfied and should verify, not edit.** Slice 3 owns paging in the reducer, not the hook — `browseReduce`'s `"response"` case already appends through `dedupeById` for the `load-more` kind and clamps with `withinCap`, and both constants are declared once at the top of `browse-machine.ts`. There is no local duplicate to delete and no concat expression to replace. Confirm those three facts and move on; if this task instead makes `browse-window.ts` re-export them as written above, the single declaration stays single.
@@ -491,7 +492,7 @@ where `resident` is the hook's existing resident-rows variable. Keep the `total`
 - [ ] **Step 6: Run the whole component suite**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: all pass. (If a slice-3 test asserted a locally-named constant, update it to import from `browse-window.ts`.)
@@ -499,7 +500,7 @@ Expected: all pass. (If a slice-3 test asserted a locally-named constant, update
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector && git commit -m "feat(inspector): pin the resident cap to the max request limit, and share the append dedupe"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector && git commit -m "feat(inspector): pin the resident cap to the max request limit, and share the append dedupe"
 ```
 
 ---
@@ -749,7 +750,7 @@ describe("capSortEntries", () => {
 - [ ] **Step 2: Run it and see it fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/to-browse-query.test.ts --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/to-browse-query.test.ts --testTimeout=20000
 ```
 
 Expected: FAIL — `Failed to resolve import "../../src/components/memory/to-browse-query"`.
@@ -1011,7 +1012,7 @@ export function capSortEntries(entries: readonly PretableSortEntry[]): PretableS
 - [ ] **Step 4: Run the test and see it pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/to-browse-query.test.ts --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/to-browse-query.test.ts --testTimeout=20000
 ```
 
 Expected: PASS, 23 tests.
@@ -1019,7 +1020,7 @@ Expected: PASS, 23 tests.
 - [ ] **Step 5: Typecheck — the `satisfies` guards are invisible to vitest**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: no output. The `satisfies Record<string, BrowseFilter["field"]>` and `satisfies Record<string, BrowseSortField>` assertions on the two tables are checked **only** here — esbuild strips them, so a typo in a field name passes vitest silently.
@@ -1027,7 +1028,7 @@ Expected: no output. The `satisfies Record<string, BrowseFilter["field"]>` and `
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/to-browse-query.ts packages/inspector/test/components/to-browse-query.test.ts && git commit -m "feat(inspector): map grid filter and sort intent onto the browse query"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector/src/components/memory/to-browse-query.ts packages/inspector/test/components/to-browse-query.test.ts && git commit -m "feat(inspector): map grid filter and sort intent onto the browse query"
 ```
 
 ---
@@ -1037,6 +1038,34 @@ cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/t
 **Files:**
 - Modify: `packages/inspector/src/components/memory/memory-grid.tsx`
 - Modify: `packages/inspector/test/components/memory-grid.test.tsx`
+
+> **SHIPPED as `5897fc92` + `805cdb6d`. The code blocks below are the plan's
+> original text; three things landed differently, and a re-reader must not
+> "restore" them.**
+>
+> 1. **`filterable: true` needs a SEARCH mask.** Turning six funnels on made them
+>    reachable from the *search* grid too, which passes no `dataState` and
+>    therefore has no external filter authority — the engine applied them to the
+>    store-ranked top-8 per namespace (`app/api/memory/search/route.ts` caps at
+>    `limit: 8`, `status: "active"`), narrowing the sample and presenting it as
+>    the answer. `SEARCH_COLUMNS = COLUMNS.map((c) => ({ ...c, filterable: false }))`
+>    is now selected when `dataState === undefined`, mirroring `BROWSE_COLUMNS`.
+>    `COLUMNS` is the declaration and neither grid renders it directly.
+> 2. **The operator menu is asserted by operator NAME, not pretable's English.**
+>    The contract is that every offered operator has a `toBrowseQuery` arm, and
+>    those tables are keyed by name — `o.getAttribute("value")`, one `it.each`
+>    case per column so a failure names the column. A companion test sweeps
+>    `COLUMNS` (now exported) through `toBrowseQuery` and fails on an operator
+>    with no arm, which is otherwise a throw on the user's click.
+> 3. **`isEmpty` leaving the status menu breaks a test in another file.**
+>    `test/components/column-filter-wiring.test.tsx` reached "matches nothing"
+>    by selecting `isEmpty`; that option no longer exists, so the
+>    `fireEvent.change` became a no-op. It now reaches the empty set through
+>    `isNoneOf` + every status ticked — the only match-nothing shape the pruned
+>    menu still offers, and behaviourally identical (`resolveFilter`'s `isNoneOf`
+>    arm returns the complement, `[]`). **Order matters:** set the operator
+>    *first*, because a complement over an empty tick list is the full set, which
+>    reads as unfiltered.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1113,10 +1142,10 @@ Add `within` to the `@testing-library/react` import at the top of the file if it
 - [ ] **Step 2: Run and see them fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-grid.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-grid.test.tsx --testTimeout=20000
 ```
 
-Expected: FAIL — `Unable to find an accessible element with the role "button" and name "Filter namespace"` (namespace, content, confidence and updated are still `filterable: false`), and the content test fails because `MemoryGrid` has no `onSortChange` prop yet.
+Expected: FAIL — an `AssertionError` on the **status** option list (the menu still carries `is empty` / `is not empty`), *not* `Unable to find an accessible element with the role "button" and name "Filter namespace"`. `Object.entries` walks the table in declaration order, `status` is first, and `status` was already `filterable: true` before this task — so the loop dies on its option list and never reaches the columns that have no funnel at all. The content test fails separately, because `MemoryGrid` has no `onSortChange` prop yet.
 
 - [ ] **Step 3: Replace the `COLUMNS` array**
 
@@ -1308,15 +1337,15 @@ with:
 - [ ] **Step 5: Run the tests and see them pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-grid.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-grid.test.tsx --testTimeout=20000
 ```
 
-Expected: PASS. Two pre-existing tests — `"clicking a column header sorts the rows by that column"` and `"sorts the updated column chronologically, not by its displayed text"` — still pass here because this task has not yet turned on external sort authority. Task 6 rewrites them.
+Expected: PASS — **after** the three repairs the callout above names. `"clicking a column header sorts the rows by that column"` is one of the three casualties of `sortable: false`, not a survivor; only `"sorts the updated column chronologically, not by its displayed text"` passes untouched, because it drives a column that is still sortable. The callout is the accurate half of this pair; Task 6 rewrites both.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/memory-grid.tsx packages/inspector/test/components/memory-grid.test.tsx && git commit -m "feat(inspector): declare column types and prune every filter menu to what the store honors"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector/src/components/memory/memory-grid.tsx packages/inspector/test/components/memory-grid.test.tsx && git commit -m "feat(inspector): declare column types and prune every filter menu to what the store honors"
 ```
 
 ---
@@ -1326,6 +1355,37 @@ cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/m
 **Files:**
 - Modify: `packages/inspector/src/components/memory/memory-grid.tsx`
 - Modify: `packages/inspector/test/components/memory-grid.test.tsx`
+
+> **Read the repo before Step 3 — most of this task is already shipped, and the
+> prop it asks you to add does not belong here.** Slice 3 landed external
+> authority already: `memory-grid.tsx` holds `SERVER_PROCESSING = { filter:
+> "external", sort: "external" }` and applies it, together with `dataState`,
+> `messages` and `renderBodyState`, whenever `dataState` is supplied. `resultMeta`
+> and `dataState` are existing props; the `aria-rowcount` test ships as
+> `"claims the server's population, never the loaded window"`. **Do not add
+> `serverAuthoritative`** — presence of `dataState` is already the switch, and a
+> second one would let the two disagree. Adapt Step 1's tests to it.
+>
+> What is actually left: `BROWSE_COLUMNS` currently forces `sortable: false` on
+> **all six** columns (slice 3 turned browse sorting off deliberately, because
+> sorting a server-selected window locally shows the wrong sample). This task
+> re-enables it for the five columns `BrowseSortField` covers, leaving `content`
+> non-sortable permanently, so a header click emits intent instead of nothing.
+> The sibling test `"browse headers do not sort — the rows are a server-selected
+> sample"` is the assertion that must flip.
+
+> **The three-task honesty window — 5, 6 and 7 must land as ONE merge.**
+> Task 5 turned four new funnels on in browse mode, but `handleFiltersChange` in
+> `list-page.tsx` still reads only `next.status` and `next.kind`, and pretable
+> re-asserts controlled `state.filters` on every snapshot change. So today a user
+> can set the `content`, `namespace`, `confidence` or `updated` funnel, watch it
+> evaporate, and get no message: `data-pretable-filter-active` stays `"false"`,
+> no request is sent, no row changes. **Task 7 closes it** (it is the task that
+> routes every funnel through `toBrowseQuery`), and Task 6 sits in between. This
+> branch therefore carries a two-commit window that violates this design's own
+> rule — `to-browse-query.ts` throws rather than drops a clause precisely because
+> "a funnel that looks applied and is not" is "the exact dishonesty this whole
+> design exists to remove". Do not merge, cherry-pick or bisect 5 or 6 apart from 7.
 
 - [ ] **Step 1: Rewrite the two local-sort tests as intent tests**
 
@@ -1399,7 +1459,7 @@ In `packages/inspector/test/components/memory-grid.test.tsx`, replace the whole 
 - [ ] **Step 2: Run and see them fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-grid.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-grid.test.tsx --testTimeout=20000
 ```
 
 Expected: FAIL — TypeScript-free at runtime, but the assertions fail: the content column reads `["alpha","beta"]` (the engine still sorted), and `aria-rowcount` reads `"3"` (the loaded model count) because `serverAuthoritative`, `resultMeta` and `dataState` are not props yet.
@@ -1468,7 +1528,7 @@ Then pass them to `PretableSurface`, immediately after the `state={surfaceState}
 - [ ] **Step 4: Run the tests and see them pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-grid.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/memory-grid.test.tsx --testTimeout=20000
 ```
 
 Expected: PASS, all tests in the file.
@@ -1476,7 +1536,7 @@ Expected: PASS, all tests in the file.
 - [ ] **Step 5: Typecheck**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: no output.
@@ -1484,7 +1544,7 @@ Expected: no output.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/memory-grid.tsx packages/inspector/test/components/memory-grid.test.tsx && git commit -m "feat(inspector): hand filter and sort authority to the store"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector/src/components/memory/memory-grid.tsx packages/inspector/test/components/memory-grid.test.tsx && git commit -m "feat(inspector): hand filter and sort authority to the store"
 ```
 
 ---
@@ -1594,7 +1654,7 @@ describe("column funnels drive the server query", () => {
 - [ ] **Step 2: Run and see it fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/column-filter-wiring.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/column-filter-wiring.test.tsx --testTimeout=20000
 ```
 
 Expected: FAIL — the first test times out in `waitFor` because the page still encodes `status` as a repeated shorthand param and sends no `filters` param.
@@ -1787,13 +1847,13 @@ Empty results are Pretable's `idle`-with-zero-rows body block now, whose copy co
 - [ ] **Step 4: Delete the ValueSet layer**
 
 ```bash
-cd /Users/blove/repos/dawn && rm packages/inspector/src/components/memory/column-filters.ts packages/inspector/test/components/column-filters.test.ts
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && rm packages/inspector/src/components/memory/column-filters.ts packages/inspector/test/components/column-filters.test.ts
 ```
 
 - [ ] **Step 5: Run the wiring test and see it pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/column-filter-wiring.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/column-filter-wiring.test.tsx --testTimeout=20000
 ```
 
 Expected: PASS, 4 tests.
@@ -1801,7 +1861,7 @@ Expected: PASS, 4 tests.
 - [ ] **Step 6: Run the full component suite and typecheck**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: `list.test.tsx`'s `"clicking a namespace facet scopes the next list fetch"` and `"a selected facet filters the page to the exact namespace, not the prefix"` now FAIL — Task 8 rewrites them. Everything else passes. If any other file fails, fix it before continuing.
@@ -1809,7 +1869,7 @@ Expected: `list.test.tsx`'s `"clicking a namespace facet scopes the next list fe
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add -A packages/inspector && git commit -m "feat(inspector): build the browse query from grid intent, and delete the ValueSet round-trip"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add -A packages/inspector && git commit -m "feat(inspector): build the browse query from grid intent, and delete the ValueSet round-trip"
 ```
 
 ---
@@ -1890,7 +1950,7 @@ Also update every `jsonResponse({ records: …, total: … })` in this file's `s
 - [ ] **Step 2: Run and see them fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/list.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/list.test.tsx --testTimeout=20000
 ```
 
 Expected: the first two now PASS (Task 7 already switched the param), and `"labels the facet counts as global"` FAILS — `Unable to find an element with the text: /across all memories/i`.
@@ -1926,7 +1986,7 @@ with:
 - [ ] **Step 4: Run and see it pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/list.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/list.test.tsx --testTimeout=20000
 ```
 
 Expected: PASS, every test in the file.
@@ -1934,7 +1994,7 @@ Expected: PASS, every test in the file.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector && git commit -m "feat(inspector): select namespaces exactly, and say the facet counts are global"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector && git commit -m "feat(inspector): select namespaces exactly, and say the facet counts are global"
 ```
 
 ---
@@ -2121,7 +2181,7 @@ describe("load-more in the page", () => {
 - [ ] **Step 2: Run and see it fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/load-more.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/load-more.test.tsx --testTimeout=20000
 ```
 
 Expected: FAIL — `Failed to resolve import "../../src/components/memory/load-more-footer"`.
@@ -2250,7 +2310,7 @@ and render it immediately **after** the browse `<MemoryGrid …/>` element, as i
 - [ ] **Step 5: Run the test and see it pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/load-more.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/load-more.test.tsx --testTimeout=20000
 ```
 
 Expected: PASS, 8 tests. If the "appends the next window" test fails with a duplicate `content b`, the slice-3 append is not going through `dedupeById` — return to Task 3 Step 5.
@@ -2258,7 +2318,7 @@ Expected: PASS, 8 tests. If the "appends the next window" test fails with a dupl
 - [ ] **Step 6: Full suite and typecheck**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: all pass.
@@ -2266,7 +2326,7 @@ Expected: all pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector && git commit -m "feat(inspector): add a keyset load-more control outside the grid element"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector && git commit -m "feat(inspector): add a keyset load-more control outside the grid element"
 ```
 
 ---
@@ -2325,7 +2385,7 @@ If the file's fetch stub returns list pages, add `continuation: null` to each of
 - [ ] **Step 2: Run and see them fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/bulk-actions.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/bulk-actions.test.tsx --testTimeout=20000
 ```
 
 Expected: FAIL — the second test finds a **different** grid node after clearing, because `clearTicked` still bumps `gridEpoch` and the `key` remounts the surface.
@@ -2414,7 +2474,7 @@ and gate the whole element on the phase — replace `{ticked.length > 0 ? (` wit
 - [ ] **Step 6: Run the tests and see them pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/bulk-actions.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/bulk-actions.test.tsx --testTimeout=20000
 ```
 
 Expected: PASS, every test in the file.
@@ -2422,7 +2482,7 @@ Expected: PASS, every test in the file.
 - [ ] **Step 7: Full suite and typecheck**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: all pass.
@@ -2430,7 +2490,7 @@ Expected: all pass.
 - [ ] **Step 8: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector && git commit -m "refactor(inspector): replace the gridEpoch remount with datasetKey clearing"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector && git commit -m "refactor(inspector): replace the gridEpoch remount with datasetKey clearing"
 ```
 
 ---
@@ -2599,7 +2659,7 @@ Add a Flow-12 test to `packages/inspector/test/components/grouping.test.tsx`:
 - [ ] **Step 2: Run and see them fail**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/view-scope.test.tsx test/components/grouping.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/view-scope.test.tsx test/components/grouping.test.tsx --testTimeout=20000
 ```
 
 Expected: FAIL — `Unable to find an element by: [data-testid="browse-region"]`, and the grouping test fails because `MemoryGrid` is rendered without `serverAuthoritative` in the existing helpers (the new test supplies it, so the failure is the missing `loaded` text if authority is not honored).
@@ -2626,8 +2686,10 @@ In `packages/inspector/src/components/memory/list-page.tsx`, replace the whole `
                     <h2 className="mb-1.5 font-mono text-xs font-medium text-zinc-500">
                       {group.namespace}
                     </h2>
-                    {/* No authority flags, no dataState: each group is a complete
-                        little result set the engine may honestly process locally. */}
+                    {/* No dataState, so the grid picks SEARCH_COLUMNS: sorting a
+                        group locally is honest (a group IS its whole result set)
+                        but filtering it is not — these rows are the store's
+                        ranked top-8, not everything that matches. */}
                     <MemoryGrid records={group.records} onSelect={setSelectedId} />
                   </section>
                 ))}
@@ -2740,7 +2802,7 @@ and give the timeline window `<select>` the same treatment — add these attribu
 - [ ] **Step 5: Run the tests and see them pass**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/view-scope.test.tsx test/components/grouping.test.tsx --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/view-scope.test.tsx test/components/grouping.test.tsx --testTimeout=20000
 ```
 
 Expected: PASS. If `view-scope.test.tsx`'s first test reports a *different* grid node, the browse region is being unmounted rather than hidden — re-check that the `<div data-testid="browse-region">` is outside every ternary.
@@ -2748,7 +2810,7 @@ Expected: PASS. If `view-scope.test.tsx`'s first test reports a *different* grid
 - [ ] **Step 6: Full suite and typecheck**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000 && pnpm --filter @dawn-ai/inspector typecheck
 ```
 
 Expected: all pass.
@@ -2756,7 +2818,7 @@ Expected: all pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add packages/inspector && git commit -m "feat(inspector): keep browse mounted across views, and disable browse-only controls with a reason"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add packages/inspector && git commit -m "feat(inspector): keep browse mounted across views, and disable browse-only controls with a reason"
 ```
 
 ---
@@ -2811,7 +2873,7 @@ Also in this release:
 - [ ] **Step 2: Lint**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector lint
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/inspector lint
 ```
 
 Expected: no findings. Fix anything biome reports (`pnpm --filter @dawn-ai/inspector lint -- --write` handles the mechanical ones).
@@ -2819,7 +2881,7 @@ Expected: no findings. Fix anything biome reports (`pnpm --filter @dawn-ai/inspe
 - [ ] **Step 3: Prove no dead references to the deleted modules remain**
 
 ```bash
-cd /Users/blove/repos/dawn && git grep -n "column-filters\|ValueSet\|gridEpoch\|pageIsComplete\|pageRecords\|namespacePrefix" -- packages/inspector/src packages/inspector/test packages/inspector/app
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git grep -n "column-filters\|ValueSet\|gridEpoch\|pageIsComplete\|pageRecords\|namespacePrefix" -- packages/inspector/src packages/inspector/test packages/inspector/app
 ```
 
 Expected: **no output**. (`namespacePrefix` may legitimately survive in `src/store/browse-params.ts`, which parses the HTTP contract — that file is not part of this grep's paths. If it appears anywhere under `src/components`, delete it.)
@@ -2827,7 +2889,7 @@ Expected: **no output**. (`namespacePrefix` may legitimately survive in `src/sto
 - [ ] **Step 4: Full inspector verification, cache-free**
 
 ```bash
-cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/memory build && pnpm --filter @dawn-ai/inspector typecheck && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && pnpm --filter @dawn-ai/memory build && pnpm --filter @dawn-ai/inspector typecheck && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000
 ```
 
 Expected: typecheck silent; every component test passes. Note the `@dawn-ai/memory` build first — the bare specifier resolves to that package's `dist/`, and a stale one hides real type errors.
@@ -2835,7 +2897,7 @@ Expected: typecheck silent; every component test passes. Note the `@dawn-ai/memo
 - [ ] **Step 5: Repo-wide test run**
 
 ```bash
-cd /Users/blove/repos/dawn && turbo run test --force --filter=@dawn-ai/inspector... 2>&1 | tail -30
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && turbo run test --force --filter=@dawn-ai/inspector... 2>&1 | tail -30
 ```
 
 Expected: all tasks succeed. `--force` is not optional here — agents have repeatedly reported passes that came from a turbo cache entry predating their edits.
@@ -2843,13 +2905,13 @@ Expected: all tasks succeed. `--force` is not optional here — agents have repe
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /Users/blove/repos/dawn && git add .changeset/inspector-server-authority.md packages/inspector && git commit -m "feat(inspector): make the browse grid server-authoritative"
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git add .changeset/inspector-server-authority.md packages/inspector && git commit -m "feat(inspector): make the browse grid server-authoritative"
 ```
 
 - [ ] **Step 7: Open the pull request**
 
 ```bash
-cd /Users/blove/repos/dawn && git push -u origin HEAD && gh pr create --title "feat(inspector): make the browse grid server-authoritative" --body "$(cat <<'EOF'
+cd /Users/blove/repos/dawn/.worktrees/inspector-server-authority && git push -u origin HEAD && gh pr create --title "feat(inspector): make the browse grid server-authoritative" --body "$(cat <<'EOF'
 ## Summary
 
 The Memory Inspector's browse grid now asks the store the question the user is looking at.
