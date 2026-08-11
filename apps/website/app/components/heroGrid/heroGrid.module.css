@@ -33,13 +33,39 @@
   overflow: hidden;
 }
 
-/* The grid itself fills the bezel's interior; ResizeObserver measures
-   this element to drive viewportHeight on <PretableSurface>. */
+/* The split's left column: the grid pane, with the affordance legend pinned
+   beneath it. A flex column so the legend is laid out as a peer of the pane
+   rather than stacked after it — `flex: 0 0 auto` means it always gets the
+   height it asks for, and the pane above only ever has what is left. */
 .heroSurface {
   position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0; /* lets the grid honor the flex parent's height */
   min-width: 0; /* prevents the wide notes column from overflowing in split-pane */
+}
+
+/* The grid's box — and the element ResizeObserver measures to drive
+   viewportHeight on <PretableSurface>. It is this rather than .heroSurface on
+   purpose: the surface has to hold the grid AND the legend, so measuring the
+   surface told the grid it could have the entire height and pushed the legend
+   past the bezel, which clips.
+
+   `flex-basis: 0` rather than `auto` so the pane's height is purely the free
+   space left after the legend, never content-derived. That matters because the
+   grid inside is pinned to exactly `viewportHeight` as an inline height: with
+   an auto basis, a grid held up by the FALLBACK_VIEWPORT_HEIGHT floor on a
+   short viewport would grow the pane, and that would feed straight back into
+   the ResizeObserver. `overflow: hidden` clips that case instead of letting the
+   grid paint over the legend. Nothing interactive is lost to it — the grid's
+   filter menus and cell editors are portaled to document.body. */
+.heroGridPane {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Split-pane layout inside the bezel: grid on the left, portfolio summary sidebar on the right. */
@@ -58,7 +84,11 @@
   display: block;
 }
 
+/* `flex: 0 0 auto` is what keeps this strip in frame: it neither grows nor
+   shrinks, so however many lines the text wraps to at a narrow viewport, it
+   holds that height and the pane above gives the space up. */
 .legend {
+  flex: 0 0 auto;
   margin: 0;
   padding: 4px 10px;
   font-size: 11px;
