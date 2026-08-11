@@ -141,6 +141,12 @@ interface ScrollRuntimeProfile {
   rowSelector: string;
   cellSelector: string;
   rowIdAttribute?: string;
+  /**
+   * Attribute carrying a body cell's column id. Read only by
+   * `createVisibleContentSignature`; when a profile omits it that signature falls
+   * back to each row's first cell, which is a weaker probe but never a wrong one.
+   */
+  cellColumnIdAttribute?: string;
   rowIndexAttribute: string;
   maxSettleFrames: number;
   measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
@@ -188,6 +194,7 @@ const scrollRuntimeProfiles: Record<
     rowSelector: "[data-pretable-row], [data-pretable-group-row]",
     cellSelector: "[data-pretable-cell]",
     rowIdAttribute: "data-pretable-row-id",
+    cellColumnIdAttribute: "data-pretable-column-id",
     rowIndexAttribute: "data-pretable-row-index",
     maxSettleFrames: 3,
     measureRowHeightError: (row, renderedHeight) =>
@@ -596,6 +603,225 @@ export async function measureBenchInteractionRun(
         finalState.selectedRowId === interactionPlan.selectedRowId ? 1 : 0,
       focused_row_preserved:
         finalState.focusedRowId === interactionPlan.focusedRowId ? 1 : 0,
+      dom_nodes_peak: domNodesPeak,
+      rendered_rows_peak: renderedRowsPeak,
+      rendered_cells_peak: renderedCellsPeak,
+    },
+  };
+}
+
+/**
+ * Replace/append measurement. Reuses the `pretable.interaction.*` marks so
+ * `scripts/analyze-cdp.mjs --window=interaction` slices these runs exactly as it slices
+ * a sort or filter — the trigger-to-first-frame window, not the whole trace, which is
+ * dominated by initial-mount work that does not count against the budget.
+ *
+ * Not measureBenchInteractionRun with a wider mode union: that function's change
+ * detector is `createVisibleRowSignature` (result row count + row id + row top), and a
+ * replacement of the SAME ids over an equal-length resident set moves none of the
+ * three. It would time out and report `partial` on every replace run. The probe
+ * column's rendered text is the only visible evidence the new payload landed, so this
+ * function watches that too — see `createVisibleContentSignature`.
+ */
+export async function measureBenchDataUpdateRun(
+  root: HTMLElement,
+  adapterId: BenchQueryState["adapterId"],
+  mode: "replace" | "append",
+  plan: {
+    focusedRowId: string | null;
+    probeColumnId: string;
+    resultRowCount: number;
+    selectedRowId: string | null;
+  },
+  readInteractionStateOverride: (() => BenchInteractionState) | undefined,
+  readGridInstanceId: () => string,
+  trigger: () => void,
+): Promise<InteractionBenchRunResult> {
+  const profile = scrollRuntimeProfiles[adapterId];
+  const viewport = await waitForScrollViewport(root, profile.viewportSelector);
+  const viewportPolicyNotes = viewport
+    ? detectViewportPolicyNotes(viewport)
+    : [];
+
+  if (!viewport) {
+    return {
+      status: "partial",
+      notes: [
+        ...viewportPolicyNotes,
+        `data update mode: ${mode}`,
+        `viewport unavailable for ${adapterId}`,
+      ],
+      metrics: { dom_nodes_peak: root.querySelectorAll("*").length },
+    };
+  }
+
+  const contentCellSelector = createContentCellSelector(
+    profile,
+    plan.probeColumnId,
+  );
+  const readSignature = (
+    visibleRows: VisibleRowSample[],
+    resultRowCount: number,
+  ) =>
+    `${createVisibleRowSignature(visibleRows, resultRowCount)}#${createVisibleContentSignature(
+      viewport,
+      profile.rowSelector,
+      contentCellSelector,
+    )}`;
+
+  const gridInstanceBefore = readGridInstanceId();
+  const baselineState = readBenchInteractionState(
+    root,
+    readInteractionStateOverride,
+  );
+  const baselineVisibleRows = sampleVisibleRows(viewport, profile);
+  const baselineSignature = readSignature(
+    baselineVisibleRows,
+    baselineState.resultRowCount,
+  );
+  const scrollTopBefore = viewport.scrollTop;
+  const startTimestamp = await waitForAnimationFrame();
+
+  performance.mark("pretable.interaction.start");
+  trigger();
+
+  let domNodesPeak = root.querySelectorAll("*").length;
+  let renderedRowsPeak = root.querySelectorAll(profile.rowSelector).length;
+  let renderedCellsPeak = root.querySelectorAll(profile.cellSelector).length;
+  let firstChangedAt: number | null = null;
+  let settledAt: number | null = null;
+  let blankGapFrames = 0;
+  const rowHeightErrors: number[] = [];
+  const anchorShifts: number[] = [];
+  let previousVisibleRows = baselineVisibleRows;
+  let previousScrollTop = viewport.scrollTop;
+  let previousSignature = baselineSignature;
+  let previousState = baselineState;
+  let stableFrames = 0;
+  // Six settle windows: generous enough that a slow machine reports a real number
+  // rather than a `partial`, bounded enough that a hung run still ends.
+  const maxFrames = Math.max(profile.maxSettleFrames * 6, 60);
+
+  for (let frame = 0; frame < maxFrames; frame += 1) {
+    const timestamp = await waitForAnimationFrame();
+    const visibleRows = sampleVisibleRows(viewport, profile);
+    const interactionState = readBenchInteractionState(
+      root,
+      readInteractionStateOverride,
+    );
+    const signature = readSignature(
+      visibleRows,
+      interactionState.resultRowCount,
+    );
+
+    domNodesPeak = Math.max(domNodesPeak, root.querySelectorAll("*").length);
+    renderedRowsPeak = Math.max(
+      renderedRowsPeak,
+      root.querySelectorAll(profile.rowSelector).length,
+    );
+    renderedCellsPeak = Math.max(
+      renderedCellsPeak,
+      root.querySelectorAll(profile.cellSelector).length,
+    );
+
+    const isFirstChangedFrame =
+      firstChangedAt === null &&
+      (signature !== baselineSignature ||
+        interactionState.resultRowCount !== baselineState.resultRowCount);
+
+    if (isFirstChangedFrame) {
+      firstChangedAt = timestamp;
+      performance.mark("pretable.interaction.firstFrame");
+    }
+
+    if (firstChangedAt !== null && !isFirstChangedFrame) {
+      if (detectBlankGapFrame(viewport, profile.rowSelector)) {
+        blankGapFrames += 1;
+      }
+      rowHeightErrors.push(
+        ...visibleRows
+          .map((row) => row.heightError)
+          .filter((value) => value > 0),
+      );
+      const anchorShift = measureAnchorShift({
+        previousVisibleRows,
+        previousScrollTop,
+        nextVisibleRows: visibleRows,
+        nextScrollTop: viewport.scrollTop,
+      });
+      if (anchorShift !== null) {
+        anchorShifts.push(anchorShift);
+      }
+      if (
+        signature === previousSignature &&
+        interactionState.resultRowCount === previousState.resultRowCount &&
+        interactionState.selectedRowId === previousState.selectedRowId &&
+        interactionState.focusedRowId === previousState.focusedRowId
+      ) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+      }
+    }
+
+    previousVisibleRows = visibleRows;
+    previousScrollTop = viewport.scrollTop;
+    previousSignature = signature;
+    previousState = interactionState;
+
+    if (
+      firstChangedAt !== null &&
+      !isFirstChangedFrame &&
+      stableFrames >= Math.max(0, profile.maxSettleFrames - 1)
+    ) {
+      settledAt = timestamp;
+      performance.mark("pretable.interaction.settled");
+      break;
+    }
+  }
+
+  if (firstChangedAt === null || settledAt === null) {
+    return {
+      status: "partial",
+      notes: [...viewportPolicyNotes, `data update mode: ${mode}`],
+      metrics: {
+        dom_nodes_peak: domNodesPeak,
+        rendered_rows_peak: renderedRowsPeak,
+        rendered_cells_peak: renderedCellsPeak,
+      },
+    };
+  }
+
+  const finalState = readBenchInteractionState(
+    root,
+    readInteractionStateOverride,
+  );
+
+  return {
+    status: "completed",
+    notes: [...viewportPolicyNotes, `data update mode: ${mode}`],
+    metrics: {
+      interaction_latency_ms: firstChangedAt - startTimestamp,
+      settle_duration_ms: settledAt - firstChangedAt,
+      post_interaction_blank_gap_frames: blankGapFrames,
+      post_interaction_anchor_shift_px: percentile(anchorShifts, 0.95),
+      post_interaction_row_height_error_p95_px: percentile(
+        rowHeightErrors,
+        0.95,
+      ),
+      // The append budget's "zero scroll movement" clause, as a raw number: the
+      // viewport's own offset before vs after. Anchor shift measures CONTENT movement
+      // and is a different claim.
+      scroll_position_drift_px: Math.abs(viewport.scrollTop - scrollTopBefore),
+      result_row_count: finalState.resultRowCount,
+      selected_row_preserved:
+        finalState.selectedRowId === plan.selectedRowId ? 1 : 0,
+      focused_row_preserved:
+        finalState.focusedRowId === plan.focusedRowId ? 1 : 0,
+      // 0 = the same engine absorbed the change, which is what §11's replace budget
+      // requires. Inverted relative to the two preservation metrics above.
+      grid_instance_reconstructed:
+        readGridInstanceId() === gridInstanceBefore ? 0 : 1,
       dom_nodes_peak: domNodesPeak,
       rendered_rows_peak: renderedRowsPeak,
       rendered_cells_peak: renderedCellsPeak,
@@ -1126,6 +1352,44 @@ function measureAnchorShift(input: {
     previousMatch.top - (input.nextScrollTop - input.previousScrollTop);
 
   return Math.abs(nextMatch.top - expectedTop);
+}
+
+/**
+ * Selector for the one cell per row whose text the data-update measurement watches.
+ * Built once per run, not per frame.
+ */
+function createContentCellSelector(
+  profile: ScrollRuntimeProfile,
+  columnId: string,
+) {
+  if (profile.cellColumnIdAttribute === undefined) {
+    return profile.cellSelector;
+  }
+
+  // Quoted attribute values need only `"` and `\` escaped. `CSS.escape` is absent
+  // in jsdom, so the unit tests could not reach this path if it were used here.
+  const escaped = columnId.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+
+  return `${profile.cellSelector}[${profile.cellColumnIdAttribute}="${escaped}"]`;
+}
+
+/**
+ * The rendered text of the probe column across every row currently in the viewport.
+ *
+ * Scoped to one column on purpose: it runs once per frame inside the measurement
+ * loop, and digesting every cell would put the harness's own DOM reads on the same
+ * order as the work being measured.
+ */
+function createVisibleContentSignature(
+  viewport: HTMLElement,
+  rowSelector: string,
+  cellSelector: string,
+) {
+  return [...viewport.querySelectorAll<HTMLElement>(rowSelector)]
+    .map(
+      (row) => row.querySelector<HTMLElement>(cellSelector)?.textContent ?? "",
+    )
+    .join("|");
 }
 
 function createVisibleRowSignature(

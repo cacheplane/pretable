@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   PretableCellRenderInput,
@@ -134,6 +134,15 @@ export interface PretableAdapterProps {
    */
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
   /**
+   * Called once the adapter can accept a new row array. The bench drives replace and
+   * append through the SAME path a remote consumer uses — a new `rows` prop, which the
+   * engine ingests id-keyed — not through an imperative back door that would measure a
+   * code path no product uses.
+   */
+  onDataApiReady?: (apply: (rows: readonly ScenarioRow[]) => void) => void;
+  /** Rows to render instead of `dataset.rows`, for the data-update scripts. */
+  initialRows?: readonly ScenarioRow[];
+  /**
    * Called once the adapter has a usable autosize entry point. The
    * supplied callback wraps `grid.autosizeColumns()` so the bench
    * harness can invoke it on demand for the autosize script.
@@ -162,9 +171,18 @@ function getScenarioRowId(row: ScenarioDataset["rows"][number]) {
   return String(row.id ?? "");
 }
 
+/**
+ * Monotonic across adapter mounts on purpose. A per-mount counter would restart at 1
+ * on every remount, so a run that rebuilt the whole adapter would read the same id
+ * before and after — the one thing `grid_instance_reconstructed` exists to catch.
+ */
+let gridInstanceSeq = 0;
+
 export function PretableAdapter({
   dataset,
+  initialRows,
   interactionPlan,
+  onDataApiReady,
   onGridReady,
   onTelemetryChange,
   onUpdateApiReady,
@@ -190,7 +208,23 @@ export function PretableAdapter({
       ? applyGroupAggregates<ScenarioRow>(withRenderers, sampleRow)
       : withRenderers;
   }, [baseColumns, sampleRow, scriptName]);
-  const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
+  // Seeded once per mount, and the bench remounts this adapter for every run
+  // (`key={runKey}` in bench-app.tsx), so `initialRows` cannot change under a live
+  // grid. There is deliberately no effect resyncing it: a setState-in-effect here
+  // would re-render the surface on every mount to reach the value the initializer
+  // already had.
+  const [dataRows, setDataRows] = useState<readonly ScenarioRow[]>(
+    initialRows ?? dataset.rows,
+  );
+  const surfaceRows = useMemo(() => [...dataRows], [dataRows]);
+  const onDataApiReadyRef = useRef(onDataApiReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
+  onDataApiReadyRef.current = onDataApiReady;
+  useEffect(() => {
+    onDataApiReadyRef.current?.((rows) => {
+      setDataRows(rows);
+    });
+  }, [runKey]);
   const autosize = dataset.scenario.autosize_all_columns === true;
 
   const gridRef = useRef<PretableGrid<ScenarioRow> | null>(null);
@@ -204,13 +238,37 @@ export function PretableAdapter({
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onAutosizeReadyRef.current = onAutosizeReady;
 
-  const handleGridReady = useCallback((grid: PretableGrid<ScenarioRow>) => {
-    gridRef.current = grid;
-    onGridReadyRef.current?.(grid);
-    onAutosizeReadyRef.current?.(() => {
-      grid.autosizeColumns();
-    });
+  const gridInstanceIdRef = useRef("0");
+  const publishGridInstanceId = useCallback(() => {
+    const el = adapterRef.current;
+
+    if (el && el.dataset.benchGridInstanceId !== gridInstanceIdRef.current) {
+      el.dataset.benchGridInstanceId = gridInstanceIdRef.current;
+    }
   }, []);
+  const handleGridReady = useCallback(
+    (grid: PretableGrid<ScenarioRow>) => {
+      gridRef.current = grid;
+      gridInstanceSeq += 1;
+      // Read by measureBenchDataUpdateRun. A replacement that rebuilt the engine would
+      // bump this, and §11's replace budget forbids exactly that.
+      gridInstanceIdRef.current = String(gridInstanceSeq);
+      publishGridInstanceId();
+      onGridReadyRef.current?.(grid);
+      onAutosizeReadyRef.current?.(() => {
+        grid.autosizeColumns();
+      });
+    },
+    [publishGridInstanceId],
+  );
+
+  // PretableSurface publishes its grid from a LAYOUT effect, which React runs
+  // before this section's own ref is attached — so the write inside
+  // handleGridReady lands on a null ref on the mount pass and only works for a
+  // later rebuild. This publishes the id the mount pass could not.
+  useEffect(() => {
+    publishGridInstanceId();
+  }, [publishGridInstanceId, runKey]);
 
   // Wire updates through the stream-adapter batcher (RAF-aligned), the
   // same path real consumers use for LLM-rate streaming. The batcher is
@@ -277,6 +335,7 @@ export function PretableAdapter({
       data-benchmark-adapter="pretable"
       data-bench-focused-row-id=""
       data-bench-focused-row-preserved="false"
+      data-bench-grid-instance-id="0"
       data-bench-result-row-count={String(dataset.rows.length)}
       data-bench-selected-row-id=""
       data-bench-selected-row-preserved="false"

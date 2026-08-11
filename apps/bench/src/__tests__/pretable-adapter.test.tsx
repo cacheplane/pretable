@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -9,7 +10,10 @@ import {
 import { useEffect } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createScenarioDataset } from "@pretable-internal/scenario-data";
+import {
+  createScenarioDataset,
+  type ScenarioRow,
+} from "@pretable-internal/scenario-data";
 import * as pretableReactInternal from "@pretable/react";
 
 import { createBenchInteractionPlan } from "../interaction-plan";
@@ -193,5 +197,57 @@ describe("PretableAdapter", () => {
     expect(surfaceSpy.mock.calls.length).toBe(1);
 
     surfaceSpy.mockRestore();
+  });
+
+  test("swaps the row array through the data api without rebuilding the grid", async () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+    const initialRows = dataset.rows.slice(0, 3);
+    const nextRows = initialRows.map((row) => ({
+      ...row,
+      col_0: `${String(row.col_0 ?? "")} refreshed`,
+    }));
+    let apply: ((rows: readonly ScenarioRow[]) => void) | null = null;
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        initialRows={initialRows}
+        onDataApiReady={(next) => {
+          apply = next;
+        }}
+        runKey={1}
+      />,
+    );
+
+    const adapter = screen
+      .getByRole("grid", { name: "Pretable React adapter" })
+      .closest("[data-benchmark-adapter]");
+
+    // `initialRows` wins over the dataset's own 120 rows.
+    expect(screen.getAllByTestId("pretable-row")).toHaveLength(3);
+    await waitFor(() => {
+      expect(adapter).not.toHaveAttribute("data-bench-grid-instance-id", "0");
+    });
+
+    const instanceIdBefore = adapter?.getAttribute(
+      "data-bench-grid-instance-id",
+    );
+
+    expect(apply).not.toBeNull();
+    await act(async () => {
+      apply?.(nextRows);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(String(nextRows[0]?.col_0 ?? "")),
+      ).toBeInTheDocument();
+    });
+    // Same engine absorbed the new array — this is the property
+    // `grid_instance_reconstructed` reads.
+    expect(adapter).toHaveAttribute(
+      "data-bench-grid-instance-id",
+      instanceIdBefore ?? "",
+    );
   });
 });

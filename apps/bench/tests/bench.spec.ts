@@ -123,6 +123,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     // metrics and notes (see measureBenchInteractionRun).
     scriptName === "group" ||
     scriptName === "group-expand";
+  const dataUpdateScript = scriptName === "replace" || scriptName === "append";
 
   const cwd = process.cwd();
   const summaryPath = path.join(
@@ -222,6 +223,19 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       rendered_rows_peak: expect.any(Number),
       rendered_cells_peak: expect.any(Number),
     });
+  }
+
+  if (dataUpdateScript) {
+    expect(result.notes).toContain(`data update mode: ${scriptName}`);
+    expect(result.metrics).toMatchObject({
+      interaction_latency_ms: expect.any(Number),
+      settle_duration_ms: expect.any(Number),
+      scroll_position_drift_px: expect.any(Number),
+      grid_instance_reconstructed: expect.any(Number),
+      result_row_count: expect.any(Number),
+    });
+    // The engine absorbed the change; it did not rebuild.
+    expect(result.metrics.grid_instance_reconstructed).toBe(0);
   }
 
   const dashboardPath = path.join(cwd, "status", "dashboard.json");

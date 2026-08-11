@@ -10,6 +10,7 @@ import {
   createBenchRequest,
   detectBlankGapFrame,
   measureBenchAutosizeRun,
+  measureBenchDataUpdateRun,
   measureBenchInteractionRun,
   measureBenchKeySequenceRun,
   measureBenchScrollRun,
@@ -1295,3 +1296,313 @@ function createRect(input: { top: number; bottom: number }): DOMRect {
     toJSON: () => ({}),
   };
 }
+
+/**
+ * A three-row pretable surface whose cell text is the only thing a same-ids
+ * replacement changes. Row ids, row indices, row tops and the result row count
+ * all hold still — which is exactly the case the settle detector used for sort
+ * and filter cannot see.
+ */
+function createDataUpdateHarness() {
+  document.body.innerHTML = `
+    <div data-testid="root">
+      <section data-benchmark-adapter="pretable" data-bench-grid-instance-id="1">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-pretable-row-id="row-0" data-pretable-row-index="0">
+            <div data-pretable-cell="" data-pretable-column-id="col_0">baseline 0</div>
+          </div>
+          <div data-pretable-row="" data-pretable-row-id="row-1" data-pretable-row-index="1">
+            <div data-pretable-cell="" data-pretable-column-id="col_0">baseline 1</div>
+          </div>
+          <div data-pretable-row="" data-pretable-row-id="row-2" data-pretable-row-index="2">
+            <div data-pretable-cell="" data-pretable-column-id="col_0">baseline 2</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+
+  const root = document.querySelector<HTMLElement>('[data-testid="root"]')!;
+  const viewport = root.querySelector<HTMLElement>(
+    "[data-pretable-scroll-viewport]",
+  )!;
+  let scrollTop = 0;
+
+  Object.defineProperties(viewport, {
+    clientTop: { value: 0, configurable: true },
+    clientHeight: { value: 180, configurable: true },
+    scrollHeight: { value: 360, configurable: true },
+    scrollTop: {
+      configurable: true,
+      get() {
+        return scrollTop;
+      },
+      set(next: number) {
+        scrollTop = next;
+      },
+    },
+  });
+  viewport.getBoundingClientRect = () => createRect({ top: 100, bottom: 280 });
+
+  const layoutRow = (row: HTMLElement, index: number) => {
+    row.getBoundingClientRect = () =>
+      createRect({ top: 100 + index * 60, bottom: 160 + index * 60 });
+    for (const cell of row.querySelectorAll<HTMLElement>(
+      "[data-pretable-cell]",
+    )) {
+      Object.defineProperty(cell, "scrollHeight", {
+        configurable: true,
+        value: 60,
+      });
+    }
+  };
+
+  for (const [index, row] of [
+    ...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+  ].entries()) {
+    layoutRow(row, index);
+  }
+
+  return { layoutRow, root, viewport };
+}
+
+/**
+ * Installs a synchronous rAF whose callback can apply a DOM mutation a fixed
+ * number of frames after the trigger — the stand-in for React committing the new
+ * row array on a later frame. Returns the restore function.
+ */
+function installFrameStub(pending: { frames: number; apply: () => void }) {
+  const previousRaf = globalThis.requestAnimationFrame;
+  const previousGetComputedStyle = globalThis.getComputedStyle;
+  let frame = 0;
+
+  Object.defineProperty(globalThis, "requestAnimationFrame", {
+    configurable: true,
+    value: (callback: FrameRequestCallback) => {
+      frame += 1;
+
+      if (pending.frames > 0) {
+        pending.frames -= 1;
+
+        if (pending.frames === 0) {
+          pending.apply();
+        }
+      }
+
+      callback(frame * 16);
+      return frame;
+    },
+  });
+  Object.defineProperty(globalThis, "getComputedStyle", {
+    configurable: true,
+    value: () => ({
+      contain: "none",
+      containIntrinsicSize: "none",
+      contentVisibility: "visible",
+      overflowAnchor: "none",
+      overscrollBehavior: "contain",
+      paddingTop: "0",
+      paddingBottom: "0",
+      borderBottomWidth: "0",
+      position: "static",
+    }),
+  });
+
+  return () => {
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: previousRaf,
+    });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: previousGetComputedStyle,
+    });
+  };
+}
+
+describe("bench data update runtime", () => {
+  test("times a same-ids replacement, which moves no row id, top or count", async () => {
+    const { root, viewport } = createDataUpdateHarness();
+    const cells = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
+    const pending = {
+      frames: 0,
+      apply: () => {
+        for (const [index, cell] of cells.entries()) {
+          cell.textContent = `refreshed ${index}`;
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    try {
+      const result = await measureBenchDataUpdateRun(
+        root,
+        "pretable",
+        "replace",
+        {
+          focusedRowId: "row-1",
+          probeColumnId: "col_0",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        }),
+        () => "1",
+        () => {
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.notes).toContain("data update mode: replace");
+      expect(result.metrics.interaction_latency_ms).toBeGreaterThan(0);
+      expect(result.metrics).toMatchObject({
+        settle_duration_ms: expect.any(Number),
+        post_interaction_blank_gap_frames: expect.any(Number),
+        post_interaction_anchor_shift_px: expect.any(Number),
+        post_interaction_row_height_error_p95_px: expect.any(Number),
+        result_row_count: 3,
+        selected_row_preserved: 1,
+        focused_row_preserved: 1,
+        scroll_position_drift_px: 0,
+        grid_instance_reconstructed: 0,
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  test("reports a rebuilt grid instance rather than absorbing it into the latency", async () => {
+    const { root, viewport } = createDataUpdateHarness();
+    const cells = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
+    let instanceId = "1";
+    const pending = {
+      frames: 0,
+      apply: () => {
+        instanceId = "2";
+        for (const [index, cell] of cells.entries()) {
+          cell.textContent = `refreshed ${index}`;
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    try {
+      const result = await measureBenchDataUpdateRun(
+        root,
+        "pretable",
+        "replace",
+        {
+          focusedRowId: "row-1",
+          probeColumnId: "col_0",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        }),
+        () => instanceId,
+        () => {
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.metrics.grid_instance_reconstructed).toBe(1);
+    } finally {
+      restore();
+    }
+  });
+
+  test("times an append and reports the viewport's own scroll drift", async () => {
+    const { layoutRow, root, viewport } = createDataUpdateHarness();
+    let resultRowCount = 3;
+    const pending = {
+      frames: 0,
+      apply: () => {
+        const appended = document.createElement("div");
+        appended.setAttribute("data-pretable-row", "");
+        appended.setAttribute("data-pretable-row-id", "row-3");
+        appended.setAttribute("data-pretable-row-index", "3");
+        appended.innerHTML = `<div data-pretable-cell="" data-pretable-column-id="col_0">appended 3</div>`;
+        viewport.append(appended);
+        layoutRow(appended, 3);
+        resultRowCount = 4;
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    try {
+      const result = await measureBenchDataUpdateRun(
+        root,
+        "pretable",
+        "append",
+        {
+          focusedRowId: "row-1",
+          probeColumnId: "col_0",
+          resultRowCount: 4,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount,
+          selectedRowId: "row-1",
+        }),
+        () => "1",
+        () => {
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.notes).toContain("data update mode: append");
+      expect(result.metrics.result_row_count).toBe(4);
+      // Rows landed below the fold; the viewport did not move.
+      expect(result.metrics.scroll_position_drift_px).toBe(0);
+      expect(result.metrics.grid_instance_reconstructed).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  test("stays partial when nothing repaints, so the run cannot be recorded as a measurement", async () => {
+    const { root } = createDataUpdateHarness();
+    const restore = installFrameStub({ frames: 0, apply: () => {} });
+
+    try {
+      const result = await measureBenchDataUpdateRun(
+        root,
+        "pretable",
+        "replace",
+        {
+          focusedRowId: "row-1",
+          probeColumnId: "col_0",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        }),
+        () => "1",
+        () => {},
+      );
+
+      expect(result.status).toBe("partial");
+      expect(result.notes).toContain("data update mode: replace");
+      expect(result.metrics.interaction_latency_ms).toBeUndefined();
+    } finally {
+      restore();
+    }
+  }, 20_000);
+});

@@ -29,6 +29,7 @@ import {
   createPretableTelemetryNotes,
   createBenchRequest,
   measureBenchAutosizeRun,
+  measureBenchDataUpdateRun,
   measureBenchInteractionRun,
   measureBenchKeySequenceRun,
   measureBenchScrollRun,
@@ -36,6 +37,10 @@ import {
   publishBenchResult,
 } from "./bench-runtime";
 import { AgGridAdapter } from "./ag-grid-adapter";
+import {
+  type BenchDataUpdatePlan,
+  createBenchDataUpdatePlan,
+} from "./data-update-plan";
 import {
   benchUpdatesExcludedColumnIds,
   createBenchInteractionPlan,
@@ -99,6 +104,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     plan: ReturnType<typeof createBenchInteractionPlan>;
     search: string;
   } | null>(null);
+  const [dataUpdatePlanOverride, setDataUpdatePlanOverride] = useState<{
+    plan: BenchDataUpdatePlan | null;
+    search: string;
+  } | null>(null);
   const [result, setResult] = useState<BenchRunSummary | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const autorunRef = useRef(false);
@@ -127,9 +136,27 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     },
     [],
   );
+  /**
+   * Adapter-agnostic entry point for handing the surface a new row array. Only
+   * pretable wires it: `setRows` with a preserved grid instance is the primitive
+   * these scripts measure, and bench-runner gates them to that adapter.
+   */
+  const dataApiRef = useRef<((rows: readonly ScenarioRow[]) => void) | null>(
+    null,
+  );
+  const handleDataApiReady = useCallback(
+    (apply: (rows: readonly ScenarioRow[]) => void) => {
+      dataApiRef.current = apply;
+    },
+    [],
+  );
   const interactionPlan =
     interactionPlanOverride?.search === search
       ? interactionPlanOverride.plan
+      : null;
+  const dataUpdatePlan =
+    dataUpdatePlanOverride?.search === search
+      ? dataUpdatePlanOverride.plan
       : null;
 
   useEffect(() => {
@@ -198,6 +225,53 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     );
   }
 
+  /**
+   * Wait until the surface stops moving.
+   *
+   * Controlled focus scrolls itself into view, so the setup for a row-set change
+   * script leaves the viewport in flight. Opening the measurement window on top of
+   * that would latch the very next frame as the update's first painted frame and
+   * report a latency that measured the tail of a scroll.
+   */
+  async function waitForQuietViewport(maxFrames = 120) {
+    const viewport = viewportRef.current?.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+
+    if (!viewport) {
+      for (let frame = 0; frame < 12; frame += 1) {
+        await waitForNextAnimationFrame();
+      }
+      return;
+    }
+
+    let previousSignature: string | null = null;
+    let stableFrames = 0;
+
+    for (let frame = 0; frame < maxFrames; frame += 1) {
+      await waitForNextAnimationFrame();
+      const telemetry = pretableTelemetryRef.current;
+      const signature = [
+        viewport.scrollTop,
+        viewport.querySelectorAll("[data-pretable-row]").length,
+        telemetry?.rowModelRowCount ?? -1,
+        telemetry?.visibleRowRange.start ?? -1,
+        telemetry?.visibleRowRange.end ?? -1,
+      ].join(":");
+
+      if (signature === previousSignature) {
+        stableFrames += 1;
+
+        if (stableFrames >= 3) {
+          return;
+        }
+      } else {
+        previousSignature = signature;
+        stableFrames = 0;
+      }
+    }
+  }
+
   function countGroupRows() {
     const snapshot = pretableGridRef.current?.getSnapshot();
 
@@ -231,11 +305,38 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       return;
     }
 
+    const dataUpdateScriptName =
+      scriptName === "replace" || scriptName === "append" ? scriptName : null;
+    const nextDataUpdatePlan = dataUpdateScriptName
+      ? createBenchDataUpdatePlan(dataset, dataUpdateScriptName)
+      : null;
+
+    if (dataUpdateScriptName && !nextDataUpdatePlan) {
+      // The scenario cannot host the resident window these scripts describe. Falling
+      // through would publish mount-only metrics under the script's name — a run that
+      // measured something else while looking like a measurement of this.
+      const unsupportedResult = createBenchRunSummary({
+        request,
+        status: "unsupported",
+        timestamp,
+        reason: `Unsupported scenario scale for ${dataUpdateScriptName} script: ${request.scenarioId}/${request.scale} holds ${dataset.rows.length} rows, fewer than the 1 200 the resident window and its append need`,
+      });
+      setResult(unsupportedResult);
+      publishBenchResult(unsupportedResult);
+      return;
+    }
+
     try {
       const startedAt = performance.now();
       pretableTelemetryRef.current = null;
       setInteractionPlanOverride({
         plan: null,
+        search,
+      });
+      // Set before the remount so the fresh adapter mounts already holding the
+      // resident window rather than the whole scenario.
+      setDataUpdatePlanOverride({
+        plan: nextDataUpdatePlan,
         search,
       });
 
@@ -244,6 +345,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       // onReady callbacks.
       updateApiRef.current = null;
       autosizeApiRef.current = null;
+      dataApiRef.current = null;
 
       setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
@@ -387,6 +489,57 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
           `group rows after grouping: ${countGroupRows()}`,
         );
       }
+
+      // SETUP for the row-set change scripts — outside the measurement window.
+      // The probe row has to be selected and focused before the update lands, or
+      // `selected_row_preserved` / `focused_row_preserved` compare a plan against a
+      // grid that never held either.
+      if (dataUpdateScriptName && nextDataUpdatePlan) {
+        setInteractionPlanOverride({
+          plan: {
+            focusedRowId: nextDataUpdatePlan.focusedRowId,
+            filters: {},
+            mode: dataUpdateScriptName,
+            probeColumnId: nextDataUpdatePlan.probeColumnId,
+            resultRowCount: nextDataUpdatePlan.initialRows.length,
+            rows: nextDataUpdatePlan.initialRows,
+            rowGroups: [],
+            selectedRowId: nextDataUpdatePlan.selectedRowId,
+            sort: [],
+          },
+          search,
+        });
+
+        for (let frame = 0; frame < 60 && !dataApiRef.current; frame += 1) {
+          await waitForNextAnimationFrame();
+        }
+
+        await waitForQuietViewport();
+      }
+
+      const dataUpdateRun =
+        dataUpdateScriptName && nextDataUpdatePlan
+          ? await measureBenchDataUpdateRun(
+              viewportRef.current ?? document.body,
+              query.adapterId,
+              dataUpdateScriptName,
+              nextDataUpdatePlan,
+              () =>
+                createBenchInteractionStateFromTelemetry(
+                  pretableTelemetryRef.current,
+                  nextDataUpdatePlan.resultRowCount,
+                ),
+              () =>
+                (
+                  viewportRef.current?.querySelector(
+                    "[data-bench-grid-instance-id]",
+                  ) as HTMLElement | null
+                )?.dataset.benchGridInstanceId ?? "0",
+              () => {
+                dataApiRef.current?.(nextDataUpdatePlan.nextRows);
+              },
+            )
+          : null;
 
       const keySequenceRun =
         scriptName === "select-range-extend"
@@ -586,20 +739,35 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                       ],
                       metrics: interactionRun.metrics,
                     })
-                  : createBenchRunSummary({
-                      request,
-                      status: "completed",
-                      timestamp,
-                      tracePath,
-                      notes: createPretableTelemetryNotes(
-                        pretableTelemetryRef.current,
-                      ),
-                      metrics: {
-                        mount_ms: performance.now() - startedAt,
-                        first_stable_viewport_ms: performance.now() - startedAt,
-                        dom_nodes_peak: domNodesPeak,
-                      },
-                    });
+                  : dataUpdateRun
+                    ? createBenchRunSummary({
+                        request,
+                        status: dataUpdateRun.status,
+                        timestamp,
+                        tracePath,
+                        notes: [
+                          ...dataUpdateRun.notes,
+                          ...createPretableTelemetryNotes(
+                            pretableTelemetryRef.current,
+                          ),
+                        ],
+                        metrics: dataUpdateRun.metrics,
+                      })
+                    : createBenchRunSummary({
+                        request,
+                        status: "completed",
+                        timestamp,
+                        tracePath,
+                        notes: createPretableTelemetryNotes(
+                          pretableTelemetryRef.current,
+                        ),
+                        metrics: {
+                          mount_ms: performance.now() - startedAt,
+                          first_stable_viewport_ms:
+                            performance.now() - startedAt,
+                          dom_nodes_peak: domNodesPeak,
+                        },
+                      });
 
       setResult(nextResult);
       publishBenchResult(nextResult);
@@ -736,9 +904,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             {query.adapterId === "pretable" ? (
               <PretableAdapter
                 dataset={dataset}
+                initialRows={dataUpdatePlan?.initialRows}
                 interactionPlan={interactionPlan}
                 key={runKey}
                 onAutosizeReady={handleAutosizeApiReady}
+                onDataApiReady={handleDataApiReady}
                 onGridReady={(grid) => {
                   pretableGridRef.current = grid;
                 }}

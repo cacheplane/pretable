@@ -344,4 +344,99 @@ describe("BenchApp", () => {
       rowGroups: ["col_5"],
     });
   }, 20_000);
+  test("paints and selects the resident window BEFORE the replace window opens", async () => {
+    // `selected_row_preserved` / `focused_row_preserved` are only claims about the
+    // update if something was selected first, and the controlled focus scrolls
+    // itself into view — which, still in flight, would be mistaken for the
+    // update's own first painted frame.
+    let modeAtCallTime: string | null = null;
+    let residentRowCountAtCallTime: string | null = null;
+    let selectedRowIdAtCallTime: string | null = null;
+    let planAtCallTime: unknown = null;
+
+    vi.spyOn(benchRuntime, "measureBenchDataUpdateRun").mockImplementation(
+      async (_root, _adapterId, mode, plan) => {
+        const adapter = document.querySelector<HTMLElement>(
+          "[data-benchmark-adapter='pretable']",
+        );
+        modeAtCallTime = mode;
+        planAtCallTime = plan;
+        residentRowCountAtCallTime =
+          adapter?.dataset.benchResultRowCount ?? null;
+        selectedRowIdAtCallTime = adapter?.dataset.benchSelectedRowId ?? null;
+
+        return {
+          status: "completed",
+          notes: [`data update mode: ${mode}`],
+          metrics: {
+            interaction_latency_ms: 11,
+            settle_duration_ms: 9,
+            post_interaction_blank_gap_frames: 0,
+            post_interaction_anchor_shift_px: 0,
+            post_interaction_row_height_error_p95_px: 0,
+            scroll_position_drift_px: 0,
+            result_row_count: 200,
+            selected_row_preserved: 1,
+            focused_row_preserved: 1,
+            grid_instance_reconstructed: 0,
+            dom_nodes_peak: 400,
+            rendered_rows_peak: 11,
+            rendered_cells_peak: 440,
+          },
+        };
+      },
+    );
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S1&scale=dev&script=replace&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          adapterId: "pretable",
+          scenarioId: "S1",
+          scriptName: "replace",
+          metrics: {
+            interaction_latency_ms: 11,
+            grid_instance_reconstructed: 0,
+          },
+        });
+      },
+      { timeout: 20_000 },
+    );
+
+    expect(modeAtCallTime).toBe("replace");
+    // The resident window, not S1 dev's 2 000 rows.
+    expect(residentRowCountAtCallTime).toBe("200");
+    expect(planAtCallTime).toMatchObject({ mode: "replace" });
+    expect(selectedRowIdAtCallTime).toBe(
+      (planAtCallTime as { selectedRowId: string }).selectedRowId,
+    );
+  }, 30_000);
+
+  test("reports a dataset too small for either row-set shape as unsupported", async () => {
+    const dataUpdateSpy = vi.spyOn(benchRuntime, "measureBenchDataUpdateRun");
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S1&scale=smoke&script=append&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        status: "unsupported",
+        scriptName: "append",
+      });
+    });
+
+    // Mount-only metrics under the `append` name would be worse than no run.
+    expect(dataUpdateSpy).not.toHaveBeenCalled();
+  }, 20_000);
 });
