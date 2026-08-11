@@ -1,0 +1,645 @@
+{
+  "adapterVersions": {
+    "source": "installed package manifests under apps/bench/node_modules",
+    "recordedAt": "2026-08-11T22:47:52.212Z",
+    "adapters": {
+      "ag-grid": {
+        "ag-grid-community": "36.1.0",
+        "ag-grid-react": "36.1.0"
+      },
+      "mui": {
+        "@mui/x-data-grid": "9.11.0",
+        "@mui/material": "9.3.1"
+      },
+      "pretable": {
+        "@pretable/react": "0.4.0",
+        "@pretable/ui": "0.4.0",
+        "@pretable/stream-adapter": "0.4.0"
+      },
+      "tanstack": {
+        "@tanstack/react-table": "8.21.3",
+        "@tanstack/react-virtual": "3.14.9"
+      }
+    }
+  },
+  "title": "Comparative re-baseline attempt: structural equivalence verified, timings NOT re-baselined",
+  "date": "2026-08-11",
+  "runsetId": "2026-08-11t22-39-51-283z",
+  "intent": "Re-measure the May 2026 comparative runset against the currently installed comparators (ag-grid 33.3.2 -> 36.1.0, @mui/x-data-grid 7.29.13 -> 9.11.0, @tanstack/react-virtual 3.13.24 -> 3.14.9). The timing half of that intent was NOT met and is deliberately not reported here.",
+  "whatThisFileIsNot": [
+    "This file establishes NO timing baseline. It contains no median frame time, no interaction latency, and nothing that may be quoted as a performance comparison.",
+    "It does NOT supersede the May 2026 comparative milestones. Those remain marked superseded, because a re-measure did not happen.",
+    "The structural counts below ARE measured evidence, gathered on the same tree and the same load window for all four adapters."
+  ],
+  "environment": {
+    "verdict": "Not fit for timing measurement. The re-baseline was attempted on the premise that the machine was quiet; the premise did not hold.",
+    "machine": "10 logical cores (hw.ncpu=10, all performance-visible)",
+    "loadAverage": {
+      "beforeRunset": "11.10 (1m) / 11.07 (5m) / 10.60 (15m)",
+      "afterRunset": "25.29 (1m) / 18.30 (5m) / 13.66 (15m)",
+      "note": "Load average on a 10-core machine is a count of runnable+blocked threads, not a percentage. ~10 is full occupancy, not idle. It rose 2.3x across the 2.7-minute runset."
+    },
+    "cpu": "iostat sampling over 60s showed idle oscillating 0%-66% (user 21-78%, sys 13-24%). At one top(1) sample: 74.99% user, 25.0% sys, 0.0% idle.",
+    "memory": {
+      "physicalFree": "~111 MB (6776 free pages x 16 KB)",
+      "compressor": "9.7 GB held by the compressor",
+      "swap": "41.9 GB of 43.0 GB swap in use; 1.1 GB free",
+      "pagesDecompressed": 1322737170,
+      "note": "Sustained paging is what inflates the load average here, and it is the contaminant that most directly distorts the tail statistics (p95 frame time, interaction latency) these benchmarks report."
+    },
+    "concurrentWork": "At the start of this session another worktree was running `pnpm bench:e2e` (Playwright) and a `vitest run` concurrently. Both finished before the runset below; a Codex session and a VM remained active throughout.",
+    "thermal": "No thermal or performance warning level recorded (pmset -g therm)."
+  },
+  "evidenceThatTimingsAreUnusable": {
+    "control": "pretable, S2/hypothesis, scroll",
+    "committedMay2026": {
+      "scroll_frame_p95_ms": 9.7,
+      "source": "status/milestones/2026-05-08-b2-scroll-summary.json"
+    },
+    "measuredNow": {
+      "scroll_frame_p95_ms_median": 17.7,
+      "sd": 0.32,
+      "n": 3
+    },
+    "reading": "pretable's own scroll p95 is 1.8x its committed value and above the 16.7 ms 60 Hz budget. The control cannot hold 60 Hz on this machine, so no comparator number measured beside it describes the library rather than the machine. The 60 Hz, zero-gap and interaction-continuity gates named in ROADMAP.md are untouched by this file.",
+    "contrast": "Over the same runs rendered_rows_peak was 11 with sd 0, identical to the committed May value. Structural counts did not move; timings did. That split is what makes the structural half of this file reportable and the timing half not."
+  },
+  "equivalenceChecks": {
+    "domContract": {
+      "result": "pass",
+      "detail": "apps/bench/src/__tests__/comparator-dom-contract.test.tsx mounts each real adapter against the installed package and resolves every selector in scrollRuntimeProfiles. Green at ag-grid 36.1.0 and @mui/x-data-grid 9.11.0. This is the guard that would have caught the removal of .ag-body-viewport."
+    },
+    "provenance": {
+      "result": "pass",
+      "detail": "scripts/__tests__/bench-comparator-provenance.test.mjs: 3/3. Version stamping fired automatically on both the per-run summaries and the runset report."
+    },
+    "scrollWorkParity": {
+      "result": "pass",
+      "detail": "ag-grid rendered_rows_peak on scroll is 27 (sd 0, n=3), identical to the committed May value at ag-grid 33.3.2. AG Grid 36 is doing the same amount of scroll work the old baseline measured, so the #306 fix holds and the scroll comparison is still like-for-like."
+    }
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "high",
+      "title": "ag-grid filter-metadata reports status:completed on runs where no filtering happened",
+      "detail": "In 2 of 10 dedicated repeats (plus 1 of 3 in the main runset), ag-grid's filter-metadata run recorded result_row_count=3000 — the unfiltered dataset — instead of the 750 rows the plan asked for, while reporting status:completed and a normal-looking interaction_latency_ms. The latency on a contaminated run is indistinguishable from a clean one (58.1 ms was observed for both), so the defect is invisible in the timing series. The structural tell is rendered_rows_peak: 16 on contaminated runs, 28 on clean ones.",
+      "consequence": "Any ag-grid filter-metadata median drawn from a small sample is contaminated at roughly this rate. The committed May baseline used repeats=3, which carries a ~49% chance of including at least one such run.",
+      "rootCause": "The interaction measurement path in apps/bench/src/bench-runtime.ts records `result_row_count: finalState.resultRowCount` and returns status:completed without ever comparing it to `plan.resultRowCount`. The same file already performs exactly that comparison on the data-update path (measureBenchDataUpdateRun, ~line 972), with a comment explaining that a change detector 'only needs SOME change'. The check exists and is correct; it is simply applied to one of the two paths. `plan` is in scope at the interaction return site — it is used two lines below for selected_row_preserved.",
+      "notFixedHere": "Left unfixed deliberately: this runset cannot validate the effect of a harness change on timings, and the brief scoped this work to measurement, not harness redesign."
+    },
+    {
+      "id": "F2",
+      "severity": "medium",
+      "title": "selected_row_preserved and focused_row_preserved are pretable-only metrics that read as comparative ones",
+      "detail": "Only apps/bench/src/pretable-adapter.tsx publishes data-bench-selected-row-id / data-bench-focused-row-id. readBenchInteractionState defaults both to null for any adapter that does not, so ag-grid, tanstack and mui score 0 on every interaction script by construction, regardless of what those libraries actually do with selection.",
+      "consequence": "A per-adapter table showing pretable=1 and every comparator=0 is not evidence about the comparators. The hypothesis evaluators in scripts/bench-matrix.mjs are NOT affected — they read these two metrics from the pretable-only candidate series, and the code says so — so no committed verdict is wrong. The hazard is a human reading the metric table as a head-to-head result.",
+      "recommendation": "Either wire the attributes in the comparator adapters or mark the two metrics candidate-only where they are surfaced."
+    }
+  ],
+  "structuralChangeVsSuperseded": {
+    "question": "Did any comparator silently stop doing equivalent work across the version bumps?",
+    "answer": "No. Every adapter still virtualizes to the same magnitude it did in May 2026. rendered_rows_peak on scroll is unchanged for ag-grid (27) and tanstack (16), and moved by one row for mui (22 -> 23). dom_nodes_peak grew modestly for the two that took majors. Nothing here resembles the .ag-body-viewport failure, where the comparator rendered nothing and looked cheap.",
+    "source": "May values from status/milestones/2026-05-08-b2-scroll-summary.json (S2/hypothesis, scroll, n=3); current values from this runset (n=3).",
+    "scroll": {
+      "pretable": {
+        "rendered_rows_peak": {
+          "may2026": 11,
+          "now": 11,
+          "sd": 0,
+          "n": 3
+        },
+        "dom_nodes_peak": {
+          "may2026": 98,
+          "now": 127,
+          "sd": 0,
+          "n": 3
+        }
+      },
+      "ag-grid": {
+        "rendered_rows_peak": {
+          "may2026": 27,
+          "now": 27,
+          "sd": 0,
+          "n": 3
+        },
+        "dom_nodes_peak": {
+          "may2026": 412,
+          "now": 434,
+          "sd": 0,
+          "n": 3
+        }
+      },
+      "tanstack": {
+        "rendered_rows_peak": {
+          "may2026": 16,
+          "now": 16,
+          "sd": 0,
+          "n": 3
+        },
+        "dom_nodes_peak": {
+          "may2026": 704,
+          "now": 704,
+          "sd": 0,
+          "n": 3
+        }
+      },
+      "mui": {
+        "rendered_rows_peak": {
+          "may2026": 22,
+          "now": 23,
+          "sd": 0,
+          "n": 3
+        },
+        "dom_nodes_peak": {
+          "may2026": 251,
+          "now": 300,
+          "sd": 0,
+          "n": 3
+        }
+      }
+    },
+    "caveat": "These are structural counts only. Whether the version bumps changed the comparators' TIMING is exactly the question this runset could not answer."
+  },
+  "structuralResults": {
+    "scenario": "S2",
+    "scale": "hypothesis",
+    "rowCount": 3000,
+    "repeats": 3,
+    "note": "Medians with sd and n. Every entry is a structural or count metric, chosen because it is insensitive to machine load. Timing metrics were measured but are withheld — see evidenceThatTimingsAreUnusable. sd=0 across the board (except the ag-grid filter-metadata row, which is finding F1) is itself the evidence that these counts are load-insensitive.",
+    "byScript": {
+      "initial": {
+        "pretable": {
+          "status": "completed",
+          "dom_nodes_peak": {
+            "median": 99,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "ag-grid": {
+          "status": "completed",
+          "dom_nodes_peak": {
+            "median": 80,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "tanstack": {
+          "status": "completed",
+          "dom_nodes_peak": {
+            "median": 499,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "mui": {
+          "status": "completed",
+          "dom_nodes_peak": {
+            "median": 256,
+            "sd": 0,
+            "n": 3
+          }
+        }
+      },
+      "scroll": {
+        "pretable": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 66,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 127,
+            "sd": 0,
+            "n": 3
+          },
+          "blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "ag-grid": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 27,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 162,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 434,
+            "sd": 0,
+            "n": 3
+          },
+          "blank_gap_frames": {
+            "median": 1,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "tanstack": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 16,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 640,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 704,
+            "sd": 0,
+            "n": 3
+          },
+          "blank_gap_frames": {
+            "median": 1,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "mui": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 23,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 144,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 300,
+            "sd": 0,
+            "n": 3
+          },
+          "blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        }
+      },
+      "sort": {
+        "pretable": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 66,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 127,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 3000,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "ag-grid": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 16,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 96,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 346,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 3000,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "tanstack": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 440,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 499,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 3000,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 3,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "mui": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 88,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 256,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 3000,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        }
+      },
+      "filter-text": {
+        "pretable": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 66,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 127,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 500,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "ag-grid": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 29,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 174,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 450,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 500,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "tanstack": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 440,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 499,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 500,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 3,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "mui": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 88,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 260,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 500,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        }
+      },
+      "filter-metadata": {
+        "pretable": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 12,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 72,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 134,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 750,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "ag-grid": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 28,
+            "sd": 6.93,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 168,
+            "sd": 41.57,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 442,
+            "sd": 55.43,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 750,
+            "sd": 1299.04,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "tanstack": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 440,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 499,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 750,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 3,
+            "sd": 0,
+            "n": 3
+          }
+        },
+        "mui": {
+          "status": "completed",
+          "rendered_rows_peak": {
+            "median": 11,
+            "sd": 0,
+            "n": 3
+          },
+          "rendered_cells_peak": {
+            "median": 88,
+            "sd": 0,
+            "n": 3
+          },
+          "dom_nodes_peak": {
+            "median": 260,
+            "sd": 0,
+            "n": 3
+          },
+          "result_row_count": {
+            "median": 750,
+            "sd": 0,
+            "n": 3
+          },
+          "post_interaction_blank_gap_frames": {
+            "median": 0,
+            "sd": 0,
+            "n": 3
+          }
+        }
+      }
+    }
+  },
+  "supersededFilesUnchanged": "The eleven May 2026 comparative milestones keep their adapterVersions.superseded blocks. That is the correct state: the comparators have moved and no re-measure has replaced them. Removing those markers requires a timing runset on a quiet machine, which this is not.",
+  "nextStep": "Re-run `pnpm bench:matrix --adapters=pretable,ag-grid,tanstack,mui --scenarios=S2 --scripts=... --scale=hypothesis --repeats=>=7` on a machine with no concurrent agent work and free physical memory, after F1 is fixed — otherwise the ag-grid filter-metadata series will be contaminated again and, this time, invisibly."
+}
