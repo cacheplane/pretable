@@ -248,7 +248,12 @@ The same applies when you are reading the DOM rather than styling it — in an e
 
 ## Cell editing
 
-Read-only display only in v1. Cell editing — type-to-edit, parse/format round-trips, validation, commit/cancel callbacks — is its own design problem and is deferred to a future sub-project.
+Cell editing is supported through built-in typed editors and per-column
+`renderEditor` overrides. Display `format` and `numberFormat` remain separate
+from `formatEditValue`, which only produces the string used to seed an editor.
+Editor value inputs, `validate`, and `onCellEdit` receive raw values rather than
+formatted display strings. See [Editing](/docs/grid/editing) for parsing,
+validation, custom editors, and the controlled commit lifecycle.
 
 ## See also
 
