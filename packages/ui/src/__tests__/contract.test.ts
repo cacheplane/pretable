@@ -48,6 +48,10 @@ const TOKENS = [
   "pretable-edit-bg",
   "pretable-text-error",
   "pretable-icon-size",
+  "pretable-positive",
+  "pretable-negative",
+  "pretable-warning",
+  "pretable-info",
 ];
 
 /**
@@ -184,6 +188,30 @@ describe("token contract", () => {
       "pretable dark mode did not override --pretable-bg-grid",
     ).not.toBe(lightBg);
     cleanup();
+  });
+
+  test("grid.css actually consumes the semantic ramp", () => {
+    // The reverse of every other check in this file, and the one this project
+    // keeps needing: four separate times a token has been declared by all three
+    // themes and read by nothing — `data-pretable-numeric`, the toolbar rules,
+    // the seam, the card shadow — and two of those shipped documented as
+    // working. A token with no consumer is not a feature, it is a promise the
+    // stylesheet never keeps. Comments are stripped so prose mentioning a token
+    // cannot satisfy this.
+    const gridCss = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const token of [
+      "--pretable-positive",
+      "--pretable-negative",
+      "--pretable-warning",
+      "--pretable-info",
+    ]) {
+      expect(
+        gridCss,
+        `${token} is defined by every theme and read by nothing in grid.css`,
+      ).toContain(`var(${token})`);
+    }
   });
 
   test("grid.css references no --pt-color-* tokens (consolidated into --pretable-*)", () => {

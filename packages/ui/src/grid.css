@@ -373,6 +373,103 @@
     font-variant-numeric: tabular-nums lining-nums;
   }
 
+  /* ------------------------------------------------------------------------
+     Cell presentations. Small, composable readings of a value that a consumer
+     opts into from a `render`, not automatic behaviour — the grid never infers
+     that a number is a delta. Each one is styled here and emitted by a
+     component in @pretable/react, so the markup and the skin cannot drift.
+     ---------------------------------------------------------------------- */
+
+  /* Signed numeric change. Direction is carried by a MARKER as well as by
+     colour, so it survives greyscale, colour-blindness and a printed page —
+     colour alone is not an accessible signal, and a red/green pair is the
+     worst possible choice for the most common deficiency.
+
+     The marker is a real element (PretableDelta emits one from the icon set),
+     deliberately NOT a Unicode glyph in a `content:` declaration here. `▲` and
+     `▼` are two of the exact characters SP2b removed from this grid: text
+     glyphs re-render in whatever font the active theme picked, so their
+     weight, size and baseline shift between Excel's Aptos Narrow, Material's
+     Roboto and this theme's own stack — and on most UI stacks they are not in
+     the font at all and fall through to a platform symbol font, which changes
+     the metrics again per OS. A ::before would have saved one node per cell,
+     but virtualization already bounds that to the visible rows.
+
+     `align-items: baseline`, not `center`: a delta is frequently a two-line
+     stack (the figure over its percentage), and baseline alignment pins the
+     marker to the FIRST line. Centring floats it against the whole stack. */
+  :where([data-pretable-delta]) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  /* The marker rides the TEXT size, not --pretable-icon-size: it sits inline
+     beside digits rather than inside a control, and a fixed 16px next to 14px
+     text reads as a bullet. Declared after the shared icon rule so it wins on
+     source order — everything here is :where()-flattened to (0,0,0). */
+  :where([data-pretable-delta] [data-pretable-icon]) {
+    width: 0.85em;
+    height: 0.85em;
+  }
+
+  /* The colour rides the direction. These sit on the presentation element, not
+     the cell, so a selected cell's --pretable-text-selected does not erase
+     them: the signal must not disappear because a range happens to cover it. */
+  :where([data-pretable-delta="up"]) {
+    color: var(--pretable-positive);
+  }
+
+  :where([data-pretable-delta="down"]) {
+    color: var(--pretable-negative);
+  }
+
+  :where([data-pretable-delta="flat"]) {
+    color: var(--pretable-text-dim);
+  }
+
+  /* Status: a dot AND a label, both carrying the state for the same reason the
+     delta has a marker — a reader who cannot separate the hues still has the
+     word. The dot IS generated content here, unlike the delta's marker: it is
+     a border-radius box with no text in it, so it has no font to re-render in
+     and none of the objection above applies. 7px because a 6px dot goes soft
+     against a hairline-ruled surface and an 8px one starts competing with the
+     label for weight. */
+  :where([data-pretable-status]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--pretable-text-cell);
+  }
+
+  /* `:where(sel)::before`, never `:where(sel::before)` — a pseudo-element is
+     not a valid argument to :where(), and a browser drops the entire rule. */
+  :where([data-pretable-status])::before {
+    content: "";
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--pretable-text-dim);
+  }
+
+  :where([data-pretable-status="positive"])::before {
+    background: var(--pretable-positive);
+  }
+
+  :where([data-pretable-status="negative"])::before {
+    background: var(--pretable-negative);
+  }
+
+  :where([data-pretable-status="warning"])::before {
+    background: var(--pretable-warning);
+  }
+
+  :where([data-pretable-status="info"])::before {
+    background: var(--pretable-info);
+  }
+
   /* Row-selection checkbox column (Phase 4) */
   :where(
     [data-pretable-cell][data-pretable-row-select-cell="true"],
