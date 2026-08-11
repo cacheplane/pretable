@@ -100,31 +100,51 @@ function formatWithNativeNumber(
   return fallback(value);
 }
 
-export function formatDataCellValue<TRow extends PretableRow>(
-  column: PretableColumn<TRow>,
-  row: TRow,
-  value: unknown,
-  formatters: NumberFormatterRegistry,
-  fallback: (value: unknown) => string,
-): string {
+export function formatDataCellValue<TRow extends PretableRow>({
+  value,
+  row,
+  column,
+  numberFormatters,
+  fallback,
+}: {
+  value: unknown;
+  row: TRow;
+  column: PretableColumn<TRow>;
+  numberFormatters: NumberFormatterRegistry;
+  fallback: (value: unknown) => string;
+}): string {
   if (column.format !== undefined) {
     return column.format({ value, row, column });
   }
 
-  return formatWithNativeNumber(value, formatters.get(column.id), fallback);
+  return formatWithNativeNumber(
+    value,
+    numberFormatters.get(column.id),
+    fallback,
+  );
 }
 
-export function formatAggregateValue<TRow extends PretableRow>(
-  column: PretableColumn<TRow>,
-  group: PretableGroupRow,
-  scope: "all" | "loaded",
-  formatters: NumberFormatterRegistry,
-  fallback: (value: unknown) => string,
-): string {
+export function formatAggregateValue<TRow extends PretableRow>({
+  column,
+  group,
+  scope,
+  numberFormatters,
+  fallback,
+}: {
+  column: PretableColumn<TRow>;
+  group: PretableGroupRow;
+  scope: "all" | "loaded";
+  numberFormatters: NumberFormatterRegistry;
+  fallback: (value: unknown) => string;
+}): string {
   const value = group.aggregates[column.id];
   if (column.formatAggregate !== undefined) {
     return column.formatAggregate({ value, column, group, scope });
   }
 
-  return formatWithNativeNumber(value, formatters.get(column.id), fallback);
+  return formatWithNativeNumber(
+    value,
+    numberFormatters.get(column.id),
+    fallback,
+  );
 }

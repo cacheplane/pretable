@@ -120,9 +120,15 @@ describe("native value formatting", () => {
     };
     const formatters = compileNumberFormatters([column], "en-US");
 
-    expect(formatDataCellValue(column, row, -12, formatters, fallback)).toBe(
-      "custom:-12",
-    );
+    expect(
+      formatDataCellValue({
+        value: -12,
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
+    ).toBe("custom:-12");
   });
 
   it("formats only number and bigint values without coercion", () => {
@@ -139,15 +145,33 @@ describe("native value formatting", () => {
     const row: Row = { id: "row-1", amount: -12 };
     const formatters = compileNumberFormatters([column], "en-US");
 
-    expect(formatDataCellValue(column, row, -12, formatters, fallback)).toBe(
-      "($12.00)",
-    );
     expect(
-      formatDataCellValue(column, row, BigInt(12), formatters, fallback),
+      formatDataCellValue({
+        value: -12,
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
+    ).toBe("($12.00)");
+    expect(
+      formatDataCellValue({
+        value: BigInt(12),
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
     ).toBe("$12.00");
-    expect(formatDataCellValue(column, row, "-12", formatters, fallback)).toBe(
-      "fallback:-12",
-    );
+    expect(
+      formatDataCellValue({
+        value: "-12",
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
+    ).toBe("fallback:-12");
   });
 
   it("leaves nullish values blank and non-numbers on supplied fallback", () => {
@@ -158,17 +182,41 @@ describe("native value formatting", () => {
     const row: Row = { id: "row-1", amount: null };
     const formatters = compileNumberFormatters([column], "en-US");
 
-    expect(formatDataCellValue(column, row, null, formatters, fallback)).toBe(
-      "",
-    );
     expect(
-      formatDataCellValue(column, row, undefined, formatters, fallback),
+      formatDataCellValue({
+        value: null,
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
     ).toBe("");
-    expect(formatDataCellValue(column, row, false, formatters, fallback)).toBe(
-      "fallback:false",
-    );
     expect(
-      formatDataCellValue(column, row, { amount: 12 }, formatters, fallback),
+      formatDataCellValue({
+        value: undefined,
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
+    ).toBe("");
+    expect(
+      formatDataCellValue({
+        value: false,
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
+    ).toBe("fallback:false");
+    expect(
+      formatDataCellValue({
+        value: { amount: 12 },
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
     ).toBe("fallback:[object Object]");
   });
 
@@ -181,25 +229,31 @@ describe("native value formatting", () => {
     const formatters = compileNumberFormatters([column], "en-US");
 
     expect(
-      formatDataCellValue(column, row, Number.NaN, formatters, fallback),
+      formatDataCellValue({
+        value: Number.NaN,
+        row,
+        column,
+        numberFormatters: formatters,
+        fallback,
+      }),
     ).toBe("+NaN");
     expect(
-      formatDataCellValue(
-        column,
+      formatDataCellValue({
+        value: Number.POSITIVE_INFINITY,
         row,
-        Number.POSITIVE_INFINITY,
-        formatters,
+        column,
+        numberFormatters: formatters,
         fallback,
-      ),
+      }),
     ).toBe("+∞");
     expect(
-      formatDataCellValue(
-        column,
+      formatDataCellValue({
+        value: Number.NEGATIVE_INFINITY,
         row,
-        Number.NEGATIVE_INFINITY,
-        formatters,
+        column,
+        numberFormatters: formatters,
         fallback,
-      ),
+      }),
     ).toBe("-∞");
   });
 
@@ -220,7 +274,13 @@ describe("native value formatting", () => {
     const formatters = compileNumberFormatters([column], "en-US");
 
     expect(
-      formatAggregateValue(column, group, "loaded", formatters, fallback),
+      formatAggregateValue({
+        column,
+        group,
+        scope: "loaded",
+        numberFormatters: formatters,
+        fallback,
+      }),
     ).toBe("aggregate:-12:loaded");
   });
 
@@ -241,7 +301,13 @@ describe("native value formatting", () => {
     const formatters = compileNumberFormatters([column], "en-US");
 
     expect(
-      formatAggregateValue(column, group, "all", formatters, fallback),
+      formatAggregateValue({
+        column,
+        group,
+        scope: "all",
+        numberFormatters: formatters,
+        fallback,
+      }),
     ).toBe("($12.00)");
     expect(dataFormat).not.toHaveBeenCalled();
   });
