@@ -1,0 +1,146 @@
+{
+  "generatedAt": "2026-08-11T00:50:00.000Z",
+  "title": "Group expand/collapse: both measured causes removed",
+  "discharges": "status/milestones/2026-08-10-grouping-bench-baseline.json#redundancyFinding",
+  "adapterId": "pretable",
+  "browserName": "chromium",
+  "profile": "default",
+  "scope": "S2 target (50,000 rows), scale=target, the trigger-to-first-frame window of the `group-expand` script.",
+  "environment": {
+    "note": "Measured under heavy sustained load from unrelated parallel sessions — 1-minute load average 118-165 for the whole session, never below 118. This is why every number below is an interleaved same-session A/B and not a comparison against the committed baseline.",
+    "loadAverageRange": "118-165"
+  },
+  "causes": [
+    {
+      "id": "react-row-height-re-estimation",
+      "claimUnderTest": "React re-estimates heights for all 37,504 visible rows on a toggle. ~130 ms, 58% of the window.",
+      "verdict": "CONFIRMED, with a more specific mechanism than the baseline stated",
+      "mechanism": "`estimateRowHeight` in packages/renderer-dom/src/create-renderer.ts already has the right cache: it keys per row in a WeakMap and returns immediately when the columns array is unchanged BY IDENTITY (`cached.columnsRef === columns`). That fast path had never once succeeded in React, because packages/react/src/use-pretable.ts passed `columns: [...drawnColumns]` — a fresh array on every recompute. So every snapshot change, not just a group toggle, re-derived the wrapped-text height signature for every visible row.",
+      "fix": "Memoize the spread on `drawnColumns`. The copy exists only to widen `readonly PretableColumn[]` to the mutable array `DomRenderInput` asks for.",
+      "safety": "Stable identity is sound because the engine's column model is copy-on-write: setColumnWidth, autosize, pin, move, reorder and mergeColumnsFromProps all replace `options.columns` wholesale, which gives `getColumns()` a new identity and invalidates the memo. Audited every writer of `options.columns`; a repo-wide grep for in-place column-field assignment returns zero hits."
+    },
+    {
+      "id": "engine-redundancy",
+      "claimUnderTest": "setGroupExpanded replaces groupExpansionOverrides, a derived-cache key, so the engine re-runs sortRows -> buildTree -> accumulate -> flatten, though only flatten reads the overrides. ~30 ms, 13%.",
+      "verdict": "CONFIRMED as stated",
+      "fix": "`buildGroupedRows` split into `buildGroupModel` (sort/group/aggregate — not even given the expansion fields, so the invariance is stated in the type) and `flattenGroupModel`. The engine caches the model on a key that omits the two expansion fields, and clears it at exactly the three sites that clear `cachedDerivation`. Sibling ordering and aggregate finalization are memoized on the nodes, lazily, so a mostly-collapsed tree never pays to order branches nobody opens.",
+      "publicApi": "unchanged — neither new function is re-exported from @pretable/core; `api:check` passes without regeneration."
+    }
+  ],
+  "method": {
+    "design": "Interleaved A/B. Three BASE blocks and three FIX blocks alternated within one session, each block rebuilding the bench app from source, so both sides sample the same load minute by minute. Scripts interleave within each block (the matrix orders adapter -> repeat -> scenario -> script). Never compared against the committed baseline across sessions.",
+    "base": "33fd60f",
+    "n": "9 per side for S2 scripts (3 blocks x 3 repeats); 6 per side for the S5 updates control (3 blocks x 2 repeats)",
+    "reruns": "None of the headline figures are re-runs; every value is from the single interleaved matrix described above. The grid-core invariant-test timeout was separately re-run and A/B'd (see knownFlake)."
+  },
+  "results": {
+    "group_expand_S2_target": {
+      "metric": "interaction_latency_ms",
+      "base": {
+        "median": 183.7,
+        "sd": 7.61,
+        "n": 9,
+        "raw": [184.9, 182.2, 174.4, 190.5, 198.6, 182.6, 175.7, 190.8, 183.7]
+      },
+      "fix": {
+        "median": 51.0,
+        "sd": 4.3,
+        "n": 9,
+        "raw": [58.2, 56.4, 49.3, 51.0, 50.0, 50.6, 59.8, 50.1, 58.2]
+      },
+      "delta": "-72.2%",
+      "separation": "The two distributions do not overlap: base min 174.4, fix max 59.8.",
+      "settle": "unchanged (16.8 -> 16.7 ms), so this is a real reduction in total cost, not a shift from latency into settle."
+    },
+    "controls": {
+      "note": "\"Existing scripts must produce unchanged results\" was verified by the same A/B, not assumed. Every result-shape metric is byte-identical between sides.",
+      "resultShape": "result_row_count identical on both sides for all three S2 scripts (group 50,004; group-expand 37,504; sort 50,000).",
+      "group_S2_target": {
+        "latencyBase": 16.9,
+        "latencyFix": 16.6,
+        "settleBase": 349.7,
+        "settleFix": 191.8,
+        "n": 9,
+        "verdict": "unchanged latency; settle improved 45% as a side effect of the React fix"
+      },
+      "sort_S2_target": {
+        "latencyBase": 17.7,
+        "latencyFix": 16.7,
+        "settleBase": 441.7,
+        "settleFix": 158.1,
+        "n": 9,
+        "verdict": "unchanged latency (medians differ by 1 ms against sd 4.1-4.3); settle improved 64% as a side effect of the React fix"
+      },
+      "updates_S5_target": {
+        "frameP95Base": 9.95,
+        "frameP95Fix": 9.9,
+        "frameMaxBase": 16.8,
+        "frameMaxFix": 16.35,
+        "longTasksBoth": 0,
+        "streamingClsBoth": 0,
+        "scrollDriftBoth": 0,
+        "visibleRowDriftBoth": 0,
+        "n": 6,
+        "verdict": "unchanged — the streaming window is untouched, as #291 warned it might not be"
+      }
+    },
+    "gates": {
+      "note": "No gate was weakened. All continuity metrics identical between sides.",
+      "post_interaction_blank_gap_frames": "0 on both sides, all runs, all scripts (zero-gap)",
+      "post_interaction_anchor_shift_px": "0 on both sides, all runs, all scripts (interaction continuity)",
+      "post_interaction_row_height_error_p95_px": "identical both sides (group-expand 3, group 4, sort 3)",
+      "selected_row_preserved / focused_row_preserved": "1 on both sides",
+      "sixtyHz": "updates S5 scroll_frame_p95_ms 9.9 ms on both sides, inside the 16.7 ms budget; zero long tasks both sides"
+    }
+  },
+  "stageAttribution": {
+    "method": "Separate interleaved run: PLAYWRIGHT_PERF_TRACE=1, 3 traced group-expand runs per side alternating base/fix, each resolved through its OWN build's sourcemap, sliced with scripts/analyze-cdp.mjs --window=interaction.",
+    "markCheck": "Verified rather than assumed, per #291: group-expand traces carry pretable.interaction.start AND .firstFrame, so --window=interaction genuinely slices and does not fall back to the full trace.",
+    "windowMs": {
+      "base": [189.31, 192.81, 191.89],
+      "fix": [61.31, 60.91, 59.04]
+    },
+    "symbolsResolvedByInspection": "Dist line numbers were confirmed against the built bundle, not inferred from position: packages/react/dist/index.mjs:463 = createDomRenderSnapshot, :464 = the visibleRows row-height callback, :580 = getEstimatedRowHeightSignature; packages/core/dist/index.mjs:458 = buildTree, :496 = accumulate, :515 = flatten.",
+    "selfTimeMs": {
+      "getEstimatedRowHeightSignature": {
+        "base": [33.8, 32.3, 24.7],
+        "fix": "absent from all three traces"
+      },
+      "createDomRenderSnapshot": {
+        "base": [52.0, 61.2, 37.2],
+        "fix": [10.7, 9.9, 9.9]
+      },
+      "buildTree": {
+        "base": [13.9, 15.3, 13.3],
+        "fix": "absent from all three traces"
+      },
+      "accumulate": {
+        "base": [15.6, 14.4, 17.0],
+        "fix": "absent from all three traces"
+      },
+      "flatten": { "base": "~1", "fix": [1.3, 0.9, 0.8] }
+    },
+    "reading": "The engine fix is visible as buildTree and accumulate disappearing from the toggle entirely while flatten — the one stage whose input actually changed — stays at ~1 ms. The React fix is visible as getEstimatedRowHeightSignature disappearing and createDomRenderSnapshot's self time falling ~5x."
+  },
+  "tests": {
+    "added": "packages/grid-core/src/__tests__/grouping-engine.test.ts — \"expansion does not re-derive what it cannot change\". A counting aggregator probes whether the engine re-folds.",
+    "bothDirections": "Collapse, re-expand, collapseAll and expandAll must NOT re-fold; a sort change, a grouping change and replaced rows MUST. Without the second half the cache could pass by never invalidating.",
+    "nonVacuous": "Verified: the two \"must not re-fold\" cases fail against the pre-fix engine (32 folds where 16 are expected)."
+  },
+  "knownFlake": {
+    "test": "packages/grid-core/src/__tests__/column-model-reconciliation-invariant.test.ts",
+    "symptom": "Times out at the default 5,000 ms when the grid-core suite runs its files in parallel under this machine's load; the test itself takes ~4.7-5.1 s.",
+    "verdict": "PRE-EXISTING, not caused by this change. Verified by interleaved A/B of the exact failing invocation: base timed out 3/3 and this branch timed out 3/3 in the same window. A separate interleaved timing run put base at 4.65/5.03/5.11 s and this branch at 4.64/4.75/4.76 s — this branch is if anything marginally faster. With --testTimeout raised, all 488 grid-core tests pass on this branch.",
+    "notFixedHere": "Raising that timeout is unrelated to this change and was left alone."
+  },
+  "correctionsToTheBrief": [
+    "The brief framed cause 1 as \"React re-estimates heights ... nobody has looked at it\", implying missing caching. The cache already existed and was correct; what was broken was a caller defeating it with a fresh array literal. The fix is one memo, not new caching machinery.",
+    "The baseline predicted fixing the engine alone would take 222 ms to ~185 ms. That is consistent with what was measured: base here is 183.7 ms at this load, and the engine stages account for ~30 ms of it.",
+    "The two fixes are not independent in their benefit profile: the React fix also improves `sort` and `group` settle time by 45-64%, which the baseline did not anticipate because it only profiled the toggle."
+  ],
+  "followUps": [
+    "The React memo helps every interaction that changes only the snapshot, not just group toggles — `sort` settle fell 64% and `group` settle 45% at S2 target. Those windows were never profiled for this cause and may have more left in them.",
+    "createDomRenderSnapshot still walks all 37,504 visible rows per toggle to build the prefix-sum row-metrics index, now at ~10 ms instead of ~50 ms. Making that incremental is the next structural step if the toggle needs to go below ~50 ms.",
+    "packages/renderer-dom/src/create-renderer.ts `resolveColumnWidth` ignores distributeFlexWidths, so flex columns' height estimates never track viewport width. Pre-existing and unrelated, noticed while auditing the cache."
+  ]
+}
