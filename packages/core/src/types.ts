@@ -52,6 +52,7 @@ export type {
   PretableChangeSequence,
   PretableChangeSet,
   PretableColumnCallbackContext,
+  PretableColumnAccessorKind,
   PretableColumnDefinition,
   PretableColumnDerivation,
   PretableColumnHelper,

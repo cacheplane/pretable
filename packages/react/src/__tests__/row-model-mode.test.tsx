@@ -5,7 +5,10 @@ import { describe, expect, test, vi } from "vitest";
 
 import * as core from "@pretable/core";
 
-import { usePretable } from "../use-pretable";
+import {
+  mergeModelPresentationColumnsForTesting,
+  usePretable,
+} from "../use-pretable";
 
 interface Row {
   key: `row_${number}`;
@@ -171,6 +174,46 @@ describe("usePretable explicit-model mode", () => {
     expect(second.getState().status).toEqual({ kind: "ready" });
     first.dispose();
     second.dispose();
+  });
+
+  test("merges reordered presentation callbacks over authoritative schema columns", () => {
+    const editor = vi.fn();
+    const merged = mergeModelPresentationColumnsForTesting(columns, [
+      { id: "score", renderEditor: editor },
+      { id: "label", header: "Renamed" },
+    ]);
+
+    expect(merged.map(({ id }) => id)).toEqual(["score", "label"]);
+    expect(merged[0]?.renderEditor).toBe(editor);
+    expect(merged[0]?.value(rows[0]!)).toBe(1);
+    expect(merged[1]?.value(rows[0]!)).toBe("one");
+    expect(columns[1]).not.toHaveProperty("renderEditor");
+  });
+
+  test("preserves computed accessors for wrapped presentation estimation", async () => {
+    const computedColumns = [
+      column.accessor("computed", (row) => row.label.repeat(80), {
+        type: "text",
+      }),
+    ] as const;
+    const model = core.createLocalRowModel({
+      rows,
+      columns: computedColumns,
+      getRowId: (row) => row.key,
+    });
+    const { result, unmount } = renderHook(() =>
+      usePretable({
+        model,
+        columns: [{ id: "computed", wrap: true, widthPx: 60 }],
+        viewportHeight: 88,
+      }),
+    );
+
+    await expect
+      .poll(() => result.current.renderSnapshot.rows[0]?.height ?? 0)
+      .toBeGreaterThan(500);
+    unmount();
+    model.dispose();
   });
 
   test("uses value-based mode discrimination for explicit undefined exclusions", () => {

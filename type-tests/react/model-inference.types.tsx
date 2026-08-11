@@ -3,9 +3,14 @@ import {
   createLocalRowModel,
   type ColumnIdOf,
   type ColumnValueOf,
+  type PretableEditStatus,
 } from "@pretable/core";
 import { usePretable, usePretableColumns } from "@pretable/react";
 import type { Equal, Expect, IsAny } from "../shared/assert";
+import {
+  precompiledDirectModel,
+  type PrecompiledPosition,
+} from "./precompiled-core-model";
 
 interface Position {
   id: string;
@@ -16,6 +21,23 @@ interface Position {
 
 const column = createColumnHelper<Position>();
 declare const multiplier: number;
+
+usePretable({
+  model: precompiledDirectModel,
+  columns: [
+    {
+      id: "price",
+      editable: true,
+      renderEditor: ({ row, rowId, value }) => {
+        const exactRow: PrecompiledPosition = row;
+        const exactRowId: string = rowId;
+        const exactValue: number = value;
+        return `${exactRow.id}:${exactRowId}:${exactValue}`;
+      },
+    },
+  ],
+  viewportHeight: 320,
+});
 
 const columns = usePretableColumns(
   () =>
@@ -81,6 +103,136 @@ const renderProbe = usePretableColumns(
 );
 void renderProbe;
 
+const authoritativePresentationProbe = usePretableColumns(
+  () =>
+    [
+      column.accessor("quantity", {
+        type: "number",
+        header: <span>Quantity</span>,
+        editable: ({ row, rowId, columnId, value }) => {
+          const exactRow: Position = row;
+          const exactRowId: string = rowId;
+          const exactColumnId: "quantity" = columnId;
+          const exactValue: number = value;
+          return (
+            exactRow.id === exactRowId &&
+            exactColumnId === "quantity" &&
+            exactValue >= 0
+          );
+        },
+        validate: (value, { row, rowId, columnId }) => {
+          const exactValue: number = value;
+          const exactRow: Position = row;
+          const exactRowId: string = rowId;
+          const exactColumnId: "quantity" = columnId;
+          void [exactRow, exactRowId, exactColumnId];
+          return exactValue >= 0 || "Quantity must be non-negative";
+        },
+        parseEditValue: (raw, { value }) => {
+          const current: number = value;
+          return Number(raw) || current;
+        },
+        formatEditValue: (value, { row }) => {
+          const exactValue: number = value;
+          const exactRow: Position = row;
+          return `${exactRow.symbol}:${exactValue}`;
+        },
+        flex: 1,
+        minWidthPx: 80,
+        maxWidthPx: 320,
+        pinned: "left",
+        wrap: true,
+        render: ({
+          row,
+          rowId,
+          value,
+          column,
+          formattedValue,
+          rowIndex,
+          isFocused,
+          isSelected,
+          pinned,
+        }) => {
+          const exactRow: Position = row;
+          const exactRowId: string = rowId;
+          const exactValue: number = value;
+          const exactColumnId: "quantity" = column.id;
+          const exactFormatted: string = formattedValue;
+          const exactIndex: number = rowIndex;
+          const exactFocused: boolean = isFocused;
+          const exactSelected: boolean = isSelected;
+          const exactPinned: "left" | "right" | null = pinned;
+          return `${exactRow.id}:${exactRowId}:${exactValue}:${exactColumnId}:${exactFormatted}:${exactIndex}:${exactFocused}:${exactSelected}:${exactPinned}`;
+        },
+        renderHeader: ({ column, label, sortDirection, isSorted, pinned }) => {
+          const exactColumnId: "quantity" = column.id;
+          const exactLabel: string = label;
+          const exactSort: "asc" | "desc" | null = sortDirection;
+          const exactSorted: boolean = isSorted;
+          const exactPinned: "left" | "right" | null = pinned;
+          return `${exactColumnId}:${exactLabel}:${exactSort}:${exactSorted}:${exactPinned}`;
+        },
+        renderEditor: ({
+          row,
+          rowId,
+          columnId,
+          value,
+          draft,
+          status,
+          error,
+          setDraft,
+          commit,
+          cancel,
+          seededFromTyping,
+        }) => {
+          const exactRow: Position = row;
+          const exactRowId: string = rowId;
+          const exactColumnId: "quantity" = columnId;
+          const exactValue: number = value;
+          const exactDraft: number | string = draft;
+          const exactStatus: PretableEditStatus = status;
+          const exactError: string | undefined = error;
+          const exactSeeded: boolean | undefined = seededFromTyping;
+          setDraft(exactValue);
+          setDraft(String(exactDraft));
+          commit("down");
+          cancel();
+          // @ts-expect-error a numeric editor draft cannot become boolean
+          setDraft(false);
+          void [
+            exactRow,
+            exactRowId,
+            exactColumnId,
+            exactStatus,
+            exactError,
+            exactSeeded,
+          ];
+          return null;
+        },
+      }),
+      column.accessor("notional", (row) => row.quantity * row.price, {
+        type: "number",
+        editable: true,
+        setValue: ({ row, value }) => ({
+          price: value / row.quantity,
+        }),
+        widthPx: 180,
+        renderEditor: ({ row, rowId, columnId, value, draft, setDraft }) => {
+          const exactRow: Position = row;
+          const exactRowId: string = rowId;
+          const exactColumnId: "notional" = columnId;
+          const exactValue: number = value;
+          const exactDraft: number | string = draft;
+          setDraft(exactValue);
+          void [exactRow, exactRowId, exactColumnId, exactDraft];
+          return null;
+        },
+      }),
+    ] as const,
+  [],
+);
+void authoritativePresentationProbe;
+
 type _Ids = Expect<
   Equal<ColumnIdOf<typeof columns>, "symbol" | "quantity" | "marketValue">
 >;
@@ -116,14 +268,46 @@ usePretable({
   ],
   viewportHeight: 320,
 });
+
 usePretable({
   model,
   columns: [
+    {
+      id: "marketValue",
+      editable: true,
+      setValue: ({ row, value }) => ({
+        price: value / row.quantity / multiplier,
+      }),
+      renderEditor: ({ row, rowId, columnId, value, draft, setDraft }) => {
+        const exactRow: Position = row;
+        const exactRowId: string = rowId;
+        const exactColumnId: "marketValue" = columnId;
+        const exactValue: number = value;
+        const exactDraft: number | string = draft;
+        setDraft(exactValue);
+        void [exactRow, exactRowId, exactColumnId, exactDraft];
+        return null;
+      },
+    },
+    { id: "quantity" },
+    { id: "symbol" },
+  ],
+  viewportHeight: 320,
+});
+usePretable({
+  model,
+  // @ts-expect-error editable computed presentation overrides require setValue
+  columns: [
     { id: "symbol" },
     { id: "quantity" },
-    // @ts-expect-error editable computed presentation overrides require setValue
     { id: "marketValue", editable: true },
   ],
+  viewportHeight: 320,
+});
+usePretable({
+  model,
+  // @ts-expect-error presentation tuples must contain every schema ID exactly once
+  columns: [{ id: "symbol" }, { id: "quantity" }, { id: "quantity" }],
   viewportHeight: 320,
 });
 
@@ -151,8 +335,51 @@ usePretable({
         const exactValue: string = value;
         return `${exactRow.symbol}:${exactRowId}:${exactValue}`;
       },
+      renderHeader: ({ column, label, sortDirection, isSorted, pinned }) => {
+        const exactColumnId: "symbol" = column.id;
+        const exactLabel: string = label;
+        const exactSort: "asc" | "desc" | null = sortDirection;
+        const exactSorted: boolean = isSorted;
+        const exactPinned: "left" | "right" | null = pinned;
+        return `${exactColumnId}:${exactLabel}:${exactSort}:${exactSorted}:${exactPinned}`;
+      },
+      renderEditor: ({ row, rowId, columnId, value, draft, setDraft }) => {
+        const exactRow: ExternalIdPosition = row;
+        const exactRowId: `position_${number}` = rowId;
+        const exactColumnId: "symbol" = columnId;
+        const exactValue: string = value;
+        const exactDraft: string = draft;
+        setDraft(exactValue);
+        // @ts-expect-error string editors reject non-string drafts
+        setDraft(1);
+        void [exactRow, exactRowId, exactColumnId, exactDraft];
+        return null;
+      },
     },
   ],
+  viewportHeight: 320,
+});
+
+const sameKeyComputed = column.accessor(
+  "price",
+  (row) => row.price * multiplier,
+  { type: "number" },
+);
+usePretable({
+  // @ts-expect-error a same-key functional accessor still requires setValue
+  rows: [{ id: "p1", symbol: "PRE", quantity: 2, price: 10 }],
+  // @ts-expect-error a same-key functional accessor still requires setValue
+  columns: [{ ...sameKeyComputed, editable: true }] as const,
+  viewportHeight: 320,
+});
+const sameKeyModel = createLocalRowModel({
+  rows: [{ id: "p1", symbol: "PRE", quantity: 2, price: 10 }],
+  columns: [sameKeyComputed] as const,
+});
+usePretable({
+  model: sameKeyModel,
+  // @ts-expect-error model overrides cannot edit same-key computed columns without setValue
+  columns: [{ id: "price", editable: true }],
   viewportHeight: 320,
 });
 

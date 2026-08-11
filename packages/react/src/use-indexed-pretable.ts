@@ -260,6 +260,16 @@ function createAutoWidthStore<TRow extends object>(
   };
 }
 
+function createLatestValueChannel<T>(initialValue: T) {
+  let currentValue = initialValue;
+  return {
+    get: () => currentValue,
+    set: (nextValue: T) => {
+      currentValue = nextValue;
+    },
+  };
+}
+
 /** Public result shared by both `usePretable` ownership modes. @public */
 export interface PretableModel<
   TRow extends object,
@@ -289,6 +299,9 @@ export function useIndexedPretable<
   const columns = options.columns;
   const rowModel = options.rowModel;
   const onQueryChange = options.onQueryChange;
+  const [queryChangeChannel] = useState(() =>
+    createLatestValueChannel(onQueryChange),
+  );
   const schemaColumns = rowModel.getColumns() as readonly {
     readonly id: string;
   }[];
@@ -342,8 +355,11 @@ export function useIndexedPretable<
 
   const grid = useMemo(() => {
     const setQuery = (query: PretableQueryFor<TColumns>) => {
-      if (onQueryChange !== undefined) {
-        onQueryChange(query);
+      const currentLayout = stores.gridCore.getState().columnLayout;
+      stores.gridCore.setColumnOrder(currentLayout.map((column) => column.id));
+      const callback = queryChangeChannel.get();
+      if (callback !== undefined) {
+        callback(query);
         return;
       }
       const transition = rowModel.setQuery(query);
@@ -358,7 +374,11 @@ export function useIndexedPretable<
         stores.autoWidths.setAuto(columnId, false);
       },
     }) as PretableReactGrid<TRow, TRowId, TColumns>;
-  }, [onQueryChange, rowModel, stores.autoWidths, stores.gridCore]);
+  }, [queryChangeChannel, rowModel, stores.autoWidths, stores.gridCore]);
+
+  useLayoutEffect(() => {
+    queryChangeChannel.set(onQueryChange);
+  }, [onQueryChange, queryChangeChannel]);
 
   const [pendingDisposals] = useState(() => new Set<typeof stores>());
   useLayoutEffect(() => {

@@ -1,5 +1,6 @@
 import {
   createLocalRowModel,
+  type ColumnIdOf,
   type ColumnsOf,
   type PretableDerivationsFor,
   type PretableExpansionDefault,
@@ -19,6 +20,54 @@ import type {
 import { type PretableModel, useIndexedPretable } from "./use-indexed-pretable";
 
 export type { PretableModel } from "./use-indexed-pretable";
+
+type ModelSchemaColumn<TRow extends object = object> = {
+  readonly id: string;
+  readonly accessor: (row: TRow) => unknown;
+  readonly value: (row: TRow) => unknown;
+  readonly accessorKey?: string;
+  readonly type?: unknown;
+  readonly compare?: unknown;
+  readonly aggregate?: unknown;
+  readonly format?: unknown;
+  readonly formatAggregate?: unknown;
+};
+
+type ModelPresentationColumn = {
+  readonly id: string;
+  readonly [key: string]: unknown;
+};
+
+/** @internal Test seam for presentation-only model column overlays. */
+export function mergeModelPresentationColumnsForTesting<TRow extends object>(
+  schemaColumns: readonly ModelSchemaColumn<TRow>[],
+  presentationColumns: readonly ModelPresentationColumn[],
+): readonly (ModelSchemaColumn<TRow> & ModelPresentationColumn)[] {
+  const schemaById = new Map(
+    schemaColumns.map((column) => [column.id, column] as const),
+  );
+  return presentationColumns.map((presentation) => {
+    const schema = schemaById.get(presentation.id);
+    if (schema === undefined) {
+      throw new TypeError(
+        `Pretable presentation columns must match the row model schema exactly: ${presentation.id}`,
+      );
+    }
+    return {
+      ...schema,
+      ...presentation,
+      id: schema.id,
+      accessor: schema.accessor,
+      value: schema.value,
+      accessorKey: schema.accessorKey,
+      type: schema.type,
+      compare: schema.compare,
+      aggregate: schema.aggregate,
+      format: schema.format,
+      formatAggregate: schema.formatAggregate,
+    };
+  });
+}
 
 /** Row type inferred from a non-empty column tuple. @public */
 export type PretableRowForColumns<TColumns> = TColumns extends readonly [
@@ -117,6 +166,26 @@ export interface UsePretableModelOptions<
   ) => void | Promise<void>;
 }
 
+/** Exact reordered presentation tuple accepted for one opaque model. @public */
+export type PretableExactModelPresentationColumns<TModel, TPresentation> =
+  TPresentation &
+    (TPresentation extends PretablePresentationColumns<
+      ColumnsOf<TModel>,
+      RowIdOf<TModel>
+    >
+      ? unknown
+      : never) &
+    (Exclude<
+      ColumnIdOf<ColumnsOf<TModel>>,
+      TPresentation extends readonly {
+        readonly id: infer TId extends string;
+      }[]
+        ? TId
+        : never
+    > extends never
+      ? unknown
+      : never);
+
 /** Public rows-mode overload using conventional `row.id`. @public */
 export function usePretable<
   const TColumns extends readonly [unknown, ...(readonly unknown[])],
@@ -134,9 +203,32 @@ export function usePretable<
 >(
   options: UsePretableRowsWithIdOptions<TColumns, TRowId>,
 ): PretableModel<PretableRowForColumns<TColumns>, TRowId, TColumns>;
-/** Public explicit-model overload. @public */
+/** Public explicit-model overload using schema presentation fallback. @public */
 export function usePretable<TModel>(
-  options: UsePretableModelOptions<TModel> & {
+  options: Omit<UsePretableModelOptions<TModel>, "columns"> & {
+    readonly columns?: undefined;
+    readonly model: TModel extends PretableRowModel<
+      infer _TRow,
+      infer _TRowId,
+      infer _TColumns
+    >
+      ? TModel
+      : never;
+  },
+): PretableModel<RowOf<TModel>, RowIdOf<TModel>, ColumnsOf<TModel>>;
+/** Public explicit-model overload with an exact reordered presentation tuple. @public */
+export function usePretable<
+  TModel,
+  const TPresentation extends PretablePresentationColumns<
+    ColumnsOf<TModel>,
+    RowIdOf<TModel>
+  >,
+>(
+  options: Omit<UsePretableModelOptions<TModel>, "columns"> & {
+    readonly columns: PretableExactModelPresentationColumns<
+      TModel,
+      TPresentation
+    >;
     readonly model: TModel extends PretableRowModel<
       infer _TRow,
       infer _TRowId,
@@ -270,9 +362,17 @@ export function usePretable(rawOptions: unknown): unknown {
     [],
   );
 
+  const schemaColumns =
+    rowModel.getColumns() as unknown as readonly ModelSchemaColumn[];
   const presentationColumns =
-    options.columns ??
-    (rowModel.getColumns() as readonly { readonly id: string }[]);
+    options.columns === undefined
+      ? schemaColumns
+      : mode === "model"
+        ? mergeModelPresentationColumnsForTesting(
+            schemaColumns,
+            options.columns as readonly ModelPresentationColumn[],
+          )
+        : options.columns;
   return useIndexedPretable({
     rowModel,
     columns: presentationColumns,

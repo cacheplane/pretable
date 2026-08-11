@@ -294,6 +294,14 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     wrap?: boolean;
 }
 
+// @public
+export interface PretableColumnAccessorKind<TKind extends "direct" | "computed"> {
+    // (undocumented)
+    readonly [columnDescriptor]: {
+        readonly accessorKind: TKind;
+    };
+}
+
 // @public (undocumented)
 export interface PretableColumnCallbackContext<TRow extends object, TId extends string, TValue, TType extends PretableColumnType, TAggregate> {
     // (undocumented)
@@ -380,9 +388,9 @@ export interface PretableColumnHelper<TRow extends object> {
             readonly value: PretableAggregateOutputOf<TAggregate>;
             readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
         }) => string;
-    }): PretableColumnDefinition<TRow, TId, ReturnType<TAccessor>, TType, TAggregate>;
+    }): PretableColumnDefinition<TRow, TId, ReturnType<TAccessor>, TType, TAggregate> & PretableColumnAccessorKind<"computed">;
     // (undocumented)
-    accessor<const TKey extends Extract<keyof TRow, string>, const TType extends PretableColumnTypeFor<TRow[TKey]>, const TAggregate extends PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined>(key: TKey, options: PretableColumnOptions<TRow, TKey, TRow[TKey], TType, TAggregate>): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate>;
+    accessor<const TKey extends Extract<keyof TRow, string>, const TType extends PretableColumnTypeFor<TRow[TKey]>, const TAggregate extends PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined>(key: TKey, options: PretableColumnOptions<TRow, TKey, TRow[TKey], TType, TAggregate>): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate> & PretableColumnAccessorKind<"direct">;
 }
 
 // @public (undocumented)

@@ -47,6 +47,7 @@ export type {
   PretableCellAddress,
   PretableCellRange,
   PretableColumn,
+  PretableColumnAccessorKind,
   PretableColumnCallbackContext,
   PretableColumnDefinition,
   PretableColumnDerivation,

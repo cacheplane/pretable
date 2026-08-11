@@ -96,10 +96,10 @@ usePretable({ rows, columns, beforeRowChange: () => {}, viewportHeight: 320 });
 usePretable({ model, onRowChange: () => {}, viewportHeight: 320 });
 usePretable({
   model,
+  // @ts-expect-error presentation overrides cannot replace derivation accessors
   columns: [
     {
       id: "symbol",
-      // @ts-expect-error presentation overrides cannot replace derivation accessors
       accessor: (row: Holding) => row.symbol.toLowerCase(),
     },
     { id: "quantity" },

@@ -3,6 +3,7 @@ import {
   type ColumnIdOf,
   type ColumnValueOf,
   type PretableAggregator,
+  type PretableColumnAccessorKind,
 } from "@pretable/core";
 import type { Equal, Expect } from "../shared/assert";
 
@@ -60,6 +61,22 @@ type _Quantity = Expect<
 >;
 type _Computed = Expect<
   Equal<ColumnValueOf<typeof holdingColumns, "quantityLabel">, number>
+>;
+type _DirectAccessorKind = Expect<
+  Equal<
+    (typeof holdingColumns)[0] extends PretableColumnAccessorKind<"direct">
+      ? true
+      : false,
+    true
+  >
+>;
+type _ComputedAccessorKind = Expect<
+  Equal<
+    (typeof holdingColumns)[4] extends PretableColumnAccessorKind<"computed">
+      ? true
+      : false,
+    true
+  >
 >;
 
 // @ts-expect-error ordinary row interfaces still reject unknown accessor keys
@@ -166,3 +183,5 @@ numericEligibilityColumn.accessor(
 void (null as unknown as _ColumnIds);
 void (null as unknown as _Quantity);
 void (null as unknown as _Computed);
+void (null as unknown as _DirectAccessorKind);
+void (null as unknown as _ComputedAccessorKind);

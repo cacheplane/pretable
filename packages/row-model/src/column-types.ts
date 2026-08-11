@@ -57,6 +57,13 @@ export type PretableAggregateSpec<TRow extends object, TValue> =
 
 declare const columnDescriptor: unique symbol;
 
+/** Compile-time-only accessor-form carrier emitted by the column helper. @public */
+export interface PretableColumnAccessorKind<
+  TKind extends "direct" | "computed",
+> {
+  readonly [columnDescriptor]: { readonly accessorKind: TKind };
+}
+
 /** @public */
 export interface PretableColumnDescriptor<
   TRow extends object,
@@ -257,7 +264,8 @@ export interface PretableColumnHelper<TRow extends object> {
     ReturnType<TAccessor>,
     TType,
     TAggregate
-  >;
+  > &
+    PretableColumnAccessorKind<"computed">;
 
   accessor<
     const TKey extends Extract<keyof TRow, string>,
@@ -267,7 +275,8 @@ export interface PretableColumnHelper<TRow extends object> {
   >(
     key: TKey,
     options: PretableColumnOptions<TRow, TKey, TRow[TKey], TType, TAggregate>,
-  ): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate>;
+  ): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate> &
+    PretableColumnAccessorKind<"direct">;
 }
 
 /** @public */

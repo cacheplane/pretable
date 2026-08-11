@@ -374,18 +374,25 @@ export interface PretableCellRange {
 }
 
 // @public
-export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow> extends PretableFormatInput<TRow> {
+export interface PretableCellRenderInput<TRow extends object = PretableRow, TRowId extends PretableRowId = string, TValue = unknown, TColumn = PretableColumn<TRow & PretableRow>> {
     // (undocumented)
-    formattedValue: string;
+    readonly column: PretableEffectiveColumn<TColumn>;
     // (undocumented)
-    isFocused: boolean;
+    readonly formattedValue: string;
     // (undocumented)
-    isSelected: boolean;
-    pinned: "left" | "right" | null;
+    readonly isFocused: boolean;
     // (undocumented)
-    rowId: string;
+    readonly isSelected: boolean;
     // (undocumented)
-    rowIndex: number;
+    readonly pinned: "left" | "right" | null;
+    // (undocumented)
+    readonly row: TRow;
+    // (undocumented)
+    readonly rowId: TRowId;
+    // (undocumented)
+    readonly rowIndex: number;
+    // (undocumented)
+    readonly value: TValue;
 }
 
 // @public (undocumented)
@@ -438,6 +445,14 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> extends 
     renderEditor?: (input: PretableEditorInput<TRow>) => ReactNode;
     // (undocumented)
     renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
+}
+
+// @public
+export interface PretableColumnAccessorKind<TKind extends "direct" | "computed"> {
+    // (undocumented)
+    readonly [columnDescriptor]: {
+        readonly accessorKind: TKind;
+    };
 }
 
 // @public (undocumented)
@@ -496,9 +511,86 @@ export interface PretableColumnDerivation<TRow extends object, TId extends strin
 }
 
 // @public
-export interface PretableColumnPresentation<TRow extends object, TRowId extends string | number, TColumn> {
+export type PretableColumnEditablePredicate<TRow extends object, TRowId extends PretableRowId, TColumn> = (input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => boolean | Promise<boolean>;
+
+// @public
+export interface PretableColumnEditInput<TRow extends object, TRowId extends PretableRowId, TValue, TColumn> {
     // (undocumented)
-    readonly editable?: boolean;
+    readonly column: PretableEffectiveColumn<TColumn>;
+    // (undocumented)
+    readonly columnId: TColumn extends {
+        readonly id: infer TId extends string;
+    } ? TId : string;
+    // (undocumented)
+    readonly row: TRow;
+    // (undocumented)
+    readonly rowId: TRowId;
+    // (undocumented)
+    readonly value: TValue;
+}
+
+// @public
+export type PretableColumnFactoryOptions<TRow extends object, TRowId extends PretableRowId, TId extends string, TValue, TType extends PretableReactColumnTypeFor<TValue>, TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined> = {
+    readonly type: TType;
+    readonly compare?: (left: TValue, right: TValue) => number;
+    readonly aggregate?: TAggregate;
+    readonly format?: (input: {
+        readonly value: TValue;
+        readonly row: TRow;
+        readonly column: PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>;
+    }) => string;
+    readonly formatAggregate?: (input: {
+        readonly value: PretableAggregateOutputOf<TAggregate>;
+        readonly column: PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>;
+    }) => string;
+} & PretableColumnPresentation<TRow, TRowId, PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>>;
+
+// @public
+export interface PretableColumnPresentation<TRow extends object, TRowId extends PretableRowId, TColumn> extends PretableColumnPresentationOptions<TRow, TRowId, TColumn> {
+    // (undocumented)
+    readonly render?: (input: PretableCellRenderInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => ReactNode;
+    // (undocumented)
+    readonly renderEditor?: (input: PretableEditorInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => ReactNode;
+    // (undocumented)
+    readonly renderHeader?: (input: PretableHeaderRenderInput<TRow, TColumn>) => ReactNode;
+}
+
+// @public
+export interface PretableColumnPresentationOptions<TRow extends object, TRowId extends PretableRowId, TColumn> extends PretableColumnVisualPresentation {
+    // (undocumented)
+    readonly editable?: boolean | ((input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => boolean | Promise<boolean>);
+    // (undocumented)
+    readonly formatEditValue?: (value: PretableColumnValue<TColumn>, input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => string;
+    // (undocumented)
+    readonly parseEditValue?: (raw: string, input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => PretableColumnValue<TColumn>;
+    // (undocumented)
+    readonly setValue?: (input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>) => Partial<TRow>;
+    // (undocumented)
+    readonly validate?: (value: PretableColumnValue<TColumn>, input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => true | string | Promise<true | string>;
+}
+
+// @public
+export type PretableColumnRow<TColumn> = TColumn extends {
+    readonly accessor: (row: infer TRow extends object) => unknown;
+} ? TRow : never;
+
+// @public
+export type PretableColumnRowId<TRow> = TRow extends {
+    readonly id: infer TRowId extends PretableRowId;
+} ? TRowId : PretableRowId;
+
+// @public (undocumented)
+export type PretableColumnType = "text" | "number" | "date" | "enum" | "boolean";
+
+// @public
+export type PretableColumnValue<TColumn> = TColumn extends {
+    readonly accessor: (row: object) => infer TValue;
+} ? TValue : TColumn extends {
+    readonly accessor: (...args: never[]) => infer TValue;
+} ? TValue : never;
+
+// @public
+export interface PretableColumnVisualPresentation {
     // (undocumented)
     readonly flex?: number;
     // (undocumented)
@@ -510,34 +602,10 @@ export interface PretableColumnPresentation<TRow extends object, TRowId extends 
     // (undocumented)
     readonly pinned?: "left" | "right";
     // (undocumented)
-    readonly render?: (input: {
-        readonly row: TRow;
-        readonly rowId: TRowId;
-        readonly value: PretableColumnValue<TColumn>;
-        readonly column: TColumn;
-    }) => ReactNode;
-    // (undocumented)
-    readonly setValue?: (input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>) => Partial<TRow>;
-    // (undocumented)
     readonly widthPx?: number;
     // (undocumented)
     readonly wrap?: boolean;
 }
-
-// @public
-export type PretableColumnRow<TColumn> = TColumn extends {
-    readonly accessor: (row: infer TRow extends object) => unknown;
-} ? TRow : never;
-
-// @public (undocumented)
-export type PretableColumnType = "text" | "number" | "date" | "enum" | "boolean";
-
-// @public
-export type PretableColumnValue<TColumn> = TColumn extends {
-    readonly accessor: (row: object) => infer TValue;
-} ? TValue : TColumn extends {
-    readonly accessor: (...args: never[]) => infer TValue;
-} ? TValue : never;
 
 // @public (undocumented)
 export type PretableCompatibleAggregateSpec<TRow extends object, TValue, TAggregate> = [TAggregate] extends [undefined] ? undefined : ([PretableAggregateOutputOf<TAggregate>] extends [number | null] ? [number | null] extends [PretableAggregateOutputOf<TAggregate>] ? PretableBuiltinAggregate<TValue> : never : never) | PretableCompatibleAggregator<TRow, TValue, PretableAggregateOutputOf<TAggregate>>;
@@ -673,9 +741,8 @@ export interface PretableDistinctValueResult<TValue> {
 
 // @public
 export type PretableEditableColumnRequirement<TColumn> = TColumn extends {
-    readonly editable: true;
-    readonly id: infer TId extends string;
-} ? TId extends keyof PretableColumnRow<TColumn> ? {
+    readonly editable: infer TEditable;
+} ? TEditable extends false | undefined ? Record<never, never> : TColumn extends PretableColumnAccessorKind<"direct"> ? {
     readonly setValue?: (input: PretableSetValueInput<PretableColumnRow<TColumn>, PretableColumnValue<TColumn>>) => Partial<PretableColumnRow<TColumn>>;
 } : {
     readonly setValue: (input: PretableSetValueInput<PretableColumnRow<TColumn>, PretableColumnValue<TColumn>>) => Partial<PretableColumnRow<TColumn>>;
@@ -696,22 +763,21 @@ export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
 }
 
 // @public
-export interface PretableEditorInput<TRow extends PretableRow = PretableRow> extends Omit<PretableEditInput<TRow>, "column"> {
+export interface PretableEditorInput<TRow extends object = PretableRow, TRowId extends PretableRowId = string, TValue = unknown, TColumn = PretableColumn<TRow & PretableRow>> extends PretableColumnEditInput<TRow, TRowId, TValue, TColumn> {
     // (undocumented)
-    cancel: () => void;
+    readonly cancel: () => void;
     // (undocumented)
-    column: PretableColumn<TRow>;
+    readonly commit: (direction?: PretableFocusDirection) => void;
     // (undocumented)
-    commit: (direction?: PretableFocusDirection) => void;
+    readonly draft: TValue | string;
     // (undocumented)
-    draft: unknown;
+    readonly error?: string;
     // (undocumented)
-    error?: string;
-    seededFromTyping?: boolean;
+    readonly seededFromTyping?: boolean;
     // (undocumented)
-    setDraft: (value: unknown) => void;
+    readonly setDraft: (value: TValue | string) => void;
     // (undocumented)
-    status: PretableEditStatus;
+    readonly status: PretableEditStatus;
 }
 
 // @public
@@ -730,6 +796,14 @@ export interface PretableEditState {
 
 // @public
 export type PretableEditStatus = "checking" | "editing" | "validating" | "saving" | "error";
+
+// @public
+export type PretableEffectiveColumn<TColumn> = TColumn & PretableColumnVisualPresentation;
+
+// @public
+export type PretableExactModelPresentationColumns<TModel, TPresentation> = TPresentation & (TPresentation extends PretablePresentationColumns<ColumnsOf<TModel>, RowIdOf<TModel>> ? unknown : never) & (Exclude<ColumnIdOf<ColumnsOf<TModel>>, TPresentation extends readonly {
+    readonly id: infer TId extends string;
+}[] ? TId : never> extends never ? unknown : never);
 
 // @public (undocumented)
 export type PretableExpansionDefault = {
@@ -1065,16 +1139,17 @@ export type PretableGroupRow<TColumns> = {
 }[ColumnIdOf<TColumns>];
 
 // @public
-export interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRow> {
+export interface PretableHeaderRenderInput<TRow extends object = PretableRow, TColumn = PretableColumn<TRow & PretableRow>> {
     // (undocumented)
-    column: PretableColumn<TRow>;
+    readonly column: PretableEffectiveColumn<TColumn>;
     // (undocumented)
-    isSorted: boolean;
+    readonly isSorted: boolean;
     // (undocumented)
-    label: string;
-    pinned: "left" | "right" | null;
+    readonly label: string;
     // (undocumented)
-    sortDirection: "asc" | "desc" | null;
+    readonly pinned: "left" | "right" | null;
+    // (undocumented)
+    readonly sortDirection: "asc" | "desc" | null;
 }
 
 // @public
@@ -1189,33 +1264,31 @@ export interface PretableMutationResult<TRowId extends PretableRowId> {
 }
 
 // @public
-export type PretablePresentationColumns<TColumns, TRowId extends string | number> = {
-    readonly [K in keyof TColumns]: TColumns[K] extends {
-        readonly id: infer TId extends string;
-        readonly accessor: (row: infer TRow extends object) => unknown;
-    } ? Omit<PretableColumnPresentation<TRow, TRowId, TColumns[K]>, "editable" | "setValue"> & PretablePresentationEditRequirement<TRow, TColumns[K]> & {
-        readonly id: TId;
-        readonly accessor?: never;
-        readonly value?: never;
-        readonly compare?: never;
-        readonly aggregate?: never;
-        readonly type?: never;
-    } : never;
-};
+export type PretablePresentationColumns<TColumns, TRowId extends string | number> = TColumns extends readonly (infer TColumn)[] ? readonly (TColumn extends {
+    readonly id: infer TId extends string;
+    readonly accessor: (row: infer TRow extends object) => unknown;
+} ? Omit<PretableColumnPresentation<TRow, TRowId, TColumn>, "editable" | "setValue"> & PretablePresentationEditRequirement<TRow, TRowId, TColumn> & {
+    readonly id: TId;
+    readonly accessor?: never;
+    readonly value?: never;
+    readonly compare?: never;
+    readonly aggregate?: never;
+    readonly type?: never;
+} : never)[] & {
+    readonly length: TColumns["length"];
+} : never;
 
 // @public
-export type PretablePresentationEditRequirement<TRow extends object, TColumn> = TColumn extends {
-    readonly id: infer TId extends string;
-} ? TId extends keyof TRow ? {
-    readonly editable?: boolean;
+export type PretablePresentationEditRequirement<TRow extends object, TRowId extends PretableRowId, TColumn> = TColumn extends PretableColumnAccessorKind<"direct"> ? {
+    readonly editable?: boolean | PretableColumnEditablePredicate<TRow, TRowId, TColumn>;
     readonly setValue?: (input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>) => Partial<TRow>;
 } : {
     readonly editable?: false;
     readonly setValue?: never;
 } | {
-    readonly editable: true;
+    readonly editable: true | PretableColumnEditablePredicate<TRow, TRowId, TColumn>;
     readonly setValue: (input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>) => Partial<TRow>;
-} : never;
+};
 
 // @public
 export interface PretableProps<TRow extends PretableRow = PretableRow> {
@@ -1274,11 +1347,35 @@ export interface PretableQueryTransition<TColumns> {
 }
 
 // @public
+export interface PretableReactColumnContext<TRow extends object, TId extends string, TValue, TType extends PretableColumnType, TAggregate> {
+    // (undocumented)
+    readonly accessor: (row: TRow) => TValue;
+    // (undocumented)
+    readonly aggregate?: TAggregate;
+    // (undocumented)
+    readonly id: TId;
+    // (undocumented)
+    readonly type: TType;
+    // (undocumented)
+    readonly value: (row: TRow) => TValue;
+}
+
+// @public
+export type PretableReactColumnDefinition<TRow extends object, TRowId extends PretableRowId, TId extends string, TValue, TType extends PretableReactColumnTypeFor<TValue>, TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined, TDirect extends boolean> = Omit<PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>, "header" | "accessorKey"> & PretableColumnPresentation<TRow, TRowId, PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>> & PretableColumnAccessorKind<TDirect extends true ? "direct" : "computed"> & (TDirect extends true ? {
+    readonly accessorKey: TId;
+} : {
+    readonly accessorKey?: undefined;
+});
+
+// @public
 export type PretableReactColumns<TColumns, TRowId extends string | number> = {
     readonly [K in keyof TColumns]: TColumns[K] extends {
         readonly accessor: (row: infer TRow extends object) => unknown;
     } ? TColumns[K] & PretableColumnPresentation<TRow, TRowId, TColumns[K]> & PretableEditableColumnRequirement<TColumns[K]> : never;
 };
+
+// @public
+export type PretableReactColumnTypeFor<TValue> = [TValue] extends [never] ? never : [NonNullable<TValue>] extends [never] ? Exclude<PretableColumnType, "number"> : NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends Date ? "date" : NonNullable<TValue> extends string ? "text" | "enum" | "date" : PretableColumnType;
 
 // @public
 export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId, TColumns> = {
@@ -1851,7 +1948,14 @@ export function usePretable<const TColumns extends readonly [unknown, ...(readon
 export function usePretable<const TColumns extends readonly [unknown, ...(readonly unknown[])], const TRowId extends PretableRowId>(options: UsePretableRowsWithIdOptions<TColumns, TRowId>): PretableModel<PretableRowForColumns<TColumns>, TRowId, TColumns>;
 
 // @public
-export function usePretable<TModel>(options: UsePretableModelOptions<TModel> & {
+export function usePretable<TModel>(options: Omit<UsePretableModelOptions<TModel>, "columns"> & {
+    readonly columns?: undefined;
+    readonly model: TModel extends PretableRowModel<infer _TRow, infer _TRowId, infer _TColumns> ? TModel : never;
+}): PretableModel<RowOf<TModel>, RowIdOf<TModel>, ColumnsOf<TModel>>;
+
+// @public
+export function usePretable<TModel, const TPresentation extends PretablePresentationColumns<ColumnsOf<TModel>, RowIdOf<TModel>>>(options: Omit<UsePretableModelOptions<TModel>, "columns"> & {
+    readonly columns: PretableExactModelPresentationColumns<TModel, TPresentation>;
     readonly model: TModel extends PretableRowModel<infer _TRow, infer _TRowId, infer _TColumns> ? TModel : never;
 }): PretableModel<RowOf<TModel>, RowIdOf<TModel>, ColumnsOf<TModel>>;
 
@@ -1905,7 +2009,7 @@ export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: 
 
 // Warnings were encountered during analysis:
 //
-// dist/index.d.ts:1036:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
+// dist/index.d.ts:979:9 - (ae-forgotten-export) The symbol "PretableSortDirection" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

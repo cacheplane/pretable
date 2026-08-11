@@ -4,239 +4,16 @@ import type {
   ColumnValueOf,
   PretableAggregateOutputOf,
   PretableAggregateSpec,
-  PretableColumnCallbackContext,
+  PretableColumnAccessorKind,
   PretableColumnDefinition,
-  PretableColumnOptions,
-  PretableColumnTypeFor,
+  PretableColumnType,
   PretableColumn as PretableBaseColumn,
-  PretableEditInput,
   PretableEditStatus,
   PretableFocusDirection,
   PretableGridFormatInput,
   PretableRow,
   PretableRowId,
 } from "@pretable/core";
-
-declare module "@pretable/core" {
-  interface PretableColumnHelper<TRow extends object> {
-    accessor<
-      const TKey extends Extract<keyof TRow, string>,
-      const TType extends PretableColumnTypeFor<TRow[TKey]>,
-      const TAggregate extends
-        PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined,
-    >(
-      key: TKey,
-      options: PretableColumnOptions<
-        TRow,
-        TKey,
-        TRow[TKey],
-        TType,
-        TAggregate
-      > & {
-        readonly editable: true;
-        readonly setValue?: never;
-      },
-    ): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate> & {
-      readonly editable: true;
-    };
-
-    accessor<
-      const TId extends string,
-      const TValue,
-      const TType extends PretableColumnTypeFor<TValue>,
-      const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
-        undefined,
-    >(
-      id: TId,
-      accessor: (row: TRow) => TValue,
-      options: {
-        readonly type: TType;
-        readonly header?: string;
-        readonly compare?: (left: TValue, right: TValue) => number;
-        readonly aggregate?: TAggregate;
-        readonly format?: (input: {
-          readonly value: TValue;
-          readonly row: TRow;
-          readonly column: PretableColumnCallbackContext<
-            TRow,
-            TId,
-            TValue,
-            TType,
-            TAggregate
-          >;
-        }) => string;
-        readonly formatAggregate?: (input: {
-          readonly value: PretableAggregateOutputOf<TAggregate>;
-          readonly column: PretableColumnCallbackContext<
-            TRow,
-            TId,
-            TValue,
-            TType,
-            TAggregate
-          >;
-        }) => string;
-        readonly editable: true;
-        readonly setValue: (
-          input: PretableSetValueInput<TRow, TValue>,
-        ) => Partial<TRow>;
-        readonly render?: (input: {
-          readonly row: TRow;
-          readonly rowId: TRow extends {
-            readonly id: infer TRowId extends PretableRowId;
-          }
-            ? TRowId
-            : PretableRowId;
-          readonly value: TValue;
-          readonly column: PretableColumnCallbackContext<
-            TRow,
-            TId,
-            TValue,
-            TType,
-            TAggregate
-          >;
-        }) => ReactNode;
-      },
-    ): PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate> & {
-      readonly editable: true;
-      readonly setValue: (
-        input: PretableSetValueInput<TRow, TValue>,
-      ) => Partial<TRow>;
-      readonly render?: (input: {
-        readonly row: TRow;
-        readonly rowId: TRow extends {
-          readonly id: infer TRowId extends PretableRowId;
-        }
-          ? TRowId
-          : PretableRowId;
-        readonly value: TValue;
-        readonly column: PretableColumnCallbackContext<
-          TRow,
-          TId,
-          TValue,
-          TType,
-          TAggregate
-        >;
-      }) => ReactNode;
-    };
-
-    accessor<
-      const TKey extends Extract<keyof TRow, string>,
-      const TType extends PretableColumnTypeFor<TRow[TKey]>,
-      const TAggregate extends
-        PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined,
-    >(
-      key: TKey,
-      options: PretableColumnOptions<
-        TRow,
-        TKey,
-        TRow[TKey],
-        TType,
-        TAggregate
-      > & {
-        readonly editable?: boolean;
-        readonly widthPx?: number;
-        readonly pinned?: "left" | "right";
-        readonly wrap?: boolean;
-        readonly render: (input: {
-          readonly row: TRow;
-          readonly rowId: TRow extends {
-            readonly id: infer TRowId extends PretableRowId;
-          }
-            ? TRowId
-            : PretableRowId;
-          readonly value: TRow[TKey];
-          readonly column: PretableColumnCallbackContext<
-            TRow,
-            TKey,
-            TRow[TKey],
-            TType,
-            TAggregate
-          >;
-        }) => ReactNode;
-      },
-    ): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate> & {
-      readonly editable?: boolean;
-      readonly widthPx?: number;
-      readonly pinned?: "left" | "right";
-      readonly wrap?: boolean;
-      readonly render: (input: {
-        readonly row: TRow;
-        readonly rowId: TRow extends {
-          readonly id: infer TRowId extends PretableRowId;
-        }
-          ? TRowId
-          : PretableRowId;
-        readonly value: TRow[TKey];
-        readonly column: PretableColumnCallbackContext<
-          TRow,
-          TKey,
-          TRow[TKey],
-          TType,
-          TAggregate
-        >;
-      }) => ReactNode;
-    };
-
-    accessor<
-      const TId extends string,
-      const TValue,
-      const TType extends PretableColumnTypeFor<TValue>,
-      const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
-        undefined,
-    >(
-      id: TId,
-      accessor: (row: TRow) => TValue,
-      options: {
-        readonly type: TType;
-        readonly header?: string;
-        readonly compare?: (left: TValue, right: TValue) => number;
-        readonly aggregate?: TAggregate;
-        readonly editable?: false;
-        readonly setValue?: never;
-        readonly widthPx?: number;
-        readonly pinned?: "left" | "right";
-        readonly wrap?: boolean;
-        readonly render: (input: {
-          readonly row: TRow;
-          readonly rowId: TRow extends {
-            readonly id: infer TRowId extends PretableRowId;
-          }
-            ? TRowId
-            : PretableRowId;
-          readonly value: TValue;
-          readonly column: PretableColumnCallbackContext<
-            TRow,
-            TId,
-            TValue,
-            TType,
-            TAggregate
-          >;
-        }) => ReactNode;
-      },
-    ): PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate> & {
-      readonly editable?: false;
-      readonly widthPx?: number;
-      readonly pinned?: "left" | "right";
-      readonly wrap?: boolean;
-      readonly render: (input: {
-        readonly row: TRow;
-        readonly rowId: TRow extends {
-          readonly id: infer TRowId extends PretableRowId;
-        }
-          ? TRowId
-          : PretableRowId;
-        readonly value: TValue;
-        readonly column: PretableColumnCallbackContext<
-          TRow,
-          TId,
-          TValue,
-          TType,
-          TAggregate
-        >;
-      }) => ReactNode;
-    };
-  }
-}
 
 /** Value inferred from a typed Pretable column definition. @public */
 export type PretableColumnValue<TColumn> = TColumn extends {
@@ -255,30 +32,6 @@ export type PretableColumnRow<TColumn> = TColumn extends {
 }
   ? TRow
   : never;
-
-/** Reverse-mapping requirement inferred from a typed column. @public */
-export type PretableEditableColumnRequirement<TColumn> = TColumn extends {
-  readonly editable: true;
-  readonly id: infer TId extends string;
-}
-  ? TId extends keyof PretableColumnRow<TColumn>
-    ? {
-        readonly setValue?: (
-          input: PretableSetValueInput<
-            PretableColumnRow<TColumn>,
-            PretableColumnValue<TColumn>
-          >,
-        ) => Partial<PretableColumnRow<TColumn>>;
-      }
-    : {
-        readonly setValue: (
-          input: PretableSetValueInput<
-            PretableColumnRow<TColumn>,
-            PretableColumnValue<TColumn>
-          >,
-        ) => Partial<PretableColumnRow<TColumn>>;
-      }
-  : Record<never, never>;
 
 /** Input to a computed editable column's reverse mapping. @public */
 export interface PretableSetValueInput<TRow extends object, TValue> {
@@ -302,12 +55,45 @@ export type PretableRowChange<
   };
 }[ColumnIdOf<TColumns>];
 
-/** React presentation behavior attachable to a typed model column. @public */
-export interface PretableColumnPresentation<
+/** Conventional row ID available while a standalone column factory runs. @public */
+export type PretableColumnRowId<TRow> = TRow extends {
+  readonly id: infer TRowId extends PretableRowId;
+}
+  ? TRowId
+  : PretableRowId;
+
+/** Value-compatible column kinds accepted by the React-aware helper. @public */
+export type PretableReactColumnTypeFor<TValue> = [TValue] extends [never]
+  ? never
+  : [NonNullable<TValue>] extends [never]
+    ? Exclude<PretableColumnType, "number">
+    : NonNullable<TValue> extends number
+      ? "number"
+      : NonNullable<TValue> extends boolean
+        ? "boolean"
+        : NonNullable<TValue> extends Date
+          ? "date"
+          : NonNullable<TValue> extends string
+            ? "text" | "enum" | "date"
+            : PretableColumnType;
+
+/** Stable derivation fields visible to authoritative presentation callbacks. @public */
+export interface PretableReactColumnContext<
   TRow extends object,
-  TRowId extends string | number,
-  TColumn,
+  TId extends string,
+  TValue,
+  TType extends PretableColumnType,
+  TAggregate,
 > {
+  readonly id: TId;
+  readonly type: TType;
+  readonly accessor: (row: TRow) => TValue;
+  readonly value: (row: TRow) => TValue;
+  readonly aggregate?: TAggregate;
+}
+
+/** Visual fields carried by an effective authoritative column. @public */
+export interface PretableColumnVisualPresentation {
   readonly header?: ReactNode;
   readonly widthPx?: number;
   readonly pinned?: "left" | "right";
@@ -315,38 +101,210 @@ export interface PretableColumnPresentation<
   readonly flex?: number;
   readonly minWidthPx?: number;
   readonly maxWidthPx?: number;
-  readonly editable?: boolean;
+}
+
+/** Effective column visible to typed React presentation callbacks. @public */
+export type PretableEffectiveColumn<TColumn> = TColumn &
+  PretableColumnVisualPresentation;
+
+/** Correlated input shared by editable predicates and validation hooks. @public */
+export interface PretableColumnEditInput<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TValue,
+  TColumn,
+> {
+  readonly rowId: TRowId;
+  readonly columnId: TColumn extends { readonly id: infer TId extends string }
+    ? TId
+    : string;
+  readonly row: TRow;
+  readonly column: PretableEffectiveColumn<TColumn>;
+  readonly value: TValue;
+}
+
+/** Fully correlated typed cell-render input. @public */
+export interface PretableCellRenderInput<
+  TRow extends object = PretableRow,
+  TRowId extends PretableRowId = string,
+  TValue = unknown,
+  TColumn = PretableColumn<TRow & PretableRow>,
+> {
+  readonly rowId: TRowId;
+  readonly row: TRow;
+  readonly column: PretableEffectiveColumn<TColumn>;
+  readonly value: TValue;
+  readonly formattedValue: string;
+  readonly rowIndex: number;
+  readonly isFocused: boolean;
+  readonly isSelected: boolean;
+  readonly pinned: "left" | "right" | null;
+}
+
+/** Fully correlated typed header-render input. @public */
+export interface PretableHeaderRenderInput<
+  TRow extends object = PretableRow,
+  TColumn = PretableColumn<TRow & PretableRow>,
+> {
+  readonly column: PretableEffectiveColumn<TColumn>;
+  readonly label: string;
+  readonly sortDirection: "asc" | "desc" | null;
+  readonly isSorted: boolean;
+  readonly pinned: "left" | "right" | null;
+}
+
+/** Typed custom-editor input including its current draft lifecycle. @public */
+export interface PretableEditorInput<
+  TRow extends object = PretableRow,
+  TRowId extends PretableRowId = string,
+  TValue = unknown,
+  TColumn = PretableColumn<TRow & PretableRow>,
+> extends PretableColumnEditInput<TRow, TRowId, TValue, TColumn> {
+  readonly status: PretableEditStatus;
+  readonly error?: string;
+  readonly draft: TValue | string;
+  readonly setDraft: (value: TValue | string) => void;
+  readonly commit: (direction?: PretableFocusDirection) => void;
+  readonly cancel: () => void;
+  readonly seededFromTyping?: boolean;
+}
+
+/** Non-render presentation and edit behavior for an authoritative column. @public */
+export interface PretableColumnPresentationOptions<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumn,
+> extends PretableColumnVisualPresentation {
+  readonly editable?:
+    | boolean
+    | ((
+        input: PretableColumnEditInput<
+          TRow,
+          TRowId,
+          PretableColumnValue<TColumn>,
+          TColumn
+        >,
+      ) => boolean | Promise<boolean>);
+  readonly validate?: (
+    value: PretableColumnValue<TColumn>,
+    input: PretableColumnEditInput<
+      TRow,
+      TRowId,
+      PretableColumnValue<TColumn>,
+      TColumn
+    >,
+  ) => true | string | Promise<true | string>;
+  readonly parseEditValue?: (
+    raw: string,
+    input: PretableColumnEditInput<
+      TRow,
+      TRowId,
+      PretableColumnValue<TColumn>,
+      TColumn
+    >,
+  ) => PretableColumnValue<TColumn>;
+  readonly formatEditValue?: (
+    value: PretableColumnValue<TColumn>,
+    input: PretableColumnEditInput<
+      TRow,
+      TRowId,
+      PretableColumnValue<TColumn>,
+      TColumn
+    >,
+  ) => string;
   readonly setValue?: (
     input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>,
   ) => Partial<TRow>;
-  readonly render?: (input: {
-    readonly row: TRow;
-    readonly rowId: TRowId;
-    readonly value: PretableColumnValue<TColumn>;
-    readonly column: TColumn;
-  }) => ReactNode;
 }
+
+/** React presentation behavior attachable to a typed model column. @public */
+export interface PretableColumnPresentation<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumn,
+> extends PretableColumnPresentationOptions<TRow, TRowId, TColumn> {
+  readonly render?: (
+    input: PretableCellRenderInput<
+      TRow,
+      TRowId,
+      PretableColumnValue<TColumn>,
+      TColumn
+    >,
+  ) => ReactNode;
+  readonly renderHeader?: (
+    input: PretableHeaderRenderInput<TRow, TColumn>,
+  ) => ReactNode;
+  readonly renderEditor?: (
+    input: PretableEditorInput<
+      TRow,
+      TRowId,
+      PretableColumnValue<TColumn>,
+      TColumn
+    >,
+  ) => ReactNode;
+}
+
+/** Editable predicate type inferred for one authoritative column. @public */
+export type PretableColumnEditablePredicate<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumn,
+> = (
+  input: PretableColumnEditInput<
+    TRow,
+    TRowId,
+    PretableColumnValue<TColumn>,
+    TColumn
+  >,
+) => boolean | Promise<boolean>;
+
+/** Reverse-mapping requirement inferred from a typed column. @public */
+export type PretableEditableColumnRequirement<TColumn> = TColumn extends {
+  readonly editable: infer TEditable;
+}
+  ? TEditable extends false | undefined
+    ? Record<never, never>
+    : TColumn extends PretableColumnAccessorKind<"direct">
+      ? {
+          readonly setValue?: (
+            input: PretableSetValueInput<
+              PretableColumnRow<TColumn>,
+              PretableColumnValue<TColumn>
+            >,
+          ) => Partial<PretableColumnRow<TColumn>>;
+        }
+      : {
+          readonly setValue: (
+            input: PretableSetValueInput<
+              PretableColumnRow<TColumn>,
+              PretableColumnValue<TColumn>
+            >,
+          ) => Partial<PretableColumnRow<TColumn>>;
+        }
+  : Record<never, never>;
 
 /** Edit contract for a model-mode presentation override. @public */
 export type PretablePresentationEditRequirement<
   TRow extends object,
+  TRowId extends PretableRowId,
   TColumn,
-> = TColumn extends { readonly id: infer TId extends string }
-  ? TId extends keyof TRow
+> =
+  TColumn extends PretableColumnAccessorKind<"direct">
     ? {
-        readonly editable?: boolean;
+        readonly editable?:
+          boolean | PretableColumnEditablePredicate<TRow, TRowId, TColumn>;
         readonly setValue?: (
           input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>,
         ) => Partial<TRow>;
       }
     : | { readonly editable?: false; readonly setValue?: never }
       | {
-          readonly editable: true;
+          readonly editable:
+            true | PretableColumnEditablePredicate<TRow, TRowId, TColumn>;
           readonly setValue: (
             input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>,
           ) => Partial<TRow>;
-        }
-  : never;
+        };
 
 /** Full rows-mode column tuple with React presentation fields. @public */
 export type PretableReactColumns<TColumns, TRowId extends string | number> = {
@@ -363,25 +321,212 @@ export type PretableReactColumns<TColumns, TRowId extends string | number> = {
 export type PretablePresentationColumns<
   TColumns,
   TRowId extends string | number,
+> = TColumns extends readonly (infer TColumn)[]
+  ? readonly (TColumn extends {
+      readonly id: infer TId extends string;
+      readonly accessor: (row: infer TRow extends object) => unknown;
+    }
+      ? Omit<
+          PretableColumnPresentation<TRow, TRowId, TColumn>,
+          "editable" | "setValue"
+        > &
+          PretablePresentationEditRequirement<TRow, TRowId, TColumn> & {
+            readonly id: TId;
+            readonly accessor?: never;
+            readonly value?: never;
+            readonly compare?: never;
+            readonly aggregate?: never;
+            readonly type?: never;
+          }
+      : never)[] & {
+      readonly length: TColumns["length"];
+    }
+  : never;
+
+/** Options accepted by the React-aware authoritative column helper. @public */
+export type PretableColumnFactoryOptions<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TId extends string,
+  TValue,
+  TType extends PretableReactColumnTypeFor<TValue>,
+  TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined,
 > = {
-  readonly [K in keyof TColumns]: TColumns[K] extends {
-    readonly id: infer TId extends string;
-    readonly accessor: (row: infer TRow extends object) => unknown;
-  }
-    ? Omit<
-        PretableColumnPresentation<TRow, TRowId, TColumns[K]>,
+  readonly type: TType;
+  readonly compare?: (left: TValue, right: TValue) => number;
+  readonly aggregate?: TAggregate;
+  readonly format?: (input: {
+    readonly value: TValue;
+    readonly row: TRow;
+    readonly column: PretableReactColumnContext<
+      TRow,
+      TId,
+      TValue,
+      TType,
+      TAggregate
+    >;
+  }) => string;
+  readonly formatAggregate?: (input: {
+    readonly value: PretableAggregateOutputOf<TAggregate>;
+    readonly column: PretableReactColumnContext<
+      TRow,
+      TId,
+      TValue,
+      TType,
+      TAggregate
+    >;
+  }) => string;
+} & PretableColumnPresentation<
+  TRow,
+  TRowId,
+  PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>
+>;
+
+/** React-aware authoritative column returned by the helper. @public */
+export type PretableReactColumnDefinition<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TId extends string,
+  TValue,
+  TType extends PretableReactColumnTypeFor<TValue>,
+  TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined,
+  TDirect extends boolean,
+> = Omit<
+  PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>,
+  "header" | "accessorKey"
+> &
+  PretableColumnPresentation<
+    TRow,
+    TRowId,
+    PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>
+  > &
+  PretableColumnAccessorKind<TDirect extends true ? "direct" : "computed"> &
+  (TDirect extends true
+    ? { readonly accessorKey: TId }
+    : { readonly accessorKey?: undefined });
+
+declare module "@pretable/core" {
+  interface PretableColumnHelper<TRow extends object> {
+    accessor<
+      const TKey extends Extract<keyof TRow, string>,
+      const TType extends PretableReactColumnTypeFor<TRow[TKey]>,
+      const TAggregate extends
+        PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined,
+    >(
+      key: TKey,
+      options: PretableColumnFactoryOptions<
+        TRow,
+        PretableColumnRowId<TRow>,
+        TKey,
+        TRow[TKey],
+        TType,
+        TAggregate
+      >,
+    ): PretableReactColumnDefinition<
+      TRow,
+      PretableColumnRowId<TRow>,
+      TKey,
+      TRow[TKey],
+      TType,
+      TAggregate,
+      true
+    >;
+
+    accessor<
+      const TId extends string,
+      const TValue,
+      const TType extends PretableReactColumnTypeFor<TValue>,
+      const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
+        undefined,
+    >(
+      id: TId,
+      accessor: (row: TRow) => TValue,
+      options: Omit<
+        PretableColumnFactoryOptions<
+          TRow,
+          PretableColumnRowId<TRow>,
+          TId,
+          TValue,
+          TType,
+          TAggregate
+        >,
         "editable" | "setValue"
-      > &
-        PretablePresentationEditRequirement<TRow, TColumns[K]> & {
-          readonly id: TId;
-          readonly accessor?: never;
-          readonly value?: never;
-          readonly compare?: never;
-          readonly aggregate?: never;
-          readonly type?: never;
-        }
-    : never;
-};
+      > & {
+        readonly editable:
+          | true
+          | PretableColumnEditablePredicate<
+              TRow,
+              PretableColumnRowId<TRow>,
+              PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>
+            >;
+        readonly setValue: (
+          input: PretableSetValueInput<TRow, TValue>,
+        ) => Partial<TRow>;
+      },
+    ): Omit<
+      PretableReactColumnDefinition<
+        TRow,
+        PretableColumnRowId<TRow>,
+        TId,
+        TValue,
+        TType,
+        TAggregate,
+        false
+      >,
+      "editable" | "setValue"
+    > & {
+      readonly editable:
+        | true
+        | PretableColumnEditablePredicate<
+            TRow,
+            PretableColumnRowId<TRow>,
+            PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>
+          >;
+      readonly setValue: (
+        input: PretableSetValueInput<TRow, TValue>,
+      ) => Partial<TRow>;
+    };
+
+    accessor<
+      const TId extends string,
+      const TValue,
+      const TType extends PretableReactColumnTypeFor<TValue>,
+      const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
+        undefined,
+    >(
+      id: TId,
+      accessor: (row: TRow) => TValue,
+      options: Omit<
+        PretableColumnFactoryOptions<
+          TRow,
+          PretableColumnRowId<TRow>,
+          TId,
+          TValue,
+          TType,
+          TAggregate
+        >,
+        "editable" | "setValue"
+      > & {
+        readonly editable?: false;
+        readonly setValue?: never;
+      },
+    ): Omit<
+      PretableReactColumnDefinition<
+        TRow,
+        PretableColumnRowId<TRow>,
+        TId,
+        TValue,
+        TType,
+        TAggregate,
+        false
+      >,
+      "editable" | "setValue"
+    > & {
+      readonly editable?: false;
+      readonly setValue?: never;
+    };
+  }
+}
 
 /**
  * React-extended column definition. Adds the `render` and `renderHeader` JSX-typed callbacks on top of `@pretable/core`'s base column.
@@ -394,78 +539,6 @@ export interface PretableColumn<
   render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
   renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
   renderEditor?: (input: PretableEditorInput<TRow>) => ReactNode;
-}
-
-/**
- * Input passed to a column's `renderEditor`. Extends the engine edit input with
- * draft controls bound to the active edit. `commit` accepts the focus direction
- * to move after a successful commit (Enter → "down", Tab → "right").
- *
- * @public
- */
-export interface PretableEditorInput<
-  TRow extends PretableRow = PretableRow,
-> extends Omit<PretableEditInput<TRow>, "column"> {
-  column: PretableColumn<TRow>;
-  status: PretableEditStatus;
-  error?: string;
-  draft: unknown;
-  setDraft: (value: unknown) => void;
-  commit: (direction?: PretableFocusDirection) => void;
-  cancel: () => void;
-  /**
-   * True when the edit began by typing a printable character on the focused
-   * cell (type-to-replace), so the draft is already that character. Editors
-   * put the caret at the end in that case — select-all would make the next
-   * keystroke replace the seed instead of appending to it. Absent/false for
-   * Enter, F2 and double-click, where select-all is the wanted behavior.
-   */
-  seededFromTyping?: boolean;
-}
-
-/**
- * Input passed to a column's `render` function.
- *
- * @public
- */
-export interface PretableCellRenderInput<
-  TRow extends PretableRow = PretableRow,
-> extends PretableGridFormatInput<TRow> {
-  formattedValue: string;
-  rowId: string;
-  rowIndex: number;
-  isFocused: boolean;
-  isSelected: boolean;
-  /**
-   * Authoritative pin side for this column, from the engine's column plan —
-   * not the `columns` prop, which goes stale the moment a pin is set through
-   * controlled `state.columnPinned`, `grid.setColumnPinned`, or drag-to-pin.
-   * Normalized to `null` when unpinned (the column's own optional `pinned` is
-   * `undefined` in that case) so consumers only ever branch on one shape.
-   */
-  pinned: "left" | "right" | null;
-}
-
-/**
- * Input passed to a column's `renderHeader` function.
- *
- * @public
- */
-export interface PretableHeaderRenderInput<
-  TRow extends PretableRow = PretableRow,
-> {
-  column: PretableColumn<TRow>;
-  label: string;
-  sortDirection: "asc" | "desc" | null;
-  isSorted: boolean;
-  /**
-   * Authoritative pin side for this column, from the engine's column plan —
-   * not the `columns` prop, which goes stale the moment a pin is set through
-   * controlled `state.columnPinned`, `grid.setColumnPinned`, or drag-to-pin.
-   * Normalized to `null` when unpinned (the column's own optional `pinned` is
-   * `undefined` in that case) so consumers only ever branch on one shape.
-   */
-  pinned: "left" | "right" | null;
 }
 
 export type { PretableGridFormatInput as PretableFormatInput };

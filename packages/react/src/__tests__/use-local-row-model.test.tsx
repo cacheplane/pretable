@@ -66,13 +66,22 @@ describe("useLocalRowModel", () => {
       column.accessor("score", (row) => row.score * 2, { type: "number" }),
     ] as const;
     const { result, rerender } = renderHook(
-      ({ derivations }) =>
+      ({
+        derivations,
+      }: {
+        derivations: typeof firstColumns | typeof secondColumns;
+      }) =>
         useLocalRowModel({
           rows: [{ id: 1, label: "one", score: 2 }],
           columns: firstColumns,
           derivations,
         }),
-      { initialProps: { derivations: firstColumns } },
+      {
+        initialProps: {
+          derivations: firstColumns as
+            typeof firstColumns | typeof secondColumns,
+        },
+      },
     );
     const model = result.current;
 

@@ -2,7 +2,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
-import { createColumnHelper, type PretableQueryFor } from "@pretable/core";
+import {
+  createColumnHelper,
+  createLocalRowModel,
+  type PretableQueryFor,
+} from "@pretable/core";
 
 import { usePretable } from "../use-pretable";
 
@@ -156,5 +160,94 @@ describe("usePretable rows-mode query ownership", () => {
       .poll(() => result.current.rowModelSnapshot.query)
       .toEqual(ascending);
     expect(result.current.rowModelSnapshot.dataRowAt(0)?.rowId).toBe(2);
+  });
+
+  test("keeps one controlled grid facade and dispatches through the latest callback", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ onQueryChange }) =>
+        usePretable({
+          rows,
+          columns,
+          query: emptyQuery,
+          onQueryChange,
+          viewportHeight: 88,
+        }),
+      { initialProps: { onQueryChange: first } },
+    );
+    const grid = result.current.grid;
+
+    rerender({ onQueryChange: second });
+    act(() => result.current.grid.setQuery(sortedQuery));
+
+    expect(result.current.grid).toBe(grid);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith(sortedQuery);
+  });
+
+  test("rejects retained controlled and uncontrolled grid handles after unmount", async () => {
+    const onQueryChange = vi.fn();
+    const controlled = renderHook(() =>
+      usePretable({
+        rows,
+        columns,
+        query: emptyQuery,
+        onQueryChange,
+        viewportHeight: 88,
+      }),
+    );
+    const controlledGrid = controlled.result.current.grid;
+    controlled.unmount();
+    await act(async () => Promise.resolve());
+
+    expect(() => controlledGrid.setQuery(sortedQuery)).toThrowError(
+      expect.objectContaining({ code: "disposed-grid-ui" }),
+    );
+    expect(onQueryChange).not.toHaveBeenCalled();
+
+    const uncontrolled = renderHook(() =>
+      usePretable({ rows, columns, viewportHeight: 88 }),
+    );
+    const uncontrolledGrid = uncontrolled.result.current.grid;
+    const ownedModel = uncontrolled.result.current.rowModel;
+    const setQuery = vi.spyOn(ownedModel, "setQuery");
+    uncontrolled.unmount();
+    await act(async () => Promise.resolve());
+
+    expect(() => uncontrolledGrid.setQuery(sortedQuery)).toThrowError(
+      expect.objectContaining({ code: "disposed-grid-ui" }),
+    );
+    expect(setQuery).not.toHaveBeenCalled();
+  });
+
+  test("rejects stale explicit-model grids after replacement and unmount", async () => {
+    const first = createLocalRowModel({ rows, columns });
+    const second = createLocalRowModel({ rows, columns });
+    const firstSetQuery = vi.spyOn(first, "setQuery");
+    const secondSetQuery = vi.spyOn(second, "setQuery");
+    const view = renderHook(
+      ({ model }) => usePretable({ model, viewportHeight: 88 }),
+      { initialProps: { model: first } },
+    );
+    const firstGrid = view.result.current.grid;
+
+    view.rerender({ model: second });
+    await act(async () => Promise.resolve());
+
+    expect(() => firstGrid.setQuery(sortedQuery)).toThrowError(
+      expect.objectContaining({ code: "disposed-grid-ui" }),
+    );
+    expect(firstSetQuery).not.toHaveBeenCalled();
+
+    const secondGrid = view.result.current.grid;
+    view.unmount();
+    await act(async () => Promise.resolve());
+    expect(() => secondGrid.setQuery(sortedQuery)).toThrowError(
+      expect.objectContaining({ code: "disposed-grid-ui" }),
+    );
+    expect(secondSetQuery).not.toHaveBeenCalled();
+    first.dispose();
+    second.dispose();
   });
 });
