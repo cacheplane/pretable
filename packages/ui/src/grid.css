@@ -219,16 +219,43 @@
   }
 
   /* Pinned cells (sticky left) — an opaque fill so scrolled columns pass
-     underneath, on their own token rather than the header's. */
+     underneath, on their own token rather than the header's.
+     The seam shadow marks the frozen edge for themes that do not mark it any
+     other way. A theme that drops the vertical rule AND gives --pretable-bg-pinned
+     no tone step has no boundary at all otherwise: unpinned cells scroll under
+     these at z-index 1, so text would appear clipped mid-glyph at an invisible
+     line. The spread is <= -blur/2 on purpose — any less negative and the blur
+     bleeds above and below each cell and paints a dark band at every row
+     boundary inside the pinned region.
+     Known interaction: the focus ring below is also a `box-shadow`, and
+     box-shadow is not additive, so a FOCUSED pinned cell shows the ring and
+     loses its seam for as long as it holds focus. Accepted rather than worked
+     around — the ring is the stronger signal in that moment, it is one cell,
+     and both shipped themes opt out of the seam entirely. Revisit if the house
+     theme makes it visible. */
   :where([data-pretable-cell][data-pretable-pinned="left"]) {
     background: var(--pretable-bg-pinned);
+    box-shadow: 8px 0 8px -8px var(--pretable-seam-color);
     z-index: 1;
   }
 
-  /* Pinned cells (sticky right) — mirror of the left rule */
+  /* Pinned cells (sticky right) — mirror of the left rule, including the seam,
+     whose offset has to flip. That mirroring is why --pretable-seam-color holds
+     a COLOUR and not a whole shadow: one shadow value cannot be reversed. */
   :where([data-pretable-cell][data-pretable-pinned="right"]) {
     background: var(--pretable-bg-pinned);
+    box-shadow: -8px 0 8px -8px var(--pretable-seam-color);
     z-index: 1;
+  }
+
+  /* A pinned cell inside a group row is still part of the band. Both pinned
+     rules above follow the group-row rule at equal (0,0,0) specificity, so
+     without this a frozen column punches a visible notch straight through every
+     group band the moment a theme stops aliasing the two surface tokens
+     together — which is exactly what the house theme does. Excel and Material
+     are immune only by accident. */
+  :where([data-pretable-group-row] [data-pretable-cell][data-pretable-pinned]) {
+    background: var(--pretable-bg-group-row);
   }
 
   /* The left-pinned group is bounded by the base cell's border-right; the

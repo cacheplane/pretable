@@ -52,6 +52,45 @@ describe("grid.css cascade contract", () => {
     expect(groupRow).toMatch(/background:\s*var\(--pretable-bg-group-row\)/);
   });
 
+  test("the pinned seam is wired, mirrored, and outlives the group-row band", () => {
+    // --pretable-seam-color had ZERO consumers before this: it was declared by
+    // every theme and read by nothing, so a theme that dropped both the vertical
+    // rule and the pinned tone step had no frozen-column boundary at all.
+    // The right edge must MIRROR the left offset — that is why the token holds a
+    // colour rather than a whole shadow, since one shadow value cannot be
+    // reversed.
+    const css = fs.readFileSync(GRID_CSS, "utf8");
+    const left = css.match(
+      /:where\(\[data-pretable-cell\]\[data-pretable-pinned="left"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    const right = css.match(
+      /:where\(\[data-pretable-cell\]\[data-pretable-pinned="right"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(left, "no left-pinned rule").toBeDefined();
+    expect(right, "no right-pinned rule").toBeDefined();
+    expect(left).toMatch(
+      /box-shadow:\s*8px 0 8px -8px var\(--pretable-seam-color\)/,
+    );
+    expect(right).toMatch(
+      /box-shadow:\s*-8px 0 8px -8px var\(--pretable-seam-color\)/,
+    );
+
+    // And a frozen column must not punch a notch through a group band: the
+    // pinned rules follow the group-row rule at equal specificity, so the
+    // restoring rule has to come after BOTH of them.
+    const pinnedLeft = css.indexOf(
+      '[data-pretable-cell][data-pretable-pinned="left"]',
+    );
+    const restore = css.indexOf(
+      "[data-pretable-group-row] [data-pretable-cell][data-pretable-pinned]",
+    );
+    expect(restore, "no group-row pinned restore rule").toBeGreaterThan(-1);
+    expect(
+      restore,
+      "restore rule must follow the pinned rules",
+    ).toBeGreaterThan(pinnedLeft);
+  });
+
   test("row hover is declared after the pinned surfaces so it reaches them", () => {
     // Everything here is :where()-flattened to (0,0,0), so source order is the
     // only cascade lever. Declared before the pinned rules, hover loses on
