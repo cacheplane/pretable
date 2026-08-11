@@ -431,6 +431,49 @@ describe("BenchApp", () => {
     );
   }, 30_000);
 
+  test("records an aborted replace as a failed run carrying the cause, never as a thrown harness error", async () => {
+    // A real replace measurement taken to one of its abort paths — the instance-id probe
+    // reading nothing — rather than a stubbed return, because what is under test is the
+    // whole path from the abort to the published artifact.
+    //
+    // bench-runner refuses to record a `partial` replace at all, so an abort that stayed
+    // `partial` reaches createBenchRunSummary's guard and the throw lands in executeRun's
+    // catch: a run recorded as failed whose error says only that the status was wrong.
+    // The cause the measurement already knew is gone by then, and the harness spends a
+    // full run to publish nothing about why it stopped.
+    vi.spyOn(benchRuntime, "readBenchGridInstanceId").mockReturnValue(null);
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S1&scale=dev&script=replace&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "failed",
+          adapterId: "pretable",
+          scenarioId: "S1",
+          scriptName: "replace",
+          error: {
+            message: expect.stringContaining(
+              "grid instance id unavailable before the update",
+            ),
+          },
+        });
+      },
+      { timeout: 30_000 },
+    );
+
+    // The measurement's own notes survive onto the failed artifact; they are the only
+    // record of which script and which mode stopped.
+    expect(window[BENCH_RESULT_KEY]?.notes).toContain(
+      "data update mode: replace",
+    );
+  }, 40_000);
+
   test("reports a dataset too small for either row-set shape as unsupported", async () => {
     const dataUpdateSpy = vi.spyOn(benchRuntime, "measureBenchDataUpdateRun");
 

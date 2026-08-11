@@ -1633,13 +1633,19 @@ describe("bench data update runtime", () => {
         },
       );
 
-      expect(result.status).toBe("partial");
+      // `failed`, not `partial`: bench-runner refuses to record a partial replace at
+      // all, so a partial here would reach its guard and the run would be filed under
+      // that throw instead of under the reader that went silent.
+      expect(result.status).toBe("failed");
       expect(result.metrics.grid_instance_reconstructed).toBeUndefined();
       expect(
         result.notes.some((note) =>
           note.includes("grid instance id unavailable"),
         ),
       ).toBe(true);
+      expect(
+        result.status === "failed" ? result.error.message : null,
+      ).toContain("grid instance id unavailable before the update");
     } finally {
       restore();
     }
@@ -1686,12 +1692,15 @@ describe("bench data update runtime", () => {
         },
       );
 
-      expect(result.status).toBe("partial");
+      expect(result.status).toBe("failed");
       expect(
         result.notes.some((note) =>
           note.includes("result row count settled at 4, not the 5"),
         ),
       ).toBe(true);
+      expect(
+        result.status === "failed" ? result.error.message : null,
+      ).toContain("result row count settled at 4, not the 5");
     } finally {
       restore();
     }
@@ -1797,7 +1806,7 @@ describe("bench data update runtime", () => {
         () => {},
       );
 
-      expect(result.status).toBe("partial");
+      expect(result.status).toBe("failed");
       expect(result.metrics.interaction_latency_ms).toBeUndefined();
     } finally {
       restore();
@@ -1859,7 +1868,7 @@ describe("bench data update runtime", () => {
     }
   });
 
-  test("stays partial when nothing repaints, so the run cannot be recorded as a measurement", async () => {
+  test("fails with the frame budget it ran out when nothing repaints, rather than banking an unmeasured run", async () => {
     const { root } = createDataUpdateHarness();
     const restore = installFrameStub({ frames: 0, apply: () => {} });
 
@@ -1883,9 +1892,14 @@ describe("bench data update runtime", () => {
         () => {},
       );
 
-      expect(result.status).toBe("partial");
+      expect(result.status).toBe("failed");
       expect(result.notes).toContain("data update mode: replace");
       expect(result.metrics.interaction_latency_ms).toBeUndefined();
+      // The frame loop's own exit has no note of its own, so without this the failed
+      // artifact would say which script stopped and nothing about why.
+      expect(
+        result.status === "failed" ? result.error.message : null,
+      ).toContain("no frame changed the watched signature");
     } finally {
       restore();
     }

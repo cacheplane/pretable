@@ -1,5 +1,6 @@
 import type { ScenarioDataset } from "@pretable-internal/scenario-data";
 import type {
+  BenchErrorPayload,
   BenchMetricId,
   BenchRunRequest,
   BenchRunSummary,
@@ -129,6 +130,27 @@ export interface InteractionBenchRunResult {
   metrics: Partial<Record<BenchMetricId, number>>;
   notes: string[];
 }
+
+/**
+ * What `measureBenchDataUpdateRun` hands back. No `partial`: bench-runner refuses to
+ * record one for `replace`/`append` (a partial there owes only `dom_nodes_peak`, so it
+ * would file a run that measured nothing under a name the ledger reads as a
+ * measurement), and every way this measurement can stop short is a stop with a known
+ * cause. Carrying that cause out as an error is what lets the caller file a failed run
+ * that says why instead of one that says only that the status was wrong.
+ */
+export type DataUpdateBenchRunResult =
+  | {
+      status: "completed";
+      metrics: Partial<Record<BenchMetricId, number>>;
+      notes: string[];
+    }
+  | {
+      status: "failed";
+      metrics: Partial<Record<BenchMetricId, number>>;
+      notes: string[];
+      error: BenchErrorPayload;
+    };
 
 interface BenchInteractionState {
   focusedRowId: string | null;
@@ -471,6 +493,13 @@ type RowSetMeasurement =
       status: "partial";
       notes: string[];
       metrics: Partial<Record<BenchMetricId, number>>;
+      /**
+       * Why the loop produced no measurement, as a sentence. The notes carry the label
+       * and the viewport policy but not this — and the frame-budget exit below has no
+       * note of its own at all, so a caller that must report the stop has nothing to
+       * report without it.
+       */
+      reason: string;
     }
   | {
       status: "completed";
@@ -530,6 +559,7 @@ async function measureRowSetChange(
       metrics: {
         dom_nodes_peak: root.querySelectorAll("*").length,
       },
+      reason: `viewport unavailable for ${adapterId} in current runtime`,
     };
   }
 
@@ -665,6 +695,12 @@ async function measureRowSetChange(
         rendered_rows_peak: renderedRowsPeak,
         rendered_cells_peak: renderedCellsPeak,
       },
+      // Which of the two exits this was decides where to look: nothing moved at all
+      // means the trigger or the signature, still moving at the end means the budget.
+      reason:
+        firstChangedAt === null
+          ? `no frame changed the watched signature within ${maxFrames} frames after the trigger`
+          : `the surface never held still for ${Math.max(0, profile.maxSettleFrames - 1)} frames within ${maxFrames} frames after the trigger`,
     };
   }
 
@@ -830,7 +866,11 @@ export async function measureBenchInteractionRun(
  * `createVisibleRowSignature` is result row count + row id + row top, and a replacement
  * of the SAME ids over an equal-length resident set moves none of the three. Without
  * the probe column's rendered text every replace run would run out its frame budget and
- * report `partial`, which bench-runner refuses to record.
+ * abort.
+ *
+ * Every abort below is `failed` with the cause attached rather than `partial`: these two
+ * scripts have no partial credit (see `DataUpdateBenchRunResult`), and a caller handed a
+ * bare `partial` can only file a run whose recorded error is that the status was wrong.
  */
 export async function measureBenchDataUpdateRun(
   root: HTMLElement,
@@ -845,24 +885,21 @@ export async function measureBenchDataUpdateRun(
   readInteractionStateOverride: (() => BenchInteractionState) | undefined,
   readGridInstanceId: () => string | null,
   trigger: () => void,
-): Promise<InteractionBenchRunResult> {
+): Promise<DataUpdateBenchRunResult> {
   const label = `data update mode: ${mode}`;
   // Read before anything else: `grid_instance_reconstructed` is the metric §11's
   // replace budget rests on, and a probe that cannot see the id would otherwise
   // compare two identical misses and report 0 — a PASS produced by a broken reader.
-  // `partial` is deliberately fatal here; bench-runner refuses to record a partial
-  // replace or append, so a silent reader becomes a stopped run.
   const gridInstanceBefore = readGridInstanceId();
 
   if (gridInstanceBefore === null) {
-    return {
-      status: "partial",
-      notes: [
-        label,
-        "grid instance id unavailable before the update: the reconstruction probe has no baseline",
-      ],
+    return failedDataUpdateRun({
+      label,
       metrics: { dom_nodes_peak: root.querySelectorAll("*").length },
-    };
+      notes: [label],
+      reason:
+        "grid instance id unavailable before the update: the reconstruction probe has no baseline",
+    });
   }
 
   const profile = scrollRuntimeProfiles[adapterId];
@@ -897,24 +934,24 @@ export async function measureBenchDataUpdateRun(
   });
 
   if (measurement.status === "partial") {
-    return {
-      status: "partial",
-      notes: measurement.notes,
+    return failedDataUpdateRun({
+      label,
       metrics: measurement.metrics,
-    };
+      notes: measurement.notes,
+      reason: measurement.reason,
+    });
   }
 
   const gridInstanceAfter = readGridInstanceId();
 
   if (gridInstanceAfter === null) {
-    return {
-      status: "partial",
-      notes: [
-        ...measurement.notes,
-        "grid instance id unavailable after the update: reconstruction is undecided",
-      ],
+    return failedDataUpdateRun({
+      label,
       metrics: measurement.metrics,
-    };
+      notes: measurement.notes,
+      reason:
+        "grid instance id unavailable after the update: reconstruction is undecided",
+    });
   }
 
   // The change detector only needs SOME change, so an update that landed half its rows
@@ -922,14 +959,12 @@ export async function measureBenchDataUpdateRun(
   // the only change signal there is, which makes this check nearly free and the run
   // meaningless without it.
   if (measurement.finalState.resultRowCount !== plan.resultRowCount) {
-    return {
-      status: "partial",
-      notes: [
-        ...measurement.notes,
-        `result row count settled at ${measurement.finalState.resultRowCount}, not the ${plan.resultRowCount} rows the plan handed the surface`,
-      ],
+    return failedDataUpdateRun({
+      label,
       metrics: measurement.metrics,
-    };
+      notes: measurement.notes,
+      reason: `result row count settled at ${measurement.finalState.resultRowCount}, not the ${plan.resultRowCount} rows the plan handed the surface`,
+    });
   }
 
   const baselineRowIds = new Set(measurement.baselineRenderedRowIds);
@@ -962,6 +997,30 @@ export async function measureBenchDataUpdateRun(
       // at 1 — see the polarity test in __tests__/bench-runtime.test.ts.
       grid_instance_reconstructed:
         gridInstanceAfter === gridInstanceBefore ? 0 : 1,
+    },
+  };
+}
+
+/**
+ * One aborted row-set run, recorded twice: as the artifact's last note, where a reader
+ * of the run sees it in sequence after the label and whatever the loop got through, and
+ * as the error `message`, which is the only field a `failed` summary keeps besides the
+ * notes — `FailedBenchRunSummary` has no `metrics`, so anything the loop measured before
+ * it stopped survives only as prose.
+ */
+function failedDataUpdateRun(input: {
+  label: string;
+  metrics: Partial<Record<BenchMetricId, number>>;
+  notes: string[];
+  reason: string;
+}): DataUpdateBenchRunResult {
+  return {
+    status: "failed",
+    notes: [...input.notes, input.reason],
+    metrics: input.metrics,
+    error: {
+      name: "BenchDataUpdateAbort",
+      message: `${input.label}: ${input.reason}`,
     },
   };
 }
@@ -1625,7 +1684,9 @@ function measureWrappedCellRowHeightError(
 }
 
 export interface KeySequenceBenchRunResult {
-  status: "completed" | "partial" | "failed";
+  // No "failed": this measurement has no abort path that carries a reason, and a status
+  // it can never return would let it be assigned where a reason is required.
+  status: "completed" | "partial";
   notes: string[];
   metrics: {
     interaction_latency_ms?: number;
@@ -1759,7 +1820,8 @@ export async function measureBenchKeySequenceRun(
 }
 
 export interface AutosizeBenchRunResult {
-  status: "completed" | "partial" | "failed";
+  // See KeySequenceBenchRunResult: "failed" was never returned here either.
+  status: "completed" | "partial";
   notes: string[];
   metrics: { interaction_latency_ms?: number; dom_nodes_peak?: number };
 }

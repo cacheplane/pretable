@@ -204,6 +204,35 @@ describe("bench-runner contract", () => {
     ).toMatchObject({ status: "partial", scriptName: "sort" });
   });
 
+  // The other half of the rule above: refusing the status is only tolerable
+  // because the run has somewhere to go. A `failed` replace records without
+  // meeting the metric list, and keeps both the error and the notes the
+  // measurement collected before it stopped — the only two places the cause can
+  // live, since a failed summary carries no metrics.
+  test("records a stopped replace with the reason it stopped", () => {
+    expect(
+      createBenchRunSummary({
+        request: { ...baseRequest, scriptName: "replace" },
+        status: "failed",
+        timestamp: "2026-08-10T00:00:00.000Z",
+        tracePath: "traces/replace.json",
+        notes: ["data update mode: replace", "frames to first change: 0"],
+        error: {
+          name: "BenchDataUpdateAbort",
+          message:
+            "data update mode: replace: no frame changed the watched signature within 60 frames after the trigger",
+        },
+      }),
+    ).toMatchObject({
+      status: "failed",
+      scriptName: "replace",
+      notes: ["data update mode: replace", "frames to first change: 0"],
+      error: {
+        message: expect.stringContaining("no frame changed the watched"),
+      },
+    });
+  });
+
   test("enforces the explicit P0a support matrix", () => {
     expect(validateSupportedP0aRequest(baseRequest)).toEqual({ ok: true });
     expect(
@@ -521,7 +550,11 @@ describe("bench-runner contract", () => {
 
       for (const adapterId of ["ag-grid", "tanstack", "mui"] as const) {
         expect(
-          validateSupportedP0aRequest({ ...baseRequest, adapterId, scriptName }),
+          validateSupportedP0aRequest({
+            ...baseRequest,
+            adapterId,
+            scriptName,
+          }),
         ).toEqual({
           ok: false,
           reason: expect.stringContaining("pretable-only"),

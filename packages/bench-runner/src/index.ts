@@ -715,20 +715,22 @@ function assertRequiredMetrics(
     // §11's ceilings stay proposals until one exists, but a `partial` owes only
     // `dom_nodes_peak` — so it records a run that measured nothing while still
     // producing an artifact under a name the ledger reads as a measurement.
-    // scripts/check-bench-budgets.mjs also fails a non-completed newest run, so
-    // this throw is the second lock, not the only one; it stops the run at the
-    // point the cause is still visible instead of at the gate an hour later.
     //
     // This matters most for `replace`. Its change is invisible to the settle
     // detector in apps/bench/src/bench-runtime.ts: createVisibleRowSignature is
     // `resultRowCount:rowId@top|…`, and a same-ids replacement over an
     // equal-length resident set moves none of the three. `append` grows the row
-    // count and latches; `replace` runs out its frame budget and lands here.
-    // Refusing the status is what turns that into a stopped run instead of a
-    // quiet gap in the ledger.
+    // count and latches; `replace` runs out its frame budget.
+    //
+    // `measureBenchDataUpdateRun` is what keeps this unreachable: it returns
+    // `failed` with the cause attached at every point it can stop short, so the
+    // stop is recorded WITH its reason rather than converted into a status this
+    // refuses. The throw is the backstop for a caller that has not done that —
+    // and it is a throw, not a recorded status, because the alternative is an
+    // artifact under a measured script's name that no reader can tell from one.
     if (status === "partial") {
       throw new Error(
-        `Partial runs cannot substantiate the ${scriptName} budget: record it as failed`,
+        `Partial runs cannot substantiate the ${scriptName} budget: record it as failed with the reason the measurement stopped`,
       );
     }
 

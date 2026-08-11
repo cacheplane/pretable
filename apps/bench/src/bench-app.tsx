@@ -19,6 +19,7 @@ import {
   createBenchRunSummary,
   createRunArtifactFileStem,
   validateSupportedP0aRequest,
+  type BenchErrorPayload,
   type BenchMetricId,
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
@@ -58,12 +59,24 @@ export interface BenchAppProps {
 }
 
 /** What every `measureBench*Run` helper hands back. Named here so the run-selection
- *  table below can hold them in one list. */
-interface BenchMeasuredRun {
-  status: "completed" | "partial" | "failed";
-  metrics: Partial<Record<BenchMetricId, number>>;
-  notes: string[];
-}
+ *  table below can hold them in one list.
+ *
+ *  Split on `failed` rather than carrying an optional error: `createBenchRunSummary`
+ *  refuses a failed run without one, and the measurement that stopped is the only place
+ *  the reason exists. As a union, a measurement that reports `failed` cannot compile
+ *  without saying why. */
+type BenchMeasuredRun =
+  | {
+      status: "completed" | "partial";
+      metrics: Partial<Record<BenchMetricId, number>>;
+      notes: string[];
+    }
+  | {
+      status: "failed";
+      metrics: Partial<Record<BenchMetricId, number>>;
+      notes: string[];
+      error: BenchErrorPayload;
+    };
 
 const allScenarios = listScenarios();
 const adapterRegistry = {
@@ -736,6 +749,12 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               ...createPretableTelemetryNotes(pretableTelemetryRef.current),
             ],
             metrics: measured.run.metrics,
+            // A measurement that stopped short reaches here as `failed` with its own
+            // cause attached. Dropping it would leave the summary builder to throw for
+            // want of an error payload, and the catch below would then file the run
+            // under that throw instead of under what actually happened.
+            error:
+              measured.run.status === "failed" ? measured.run.error : undefined,
           })
         : createBenchRunSummary({
             request,
