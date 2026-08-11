@@ -1,5 +1,9 @@
-import { PretableDelta } from "@pretable/react";
-import type { PretableColumn, PretableEditInput } from "@pretable/react";
+import { PretableBadge, PretableDelta, PretableEntity } from "@pretable/react";
+import type {
+  PretableBadgeTone,
+  PretableColumn,
+  PretableEditInput,
+} from "@pretable/react";
 import { fmtPrice, fmtSignedUsd, fmtPct, fmtCompactUsd } from "./format";
 import { parseQty, sanityCheckQty, breachesGuardrail } from "./qty-edit";
 import { computeNav } from "./positions-math";
@@ -7,11 +11,14 @@ import { QtyEditor } from "./QtyEditor";
 import type { PositionFlag, PositionRow } from "./types";
 import styles from "./cells.module.css";
 
-const PILL_CLASS: Record<PositionFlag, string> = {
-  trim: styles.pillTrim,
-  watch: styles.pillWatch,
-  risk: styles.pillRisk,
-  hold: styles.pillHold,
+/** What each analyst flag means, in the ramp's vocabulary rather than the
+ *  site's own. `hold` is the only reassuring one; `trim` and `watch` are both
+ *  "look at this", and `risk` is the one that is actually bad. */
+const FLAG_TONE: Record<PositionFlag, PretableBadgeTone> = {
+  trim: "warning",
+  watch: "warning",
+  risk: "negative",
+  hold: "positive",
 };
 
 const COMPLIANCE_DELAY_MS = 400;
@@ -33,11 +40,14 @@ export function makePositionColumns(
       pinned: "left",
       type: "text",
       value: (row) => `${row.symbol} ${row.name}`,
+      // The library's presentation, not a hand-rolled two-line stack. The old
+      // one dimmed the company name with `opacity: 0.55`, which rendered it at
+      // 3.88:1 — below AA, on every row of the pinned column. <PretableEntity>
+      // subordinates the second line with --pretable-text-dim (7.72:1) and a
+      // type size instead, which is the whole reason the library owns this
+      // pattern rather than leaving each consumer to reinvent it.
       render: ({ row }) => (
-        <span className={styles.symbol}>
-          {row.symbol}
-          <span className={styles.symbolSub}>{row.name}</span>
-        </span>
+        <PretableEntity primary={row.symbol} secondary={row.name} />
       ),
     },
     {
@@ -141,13 +151,21 @@ export function makePositionColumns(
       wrap: true,
       sortable: false,
       value: (row) => row.analyst,
+      // The flag is a <PretableBadge> now. The hand-rolled pill tinted its fill
+      // with a 14% mix of its own text colour, which put every tone between
+      // 3.89:1 and 4.24:1 — a tinted chip cannot reach AA at any usable tint,
+      // because the tint moves the background toward the text. The library's
+      // chip leaves the fill alone and carries the tone on the label.
       render: ({ row }) => (
         <span className={styles.analyst}>
           {row.analyst}
           {row.analyst.length > 0 && (
-            <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>
+            <PretableBadge
+              className={styles.analystFlag}
+              tone={FLAG_TONE[row.flag]}
+            >
               {row.flag}
-            </span>
+            </PretableBadge>
           )}
         </span>
       ),

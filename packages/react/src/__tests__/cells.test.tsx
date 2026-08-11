@@ -2,7 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { PretableDelta, PretableStatus } from "../cells";
+import {
+  PretableBadge,
+  PretableDelta,
+  PretableEntity,
+  PretableStatus,
+} from "../cells";
 import { resetDevWarnings } from "../dev-warn";
 
 afterEach(() => {
@@ -154,5 +159,107 @@ describe("PretableStatus", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(<PretableStatus tone="negative">Rejected</PretableStatus>);
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("PretableBadge", () => {
+  test.each(["positive", "negative", "warning", "info"] as const)(
+    "renders its label and carries tone %s",
+    (tone) => {
+      const { container } = render(
+        <PretableBadge tone={tone}>trim</PretableBadge>,
+      );
+      const el = container.querySelector("[data-pretable-badge]")!;
+      expect(el).toHaveAttribute("data-pretable-tone", tone);
+      expect(el).toHaveTextContent("trim");
+    },
+  );
+
+  test("sets no tone attribute when no tone is given", () => {
+    // Absence IS the neutral badge — grid.css's base rule paints it in the
+    // ordinary cell ink. A `data-pretable-tone` present but empty would be a
+    // second spelling of the same state and a value no rule matches.
+    const { container } = render(<PretableBadge>hold</PretableBadge>);
+    const el = container.querySelector("[data-pretable-badge]")!;
+    expect(el).not.toHaveAttribute("data-pretable-tone");
+  });
+
+  test("passes className and other span props through", () => {
+    const { container } = render(
+      <PretableBadge tone="warning" className="app-badge" title="Analyst flag">
+        watch
+      </PretableBadge>,
+    );
+    const el = container.querySelector("[data-pretable-badge]")!;
+    expect(el).toHaveClass("app-badge");
+    expect(el).toHaveAttribute("title", "Analyst flag");
+  });
+
+  test("does not let a caller clobber the attribute grid.css keys on", () => {
+    // React's HTMLAttributes admits any `data-*` key, so the type system cannot
+    // refuse these. `data-pretable-badge` is the whole of the chip's styling
+    // contract — overwritten, the badge renders as bare text — and
+    // `data-pretable-tone` must agree with the `tone` prop rather than with
+    // whatever a spread happened to carry in.
+    const { container } = render(
+      <PretableBadge
+        tone="negative"
+        data-pretable-badge={undefined}
+        data-pretable-tone="positive"
+      >
+        risk
+      </PretableBadge>,
+    );
+    const el = container.querySelector("[data-pretable-badge]");
+    expect(el, "the badge attribute was clobbered away").not.toBeNull();
+    expect(el).toHaveAttribute("data-pretable-tone", "negative");
+  });
+});
+
+describe("PretableEntity", () => {
+  test("renders both lines", () => {
+    const { container } = render(
+      <PretableEntity primary="NVDA" secondary="NVIDIA Corp" />,
+    );
+    const el = container.querySelector("[data-pretable-entity]")!;
+    expect(
+      el.querySelector("[data-pretable-entity-primary]"),
+    ).toHaveTextContent("NVDA");
+    expect(
+      el.querySelector("[data-pretable-entity-secondary]"),
+    ).toHaveTextContent("NVIDIA Corp");
+  });
+
+  test("renders only the primary when no secondary is given", () => {
+    // Not an empty secondary element: grid.css gives it its own line-box, so an
+    // empty one still reserves a line and every row in the column grows by it.
+    const { container } = render(<PretableEntity primary="NVDA" />);
+    const el = container.querySelector("[data-pretable-entity]")!;
+    expect(
+      el.querySelector("[data-pretable-entity-primary]"),
+    ).toHaveTextContent("NVDA");
+    expect(el.querySelector("[data-pretable-entity-secondary]")).toBeNull();
+  });
+
+  test("renders a secondary of 0, which is a value and not an absence", () => {
+    // `secondary && <span>` would swallow 0 and the empty string. Both are
+    // legitimate secondary lines — a count, a code — and the test exists
+    // because the falsy-guard version of this component passes every other
+    // test in this block.
+    const { container } = render(
+      <PretableEntity primary="NVDA" secondary={0} />,
+    );
+    expect(
+      container.querySelector("[data-pretable-entity-secondary]"),
+    ).toHaveTextContent("0");
+  });
+
+  test("passes className and other span props through", () => {
+    const { container } = render(
+      <PretableEntity primary="NVDA" className="app-entity" title="Symbol" />,
+    );
+    const el = container.querySelector("[data-pretable-entity]")!;
+    expect(el).toHaveClass("app-entity");
+    expect(el).toHaveAttribute("title", "Symbol");
   });
 });
