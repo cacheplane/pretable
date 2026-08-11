@@ -72,19 +72,29 @@
 
 Slice 3 shipped `packages/inspector/src/components/memory/use-memory-browse.ts`. This plan calls it with, and reads from it, exactly these names:
 
+Slice 3 shipped it at `packages/inspector/src/browse/use-memory-browse.ts` — **not** under `src/components/memory/`, which is where earlier drafts of this plan pointed. The machine it drives is `src/browse/browse-machine.ts` and the reconciler is `src/browse/browse-reconcile.ts`.
+
 ```ts
 export interface UseMemoryBrowseInput {
-  /** The canonical query MINUS paging. The hook owns `limit`, `cursor` and the
-   *  pinned `now` generation; a caller that sets them breaks continuation. */
-  readonly query: BrowseQuery
+  /** The canonical query MINUS paging. The hook owns `limit`, `offset` and the
+   *  pinned `now` generation; a caller that sets them breaks the walk. */
+  readonly query: CanonicalBrowseQuery
   /** Poll only while this is true (live toggle ∧ visible tab ∧ no active search). */
   readonly live: boolean
+  readonly pollIntervalMs?: number
+  readonly fetchPage?: BrowseFetcher
+  readonly now?: () => number
 }
 export interface UseMemoryBrowseResult {
   readonly rows: readonly MemoryRecord[]
   readonly resultMeta: PretableResultMeta   // { total: {kind:"exact",count}, datasetKey }
   readonly dataState: PretableDataState
-  /** The newest fulfilled response's `continuation !== null`. */
+  readonly total: number | null
+  readonly errors: BrowseKindErrors
+  readonly updatedAt: number | null
+  readonly paused: boolean
+  /** The server holds matching records that are not resident. NOT a promise that
+   *  `loadMore` will fetch them — see the cap note below. */
   readonly hasMore: boolean
   loadMore(): void
   refresh(): void
@@ -94,6 +104,12 @@ export function useMemoryBrowse(input: UseMemoryBrowseInput): UseMemoryBrowseRes
 ```
 
 **Task 1 verifies this by reading the file.** If slice 3 named something differently, **rename it in slice 3's file to match this plan** and re-run slice 3's tests. Dawn is pre-1.0 with a single in-repo consumer; there are no deprecation aliases and no compatibility shims. Do not fork a second vocabulary.
+
+**Three corrections Task 1 folded back into this section, all discovered against the shipped file:**
+
+1. **`query` is `CanonicalBrowseQuery`, not `BrowseQuery`.** Slice 3's type (`src/browse/canonical-query.ts`) is `{view, namespace, status[], kind[], since}` — it carries **no `filters`, no `orderBy`, no `cursor`**. Renaming it to `BrowseQuery` would both collide with the imported `@dawn-ai/memory/browse` type and make the name lie about the shape, so the seam keeps the honest name. **This is a real gap, not a naming quibble:** `browseSearchParams` emits repeated `status`/`kind` plus `limit`/`offset`, not the route's JSON `filters`/`orderBy` plus `cursor`; and `datasetKeyOf` hashes only those five fields, so a filter or sort change would **not** pivot the dataset key today. **Task 4 owns the widening** — `CanonicalBrowseQuery` must grow `filters`/`orderBy` (and later `cursor`), `datasetKeyOf` must hash them, and `browseSearchParams` must emit them — and Task 7 cannot wire the list page until it has.
+2. **`UseMemoryBrowseInput` is left as this plan names it, but the suffix is off-convention — plan owner's call.** The rename's stated purpose is aligning to Pretable's vocabulary, and Pretable names its hook parameter bag `UsePretableOptions`, reserving `*Input` for callback-argument shapes (`PretableFormatInput`, `PretableEditInput`, `PretableCellRenderInput`). Dawn splits the same way: `RecallRankingOptions`/`VectorRankingOptions` are bags, `ReflectionInput`/`ScopeInput` are values passed to functions. `hasMore` and `Input` both appear **zero** times in either Pretable d.ts, so neither is actually the shipped surface — they are this plan's coinages. The other half of the rename is well-founded and should stay regardless: `usePretable({rows})` really does speak `rows`. Renaming the interface to `UseMemoryBrowseOptions` is a one-file change while there is still exactly one consumer; after Tasks 5–11 it is five.
+3. **`hasMore` is the population fact, and the cap is separate.** Slice 3 is offset-paged and `BrowsePageResponse` has no `continuation` field, so the earlier gloss ("the newest fulfilled response's `continuation !== null`") describes a shape that does not exist yet. The honest analogue — `records.length < total` — is what shipped, as `browseHasMore`. `browseCanLoadMore` keeps the resident cap and remains the **request** gate the reducer guards on. Task 3's `loadMoreState` depends on exactly this split: it expects `hasMore: true` with `loaded: 1000` to read `"at-cap"`, which is unreachable if the cap is folded into `hasMore`. **Task 9 owns re-semanticizing `hasMore` to a real continuation** when keyset paging lands; until then `hasMore ∧ loaded ≥ cap` is the at-cap condition.
 
 ### Design sections this slice implements
 
@@ -106,13 +122,13 @@ export function useMemoryBrowse(input: UseMemoryBrowseInput): UseMemoryBrowseRes
 | File | Responsibility |
 | --- | --- |
 | `packages/inspector/src/components/memory/memory-domain.ts` | **CREATE.** The closed `MemoryStatus`/`MemoryKind` value lists plus runtime guards. Pure; imported by the grid columns and by the query mapping so both agree on one universe. |
-| `packages/inspector/src/components/memory/browse-window.ts` | **CREATE.** Paging constants (`BROWSE_PAGE_SIZE`, `BROWSE_RESIDENT_CAP`), `dedupeById`, and `loadMoreState`. Pure; the resident cap is pinned equal to `BROWSE_MAX_LIMIT` here. |
+| `packages/inspector/src/components/memory/browse-window.ts` | **CREATE — but see Task 3.** Only `loadMoreState` is genuinely new. `BROWSE_PAGE_SIZE`, `BROWSE_RESIDENT_CAP` (`src/browse/browse-machine.ts`) and `dedupeById` (`src/browse/browse-reconcile.ts`) already exist and are already load-bearing; this module must **re-export** them, never re-declare. |
 | `packages/inspector/src/components/memory/to-browse-query.ts` | **CREATE.** The only translation from Pretable filter/sort intent to `BrowseFilter[]`/`BrowseSortEntry[]`. Throws `BrowseQueryError` on anything unmappable. |
 | `packages/inspector/src/components/memory/load-more-footer.tsx` | **CREATE.** The keyset load-more control, rendered outside the `role="grid"` element, always mounted, always focusable. |
 | `packages/inspector/src/components/memory/memory-grid.tsx` | **MODIFY.** Column metadata (`type`, `options`, `filterOperators`, `sortable`), external processing authority, controlled sort, `onGridReady` pass-through. |
 | `packages/inspector/src/components/memory/list-page.tsx` | **MODIFY.** Builds the canonical `BrowseQuery`, owns filter/sort intent state, exact-namespace facet, footer placement, view scoping, `gridEpoch` deletion, bulk wiring. |
 | `packages/inspector/src/components/memory/facet-rail.tsx` | **MODIFY.** Labels its counts as global. |
-| `packages/inspector/src/components/memory/use-memory-browse.ts` | **MODIFY (slice-3 file).** Appends through the shared `dedupeById`; reads the shared paging constants. |
+| `packages/inspector/src/browse/use-memory-browse.ts` | **MODIFY (slice-3 file).** Appends through the shared `dedupeById`; reads the shared paging constants. Note the path: `src/browse/`, not `src/components/memory/`. |
 | `packages/inspector/src/components/memory/column-filters.ts` | **DELETE.** The `ValueSet` translation layer exists only because the server could not express operators; it can now. |
 | `packages/inspector/test/components/to-browse-query.test.ts` | **CREATE.** Every arm of the mapping, every throw. |
 | `packages/inspector/test/components/browse-window.test.ts` | **CREATE.** Cap/limit equality, dedupe, load-more state machine. |
@@ -151,15 +167,17 @@ Expected: `"@pretable/core": "0.3.0"`, `"@pretable/react": "0.3.0"`, `"@pretable
 - [ ] **Step 3: Prove the external-authority symbols exist in the installed package**
 
 ```bash
-cd /Users/blove/repos/dawn && grep -c "PretableProcessingOptions\|filterOperators\|datasetKey" node_modules/@pretable/react/dist/index.d.ts
+cd /Users/blove/repos/dawn && grep -c "PretableProcessingOptions\|filterOperators\|datasetKey" packages/inspector/node_modules/@pretable/react/dist/index.d.ts
 ```
 
-Expected: a count of **3 or more**. A `0` means the install is stale — run `pnpm install --force` and retry.
+Expected: a count of **3 or more** (Task 1 observed **6**). A `0` means the install is stale — run `pnpm install --force` and retry.
+
+The path is `packages/inspector/node_modules/`, **not** the root one — pnpm hoists nothing here. Two of the four symbols are not in the `react` d.ts at all: `filterOperators` and `sortable` are `0` there and live in `@pretable/core/dist/index.d.ts` (`1` and `2`). Task 5 must import those two from `@pretable/core`.
 
 - [ ] **Step 4: Read the slice-3 hook and reconcile its names**
 
 ```bash
-cd /Users/blove/repos/dawn && grep -n "export interface UseMemoryBrowse\|export function useMemoryBrowse\|hasMore\|loadMore\|continuation\|resultMeta\|dataState" packages/inspector/src/components/memory/use-memory-browse.ts
+cd /Users/blove/repos/dawn && grep -n "export interface UseMemoryBrowse\|export function useMemoryBrowse\|hasMore\|loadMore\|continuation\|resultMeta\|dataState" packages/inspector/src/browse/use-memory-browse.ts
 ```
 
 Compare against the seam table in the Preamble. For every name that differs, rename **in slice 3's file** (and its tests) to the name this plan uses, then run `pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=20000` and confirm slice 3's own tests still pass. Commit any rename separately:
@@ -312,6 +330,11 @@ cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/m
 - Create: `packages/inspector/src/components/memory/browse-window.ts`
 - Create: `packages/inspector/test/components/browse-window.test.ts`
 
+> **Task 1 correction — three of the four exports already exist. Re-export; do not re-declare.**
+> `BROWSE_PAGE_SIZE = 200` and `BROWSE_RESIDENT_CAP = 1000` are at `src/browse/browse-machine.ts`, where the cap is already enforced in `withinCap` and in the refresh/load-more window math; `dedupeById` is at `src/browse/browse-reconcile.ts` and the reducer already appends through it. A second declaration of either constant would let the two drift with nothing to catch it. Only `loadMoreState` is new.
+>
+> `loadMoreState`'s contract below is also what pins the `hasMore` split recorded in the Preamble: `{loaded: 1000, hasMore: true}` must read `"at-cap"`, so `hasMore` carries the population fact (`browseHasMore`) and this function applies the cap. Wiring it to `browseCanLoadMore` instead collapses `"at-cap"` into `"exhausted"` and the footer claims a set is complete 4432 rows early.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `packages/inspector/test/components/browse-window.test.ts`:
@@ -331,6 +354,8 @@ describe("browse window constants", () => {
     // The head refresh re-derives the WHOLE resident span in one request. If the
     // cap ever exceeded the max limit, that single request could not cover it and
     // the ≤ one-poll-period convergence guarantee would silently stop holding.
+    // Slice 3 declares the cap as a literal 1000, so this equality is the ONLY
+    // thing tying it to the route's ceiling — the tie is asserted, not structural.
     expect(BROWSE_RESIDENT_CAP).toBe(BROWSE_MAX_LIMIT)
     expect(BROWSE_RESIDENT_CAP).toBe(1000)
   })
@@ -412,50 +437,14 @@ Expected: FAIL — `Failed to resolve import "../../src/components/memory/browse
 Create `packages/inspector/src/components/memory/browse-window.ts`:
 
 ```ts
-import { BROWSE_MAX_LIMIT } from "@dawn-ai/memory/browse"
 import type { PretableDataState } from "@pretable/react"
 
-/** Records requested per window — the Inspector's page size, not the API default (50). */
-export const BROWSE_PAGE_SIZE = 200
-
-/**
- * How many records the client keeps resident.
- *
- * Deliberately EQUAL to the maximum request limit. Every poll tick refetches the
- * offset-0 window with `limit = resident count` to re-derive the whole resident
- * span from one transaction snapshot; a cap above the max limit would make that
- * impossible in a single request, and the "converges within one poll period"
- * guarantee would quietly become aspiration. Raising one means raising both.
- */
-export const BROWSE_RESIDENT_CAP = BROWSE_MAX_LIMIT
-
-/** Anything with a stable string id — records, grid rows. */
-interface Identified {
-  readonly id: string
-}
-
-/**
- * Append `page` onto `resident`, keeping the FIRST occurrence of each id.
- *
- * Belt and suspenders for the one keyset duplicate case: a sort-key edit that
- * moves a row downward across the cursor between two windows. The resident copy
- * wins because it holds the position already rendered — a refresh tick, not an
- * append, is what repairs a stale payload. Returns `resident` unchanged (same
- * reference) when the page contributes nothing, so React skips the re-render.
- */
-export function dedupeById<T extends Identified>(
-  resident: readonly T[],
-  page: readonly T[],
-): readonly T[] {
-  const seen = new Set(resident.map((row) => row.id))
-  const additions: T[] = []
-  for (const row of page) {
-    if (seen.has(row.id)) continue
-    seen.add(row.id)
-    additions.push(row)
-  }
-  return additions.length === 0 ? resident : [...resident, ...additions]
-}
+// Re-exported, NOT re-declared. The reducer in `src/browse/browse-machine.ts` already
+// enforces the cap in `withinCap` and sizes every refresh and load-more window from
+// these two, and `dedupeById` is already the reducer's append path. A second copy here
+// would be a constant the enforcement does not read.
+export { BROWSE_PAGE_SIZE, BROWSE_RESIDENT_CAP } from "../../browse/browse-machine"
+export { dedupeById } from "../../browse/browse-reconcile"
 
 /**
  * What the load-more control can offer right now.
@@ -492,14 +481,10 @@ Expected: PASS, 12 tests.
 - [ ] **Step 5: Route the slice-3 hook through the shared constants and dedupe**
 
 ```bash
-cd /Users/blove/repos/dawn && grep -n "200\|1000\|concat\|\.\.\.prev\|records\]" packages/inspector/src/components/memory/use-memory-browse.ts
+cd /Users/blove/repos/dawn && grep -n "200\|1000\|concat\|\.\.\.prev\|records\]" packages/inspector/src/browse/browse-machine.ts
 ```
 
-In `use-memory-browse.ts`: delete any locally declared page-size or resident-cap constant, import `BROWSE_PAGE_SIZE`, `BROWSE_RESIDENT_CAP` and `dedupeById` from `./browse-window`, and replace the load-more append expression (whatever concatenates the response records onto the resident rows) with:
-
-```ts
-dedupeById(resident, page.records)
-```
+**Task 1 correction: this step is already satisfied and should verify, not edit.** Slice 3 owns paging in the reducer, not the hook — `browseReduce`'s `"response"` case already appends through `dedupeById` for the `load-more` kind and clamps with `withinCap`, and both constants are declared once at the top of `browse-machine.ts`. There is no local duplicate to delete and no concat expression to replace. Confirm those three facts and move on; if this task instead makes `browse-window.ts` re-export them as written above, the single declaration stays single.
 
 where `resident` is the hook's existing resident-rows variable. Keep the `total` and `continuation` assignments exactly as they are.
 
@@ -1494,6 +1479,10 @@ cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory/m
 - Delete: `packages/inspector/src/components/memory/column-filters.ts`
 - Delete: `packages/inspector/test/components/column-filters.test.ts`
 - Modify: `packages/inspector/test/components/column-filter-wiring.test.tsx`
+
+> **Task 1 note — two cleanups this task is the natural owner of, since it rewrites the file anyway.**
+> **(a) The `rows`/`records` fork lives here.** `list-page.tsx` opens with `const pageRecords = browse.rows`, and the array then travels `pageRecords` → `<MemoryGrid records=…>` → `const rows = records.map(toRow)` → Pretable's `rows=`. Four hops, alternating names, for one array. Task 1's rename bought the hook boundary; this file is where the fork actually is.
+> **(b) `pageIsComplete` is now `!browse.hasMore`.** Line ~214 recomputes `browse.total !== null && pageRecords.length >= browse.total`, which after the `browseHasMore` split is exactly the hook's own field. It gates `groupByNamespace` (§9.4 grouping honesty), so the two must not be allowed to disagree.
 
 - [ ] **Step 1: Rewrite the wiring test**
 
