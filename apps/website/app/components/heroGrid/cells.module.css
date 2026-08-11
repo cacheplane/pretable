@@ -15,10 +15,10 @@
   text-align: right;
 }
 .up {
-  color: var(--pretable-pos, #1a8f50);
+  color: var(--pt-sev-ok);
 }
 .down {
-  color: var(--pretable-neg, #c0392b);
+  color: var(--pt-sev-err);
 }
 .flash {
   display: inline-block;
@@ -33,7 +33,7 @@
 }
 @keyframes flashUp {
   from {
-    background: rgba(26, 143, 80, 0.28);
+    background: color-mix(in srgb, var(--pt-sev-ok) 24%, transparent);
   }
   to {
     background: transparent;
@@ -41,7 +41,7 @@
 }
 @keyframes flashDown {
   from {
-    background: rgba(192, 57, 57, 0.28);
+    background: color-mix(in srgb, var(--pt-sev-err) 24%, transparent);
   }
   to {
     background: transparent;
@@ -65,16 +65,16 @@
 }
 .pillTrim,
 .pillWatch {
-  background: rgba(184, 120, 0, 0.16);
-  color: #b87800;
+  background: color-mix(in srgb, var(--pt-sev-warn) 14%, transparent);
+  color: var(--pt-sev-warn);
 }
 .pillRisk {
-  background: rgba(192, 57, 57, 0.16);
-  color: #c0392b;
+  background: color-mix(in srgb, var(--pt-sev-err) 14%, transparent);
+  color: var(--pt-sev-err);
 }
 .pillHold {
-  background: rgba(26, 143, 80, 0.16);
-  color: #1a8f50;
+  background: color-mix(in srgb, var(--pt-sev-ok) 14%, transparent);
+  color: var(--pt-sev-ok);
 }
 @media (prefers-reduced-motion: reduce) {
   .flashUp,
