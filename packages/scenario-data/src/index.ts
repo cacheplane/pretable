@@ -1,5 +1,6 @@
 export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6" | "S7";
-export type ScenarioScale = "smoke" | "dev" | "hypothesis" | "target";
+export type ScenarioScale =
+  "smoke" | "dev" | "hypothesis" | "target" | "local-max";
 export type {
   InspectionColumn,
   InspectionDataset,
@@ -68,42 +69,49 @@ const scenarioScaleRowCounts: Record<
     dev: 2_000,
     hypothesis: 10_000,
     target: 100_000,
+    "local-max": 100_000,
   },
   S2: {
     smoke: 120,
     dev: 750,
     hypothesis: 3_000,
     target: 50_000,
+    "local-max": 50_000,
   },
   S3: {
     smoke: 120,
     dev: 500,
     hypothesis: 2_500,
     target: 10_000,
+    "local-max": 10_000,
   },
   S4: {
     smoke: 120,
     dev: 750,
     hypothesis: 3_000,
     target: 25_000,
+    "local-max": 25_000,
   },
   S5: {
     smoke: 120,
     dev: 750,
     hypothesis: 3_000,
     target: 20_000,
+    "local-max": 100_000,
   },
   S6: {
     smoke: 120,
     dev: 750,
     hypothesis: 3_000,
     target: 10_000,
+    "local-max": 10_000,
   },
   S7: {
     smoke: 120,
     dev: 750,
     hypothesis: 3_000,
     target: 50_000,
+    "local-max": 50_000,
   },
 };
 
@@ -241,10 +249,10 @@ export function getScenarioById(id: ScenarioId): ScenarioDefinition {
 
 export function createScenarioDataset(
   id: ScenarioId,
-  options: { scale?: ScenarioScale } = {},
+  options: { scale?: ScenarioScale; seed?: number } = {},
 ): ScenarioDataset {
   const scenario = getScenarioById(id);
-  const seed = scenarioSeeds[id];
+  const seed = options.seed ?? scenarioSeeds[id];
   const scale = options.scale ?? "smoke";
   const rowCount = scenarioScaleRowCounts[id][scale];
 

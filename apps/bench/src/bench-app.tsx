@@ -39,6 +39,7 @@ import { MuiAdapter } from "./mui-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
 import { TanstackAdapter } from "./tanstack-adapter";
+import type { RowModelDiagnosticsController } from "./row-model-diagnostics";
 
 export interface BenchAppProps {
   search: string;
@@ -84,8 +85,12 @@ function waitForNextAnimationFrame() {
 export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const query = useMemo(() => parseBenchQuery(search), [search]);
   const dataset = useMemo(
-    () => createScenarioDataset(query.scenarioId, { scale: query.scale }),
-    [query.scenarioId, query.scale],
+    () =>
+      createScenarioDataset(query.scenarioId, {
+        scale: query.scale,
+        ...(query.diagnostics ? { seed: query.seed } : {}),
+      }),
+    [query.diagnostics, query.scenarioId, query.scale, query.seed],
   );
   const adapterDefinition = adapterRegistry[query.adapterId];
   const AdapterSurface = adapterDefinition.render;
@@ -105,6 +110,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
    * setData merge) and exposes a uniform `apply(patches)` callback here.
    */
   const updateApiRef = useRef<ApplyBenchUpdates | null>(null);
+  const rowModelDiagnosticsRef = useRef<RowModelDiagnosticsController | null>(
+    null,
+  );
   const handleUpdateApiReady = useCallback((apply: ApplyBenchUpdates) => {
     updateApiRef.current = apply;
   }, []);
@@ -171,6 +179,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       // onReady callbacks.
       updateApiRef.current = null;
       autosizeApiRef.current = null;
+      rowModelDiagnosticsRef.current = null;
 
       setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
@@ -309,7 +318,14 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               query.adapterId,
               updatesApi,
               dataset,
-              { updateRatePerSec: query.updateRatePerSec },
+              {
+                updateRatePerSec: query.updateRatePerSec,
+                seed: query.seed,
+                grouped: scriptName === "updates-grouped",
+                diagnostics: query.diagnostics
+                  ? rowModelDiagnosticsRef.current
+                  : null,
+              },
             )
           : null;
 
@@ -346,19 +362,24 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 metrics: keySequenceRun.metrics,
               })
             : updatesScript && updatesRun
-              ? createBenchRunSummary({
-                  request,
-                  status: updatesRun.status,
-                  timestamp,
-                  tracePath,
-                  notes: [
-                    ...updatesRun.notes,
-                    ...createPretableTelemetryNotes(
-                      pretableTelemetryRef.current,
-                    ),
-                  ],
-                  metrics: updatesRun.metrics,
-                })
+              ? (() => {
+                  const summary = createBenchRunSummary({
+                    request,
+                    status: updatesRun.status,
+                    timestamp,
+                    tracePath,
+                    notes: [
+                      ...updatesRun.notes,
+                      ...createPretableTelemetryNotes(
+                        pretableTelemetryRef.current,
+                      ),
+                    ],
+                    metrics: updatesRun.metrics as never,
+                  });
+                  return updatesRun.rowModel === undefined
+                    ? summary
+                    : { ...summary, rowModel: updatesRun.rowModel };
+                })()
               : scriptName === "autosize" && autosizeRun
                 ? createBenchRunSummary({
                     request,
@@ -542,6 +563,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 onAutosizeReady={handleAutosizeApiReady}
                 onTelemetryChange={(telemetry) => {
                   pretableTelemetryRef.current = telemetry;
+                }}
+                diagnostics={query.diagnostics}
+                seed={query.seed}
+                onDiagnosticsReady={(controller) => {
+                  rowModelDiagnosticsRef.current = controller;
                 }}
                 onUpdateApiReady={handleUpdateApiReady}
                 runKey={runKey}

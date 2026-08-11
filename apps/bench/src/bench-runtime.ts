@@ -7,6 +7,13 @@ import type {
 import type { PretableTelemetry } from "@pretable/react";
 
 import type { BenchQueryState } from "./bench-types";
+import type { RowModelBenchSummary } from "./bench-types";
+import type { RowModelDiagnosticsController } from "./row-model-diagnostics";
+import {
+  createDeterministicUpdatePlan,
+  ROW_MODEL_BATCH_INTERVAL_MS,
+  type DeterministicUpdatePlan,
+} from "./update-plan";
 
 export const BENCH_RESULT_KEY = "__PRETABLE_BENCH_RESULT__";
 
@@ -572,8 +579,12 @@ export async function measureBenchInteractionRun(
 
 export interface UpdatesBenchRunResult {
   status: "completed" | "partial";
-  metrics: Partial<Record<BenchMetricId, number>>;
+  metrics: Partial<Record<BenchMetricId, number>> & {
+    row_model_commit_p95_ms?: number;
+    rebuild_slice_max_ms?: number;
+  };
   notes: string[];
+  rowModel?: RowModelBenchSummary;
 }
 
 /**
@@ -595,6 +606,14 @@ export interface MeasureBenchUpdatesOptions {
    * behavior consistent across rates.
    */
   updateRatePerSec?: number;
+  /** Shared seed for the permanent deterministic row/column schedule. */
+  seed?: number;
+  /** Uses the grouped plan, including the catch-up rebuild phase. */
+  grouped?: boolean;
+  /** Private diagnostics controller installed only for row-model gate runs. */
+  diagnostics?: RowModelDiagnosticsController | null;
+  /** Test seam; production runs always create the canonical plan. */
+  plan?: DeterministicUpdatePlan;
 }
 
 export async function measureBenchUpdatesRun(
@@ -621,8 +640,7 @@ export async function measureBenchUpdatesRun(
     };
   }
 
-  const BATCH_INTERVAL_MS = 50;
-  const DURATION_MS = 3_000;
+  const BATCH_INTERVAL_MS = ROW_MODEL_BATCH_INTERVAL_MS;
   const FRAME_BUDGET_MS = 16;
   const updateRatePerSec = options.updateRatePerSec ?? 1000;
   // Vary batch size to hit the rate at a fixed 50ms tick. RAF/timer
@@ -632,7 +650,23 @@ export async function measureBenchUpdatesRun(
     1,
     Math.round((updateRatePerSec * BATCH_INTERVAL_MS) / 1000),
   );
-  const columnIds = dataset.columns.map((c) => c.id);
+  const plan =
+    options.plan ??
+    createDeterministicUpdatePlan({
+      dataset: dataset as never,
+      grouped: options.grouped ?? false,
+      seed: options.seed ?? 505,
+      patchRatePerSec: updateRatePerSec,
+    });
+  if (
+    options.diagnostics !== null &&
+    options.diagnostics !== undefined &&
+    (updateRatePerSec !== 1_000 || UPDATES_PER_TICK !== 50)
+  ) {
+    throw new RangeError(
+      "The permanent row-model workload requires 1,000 patches/sec in 50-patch ticks.",
+    );
+  }
 
   let totalUpdates = 0;
   const longTaskDurations: number[] = [];
@@ -651,6 +685,8 @@ export async function measureBenchUpdatesRun(
   ).length;
 
   const rafHandle = { running: true, id: 0 };
+  let interactionProbeActive = false;
+  let interactionProbeOffset = 0;
   const tickRaf = () => {
     if (!rafHandle.running) return;
     rafHandle.id = requestAnimationFrame((ts) => {
@@ -659,6 +695,26 @@ export async function measureBenchUpdatesRun(
       }
 
       previousFrameTimestamp = ts;
+      const rebuilding =
+        options.diagnostics?.model.getState().status.kind === "rebuilding";
+      if (rebuilding) {
+        interactionProbeActive = true;
+        interactionProbeOffset = interactionProbeOffset === 0 ? 1 : 0;
+        viewport.scrollTop = scrollTopBefore + interactionProbeOffset;
+        viewport.dispatchEvent(new Event("scroll"));
+        options.diagnostics?.recordInteractionSample({
+          scrollTop: viewport.scrollTop,
+          activeElement:
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement.tagName
+              : null,
+        });
+      } else if (interactionProbeActive) {
+        interactionProbeActive = false;
+        interactionProbeOffset = 0;
+        viewport.scrollTop = scrollTopBefore;
+        viewport.dispatchEvent(new Event("scroll"));
+      }
       tickRaf();
     });
   };
@@ -667,23 +723,29 @@ export async function measureBenchUpdatesRun(
 
   try {
     await new Promise<void>((resolve, reject) => {
-      let elapsed = 0;
+      let tickIndex = 0;
+      const pendingApplies: Promise<void>[] = [];
+      let rebuildTransition: ReturnType<
+        RowModelDiagnosticsController["startQueryCandidate"]
+      > = null;
 
       const interval = setInterval(() => {
         try {
-          elapsed += BATCH_INTERVAL_MS;
-
-          const patches: Record<string, unknown>[] = [];
-
-          for (let i = 0; i < UPDATES_PER_TICK; i += 1) {
-            const rowIndex = Math.floor(Math.random() * dataset.rows.length);
-            const row = dataset.rows[rowIndex];
-            const colIndex = Math.floor(Math.random() * columnIds.length);
-            const columnId = columnIds[colIndex];
-            const id = String((row as Record<string, unknown>).id ?? rowIndex);
-
-            patches.push({ id, [columnId]: `upd-${totalUpdates + i}` });
+          const tick = plan.ticks[tickIndex];
+          if (tick === undefined) {
+            clearInterval(interval);
+            void Promise.all(pendingApplies)
+              .then(async () => {
+                await rebuildTransition?.finished;
+                resolve();
+              })
+              .catch(reject);
+            return;
           }
+          const patches = tick.patches.map((patch) => ({
+            id: patch.id,
+            [patch.columnId]: patch.value,
+          }));
 
           const applyResult = apply(patches);
           if (applyResult && typeof applyResult.then === "function") {
@@ -691,17 +753,21 @@ export async function measureBenchUpdatesRun(
             // we don't await within the interval to keep the cadence honest,
             // but we do swallow rejections so they surface via the outer
             // try/catch above.
-            applyResult.catch((err) => {
+            const pending = applyResult.catch((err) => {
               clearInterval(interval);
               reject(err);
             });
+            pendingApplies.push(pending);
           }
-          totalUpdates += UPDATES_PER_TICK;
-
-          if (elapsed >= DURATION_MS) {
-            clearInterval(interval);
-            resolve();
+          totalUpdates += tick.patches.length;
+          if (
+            plan.rebuild !== null &&
+            tick.index === plan.rebuild.startAfterTick
+          ) {
+            rebuildTransition =
+              options.diagnostics?.startQueryCandidate() ?? null;
           }
+          tickIndex += 1;
         } catch (err) {
           clearInterval(interval);
           reject(err);
@@ -711,6 +777,7 @@ export async function measureBenchUpdatesRun(
   } finally {
     rafHandle.running = false;
     cancelAnimationFrame(rafHandle.id);
+    if (interactionProbeActive) viewport.scrollTop = scrollTopBefore;
     observer?.disconnect();
     layoutShiftObserver?.disconnect();
   }
@@ -742,7 +809,9 @@ export async function measureBenchUpdatesRun(
       `update rate per sec: ${updateRatePerSec}`,
       `updates per tick: ${UPDATES_PER_TICK}`,
       `batch interval ms: ${BATCH_INTERVAL_MS}`,
-      `duration ms: ${DURATION_MS}`,
+      `duration ms: ${plan.ticks.length * BATCH_INTERVAL_MS}`,
+      `seed: ${plan.seed}`,
+      `update plan checksum: ${plan.scheduleChecksum}`,
       `frame budget threshold ms: ${FRAME_BUDGET_MS}`,
       `total frames sampled: ${frameDurations.length}`,
     ],
@@ -759,7 +828,22 @@ export async function measureBenchUpdatesRun(
       long_tasks_max_ms: longTasksMaxMs,
       scroll_position_drift_px: scrollPositionDriftPx,
       visible_row_count_drift: visibleRowCountDrift,
+      ...(options.diagnostics
+        ? {
+            row_model_commit_p95_ms: percentile(
+              options.diagnostics.read().commitDurationsMs,
+              0.95,
+            ),
+            rebuild_slice_max_ms: Math.max(
+              0,
+              ...options.diagnostics.read().work.schedulerSliceDurations,
+            ),
+          }
+        : {}),
     },
+    ...(options.diagnostics
+      ? { rowModel: options.diagnostics.createRunSummary() }
+      : {}),
   };
 }
 
@@ -958,7 +1042,7 @@ async function waitForScrollViewport(
   return null;
 }
 
-function percentile(values: number[], ratio: number) {
+function percentile(values: readonly number[], ratio: number) {
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(
     sorted.length - 1,

@@ -13,6 +13,8 @@ describe("parseBenchQuery", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -30,6 +32,8 @@ describe("parseBenchQuery", () => {
       autorun: true,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -47,6 +51,8 @@ describe("parseBenchQuery", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -64,6 +70,8 @@ describe("parseBenchQuery", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -81,6 +89,8 @@ describe("parseBenchQuery", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -94,6 +104,8 @@ describe("parseBenchQuery", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -107,6 +119,8 @@ describe("parseBenchQuery", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -120,6 +134,8 @@ describe("parseBenchQuery", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -133,6 +149,8 @@ describe("parseBenchQuery", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     });
   });
 
@@ -156,6 +174,18 @@ describe("parseBenchQuery", () => {
       scenarioId: "S5",
       scale: "target",
       scriptName: "updates-grouped",
+    });
+  });
+
+  test("accepts local-max and explicit row-model diagnostics metadata", () => {
+    expect(
+      parseBenchQuery(
+        "?scenario=S5&scale=local-max&script=updates-grouped&diagnostics=row-model&seed=91337",
+      ),
+    ).toMatchObject({
+      scale: "local-max",
+      diagnostics: true,
+      seed: 91_337,
     });
   });
 

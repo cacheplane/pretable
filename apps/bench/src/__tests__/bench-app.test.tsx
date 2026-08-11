@@ -231,7 +231,12 @@ describe("BenchApp", () => {
       "pretable",
       expect.any(Function),
       expect.any(Object),
-      { updateRatePerSec: 1_000 },
+      {
+        updateRatePerSec: 1_000,
+        seed: 505,
+        grouped: true,
+        diagnostics: null,
+      },
     );
   });
 

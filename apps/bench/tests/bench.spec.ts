@@ -15,6 +15,8 @@ const scale = process.env.PRETABLE_BENCH_SCALE ?? "dev";
 const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
 const updateRatePerSec = process.env.PRETABLE_BENCH_UPDATE_RATE_PER_SEC;
+const diagnostics = process.env.PRETABLE_BENCH_DIAGNOSTICS;
+const seed = process.env.PRETABLE_BENCH_SEED;
 const adapterLabel =
   adapterId === "ag-grid"
     ? "AG Grid Community adapter"
@@ -36,8 +38,12 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     ? `&updateRatePerSec=${updateRatePerSec}`
     : "";
   const triggerParam = perfTraceEnabled ? "&waitForTrigger=1" : "";
+  const diagnosticsParam = diagnostics
+    ? `&diagnostics=${encodeURIComponent(diagnostics)}`
+    : "";
+  const seedParam = seed ? `&seed=${encodeURIComponent(seed)}` : "";
   await page.goto(
-    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}&autorun=1${triggerParam}`,
+    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}${diagnosticsParam}${seedParam}&autorun=1${triggerParam}`,
   );
 
   await expect(page.getByLabel(adapterLabel).first()).toBeVisible();
@@ -237,6 +243,22 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       scroll_position_drift_px: expect.any(Number),
       visible_row_count_drift: expect.any(Number),
     });
+    if (diagnostics === "row-model") {
+      expect(result.metrics).toMatchObject({
+        row_model_commit_p95_ms: expect.any(Number),
+        rebuild_slice_max_ms: expect.any(Number),
+      });
+      expect(result.rowModel).toMatchObject({
+        diagnostics: true,
+        acceptedPatchCount: 3_000,
+        checksumAcceptedPatchCount: 3_000,
+        finalChecksum: expect.any(String),
+        expectedFinalChecksum: expect.any(String),
+      });
+      expect(result.rowModel.finalChecksum).toBe(
+        result.rowModel.expectedFinalChecksum,
+      );
+    }
   }
 
   const dashboardPath = path.join(cwd, "status", "dashboard.json");

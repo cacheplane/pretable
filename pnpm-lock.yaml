@@ -125,6 +125,9 @@ importers:
       '@pretable-internal/bench-runner':
         specifier: workspace:*
         version: link:../../packages/bench-runner
+      '@pretable-internal/row-model':
+        specifier: workspace:*
+        version: link:../../packages/row-model
       '@pretable-internal/scenario-data':
         specifier: workspace:*
         version: link:../../packages/scenario-data

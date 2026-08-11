@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "files": ["src/index.ts"],
+  "files": ["src/index.ts", "src/diagnostics.ts"],
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist"

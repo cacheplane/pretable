@@ -22,6 +22,7 @@
     "api:check": "pnpm --filter @pretable/core api:check && pnpm --filter @pretable/react api:check && pnpm --filter @pretable/ui api:check && pnpm --filter @pretable/stream-adapter api:check",
     "bench:e2e": "node ./scripts/bench-e2e.mjs",
     "bench:matrix": "node ./scripts/bench-matrix.mjs",
+    "bench:row-model:gate": "node ./scripts/bench-row-model-gate.mjs",
     "build": "pnpm -r --filter './packages/*' build && pnpm -r --workspace-concurrency=1 --filter './apps/*' build",
     "dev:bench": "pnpm --filter @pretable/app-bench dev",
     "format": "prettier --check .",

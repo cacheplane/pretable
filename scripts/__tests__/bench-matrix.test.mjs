@@ -14,6 +14,7 @@ import {
   evaluateH21,
   evaluateH22,
   parseBenchMatrixArgs,
+  createRowModelGateMatrixEntries,
 } from "../bench-matrix.mjs";
 
 test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matrix", () => {
@@ -240,6 +241,27 @@ test("createBenchMatrixEntries multiplies update scripts across rates without af
     [100, 1000],
   );
   assert.equal(scrollEntries[0].updateRatePerSec, 1000);
+});
+
+test("integrates the deterministic row-model gate quartet into matrix entry metadata", () => {
+  assert.deepEqual(
+    createRowModelGateMatrixEntries(91_337),
+    [
+      ["target", "updates"],
+      ["target", "updates-grouped"],
+      ["local-max", "updates"],
+      ["local-max", "updates-grouped"],
+    ].map(([scale, scriptName]) => ({
+      adapterId: "pretable",
+      repeatIndex: 0,
+      scale,
+      scenarioId: "S5",
+      scriptName,
+      updateRatePerSec: 1_000,
+      diagnostics: "row-model",
+      seed: 91_337,
+    })),
+  );
 });
 
 test("createBenchRunsetManifest records the invoked matrix and produced summary paths", () => {

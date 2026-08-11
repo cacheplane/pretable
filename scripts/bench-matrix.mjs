@@ -98,8 +98,9 @@ export function createBenchMatrixEntries(parsedArgs) {
           // Only update scripts consume the update-rate dimension.
           // For every other script, single entry with the default rate so
           // existing matrix runs aren't multiplied.
-          const ratesForEntry =
-            isUpdatesScript(scriptName) ? updateRates : DEFAULT_UPDATE_RATES;
+          const ratesForEntry = isUpdatesScript(scriptName)
+            ? updateRates
+            : DEFAULT_UPDATE_RATES;
           return ratesForEntry.map((updateRatePerSec) => ({
             adapterId,
             repeatIndex,
@@ -112,6 +113,24 @@ export function createBenchMatrixEntries(parsedArgs) {
       ),
     ).flat(),
   );
+}
+
+export function createRowModelGateMatrixEntries(seed) {
+  return [
+    ["target", "updates"],
+    ["target", "updates-grouped"],
+    ["local-max", "updates"],
+    ["local-max", "updates-grouped"],
+  ].map(([scale, scriptName]) => ({
+    adapterId: "pretable",
+    repeatIndex: 0,
+    scale,
+    scenarioId: "S5",
+    scriptName,
+    updateRatePerSec: 1_000,
+    diagnostics: "row-model",
+    seed,
+  }));
 }
 
 export function createBenchRunsetManifest(input) {
@@ -293,6 +312,12 @@ function spawnBenchRun(entry, passthroughArgs) {
                 entry.updateRatePerSec,
               ),
             }
+          : {}),
+        ...(entry.diagnostics !== undefined
+          ? { PRETABLE_BENCH_DIAGNOSTICS: entry.diagnostics }
+          : {}),
+        ...(entry.seed !== undefined
+          ? { PRETABLE_BENCH_SEED: String(entry.seed) }
           : {}),
       },
       stdio: "inherit",

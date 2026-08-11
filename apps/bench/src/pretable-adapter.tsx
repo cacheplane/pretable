@@ -18,6 +18,12 @@ import type {
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
 import type { BenchInteractionPlan } from "./interaction-plan";
+import {
+  createBenchModelColumns,
+  createBenchRowModelOwner,
+  type RowModelDiagnosticsController,
+} from "./row-model-diagnostics";
+import { createDeterministicUpdatePlan } from "./update-plan";
 
 type CellRendererFlavor =
   "scroll-with-format" | "scroll-with-render" | "scroll-with-heavy-render";
@@ -115,6 +121,13 @@ export interface PretableAdapterProps {
    * exercise the D3 cell-renderer pipeline.
    */
   scriptName?: string;
+  /** Explicit opt-in for the private benchmark diagnostics controller. */
+  diagnostics?: boolean;
+  /** Seed shared by the permanent row-model workload quartet. */
+  seed?: number;
+  onDiagnosticsReady?: (
+    diagnostics: RowModelDiagnosticsController | null,
+  ) => void;
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -126,10 +139,6 @@ const BENCHMARK_VIEWPORT_STYLE = {
   overscrollBehavior: "contain",
 } as const;
 
-function getScenarioRowId(row: ScenarioDataset["rows"][number]) {
-  return String(row.id ?? "");
-}
-
 export function PretableAdapter({
   dataset,
   interactionPlan,
@@ -139,6 +148,9 @@ export function PretableAdapter({
   onAutosizeReady,
   runKey,
   scriptName,
+  diagnostics = false,
+  seed = dataset.seed,
+  onDiagnosticsReady,
 }: PretableAdapterProps) {
   const adapterRef = useRef<HTMLElement>(null);
   const groupedUpdates = scriptName === "updates-grouped";
@@ -182,14 +194,41 @@ export function PretableAdapter({
           readonly type: "text" | "number" | "date" | "boolean" | "enum";
         }[]
       >["filters"],
-      sort: interactionPlan?.sort ?? [],
+      sort:
+        interactionPlan?.sort ??
+        (groupedUpdates
+          ? [{ columnId: "col_3", direction: "asc" as const }]
+          : []),
       rowGroups: groupedUpdates ? [{ columnId: "col_1" }] : [],
     }),
     [groupedUpdates, interactionPlan],
   );
-  const surfaceRows = useMemo(() => [...dataset.rows], [dataset.rows]);
+  const updatePlan = useMemo(
+    () =>
+      createDeterministicUpdatePlan({
+        dataset,
+        grouped: groupedUpdates,
+        seed,
+      }),
+    [dataset, groupedUpdates, seed],
+  );
+  const modelColumns = useMemo(
+    () => createBenchModelColumns(dataset, groupedUpdates),
+    [dataset, groupedUpdates],
+  );
+  const rowModelOwner = useMemo(
+    () =>
+      createBenchRowModelOwner({
+        dataset,
+        plan: updatePlan,
+        columns: modelColumns,
+        query: surfaceQuery as never,
+        diagnostics,
+      }),
+    [dataset, diagnostics, modelColumns, surfaceQuery, updatePlan],
+  );
+  const diagnosticsController = rowModelOwner.diagnostics;
   const autosize = dataset.scenario.autosize_all_columns === true;
-  const ignoreQueryChange = useCallback(() => undefined, []);
 
   const gridRef = useRef<PretableSurfaceGrid<
     ScenarioRow,
@@ -205,6 +244,26 @@ export function PretableAdapter({
   const onAutosizeReadyRef = useRef(onAutosizeReady);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onAutosizeReadyRef.current = onAutosizeReady;
+  const onDiagnosticsReadyRef = useRef(onDiagnosticsReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in effects
+  onDiagnosticsReadyRef.current = onDiagnosticsReady;
+
+  useEffect(() => {
+    onDiagnosticsReadyRef.current?.(diagnosticsController);
+    if (diagnosticsController !== null) {
+      window.__PRETABLE_ROW_MODEL_BENCH__ = diagnosticsController;
+    }
+    return () => {
+      onDiagnosticsReadyRef.current?.(null);
+      if (
+        diagnosticsController !== null &&
+        window.__PRETABLE_ROW_MODEL_BENCH__ === diagnosticsController
+      ) {
+        delete window.__PRETABLE_ROW_MODEL_BENCH__;
+      }
+      rowModelOwner.dispose();
+    };
+  }, [diagnosticsController, rowModelOwner]);
 
   const handleGridReady = useCallback(
     (grid: NonNullable<typeof gridRef.current>) => {
@@ -221,7 +280,7 @@ export function PretableAdapter({
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
-    const batcher = createBatcher<ScenarioRow, string>(grid.rowModel);
+    const batcher = createBatcher<ScenarioRow, string>(rowModelOwner.model);
     const apply: ApplyBenchUpdates = (patches) => {
       batcher.update(
         patches.flatMap((patch) => {
@@ -239,12 +298,28 @@ export function PretableAdapter({
           return [{ id: String(id), changes }];
         }),
       );
+      return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let unsubscribe: () => void = () => undefined;
+        unsubscribe = batcher.subscribeError((error) => {
+          if (settled) return;
+          settled = true;
+          unsubscribe();
+          reject(error);
+        });
+        requestAnimationFrame(() => {
+          if (settled) return;
+          settled = true;
+          unsubscribe();
+          resolve();
+        });
+      });
     };
     onUpdateApiReadyRef.current?.(apply);
     return () => {
       batcher.dispose();
     };
-  }, [runKey]);
+  }, [rowModelOwner, runKey]);
 
   const onTelemetryChangeRef = useRef(onTelemetryChange);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
@@ -312,16 +387,13 @@ export function PretableAdapter({
         ariaLabel="Pretable React adapter"
         autosize={autosize}
         columns={surfaceColumns}
-        getRowId={getScenarioRowId}
+        model={rowModelOwner.model}
         state={surfaceState}
         onGridReady={handleGridReady}
-        query={surfaceQuery}
-        onQueryChange={ignoreQueryChange}
         onTelemetryChange={handleTelemetryChange}
         overscan={4}
         renderBodyCell={({ value }) => String(value ?? "")}
         renderHeaderCell={({ label }) => label}
-        rows={surfaceRows}
         viewportHeight={VIEWPORT_HEIGHT}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
       />

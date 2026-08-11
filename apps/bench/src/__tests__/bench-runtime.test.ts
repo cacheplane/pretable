@@ -30,6 +30,8 @@ describe("bench runtime", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     };
 
     expect(createBenchRequest(query, dataset, "123.0")).toMatchObject({

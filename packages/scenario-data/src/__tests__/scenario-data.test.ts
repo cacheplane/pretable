@@ -75,6 +75,15 @@ describe("scenario-data registry", () => {
     });
   });
 
+  test("keeps S5 target at 20k and adds the 100k local maximum", () => {
+    expect(createScenarioDataset("S5", { scale: "target" }).rowCount).toBe(
+      20_000,
+    );
+    expect(createScenarioDataset("S5", { scale: "local-max" }).rowCount).toBe(
+      100_000,
+    );
+  });
+
   test("models wrapped columns and full column count for the wedge scenario", () => {
     const dataset = createScenarioDataset("S2");
 

@@ -11,13 +11,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
 import * as pretableReactInternal from "@pretable/react";
-import type { PretableColumn, PretableSurfaceRowsProps } from "@pretable/react";
+import type { PretableColumn, PretableSurfaceProps } from "@pretable/react";
 import type { ScenarioRow } from "@pretable-internal/scenario-data";
 
 import { createBenchInteractionPlan } from "../interaction-plan";
 import { PretableAdapter } from "../pretable-adapter";
 
-type SurfaceProps = PretableSurfaceRowsProps<
+type SurfaceProps = PretableSurfaceProps<
   ScenarioRow,
   string,
   readonly PretableColumn<ScenarioRow>[]
@@ -95,7 +95,16 @@ describe("PretableAdapter", () => {
 
     const groupedProps = surfaceSpy.mock.calls.at(-1)?.[0] as
       SurfaceProps | undefined;
-    expect(groupedProps?.query?.rowGroups).toEqual([{ columnId: "col_1" }]);
+    const groupedModel =
+      groupedProps && "model" in groupedProps ? groupedProps.model : undefined;
+    expect("model" in (groupedProps ?? {})).toBe(true);
+    expect(groupedModel).toBeTruthy();
+    expect(groupedModel!.getState().snapshot.query.rowGroups).toEqual([
+      { columnId: "col_1" },
+    ]);
+    expect(groupedModel!.getState().snapshot.expansion.default).toEqual({
+      kind: "expanded",
+    });
     expect(
       groupedProps?.columns?.find((column) => column.id === "col_3"),
     ).toMatchObject({ aggregate: "sum" });
@@ -110,7 +119,9 @@ describe("PretableAdapter", () => {
 
     const updatesProps = surfaceSpy.mock.calls.at(-1)?.[0] as
       SurfaceProps | undefined;
-    expect(updatesProps?.query?.rowGroups).toEqual([]);
+    const updatesModel =
+      updatesProps && "model" in updatesProps ? updatesProps.model : undefined;
+    expect(updatesModel!.getState().snapshot.query.rowGroups).toEqual([]);
     expect(
       updatesProps?.columns?.find((column) => column.id === "col_3"),
     ).not.toHaveProperty("aggregate");
@@ -118,6 +129,39 @@ describe("PretableAdapter", () => {
     expect(dataset.columns).toEqual(originalColumns);
 
     surfaceSpy.mockRestore();
+  });
+
+  test("installs the internal diagnostics controller only for explicit diagnostic runs and removes it on unmount", async () => {
+    const dataset = createScenarioDataset("S5", { scale: "smoke" });
+    const { unmount } = render(
+      <PretableAdapter
+        dataset={dataset}
+        diagnostics
+        runKey={1}
+        scriptName="updates-grouped"
+        seed={91_337}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(window.__PRETABLE_ROW_MODEL_BENCH__).toBeDefined();
+    });
+    expect(window.__PRETABLE_ROW_MODEL_BENCH__?.read().diagnosticsEnabled).toBe(
+      true,
+    );
+
+    unmount();
+    expect(window.__PRETABLE_ROW_MODEL_BENCH__).toBeUndefined();
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        diagnostics={false}
+        runKey={2}
+        seed={91_337}
+      />,
+    );
+    expect(window.__PRETABLE_ROW_MODEL_BENCH__).toBeUndefined();
   });
 
   test("derives interaction preservation markers from actual telemetry instead of the requested plan", async () => {

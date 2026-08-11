@@ -7,7 +7,7 @@ export interface BenchQueryState {
   adapterId: BenchAdapterId;
   scenarioId: "S1" | "S2" | "S3" | "S4" | "S5" | "S7";
   profile: "default";
-  scale: "smoke" | "dev" | "hypothesis" | "target";
+  scale: "smoke" | "dev" | "hypothesis" | "target" | "local-max";
   scriptName: Extract<
     BenchScriptName,
     | "initial"
@@ -33,4 +33,31 @@ export interface BenchQueryState {
    */
   updateRatePerSec: number;
   waitForTrigger: boolean;
+  /** Enables the private instrumented row-model controller for gate runs. */
+  diagnostics: boolean;
+  /** One explicit seed shared by all four permanent row-model jobs. */
+  seed: number;
+}
+
+export interface RowModelBenchRebuildSummary {
+  readonly completed: boolean;
+  readonly responsive: boolean;
+  readonly durationMs: number;
+  readonly streamCommitsObserved: number;
+  readonly interactionSamplesObserved: number;
+  readonly sourceRowCountBefore: number;
+  readonly sourceRowCountAfter: number;
+  readonly groupCountBefore: number;
+  readonly groupCountAfter: number;
+  readonly expectedGroupCountAfter: number;
+}
+
+export interface RowModelBenchSummary {
+  readonly diagnostics: true;
+  readonly updatePlanChecksum: string;
+  readonly acceptedPatchCount: number;
+  readonly checksumAcceptedPatchCount: number;
+  readonly finalChecksum: string;
+  readonly expectedFinalChecksum: string;
+  readonly rebuild: RowModelBenchRebuildSummary | null;
 }
