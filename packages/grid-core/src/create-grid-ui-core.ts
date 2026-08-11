@@ -12,7 +12,11 @@ import {
   createEmptyIndexedSelection,
   getIndexedSelectionSummary,
   isIndexedRowSelected,
+  preserveIndexedRowSelectionProgram,
+  projectIndexedSelection,
   reconcileIndexedSelection,
+  releaseIndexedRowSelectionProgram,
+  sameIndexedRowSelectionProgram,
   selectAllVisibleRows,
   selectIndexedRowRange,
   toImmutableIndexedSet,
@@ -171,6 +175,7 @@ function copySelection<TRowId extends PretableRowId, TColumnId extends string>(
             ? {}
             : { excludedRanges: selection.rows.excludedRanges }),
         });
+  preserveIndexedRowSelectionProgram(selection.rows, rows);
   return Object.freeze({
     rows,
     ranges: Object.freeze(
@@ -228,6 +233,7 @@ function sameSelection<TRowId extends PretableRowId, TColumnId extends string>(
   right: PretableIndexedSelectionState<TRowId, TColumnId>,
 ): boolean {
   if (left.rows.kind !== right.rows.kind) return false;
+  if (!sameIndexedRowSelectionProgram(left.rows, right.rows)) return false;
   let sameRows = false;
   if (left.rows.kind === "explicit" && right.rows.kind === "explicit") {
     const leftRows = left.rows;
@@ -404,6 +410,8 @@ export function createGridUiCore<
     if (disposed) return;
     disposed = true;
     activeProjectionToken = undefined;
+    observedSnapshot = undefined;
+    releaseIndexedRowSelectionProgram(state.selection.rows);
     queuedActions.length = 0;
     const captured = Array.from(listeners);
     listeners.clear();
@@ -800,7 +808,14 @@ export function createGridUiCore<
           }
           const focus = reconcileIndexedFocus(state.focus, snapshot);
           const selection = reconcileIndexedSelection(
-            state.selection,
+            observedSnapshot === undefined
+              ? state.selection
+              : projectIndexedSelection(
+                  state.selection,
+                  observedSnapshot,
+                  snapshot,
+                  options.rowModel.changesSince(observedSnapshot.revision),
+                ),
             snapshot,
           );
           let editing = state.editing;

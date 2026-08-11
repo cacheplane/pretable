@@ -6,6 +6,7 @@ import {
 } from "@pretable-internal/row-model";
 
 import { createGridUiCore, PretableGridUiError } from "../create-grid-ui-core";
+import { getIndexedRowSelectionProgramDiagnostics } from "../indexed-selection";
 import type { PretableGridUiCore } from "../types";
 
 interface Row {
@@ -156,6 +157,65 @@ describe("UI-only grid core", () => {
     expect(Array.from(selectedRows.ranges ?? [])).toEqual([
       { startRowId: 1, endRowId: 3 },
     ]);
+  });
+
+  test("normalizes an externally supplied structural selection even when its public range is unchanged", () => {
+    const rows = [
+      { id: 1, name: "one", quantity: 1 },
+      { id: 2, name: "two", quantity: 2 },
+      { id: 3, name: "three", quantity: 3 },
+      { id: 4, name: "four", quantity: 4 },
+    ];
+    const rowModel = createLocalRowModel({ rows, columns: modelColumns });
+    const grid = createGridUiCore({ rowModel, columns: visualColumns });
+    grid.selectRowRange(1, 3);
+
+    rowModel.setRows([rows[0]!, rows[3]!, rows[2]!, rows[1]!]);
+    grid.observeRowModelRevision(1);
+    expect(grid.isRowSelected(2)).toBe(true);
+    expect(grid.isRowSelected(4)).toBe(false);
+
+    const current = grid.getState().selection;
+    if (current.rows.kind !== "explicit")
+      throw new Error("expected explicit selection");
+    grid.setSelection({
+      rows: {
+        kind: "explicit",
+        rowIds: new Set(current.rows.rowIds),
+        ranges: current.rows.ranges,
+      },
+      ranges: [],
+      anchor: null,
+    });
+
+    expect(grid.isRowSelected(2)).toBe(false);
+    expect(grid.isRowSelected(4)).toBe(true);
+  });
+
+  test("releases semantic selection snapshot bases when disposed", () => {
+    const rowModel = createLocalRowModel({
+      rows: [
+        { id: 1, name: "one", quantity: 1 },
+        { id: 2, name: "two", quantity: 2 },
+      ],
+      columns: modelColumns,
+    });
+    const grid = createGridUiCore({ rowModel, columns: visualColumns });
+    grid.selectRowRange(1, 2);
+    expect(
+      getIndexedRowSelectionProgramDiagnostics(grid.getState().selection.rows)
+        .snapshotBasisCount,
+    ).toBe(1);
+
+    grid.dispose();
+
+    expect(
+      getIndexedRowSelectionProgramDiagnostics(grid.getState().selection.rows),
+    ).toMatchObject({
+      pointRuleCount: 0,
+      rangeRuleCount: 0,
+      snapshotBasisCount: 0,
+    });
   });
 
   test("updates visual pinning without leaking derivation column state", () => {
