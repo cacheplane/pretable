@@ -1,7 +1,9 @@
 # Native number formatting and currency presets
 
 Date: 2026-08-10
-Status: approved
+Status: planned
+Implementation plan:
+[`2026-08-10-number-formatting.md`](../plans/2026-08-10-number-formatting.md)
 
 ## Context
 
