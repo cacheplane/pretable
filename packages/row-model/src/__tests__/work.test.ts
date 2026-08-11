@@ -137,6 +137,42 @@ function assertFiftyEvaluations(work: WorkCounters): void {
 }
 
 describe("instrumented local row-model work", () => {
+  test("publishes grouped display-only rows without rebuilding grouped indexes", () => {
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: rows(10_000),
+      columns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [{ columnId: "filterValue", operator: "gte", value: 1_000 }],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      },
+    });
+
+    instrumented.diagnostics.resetWork();
+    instrumented.model.applyTransaction({
+      update: ids(0).map((id) => ({
+        id,
+        changes: { label: `display-${id}` },
+      })),
+    });
+
+    const snapshot = instrumented.model.getState().snapshot;
+    const visible = snapshot.rowAt(
+      snapshot.indexOf({ kind: "data", rowId: 0 }),
+    );
+    expect(visible?.kind === "data" ? visible.row.label : undefined).toBe(
+      "display-0",
+    );
+    expect(instrumented.diagnostics.read().work).toMatchObject({
+      rowsEvaluated: 50,
+      orderNodesCopied: 0,
+      groupNodesCopied: 0,
+      aggregateMerges: 0,
+    });
+    instrumented.model.dispose();
+  });
+
   test.each([false, true])(
     "keeps isolated 50-row %s work classes bounded from 10k to 100k",
     (grouped) => {
@@ -168,10 +204,14 @@ describe("instrumented local row-model work", () => {
           smallWork.orderNodesCopied + 50 * 24,
         );
         if (grouped) {
-          expect(
-            largeWork.groupNodesCopied,
-            `${workCase} must account for grouped persistent work`,
-          ).toBeGreaterThan(0);
+          if (workCase === "displayOnly" || workCase === "filterRemain") {
+            expect(largeWork.groupNodesCopied).toBe(0);
+          } else {
+            expect(
+              largeWork.groupNodesCopied,
+              `${workCase} must account for grouped persistent work`,
+            ).toBeGreaterThan(0);
+          }
           expect(
             largeWork.groupNodesCopied,
             `${workCase} group small=${smallWork.groupNodesCopied} large=${largeWork.groupNodesCopied}`,

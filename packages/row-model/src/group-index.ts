@@ -1685,6 +1685,9 @@ export function visibleRange<
   policy: PretableExpansionDefault,
   start: number,
   end: number,
+  resolveRecord: (
+    record: RowRecord<TRow, TRowId, TColumns>,
+  ) => RowRecord<TRow, TRowId, TColumns> = (record) => record,
 ): readonly PretableVisibleRow<TRow, TRowId, TColumns>[] {
   const size = visibleCount(root, policy);
   const from = Math.max(
@@ -1720,7 +1723,7 @@ export function visibleRange<
       return;
     }
     for (const record of node.leaves.range(descendantsStart, descendantsEnd)) {
-      result.push(publicData(record, node.depth + 1));
+      result.push(publicData(resolveRecord(record), node.depth + 1));
     }
   };
   if (from < to) {
@@ -1794,16 +1797,21 @@ function dataAtNode<
   node: GroupNode<TRow, TRowId, TColumns>,
   policy: PretableExpansionDefault,
   index: number,
+  resolveRecord: (
+    record: RowRecord<TRow, TRowId, TColumns>,
+  ) => RowRecord<TRow, TRowId, TColumns>,
 ): PretableDataRow<TRow, TRowId> | undefined {
   if (!effectiveExpanded(node, policy)) return undefined;
   if (node.children.size > 0) {
     const selected = node.children.selectData(index, policy);
     return selected === undefined
       ? undefined
-      : dataAtNode(selected.entry, policy, selected.offset);
+      : dataAtNode(selected.entry, policy, selected.offset, resolveRecord);
   }
   const record = node.leaves.entryAt(index);
-  return record === undefined ? undefined : publicData(record, node.depth + 1);
+  return record === undefined
+    ? undefined
+    : publicData(resolveRecord(record), node.depth + 1);
 }
 
 export function visibleDataCount<
@@ -1825,11 +1833,14 @@ export function dataAt<
   root: GroupIndexRoot<TRow, TRowId, TColumns>,
   policy: PretableExpansionDefault,
   index: number,
+  resolveRecord: (
+    record: RowRecord<TRow, TRowId, TColumns>,
+  ) => RowRecord<TRow, TRowId, TColumns> = (record) => record,
 ): PretableDataRow<TRow, TRowId> | undefined {
   const selected = root.roots.selectData(index, policy);
   return selected === undefined
     ? undefined
-    : dataAtNode(selected.entry, policy, selected.offset);
+    : dataAtNode(selected.entry, policy, selected.offset, resolveRecord);
 }
 
 /** Returns the visible data rank of a data ref, or the count before a group ref. */

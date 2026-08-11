@@ -123,9 +123,12 @@ export function createFlatSnapshot<
   const grouped = getGroupIndex(root.visible);
   if (grouped !== undefined) {
     const policy = root.expansion.default;
+    const resolveCurrentRecord = (record: RowRecord<TRow, TRowId, TColumns>) =>
+      root.rows.get(record.rowId) ?? record;
     const publicRowAt = (index: number) =>
-      visibleRange(grouped, policy, index, index + 1)[0];
-    const refAtDataRank = (index: number) => dataAt(grouped, policy, index);
+      visibleRange(grouped, policy, index, index + 1, resolveCurrentRecord)[0];
+    const refAtDataRank = (index: number) =>
+      dataAt(grouped, policy, index, resolveCurrentRecord);
     const neighbor = (ref: PretableVisibleRowRef<TRowId>, delta: -1 | 1) => {
       const rank = dataRankAtRef(grouped, policy, ref);
       if (rank === undefined) return undefined;
@@ -133,6 +136,7 @@ export function createFlatSnapshot<
         grouped,
         policy,
         ref.kind === "data" ? rank + delta : rank + (delta < 0 ? -1 : 0),
+        resolveCurrentRecord,
       );
     };
     const count = visibleCount(grouped, policy);
@@ -144,7 +148,7 @@ export function createFlatSnapshot<
       visibleDataRowCount: dataCount,
       rowAt: publicRowAt,
       range: (start: number, end: number) =>
-        visibleRange(grouped, policy, start, end),
+        visibleRange(grouped, policy, start, end, resolveCurrentRecord),
       indexOf: (ref: PretableVisibleRowRef<TRowId>) =>
         visibleIndexOf(grouped, policy, ref),
       dataIndexOf: (ref: PretableVisibleRowRef<TRowId>) =>

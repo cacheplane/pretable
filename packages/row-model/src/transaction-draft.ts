@@ -349,6 +349,74 @@ function sameFlatOrder<
   );
 }
 
+function sameGroupIndexContribution<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  previous: RowRecord<TRow, TRowId, TColumns>,
+  next: RowRecord<TRow, TRowId, TColumns>,
+): boolean {
+  if (
+    !sameFlatOrder(previous, next) ||
+    !sameKeyValues(previous.metadata.groupPath, next.metadata.groupPath)
+  ) {
+    return false;
+  }
+  const previousLeaves = previous.metadata.aggregateLeaves as readonly {
+    readonly columnId: string;
+    readonly aggregate: unknown;
+    readonly allLeaf: {
+      readonly row: object;
+      readonly value: unknown;
+      readonly dependency: {
+        readonly sourceOrder: number;
+        readonly sortKeys: readonly {
+          readonly columnId: string;
+          readonly value: unknown;
+        }[];
+      };
+    };
+    readonly filteredLeaf: object | undefined;
+  }[];
+  const nextLeaves = next.metadata.aggregateLeaves as typeof previousLeaves;
+  return (
+    previousLeaves.length === nextLeaves.length &&
+    previousLeaves.every((previousLeaf, index) => {
+      const nextLeaf = nextLeaves[index];
+      if (
+        nextLeaf === undefined ||
+        previousLeaf.columnId !== nextLeaf.columnId ||
+        previousLeaf.aggregate !== nextLeaf.aggregate ||
+        (previousLeaf.filteredLeaf === undefined) !==
+          (nextLeaf.filteredLeaf === undefined)
+      ) {
+        return false;
+      }
+      if (typeof previousLeaf.aggregate !== "string") {
+        return (
+          Object.is(previousLeaf.allLeaf.row, nextLeaf.allLeaf.row) &&
+          Object.is(previousLeaf.allLeaf.value, nextLeaf.allLeaf.value) &&
+          Object.is(
+            previousLeaf.allLeaf.dependency,
+            nextLeaf.allLeaf.dependency,
+          )
+        );
+      }
+      return (
+        (previousLeaf.aggregate === "count" ||
+          Object.is(previousLeaf.allLeaf.value, nextLeaf.allLeaf.value)) &&
+        previousLeaf.allLeaf.dependency.sourceOrder ===
+          nextLeaf.allLeaf.dependency.sourceOrder &&
+        sameKeyValues(
+          previousLeaf.allLeaf.dependency.sortKeys,
+          nextLeaf.allLeaf.dependency.sortKeys,
+        )
+      );
+    })
+  );
+}
+
 function dataRef<TRowId extends PretableRowId>(rowId: TRowId) {
   return Object.freeze({ kind: "data" as const, rowId });
 }
@@ -1008,23 +1076,35 @@ export function applyFlatTransactionDraft<
     }
     const frozenRows = rowDraft.freeze();
     const frozenFlatRows = visibleDraft?.freeze();
+    const groupedRemovals = [
+      ...effectiveRemoves.map((rowId) => input.root.rows.get(rowId)!),
+      ...prepared.flatMap((record) => {
+        const previous = input.root.rows.get(record.rowId);
+        return previous === undefined ||
+          sameGroupIndexContribution(previous, record)
+          ? []
+          : [previous];
+      }),
+    ];
+    const groupedInsertions = prepared.filter((record) => {
+      const previous = input.root.rows.get(record.rowId);
+      return (
+        previous === undefined || !sameGroupIndexContribution(previous, record)
+      );
+    });
     const grouped =
       previousGroups === undefined
         ? undefined
-        : updateGroupIndex(
-            previousGroups,
-            [
-              ...effectiveRemoves.map((rowId) => input.root.rows.get(rowId)!),
-              ...prepared.flatMap((record) => {
-                const old = input.root.rows.get(record.rowId);
-                return old === undefined ? [] : [old];
-              }),
-            ],
-            prepared,
-            input.root.expansion.overrides,
-            "apply-transaction",
-            input.instrumentation,
-          );
+        : groupedRemovals.length === 0 && groupedInsertions.length === 0
+          ? previousGroups
+          : updateGroupIndex(
+              previousGroups,
+              groupedRemovals,
+              groupedInsertions,
+              input.root.expansion.overrides,
+              "apply-transaction",
+              input.instrumentation,
+            );
     const visible =
       grouped !== undefined
         ? attachGroupIndex(frozenFlatRows ?? input.root.visible.rows, grouped)
