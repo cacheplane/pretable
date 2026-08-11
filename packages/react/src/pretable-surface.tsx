@@ -2240,9 +2240,16 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   // rendered pixels: a plan built from `options.columns` while grouped would
   // miss the group column entirely and put every other column's `left` a
   // group-column width away from where it is painted.
+  //
+  // `viewportWidth` for the same reason, and it is the SAME value the render
+  // snapshot is built at (`viewportWidth || undefined`): a `flex` column is
+  // painted at its share of the leftover viewport, so a plan that resolved it
+  // at the renderer's fallback instead offset every column after it — dropping
+  // a dragged header somewhere other than the indicator, and revealing the
+  // wrong column on keyboard navigation.
   const columnLayout = useMemo(
-    () => planColumnLayout([...drawnColumns]),
-    [drawnColumns],
+    () => planColumnLayout([...drawnColumns], viewportWidth || undefined),
+    [drawnColumns, viewportWidth],
   );
 
   const visibleRowIndexById = useMemo(() => {

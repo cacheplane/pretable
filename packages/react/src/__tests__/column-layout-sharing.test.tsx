@@ -24,7 +24,10 @@ import type { PretableGrid } from "@pretable/core";
 // ---------------------------------------------------------------------------
 
 const captured = vi.hoisted(() => ({
-  scrollPlans: [] as { columns: readonly { id: string }[] }[],
+  scrollPlans: [] as {
+    columns: readonly { id: string; left: number; width: number }[];
+    totalWidth: number;
+  }[],
   dragLayouts: [] as (readonly { id: string }[])[],
 }));
 
@@ -171,4 +174,52 @@ it("hands scroll-into-view and reorder hit-testing the same column plan", () => 
     "c",
     "far",
   ]);
+});
+
+it("resolves a flex column in the shared plan at the width it is drawn at", () => {
+  // The surface is the only place that knows the scrollport's width, so it is
+  // the only place that can hand `planColumnLayout` one. Without it a `flex`
+  // column resolves to the renderer's 140px unsized fallback while it is
+  // PAINTED at its share of the leftover — and both consumers of this plan
+  // compare it against painted pixels. In a browser that showed up as a
+  // dragged header dropping ~350px from the indicator, and as keyboard
+  // scroll-into-view refusing to scroll at all (the flex-blind `totalWidth`
+  // is narrower than the viewport, so `scrollLeftToReveal` clamps to 0).
+  clientWidth = 1000;
+
+  let grid!: PretableGrid<Row>;
+  render(
+    <PretableSurface<Row>
+      ariaLabel="flex-plan-grid"
+      columns={[
+        { id: "pin", header: "Pin", widthPx: 100, pinned: "left" as const },
+        { id: "b", header: "B", widthPx: 200 },
+        { id: "c", header: "C", flex: 1 },
+        { id: "far", header: "Far", widthPx: 200 },
+      ]}
+      getRowId={(row) => row.id}
+      onGridReady={(g) => {
+        grid = g as PretableGrid<Row>;
+      }}
+      overscan={0}
+      rows={rows}
+      viewportHeight={200}
+    />,
+  );
+
+  act(() => {
+    grid.setFocus({ rowId: "r1", columnId: "far" });
+  });
+
+  const plan = captured.scrollPlans.at(-1);
+
+  // Fixed columns take 100 + 200 + 200 = 500, so "c" is drawn at the remaining
+  // 500 — not at 140 — and "far" sits at 800, not at 440.
+  expect(plan?.columns.map((column) => column.width)).toEqual([
+    100, 200, 500, 200,
+  ]);
+  expect(plan?.columns.map((column) => column.left)).toEqual([
+    0, 100, 300, 800,
+  ]);
+  expect(plan?.totalWidth).toBe(1000);
 });
