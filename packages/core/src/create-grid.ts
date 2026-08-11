@@ -25,6 +25,11 @@ export function createGrid<TRow extends PretableRow = PretableRow>(
 ): PretableGrid<TRow> {
   const engine = createGridCore(options);
 
+  // This list must name every engine member;
+  // `__tests__/facade-forwarding-invariant.test.ts` fails if it does not. It is
+  // written out rather than spread because `options` is a live getter the engine
+  // replaces on every column mutation — see that file for the rest of the
+  // reasoning.
   return {
     kind: "pretable-grid",
     get options() {
