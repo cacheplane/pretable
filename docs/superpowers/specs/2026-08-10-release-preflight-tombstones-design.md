@@ -207,9 +207,21 @@ Verification includes:
 - the root test, typecheck, lint, build, API-report, packaging, publish-preflight,
   formatting, and diff gates used by CI;
 - live-registry preflight against the current workspace versions;
-- confirmation that Changesets status reports no new release from this branch;
+- confirmation that plain Changesets status exits successfully and reports only
+  release intent already present upstream;
+- documentation of Changesets' package-path heuristic: branch-relative status
+  exits 1 because the changelog lives under `packages/stream-adapter`, even
+  though the changelog is excluded from the published artifact;
+- independent checks that the branch adds no `.changeset` file, changes only
+  `packages/stream-adapter/CHANGELOG.md` beneath that package, and retains the
+  manifest's exact `files: ["dist"]` artifact boundary;
 - a clean final worktree and independent code/spec review before publication of
   the pull request.
+
+The expected branch-relative Changesets diagnostic does not express release
+intent. Adding an empty Changeset solely to silence the package-path heuristic
+would add release-workflow metadata for a historical file that cannot be
+published, so this maintenance branch intentionally contains no Changeset.
 
 The hardening is successful when a tombstoned exact local version fails before
 the publish subprocess, a never-published version remains eligible, an active

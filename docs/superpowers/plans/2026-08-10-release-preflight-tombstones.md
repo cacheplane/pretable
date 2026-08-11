@@ -599,17 +599,28 @@ Expected: every command exits 0. Record exact test totals and distinguish known
 baseline warnings from new warnings. The preflight must inspect current active
 workspace versions without invoking publication.
 
-- [ ] **Step 4: Prove the branch creates no package release**
+- [ ] **Step 4: Prove the branch creates no package release and document Changesets' package-path heuristic**
 
 ```bash
-pnpm exec changeset status --since=origin/main
 pnpm exec changeset status
-git diff --name-only origin/main...HEAD -- .changeset
+changeset_status_exit=0
+changeset_status_output="$(pnpm exec changeset status --since=origin/main 2>&1)" || changeset_status_exit=$?
+printf '%s\n' "$changeset_status_output"
+test "$changeset_status_exit" -eq 1
+printf '%s\n' "$changeset_status_output" | rg -F 'Some packages have been changed but no changesets were found'
+printf '%s\n' "$changeset_status_output" | rg -F 'changeset add --empty'
+test -z "$(git diff --name-only origin/main...HEAD -- .changeset)"
+test "$(git diff --name-only origin/main...HEAD -- packages/stream-adapter)" = 'packages/stream-adapter/CHANGELOG.md'
+node -e 'const manifest=require("./packages/stream-adapter/package.json"); if (JSON.stringify(manifest.files) !== JSON.stringify(["dist"])) process.exit(1)'
 ```
 
-Expected: both status commands exit 0, this branch contributes no release, and
-the `.changeset` diff is empty. List any unrelated upstream Changesets
-separately.
+Expected: plain status exits 0 and lists only unrelated upstream release intent.
+The captured branch-relative status exits 1 with both asserted diagnostics
+because Changesets classifies the package-local changelog as a package change.
+The `.changeset` diff is empty, the changelog is the only branch change beneath
+`packages/stream-adapter`, and the manifest publishes exactly `["dist"]`.
+Together these checks prove that the branch creates no package release despite
+the expected package-path heuristic.
 
 - [ ] **Step 5: Audit final scope and repository hygiene**
 
