@@ -20,6 +20,11 @@
         "@tanstack/react-table": "8.21.3",
         "@tanstack/react-virtual": "3.14.9"
       }
+    },
+    "superseded": {
+      "since": "2026-08-11",
+      "reason": "@tanstack/react-table 8.21.3 -> 9.1.0, a major (#277)",
+      "detail": "Superseded, not wrong: the structural counts remain evidence for the recorded comparator versions. The current tree uses TanStack Table 9.1.0, so a fresh structural run is required before treating them as current."
     }
   },
   "title": "Comparative re-baseline attempt: structural equivalence verified, timings NOT re-baselined",

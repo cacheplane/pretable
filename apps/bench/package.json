@@ -34,7 +34,7 @@
     "@pretable/react": "workspace:*",
     "@pretable/stream-adapter": "workspace:*",
     "@pretable/ui": "workspace:*",
-    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-table": "^9.1.0",
     "@tanstack/react-virtual": "^3.14.9",
     "ag-grid-community": "^36.1.0",
     "ag-grid-react": "^36.1.0",

@@ -95,7 +95,7 @@ const adapterRegistry = {
   tanstack: {
     heading: "TanStack Table harness",
     description:
-      "Headless TanStack Table v8 + react-virtual baseline (real adapter ships in B2 Phase 2).",
+      "Headless TanStack Table v9 + react-virtual baseline (real adapter ships in B2 Phase 2).",
     render: TanstackAdapter,
   },
   mui: {
