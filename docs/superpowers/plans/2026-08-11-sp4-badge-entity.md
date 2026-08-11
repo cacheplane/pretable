@@ -34,11 +34,11 @@ The fix is to follow the reference designs *more* closely, not less. Their badge
 
 ### Task 1: The two presentation rules
 
-- [ ] **Step 1: Add failing guards** in `packages/ui/src/__tests__/css-cascade.test.ts` asserting that a badge rule exists and does **not** set a tinted background from the ramp, and that the entity's secondary line reads `--pretable-text-dim` and does **not** use `opacity`.
+- [x] **Step 1: Add failing guards** in `packages/ui/src/__tests__/css-cascade.test.ts` asserting that a badge rule exists and does **not** set a tinted background from the ramp, and that the entity's secondary line reads `--pretable-text-dim` and does **not** use `opacity`.
 
-- [ ] **Step 2: Run and confirm they fail.**
+- [x] **Step 2: Run and confirm they fail.**
 
-- [ ] **Step 3: Add to `grid.css`**, with the other cell presentations, every selector `:where()`-wrapped:
+- [x] **Step 3: Add to `grid.css`**, with the other cell presentations, every selector `:where()`-wrapped:
 
 ```css
   /* Badge: a hairline chip, never a tinted one. Tinting the fill with the
@@ -101,44 +101,44 @@ The fix is to follow the reference designs *more* closely, not less. Their badge
 
 **Pseudo-element warning:** slice 1 established that `:where(x::before)` is invalid — the engine keeps it as an empty `:where()` that matches nothing while the rule still appears in `cssRules`. If you add any pseudo-element rule here, write `:where(x)::before`. There is already a paren-depth guard; keep it passing.
 
-- [ ] **Step 4: Verify and commit** — `pnpm --filter @pretable/ui test`, then `feat(ui): add the badge and entity presentations`.
+- [x] **Step 4: Verify and commit** — `pnpm --filter @pretable/ui test`, then `feat(ui): add the badge and entity presentations`.
 
 ---
 
 ### Task 2: The components
 
-- [ ] **Step 1: Failing tests** in `packages/react/src/__tests__/cells.test.tsx` (extend the existing file): a badge renders its label and, with a tone, the matching `data-pretable-tone`; an untoned badge sets no tone attribute; an entity renders both lines, and renders only the primary when no secondary is given.
+- [x] **Step 1: Failing tests** in `packages/react/src/__tests__/cells.test.tsx` (extend the existing file): a badge renders its label and, with a tone, the matching `data-pretable-tone`; an untoned badge sets no tone attribute; an entity renders both lines, and renders only the primary when no secondary is given.
 
-- [ ] **Step 2: Extend `packages/react/src/cells.tsx`** with `PretableBadge` (`tone?`, `children`) and `PretableEntity` (`primary`, `secondary?`). Keep both presentational — no state, no effects, no measurement. Match the prop-typing style `PretableDelta` and `PretableStatus` already use, and carry the same explicit `@public` tags so the API report stays warning-free.
+- [x] **Step 2: Extend `packages/react/src/cells.tsx`** with `PretableBadge` (`tone?`, `children`) and `PretableEntity` (`primary`, `secondary?`). Keep both presentational — no state, no effects, no measurement. Match the prop-typing style `PretableDelta` and `PretableStatus` already use, and carry the same explicit `@public` tags so the API report stays warning-free.
 
-- [ ] **Step 3: Export** both plus their prop types from `packages/react/src/public_api.ts`.
+- [x] **Step 3: Export** both plus their prop types from `packages/react/src/public_api.ts`.
 
-- [ ] **Step 4:** `pnpm build && pnpm api`, then `pnpm api:check`. Build first — a stale `dist/` silently strips exports.
+- [x] **Step 4:** `pnpm build && pnpm api`, then `pnpm api:check`. Build first — a stale `dist/` silently strips exports.
 
-- [ ] **Step 5: Commit** as `feat(react): add the badge and entity cell presentations`.
+- [x] **Step 5: Commit** as `feat(react): add the badge and entity cell presentations`.
 
 ---
 
 ### Task 3: The hero adopts both
 
-- [ ] **Step 1: Symbol column → entity.** In `positionColumns.tsx`, replace the hand-rolled `<span className={styles.symbol}>` stack with `PretableEntity`. Delete `.symbol` and `.symbolSub` from `cells.module.css`. This is the fix for the 3.88:1 company name.
+- [x] **Step 1: Symbol column → entity.** In `positionColumns.tsx`, replace the hand-rolled `<span className={styles.symbol}>` stack with `PretableEntity`. Delete `.symbol` and `.symbolSub` from `cells.module.css`. This is the fix for the 3.88:1 company name.
 
-- [ ] **Step 2: Analyst pills → badge.** Replace the `.pill`/`.pillTrim`/`.pillWatch`/`.pillRisk`/`.pillHold` spans with `PretableBadge` carrying the matching tone. Delete all five rules. This is the fix for the 3.89–4.24 tinted chips.
+- [x] **Step 2: Analyst pills → badge.** Replace the `.pill`/`.pillTrim`/`.pillWatch`/`.pillRisk`/`.pillHold` spans with `PretableBadge` carrying the matching tone. Delete all five rules. This is the fix for the 3.89–4.24 tinted chips.
 
-- [ ] **Step 3:** Confirm nothing else references the deleted classes.
+- [x] **Step 3:** Confirm nothing else references the deleted classes.
 
-- [ ] **Step 4: Look at it.** The pills change from tinted fills to hairline chips — a visible change to the hero. Report whether the badges still read as status at a glance, and whether the Symbol column's secondary line is now legible rather than washed out. If the hairline chips read as too quiet next to the analyst prose, say so plainly rather than accepting it.
+- [x] **Step 4: Look at it.** The pills change from tinted fills to hairline chips — a visible change to the hero. Report whether the badges still read as status at a glance, and whether the Symbol column's secondary line is now legible rather than washed out. If the hairline chips read as too quiet next to the analyst prose, say so plainly rather than accepting it.
 
-- [ ] **Step 5: Commit** as `feat(website): use the library's badge and entity presentations`.
+- [x] **Step 5: Commit** as `feat(website): use the library's badge and entity presentations`.
 
 ---
 
 ### Task 4: Verification
 
-- [ ] `pnpm --filter @pretable/ui test`, `pnpm --filter @pretable/react test`, `pnpm --filter @pretable/app-website test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm api:check`.
-- [ ] The Playwright cascade gate.
-- [ ] Website e2e. **Use the ROOT playwright binary** — the one in `apps/website/node_modules/.bin` is a stale 1.60 shim that shadows the 1.62 the specs need and fails with a misleading "No tests found". Serve a production build and pass `BASE_URL`.
-- [ ] Recompute the contrast of the badge text and the entity secondary as actually rendered, and report the numbers.
+- [x] `pnpm --filter @pretable/ui test`, `pnpm --filter @pretable/react test`, `pnpm --filter @pretable/app-website test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm api:check`.
+- [x] The Playwright cascade gate.
+- [x] Website e2e. **Use the ROOT playwright binary** — the one in `apps/website/node_modules/.bin` is a stale 1.60 shim that shadows the 1.62 the specs need and fails with a misleading "No tests found". Serve a production build and pass `BASE_URL`.
+- [x] Recompute the contrast of the badge text and the entity secondary as actually rendered, and report the numbers.
 
 ## Self-review
 
@@ -147,3 +147,19 @@ The fix is to follow the reference designs *more* closely, not less. Their badge
 **Both fixes are accessibility fixes disguised as refactors** — the hero's pills and its company names are both below AA today, and adopting the library primitives is what corrects them. That is the strongest possible argument for these primitives existing.
 
 **No new tokens.** Badge and entity reuse the ramp and `--pretable-text-dim`, so nothing new can go dead.
+
+---
+
+## Outcome (shipped 2026-08-11)
+
+Every predicted contrast number held when measured off the rendered page rather than computed on paper:
+
+| measured in the browser | before | after |
+|---|---|---|
+| badge `negative` / `warning` / `positive` / `info` | 3.89–4.24 (14% tint) | **4.83 / 4.92 / 5.02 / 5.17** |
+| badge hairline on the grid surface | — | **4.00** (owes 3:1) |
+| entity secondary (`.symbolSub` → `--pretable-text-dim`) | **3.88** | **7.72** |
+
+In forced dark mode the same elements read 8.94–11.01 (badge text), 3.77 (hairline) and 8.29 (entity secondary).
+
+**One thing the accessible choice does cost.** Every tone now shares the same neutral hairline and white fill, so the only tone channel left is ~12px of label ink. A/B'd against the old pills in the browser, the chips are *more* present overall — the hairline gives them an object boundary the 14% wash never had, and the label went from 10px/600 to ~12px/normal, so it is easier to read. But scanning the column for "which rows are risky" is now reading words rather than spotting colour fields. The base rule's `gap: 5px` already reserves the slot for a leading dot if that scan channel is wanted back; a dot would restore tone-at-a-glance without touching the text contrast at all. Deliberately not shipped here — nothing asked for it yet.
