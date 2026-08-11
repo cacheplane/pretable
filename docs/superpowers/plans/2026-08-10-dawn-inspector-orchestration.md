@@ -71,6 +71,7 @@
 | `packages/inspector/test/components/use-memory-browse.test.tsx` | **Create** — abort, revision gate under real promises, poll cadence, pause/resume, unmount. |
 | `packages/inspector/test/components/browse-lifecycle.test.tsx` | **Create** — ListPage integration: loading/empty/error blocks, honest total, retry, banner independence. |
 | `packages/inspector/test/components/list.test.tsx` | **Modify** — two facet tests move from `namespacePrefix` to `namespace`. |
+| `packages/inspector/test/components/memory-grid.test.tsx` | **Modify (Task 1)** — the two row-activation tests arrange focus directly instead of walking in from the header, which `0.3.0` no longer allows. |
 | `.changeset/inspector-browse-orchestration.md` | **Create** — patch changeset for the fixed version group. |
 
 ---
@@ -79,6 +80,7 @@
 
 **Files:**
 - Modify: `packages/inspector/package.json`
+- Modify: `packages/inspector/test/components/memory-grid.test.tsx`
 
 - [ ] **Step 1: Create a worktree off `origin/main`**
 
@@ -129,13 +131,21 @@ pnpm --filter @dawn-ai/inspector exec vitest run --config vitest.components.conf
 pnpm --filter @dawn-ai/inspector typecheck
 ```
 
-Expected: all component tests pass and typecheck is clean **on the bumped version**. Pretable 0.3.0 renamed only unexported callback-input interfaces (`PretableSurfaceRowClassNameInput` → `PretableSurfaceRowInput`, etc.), and `MemoryGrid` names none of them, so this should be green with no source changes. If it is not, fix it here — a red baseline poisons every later task.
+Expected: typecheck is clean **on the bumped version** — the type surface only renamed unexported callback-input interfaces (`PretableSurfaceRowClassNameInput` → `PretableSurfaceRowInput`, etc.), and `MemoryGrid` names none of them.
+
+The keyboard surface did change, and two tests in `memory-grid.test.tsx` fail because of it. **0.3.0 removed ArrowDown-from-header body entry**: the surface's keydown handler returns early for any target inside `[data-pretable-header-row]`, and the only way into the body is now Tab from a header button, which arms an origin that the rowgroup's `onFocus` matches against `event.relatedTarget`. Those two tests walked in from the header on their way to what they actually cover — `onRowActivate` reaching `onSelect` — so they were pinning pretable's traversal, not the Inspector's contract.
+
+Fix them here, in this task, and do not weaken an assertion to do it: arrange focus on the target row directly (`fireEvent.pointerDown` on one of its cells moves grid focus without activating — a click would do both) and keep the `onSelect.mock.calls` assertions exactly as they are. Do not rebuild the header-Tab walk by hand; jsdom does not move focus on Tab, so that route only asserts the test's own emulation, and it needs the *last* of the header's eight tabbables, not the first. `@testing-library/user-event` is not needed and must not be added.
+
+A red baseline poisons every later task — this must be green before Task 2 starts.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add packages/inspector/package.json pnpm-lock.yaml
 git commit -m "chore(inspector): pin @pretable/* to 0.3.0"
+git add packages/inspector/test/components/memory-grid.test.tsx
+git commit -m "test(inspector): activate rows from a focused row, not header traversal"
 ```
 
 ---
@@ -2139,7 +2149,7 @@ pnpm --filter @dawn-ai/inspector typecheck
 pnpm --filter @dawn-ai/inspector lint
 ```
 
-Expected: all three test files pass unchanged (they never pass `dataState`, so they exercise the inert path), and typecheck plus lint are clean.
+Expected: all three test files pass with no edit in this task (they never pass `dataState`, so they exercise the inert path), and typecheck plus lint are clean. `memory-grid.test.tsx` is the version Task 1 left behind — its two row-activation tests arrange focus with a pointer-down rather than walking in from the header.
 
 - [ ] **Step 8: Commit**
 
@@ -2835,6 +2845,9 @@ polling as before.
 - The namespace facet sends the exact `namespace` parameter instead of narrowing a
   prefix answer client-side — otherwise the total and the rows would describe
   different sets.
+- Keyboard entry into the memory grid is now Tab-only, from `@pretable/react@0.3.0`:
+  Down arrow from a column header no longer moves into the body. Once a row has
+  focus, arrow keys and Enter/Space behave as before.
 
 Column sorting is off in the browse view for now: sorting a server-selected window
 locally presents the wrong sample, not merely the wrong order. It returns with
