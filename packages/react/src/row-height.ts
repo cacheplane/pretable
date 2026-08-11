@@ -77,15 +77,19 @@ export function measureRenderedRowHeight(row: HTMLElement) {
   const verticalPadding =
     parsePxLength(style.paddingTop) + parsePxLength(style.paddingBottom);
   const borderHeight = parsePxLength(style.borderBottomWidth);
-  const wrappedCells = [
-    ...row.querySelectorAll<HTMLElement>(
-      '[data-pretable-cell][data-pretable-wrap="true"]',
-    ),
+  // Every cell, unconditionally. This used to measure only
+  // `[data-pretable-wrap="true"]` cells whenever the row had any, falling back
+  // to all cells only when it had none. That was an optimisation and it was
+  // wrong: any TALLER non-wrap cell in a row that also carried a wrap column
+  // was excluded from the max and silently clipped — a two-line presentation
+  // (a signed delta over its percentage, say) rendered at single-line height.
+  // jsdom has no layout engine, so the clipping was invisible to unit tests and
+  // only ever showed in a browser. `Math.max` over every cell is the correct
+  // definition of a row's content height, and the cells are already being
+  // walked, so the narrower query bought nothing.
+  const measuredCells = [
+    ...row.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
   ];
-  const measuredCells =
-    wrappedCells.length > 0
-      ? wrappedCells
-      : [...row.querySelectorAll<HTMLElement>("[data-pretable-cell]")];
   const contentHeight = Math.max(
     0,
     ...measuredCells
