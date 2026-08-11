@@ -91,6 +91,11 @@ describe("BenchApp", () => {
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 
+  // Mounting MUI X DataGrid under jsdom costs ~5.5-8s of real work, which
+  // sits right on vitest's 5s default: it passes on an idle CI runner and
+  // fails deterministically once the machine is loaded or the rest of this
+  // package's files are running in parallel. The work completes fine given
+  // headroom, so raise the ceiling rather than re-rolling the dice.
   test("renders the requested mui competitor surface", async () => {
     render(
       <BenchApp search="?adapter=mui&scenario=S2" browserVersion="123.0" />,
@@ -99,7 +104,7 @@ describe("BenchApp", () => {
     expect(screen.getByText("MUI X DataGrid Community harness")).toBeTruthy();
     expect(screen.getByLabelText("MUI X DataGrid adapter")).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
-  });
+  }, 30_000);
 
   test("keeps the Pretable benchmark wrapper distinct while exposing the shared renderer markers", async () => {
     render(
