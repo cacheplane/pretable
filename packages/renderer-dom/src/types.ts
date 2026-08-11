@@ -169,7 +169,10 @@ export interface RowLayoutController<
   TColumns,
 > {
   readonly getState: () => RowLayoutControllerState<TRow, TRowId, TColumns>;
+  /** Starts model observation. Idempotent; `subscribe` also activates. */
+  readonly activate: () => void;
   readonly subscribe: (listener: () => void) => () => void;
+  readonly setColumns: (columns: readonly DomLayoutColumn<TRow>[]) => void;
   readonly setViewport: (viewport: RowLayoutViewport) => void;
   readonly measure: (
     ref: PretableVisibleRowRef<TRowId>,
@@ -208,6 +211,8 @@ export interface CreateRowLayoutControllerOptions<
   readonly maxUnitsPerSlice?: number;
   readonly defaultRowHeight?: number;
   readonly maxRetainedMeasurements?: number;
+  /** Defers model subscription and scheduled work until activation. */
+  readonly deferActivation?: boolean;
   /**
    * Testable/custom estimate seam; the default uses wrapped column text.
    * Positive estimates below `defaultRowHeight` are clamped to that floor;

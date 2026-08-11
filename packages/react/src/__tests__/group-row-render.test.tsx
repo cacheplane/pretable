@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   GROUP_COLUMN_ID,
-  type PretableGroupRow,
+  type PretableGridGroupRow,
   type PretableSelectionState,
 } from "@pretable/core";
 
@@ -265,7 +265,7 @@ describe("group row rendering", () => {
  * where the state IS reachable — at the component's own boundary.
  */
 describe("a group with no children left", () => {
-  const childless: PretableGroupRow = {
+  const childless: PretableGridGroupRow = {
     kind: "group",
     id: "__group__:sector=Tech",
     depth: 0,

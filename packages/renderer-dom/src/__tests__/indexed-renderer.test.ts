@@ -1206,6 +1206,55 @@ describe("indexed DOM row layout controller", () => {
     expect(controller.getState().observedRevision).toBe(2);
   });
 
+  test("serializes reentrant column changes and no-ops unchanged columns", () => {
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+    ]);
+    const { controller, scheduler } = createReadyController(model);
+    const widerColumns = [
+      { ...renderColumns[0], widthPx: 120 },
+      renderColumns[1],
+    ] as const;
+    const beforeStarts =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
+    let changed = false;
+    let notifyingFirstListener = false;
+    let nestedNotification = false;
+    controller.subscribe(() => {
+      if (changed) return;
+      changed = true;
+      notifyingFirstListener = true;
+      controller.setColumns(widerColumns);
+      notifyingFirstListener = false;
+    });
+    controller.subscribe(() => {
+      if (notifyingFirstListener) nestedNotification = true;
+    });
+
+    model.applyTransaction({
+      update: [{ id: 1, changes: { label: "one updated" } }],
+    });
+    scheduler.flushAll();
+
+    expect(changed).toBe(true);
+    expect(nestedNotification).toBe(false);
+    expect(controller.getState().status.kind).toBe("ready");
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .replacementStartCount,
+    ).toBe(beforeStarts + 1);
+
+    controller.setColumns([{ ...widerColumns[0] }, { ...widerColumns[1] }]);
+    scheduler.flushAll();
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .replacementStartCount,
+    ).toBe(beforeStarts + 1);
+  });
+
   test("queues model reentrancy that starts during an atomic reset publication", () => {
     const model = createModel([
       { id: 1, team: "A", score: 1, label: "one" },

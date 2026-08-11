@@ -2,9 +2,12 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { usePretable } from "../use-pretable";
+import { useLegacyPretable } from "../use-legacy-pretable";
 import type { PretableColumn } from "../types";
-import type { PretableDataRow, PretableVisibleRow } from "@pretable/core";
+import type {
+  PretableGridDataRow,
+  PretableGridVisibleRow,
+} from "@pretable/core";
 
 type Row = {
   id: string;
@@ -20,11 +23,11 @@ const columns: PretableColumn<Row>[] = [
  * union rather than side-stepping it: a group row genuinely has no `.row`.
  */
 function findDataRow(
-  visibleRows: readonly PretableVisibleRow<Row>[],
+  visibleRows: readonly PretableGridVisibleRow<Row>[],
   id: string,
-): PretableDataRow<Row> | undefined {
+): PretableGridDataRow<Row> | undefined {
   return visibleRows.find(
-    (entry): entry is PretableDataRow<Row> =>
+    (entry): entry is PretableGridDataRow<Row> =>
       entry.kind === "data" && entry.id === id,
   );
 }
@@ -34,7 +37,12 @@ describe("usePretable streaming lifecycle", () => {
     const getRowId = (row: Row) => row.id;
     const { result, rerender } = renderHook(
       ({ rows }: { rows: Row[] }) =>
-        usePretable<Row>({ columns, rows, getRowId, viewportHeight: 200 }),
+        useLegacyPretable<Row>({
+          columns,
+          rows,
+          getRowId,
+          viewportHeight: 200,
+        }),
       {
         initialProps: {
           rows: [
@@ -67,7 +75,7 @@ describe("usePretable streaming lifecycle", () => {
   it("does not recreate the grid when getRowId is an inline closure", () => {
     const { result, rerender } = renderHook(
       ({ rows }: { rows: Row[] }) =>
-        usePretable<Row>({
+        useLegacyPretable<Row>({
           columns,
           rows,
           getRowId: (row) => row.id, // fresh closure every render

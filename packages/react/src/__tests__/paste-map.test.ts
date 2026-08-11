@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { mapPasteToTargets } from "../paste";
-import type { PretableVisibleRow } from "@pretable/core";
+import type { PretableGridVisibleRow } from "@pretable/core";
 import type { PretableColumn } from "../types";
 
 type Row = { id: string; a: string; b: string; c: string; d: string };
@@ -15,7 +15,7 @@ const rows: Row[] = ["r0", "r1", "r2", "r3", "r4"].map((id) => ({
   d: `${id}d`,
 }));
 
-const visibleRows: PretableVisibleRow<Row>[] = rows.map((row, i) => ({
+const visibleRows: PretableGridVisibleRow<Row>[] = rows.map((row, i) => ({
   kind: "data",
   id: row.id,
   row,
@@ -289,7 +289,10 @@ describe("mapPasteToTargets — group rows", () => {
   // emits: a header followed by its data rows.
   //
   //   [g:x]  r0  r1  [g:y]  r2  r3  r4
-  const groupRow = (id: string, value: string): PretableVisibleRow<Row> => ({
+  const groupRow = (
+    id: string,
+    value: string,
+  ): PretableGridVisibleRow<Row> => ({
     kind: "group",
     id,
     depth: 0,
@@ -298,7 +301,10 @@ describe("mapPasteToTargets — group rows", () => {
     childCount: 0,
     aggregates: {},
   });
-  const dataRow = (row: Row, sourceIndex: number): PretableVisibleRow<Row> => ({
+  const dataRow = (
+    row: Row,
+    sourceIndex: number,
+  ): PretableGridVisibleRow<Row> => ({
     kind: "data",
     id: row.id,
     row,
@@ -306,7 +312,7 @@ describe("mapPasteToTargets — group rows", () => {
     depth: 1,
   });
 
-  const groupedRows: PretableVisibleRow<Row>[] = [
+  const groupedRows: PretableGridVisibleRow<Row>[] = [
     groupRow("g:x", "x"),
     dataRow(rows[0]!, 0),
     dataRow(rows[1]!, 1),
@@ -379,7 +385,7 @@ describe("mapPasteToTargets — group rows", () => {
   });
 
   it("returns nothing when no data row sits at or after the anchor", () => {
-    const trailingHeader: PretableVisibleRow<Row>[] = [
+    const trailingHeader: PretableGridVisibleRow<Row>[] = [
       dataRow(rows[0]!, 0),
       groupRow("g:empty", "empty"),
     ];

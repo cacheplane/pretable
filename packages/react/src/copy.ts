@@ -2,7 +2,7 @@ import type {
   ColumnType,
   PretableCellRange,
   PretableRow,
-  PretableVisibleRow,
+  PretableGridVisibleRow,
 } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
@@ -52,7 +52,7 @@ function cellStyleAttr(type: ColumnType | undefined): string {
  */
 export interface SerializeRangesArgs<TRow extends PretableRow> {
   ranges: readonly PretableCellRange[];
-  visibleRows: readonly PretableVisibleRow<TRow>[];
+  visibleRows: readonly PretableGridVisibleRow<TRow>[];
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
 }

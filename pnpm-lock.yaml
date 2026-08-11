@@ -302,9 +302,15 @@ importers:
         specifier: workspace:*
         version: link:../ui
     devDependencies:
+      '@pretable-internal/grid-core':
+        specifier: workspace:*
+        version: link:../grid-core
       '@pretable-internal/renderer-dom':
         specifier: workspace:*
         version: link:../renderer-dom
+      '@pretable-internal/row-model':
+        specifier: workspace:*
+        version: link:../row-model
       '@pretable-internal/scenario-data':
         specifier: workspace:*
         version: link:../scenario-data

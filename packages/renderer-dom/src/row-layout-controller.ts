@@ -281,9 +281,10 @@ export function createRowLayoutController<
   validateRuntime({ budgetMs, maxUnitsPerSlice });
   let viewport = normalizeViewport(options.viewport);
   const defaultRowHeight = options.defaultRowHeight ?? DEFAULT_ROW_HEIGHT;
+  let layoutColumns = options.columns;
   const rawEstimate =
     options.estimateRowHeight ??
-    ((row: TRow) => estimateDomRowHeight(row, options.columns));
+    ((row: TRow) => estimateDomRowHeight(row, layoutColumns));
   const estimate = (row: TRow): number => {
     const height = rawEstimate(row);
     if (!Number.isFinite(height) || height <= 0) {
@@ -1244,12 +1245,78 @@ export function createRowLayoutController<
     }
   }
 
+  function activateController(): void {
+    if (disposed || unsubscribeModel !== undefined) return;
+    try {
+      const unsubscribe = options.model.subscribe(synchronize);
+      if (typeof unsubscribe !== "function") {
+        throw new TypeError(
+          "The row model subscribe method must return a function.",
+        );
+      }
+      unsubscribeModel = unsubscribe;
+      if (detachModelWhenAvailable || disposed) detachModel();
+    } catch (error) {
+      disposed = true;
+      cancelActive();
+      clearStagedMeasurements();
+      rollbackDeferredViewport();
+      queuedActions.length = 0;
+      listeners.clear();
+      state = Object.freeze({ ...state, status: DISPOSED });
+      throw error;
+    }
+    synchronize();
+  }
+
   const controller: RowLayoutController<TRow, TRowId, TColumns> = {
     getState: () => state,
+    activate: activateController,
     subscribe(listener) {
       if (disposed) return () => undefined;
       listeners.add(listener);
+      try {
+        activateController();
+      } catch (error) {
+        listeners.delete(listener);
+        throw error;
+      }
       return () => listeners.delete(listener);
+    },
+    setColumns(nextColumns) {
+      if (disposed) {
+        throw new RowLayoutControllerError(
+          "disposed-controller",
+          "A disposed row-layout controller cannot change its columns.",
+        );
+      }
+      if (
+        layoutColumns.length === nextColumns.length &&
+        layoutColumns.every((column, index) => {
+          const next = nextColumns[index];
+          return (
+            next !== undefined &&
+            column.id === next.id &&
+            column.wrap === next.wrap &&
+            column.widthPx === next.widthPx &&
+            column.pinned === next.pinned &&
+            column.flex === next.flex &&
+            column.minWidthPx === next.minWidthPx &&
+            column.maxWidthPx === next.maxWidthPx &&
+            column.value === next.value
+          );
+        })
+      ) {
+        return;
+      }
+      if (notifying || projecting || synchronizing) {
+        queuedActions.push(() => {
+          if (!disposed) controller.setColumns(nextColumns);
+        });
+        return;
+      }
+      layoutColumns = nextColumns;
+      if (state.snapshot !== null) startReplacement(state.snapshot, true);
     },
     setViewport(nextViewport) {
       if (disposed) {
@@ -1389,25 +1456,6 @@ export function createRowLayoutController<
       });
     })(),
   );
-  try {
-    const unsubscribe = options.model.subscribe(synchronize);
-    if (typeof unsubscribe !== "function") {
-      throw new TypeError(
-        "The row model subscribe method must return a function.",
-      );
-    }
-    unsubscribeModel = unsubscribe;
-    if (detachModelWhenAvailable || disposed) detachModel();
-  } catch (error) {
-    disposed = true;
-    cancelActive();
-    clearStagedMeasurements();
-    rollbackDeferredViewport();
-    queuedActions.length = 0;
-    listeners.clear();
-    state = Object.freeze({ ...state, status: DISPOSED });
-    throw error;
-  }
-  synchronize();
+  if (options.deferActivation !== true) activateController();
   return controller;
 }

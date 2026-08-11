@@ -32,7 +32,7 @@
     "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs scripts/__tests__/check-type-performance.test.mjs scripts/__tests__/publish-preflight.test.mjs scripts/__tests__/publish-public-packages.test.mjs && pnpm -r --filter './packages/*' test && pnpm -r --workspace-concurrency=1 --filter './apps/*' test",
     "typecheck": "pnpm -r --filter './packages/*' typecheck && pnpm -r --workspace-concurrency=1 --filter './apps/*' typecheck",
     "typecheck:performance": "pnpm --filter @pretable/core build && node ./scripts/check-type-performance.mjs",
-    "typecheck:public": "pnpm --filter @pretable/core build && pnpm exec tsc -p type-tests/tsconfig.json --noEmit"
+    "typecheck:public": "pnpm --filter @pretable/core build && pnpm --filter @pretable/react build && pnpm exec tsc -p type-tests/tsconfig.json --noEmit && pnpm exec tsc -p type-tests/tsconfig.react.json --noEmit"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

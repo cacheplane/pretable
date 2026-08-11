@@ -5,13 +5,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   GROUP_COLUMN_ID,
-  type PretableGroupRow,
+  type PretableGridGroupRow,
   type PretableRow,
 } from "@pretable/core";
 
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
-import { usePretable } from "../use-pretable";
+import { useLegacyPretable } from "../use-legacy-pretable";
 
 interface Holding extends PretableRow {
   id: string;
@@ -37,11 +37,11 @@ const getRowId = (row: Holding) => row.id;
 afterEach(cleanup);
 
 function groupByValue(
-  rows: readonly (PretableGroupRow | { kind: "data" })[],
+  rows: readonly (PretableGridGroupRow | { kind: "data" })[],
   value: string,
-): PretableGroupRow {
+): PretableGridGroupRow {
   const group = rows.find(
-    (row): row is PretableGroupRow =>
+    (row): row is PretableGridGroupRow =>
       row.kind === "group" && row.value === value,
   );
   if (!group) throw new Error(`No group for ${value}`);
@@ -150,7 +150,7 @@ describe("usePretable grouping option identity", () => {
   it("keys group-column construction by primitive values while reconciling rows", () => {
     const { result, rerender } = renderHook(
       ({ header, rows }: { header: string; rows: Holding[] }) =>
-        usePretable<Holding>({
+        useLegacyPretable<Holding>({
           columns: COLUMNS,
           rows,
           getRowId,

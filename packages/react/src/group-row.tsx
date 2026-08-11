@@ -1,7 +1,7 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import {
   GROUP_COLUMN_ID,
-  type PretableGroupRow,
+  type PretableGridGroupRow,
   type PretableRow,
 } from "@pretable/core";
 import type { PlannedColumn } from "@pretable-internal/renderer-dom";
@@ -19,7 +19,7 @@ export interface GroupRowProps<TRow extends PretableRow> {
   columnsById: ReadonlyMap<string, PretableColumn<TRow>>;
   expanded: boolean;
   focusedColumnId: string | null;
-  group: PretableGroupRow;
+  group: PretableGridGroupRow;
   height: number;
   isFocused: boolean;
   /** Width override while a resize drag is live, so cells track the header. */

@@ -15,6 +15,8 @@ export { LabeledGridSurface } from "./labeled-grid-surface";
 
 // Hooks
 export { usePretable } from "./use-pretable";
+export { useLocalRowModel } from "./use-local-row-model";
+export { usePretableColumns } from "./use-pretable-columns";
 
 // Component prop / message / config types
 export type { PretableProps } from "./pretable";
@@ -32,16 +34,27 @@ export type {
 
 // Hook input + output shapes
 export type {
+  PretableControlledQueryOptions,
+  PretableConventionalRowId,
   PretableModel,
-  PretableRenderDataRow,
-  PretableRenderGroupRow,
-  PretableRenderRow,
-  PretableRenderRowGeometry,
-  PretableRenderSnapshot,
+  PretableRowForColumns,
+  PretableRowsModeBaseOptions,
   PretableSurfaceState,
   PretableTelemetry,
-  UsePretableOptions,
+  PretableViewportOptions,
+  UsePretableModelOptions,
+  UsePretableRowsOptions,
+  UsePretableRowsWithIdOptions,
 } from "./use-pretable";
+export type {
+  UseLocalRowModelOptions,
+  UseLocalRowModelWithDefaultIdOptions,
+} from "./use-local-row-model";
+export type {
+  PretableGridUiSnapshot,
+  PretableIndexedRenderSnapshot,
+  PretableReactGrid,
+} from "./use-indexed-pretable";
 
 // React-extended column type + render-input shapes
 export type {
@@ -50,6 +63,15 @@ export type {
   PretableEditorInput,
   PretableFormatInput,
   PretableHeaderRenderInput,
+  PretableColumnPresentation,
+  PretableColumnRow,
+  PretableColumnValue,
+  PretableEditableColumnRequirement,
+  PretablePresentationColumns,
+  PretablePresentationEditRequirement,
+  PretableReactColumns,
+  PretableRowChange,
+  PretableSetValueInput,
 } from "./types";
 
 // Copy / clipboard
@@ -66,26 +88,93 @@ export type { DensityHeights } from "@pretable/ui";
 // Re-exports from @pretable/core (the engine types react users typically
 // touch — full headless surface lives in @pretable/core)
 export type {
+  AutosizeOptions,
+  ColumnIdOf,
   ColumnFilter,
+  ColumnValueOf,
+  ColumnsOf,
+  CreateLocalRowModelOptions,
+  CreateLocalRowModelWithDefaultIdOptions,
   FilterOperator,
   ColumnOption,
   ColumnType,
   FilterValue,
   PretableAggregateSpec,
+  PretableAggregateFormatInput,
+  PretableAggregateOutputOf,
+  PretableAggregatesFor,
   PretableAggregator,
+  PretableBuiltinAggregate,
+  PretableCellAddress,
+  PretableCellRange,
+  PretableColumnDefinition,
+  PretableColumnDerivation,
+  PretableColumnType,
+  PretableCompatibleAggregator,
+  PretableCompatibleAggregateSpec,
+  PretableChangeOperation,
+  PretableChangeSequence,
+  PretableChangeSet,
   PretableDataRow,
+  PretableDerivationsFor,
+  PretableDerivationTransition,
+  PretableDistinctColumnIdOf,
+  PretableDistinctValueOptions,
+  PretableDistinctValueQuery,
+  PretableDistinctValueResult,
   PretableEditInput,
   PretableEditState,
   PretableEditStatus,
   PretableFocusDirection,
+  PretableFocusState,
+  PretableFilterFor,
+  PretableFilterOperandFor,
   PretableGrid,
+  PretableGridDataRow,
+  PretableGridGroupRow,
   PretableGridOptions,
   PretableGridSnapshot,
+  PretableGridTransaction,
+  PretableGridVisibleRow,
   PretableGroupRow,
+  PretableGroupColumnOptions,
+  PretableGroupKey,
+  PretableGroupId,
+  PretableMoveFocusOptions,
+  PretableQueryFor,
+  PretableQueryTransition,
+  PretableRowId,
+  PretableRowModel,
+  PretableRowModelError,
+  PretableRowModelErrorCode,
+  PretableRowModelErrorContext,
+  PretableRowModelOperation,
+  PretableRowModelState,
+  PretableRowModelSnapshot,
+  PretableRowModelStatus,
+  PretableRowRange,
+  PretableRowGroupFor,
+  PretableRowUpdate,
+  PretableSelectionState,
   PretableRow,
   PretableSortEntry,
+  PretableSortFor,
+  PretableTransaction,
+  PretableExpansionDefault,
+  PretableExpansionState,
+  PretableMutationResult,
+  PretableMutationIssue,
+  PretableVisibleRowRef,
+  Prettify,
+  PretableViewportState,
   PretableVisibleRow,
+  PretableVisibleRowField,
+  RowIdOf,
+  RowOf,
 } from "@pretable/core";
+
+// Core's column format input shares the historical React alias name.
+export type { PretableFormatInput as PretableCoreFormatInput } from "@pretable/core";
 
 // Internal-but-exported (ɵ-prefix marks these as not API-stable)
 export { useResolvedHeights as ɵuseResolvedHeights } from "./density";

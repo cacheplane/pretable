@@ -1,8 +1,8 @@
 import type {
   PretableGridSnapshot,
-  PretableGroupRow,
+  PretableGridGroupRow,
   PretableRow,
-  PretableVisibleRow,
+  PretableGridVisibleRow,
 } from "@pretable/core";
 
 import { formatCellValue } from "./rendering";
@@ -40,9 +40,9 @@ export function isGroupExpanded(
  * collapsed group navigates to.
  */
 export function findParentGroupRow<TRow extends PretableRow>(
-  visibleRows: readonly PretableVisibleRow<TRow>[],
+  visibleRows: readonly PretableGridVisibleRow<TRow>[],
   index: number,
-): PretableGroupRow | null {
+): PretableGridGroupRow | null {
   const entry = visibleRows[index];
 
   if (!entry) return null;

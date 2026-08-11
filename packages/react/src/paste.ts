@@ -6,7 +6,7 @@
 import type {
   PretableCellAddress,
   PretableRow,
-  PretableVisibleRow,
+  PretableGridVisibleRow,
 } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
@@ -199,7 +199,7 @@ export interface MapPasteArgs<TRow extends PretableRow> {
    */
   selectionSize: { rows: number; columns: number };
   /** Group rows are excluded from the target space; see {@link mapPasteToTargets}. */
-  visibleRows: readonly PretableVisibleRow<TRow>[];
+  visibleRows: readonly PretableGridVisibleRow<TRow>[];
   /** Effective columns; the synthetic row-select column may be present and is ignored. */
   columns: readonly PretableColumn<TRow>[];
 }

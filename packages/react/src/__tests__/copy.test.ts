@@ -8,12 +8,12 @@ import {
   type SerializeRangesArgs,
 } from "../copy";
 import { ROW_SELECT_COLUMN_ID } from "../pretable-surface";
-import type { PretableCellRange, PretableVisibleRow } from "@pretable/core";
+import type { PretableCellRange, PretableGridVisibleRow } from "@pretable/core";
 import type { PretableColumn } from "../types";
 
 type Row = { id: string; a: string; b: string; c: string };
 
-function makeVisibleRows(rows: Row[]): PretableVisibleRow<Row>[] {
+function makeVisibleRows(rows: Row[]): PretableGridVisibleRow<Row>[] {
   return rows.map((row, i) => ({
     kind: "data" as const,
     id: row.id,
@@ -310,7 +310,7 @@ describe("serializeRanges escaping", () => {
   // omitted, which keeps the block rectangular over the data rows it spans.
   it("omits group header rows spanned by a range", () => {
     const [r1, r2, r3] = makeVisibleRows(rows);
-    const visibleRows: PretableVisibleRow<Row>[] = [
+    const visibleRows: PretableGridVisibleRow<Row>[] = [
       r1!,
       {
         kind: "group",

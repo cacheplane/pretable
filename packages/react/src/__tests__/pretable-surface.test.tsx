@@ -19,7 +19,8 @@ import {
 import type { CopyPayload, SerializeRangesArgs } from "../copy";
 import * as rowHeight from "../row-height";
 import type { PretableCellRenderInput } from "../types";
-import { type PretableSurfaceState, usePretable } from "../use-pretable";
+import type { PretableSurfaceState } from "../use-pretable";
+import { useLegacyPretable as usePretable } from "../use-legacy-pretable";
 import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
   PretableFocusState,

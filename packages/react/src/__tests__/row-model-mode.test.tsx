@@ -1,0 +1,348 @@
+// @vitest-environment jsdom
+import { act, render, renderHook } from "@testing-library/react";
+import { StrictMode, Suspense } from "react";
+import { describe, expect, test, vi } from "vitest";
+
+import * as core from "@pretable/core";
+
+import { usePretable } from "../use-pretable";
+
+interface Row {
+  key: `row_${number}`;
+  label: string;
+  score: number;
+}
+
+const column = core.createColumnHelper<Row>();
+const columns = [
+  column.accessor("label", { type: "text" }),
+  column.accessor("score", { type: "number" }),
+] as const;
+const rows: readonly Row[] = [
+  { key: "row_1", label: "one", score: 1 },
+  { key: "row_2", label: "two", score: 2 },
+];
+
+function createModel() {
+  return core.createLocalRowModel({
+    rows,
+    columns,
+    getRowId: (row) => row.key,
+  });
+}
+
+describe("usePretable explicit-model mode", () => {
+  test("keeps exactly one rows-mode model alive through StrictMode rehearsal", async () => {
+    const { result, unmount } = renderHook(
+      () =>
+        usePretable({
+          rows,
+          columns,
+          getRowId: (row) => row.key,
+          viewportHeight: 88,
+        }),
+      { wrapper: StrictMode },
+    );
+    const committed = result.current.rowModel;
+    expect(committed.getState().status.kind).toBe("ready");
+
+    unmount();
+    await expect.poll(() => committed.getState().status.kind).toBe("disposed");
+  });
+
+  test("keeps a suspended rows-mode candidate alive for the eventual commit", async () => {
+    const create = vi.spyOn(core, "createLocalRowModel");
+    let ready = false;
+    let release!: () => void;
+    const blocker = new Promise<void>((resolve) => {
+      release = () => {
+        ready = true;
+        resolve();
+      };
+    });
+    const seen: ReturnType<typeof createModel>[] = [];
+
+    function SuspendedGrid() {
+      const value = usePretable({
+        rows,
+        columns,
+        getRowId: (row) => row.key,
+        viewportHeight: 88,
+      });
+      seen.push(value.rowModel);
+      if (!ready) throw blocker;
+      return null;
+    }
+
+    const view = render(
+      <Suspense fallback={null}>
+        <SuspendedGrid />
+      </Suspense>,
+    );
+    expect(create.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(seen[0]?.getState().status.kind).toBe("ready");
+
+    await act(async () => release());
+
+    expect(create.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(seen.at(-1)?.getState().status.kind).toBe("ready");
+    const committed = seen.at(-1)!;
+
+    view.unmount();
+    await expect.poll(() => committed.getState().status.kind).toBe("disposed");
+    create.mockRestore();
+  });
+
+  test("does not subscribe a borrowed model from a render that throws", () => {
+    const model = createModel();
+    const subscribe = vi.spyOn(model, "subscribe");
+    function BrokenGrid(): null {
+      usePretable({ model, viewportHeight: 88 });
+      throw new Error("render failed");
+    }
+
+    expect(() => render(<BrokenGrid />)).toThrow("render failed");
+    expect(subscribe).not.toHaveBeenCalled();
+    model.dispose();
+  });
+
+  test("uses model columns as presentation fallback and never disposes the model", async () => {
+    const model = createModel();
+    const dispose = vi.spyOn(model, "dispose");
+    const { result, unmount } = renderHook(() =>
+      usePretable({ model, viewportHeight: 88, viewportWidth: 320 }),
+    );
+
+    expect(result.current.rowModel).toBe(model);
+    await expect
+      .poll(() => result.current.renderSnapshot.modelRevision)
+      .toBe(model.getState().snapshot.revision);
+    expect(result.current.renderSnapshot.columns.map(({ id }) => id)).toEqual([
+      "label",
+      "score",
+    ]);
+    expect(result.current.gridSnapshot.observedRowModelRevision).toBe(
+      result.current.renderSnapshot.modelRevision,
+    );
+
+    unmount();
+    expect(dispose).not.toHaveBeenCalled();
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    model.dispose();
+  });
+
+  test("observes caller disposal without reconfiguring a disposed controller", () => {
+    const model = createModel();
+    const { result, unmount } = renderHook(() =>
+      usePretable({ model, viewportHeight: 88, viewportWidth: 320 }),
+    );
+
+    act(() => model.dispose());
+
+    expect(result.current.status).toEqual({ kind: "disposed" });
+    unmount();
+  });
+
+  test("accepts presentation overrides and replaces UI ownership when the model changes", async () => {
+    const first = createModel();
+    const second = createModel();
+    const presentation = [
+      { id: "label", header: "Display label", widthPx: 240 },
+      { id: "score" },
+    ] as const;
+    const { result, rerender, unmount } = renderHook(
+      ({ model }) =>
+        usePretable({
+          model,
+          columns: presentation,
+          viewportHeight: 88,
+          viewportWidth: 320,
+        }),
+      { initialProps: { model: first } },
+    );
+    const firstGrid = result.current.grid;
+
+    rerender({ model: second });
+
+    expect(result.current.rowModel).toBe(second);
+    expect(result.current.grid).not.toBe(firstGrid);
+    expect(first.getState().status).toEqual({ kind: "ready" });
+    unmount();
+    expect(second.getState().status).toEqual({ kind: "ready" });
+    first.dispose();
+    second.dispose();
+  });
+
+  test("uses value-based mode discrimination for explicit undefined exclusions", () => {
+    const model = createModel();
+    const setDerivations = vi.spyOn(model, "setDerivations");
+    const { rerender } = renderHook(
+      ({ header }) =>
+        usePretable({
+          model,
+          rows: undefined,
+          columns: [{ id: "label", header }, { id: "score" }],
+          viewportHeight: 88,
+        }),
+      { initialProps: { header: "First" } },
+    );
+
+    rerender({ header: "Second" });
+
+    expect(setDerivations).not.toHaveBeenCalled();
+    model.dispose();
+  });
+
+  test("rejects a presentation override outside the model schema", () => {
+    const model = createModel();
+    expect(() =>
+      renderHook(() =>
+        usePretable({
+          model,
+          columns: [{ id: "missing" }, { id: "score" }] as never,
+          viewportHeight: 88,
+        }),
+      ),
+    ).toThrow(/presentation columns.*model schema/i);
+    model.dispose();
+  });
+
+  test("observes model, UI, and layout stores independently while publishing atomic revisions", async () => {
+    const model = createModel();
+    const { result } = renderHook(() =>
+      usePretable({ model, viewportHeight: 44, viewportWidth: 320 }),
+    );
+    const firstModelSnapshot = result.current.rowModelSnapshot;
+
+    act(() => {
+      result.current.grid.setViewport({
+        scrollTop: 44,
+        scrollLeft: 0,
+        height: 44,
+        width: 320,
+      });
+    });
+    expect(result.current.rowModelSnapshot).toBe(firstModelSnapshot);
+
+    act(() => {
+      model.applyTransaction({
+        update: [{ id: "row_1", changes: { score: 4 } }],
+      });
+    });
+    await expect
+      .poll(() => result.current.renderSnapshot.modelRevision)
+      .toBe(model.getState().snapshot.revision);
+    expect(result.current.rowModelSnapshot).toBe(
+      result.current.renderSnapshot.modelSnapshot,
+    );
+    expect(result.current.gridSnapshot.observedRowModelRevision).toBe(
+      result.current.renderSnapshot.modelRevision,
+    );
+    model.dispose();
+  });
+
+  test("forwards grid viewport and column layout into the render controller", async () => {
+    const model = core.createLocalRowModel({
+      rows: Array.from({ length: 40 }, (_, index): Row => ({
+        key: `row_${index}`,
+        label: `row ${index}`,
+        score: index,
+      })),
+      columns,
+      getRowId: (row) => row.key,
+    });
+    const { result } = renderHook(() =>
+      usePretable({ model, viewportHeight: 44, viewportWidth: 320 }),
+    );
+    await expect
+      .poll(() => result.current.renderSnapshot.modelRevision)
+      .toBe(model.getState().snapshot.revision);
+
+    act(() => {
+      result.current.grid.setViewport({
+        scrollTop: 440,
+        scrollLeft: 24,
+        height: 44,
+        width: 280,
+      });
+      result.current.grid.setColumnWidth("label", 240);
+    });
+
+    await expect
+      .poll(() => result.current.renderSnapshot.rows[0]?.rowIndex ?? 0)
+      .toBeGreaterThan(0);
+    expect(
+      result.current.renderSnapshot.columns.find(({ id }) => id === "label")
+        ?.width,
+    ).toBe(240);
+    model.dispose();
+  });
+
+  test("preserves UI state across visual prop identity changes and explicit flex widths", async () => {
+    const model = createModel();
+    type Presentation = readonly [
+      { readonly id: "label"; readonly header: string; readonly flex: 1 },
+      { readonly id: "score"; readonly widthPx: 80 },
+    ];
+    const firstPresentation: Presentation = [
+      { id: "label", header: "Label", flex: 1 },
+      { id: "score", widthPx: 80 },
+    ];
+    const { result, rerender } = renderHook(
+      ({ presentation }: { readonly presentation: Presentation }) =>
+        usePretable({
+          model,
+          columns: presentation,
+          viewportHeight: 88,
+          viewportWidth: 400,
+        }),
+      { initialProps: { presentation: firstPresentation } },
+    );
+    await expect
+      .poll(() => result.current.renderSnapshot.modelRevision)
+      .toBe(model.getState().snapshot.revision);
+    const grid = result.current.grid;
+    const flexWidth = result.current.renderSnapshot.columns.find(
+      ({ id }) => id === "label",
+    )?.width;
+    expect(flexWidth).toBeGreaterThan(160);
+
+    expect(() => {
+      act(() => result.current.grid.setColumnWidth("label", Number.NaN));
+    }).toThrow(/width/i);
+    expect(
+      result.current.renderSnapshot.columns.find(({ id }) => id === "label")
+        ?.width,
+    ).toBe(flexWidth);
+
+    act(() => {
+      result.current.grid.setFocus({
+        ref: { kind: "data", rowId: "row_1" },
+        columnId: "label",
+      });
+      result.current.grid.setColumnWidth("label", 160);
+    });
+    expect(
+      result.current.renderSnapshot.columns.find(({ id }) => id === "label")
+        ?.width,
+    ).toBe(160);
+
+    rerender({
+      presentation: [
+        { id: "label", header: "Renamed", flex: 1 },
+        { id: "score", widthPx: 80 },
+      ],
+    });
+
+    expect(result.current.grid).toBe(grid);
+    expect(result.current.gridSnapshot.focus).toEqual({
+      ref: { kind: "data", rowId: "row_1" },
+      columnId: "label",
+    });
+    expect(
+      result.current.renderSnapshot.columns.find(({ id }) => id === "label")
+        ?.width,
+    ).toBe(160);
+    model.dispose();
+  });
+});

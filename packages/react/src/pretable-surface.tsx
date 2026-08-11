@@ -18,7 +18,7 @@ import type {
   ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
-  PretableDataRow,
+  PretableGridDataRow,
   PretableEditInput,
   PretableFocusState,
   PretableGrid,
@@ -28,7 +28,7 @@ import type {
   PretableRow,
   PretableSelectionState,
   PretableSortEntry,
-  PretableVisibleRow,
+  PretableGridVisibleRow,
 } from "@pretable/core";
 import type {
   PretableCellRenderInput,
@@ -55,8 +55,8 @@ type PretableFocusDirection = "up" | "down" | "left" | "right";
  * expressed.
  */
 function isDataRow<TRow extends PretableRow>(
-  entry: PretableVisibleRow<TRow>,
-): entry is PretableDataRow<TRow> {
+  entry: PretableGridVisibleRow<TRow>,
+): entry is PretableGridDataRow<TRow> {
   return entry.kind === "data";
 }
 
@@ -66,8 +66,8 @@ import { measureRenderedRowHeight } from "./row-height";
 import {
   type PretableSurfaceState,
   type PretableTelemetry,
-  usePretable,
-} from "./use-pretable";
+  useLegacyPretable,
+} from "./use-legacy-pretable";
 import { useResolvedHeights, useResolvedPx } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
@@ -856,7 +856,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     };
     return [synth, ...columns];
   }, [columns, rowSelectEnabled, rowSelectWidth, rowSelectPinned]);
-  const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
+  const { grid, snapshot, renderSnapshot, telemetry } = useLegacyPretable({
     aggregateFilteredRows,
     autosize,
     columns: effectiveColumns,
@@ -3604,7 +3604,7 @@ function singleFullRowSelection<TRow extends PretableRow>(
 function resolvePasteAnchor<TRow extends PretableRow>(
   ranges: readonly PretableCellRange[],
   focus: PretableFocusState,
-  visibleRows: readonly PretableVisibleRow<TRow>[],
+  visibleRows: readonly PretableGridVisibleRow<TRow>[],
   /** Columns in DRAWN order — paste geometry counts across them. */
   columns: readonly PretableColumn<TRow>[],
 ): {
