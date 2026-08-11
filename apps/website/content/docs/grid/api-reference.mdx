@@ -225,7 +225,11 @@ rather than the `columns` prop — pins applied through controlled
 the prop. It is normalized to `null` when the column is unpinned, unlike
 `column.pinned`, which is `undefined` in that case.
 
-`PretableCoreColumn<TRow>` is the engine-level (React-free) column type re-exported from `@pretable/core`. `PretableColumn<TRow>` extends it with the React-only `render` and `renderHeader` fields. Most consumers import `PretableColumn` from `@pretable/react`.
+`PretableColumn<TRow>` from `@pretable/core` is the engine-level (React-free)
+column type. `@pretable/react` aliases that core type as
+`PretableBaseColumn<TRow>` and exports its own `PretableColumn<TRow>`, which
+extends it with the React-only `render`, `renderHeader`, and `renderEditor`
+fields. Most React consumers import `PretableColumn` from `@pretable/react`.
 
 `PretableAggregateFormatInput` is exported from both `@pretable/core` and
 `@pretable/react` — writing a `formatAggregate` inline on a `PretableColumn`

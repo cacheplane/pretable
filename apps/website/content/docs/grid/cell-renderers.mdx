@@ -34,7 +34,7 @@ the compiled [`numberFormat`](/docs/grid/number-formatting) column option.
 ```tsx
 import { numberFormats, type PretableColumn } from "@pretable/react";
 
-interface Order {
+interface Order extends Record<string, unknown> {
   id: string;
   total: number;
   placedAt: Date;
