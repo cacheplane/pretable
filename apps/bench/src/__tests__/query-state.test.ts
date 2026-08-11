@@ -212,4 +212,16 @@ describe("parseBenchQuery", () => {
       });
     }
   });
+
+  test("accepts the row-set change scripts", () => {
+    for (const script of ["replace", "append"]) {
+      expect(
+        parseBenchQuery(`?scenario=S1&scale=hypothesis&script=${script}`),
+      ).toMatchObject({
+        scenarioId: "S1",
+        scale: "hypothesis",
+        scriptName: script,
+      });
+    }
+  });
 });

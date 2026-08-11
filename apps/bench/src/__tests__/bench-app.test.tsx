@@ -344,4 +344,182 @@ describe("BenchApp", () => {
       rowGroups: ["col_5"],
     });
   }, 20_000);
+  test("paints and selects the resident window BEFORE the replace window opens", async () => {
+    // Everything the app owes the measurement is owed by the time it is invoked, so
+    // all of it is read at call time: the adapter must be holding the 200-row resident
+    // window rather than S1/dev's 2 000, and the plan's probe row must already be the
+    // selected row. `selected_row_preserved` is only a claim about the update if
+    // something was selected before it landed; with no selection it compares two nulls
+    // and scores 1.
+    //
+    // What this test cannot see is the measurement's own quiet gate — it holds the
+    // window shut until selection and focus stop MOVING (`createStabilityKey`), and
+    // this test replaces `measureBenchDataUpdateRun` wholesale. That gate is covered
+    // in bench-runtime.test.ts ("waits for a surface still in motion at hand-over").
+    let modeAtCallTime: string | null = null;
+    let residentRowCountAtCallTime: string | null = null;
+    let selectedRowIdAtCallTime: string | null = null;
+    let planAtCallTime: unknown = null;
+
+    vi.spyOn(benchRuntime, "measureBenchDataUpdateRun").mockImplementation(
+      async (_root, _adapterId, mode, plan) => {
+        const adapter = document.querySelector<HTMLElement>(
+          "[data-benchmark-adapter='pretable']",
+        );
+        modeAtCallTime = mode;
+        planAtCallTime = plan;
+        residentRowCountAtCallTime =
+          adapter?.dataset.benchResultRowCount ?? null;
+        selectedRowIdAtCallTime = adapter?.dataset.benchSelectedRowId ?? null;
+
+        return {
+          status: "completed",
+          notes: [`data update mode: ${mode}`],
+          metrics: {
+            interaction_latency_ms: 11,
+            settle_duration_ms: 9,
+            post_interaction_blank_gap_frames: 0,
+            post_interaction_anchor_shift_px: 0,
+            post_interaction_row_height_error_p95_px: 0,
+            scroll_position_drift_px: 0,
+            result_row_count: 200,
+            selected_row_preserved: 1,
+            focused_row_preserved: 1,
+            grid_instance_reconstructed: 0,
+            dom_nodes_peak: 400,
+            rendered_rows_peak: 11,
+            rendered_cells_peak: 440,
+          },
+        };
+      },
+    );
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S1&scale=dev&script=replace&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          adapterId: "pretable",
+          scenarioId: "S1",
+          scriptName: "replace",
+          metrics: {
+            interaction_latency_ms: 11,
+            grid_instance_reconstructed: 0,
+          },
+        });
+      },
+      { timeout: 20_000 },
+    );
+
+    expect(modeAtCallTime).toBe("replace");
+    // The resident window, not S1 dev's 2 000 rows.
+    expect(residentRowCountAtCallTime).toBe("200");
+    expect(planAtCallTime).toMatchObject({ mode: "replace" });
+    // Asserted before the comparison below, which an empty id on both sides would
+    // otherwise satisfy without either a probe row or a selection existing.
+    expect(
+      (planAtCallTime as { selectedRowId: string | null }).selectedRowId,
+    ).toBeTruthy();
+    expect(selectedRowIdAtCallTime).toBe(
+      (planAtCallTime as { selectedRowId: string }).selectedRowId,
+    );
+  }, 30_000);
+
+  test("records an aborted replace as a failed run carrying the cause, never as a thrown harness error", async () => {
+    // A real replace measurement taken to one of its abort paths — the instance-id probe
+    // reading nothing — rather than a stubbed return, because what is under test is the
+    // whole path from the abort to the published artifact.
+    //
+    // bench-runner refuses to record a `partial` replace at all, so an abort that stayed
+    // `partial` reaches createBenchRunSummary's guard and the throw lands in executeRun's
+    // catch: a run recorded as failed whose error says only that the status was wrong.
+    // The cause the measurement already knew is gone by then, and the harness spends a
+    // full run to publish nothing about why it stopped.
+    vi.spyOn(benchRuntime, "readBenchGridInstanceId").mockReturnValue(null);
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S1&scale=dev&script=replace&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "failed",
+          adapterId: "pretable",
+          scenarioId: "S1",
+          scriptName: "replace",
+          error: {
+            message: expect.stringContaining(
+              "grid instance id unavailable before the update",
+            ),
+          },
+        });
+      },
+      { timeout: 30_000 },
+    );
+
+    // The measurement's own notes survive onto the failed artifact; they are the only
+    // record of which script and which mode stopped.
+    expect(window[BENCH_RESULT_KEY]?.notes).toContain(
+      "data update mode: replace",
+    );
+  }, 40_000);
+
+  test("reports a dataset too small for either row-set shape as unsupported", async () => {
+    const dataUpdateSpy = vi.spyOn(benchRuntime, "measureBenchDataUpdateRun");
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S1&scale=smoke&script=append&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        status: "unsupported",
+        scriptName: "append",
+      });
+    });
+
+    // Mount-only metrics under the `append` name would be worse than no run.
+    expect(dataUpdateSpy).not.toHaveBeenCalled();
+  }, 20_000);
+
+  test("reports the row-set scripts as unsupported on an adapter with no setRows path", async () => {
+    const dataUpdateSpy = vi.spyOn(benchRuntime, "measureBenchDataUpdateRun");
+
+    // Only pretable wires `onDataApiReady`, so on any other adapter the trigger would
+    // be dead and the measurement would time a call into nothing. The rejection comes
+    // from `validateSupportedP0aRequest`, which the app consults before it builds a
+    // plan — this pins that a hand-typed lab-page URL cannot reach the measurement.
+    render(
+      <BenchApp
+        search="?adapter=ag-grid&scenario=S1&scale=dev&script=replace&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "unsupported",
+          adapterId: "ag-grid",
+          scriptName: "replace",
+        });
+      },
+      { timeout: 20_000 },
+    );
+
+    expect(dataUpdateSpy).not.toHaveBeenCalled();
+  }, 30_000);
 });

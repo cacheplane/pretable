@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -9,9 +10,13 @@ import {
 import { useEffect } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createScenarioDataset } from "@pretable-internal/scenario-data";
+import {
+  createScenarioDataset,
+  type ScenarioRow,
+} from "@pretable-internal/scenario-data";
 import * as pretableReactInternal from "@pretable/react";
 
+import { readBenchGridInstanceId } from "../bench-runtime";
 import { createBenchInteractionPlan } from "../interaction-plan";
 import { PretableAdapter } from "../pretable-adapter";
 
@@ -70,6 +75,38 @@ describe("PretableAdapter", () => {
       }),
       undefined,
     );
+  });
+
+  test("presents no instance id until a grid publishes one", () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+    // A surface that never publishes a grid. `onGridReady` is what hands out the id,
+    // so this is the state every run passes through before the engine exists — and
+    // the state the reconstruction probe must be able to tell apart from a real id.
+    const surfaceSpy = vi
+      .spyOn(pretableReactInternal, "PretableSurface")
+      .mockImplementation((props) => (
+        <div
+          aria-label={props.ariaLabel}
+          data-pretable-scroll-viewport=""
+          role="grid"
+        />
+      ));
+
+    render(<PretableAdapter dataset={dataset} runKey={1} />);
+
+    const adapter = screen
+      .getByRole("grid", { name: "Pretable React adapter" })
+      .closest("[data-benchmark-adapter]");
+
+    expect(adapter).not.toHaveAttribute("data-bench-grid-instance-id");
+    // The seam, end to end: what the adapter leaves in the DOM before readiness must
+    // read as unavailable to the runtime probe, not as instance 0.
+    expect(readBenchGridInstanceId(adapter?.parentElement ?? null)).toBeNull();
+
+    // The file's other spies restore in-test; without this one doing the same, a
+    // stub PretableSurface leaks into every test declared after it and the suite
+    // passes only because two later tests happen to call mockRestore().
+    surfaceSpy.mockRestore();
   });
 
   test("derives interaction preservation markers from actual telemetry instead of the requested plan", async () => {
@@ -193,5 +230,61 @@ describe("PretableAdapter", () => {
     expect(surfaceSpy.mock.calls.length).toBe(1);
 
     surfaceSpy.mockRestore();
+  });
+
+  test("swaps the row array through the data api without rebuilding the grid", async () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+    const initialRows = dataset.rows.slice(0, 3);
+    const nextRows = initialRows.map((row) => ({
+      ...row,
+      col_0: `${String(row.col_0 ?? "")} refreshed`,
+    }));
+    let apply: ((rows: readonly ScenarioRow[]) => void) | null = null;
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        initialRows={initialRows}
+        onDataApiReady={(next) => {
+          apply = next;
+        }}
+        runKey={1}
+      />,
+    );
+
+    const adapter = screen
+      .getByRole("grid", { name: "Pretable React adapter" })
+      .closest("[data-benchmark-adapter]");
+
+    // `initialRows` wins over the dataset's own 120 rows.
+    expect(screen.getAllByTestId("pretable-row")).toHaveLength(3);
+    // Waited for through the runtime's own reader, not for the attribute to exist:
+    // a placeholder would satisfy presence and leave the comparison below running
+    // against a value no engine ever published.
+    await waitFor(() => {
+      expect(
+        readBenchGridInstanceId(adapter?.parentElement ?? null),
+      ).not.toBeNull();
+    });
+
+    const instanceIdBefore = readBenchGridInstanceId(
+      adapter?.parentElement ?? null,
+    );
+
+    expect(apply).not.toBeNull();
+    await act(async () => {
+      apply?.(nextRows);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(String(nextRows[0]?.col_0 ?? "")),
+      ).toBeInTheDocument();
+    });
+    // Same engine absorbed the new array — this is the property
+    // `grid_instance_reconstructed` reads.
+    expect(readBenchGridInstanceId(adapter?.parentElement ?? null)).toBe(
+      instanceIdBefore,
+    );
   });
 });

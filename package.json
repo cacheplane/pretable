@@ -20,8 +20,10 @@
   "scripts": {
     "api": "pnpm --filter @pretable/core api && pnpm --filter @pretable/react api && pnpm --filter @pretable/ui api && pnpm --filter @pretable/stream-adapter api",
     "api:check": "pnpm --filter @pretable/core api:check && pnpm --filter @pretable/react api:check && pnpm --filter @pretable/ui api:check && pnpm --filter @pretable/stream-adapter api:check",
+    "bench:budgets": "node ./scripts/check-bench-budgets.mjs",
     "bench:e2e": "node ./scripts/bench-e2e.mjs",
     "bench:matrix": "node ./scripts/bench-matrix.mjs",
+    "bench:memory": "node ./scripts/bench-e2e.mjs apps/bench/tests/resident-cap-memory.spec.ts",
     "build": "pnpm -r --filter './packages/*' build && pnpm -r --workspace-concurrency=1 --filter './apps/*' build",
     "dev:bench": "pnpm --filter @pretable/app-bench dev",
     "format": "prettier --check .",
@@ -29,7 +31,7 @@
     "lint": "pnpm -r lint",
     "lint:packaging": "pnpm --filter @pretable/core lint:packaging && pnpm --filter @pretable/react lint:packaging && pnpm --filter @pretable/stream-adapter lint:packaging && pnpm --filter @pretable/ui lint:packaging",
     "publish:preflight": "node ./scripts/publish-preflight.mjs",
-    "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs scripts/__tests__/public-api-forgotten-exports.test.mjs scripts/__tests__/publish-preflight.test.mjs scripts/__tests__/publish-public-packages.test.mjs && pnpm -r --filter './packages/*' test && pnpm -r --workspace-concurrency=1 --filter './apps/*' test",
+    "test": "node --test scripts/__tests__/bench-e2e.test.mjs scripts/__tests__/bench-matrix.test.mjs scripts/__tests__/check-bench-budgets.test.mjs scripts/__tests__/public-api-forgotten-exports.test.mjs scripts/__tests__/publish-preflight.test.mjs scripts/__tests__/publish-public-packages.test.mjs && pnpm -r --filter './packages/*' test && pnpm -r --workspace-concurrency=1 --filter './apps/*' test",
     "typecheck": "pnpm -r --filter './packages/*' typecheck && pnpm -r --workspace-concurrency=1 --filter './apps/*' typecheck"
   },
   "devDependencies": {
