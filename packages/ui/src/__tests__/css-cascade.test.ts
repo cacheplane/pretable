@@ -519,6 +519,103 @@ describe("grid.css cascade contract", () => {
     }
   });
 
+  test("the badge is a hairline chip and never tints its own fill", () => {
+    // A tinted chip cannot pass AA. Tinting the fill with the text's own hue
+    // costs ~0.6 of contrast against this ramp: 4.38/4.13/4.32/4.49 at a 10%
+    // tint over white, and worse the deeper it goes — every one of them under
+    // 4.5. The website's hand-rolled pills shipped at 14% (3.89–4.24), which is
+    // the failure this rule exists to replace. So the fill stays the grid
+    // surface, the boundary is a hairline (--pretable-rule-strong is 4.00:1 and
+    // only owes 3:1 as a UI boundary), and TONE RIDES THE TEXT, where it
+    // measures 4.83–5.17 on the grid surface.
+    const css = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const base = css.match(
+      /:where\(\[data-pretable-badge\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(base, "no badge rule").toBeDefined();
+    expect(base).toMatch(/border:\s*1px solid var\(--pretable-rule-strong\)/);
+    expect(base).toMatch(/background:\s*var\(--pretable-bg-grid\)/);
+    expect(base).toMatch(/color:\s*var\(--pretable-text-cell\)/);
+
+    for (const tone of ["positive", "negative", "warning", "info"]) {
+      const rule = css.match(
+        new RegExp(
+          `:where\\(\\[data-pretable-badge\\]\\[data-pretable-tone="${tone}"\\]\\)\\s*\\{([\\s\\S]*?)\\}`,
+        ),
+      )?.[1];
+      expect(rule, `no badge tone=${tone} rule`).toBeDefined();
+      expect(rule).toMatch(new RegExp(`color:\\s*var\\(--pretable-${tone}\\)`));
+    }
+
+    // The load-bearing half: NO rule scoped to a badge may fill from the ramp,
+    // by any spelling. A `color-mix` of the tone into the surface is exactly
+    // the shape of the failure, and it is what a later hand looking to make the
+    // chips "read louder" would reach for first.
+    const badgeRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
+      m[1].includes("data-pretable-badge"),
+    );
+    expect(badgeRules.length, "no badge rules at all").toBeGreaterThan(0);
+    for (const [, selector, body] of badgeRules) {
+      expect(
+        body,
+        `badge rule "${selector.trim()}" tints its fill from the semantic ramp; every tint drops the chip below 4.5:1`,
+      ).not.toMatch(
+        /background[^;]*var\(--pretable-(positive|negative|warning|info)\)/,
+      );
+      expect(
+        body,
+        `badge rule "${selector.trim()}" mixes a fill; the badge's fill is the grid surface, untinted`,
+      ).not.toMatch(/background[^;]*color-mix/);
+    }
+  });
+
+  test("the entity's secondary line is dimmed by a token, never by opacity", () => {
+    // Every hand-rolled version of this pattern reached for opacity and every
+    // one of them failed AA: the website's Day P&L percentage rendered 2.27:1
+    // and its `.symbolSub` company name 3.88:1, both from an `opacity` on
+    // otherwise-compliant ink. Opacity cannot reach 4.5:1 and still read as
+    // secondary, so the subordination is carried by a token that was computed
+    // (--pretable-text-dim, 7.72:1 on the grid) plus type size.
+    const css = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const container = css.match(
+      /:where\(\[data-pretable-entity\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(container, "no entity rule").toBeDefined();
+    expect(container).toMatch(/flex-direction:\s*column/);
+
+    const primary = css.match(
+      /:where\(\[data-pretable-entity-primary\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(primary, "no entity primary rule").toBeDefined();
+    // Both lines are in a fixed-width, `overflow: hidden` cell, so an
+    // un-ellipsised long name is simply chopped mid-glyph at the column edge.
+    expect(primary).toMatch(/text-overflow:\s*ellipsis/);
+
+    const secondary = css.match(
+      /:where\(\[data-pretable-entity-secondary\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(secondary, "no entity secondary rule").toBeDefined();
+    expect(secondary).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+    expect(secondary).toMatch(/text-overflow:\s*ellipsis/);
+
+    const entityRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
+      m[1].includes("data-pretable-entity"),
+    );
+    expect(entityRules.length, "no entity rules at all").toBeGreaterThan(0);
+    for (const [, selector, body] of entityRules) {
+      expect(
+        body,
+        `entity rule "${selector.trim()}" dims with opacity; the secondary line takes --pretable-text-dim, which was computed against the surface`,
+      ).not.toMatch(/opacity:/);
+    }
+  });
+
   test("pseudo-element rules keep ::before outside the :where()", () => {
     // `:where([x]::before)` is INVALID: :where() takes a complex-selector-list
     // and a pseudo-element is not one, so a browser drops the entire rule and

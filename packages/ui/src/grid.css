@@ -475,6 +475,69 @@
     background: var(--pretable-info);
   }
 
+  /* Badge: a hairline chip, never a tinted one. Tinting the fill with the
+     text's own hue costs ~0.6 of contrast and drops every tone below AA — 4.14
+     at a 10% tint, worse deeper. The reference designs got this right: a white
+     chip with a hairline and restrained text. Tone rides on the TEXT, which
+     measures 4.83–5.17 on the grid surface. */
+  :where([data-pretable-badge]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 8px;
+    border: 1px solid var(--pretable-rule-strong);
+    border-radius: 999px;
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font-size: 0.85em;
+    white-space: nowrap;
+  }
+
+  :where([data-pretable-badge][data-pretable-tone="positive"]) {
+    color: var(--pretable-positive);
+  }
+
+  :where([data-pretable-badge][data-pretable-tone="negative"]) {
+    color: var(--pretable-negative);
+  }
+
+  :where([data-pretable-badge][data-pretable-tone="warning"]) {
+    color: var(--pretable-warning);
+  }
+
+  :where([data-pretable-badge][data-pretable-tone="info"]) {
+    color: var(--pretable-info);
+  }
+
+  /* Entity: a primary line with a quieter secondary beneath it — the identity
+     column pattern. The secondary takes --pretable-text-dim rather than an
+     opacity, because every hand-rolled version of this reached for opacity and
+     every one of them failed AA. */
+  :where([data-pretable-entity]) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    line-height: 1.3;
+  }
+
+  :where([data-pretable-entity-primary]) {
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :where([data-pretable-entity-secondary]) {
+    color: var(--pretable-text-dim);
+    font-size: 0.85em;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* Row-selection checkbox column (Phase 4) */
   :where(
     [data-pretable-cell][data-pretable-row-select-cell="true"],
