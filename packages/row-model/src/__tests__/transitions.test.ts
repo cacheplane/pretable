@@ -8,7 +8,9 @@ import {
   type PretableGroupId,
 } from "../index";
 import {
+  createCooperativeTransitionRuntime,
   getCooperativeTransitionCandidateDiagnosticsForTesting,
+  runCooperativeTransitionSlice,
   type CooperativeTransitionScheduler,
 } from "../cooperative-transition";
 import {
@@ -115,6 +117,23 @@ function createModel(options: {
 }
 
 describe("cooperative query and derivation transitions", () => {
+  test("keeps the default cooperative work budget below the browser gate margin", () => {
+    let tick = 0;
+    let steps = 0;
+    const runtime = createCooperativeTransitionRuntime({
+      scheduler: new ManualScheduler(),
+      now: () => tick++,
+    });
+
+    expect(
+      runCooperativeTransitionSlice(runtime, () => {
+        steps += 1;
+        return false;
+      }),
+    ).toBe(false);
+    expect(steps).toBe(2);
+  });
+
   test("internally observes an unawaited transition rejected by automatic supersession", async () => {
     const scheduler = new ManualScheduler();
     const model = createModel({

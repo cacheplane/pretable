@@ -69,7 +69,7 @@ export function getCooperativeTransitionCandidateDiagnosticsForTesting(
   return read();
 }
 
-const DEFAULT_BUDGET_MS = 5;
+const DEFAULT_BUDGET_MS = 2;
 // A clock may be coarse, mocked, or stalled. This cap guarantees a yield while
 // keeping enough per-slice work to amortize scheduler overhead.
 const DEFAULT_MAX_UNITS_PER_SLICE = 256;
