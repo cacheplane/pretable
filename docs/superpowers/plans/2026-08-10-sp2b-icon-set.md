@@ -23,6 +23,10 @@ Seven sources, three systems, no shared stroke weight or optical size:
 | Check `✓` | `pretable-surface.tsx:3373`, `:4371`, `editors/BooleanCellControl.tsx:50` | Unicode text |
 | Close `✕` | `group-panel/GroupPanel.tsx:483` | Unicode text |
 | Grip | `packages/ui/src/grid.css` `[data-pretable-chip-handle]` | CSS `radial-gradient` |
+| Indeterminate `–` | `pretable-surface.tsx`, `aria-checked="mixed"` | Unicode text — **missed in the first draft of this table** |
+| Stepper `▲`/`▼` | `editors/NumberCellEditor.tsx:49,57` | Unicode text — **missed in the first draft; deliberately NOT converted, see below** |
+
+So nine sources, not seven. The indeterminate en-dash mattered most of the ones missed: it left the grid's commonest control half-converted, with a checked box stroked and an indeterminate one font-rendered.
 
 The Unicode glyphs re-render in whatever font the theme picked — Aptos Narrow under Excel, Roboto Flex under Material — so their size, weight and baseline change per theme and per platform.
 
@@ -313,7 +317,9 @@ Add `data-pretable-icon=""` to the `Glyph` wrapper in `icons.tsx` so this rule m
 
 ## Self-review
 
-**Coverage.** All seven sources in the table are replaced: funnel and overflow in Task 3, the five Unicode glyphs in Task 4, the CSS gradient in Task 5. The size token is Task 2.
+**Coverage.** Eight of the nine sources in the table are replaced: funnel and overflow in Task 3, the Unicode glyphs in Task 4, the CSS gradient in Task 5, the indeterminate en-dash added during implementation. The size token is Task 2.
+
+**The number-editor steppers are the one exception, and it is measured rather than assumed.** Converting them was tried and reverted: at 10px the editor's height moved 3px, the stepper column widened 3.64px, and the stacked buttons overflowed their container by 9px instead of 2px. Nor does a smaller size rescue it — preserving the existing 14.36px column needs roughly a 6.4px glyph, whose scaled stroke lands under 1px, i.e. a hairline rather than a member of a 1.5-weight set. That column is dimensioned around an 8px text glyph and has to be redesigned before any set member fits it. The measurements are recorded in a comment at the call site so this is not re-litigated from scratch.
 
 **Not doing here, deliberately:** the two behavioural changes the spec floats alongside the icon work — per-column funnel reveal (today hovering any header lights every funnel) and showing a sort affordance only on the sorted column. Both change *when* chrome appears rather than what it looks like, both touch reveal logic rather than glyphs, and bundling them would make an appearance change hard to review. They belong in their own PR.
 
