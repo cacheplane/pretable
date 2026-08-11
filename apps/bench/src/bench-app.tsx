@@ -19,6 +19,7 @@ import {
   createBenchRunSummary,
   createRunArtifactFileStem,
   validateSupportedP0aRequest,
+  type BenchMetricId,
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
 
@@ -53,6 +54,14 @@ import { TanstackAdapter } from "./tanstack-adapter";
 export interface BenchAppProps {
   search: string;
   browserVersion: string;
+}
+
+/** What every `measureBench*Run` helper hands back. Named here so the run-selection
+ *  table below can hold them in one list. */
+interface BenchMeasuredRun {
+  status: "completed" | "partial" | "failed";
+  metrics: Partial<Record<BenchMetricId, number>>;
+  notes: string[];
 }
 
 const allScenarios = listScenarios();
@@ -226,12 +235,16 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   }
 
   /**
-   * Wait until the surface stops moving.
+   * Setup barrier for the row-set change scripts: hand over only once the resident
+   * window is mounted and the surface has stopped moving.
    *
-   * Controlled focus scrolls itself into view, so the setup for a row-set change
-   * script leaves the viewport in flight. Opening the measurement window on top of
-   * that would latch the very next frame as the update's first painted frame and
-   * report a latency that measured the tail of a scroll.
+   * Not a substitute for the measurement's own quiet gate, and not redundant with it.
+   * `measureBenchDataUpdateRun` resolves the scroll viewport ONCE and samples that
+   * element every frame, so the row-set swap and the remount it rides on have to be
+   * finished before it starts — afterwards the captured element is detached and every
+   * sample reads a dead node. What that function's gate then owns is the part this one
+   * cannot see: holding the window shut until selection and focus settle, judged by
+   * the same predicate its settle detector uses.
    */
   async function waitForQuietViewport(maxFrames = 120) {
     const viewport = viewportRef.current?.querySelector<HTMLElement>(
@@ -307,19 +320,25 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
 
     const dataUpdateScriptName =
       scriptName === "replace" || scriptName === "append" ? scriptName : null;
-    const nextDataUpdatePlan = dataUpdateScriptName
+
+    // No adapter guard here: `validateSupportedP0aRequest` above already rejects
+    // replace/append on anything but pretable, so only pretable reaches this line and a
+    // second check would be unreachable.
+    const dataUpdatePlanResult = dataUpdateScriptName
       ? createBenchDataUpdatePlan(dataset, dataUpdateScriptName)
       : null;
+    const nextDataUpdatePlan = dataUpdatePlanResult?.plan ?? null;
 
-    if (dataUpdateScriptName && !nextDataUpdatePlan) {
+    if (dataUpdatePlanResult && !dataUpdatePlanResult.plan) {
       // The scenario cannot host the resident window these scripts describe. Falling
       // through would publish mount-only metrics under the script's name — a run that
-      // measured something else while looking like a measurement of this.
+      // measured something else while looking like a measurement of this. The reason
+      // comes from the builder, which knows which of its gates rejected the dataset.
       const unsupportedResult = createBenchRunSummary({
         request,
         status: "unsupported",
         timestamp,
-        reason: `Unsupported scenario scale for ${dataUpdateScriptName} script: ${request.scenarioId}/${request.scale} holds ${dataset.rows.length} rows, fewer than the 1 200 the resident window and its append need`,
+        reason: `Unsupported scenario for ${dataUpdateScriptName} script: ${request.scenarioId}/${request.scale} ${dataUpdatePlanResult.reason}`,
       });
       setResult(unsupportedResult);
       publishBenchResult(unsupportedResult);
@@ -527,14 +546,17 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               () =>
                 createBenchInteractionStateFromTelemetry(
                   pretableTelemetryRef.current,
-                  nextDataUpdatePlan.resultRowCount,
+                  // The PRE-update count. Falling back to the expected post-update
+                  // count would make the measurement's row-count check compare the
+                  // expectation against itself whenever telemetry is missing.
+                  nextDataUpdatePlan.initialRows.length,
                 ),
               () =>
                 (
                   viewportRef.current?.querySelector(
                     "[data-bench-grid-instance-id]",
                   ) as HTMLElement | null
-                )?.dataset.benchGridInstanceId ?? "0",
+                )?.dataset.benchGridInstanceId ?? null,
               () => {
                 dataApiRef.current?.(nextDataUpdatePlan.nextRows);
               },
@@ -663,111 +685,74 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         );
       }
 
-      const nextResult =
-        (scriptName === "scroll" ||
-          scriptName === "scroll-with-format" ||
-          scriptName === "scroll-with-render" ||
-          scriptName === "scroll-with-heavy-render") &&
-        scrollRun
-          ? createBenchRunSummary({
-              request,
-              status: scrollRun.status,
-              timestamp,
-              tracePath,
-              notes: [
-                ...scrollRun.notes,
-                ...createPretableTelemetryNotes(pretableTelemetryRef.current),
-              ],
-              metrics: scrollRun.metrics,
-            })
-          : (scriptName === "select-range-extend" ||
-                scriptName === "keyboard-nav-row" ||
-                scriptName === "select-all") &&
-              keySequenceRun
-            ? createBenchRunSummary({
-                request,
-                status: keySequenceRun.status,
-                timestamp,
-                tracePath,
-                notes: [
-                  ...keySequenceRun.notes,
-                  ...createPretableTelemetryNotes(pretableTelemetryRef.current),
-                ],
-                metrics: keySequenceRun.metrics,
-              })
-            : isUpdatesScript && updatesRun
-              ? createBenchRunSummary({
-                  request,
-                  status: updatesRun.status,
-                  timestamp,
-                  tracePath,
-                  notes: [
-                    ...updatesRun.notes,
-                    ...groupingNotes,
-                    ...createPretableTelemetryNotes(
-                      pretableTelemetryRef.current,
-                    ),
-                  ],
-                  metrics: updatesRun.metrics,
-                })
-              : scriptName === "autosize" && autosizeRun
-                ? createBenchRunSummary({
-                    request,
-                    status: autosizeRun.status,
-                    timestamp,
-                    tracePath,
-                    notes: [
-                      ...autosizeRun.notes,
-                      ...createPretableTelemetryNotes(
-                        pretableTelemetryRef.current,
-                      ),
-                    ],
-                    metrics: autosizeRun.metrics,
-                  })
-                : interactionRun
-                  ? createBenchRunSummary({
-                      request,
-                      status: interactionRun.status,
-                      timestamp,
-                      tracePath,
-                      notes: [
-                        ...interactionRun.notes,
-                        ...groupingNotes,
-                        ...createPretableTelemetryNotes(
-                          pretableTelemetryRef.current,
-                        ),
-                      ],
-                      metrics: interactionRun.metrics,
-                    })
-                  : dataUpdateRun
-                    ? createBenchRunSummary({
-                        request,
-                        status: dataUpdateRun.status,
-                        timestamp,
-                        tracePath,
-                        notes: [
-                          ...dataUpdateRun.notes,
-                          ...createPretableTelemetryNotes(
-                            pretableTelemetryRef.current,
-                          ),
-                        ],
-                        metrics: dataUpdateRun.metrics,
-                      })
-                    : createBenchRunSummary({
-                        request,
-                        status: "completed",
-                        timestamp,
-                        tracePath,
-                        notes: createPretableTelemetryNotes(
-                          pretableTelemetryRef.current,
-                        ),
-                        metrics: {
-                          mount_ms: performance.now() - startedAt,
-                          first_stable_viewport_ms:
-                            performance.now() - startedAt,
-                          dom_nodes_peak: domNodesPeak,
-                        },
-                      });
+      const dataUpdateNotes =
+        dataUpdateScriptName && nextDataUpdatePlan
+          ? [
+              // The artifact is filed under the scenario's own scale, but these
+              // scripts hold a WINDOW of it, not the whole thing. Without this a
+              // dashboard row reads "replace @ S1/dev" and invites exactly the
+              // misreading the pair exists to prevent.
+              `resident rows: ${nextDataUpdatePlan.initialRows.length} to ${nextDataUpdatePlan.resultRowCount} (scenario holds ${dataset.rows.length})`,
+              `probe column: ${nextDataUpdatePlan.probeColumnId}`,
+            ]
+          : [];
+
+      // Ordered, first match wins — the same precedence the nested conditional
+      // below it used to express. Every entry pairs the run with the notes only
+      // that script owes, so adding a script is one row rather than one more
+      // level of indentation.
+      const measuredRuns: readonly {
+        matches: boolean;
+        run: BenchMeasuredRun | null;
+        notes?: readonly string[];
+      }[] = [
+        {
+          matches:
+            scriptName === "scroll" ||
+            scriptName === "scroll-with-format" ||
+            scriptName === "scroll-with-render" ||
+            scriptName === "scroll-with-heavy-render",
+          run: scrollRun,
+        },
+        {
+          matches:
+            scriptName === "select-range-extend" ||
+            scriptName === "keyboard-nav-row" ||
+            scriptName === "select-all",
+          run: keySequenceRun,
+        },
+        { matches: isUpdatesScript, run: updatesRun, notes: groupingNotes },
+        { matches: scriptName === "autosize", run: autosizeRun },
+        { matches: true, run: interactionRun, notes: groupingNotes },
+        { matches: true, run: dataUpdateRun, notes: dataUpdateNotes },
+      ];
+      const measured = measuredRuns.find((entry) => entry.matches && entry.run);
+
+      const nextResult = measured?.run
+        ? createBenchRunSummary({
+            request,
+            status: measured.run.status,
+            timestamp,
+            tracePath,
+            notes: [
+              ...measured.run.notes,
+              ...(measured.notes ?? []),
+              ...createPretableTelemetryNotes(pretableTelemetryRef.current),
+            ],
+            metrics: measured.run.metrics,
+          })
+        : createBenchRunSummary({
+            request,
+            status: "completed",
+            timestamp,
+            tracePath,
+            notes: createPretableTelemetryNotes(pretableTelemetryRef.current),
+            metrics: {
+              mount_ms: performance.now() - startedAt,
+              first_stable_viewport_ms: performance.now() - startedAt,
+              dom_nodes_peak: domNodesPeak,
+            },
+          });
 
       setResult(nextResult);
       publishBenchResult(nextResult);

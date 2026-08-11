@@ -1366,12 +1366,22 @@ function createDataUpdateHarness() {
   return { layoutRow, root, viewport };
 }
 
+/** Milliseconds the frame stub advances per rAF. Both interaction timings are integer
+ *  multiples of it, which is what the frame-count assertions below pin. */
+const STUB_FRAME_MS = 16;
+
 /**
  * Installs a synchronous rAF whose callback can apply a DOM mutation a fixed
  * number of frames after the trigger — the stand-in for React committing the new
- * row array on a later frame. Returns the restore function.
+ * row array on a later frame. `onFrame` runs on every frame regardless of the
+ * trigger, which is how a surface still in motion at hand-over is simulated.
+ * Returns the restore function.
  */
-function installFrameStub(pending: { frames: number; apply: () => void }) {
+function installFrameStub(pending: {
+  frames: number;
+  apply: () => void;
+  onFrame?: (frame: number) => void;
+}) {
   const previousRaf = globalThis.requestAnimationFrame;
   const previousGetComputedStyle = globalThis.getComputedStyle;
   let frame = 0;
@@ -1380,6 +1390,7 @@ function installFrameStub(pending: { frames: number; apply: () => void }) {
     configurable: true,
     value: (callback: FrameRequestCallback) => {
       frame += 1;
+      pending.onFrame?.(frame);
 
       if (pending.frames > 0) {
         pending.frames -= 1;
@@ -1389,7 +1400,7 @@ function installFrameStub(pending: { frames: number; apply: () => void }) {
         }
       }
 
-      callback(frame * 16);
+      callback(frame * STUB_FRAME_MS);
       return frame;
     },
   });
@@ -1518,10 +1529,228 @@ describe("bench data update runtime", () => {
 
       expect(result.status).toBe("completed");
       expect(result.metrics.grid_instance_reconstructed).toBe(1);
+      // POLARITY, pinned deliberately: this metric passes at 0 and fails at 1, the
+      // inverse of the two preservation metrics beside it in bench-runner's
+      // required-metric block. Here the rebuild happened (1) while selection and focus
+      // survived (1) — so an evaluator that scored the three the same way would read
+      // this run as clean.
+      expect(result.metrics.selected_row_preserved).toBe(1);
+      expect(result.metrics.focused_row_preserved).toBe(1);
     } finally {
       restore();
     }
   });
+
+  test("refuses to score reconstruction when the instance-id probe reads nothing", async () => {
+    const { root, viewport } = createDataUpdateHarness();
+    const cells = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
+    const pending = {
+      frames: 0,
+      apply: () => {
+        for (const [index, cell] of cells.entries()) {
+          cell.textContent = `refreshed ${index}`;
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    try {
+      const result = await measureBenchDataUpdateRun(
+        root,
+        "pretable",
+        "replace",
+        {
+          focusedRowId: "row-1",
+          probeColumnId: "col_0",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        }),
+        // A missed selector, a renamed attribute, an adapter that never published the
+        // id. Comparing two identical misses would report 0 — a PASS on the one metric
+        // §11's replace budget rests on, produced by a broken reader.
+        () => null,
+        () => {
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("partial");
+      expect(result.metrics.grid_instance_reconstructed).toBeUndefined();
+      expect(
+        result.notes.some((note) =>
+          note.includes("grid instance id unavailable"),
+        ),
+      ).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  test("refuses a run whose row count did not reach the count the plan handed the surface", async () => {
+    const { root, viewport } = createDataUpdateHarness();
+    const cells = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
+    let resultRowCount = 3;
+    const pending = {
+      frames: 0,
+      apply: () => {
+        // Something repainted, so the change detector latches and the run would
+        // otherwise report a healthy latency — but only 4 of the planned 5 rows landed.
+        resultRowCount = 4;
+        for (const [index, cell] of cells.entries()) {
+          cell.textContent = `refreshed ${index}`;
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    try {
+      const result = await measureBenchDataUpdateRun(
+        root,
+        "pretable",
+        "append",
+        {
+          focusedRowId: "row-1",
+          probeColumnId: "col_0",
+          resultRowCount: 5,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount,
+          selectedRowId: "row-1",
+        }),
+        () => "1",
+        () => {
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("partial");
+      expect(
+        result.notes.some((note) =>
+          note.includes("result row count settled at 4, not the 5"),
+        ),
+      ).toBe(true);
+    } finally {
+      restore();
+    }
+  });
+
+  test("latches the frame the change actually landed on, and publishes both timings as frame counts", async () => {
+    const { root, viewport } = createDataUpdateHarness();
+    const cells = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-cell]"),
+    ];
+    const pending = {
+      frames: 0,
+      apply: () => {
+        for (const [index, cell] of cells.entries()) {
+          cell.textContent = `refreshed ${index}`;
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    try {
+      const result = await measureBenchDataUpdateRun(
+        root,
+        "pretable",
+        "replace",
+        {
+          focusedRowId: "row-1",
+          probeColumnId: "col_0",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        }),
+        () => "1",
+        () => {
+          // Lands on the SECOND frame after the window opens, not the first.
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("completed");
+      // Exact, not `toBeGreaterThan(0)`: an off-by-one in the detector — latching the
+      // trigger's own frame, or the frame after the change — still produces a positive
+      // latency and would pass a loose assertion.
+      expect(result.metrics.interaction_latency_ms).toBe(2 * STUB_FRAME_MS);
+      expect(result.notes).toContain("frames to first change: 2");
+      // pretable's profile settles at maxSettleFrames 3, so 2 stable frames is the
+      // floor this loop cannot report less than. Published so a reader cannot mistake
+      // the floor for a measurement.
+      expect(result.metrics.settle_duration_ms).toBe(2 * STUB_FRAME_MS);
+      expect(result.notes).toContain("frames to settle: 2 (floor 2)");
+      expect(result.notes).toContain(
+        `frame interval median ms: ${STUB_FRAME_MS.toFixed(2)}`,
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  test("waits for a surface still in motion at hand-over instead of latching its tail", async () => {
+    const { root, viewport } = createDataUpdateHarness();
+    const firstCell = viewport.querySelector<HTMLElement>(
+      "[data-pretable-cell]",
+    )!;
+    // Controlled focus scrolls the probe row into view, so the caller hands over while
+    // the surface is still repainting. The window must not open on top of that: the
+    // first frame after it would differ from a stale baseline and latch as this
+    // trigger's first painted frame, reporting the one-frame floor.
+    const pending = {
+      frames: 0,
+      apply: () => {},
+      onFrame: (frame: number) => {
+        if (frame <= 5) {
+          firstCell.textContent = `in flight ${frame}`;
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    try {
+      const result = await measureBenchDataUpdateRun(
+        root,
+        "pretable",
+        "replace",
+        {
+          focusedRowId: "row-1",
+          probeColumnId: "col_0",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        }),
+        () => "1",
+        // Fires nothing. Without the quiet gate the pre-hand-over motion is the only
+        // thing that repaints and the run still reports `completed` with a one-frame
+        // latency, which is the failure this pins.
+        () => {},
+      );
+
+      expect(result.status).toBe("partial");
+      expect(result.metrics.interaction_latency_ms).toBeUndefined();
+    } finally {
+      restore();
+    }
+  }, 20_000);
 
   test("times an append and reports the viewport's own scroll drift", async () => {
     const { layoutRow, root, viewport } = createDataUpdateHarness();
@@ -1566,9 +1795,13 @@ describe("bench data update runtime", () => {
       expect(result.status).toBe("completed");
       expect(result.notes).toContain("data update mode: append");
       expect(result.metrics.result_row_count).toBe(4);
-      // Rows landed below the fold; the viewport did not move.
+      // The viewport's own offset did not move even though a row arrived below it.
       expect(result.metrics.scroll_position_drift_px).toBe(0);
       expect(result.metrics.grid_instance_reconstructed).toBe(0);
+      // An append whose new rows never enter the DOM computes blank-gap frames,
+      // anchor shift and row-height error over rows it never touched, and reports a
+      // perfect score for having rendered nothing. The count says which run this was.
+      expect(result.notes).toContain("rows newly rendered by the update: 1");
     } finally {
       restore();
     }

@@ -234,8 +234,44 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       grid_instance_reconstructed: expect.any(Number),
       result_row_count: expect.any(Number),
     });
-    // The engine absorbed the change; it did not rebuild.
+    // The engine absorbed the change; it did not rebuild. Note the polarity: this
+    // metric passes at 0, the inverse of the preservation metrics below it.
     expect(result.metrics.grid_instance_reconstructed).toBe(0);
+    expect(result.metrics.selected_row_preserved).toBe(1);
+    expect(result.metrics.focused_row_preserved).toBe(1);
+    // Both timings are differences between rAF timestamps and so are integer
+    // multiples of the frame interval. The artifact has to carry the frame counts or
+    // a reader cannot tell a measurement from the one-frame floor.
+    expect(result.notes).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^frame interval median ms: [\d.]+$/),
+        expect.stringMatching(/^frames to first change: \d+$/),
+        expect.stringMatching(/^frames to settle: \d+ \(floor \d+\)$/),
+        // These scripts hold a WINDOW of the scenario, not all of it, and the
+        // artifact is filed under the scenario's own scale.
+        expect.stringMatching(
+          /^resident rows: \d+ to \d+ \(scenario holds \d+\)$/,
+        ),
+        expect.stringMatching(/^probe column: \S+$/),
+      ]),
+    );
+
+    const arrivedNote = result.notes.find((note) =>
+      note.startsWith("rows newly rendered by the update: "),
+    );
+    const arrivedRows = Number(arrivedNote?.split(": ")[1]);
+
+    if (scriptName === "append") {
+      // The append is measured from a viewport parked at the tail of the resident
+      // set. If its new rows never enter the DOM, blank-gap frames, anchor shift and
+      // row-height error are all computed over rows the append never touched and
+      // score perfectly for having rendered nothing.
+      expect(arrivedRows).toBeGreaterThan(0);
+    } else {
+      // A replace reuses every id, so nothing is "new" — the same assertion inverted
+      // is what proves the count tracks arrivals rather than repaints.
+      expect(arrivedRows).toBe(0);
+    }
   }
 
   const dashboardPath = path.join(cwd, "status", "dashboard.json");

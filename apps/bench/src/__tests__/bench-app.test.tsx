@@ -344,14 +344,21 @@ describe("BenchApp", () => {
       rowGroups: ["col_5"],
     });
   }, 20_000);
-  test("paints and selects the resident window BEFORE the replace window opens", async () => {
-    // `selected_row_preserved` / `focused_row_preserved` are only claims about the
-    // update if something was selected first, and the controlled focus scrolls
-    // itself into view — which, still in flight, would be mistaken for the
-    // update's own first painted frame.
+  test("mounts the resident window, and hands the measurement the row it must select", async () => {
+    // Two separate obligations, and only the first is the app's.
+    //
+    // The app owes the resident WINDOW: the adapter must be holding 200 rows, not
+    // S1/dev's 2 000, before the measurement is invoked — asserted at call time below,
+    // because nothing downstream can recover a run that measured the wrong row set.
+    //
+    // Settling the SELECTION is the measurement's own job. `measureBenchDataUpdateRun`
+    // holds the window shut until selection and focus stop moving (see
+    // `createStabilityKey`), which is a gate this test cannot observe because it
+    // replaces that function wholesale. It is covered directly in
+    // bench-runtime.test.ts ("waits for a surface still in motion at hand-over") and
+    // end-to-end by the `selected_row_preserved: 1` assertion in tests/bench.spec.ts.
     let modeAtCallTime: string | null = null;
     let residentRowCountAtCallTime: string | null = null;
-    let selectedRowIdAtCallTime: string | null = null;
     let planAtCallTime: unknown = null;
 
     vi.spyOn(benchRuntime, "measureBenchDataUpdateRun").mockImplementation(
@@ -363,7 +370,6 @@ describe("BenchApp", () => {
         planAtCallTime = plan;
         residentRowCountAtCallTime =
           adapter?.dataset.benchResultRowCount ?? null;
-        selectedRowIdAtCallTime = adapter?.dataset.benchSelectedRowId ?? null;
 
         return {
           status: "completed",
@@ -413,10 +419,12 @@ describe("BenchApp", () => {
     expect(modeAtCallTime).toBe("replace");
     // The resident window, not S1 dev's 2 000 rows.
     expect(residentRowCountAtCallTime).toBe("200");
+    // The plan must name a row for the measurement to select and then verify; a plan
+    // with no probe row makes `selected_row_preserved` a comparison of two nulls.
     expect(planAtCallTime).toMatchObject({ mode: "replace" });
-    expect(selectedRowIdAtCallTime).toBe(
-      (planAtCallTime as { selectedRowId: string }).selectedRowId,
-    );
+    expect(
+      (planAtCallTime as { selectedRowId: string | null }).selectedRowId,
+    ).toBeTruthy();
   }, 30_000);
 
   test("reports a dataset too small for either row-set shape as unsupported", async () => {
@@ -439,4 +447,32 @@ describe("BenchApp", () => {
     // Mount-only metrics under the `append` name would be worse than no run.
     expect(dataUpdateSpy).not.toHaveBeenCalled();
   }, 20_000);
+
+  test("reports the row-set scripts as unsupported on an adapter with no setRows path", async () => {
+    const dataUpdateSpy = vi.spyOn(benchRuntime, "measureBenchDataUpdateRun");
+
+    // Only pretable wires `onDataApiReady`, so on any other adapter the trigger would
+    // be dead and the measurement would time a call into nothing. The rejection comes
+    // from `validateSupportedP0aRequest`, which the app consults before it builds a
+    // plan — this pins that a hand-typed lab-page URL cannot reach the measurement.
+    render(
+      <BenchApp
+        search="?adapter=ag-grid&scenario=S1&scale=dev&script=replace&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "unsupported",
+          adapterId: "ag-grid",
+          scriptName: "replace",
+        });
+      },
+      { timeout: 20_000 },
+    );
+
+    expect(dataUpdateSpy).not.toHaveBeenCalled();
+  }, 30_000);
 });
