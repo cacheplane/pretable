@@ -647,4 +647,147 @@ describe("renderer-dom", () => {
     expect(layout.columns.map((c) => c.index)).toEqual([3, 0, 2, 1]);
     expect(layout.columns.map((c) => c.left)).toEqual([0, 100, 200, 300]);
   });
+
+  describe("row-height estimates for flex columns", () => {
+    const FLEX_WRAP_TEXT =
+      "A wrapped flex column whose resolved width is decided by the viewport and by its sibling columns, not by a constant.";
+
+    function estimateWith(options: {
+      viewportWidth: number;
+      statusWidthPx?: number;
+      columns?: {
+        id: string;
+        header: string;
+        wrap?: boolean;
+        flex?: number;
+        widthPx?: number;
+      }[];
+    }) {
+      const columns = options.columns ?? [
+        { id: "message", header: "Message", wrap: true, flex: 1 },
+        {
+          id: "status",
+          header: "Status",
+          widthPx: options.statusWidthPx ?? 140,
+        },
+      ];
+      const grid = createGridCore({
+        columns,
+        rows: [{ id: "row-0", message: FLEX_WRAP_TEXT, status: "ready" }],
+        getRowId: (row) => String(row.id),
+      });
+
+      return createDomRenderSnapshot({
+        columns: grid.options.columns,
+        snapshot: grid.getSnapshot(),
+        scrollTop: 0,
+        viewportHeight: 320,
+        viewportWidth: options.viewportWidth,
+        overscan: 0,
+      });
+    }
+
+    test("estimates a flex column against its RESOLVED width, not its fallback", () => {
+      // The flex column is drawn at viewportWidth - 140 = 1060px, so the text
+      // fits on one line. Estimating it at the 220px wrapped-column fallback
+      // instead invents several lines of height that are not on screen.
+      const render = estimateWith({ viewportWidth: 1200 });
+      const messageWidth = render.columns.find(
+        (column) => column.id === "message",
+      )?.width;
+
+      expect(messageWidth).toBe(1060);
+      // 1 line x 24px + 42px chrome.
+      expect(render.rows[0]?.height).toBe(66);
+    });
+
+    test("re-estimates when the viewport width changes the flex share", () => {
+      const wide = estimateWith({ viewportWidth: 1200 });
+      const narrow = estimateWith({ viewportWidth: 420 });
+
+      expect(
+        narrow.columns.find((column) => column.id === "message")?.width,
+      ).toBe(280);
+      expect(narrow.rows[0]?.height).toBeGreaterThan(wide.rows[0]?.height ?? 0);
+    });
+
+    test("re-estimates when a resize of a SIBLING column changes the flex share", () => {
+      // Widening a fixed sibling shrinks the flex column's share, so the same
+      // text wraps to more lines. Nothing about the wrapped column itself
+      // changed, which is exactly what a width-only signature cannot see.
+      const roomy = estimateWith({ viewportWidth: 700, statusWidthPx: 140 });
+      const cramped = estimateWith({ viewportWidth: 700, statusWidthPx: 460 });
+
+      expect(roomy.columns.find((c) => c.id === "message")?.width).toBe(560);
+      expect(cramped.columns.find((c) => c.id === "message")?.width).toBe(240);
+      expect(cramped.rows[0]?.height).toBeGreaterThan(
+        roomy.rows[0]?.height ?? 0,
+      );
+    });
+
+    test("re-estimates across viewport resizes that keep the columns array identity", () => {
+      // The cache's fast path is `cached.columnsRef === columns`. A viewport
+      // resize does not touch the column model, so the SAME array arrives on
+      // both passes — the fast path must not be allowed to serve a height
+      // estimated at a width that no longer exists.
+      const grid = createGridCore({
+        columns: [
+          { id: "message", header: "Message", wrap: true, flex: 1 },
+          { id: "status", header: "Status", widthPx: 140 },
+        ],
+        rows: [{ id: "row-0", message: FLEX_WRAP_TEXT, status: "ready" }],
+        getRowId: (row) => String(row.id),
+      });
+      const columns = grid.options.columns;
+      const renderAt = (viewportWidth: number) =>
+        createDomRenderSnapshot({
+          columns,
+          snapshot: grid.getSnapshot(),
+          scrollTop: 0,
+          viewportHeight: 320,
+          viewportWidth,
+          overscan: 0,
+        });
+
+      const wide = renderAt(1200);
+      const narrow = renderAt(420);
+      const wideAgain = renderAt(1200);
+
+      expect(narrow.rows[0]?.height).toBeGreaterThan(wide.rows[0]?.height ?? 0);
+      expect(wideAgain.rows[0]?.height).toBe(wide.rows[0]?.height);
+    });
+
+    test("still reuses estimates when neither the columns nor the flex share moved", () => {
+      const prepareTextSpy = vi.spyOn(textCore, "prepareText");
+      const grid = createGridCore({
+        columns: [
+          { id: "message", header: "Message", wrap: true, flex: 1 },
+          { id: "status", header: "Status", widthPx: 140 },
+        ],
+        rows: Array.from({ length: 20 }, (_, index) => ({
+          id: `row-${index}`,
+          message: `${FLEX_WRAP_TEXT} ${index}`,
+          status: "ready",
+        })),
+        getRowId: (row) => String(row.id),
+      });
+      const columns = grid.options.columns;
+      const renderAt = (scrollTop: number) =>
+        createDomRenderSnapshot({
+          columns,
+          snapshot: grid.getSnapshot(),
+          scrollTop,
+          viewportHeight: 320,
+          viewportWidth: 1200,
+          overscan: 1,
+        });
+
+      renderAt(0);
+      const afterFirstPass = prepareTextSpy.mock.calls.length;
+      renderAt(44 * 4);
+
+      expect(prepareTextSpy.mock.calls.length).toBe(afterFirstPass);
+      prepareTextSpy.mockRestore();
+    });
+  });
 });
