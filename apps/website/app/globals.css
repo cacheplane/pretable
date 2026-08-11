@@ -8,7 +8,7 @@
 @import "@fontsource-variable/jetbrains-mono/wght.css";
 @import "@pretable/ui/tokens.css";
 @import "./styles/marketing-components.css";
-@import "@pretable/ui/themes/material.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 @import "tailwindcss";
 

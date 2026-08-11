@@ -92,7 +92,7 @@ afterEach(() => {
 });
 
 describe("token contract", () => {
-  for (const themeFile of ["excel.css", "material.css"]) {
+  for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
     test(`${themeFile} defines every public token at :root`, () => {
       const cleanup = loadCSS(path.join(THEMES_DIR, themeFile));
       const computed = getComputedStyle(document.documentElement);
@@ -165,6 +165,27 @@ describe("token contract", () => {
     cleanup();
   });
 
+  test("pretable.css resolves dark mode (color override fires)", () => {
+    // Assert on --pretable-bg-grid specifically: it is a literal in both the
+    // light and dark blocks. jsdom does not substitute var(), so a token
+    // declared as `var(--pretable-bg-grid)` would compare the identical
+    // literal string "var(--pretable-bg-grid)" in both modes and fail for a
+    // reason that has nothing to do with the theme.
+    const cleanup = loadCSS(path.join(THEMES_DIR, "pretable.css"));
+    const lightBg = getComputedStyle(document.documentElement)
+      .getPropertyValue("--pretable-bg-grid")
+      .trim();
+    document.documentElement.setAttribute("data-theme", "dark");
+    const darkBg = getComputedStyle(document.documentElement)
+      .getPropertyValue("--pretable-bg-grid")
+      .trim();
+    expect(
+      darkBg,
+      "pretable dark mode did not override --pretable-bg-grid",
+    ).not.toBe(lightBg);
+    cleanup();
+  });
+
   test("grid.css references no --pt-color-* tokens (consolidated into --pretable-*)", () => {
     const gridCss = fs.readFileSync(GRID_CSS, "utf8");
     const stale = [...gridCss.matchAll(/var\((--pt-color-[a-z-]+)/g)].map(
@@ -173,7 +194,7 @@ describe("token contract", () => {
     expect(stale, `grid.css still references ${stale.join(", ")}`).toEqual([]);
   });
 
-  for (const themeFile of ["excel.css", "material.css"]) {
+  for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
     test(`grid.css has no unresolved var(--pretable-*) refs under ${themeFile}`, () => {
       const themeCleanup = loadCSS(path.join(THEMES_DIR, themeFile));
       const gridCss = fs.readFileSync(GRID_CSS, "utf8");
