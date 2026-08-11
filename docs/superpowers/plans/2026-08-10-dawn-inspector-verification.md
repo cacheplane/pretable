@@ -193,7 +193,7 @@ Every spec in this plan reads its expectations out of this one module. Nothing d
 
 - [ ] **Step 2: Run it and see it fail on the missing module.**
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts test/components/seed.test.ts
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/seed.test.ts
   ```
   Expect: `Error: Failed to load url ../seed` / `Cannot find module`. The file does not exist yet.
 
@@ -337,7 +337,7 @@ Every spec in this plan reads its expectations out of this one module. Nothing d
 
 - [ ] **Step 4: Run the seed test and see it pass.**
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts test/components/seed.test.ts
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/seed.test.ts
   ```
   Expect: `6 passed`.
 
@@ -621,7 +621,16 @@ This is the preflight. It converts "the specs assume slice 4 rendered a load-mor
    * `data-pretable-scroll-viewport`, `data-pretable-hydrated`) are NOT listed here:
    * they are public API of @pretable/react and are pinned by that package's tests.
    */
+  /** The banner line for one failing source — `BrowseErrorBanners` keys its lines by
+   *  source, and the set of sources is open. */
+  export function errorBannerId<S extends string>(source: S): `error-${S}` {
+    return `error-${source}`
+  }
+
   export const TEST_IDS = {
+    /** The browse subtree — load-bearing as a SCOPE: it stays mounted-and-`hidden`
+     *  across view switches, and a search renders more grids beside it. */
+    browseRegion: "browse-region",
     /** Wraps the count/total/as-of chrome that sits above the grid. */
     status: "browse-status",
     /** The exact matching total, rendered as text. */
@@ -632,15 +641,17 @@ This is the preflight. It converts "the specs assume slice 4 rendered a load-mor
     loadMore: "load-more",
     /** Retry inside the error body block, supplied through `renderBodyState`. */
     retryInitial: "browse-retry-initial",
-    /** Per-kind banner slots — one kind's success can never clear another's failure. */
-    bannerRefresh: "browse-banner-refresh",
-    bannerLoadMore: "browse-banner-load-more",
-    bannerMutation: "browse-banner-mutation",
-    retryRefresh: "browse-retry-refresh",
-    retryLoadMore: "browse-retry-load-more",
+    /** Per-kind banner slots for the two browse REQUEST kinds — one kind's success can
+     *  never clear another's failure. A MUTATION's failures are not banners: they stay
+     *  in the bulk bar beside the ids that failed (`bulkError`). */
+    bannerRefresh: errorBannerId("refresh"),
+    bannerLoadMore: errorBannerId("load-more"),
+    /** ONE retry for the banners, not one per kind: `retry()` is a single intent and
+     *  the reducer chooses which kind to re-attempt (load-more before refresh). */
+    bannerRetry: "browse-banner-retry",
     /** The live/paused polling toggle. */
     liveToggle: "live-toggle",
-    /** Bulk chrome (pre-existing ids, restated here so the lane has one import). */
+    /** The bulk bar, and the per-id failures it holds on screen. */
     bulkBar: "bulk-bar",
     bulkError: "bulk-error",
     /** Search-view controls that are disabled-with-reason (design §8.2). */
@@ -651,17 +662,27 @@ This is the preflight. It converts "the specs assume slice 4 rendered a load-mor
 - [ ] **Step 2: Write the failing contract test.**
   Create `packages/inspector/test/components/test-id-contract.test.tsx`:
   ```tsx
-  import { render, screen, waitFor } from "@testing-library/react"
+  import { cleanup, render, screen, waitFor } from "@testing-library/react"
   import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
   import { ListPage } from "../../src/components/memory/list-page"
   import { TEST_IDS } from "../../src/components/memory/test-ids"
-  import { browseSeedRecords, BROWSE_PAGE_SIZE, BROWSE_SEED_COUNT } from "../seed"
+  import { BROWSE_PAGE_SIZE, BROWSE_SEED_COUNT, browseSeedRecords } from "../seed"
 
   /** One page of the fixture plus the honest total — enough for the chrome to render
    *  every state the lane targets. */
-  function browsePage(offset = 0) {
-    const records = browseSeedRecords().slice(offset, offset + BROWSE_PAGE_SIZE)
-    return { records, total: BROWSE_SEED_COUNT, continuation: "cursor-1" }
+  function browsePage() {
+    return {
+      records: browseSeedRecords().slice(0, BROWSE_PAGE_SIZE),
+      total: BROWSE_SEED_COUNT,
+      continuation: "cursor-1",
+    }
+  }
+
+  function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    })
   }
 
   beforeEach(() => {
@@ -670,54 +691,117 @@ This is the preflight. It converts "the specs assume slice 4 rendered a load-mor
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input)
         if (url.includes("/api/memory/stats"))
-          return Response.json({ total: BROWSE_SEED_COUNT, byStatus: {}, byKind: {}, byNamespace: {}, bySourceType: {} })
-        if (url.includes("/api/memory/list")) return Response.json(browsePage())
-        return Response.json({})
+          return jsonResponse({
+            total: BROWSE_SEED_COUNT,
+            byStatus: {},
+            byKind: {},
+            byNamespace: {},
+            bySourceType: {},
+          })
+        if (url.includes("/api/memory/list")) return jsonResponse(browsePage())
+        // 404 rather than an empty 200: an endpoint this file has not stubbed must fail
+        // where it is called. A `{}` body is a shape every reader here parses into "no
+        // rows, no total", which reads as a missing HOOK several assertions later.
+        return jsonResponse({ error: "unstubbed endpoint" }, 404)
       }),
     )
   })
 
+  /** Explicit: this project does not set `globals`, so RTL never registers its own
+   *  auto-cleanup. Without this the second `render` stacks on the first, and the
+   *  containment check below reads a viewport from one tree and a control from the
+   *  other — which passes, while proving nothing. */
   afterEach(() => {
+    cleanup()
     vi.unstubAllGlobals()
   })
 
+  /**
+   * Every id in the module, decided.
+   *
+   * `"mounted"` means the hook is in the DOM of a `ListPage` whose first responses
+   * succeeded, which is what the first test renders. Every other entry names the
+   * condition that produces the hook — each needs a failure, a selection or a paused
+   * poll this file does not stage, and they are reached by the component suites and by
+   * the Playwright scenarios instead.
+   *
+   * Typed on `keyof typeof TEST_IDS`, so an id added to the module without a decision
+   * fails `pnpm typecheck`; the parity test below catches the same thing under the
+   * runner. An id nobody decided is the failure mode this module exists to prevent:
+   * the lane trusts it and finds out fifteen scenarios later, as a locator timeout.
+   */
+  const COVERAGE: Record<keyof typeof TEST_IDS, "mounted" | string> = {
+    browseRegion: "mounted",
+    status: "mounted",
+    total: "mounted",
+    loadMore: "mounted",
+    liveToggle: "mounted",
+    // In the document from the first paint and `hidden` until a search runs. Presence
+    // is what a rename breaks; `view-scope.test.tsx` reads what it says.
+    searchScopeNote: "mounted",
+    asOf: "only while polling is paused",
+    retryInitial: "only in the error phase, and only while the grid is visible",
+    bannerRefresh: "only once a poll tick has failed",
+    bannerLoadMore: "only once an append has failed",
+    bannerRetry: "only while a browse request's failure is banner-borne",
+    bulkBar: "only while rows are ticked",
+    bulkError: "only once a bulk mutation has partly failed",
+  }
+
+  const MOUNTED_IDS = Object.entries(COVERAGE).flatMap(([key, when]) =>
+    when === "mounted" ? [TEST_IDS[key as keyof typeof TEST_IDS]] : [],
+  )
+
   describe("verification DOM contract", () => {
     it("renders every hook the Playwright lane locates by", async () => {
+      // A loop over an empty list passes: this test's subject is the LIST as much as
+      // the assertions, and the list is derived.
+      expect(MOUNTED_IDS.length).toBeGreaterThan(0)
       render(<ListPage />)
-      for (const id of [TEST_IDS.status, TEST_IDS.total, TEST_IDS.loadMore, TEST_IDS.liveToggle]) {
+      for (const id of MOUNTED_IDS) {
         await waitFor(() => expect(screen.getByTestId(id)).toBeTruthy())
       }
+    })
+
+    it("leaves no id in the module undecided", () => {
+      expect(Object.keys(COVERAGE).sort()).toEqual(Object.keys(TEST_IDS).sort())
     })
 
     it("puts the load-more control OUTSIDE the grid viewport", async () => {
       render(<ListPage />)
       const control = await screen.findByTestId(TEST_IDS.loadMore)
-      const viewport = document.querySelector("[data-pretable-scroll-viewport]")
-      expect(viewport).not.toBeNull()
-      expect(viewport?.contains(control)).toBe(false)
+      // Scoped to the browse region and pinned to exactly one. A search renders a grid
+      // — so a second viewport — beside this one, and a document-wide first match could
+      // read the viewport this control was never in danger of being inside, passing for
+      // a reason that has nothing to do with the placement §9.2 asks for.
+      const viewports = screen
+        .getByTestId(TEST_IDS.browseRegion)
+        .querySelectorAll("[data-pretable-scroll-viewport]")
+      expect(viewports).toHaveLength(1)
+      expect(viewports[0]?.contains(control)).toBe(false)
     })
   })
   ```
 
 - [ ] **Step 3: Run it and read the failure.**
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts test/components/test-id-contract.test.tsx --testTimeout=30000
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/test-id-contract.test.tsx --testTimeout=30000
   ```
   Expect one of two outcomes. Either it passes (slices 3–4 already used these ids — then skip step 4), or it fails with `Unable to find an element by: [data-testid="…"]` naming the first missing hook.
 
 - [ ] **Step 4: Add each missing attribute at its owner.**
   For every id the test reports missing, add `data-testid={TEST_IDS.<name>}` to the element that already renders that concept. Locate by symbol, not by line:
-  - `status`, `total`, `asOf` → the status chrome element in `packages/inspector/src/components/memory/list-page.tsx` (grep for the element that renders the matching total).
+  - `status`, `total`, `asOf` → `BrowseStatusBar` in `packages/inspector/src/components/memory/browse-chrome.tsx` (grep for the element that renders the matching total).
   - `loadMore` → the footer control slice 4 added; grep `grep -n "loadMore" packages/inspector/src/components/memory/*.tsx`.
   - `retryInitial` → the button inside the `renderBodyState` callback; grep `grep -n "renderBodyState" packages/inspector/src/components/memory/memory-grid.tsx`.
-  - `bannerRefresh` / `bannerLoadMore` / `bannerMutation` / `retryRefresh` / `retryLoadMore` → the per-kind banner elements; grep `grep -n "banner" packages/inspector/src/components/memory/list-page.tsx`.
+  - `bannerRefresh` / `bannerLoadMore` / `bannerRetry` → `BrowseErrorBanners` in `browse-chrome.tsx`: the lines are keyed by source (`errorBannerId`) and the retry is ONE control, because `retry()` is one intent whose kind the reducer picks.
   - `liveToggle` → the existing `live` checkbox `<input>` in `list-page.tsx`.
   - `searchScopeNote` → the `aria-describedby` target that says "Not applied to search".
-  Re-run the command from step 3 until it reports `2 passed`.
+  Re-run the command from step 3 until it reports `3 passed`.
 
 - [ ] **Step 5: Commit.**
   ```
-  cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory packages/inspector/test/components/test-id-contract.test.tsx && git commit -m "test(inspector): pin the verification DOM contract in one module" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+  cd /Users/blove/repos/dawn && git add packages/inspector/src/components/memory packages/inspector/test/components/test-id-contract.test.tsx packages/inspector/test/components/view-scope.test.tsx && git commit -m "test(inspector): pin the verification DOM contract in one module" -m "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
   ```
 
 ---
@@ -1339,7 +1423,7 @@ Both specs inject faults with `page.route()` on `**/api/memory/list*`. That is t
       await waitOnePollPeriod(page)
       await expect(page.getByTestId(TEST_IDS.bannerLoadMore)).toBeVisible()
 
-      await page.getByTestId(TEST_IDS.retryLoadMore).click()
+      await page.getByTestId(TEST_IDS.bannerRetry).click()
       await expect.poll(() => rowIds(page)).toEqual(order.slice(0, BROWSE_PAGE_SIZE * 2))
       await expect(page.getByTestId(TEST_IDS.bannerLoadMore)).toHaveCount(0)
       // The continuation is consumed only on success, so the retry cannot double-append.
@@ -2593,7 +2677,7 @@ D1-SELECT-04: a retry after a partial failure must re-attempt failures only, so 
 
 - [ ] **Step 2: Run it and see it fail.**
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts test/components/bulk-safety.test.tsx --testTimeout=30000
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/bulk-safety.test.tsx --testTimeout=30000
   ```
   Expect the first test to fail at `expect(...).toContain("1 selected")` — today `handleBulkDone` keeps the whole selection whenever anything failed.
 
@@ -2688,11 +2772,11 @@ D1-SELECT-04: a retry after a partial failure must re-attempt failures only, so 
 
 - [ ] **Step 6: Re-run and see it pass.**
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts test/components/bulk-safety.test.tsx --testTimeout=30000
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/bulk-safety.test.tsx --testTimeout=30000
   ```
   Expect: `2 passed`. Then re-run the whole component project to catch fallout in `bulk-actions.test.tsx`, which asserts the old `onDone` shape:
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts --testTimeout=30000
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts --testTimeout=30000
   ```
   Update `test/components/bulk-actions.test.tsx`'s `onDone` expectations to the `{ succeeded, failed }` shape.
 
@@ -2803,7 +2887,7 @@ D1-SELECT-04: a retry after a partial failure must re-attempt failures only, so 
 
 - [ ] **Step 2: Run and see the first test fail.**
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts test/components/bulk-safety.test.tsx --testTimeout=60000
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/bulk-safety.test.tsx --testTimeout=60000
   ```
   Expect `expected [ 'POST …', 'LIST', 'POST …' ] not to contain 'LIST'`. The second test should already pass — the snapshot exists as a consequence of Task 15's `const targets = [...ids]`, and this test is what pins it against a future "simplification" that reads `ticked` inside the loop.
 
@@ -2823,7 +2907,7 @@ D1-SELECT-04: a retry after a partial failure must re-attempt failures only, so 
 
 - [ ] **Step 4: Re-run and see both pass.**
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts test/components/bulk-safety.test.tsx --testTimeout=60000
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/bulk-safety.test.tsx --testTimeout=60000
   ```
   Expect: `4 passed`. A timeout at 5 s here is load, not a defect — the file already carries per-test 30 s budgets; re-run once before investigating.
 
@@ -2959,7 +3043,7 @@ Written at the component level over `ListPage` with a stubbed `fetch`, deliberat
 
 - [ ] **Step 2: Run it.**
   ```
-  cd /Users/blove/repos/dawn && pnpm exec vitest --run --config packages/inspector/vitest.components.config.ts test/components/polling-identity.test.tsx --testTimeout=60000
+  cd /Users/blove/repos/dawn && pnpm --filter @dawn-ai/inspector exec vitest --run --config vitest.components.config.ts test/components/polling-identity.test.tsx --testTimeout=60000
   ```
   Expect: `2 passed` if slice 3's revision gate is correct. A failure on the second test — the stale response replacing the rows — is the D1-DATA-02 defect and must be fixed in `useMemoryBrowse` (compare the resolved response's revision to the desired revision and discard the whole response, records/total/continuation together) before this task is done.
 

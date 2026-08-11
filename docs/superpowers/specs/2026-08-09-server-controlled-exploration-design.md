@@ -1651,6 +1651,25 @@ approval, not aspirations.
 | Poll tick, no changes                                                                   | < 10 ms client CPU; zero announcements                                                                                                                                                                                                               | silent-refresh rule                                                                    |
 | Refresh cadence                                                                         | 2 s visible-tab (unchanged); documented EXT trigger: back off to 10 s under non-default sort beyond ~1M rows, where a refresh tick costs ≈ 150 ms (sort-window scan ≈ 101 ms + count ≈ 53 ms)                                                        | measured §5.5                                                                          |
 
+**MEASURED 2026-08-11 (slice 5), and one methodological limit worth more than
+the numbers.** The client budgets were estimates when written; they have now
+been run. Replace: 8.6 / 8.3 ms, grid rebuilt 0, scroll drift 0 (ceiling 20 ms).
+Append: 8.9 / 8.3 ms, rebuilt 0, drift 0 (ceiling 30 ms). Page-attributable heap
+at the resident cap: 10.9 MB (ceiling 32 MB). All three pass, and machine load
+was 95-129 during the runs, so they are upper bounds.
+
+**But `interaction_latency_ms` cannot resolve below one frame.** It is an
+rAF-timestamp difference, and both runs report "frames to first change: 1"
+against a frame interval of ~8.5 ms — so "8.3 ms" means _at most one frame_, not
+8.3 ms of grid work. The budgeted metric therefore **cannot discriminate replace
+from append**, which is the entire point of D1-PERF-04 measuring them
+separately. The discrimination has to come from the sliced trace, which does
+show it clearly: `setRows` self-time is 78 µs for replace against 402 µs for
+append (1 000 rows vs 200). Any future claim that replace and append have been
+compared must cite the trace, not the latency metric. A budget an instrument
+cannot resolve is a budget that will be reported as met no matter what happens
+to the code.
+
 Benchmark method: server budgets via a seeded-store script per backend
 (SQLite in-process; Postgres via the existing testcontainers gate); client
 budgets via a new `bench-runner` script pair (`replace`, `append`) reusing the
