@@ -149,6 +149,10 @@ import {
   resolveCellValue,
 } from "./rendering";
 import {
+  createNumberFormatterCache,
+  formatDataCellValue,
+} from "./value-formatting";
+import {
   getBodyStateOverlayStyle,
   getDataStateWrapperStyle,
   getGroupPanelWrapperStyle,
@@ -194,7 +198,7 @@ import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
-  serializeRanges,
+  serializeRangesWithNumberFormatters,
 } from "./copy";
 import {
   mapPasteToTargets,
@@ -595,6 +599,11 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
   ariaLabel: string;
   autosize?: boolean | AutosizeOptions;
   columns: PretableColumn<TRow>[];
+  /**
+   * Locale used by native number formatting. Changing it reformats configured
+   * numeric columns without recreating the core grid.
+   */
+  locale?: Intl.LocalesArgument;
   getBodyCellClassName?: (
     input: PretableCellRenderInput<TRow>,
   ) => string | undefined;
@@ -986,6 +995,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
   ariaLabel,
   autosize,
   columns,
+  locale,
   getBodyCellClassName,
   getBodyCellProps,
   getHeaderCellClassName,
@@ -1272,6 +1282,11 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
     };
     return [synth, ...columns];
   }, [columns, rowSelectEnabled, rowSelectWidth, rowSelectPinned]);
+  const [numberFormatterCache] = useState(createNumberFormatterCache);
+  const numberFormatters = useMemo(
+    () => numberFormatterCache.resolve(effectiveColumns, locale),
+    [numberFormatterCache, effectiveColumns, locale],
+  );
   const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
     autosize,
     columns: effectiveColumns,
@@ -3064,12 +3079,15 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
             // changes which columns fall inside the range.
             columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
+            locale,
             // Re-derived from `snap`, the same observation the rows and ranges
             // above come from — the committed render's scope can describe an
             // older one.
             scope: resolveDataScope(snap, processing),
           };
-          const payload = onCopy ? onCopy(args) : serializeRanges(args);
+          const payload = onCopy
+            ? onCopy(args)
+            : serializeRangesWithNumberFormatters(args, numberFormatters);
           if (payload) {
             const extent = computeCopyExtent(
               snap.selection.ranges,
@@ -3979,6 +3997,7 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                 isFocused={snapshot.focus.rowId === renderRow.id}
                 key={renderRow.id}
                 liveWidth={dragLiveWidth}
+                numberFormatters={numberFormatters}
                 onCellClick={(columnId) => {
                   const before = grid.getSnapshot().focus;
                   grid.setFocus({ rowId: group.id, columnId });
@@ -4096,9 +4115,13 @@ export function PretableSurface<TRow extends PretableRow = PretableRow>({
                   snapshot.editing.columnId === column.id
                     ? snapshot.editing
                     : null;
-                const formattedValue = column.format
-                  ? column.format({ value, row, column })
-                  : formatCellValue(value);
+                const formattedValue = formatDataCellValue({
+                  value,
+                  row,
+                  column,
+                  numberFormatters,
+                  fallback: formatCellValue,
+                });
                 const bodyInput = {
                   column,
                   formattedValue,

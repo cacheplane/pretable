@@ -16,6 +16,7 @@ export interface PretableProps<TRow extends PretableRow = PretableRow> {
    * pretable entry point.
    */
   getRowId: PretableGridOptions<TRow>["getRowId"];
+  locale?: PretableSurfaceProps<TRow>["locale"];
   rows: TRow[];
   rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
   onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
@@ -48,6 +49,7 @@ const BENCHMARK_VIEWPORT_STYLE = {
 export function Pretable<TRow extends PretableRow = PretableRow>({
   columns,
   getRowId,
+  locale,
   rows,
   rowSelectionColumn,
   onRowActivate,
@@ -89,7 +91,8 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
         ariaLabel="Pretable React adapter"
         columns={columns}
         getRowId={getRowId}
-        renderBodyCell={({ column, value }) => (
+        locale={locale}
+        renderBodyCell={({ column, formattedValue }) => (
           <>
             <strong
               style={{
@@ -108,7 +111,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
                 lineHeight: "22px",
               }}
             >
-              {String(value ?? "")}
+              {formattedValue}
             </span>
           </>
         )}

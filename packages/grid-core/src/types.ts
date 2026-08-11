@@ -136,6 +136,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   options?: ColumnOption[];
   value?: (row: TRow) => unknown;
   format?: (input: PretableFormatInput<TRow>) => string;
+  /** Native, opt-in number presentation. Applied only to number and bigint values; it does not affect sorting, filtering, aggregation, or editing. */
+  numberFormat?: Intl.NumberFormatOptions;
   /**
    * Render this column's aggregate on a group row.
    *

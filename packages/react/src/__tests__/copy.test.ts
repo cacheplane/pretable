@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   defaultCoerceForCopy,
@@ -18,6 +18,14 @@ import {
 import type { PretableColumn } from "../types";
 
 type Row = { id: string; a: string; b: string; c: string };
+
+type NumberCopyRow = {
+  id: string;
+  amount: unknown;
+  count: unknown;
+};
+
+const NativeNumberFormat = Intl.NumberFormat;
 
 function makeVisibleRows(rows: Row[]): PretableVisibleRow<Row>[] {
   return rows.map((row, i) => ({
@@ -40,6 +48,18 @@ const rows: Row[] = [
   { id: "r2", a: "a2", b: "b2", c: "c2" },
   { id: "r3", a: "a3", b: "b3", c: "c3" },
 ];
+
+function makeNumberVisibleRows(
+  values: NumberCopyRow[],
+): PretableVisibleRow<NumberCopyRow>[] {
+  return values.map((row, sourceIndex) => ({
+    kind: "data",
+    id: row.id,
+    row,
+    sourceIndex,
+    depth: 0,
+  }));
+}
 
 function range(
   startRowId: string,
@@ -207,6 +227,158 @@ describe("serializeRanges", () => {
       columns: [{ id: ROW_SELECT_COLUMN_ID, header: "" }],
     };
     expect(serializeRanges(args)).toBeNull();
+  });
+});
+
+describe("serializeRanges native number formatting", () => {
+  const numberRows: NumberCopyRow[] = [{ id: "n1", amount: 1234.5, count: 7 }];
+
+  it("emits the same native formatted value in TSV and HTML", () => {
+    const out = serializeRanges<NumberCopyRow>({
+      ranges: [range("n1", "n1", "amount", "amount")],
+      visibleRows: makeNumberVisibleRows(numberRows),
+      columns: [
+        {
+          id: "amount",
+          numberFormat: {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          },
+        },
+      ],
+      locale: "en-US",
+    });
+
+    expect(out?.text).toBe("1,234.50");
+    expect(out?.html).toBe(
+      '<meta charset="utf-8"><table style="white-space:pre-wrap"><tbody><tr><td>1,234.50</td></tr></tbody></table>',
+    );
+  });
+
+  it("uses the public locale argument for native formatting", () => {
+    const args = {
+      ranges: [range("n1", "n1", "amount", "amount")],
+      visibleRows: makeNumberVisibleRows(numberRows),
+      columns: [
+        {
+          id: "amount",
+          numberFormat: {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          },
+        },
+      ],
+    } satisfies Omit<SerializeRangesArgs<NumberCopyRow>, "locale">;
+
+    expect(serializeRanges({ ...args, locale: "en-US" })?.text).toBe("1,234.5");
+    expect(serializeRanges({ ...args, locale: "de-DE" })?.text).toBe("1.234,5");
+  });
+
+  it("keeps column format above native formatting", () => {
+    const out = serializeRanges<NumberCopyRow>({
+      ranges: [range("n1", "n1", "amount", "amount")],
+      visibleRows: makeNumberVisibleRows(numberRows),
+      columns: [
+        {
+          id: "amount",
+          numberFormat: { maximumFractionDigits: 1 },
+          format: ({ value }) => `custom:${String(value)}`,
+        },
+      ],
+      locale: "en-US",
+    });
+
+    expect(out?.text).toBe("custom:1234.5");
+    expect(out?.html).toContain("<td>custom:1234.5</td>");
+  });
+
+  it("preserves Date and object fallbacks for unformatted columns", () => {
+    const fallbackRows: NumberCopyRow[] = [
+      {
+        id: "n1",
+        amount: new Date("2026-01-02T03:04:05.000Z"),
+        count: { total: 7 },
+      },
+    ];
+    const out = serializeRanges<NumberCopyRow>({
+      ranges: [range("n1", "n1", "amount", "count")],
+      visibleRows: makeNumberVisibleRows(fallbackRows),
+      columns: [{ id: "amount" }, { id: "count" }],
+    });
+
+    expect(out?.text).toBe('2026-01-02T03:04:05.000Z\t"{""total"":7}"');
+    expect(out?.html).toContain(
+      "<td>2026-01-02T03:04:05.000Z</td><td>{&quot;total&quot;:7}</td>",
+    );
+  });
+
+  it("reports standalone invalid options with column context and native cause", () => {
+    let thrown: unknown;
+
+    try {
+      serializeRanges<NumberCopyRow>({
+        ranges: [range("n1", "n1", "amount", "amount")],
+        visibleRows: makeNumberVisibleRows(numberRows),
+        columns: [
+          {
+            id: "amount",
+            numberFormat: {
+              minimumFractionDigits: 4,
+              maximumFractionDigits: 2,
+            },
+          },
+        ],
+        locale: "en-US",
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain('column "amount"');
+    expect((thrown as Error & { cause?: unknown }).cause).toBeInstanceOf(
+      RangeError,
+    );
+  });
+
+  it("constructs one formatter per configured column on every standalone call", () => {
+    const construct = vi.fn(function NumberFormat(
+      locales?: Intl.LocalesArgument,
+      options?: Intl.NumberFormatOptions,
+    ) {
+      return new NativeNumberFormat(locales, options);
+    });
+    const spy = vi
+      .spyOn(Intl, "NumberFormat")
+      .mockImplementation(construct as unknown as Intl.NumberFormatConstructor);
+
+    try {
+      const manyRows: NumberCopyRow[] = Array.from(
+        { length: 8 },
+        (_, index) => ({
+          id: `n${index + 1}`,
+          amount: 1000 + index,
+          count: 10 + index,
+        }),
+      );
+      const args: SerializeRangesArgs<NumberCopyRow> = {
+        ranges: [range("n1", "n8", "amount", "count")],
+        visibleRows: makeNumberVisibleRows(manyRows),
+        columns: [
+          { id: "amount", numberFormat: { maximumFractionDigits: 1 } },
+          { id: "count", numberFormat: { maximumFractionDigits: 1 } },
+        ],
+        locale: "en-US",
+      };
+
+      expect(serializeRanges(args)?.text).toContain("1,000\t10");
+      expect(construct).toHaveBeenCalledTimes(2);
+
+      expect(serializeRanges(args)?.text).toContain("1,000\t10");
+      expect(construct).toHaveBeenCalledTimes(4);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
@@ -437,6 +609,51 @@ describe("serializeRanges escaping", () => {
 
       expect(out?.text).toBe('"sum\t<&""\n3"');
       expect(out?.html).toContain("<td>sum\t&lt;&amp;&quot;<br>3</td>");
+    });
+
+    it("inherits native numberFormat for an aggregate", () => {
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [range(techGroup.id, techGroup.id, "qty", "qty")],
+        visibleRows,
+        columns: [
+          columns[0]!,
+          columns[1]!,
+          {
+            id: "qty",
+            header: "Qty",
+            numberFormat: {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          },
+        ],
+        locale: "en-US",
+      });
+
+      expect(out?.text).toBe("3.00");
+      expect(out?.html).toContain("<td>3.00</td>");
+    });
+
+    it("keeps formatAggregate above native formatting", () => {
+      const out = serializeRanges<GroupCopyRow>({
+        ranges: [range(techGroup.id, techGroup.id, "qty", "qty")],
+        visibleRows,
+        columns: [
+          columns[0]!,
+          columns[1]!,
+          {
+            ...columns[2]!,
+            numberFormat: {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            },
+          },
+        ],
+        locale: "en-US",
+      });
+
+      expect(out?.text).toBe("Σ 3");
+      expect(out?.html).toContain("<td>Σ 3</td>");
     });
 
     it("omits the group label when the group column is outside the range", () => {

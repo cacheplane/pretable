@@ -9,9 +9,13 @@ import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 import { resolveColumnAlign } from "./column-align";
 import { groupLabel } from "./group-model";
 import { ChevronDownIcon } from "./icons";
-import { formatAggregateValue } from "./rendering";
+import { formatCellValue } from "./rendering";
 import { getPositionedCellStyle, getRowStyle } from "./styles";
 import type { PretableColumn } from "./types";
+import {
+  formatAggregateValue,
+  type NumberFormatterRegistry,
+} from "./value-formatting";
 
 /** @internal */
 export interface GroupRowProps<TRow extends PretableRow> {
@@ -35,6 +39,7 @@ export interface GroupRowProps<TRow extends PretableRow> {
   isFocused: boolean;
   /** Width override while a resize drag is live, so cells track the header. */
   liveWidth?: { columnId: string; width: number } | null;
+  numberFormatters: NumberFormatterRegistry;
   onCellClick: (columnId: string, event: ReactMouseEvent) => void;
   onToggle: () => void;
   registerCell: (key: string, node: HTMLDivElement | null) => void;
@@ -65,6 +70,7 @@ export function GroupRow<TRow extends PretableRow>({
   height,
   isFocused,
   liveWidth,
+  numberFormatters,
   onCellClick,
   onToggle,
   registerCell,
@@ -182,7 +188,13 @@ export function GroupRow<TRow extends PretableRow>({
                 </span>
               </>
             ) : hasAggregate && column ? (
-              formatAggregateValue(column, group, scope)
+              formatAggregateValue({
+                column,
+                group,
+                scope,
+                numberFormatters,
+                fallback: formatCellValue,
+              })
             ) : null}
           </div>
         );

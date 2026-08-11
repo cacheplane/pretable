@@ -106,15 +106,19 @@ Chip interactions: drag a chip to reorder, press its `✕` to remove it, drop a 
 Give a column an `aggregate` and every group row shows a rolled-up value for it.
 
 ```tsx
-{
+import { numberFormats, type PretableColumn } from "@pretable/react";
+
+const marketValueColumn: PretableColumn<Position> = {
   id: "marketValue",
   header: "Market value",
   type: "number",
   aggregate: "sum",
-  formatAggregate: ({ value }) =>
-    typeof value === "number" ? usd.format(value) : "",
-}
+  numberFormat: numberFormats.money({ currency: "USD" }),
+};
 ```
+
+When `formatAggregate` is absent, a numeric aggregate inherits the column's
+`numberFormat` for final display and built-in clipboard output.
 
 `aggregate` is either a built-in name or a custom aggregator:
 
@@ -158,7 +162,8 @@ const median: PretableAggregator<number[], number | null> = {
 ### `formatAggregate`, not `format`
 
 <Callout type="warning">
-  Format aggregates with **`formatAggregate`**, never `format`.
+  Use **`formatAggregate`** for custom aggregate text, never `format`.
+  `formatAggregate` wins over inherited `numberFormat`.
   `PretableFormatInput.row` is non-optional, so every cell formatter is entitled
   to dereference it — and a group row has no row behind it. A formatter written
   for cells is therefore not a legal aggregate formatter, and reusing one is how
@@ -178,10 +183,15 @@ interface PretableAggregateFormatInput<TRow> {
   value: unknown;
   column: PretableColumn<TRow>;
   group: PretableGroupRow; // the group row, in place of a data row
+  scope: "all" | "loaded";
 }
 ```
 
-A column with an `aggregate` but no `formatAggregate` falls back to the same default stringification a plain cell uses — its `format` is never consulted for an aggregate. A column with no `aggregate` at all has no entry in `group.aggregates`, and its cell on a group row is simply empty.
+A column with an `aggregate` uses `formatAggregate` when present. Otherwise a
+numeric result inherits the column's compiled `numberFormat`; without either,
+it falls back to the ordinary aggregate stringification. Its data-cell `format`
+is never consulted. A column with no `aggregate` at all has no entry in
+`group.aggregates`, and its cell on a group row is simply empty.
 
 By default aggregates fold over the **post-filter** rows, so a group total always equals the sum of the rows visible beneath it. `aggregateFilteredRows: true` folds over the pre-filter set instead; `childCount` stays post-filter either way.
 
@@ -267,7 +277,7 @@ The derived column is not sortable, filterable, resizable or reorderable — it 
 - **Changing the grouping levels resets expansion.** Group ids are path-derived, so reordering, adding or removing a level invalidates every existing id. The engine drops the whole override set rather than trying to salvage prefixes, and every group returns to `groupsDefaultExpanded`.
 - **Grouped columns disappear from the data area.** That is `hideGroupedColumns` defaulting to `true`. If your layout code assumes the drawn columns match the `columns` prop, it will be wrong the moment someone groups.
 - **Group rows are focusable but never selectable or editable.** `Enter`/`Space` on one toggles it instead of selecting the row; `selectFocusedRowOnArrowKey` leaves the previous row selected when focus passes over a group; paste skips them.
-- **`formatAggregate`, not `format`.** Repeated from above because it is the one that will actually bite someone.
+- **`formatAggregate`, not `format`.** The aggregate callback wins; otherwise a numeric aggregate inherits `numberFormat`. The data-cell `format` callback is never used for a group row.
 - **With a left-pinned column, the group column is not the row's first column.** The group column is prepended to the drawn list, then the list is regrouped into its pinned regions — so an unpinned group column heads the _unpinned_ run and sits after your pinned columns, scrolling out from under them. `groupColumn: { pinned: "left" }` seats it ahead of the left-pinned group instead. It is unpinned by default because pinning it would silently consume a pinned-left region you may already be using.
 - **A group whose children a filter removed cannot be opened.** Its `childCount` is `0` and it drops `aria-expanded` entirely rather than announcing "collapsed" for a row that will not open.
 - **Blank keys group together** under the label `(Blanks)`.

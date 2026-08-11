@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GROUP_COLUMN_ID,
   createGrid,
+  type PretableAggregator,
   type PretableFocusState,
+  type PretableGrid,
   type PretableGroupRow,
   type PretableSelectionState,
 } from "@pretable/core";
@@ -27,6 +29,7 @@ type GroupedRow = {
   sector: string;
   name: string;
   qty: number;
+  amount?: number;
 };
 
 const groupedRows: GroupedRow[] = [
@@ -46,6 +49,7 @@ const stableAggregateFormatter = ({ value }: { value: unknown }) =>
 
 interface GridProps {
   columns?: PretableColumn<GroupedRow>[];
+  locale?: Intl.LocalesArgument;
   rows?: GroupedRow[];
   state: PretableSurfaceState;
   onFocusChange?: (next: PretableFocusState) => void;
@@ -55,6 +59,7 @@ interface GridProps {
 
 function Grid({
   columns,
+  locale,
   rows,
   state,
   onFocusChange,
@@ -66,6 +71,7 @@ function Grid({
       ariaLabel="grouped-grid"
       columns={columns ?? groupedColumns}
       getRowId={(row: GroupedRow) => row.id}
+      locale={locale}
       onFocusChange={onFocusChange}
       onSelectedRowIdChange={onSelectedRowIdChange}
       onSelectionChange={onSelectionChange}
@@ -89,6 +95,82 @@ const twistyOf = (row: Element) =>
   row.querySelector("[data-pretable-group-twisty]");
 
 describe("group row rendering", () => {
+  it("keeps numeric group keys and aggregate inputs raw until aggregate display", () => {
+    const currencyRows: GroupedRow[] = [
+      { id: "r10", sector: "Fees", name: "ten", qty: 10, amount: 7 },
+      { id: "r2", sector: "Fees", name: "two", qty: 2, amount: 3 },
+    ];
+    const accumulate = vi.fn((acc: number, value: unknown) => {
+      expect(typeof value).toBe("number");
+      return acc + (value as number);
+    });
+    const aggregate: PretableAggregator<number, number> = {
+      init: () => 0,
+      accumulate,
+      merge: (a, b) => a + b,
+      finalize: (acc) => acc,
+    };
+    const numberFormat: Intl.NumberFormatOptions = {
+      style: "currency",
+      currency: "USD",
+    };
+    const columns: PretableColumn<GroupedRow>[] = [
+      {
+        id: "qty",
+        header: "Qty",
+        type: "number",
+        widthPx: 100,
+        numberFormat,
+      },
+      {
+        id: "amount",
+        header: "Amount",
+        type: "number",
+        widthPx: 100,
+        aggregate,
+        numberFormat,
+      },
+    ];
+    let grid: PretableGrid<GroupedRow> | null = null;
+    const view = render(
+      <PretableSurface<GroupedRow>
+        ariaLabel="currency groups"
+        columns={columns}
+        getRowId={(row) => row.id}
+        locale="en-US"
+        onGridReady={(readyGrid) => {
+          grid = readyGrid;
+        }}
+        rows={currencyRows}
+        state={{ rowGroups: ["qty"] }}
+        viewportHeight={300}
+      />,
+    );
+    const groups = grid!
+      .getSnapshot()
+      .visibleRows.filter(
+        (row): row is PretableGroupRow => row.kind === "group",
+      );
+
+    expect(groups.map((group) => group.value)).toEqual([2, 10]);
+    expect(groups.map((group) => typeof group.value)).toEqual([
+      "number",
+      "number",
+    ]);
+    expect(accumulate.mock.calls.map(([, value]) => value)).toEqual([7, 3]);
+    expect(
+      [...groupRows(view)].map(
+        (row) => row.querySelector("[data-pretable-group-label]")?.textContent,
+      ),
+    ).toEqual(["2", "10"]);
+    expect(
+      [...groupRows(view)].map(
+        (row) =>
+          row.querySelector('[data-pretable-column-id="amount"]')?.textContent,
+      ),
+    ).toEqual(["$3.00", "$7.00"]);
+  });
+
   it("draws one group row per group, with role=row and aria-level", () => {
     const view = renderGrouped({ state: { rowGroups: ["sector"] } });
     const rows = groupRows(view);
@@ -344,6 +426,59 @@ describe("group row rendering", () => {
     expect(qtyCell).toHaveTextContent("Σ 3");
   });
 
+  it("inherits numberFormat for an aggregate without formatAggregate", () => {
+    const view = renderGrouped({
+      columns: [
+        groupedColumns[0]!,
+        groupedColumns[1]!,
+        {
+          id: "qty",
+          header: "Qty",
+          widthPx: 100,
+          aggregate: "sum",
+          numberFormat: {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          },
+        },
+      ],
+      locale: "en-US",
+      state: { rowGroups: ["sector"] },
+    });
+
+    const tech = groupRows(view)[1]!;
+    expect(
+      tech.querySelector('[data-pretable-column-id="qty"]'),
+    ).toHaveTextContent("3.00");
+  });
+
+  it("keeps formatAggregate above inherited numberFormat", () => {
+    const view = renderGrouped({
+      columns: [
+        groupedColumns[0]!,
+        groupedColumns[1]!,
+        {
+          id: "qty",
+          header: "Qty",
+          widthPx: 100,
+          aggregate: "sum",
+          numberFormat: {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          },
+          formatAggregate: ({ value }) => `aggregate:${String(value)}`,
+        },
+      ],
+      locale: "en-US",
+      state: { rowGroups: ["sector"] },
+    });
+
+    const tech = groupRows(view)[1]!;
+    expect(
+      tech.querySelector('[data-pretable-column-id="qty"]'),
+    ).toHaveTextContent("aggregate:3");
+  });
+
   /**
    * Nothing here is hand-built. The old version of this test constructed its
    * own `PretableGroupRow` — with an id that was not even `makeGroupId`'s
@@ -525,6 +660,7 @@ describe("a group with no children left", () => {
         group={childless}
         height={32}
         isFocused={false}
+        numberFormatters={new Map()}
         onCellClick={() => {}}
         onToggle={() => {}}
         registerCell={() => {}}
