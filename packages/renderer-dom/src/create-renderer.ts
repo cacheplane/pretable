@@ -37,28 +37,12 @@ const estimatedRowHeightCache = new WeakMap<
 export function createDomRenderSnapshot<TRow extends PretableRow>(
   input: DomRenderInput<TRow>,
 ): DomRenderSnapshot<TRow> {
-  // `flex` columns take a share of whatever the fixed ones leave over, so the
-  // row ends at the viewport edge. Only meaningful once the viewport has been
-  // measured, and only for columns without an explicit `widthPx` — a width the
-  // consumer set, or that a resize drag produced, outranks a computed one.
-  //
   // Resolved BEFORE row heights, not after: a wrapped flex column is drawn at
   // its distributed width, so that is the width its text wraps at. Estimating
   // it at `resolveColumnWidth`'s fallback instead made the estimate a constant
   // — blind to the viewport, to a sibling's resize, and to a column leaving the
   // drawn set — and rows sat at a height nothing on screen had.
-  const flexWidths = distributeFlexWidths({
-    columns: input.columns.map((col) => ({
-      id: col.id,
-      width: resolveColumnWidth(col),
-      ...(col.widthPx === undefined && col.flex !== undefined
-        ? { flex: col.flex }
-        : {}),
-      ...(col.minWidthPx === undefined ? {} : { minWidthPx: col.minWidthPx }),
-      ...(col.maxWidthPx === undefined ? {} : { maxWidthPx: col.maxWidthPx }),
-    })),
-    viewportWidth: input.viewportWidth ?? Number.POSITIVE_INFINITY,
-  });
+  const flexWidths = resolveFlexWidths(input.columns, input.viewportWidth);
   const estimateRowHeight = createRowHeightEstimator(input.columns, flexWidths);
   const rowHeights = input.snapshot.visibleRows.map((entry) => {
     const measuredHeight = input.measuredHeights?.[entry.id];
@@ -178,19 +162,69 @@ export function createDomRenderSnapshot<TRow extends PretableRow>(
  * second, drifted copy of column-bucketing math; keeping the trick in one
  * function, and passing one `ColumnPlan` object to both callers, is what stops
  * that from recurring.
+ *
+ * `viewportWidth` is the scrollport's measured width, and it is what makes a
+ * `flex` column resolve to the width it is DRAWN at rather than to
+ * `resolveColumnWidth`'s fallback. Both consumers compare this plan against
+ * rendered pixels, so a flex column resolved at the fallback puts every column
+ * after it at an offset nothing on screen has: the drop index lands away from
+ * the indicator, and the reveal scrolls to the wrong offset. Omit it only when
+ * the scrollport has not been measured (SSR, the first commit) — the same
+ * "unmeasured" case `distributeFlexWidths` already answers with "keep the
+ * widths you had".
+ *
+ * Note the two viewport widths are not the same thing and must not be merged:
+ * this one sizes the flex distribution, while `planColumns` is still handed an
+ * infinite one so the virtualization window stays open across every column.
  */
 export function planColumnLayout<TRow extends PretableRow>(
   columns: readonly PretableColumn<TRow>[],
+  viewportWidth?: number,
 ): ColumnPlan {
+  const flexWidths = resolveFlexWidths(columns, viewportWidth);
+
   return planColumns({
     columns: columns.map((col) => ({
       id: col.id,
-      width: resolveColumnWidth(col),
+      width: flexWidths[col.id] ?? resolveColumnWidth(col),
       pinned: col.pinned,
     })),
     scrollLeft: 0,
     viewportWidth: Number.POSITIVE_INFINITY,
     overscan: 0,
+  });
+}
+
+/**
+ * The width overrides for the columns that declare `flex`.
+ *
+ * `flex` columns take a share of whatever the fixed ones leave over, so the row
+ * ends at the viewport edge. Only meaningful once the viewport has been
+ * measured, and only for columns without an explicit `widthPx` — a width the
+ * consumer set, or that a resize drag produced, outranks a computed one.
+ *
+ * Shared by the render plan and by `planColumnLayout` rather than derived
+ * twice. They are two views of the SAME drawn geometry — the render plan paints
+ * the header cells, `planColumnLayout` is what the drag and the reveal measure
+ * those cells with — so the moment the two resolve widths differently, they
+ * disagree about where a column is. That is exactly the bug this call fixed in
+ * `planColumnLayout`.
+ */
+function resolveFlexWidths<TRow extends PretableRow>(
+  columns: readonly PretableColumn<TRow>[],
+  viewportWidth: number | undefined,
+): Record<string, number> {
+  return distributeFlexWidths({
+    columns: columns.map((col) => ({
+      id: col.id,
+      width: resolveColumnWidth(col),
+      ...(col.widthPx === undefined && col.flex !== undefined
+        ? { flex: col.flex }
+        : {}),
+      ...(col.minWidthPx === undefined ? {} : { minWidthPx: col.minWidthPx }),
+      ...(col.maxWidthPx === undefined ? {} : { maxWidthPx: col.maxWidthPx }),
+    })),
+    viewportWidth: viewportWidth ?? Number.POSITIVE_INFINITY,
   });
 }
 
