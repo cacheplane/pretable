@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  columnFilteringFeature,
+  createFilteredRowModel,
+  createSortedRowModel,
+  filterFns,
   flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  useReactTable,
+  rowSortingFeature,
+  sortFns,
+  tableFeatures,
+  useTable,
   type ColumnDef,
   type SortingState,
   type Table,
@@ -24,6 +28,15 @@ const VIEWPORT_HEIGHT = 320;
 const ROW_HEIGHT = 48;
 const OVERSCAN = 4;
 
+const tanstackFeatures = tableFeatures({
+  columnFilteringFeature,
+  rowSortingFeature,
+  filteredRowModel: createFilteredRowModel(),
+  sortedRowModel: createSortedRowModel(),
+  filterFns,
+  sortFns,
+});
+
 export interface TanstackAdapterProps {
   dataset: ScenarioDataset;
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
@@ -42,15 +55,14 @@ function toColumnDef(
   column: ScenarioColumn,
   scriptName: string | undefined,
   interactionMode: BenchInteractionPlan["mode"] | null,
-): ColumnDef<ScenarioRow> {
-  const def: ColumnDef<ScenarioRow> = {
+): ColumnDef<typeof tanstackFeatures, ScenarioRow> {
+  const def: ColumnDef<typeof tanstackFeatures, ScenarioRow> = {
     id: column.id,
     accessorKey: column.id,
     header: column.header ?? column.id,
-    size: column.widthPx ?? 140,
     enableSorting: true,
     enableColumnFilter: true,
-    // TanStack v8 default filterFn is "auto" which maps to includesString
+    // TanStack's default filterFn is "auto" which maps to includesString
     // for strings. filter-metadata uses equals semantics in the bench
     // plan (see interaction-plan.ts METADATA_FILTER), so set
     // equalsString explicitly when the plan is in that mode.
@@ -107,23 +119,22 @@ export function TanstackAdapter({
     [dataset.columns, scriptName, interactionMode],
   );
 
-  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table's API is intentionally non-memoizable; this is the documented pattern.
-  const table = useReactTable({
+  const table = useTable({
+    features: tanstackFeatures,
     data,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getRowId: (row) => String(row.id),
   });
 
-  // useReactTable returns a fresh Table object each render. Mirror the
+  // useTable returns a fresh Table object each render. Mirror the
   // apiRef pattern from ag-grid/mui by syncing the latest table instance
   // into a ref so the interaction useEffect can call setSorting /
   // setColumnFilters from outside the render path.
-  const tableRef = useRef<Table<ScenarioRow> | null>(table);
+  const tableRef = useRef<Table<typeof tanstackFeatures, ScenarioRow> | null>(
+    table,
+  );
   tableRef.current = table;
 
   useEffect(() => {
@@ -197,7 +208,7 @@ export function TanstackAdapter({
       style={{ display: "grid", gap: 12 }}
     >
       <header>
-        <p style={{ margin: 0, fontWeight: 700 }}>TanStack Table v8</p>
+        <p style={{ margin: 0, fontWeight: 700 }}>TanStack Table v9</p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
           Rows: {data.length} · Columns: {dataset.columns.length}
         </p>
@@ -286,7 +297,7 @@ export function TanstackAdapter({
                   gridTemplateColumns,
                 }}
               >
-                {row.getVisibleCells().map((cell) => (
+                {row.getAllCells().map((cell) => (
                   <div
                     key={cell.id}
                     data-tanstack-cell=""
