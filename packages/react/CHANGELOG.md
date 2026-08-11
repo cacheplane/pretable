@@ -1,5 +1,71 @@
 # @pretable/react
 
+## 0.4.0
+
+### Minor Changes
+
+- Add opt-in native number formatting with locale-aware money and accounting presets, aggregate inheritance, and matching clipboard output. ([#317](https://github.com/cacheplane/pretable/pull/317))
+
+- **Breaking:** remove `<InspectionGrid>` and its types (`InspectionGridProps`, `InspectionRow`, `InspectionSeverity`, `InspectionFilterableColumnId`) from `@pretable/react`. ([#303](https://github.com/cacheplane/pretable/pull/303))
+
+  It could not be used. The component hardcoded `columns` to `inspectionColumns` from `@pretable-internal/scenario-data` — a private test-fixture package — so it rendered a fixed seven-field log schema (`timestamp`, `severity`, `source`, `owner`, `tags`, `message`) no matter what you passed to `rows`. There was no prop to change that. Because `tsup` marks `@pretable-internal/*` as `noExternal`, the fixture's column array was bundled into the published tarball.
+
+  Nothing it added was reachable by a consumer. Against `<LabeledGridSurface>`, which it wrapped, it contributed: the fixture columns; a `formatValue` whose body was identical to `<LabeledGridSurface>`'s own default; `getRowId: (row) => row.id`, a positional-identity guess this repo refuses at every other entry point; `selectFocusedRowOnArrowKey`; six hardcoded class names whose only stylesheet lived in the pretable website's `globals.css`, scoped to an `#grid` id no page has had since the playground was removed; and a `data-filterable="true"` attribute nothing in the repo reads.
+
+  **Migration.** Use `<LabeledGridSurface>` and pass your own columns — it takes every prop `<InspectionGrid>` forwarded, plus the ones `<InspectionGrid>` fixed:
+
+  ```tsx
+  <LabeledGridSurface<MyRow>
+    ariaLabel="Events"
+    columns={columns}
+    getRowId={(row) => row.id}
+    rows={rows}
+    selectFocusedRowOnArrowKey
+    viewportHeight={460}
+    bodyCellClassName="my-cell"
+    labelClassName="my-cell-label"
+    valueClassName="my-cell-value"
+  />
+  ```
+
+  `<LabeledGridSurface>` already joins array values with `", "` and stringifies the rest, so the removed `formatValue` needs no replacement.
+
+  `@pretable/react` no longer depends on `@pretable-internal/scenario-data` in any form.
+
+### Patch Changes
+
+- Estimate wrapped row heights at a `flex` column's resolved width. ([#304](https://github.com/cacheplane/pretable/pull/304))
+
+  A wrapped column's height estimate wrapped its text at `widthPx`, or at a fixed fallback when the
+  column declared none. That is not the width a `flex` column is drawn at — the drawn width comes from
+  distributing the leftover viewport space, and it moves with the viewport, with a sibling column's
+  resize, and with a column leaving the drawn set while grouped. So a column declaring both `wrap` and
+  `flex` had an estimate that never moved at all.
+
+  Measured in a browser with one `flex: 1` wrapped column beside a 140px fixed one, the estimate held
+  at 138px across drawn widths of 1058px, 558px and 318px — text that really occupied one, two and
+  three lines. It now tracks the drawn width, so rows that have not been measured yet are placed at a
+  height the viewport agrees with. The visible symptoms were scroll-anchor drift and a scrollbar sized
+  for content that was not there.
+
+  Only grids with a column declaring both `wrap` and `flex` are affected; every other column resolves
+  its width exactly as before.
+
+- Resolve `flex` columns at their drawn width when hit-testing a header drag and when scrolling a column into view. ([#312](https://github.com/cacheplane/pretable/pull/312))
+
+  `planColumnLayout` — the one plan shared by drag-to-reorder hit-testing and keyboard scroll-into-view — resolved every column through the renderer's `widthPx`-or-fallback rule. A `flex` column is not drawn at that width: it is drawn at its share of whatever the fixed columns leave over. Both consumers compare this plan against rendered pixels, so a flex column put every column after it at an offset nothing on screen had.
+
+  Measured in a browser with one `flex: 1` column between fixed ones in a 1000px scrollport, where the flex column is painted 518px wide:
+
+  - dragging a header and parking the cursor inside the next column painted the drop indicator 98px away from the boundary the cursor was over, and the drop landed the column at the far end of the grid instead of where the cursor pointed;
+  - with the flex column clamped by `minWidthPx` so the row overflowed, arrowing right to the last column did not scroll at all — the flex-blind plan's `totalWidth` was narrower than the viewport, so the reveal clamped its offset to 0 and the focused cell stayed off screen.
+
+  Both now match the painted geometry. Only grids with a `flex` column are affected; every other column resolves exactly as before, as does any grid whose scrollport has not been measured yet.
+
+- Updated dependencies [[`dccf75e`](https://github.com/cacheplane/pretable/commit/dccf75e4d9cdee0b0b8dd040ba921981c85255d7), [`d257a8f`](https://github.com/cacheplane/pretable/commit/d257a8ffde065aabb4c0e1582f23598a37b734ac)]:
+  - @pretable/core@0.4.0
+  - @pretable/ui@0.4.0
+
 ## 0.3.2
 
 ### Patch Changes
