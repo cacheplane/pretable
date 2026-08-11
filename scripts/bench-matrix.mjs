@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { getBenchAdapterFamily } from "../shared/bench-adapter-families.js";
+import { createAdapterVersionsRecord } from "../shared/bench-adapter-packages.js";
 
 const DEFAULT_ADAPTERS = ["pretable", "ag-grid"];
 const DEFAULT_REPEATS = 1;
@@ -144,10 +145,22 @@ export function createBenchPreviewLaunch(workspaceDir) {
   };
 }
 
+/**
+ * @param {object} input
+ * @param {import("../shared/bench-adapter-packages.js").BenchAdapterVersionsRecord} [input.adapterVersions]
+ *   Resolved comparator versions for this runset, from
+ *   `createAdapterVersionsRecord`. `run()` always supplies it; the unit tests
+ *   construct reports without one, and a report that omits it is caught the
+ *   moment it is committed as evidence (see
+ *   scripts/__tests__/bench-comparator-provenance.test.mjs).
+ */
 export function createHypothesisReport(input) {
   return {
     runsetId: input.runsetId,
     generatedAt: input.generatedAt,
+    ...(input.adapterVersions
+      ? { adapterVersions: input.adapterVersions }
+      : {}),
     adapters: summarizeReportAdapters(input.entries, input.runs),
     matrix: summarizeMatrixScope(input.entries, input.runs),
     slices: summarizeReportSlices(input.entries, input.runs),
@@ -178,6 +191,9 @@ export function createHypothesisReport(input) {
 async function run() {
   const parsedArgs = parseBenchMatrixArgs(process.argv.slice(2));
   const runsetId = sanitizeTimestamp(new Date().toISOString());
+  // Resolved BEFORE the build, so a tree that cannot report what it is about
+  // to measure fails in the first second rather than after a full matrix.
+  const adapterVersions = createAdapterVersionsRecord(parsedArgs.adapters);
   const previewLaunch = createBenchPreviewLaunch(process.cwd());
   await runCommand(previewLaunch.build);
   const server = spawn(
@@ -205,6 +221,7 @@ async function run() {
       createHypothesisReport({
         runsetId,
         generatedAt: new Date().toISOString(),
+        adapterVersions,
         entries: runEntries,
         runs,
       }),

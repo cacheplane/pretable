@@ -7,6 +7,7 @@ import {
   createRunArtifactFileStem,
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
+import { createAdapterVersionsRecord } from "../../../shared/bench-adapter-packages.js";
 
 const perfTraceEnabled = process.env.PLAYWRIGHT_PERF_TRACE === "1";
 
@@ -132,8 +133,18 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     `${createRunArtifactFileStem(result)}.summary.json`,
   );
 
+  // Stamp what this run measured through. The measurement happens in the page
+  // and a page cannot read a package manifest, so the version comes from disk
+  // here — resolved, never typed by hand. Unconditional: a summary that says
+  // nothing about its comparator's version is the exact artifact that let three
+  // comparator majors land on top of the May 2026 numbers unnoticed.
+  const summary = {
+    ...result,
+    adapterVersions: createAdapterVersionsRecord([result.adapterId]),
+  };
+
   await mkdir(path.dirname(summaryPath), { recursive: true });
-  await writeFile(summaryPath, `${JSON.stringify(result, null, 2)}\n`);
+  await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 
   // The bench-runner gates which (adapter × scenario × script) combos it
   // supports (e.g. interactions only on pretable + S2/S7, updates only on
@@ -283,7 +294,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   const existingDashboard = await readDashboard(dashboardPath);
   const nextDashboard = createDashboardIndex([
     ...existingDashboard.runs,
-    result,
+    summary,
   ]);
 
   await writeFile(dashboardPath, `${JSON.stringify(nextDashboard, null, 2)}\n`);

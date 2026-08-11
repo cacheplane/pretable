@@ -1,4 +1,19 @@
 {
+  "adapterVersions": {
+    "source": "pnpm-lock.yaml at e3811cfc, the commit that added this file (#125). Reconstructed from git history on 2026-08-11, when comparator provenance was introduced. This run predates automatic version stamping, which is why the drift below survived three comparator bumps unremarked.",
+    "recordedAt": "2026-08-11",
+    "adapters": {
+      "mui": {
+        "@mui/x-data-grid": "7.29.13",
+        "@mui/material": "5.18.0"
+      }
+    },
+    "superseded": {
+      "since": "2026-08-11",
+      "reason": "@mui/x-data-grid 7.29.13 -> 9.11.0, two majors, and @mui/material 5.18.0 -> 9.3.1 (#162, #150)",
+      "detail": "Superseded, not wrong: the numbers stand for the versions named above and are kept so the measurement history stays readable. A re-measure is tracked separately and must run on a quiet machine, after the TanStack 9 decision (#277)."
+    }
+  },
   "generatedAt": "2026-05-09T03:00:00.000Z",
   "predecessor": "status/milestones/2026-05-08-b2-comparative-bench.hypotheses.json",
   "evidenceSource": "status/milestones/2026-05-09-perf-diag-high-repeat.scroll.json",
