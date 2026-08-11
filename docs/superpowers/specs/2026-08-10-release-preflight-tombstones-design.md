@@ -212,9 +212,10 @@ Verification includes:
 - documentation of Changesets' package-path heuristic: branch-relative status
   exits 1 because the changelog lives under `packages/stream-adapter`, even
   though the changelog is excluded from the published artifact;
-- independent checks that the branch adds no `.changeset` file, changes only
-  `packages/stream-adapter/CHANGELOG.md` beneath that package, and retains the
-  manifest's exact `files: ["dist"]` artifact boundary;
+- independent checks that the branch adds no `.changeset` file, that the entire
+  workspace diff under `apps` and `packages` contains only
+  `packages/stream-adapter/CHANGELOG.md`, and that the manifest retains its exact
+  `files: ["dist"]` artifact boundary;
 - a clean final worktree and independent code/spec review before publication of
   the pull request.
 
