@@ -18,6 +18,7 @@ import type {
   PretableVisibleRowRef,
 } from "@pretable/core";
 import {
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -376,7 +377,10 @@ export function useIndexedPretable<
     }) as PretableReactGrid<TRow, TRowId, TColumns>;
   }, [queryChangeChannel, rowModel, stores.autoWidths, stores.gridCore]);
 
-  useLayoutEffect(() => {
+  // Effect Events cannot back this public imperative method because callers
+  // also invoke it outside Effects. An insertion effect publishes only the
+  // committed render's callback before any descendant layout effect can act.
+  useInsertionEffect(() => {
     queryChangeChannel.set(onQueryChange);
   }, [onQueryChange, queryChangeChannel]);
 

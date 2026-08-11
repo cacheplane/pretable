@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
+import { StrictMode, useLayoutEffect } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import {
@@ -9,6 +10,10 @@ import {
 } from "@pretable/core";
 
 import { usePretable } from "../use-pretable";
+import {
+  useIndexedPretable,
+  type PretableReactGrid,
+} from "../use-indexed-pretable";
 
 interface Row {
   id: number;
@@ -184,6 +189,79 @@ describe("usePretable rows-mode query ownership", () => {
     expect(result.current.grid).toBe(grid);
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledWith(sortedQuery);
+  });
+
+  test("publishes callback and control-mode changes before child layout effects", async () => {
+    const model = createLocalRowModel({ rows, columns });
+    const first = vi.fn();
+    const second = vi.fn();
+    const grids: PretableReactGrid<Row, number, typeof columns>[] = [];
+    const filteredQuery = {
+      filters: [{ columnId: "label", operator: "equals", value: "two" }],
+      sort: [],
+      rowGroups: [],
+    } as const;
+
+    function QueryInChildLayout(props: {
+      grid: PretableReactGrid<Row, number, typeof columns>;
+      query: PretableQueryFor<typeof columns>;
+    }) {
+      useLayoutEffect(() => {
+        grids.push(props.grid);
+        props.grid.setQuery(props.query);
+      }, [props.grid, props.query]);
+      return null;
+    }
+
+    function Harness(props: {
+      callback?: (query: PretableQueryFor<typeof columns>) => void;
+      proposal: PretableQueryFor<typeof columns>;
+    }) {
+      const table = useIndexedPretable({
+        rowModel: model,
+        columns,
+        viewportHeight: 88,
+        onQueryChange: props.callback,
+      });
+      return <QueryInChildLayout grid={table.grid} query={props.proposal} />;
+    }
+
+    const view = render(
+      <StrictMode>
+        <Harness callback={first} proposal={emptyQuery} />
+      </StrictMode>,
+    );
+    first.mockClear();
+    grids.length = 0;
+
+    view.rerender(
+      <StrictMode>
+        <Harness callback={second} proposal={sortedQuery} />
+      </StrictMode>,
+    );
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledWith(sortedQuery);
+    const stableGrid = grids.at(-1);
+
+    second.mockClear();
+    view.rerender(
+      <StrictMode>
+        <Harness proposal={filteredQuery} />
+      </StrictMode>,
+    );
+    expect(first).not.toHaveBeenCalled();
+    expect(second).not.toHaveBeenCalled();
+    expect(grids.at(-1)).toBe(stableGrid);
+    await expect
+      .poll(() => model.getState().snapshot.query)
+      .toEqual(filteredQuery);
+
+    view.unmount();
+    await act(async () => Promise.resolve());
+    expect(() => stableGrid?.setQuery(emptyQuery)).toThrowError(
+      expect.objectContaining({ code: "disposed-grid-ui" }),
+    );
+    model.dispose();
   });
 
   test("rejects retained controlled and uncontrolled grid handles after unmount", async () => {
