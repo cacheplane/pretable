@@ -57,7 +57,7 @@ describe("incremental flat queries", () => {
     expect(model.getState().snapshot.revision).toBe(1);
     expect(model.getState().snapshot.sourceRowCount).toBe(2);
   });
-  test("updates filter membership, multi-sort keys, and stable source ties", () => {
+  test("updates filter membership, multi-sort keys, and stable source ties", async () => {
     const columns = [
       helper.accessor("team", { type: "text" }),
       helper.accessor("score", { type: "number" }),
@@ -79,6 +79,7 @@ describe("incremental flat queries", () => {
       ],
       rowGroups: [],
     });
+    await transition.finished;
 
     expect(transition.requestedQuery).toEqual(model.getState().snapshot.query);
     expect(

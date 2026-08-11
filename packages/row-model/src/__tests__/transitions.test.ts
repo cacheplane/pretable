@@ -122,7 +122,11 @@ describe("cooperative query and derivation transitions", () => {
     let steps = 0;
     const runtime = createCooperativeTransitionRuntime({
       scheduler: new ManualScheduler(),
-      now: () => tick++,
+      now: () => {
+        const current = tick;
+        tick += 0.125;
+        return current;
+      },
     });
 
     expect(
@@ -131,7 +135,7 @@ describe("cooperative query and derivation transitions", () => {
         return false;
       }),
     ).toBe(false);
-    expect(steps).toBe(1);
+    expect(steps).toBe(2);
   });
 
   test("internally observes an unawaited transition rejected by automatic supersession", async () => {
